@@ -2305,6 +2305,31 @@ title: "Dil %",
                     minWidth: 70
                 },
                 {
+                    title: "Google LMP",
+                    field: "google_lmp_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sku = (rowData.sku || '').replace(/"/g, '&quot;');
+                        const skuEnc = encodeURIComponent(rowData.sku || '');
+                        if (rowData.is_parent_summary === true) {
+                            const v = cell.getValue();
+                            return v != null ? '<span style="font-weight: 600;">$' + parseFloat(v).toFixed(2) + '</span>' : '<span class="text-muted">-</span>';
+                        }
+                        const value = cell.getValue();
+                        const price = value != null && value !== '' ? parseFloat(value) : null;
+                        if (price == null || price <= 0) {
+                            const url = '/repricer/google-search' + (skuEnc ? '?sku=' + skuEnc : '');
+                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Google repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
+                        }
+                        const avgPrice = parseFloat(rowData.avg_price || 0);
+                        const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
+                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="google" style="${styleForCellColor(color)} text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
+                    },
+                    minWidth: 80
+                },
+                {
                     title: "Avg GPFT",
                     field: "avg_gpft",
                     hozAlign: "center",
@@ -2887,17 +2912,20 @@ title: "Dil %",
             
             let amazonData = null;
             let ebayData = null;
+            let googleData = null;
             const onlyAmazon = marketplace === 'amazon';
             const onlyEbay = marketplace === 'ebay';
-            const needAmazon = !onlyEbay;
-            const needEbay = !onlyAmazon;
+            const onlyGoogle = marketplace === 'google';
+            const needAmazon = !onlyEbay && !onlyGoogle;
+            const needEbay = !onlyAmazon && !onlyGoogle;
+            const needGoogle = !onlyAmazon && !onlyEbay;
             let loaded = 0;
-            const totalNeeded = (needAmazon ? 1 : 0) + (needEbay ? 1 : 0);
+            const totalNeeded = (needAmazon ? 1 : 0) + (needEbay ? 1 : 0) + (needGoogle ? 1 : 0);
             
             function tryRender() {
                 loaded++;
                 if (loaded < totalNeeded) return;
-                renderLmpCombined(sku, amazonData, ebayData, marketplace);
+                renderLmpCombined(sku, amazonData, ebayData, googleData, marketplace);
             }
             
             if (needAmazon) {
@@ -2931,19 +2959,38 @@ title: "Dil %",
                     }
                 });
             }
+
+            if (needGoogle) {
+                $.ajax({
+                    url: '/google-lmp-data',
+                    method: 'GET',
+                    data: { sku: sku },
+                    success: function(res) {
+                        googleData = res.success && res.competitors ? res : null;
+                        tryRender();
+                    },
+                    error: function() {
+                        googleData = null;
+                        tryRender();
+                    }
+                });
+            }
         }
         
-        function renderLmpCombined(sku, amazonRes, ebayRes, marketplace) {
+        function renderLmpCombined(sku, amazonRes, ebayRes, googleRes, marketplace) {
             const amzList = (amazonRes && amazonRes.competitors) ? amazonRes.competitors : [];
             const ebayList = (ebayRes && ebayRes.competitors) ? ebayRes.competitors : [];
+            const googleList = (googleRes && googleRes.competitors) ? googleRes.competitors : [];
             const onlyAmazon = marketplace === 'amazon';
             const onlyEbay = marketplace === 'ebay';
+            const onlyGoogle = marketplace === 'google';
             
             const amzLowest = amzList.length ? Math.min(...amzList.map(c => parseFloat(c.price) || 0).filter(p => p > 0)) : null;
             const ebayTotals = ebayList.map(c => parseFloat(c.total_price || c.price) || 0).filter(t => t > 0);
             const ebayLowest = ebayTotals.length ? Math.min(...ebayTotals) : null;
+            const googleLowest = googleList.length ? Math.min(...googleList.map(c => parseFloat(c.price) || 0).filter(p => p > 0)) : null;
             
-            const listToShow = onlyAmazon ? amzList : (onlyEbay ? ebayList : null);
+            const listToShow = onlyAmazon ? amzList : (onlyEbay ? ebayList : (onlyGoogle ? googleList : null));
             if (onlyAmazon && amzList.length === 0) {
                 $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Amazon competitors found for this SKU</div>');
                 return;
@@ -2952,21 +2999,28 @@ title: "Dil %",
                 $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No eBay competitors found for this SKU</div>');
                 return;
             }
-            if (!onlyAmazon && !onlyEbay && amzList.length === 0 && ebayList.length === 0) {
-                $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Amazon or eBay competitors found for this SKU</div>');
+            if (onlyGoogle && googleList.length === 0) {
+                $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Google competitors found for this SKU</div>');
+                return;
+            }
+            if (!onlyAmazon && !onlyEbay && !onlyGoogle && amzList.length === 0 && ebayList.length === 0 && googleList.length === 0) {
+                $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Amazon, eBay, or Google competitors found for this SKU</div>');
                 return;
             }
             
-            const maxRows = onlyAmazon ? amzList.length : (onlyEbay ? ebayList.length : Math.max(amzList.length, ebayList.length));
+            const maxRows = onlyAmazon ? amzList.length : (onlyEbay ? ebayList.length : (onlyGoogle ? googleList.length : Math.max(amzList.length, ebayList.length, googleList.length)));
             let html = '';
             if (onlyAmazon && amzLowest != null && amzLowest > 0) {
                 html += '<div class="mb-3"><span class="badge" style="background-color: transparent; color: #ff9c00; font-weight: 600;">Amz lowest: $' + amzLowest.toFixed(2) + '</span></div>';
             } else if (onlyEbay && ebayLowest != null && ebayLowest > 0) {
                 html += '<div class="mb-3"><span class="badge bg-info text-dark">eBay lowest: $' + ebayLowest.toFixed(2) + '</span></div>';
-            } else if (!onlyAmazon && !onlyEbay && ((amzLowest != null && amzLowest > 0) || (ebayLowest != null && ebayLowest > 0))) {
+            } else if (onlyGoogle && googleLowest != null && googleLowest > 0) {
+                html += '<div class="mb-3"><span class="badge bg-success">Google lowest: $' + googleLowest.toFixed(2) + '</span></div>';
+            } else if (!onlyAmazon && !onlyEbay && !onlyGoogle && ((amzLowest != null && amzLowest > 0) || (ebayLowest != null && ebayLowest > 0) || (googleLowest != null && googleLowest > 0))) {
                 const parts = [];
                 if (amzLowest != null && amzLowest > 0) parts.push('<span class="badge me-1" style="background-color: transparent; color: #ff9c00; font-weight: 600;">Amz lowest: $' + amzLowest.toFixed(2) + '</span>');
-                if (ebayLowest != null && ebayLowest > 0) parts.push('<span class="badge bg-info text-dark">eBay lowest: $' + ebayLowest.toFixed(2) + '</span>');
+                if (ebayLowest != null && ebayLowest > 0) parts.push('<span class="badge bg-info text-dark me-1">eBay lowest: $' + ebayLowest.toFixed(2) + '</span>');
+                if (googleLowest != null && googleLowest > 0) parts.push('<span class="badge bg-success">Google lowest: $' + googleLowest.toFixed(2) + '</span>');
                 html += '<div class="mb-3">' + parts.join(' ') + '</div>';
             }
             
@@ -3008,6 +3062,27 @@ title: "Dil %",
                     const rowClass = ebayLowestFlag ? 'table-success' : '';
                     const delBtn = '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + ebay.id + '" data-marketplace="ebay" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + ebayPrice + '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
                     html += `<tr class="${rowClass}"><td>${sn}</td><td>${ebayCell}</td><td>${delBtn}</td></tr>`;
+                });
+            } else if (onlyGoogle) {
+                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>Google</th><th>Source</th><th>Title</th><th>Rating</th><th>Reviews</th><th>Action</th></tr></thead><tbody>';
+                googleList.forEach(function(google, i) {
+                    const sn = 'L' + (i + 1);
+                    const googlePrice = parseFloat(google.price) || 0;
+                    const googleLink = google.link || google.product_link || '';
+                    const googleImage = google.image || '';
+                    const googleLowestFlag = googlePrice > 0 && googleLowest != null && Math.abs(googlePrice - googleLowest) < 0.01;
+                    const googleImgHtml = googleImage ? `<img src="${googleImage.replace(/"/g, '&quot;')}" alt="Google" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
+                    const googleCell = googlePrice > 0
+                        ? `<div class="d-flex align-items-center">${googleImgHtml}<span>${googleLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${googlePrice.toFixed(2)}</span>${googleLink ? ` <a href="${googleLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
+                        : `<div class="d-flex align-items-center">${googleImgHtml}<span class="text-muted">-</span></div>`;
+                    const source = (google.source || '-').substring(0, 30) + ((google.source || '').length > 30 ? '...' : '');
+                    const title = ((google.product_title || google.title || '').substring(0, 40)) + ((google.product_title || google.title || '').length > 40 ? '...' : '');
+                    const ratingVal = google.rating != null ? parseFloat(google.rating) : null;
+                    const ratingCell = ratingVal != null ? '<span><i class="fa fa-star text-warning"></i> ' + ratingVal.toFixed(1) + '</span>' : '<span class="text-muted">-</span>';
+                    const reviewsCell = google.reviews != null ? (parseInt(google.reviews) || 0).toLocaleString() : '<span class="text-muted">-</span>';
+                    const rowClass = googleLowestFlag ? 'table-success' : '';
+                    const delBtn = '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + google.id + '" data-marketplace="google" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + googlePrice + '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
+                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${googleCell}</td><td title="${(google.source || '').replace(/"/g, '&quot;')}">${source}</td><td title="${((google.product_title || google.title || '') + '').replace(/"/g, '&quot;')}">${title || '-'}</td><td>${ratingCell}</td><td>${reviewsCell}</td><td>${delBtn}</td></tr>`;
                 });
             } else {
                 html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>Amz</th><th>Rating</th><th>Reviews</th><th>Old Price</th><th>Delivery</th><th>eBay</th><th>Action</th></tr></thead><tbody>';
@@ -3077,10 +3152,10 @@ title: "Dil %",
             const marketplace = btn.data('marketplace');
             const sku = btn.data('sku') || $('#lmpSku').text();
             const price = btn.data('price');
-            const label = marketplace === 'amazon' ? 'Amazon' : 'eBay';
+            const label = marketplace === 'amazon' ? 'Amazon' : (marketplace === 'google' ? 'Google' : 'eBay');
             if (!id) return;
             if (!confirm('Delete this ' + label + ' competitor ($' + (price ? parseFloat(price).toFixed(2) : '') + ') from LMP? This cannot be undone.')) return;
-            const url = marketplace === 'amazon' ? '/amazon/lmp/delete' : '/ebay-lmp-delete';
+            const url = marketplace === 'amazon' ? '/amazon/lmp/delete' : (marketplace === 'google' ? '/google-lmp-delete' : '/ebay-lmp-delete');
             $.ajax({
                 url: url,
                 method: 'POST',

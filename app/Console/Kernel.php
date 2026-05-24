@@ -105,6 +105,8 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\UpdateEbaySkuCompetitorPrices::class,
         \App\Console\Commands\UpdateAmazonCompetitorPrices::class,
         \App\Console\Commands\UpdateAmazonSkuCompetitorPrices::class,
+        \App\Console\Commands\UpdateGoogleCompetitorPrices::class,
+        \App\Console\Commands\UpdateGoogleSkuCompetitorPrices::class,
         \App\Console\Commands\SyncAmazonProducts::class,
         \App\Console\Commands\AmazonDebugSku::class,
         \App\Console\Commands\AliExpressApiTestCommand::class,
@@ -774,6 +776,16 @@ class Kernel extends ConsoleKernel
             ->at('06:00')
             ->timezone('Asia/Kolkata')
             ->name('amazon-sku-competitor-prices-weekly')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('google:update-sku-prices --skip-search-refresh')
+            ->weekly()
+            ->mondays()
+            ->at('06:30')
+            ->timezone('Asia/Kolkata')
+            ->name('google-sku-competitor-prices-weekly')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log);

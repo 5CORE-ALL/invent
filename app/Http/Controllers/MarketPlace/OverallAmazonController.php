@@ -327,20 +327,9 @@ class OverallAmazonController extends Controller
         $lmpLowestLookup = collect();
         $lmpDetailsLookup = collect();
         try {
-            // Fetch all competitors and group by normalized SKU (handle line breaks, spaces, case)
-            $lmpRecords = AmazonSkuCompetitor::where('marketplace', 'amazon')
-                ->where('price', '>', 0)
-                ->orderBy('price', 'asc')
-                ->get()
-                ->groupBy(function($item) {
-                    // Normalize: remove ALL whitespace (newlines, tabs, etc.), replace with single space, uppercase
-                    return strtoupper(preg_replace('/\s+/', ' ', trim($item->sku)));
-                });
-
-            $lmpDetailsLookup = $lmpRecords;
-            $lmpLowestLookup = $lmpRecords->map(function ($items) {
-                return $items->first();
-            });
+            $lmpLookups = AmazonSkuCompetitor::buildGroupedLookup('amazon');
+            $lmpDetailsLookup = $lmpLookups['details'];
+            $lmpLowestLookup = $lmpLookups['lowest'];
         } catch (\Exception $e) {
             Log::warning('Could not fetch LMP data from amazon_sku_competitors: ' . $e->getMessage());
         }
@@ -504,8 +493,7 @@ class OverallAmazonController extends Controller
             $row['bid_cap'] = null;
 
             // LMP data - lowest entry plus all competitors
-            // Use uppercase and trimmed SKU for lookup (case-insensitive)
-            $skuLookupKey = strtoupper(trim($pm->sku));
+            $skuLookupKey = AmazonSkuCompetitor::normalizeSkuKey($pm->sku);
             $lmpEntries = $lmpDetailsLookup->get($skuLookupKey);
             if (!$lmpEntries instanceof \Illuminate\Support\Collection) {
                 $lmpEntries = collect();

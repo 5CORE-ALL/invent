@@ -5865,7 +5865,7 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 `;
                 
                 competitors.forEach((item, index) => {
-                    const isLowest = (item.price === lowestPrice);
+                    const isLowest = Math.abs(parseFloat(item.price) - parseFloat(lowestPrice)) < 0.01;
                     const rowClass = isLowest ? 'table-success' : '';
                     const priceFormatted = '$' + parseFloat(item.price).toFixed(2);
                     const priceBadge = isLowest ? 

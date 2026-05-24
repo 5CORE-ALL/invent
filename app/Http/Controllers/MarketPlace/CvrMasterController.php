@@ -56,6 +56,7 @@ use App\Models\MarketplacePercentage;
 use App\Models\MarketplaceDailyMetric;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\AmazonSkuCompetitor;
+use App\Models\GoogleSkuCompetitor;
 use App\Models\EbaySkuCompetitor;
 use App\Models\CvrRemark;
 use App\Models\AmazonListingStatus;
@@ -418,16 +419,18 @@ class CvrMasterController extends Controller
             // Fetch Amazon LMP data from amazon_sku_competitors
             $amazonLmpLookup = collect();
             $amazonLmpCountLookup = collect();
+            $googleLmpLookup = collect();
+            $googleLmpCountLookup = collect();
             try {
-                $amazonLmpRecords = AmazonSkuCompetitor::where('marketplace', 'amazon')
-                    ->where('price', '>', 0)
-                    ->orderBy('price', 'asc')
-                    ->get()
-                    ->groupBy(function ($item) {
-                        return strtoupper(preg_replace('/\s+/', ' ', trim($item->sku)));
-                    });
-                $amazonLmpLookup = $amazonLmpRecords->map(fn ($items) => $items->first());
+                $amazonLmpLookups = AmazonSkuCompetitor::buildGroupedLookup('amazon');
+                $amazonLmpRecords = $amazonLmpLookups['details'];
+                $amazonLmpLookup = $amazonLmpLookups['lowest'];
                 $amazonLmpCountLookup = $amazonLmpRecords->map(fn ($items) => $items->count());
+
+                $googleLmpLookups = GoogleSkuCompetitor::buildGroupedLookup('google');
+                $googleLmpRecords = $googleLmpLookups['details'];
+                $googleLmpLookup = $googleLmpLookups['lowest'];
+                $googleLmpCountLookup = $googleLmpRecords->map(fn ($items) => $items->count());
             } catch (\Exception $e) {
                 Log::warning('Could not fetch Amazon LMP: ' . $e->getMessage());
             }
@@ -1040,6 +1043,7 @@ class CvrMasterController extends Controller
                 $skuLookupKey = strtoupper(preg_replace('/\s+/', ' ', trim($sku)));
                 $amazonLmp = $amazonLmpLookup->get($skuLookupKey);
                 $ebayLmp = $ebayLmpLookup->get($skuLookupKey);
+                $googleLmp = $googleLmpLookup->get($skuLookupKey);
                 $amazonLmpPrice = ($amazonLmp && isset($amazonLmp->price) && is_numeric($amazonLmp->price))
                     ? round(floatval($amazonLmp->price), 2) : null;
                 $amazonLmpLink = ($amazonLmp && !empty($amazonLmp->product_link)) ? $amazonLmp->product_link : null;
@@ -1056,6 +1060,10 @@ class CvrMasterController extends Controller
                 $ebayLmpPrice = $ebayLmpTotal;
                 $amazonLmpCount = $amazonLmpCountLookup->get($skuLookupKey) ?? 0;
                 $ebayLmpCount = $ebayLmpCountLookup->get($skuLookupKey) ?? 0;
+                $googleLmpPrice = ($googleLmp && isset($googleLmp->price) && is_numeric($googleLmp->price))
+                    ? round(floatval($googleLmp->price), 2) : null;
+                $googleLmpLink = ($googleLmp && !empty($googleLmp->product_link)) ? $googleLmp->product_link : null;
+                $googleLmpCount = $googleLmpCountLookup->get($skuLookupKey) ?? 0;
 
                 $amazonDataViewRow = $amazonDataViewBySku->get($sku);
                 $amazonSprice = null;
@@ -1117,10 +1125,13 @@ class CvrMasterController extends Controller
                     "avg_pft" => $avgPFT,
                     "amazon_lmp_price" => $amazonLmpPrice,
                     "ebay_lmp_price" => $ebayLmpPrice,
+                    "google_lmp_price" => $googleLmpPrice,
                     "amazon_lmp_link" => $amazonLmpLink,
                     "ebay_lmp_link" => $ebayLmpLink,
+                    "google_lmp_link" => $googleLmpLink,
                     "amazon_lmp_count" => $amazonLmpCount,
                     "ebay_lmp_count" => $ebayLmpCount,
+                    "google_lmp_count" => $googleLmpCount,
                     "rating" => $rating,
                     "reviews" => $reviews,
                     "listing_quality_score" => $listingQualityScore,
@@ -1151,6 +1162,7 @@ class CvrMasterController extends Controller
                 // Create synthetic parent summary row (placed BELOW children)
                 $amazonLmpVals = $rows->pluck('amazon_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $ebayLmpVals = $rows->pluck('ebay_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
+                $googleLmpVals = $rows->pluck('google_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonPriceVals = $rows->pluck('amazon_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonSpriceVals = $rows->pluck('amazon_sprice')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonSgpftVals = $rows->pluck('amazon_sgpft')->filter(fn ($v) => $v !== null);
@@ -1192,6 +1204,7 @@ class CvrMasterController extends Controller
                     'avg_pft' => $rows->count() > 0 ? round($rows->avg('avg_pft'), 2) : 0,
                     'amazon_lmp_price' => $amazonLmpVals->isNotEmpty() ? round($amazonLmpVals->avg(), 2) : null,
                     'ebay_lmp_price' => $ebayLmpVals->isNotEmpty() ? round($ebayLmpVals->avg(), 2) : null,
+                    'google_lmp_price' => $googleLmpVals->isNotEmpty() ? round($googleLmpVals->avg(), 2) : null,
                     'amazon_lmp_link' => null,
                     'ebay_lmp_link' => null,
                     'amazon_lmp_count' => $rows->sum('amazon_lmp_count'),
@@ -1406,15 +1419,12 @@ class CvrMasterController extends Controller
 
             // Fetch Amazon LMP data from amazon_sku_competitors (same as getCvrDataJson)
             $amazonLmpLookup = collect();
+            $googleLmpLookup = collect();
             try {
-                $amazonLmpRecords = AmazonSkuCompetitor::where('marketplace', 'amazon')
-                    ->where('price', '>', 0)
-                    ->orderBy('price', 'asc')
-                    ->get()
-                    ->groupBy(function ($item) {
-                        return strtoupper(preg_replace('/\s+/', ' ', trim($item->sku)));
-                    });
-                $amazonLmpLookup = $amazonLmpRecords->map(fn ($items) => $items->first());
+                $amazonLmpLookups = AmazonSkuCompetitor::buildGroupedLookup('amazon');
+                $amazonLmpLookup = $amazonLmpLookups['lowest'];
+                $googleLmpLookups = GoogleSkuCompetitor::buildGroupedLookup('google');
+                $googleLmpLookup = $googleLmpLookups['lowest'];
             } catch (\Exception $e) {
                 Log::warning('Could not fetch Amazon LMP in breakdown: ' . $e->getMessage());
             }

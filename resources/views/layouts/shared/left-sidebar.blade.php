@@ -607,6 +607,12 @@
                                             eBay Competitors
                                         </a>
                                     </li>
+                                    <li>
+                                        <a href="{{ url('/repricer/google-search') }}"
+                                            class="{{ request()->is('repricer/google-search*') ? 'active' : '' }}">
+                                            Google Competitors
+                                        </a>
+                                    </li>
                                 </ul>
                 </div>
             </li>

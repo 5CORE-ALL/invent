@@ -4,39 +4,28 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class AmazonSkuCompetitor extends Model
+class GoogleSkuCompetitor extends Model
 {
-    protected $table = 'amazon_sku_competitors';
+    protected $table = 'google_sku_competitors';
 
     protected $fillable = [
         'sku',
-        'asin',
+        'product_id',
+        'source',
         'marketplace',
+        'search_query',
         'product_link',
-        'image',
         'product_title',
-        'seller_name',
+        'image',
         'price',
         'rating',
         'reviews',
-        'extracted_old_price',
-        'delivery',
-        'monthly_revenue',
-        'monthly_units_sold',
-        'buy_box_owner',
-        'seller_type_js',
-        'sales_data_updated_at',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'rating' => 'decimal:2',
         'reviews' => 'integer',
-        'extracted_old_price' => 'decimal:2',
-        'delivery' => 'array',
-        'monthly_revenue' => 'decimal:2',
-        'monthly_units_sold' => 'integer',
-        'sales_data_updated_at' => 'datetime',
     ];
 
     public static function normalizeSkuKey(?string $sku): string
@@ -46,7 +35,7 @@ class AmazonSkuCompetitor extends Model
 
     public function scopeWherePositivePrice($query)
     {
-        return $query->whereRaw('CAST(price AS DECIMAL(10,2)) > 0');
+        return $query->where('price', '>', 0);
     }
 
     public function scopeOrderByNumericPrice($query, string $direction = 'asc')
@@ -69,7 +58,7 @@ class AmazonSkuCompetitor extends Model
     /**
      * @return array{details: \Illuminate\Support\Collection, lowest: \Illuminate\Support\Collection}
      */
-    public static function buildGroupedLookup(string $marketplace = 'amazon'): array
+    public static function buildGroupedLookup(string $marketplace = 'google'): array
     {
         $records = self::where('marketplace', $marketplace)
             ->wherePositivePrice()
@@ -82,26 +71,7 @@ class AmazonSkuCompetitor extends Model
         ];
     }
 
-    /**
-     * Get the lowest priced competitor for a given SKU
-     * Handles SKUs with line breaks, extra spaces, and case differences
-     */
-    public static function getLowestPriceForSku($sku, $marketplace = 'amazon')
-    {
-        $normalizedSku = self::normalizeSkuKey($sku);
-
-        return self::whereRaw('UPPER(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?', [$normalizedSku])
-            ->where('marketplace', $marketplace)
-            ->wherePositivePrice()
-            ->orderByNumericPrice('asc')
-            ->first();
-    }
-
-    /**
-     * Get all competitors for a given SKU ordered by price
-     * Handles SKUs with line breaks, extra spaces, and case differences
-     */
-    public static function getCompetitorsForSku($sku, $marketplace = 'amazon')
+    public static function getCompetitorsForSku($sku, $marketplace = 'google')
     {
         $normalizedSku = self::normalizeSkuKey($sku);
 

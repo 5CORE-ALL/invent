@@ -222,14 +222,8 @@ class FbaDataController extends Controller
       // Fetch Amazon LMP data from amazon_sku_competitors
       $amazonLmpLookup = collect();
       try {
-         $amazonLmpRecords = AmazonSkuCompetitor::where('marketplace', 'amazon')
-            ->where('price', '>', 0)
-            ->orderBy('price', 'asc')
-            ->get()
-            ->groupBy(function ($item) {
-               return strtoupper(preg_replace('/\s+/', ' ', trim($item->sku)));
-            });
-         $amazonLmpLookup = $amazonLmpRecords->map(fn ($items) => $items->first());
+         $amazonLmpLookups = AmazonSkuCompetitor::buildGroupedLookup('amazon');
+         $amazonLmpLookup = $amazonLmpLookups['lowest'];
       } catch (\Exception $e) {
          Log::warning('Could not fetch Amazon LMP in FBA data: ' . $e->getMessage());
       }

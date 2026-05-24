@@ -3127,6 +3127,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay-lmp-add', [EbayController::class, 'addEbayLmp'])->name('ebay.lmp.add');
     Route::post('/ebay-lmp-delete', [EbayController::class, 'deleteEbayLmp'])->name('ebay.lmp.delete');
 
+    // Google LMP (Lowest Marketplace Price) routes
+    Route::get('/google-lmp-data', [\App\Http\Controllers\MarketPlace\GoogleLmpController::class, 'getGoogleLmpData'])->name('google.lmp.data');
+    Route::post('/google-lmp-add', [\App\Http\Controllers\MarketPlace\GoogleLmpController::class, 'addGoogleLmp'])->name('google.lmp.add');
+    Route::post('/google-lmp-delete', [\App\Http\Controllers\MarketPlace\GoogleLmpController::class, 'deleteGoogleLmp'])->name('google.lmp.delete');
+    Route::post('/google-lmp-import-search', [\App\Http\Controllers\MarketPlace\GoogleLmpController::class, 'importGoogleSearch'])->name('google.lmp.import');
+
     Route::get('/ebay-zero-view', action: [EbayZeroController::class, 'ebayZero'])->name('ebay.zero.view');
     Route::get('/ebay-low-visibility-view', action: [EbayLowVisibilityController::class, 'ebayLowVisibility'])->name('ebay.low.visibility.view');
     Route::get('/ebay2-low-visibility-view', action: [Ebay2LowVisibilityController::class, 'ebay2LowVisibility'])->name('ebay2.low.visibility.view');
@@ -4979,6 +4985,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/filter-options', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getFilterOptions'])->name('filter-options');
         Route::get('/skus', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getSkus'])->name('skus');
         Route::post('/store-competitors', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'storeCompetitors'])->name('store-competitors');
+    });
+
+    Route::prefix('repricer/google-search')->name('repricer.google-search.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\RePricer\GoogleSearchController::class, 'index'])->name('index');
+        Route::post('/search', [\App\Http\Controllers\RePricer\GoogleSearchController::class, 'search'])->name('search');
+        Route::get('/history', [\App\Http\Controllers\RePricer\GoogleSearchController::class, 'getSearchHistory'])->name('history');
+        Route::get('/results', [\App\Http\Controllers\RePricer\GoogleSearchController::class, 'getResults'])->name('results');
+        Route::get('/skus', [\App\Http\Controllers\RePricer\GoogleSearchController::class, 'getSkus'])->name('skus');
+        Route::post('/store-competitors', [\App\Http\Controllers\RePricer\GoogleSearchController::class, 'storeCompetitors'])->name('store-competitors');
     });
     
     // =========================================================================
