@@ -710,7 +710,14 @@
                                             <option value="lb_101_2">1.01 – 2 lb</option>
                                             <option value="lb_201_3">2.01 – 3 lb</option>
                                             <option value="lb_301_4">3.01 – 4 lb</option>
-                                            <option value="lb_401_20">4.01 – 20 lb</option>
+                                            <option value="lb_401_5">4.01 – 5 lb</option>
+                                            <option value="lb_501_6">5.01 – 6 lb</option>
+                                            <option value="lb_601_7">6.01 – 7 lb</option>
+                                            <option value="lb_701_8">7.01 – 8 lb</option>
+                                            <option value="lb_801_9">8.01 – 9 lb</option>
+                                            <option value="lb_901_10">9.01 – 10 lb</option>
+                                            <option value="lb_1001_15">10.01 – 15 lb</option>
+                                            <option value="lb_1501_20">15.01 – 20 lb</option>
                                             <option value="lb_2001_30">20.01 – 30 lb</option>
                                             <option value="lb_301_40">30.1 – 40 lb</option>
                                             <option value="lb_401_50">40.1 – 50 lb</option>
@@ -1764,8 +1771,22 @@
                         return w >= 2.01 && w <= 3;
                     case 'lb_301_4':
                         return w >= 3.01 && w <= 4;
-                    case 'lb_401_20':
-                        return w >= 4.01 && w <= 20;
+                    case 'lb_401_5':
+                        return w >= 4.01 && w <= 5;
+                    case 'lb_501_6':
+                        return w >= 5.01 && w <= 6;
+                    case 'lb_601_7':
+                        return w >= 6.01 && w <= 7;
+                    case 'lb_701_8':
+                        return w >= 7.01 && w <= 8;
+                    case 'lb_801_9':
+                        return w >= 8.01 && w <= 9;
+                    case 'lb_901_10':
+                        return w >= 9.01 && w <= 10;
+                    case 'lb_1001_15':
+                        return w >= 10.01 && w <= 15;
+                    case 'lb_1501_20':
+                        return w >= 15.01 && w <= 20;
                     case 'lb_2001_30':
                         return w >= 20.01 && w <= 30;
                     case 'lb_301_40':
