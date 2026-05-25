@@ -683,6 +683,9 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
+                                    <th class="shipping-rate-header" title="Average of TT 1 Ship through UNI (numeric values only)">
+                                        <span class="th-vertical-label">Uni.</span>
+                                    </th>
                                     <th class="th-has-filter th-parent-sku-col shipping-rate-header">
                                         <div class="th-horizontal-label" style="font-size: 9px;">FBA SKU</div>
                                         <input type="text" id="fbaSkuSearch" class="form-control-sm header-search-120"
@@ -1162,7 +1165,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="29" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="30" class="text-center">No data found</td></tr>';
                     return;
                 }
 
@@ -1304,6 +1307,16 @@
                     const uniCell = document.createElement('td');
                     setShippingNumericCell(uniCell, item.uni, isParentRow);
                     row.appendChild(uniCell);
+
+                    const uniAvgCell = document.createElement('td');
+                    uniAvgCell.className = 'text-center shipping-rate-cell';
+                    const uniAvg = avgUniShipCarrierRates(item);
+                    if (uniAvg === null) {
+                        uniAvgCell.textContent = '-';
+                    } else {
+                        uniAvgCell.textContent = formatNumber(uniAvg, 2);
+                    }
+                    row.appendChild(uniAvgCell);
 
                     const fbaSkuCell = document.createElement('td');
                     fbaSkuCell.className = 'td-sku-col shipping-rate-cell';
@@ -1723,6 +1736,22 @@
                 return v === null || v === undefined || v === '' || (typeof v === 'string' && v.trim() === '');
             }
 
+            /** Fields averaged for the Uni. column (TT 1 Ship through UNI). */
+            const UNI_AVG_SHIP_FIELDS = ['tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'fedex', 'ups', 'usps', 'uni'];
+
+            function avgUniShipCarrierRates(item) {
+                const nums = [];
+                for (const key of UNI_AVG_SHIP_FIELDS) {
+                    const raw = item[key];
+                    if (raw === null || raw === undefined || raw === '') continue;
+                    const n = parseFloat(raw);
+                    if (!Number.isFinite(n) || n <= 0) continue;
+                    nums.push(n);
+                }
+                if (nums.length === 0) return null;
+                return nums.reduce((a, b) => a + b, 0) / nums.length;
+            }
+
             /** Same rules as setShippingNumericCell: parent shows "-" when empty/0; child "-" when blank/invalid, "0.00" when zero. */
             function marketplaceShipDisplayKind(raw, isParent) {
                 const blank = marketplaceShipFieldStrictBlank(raw);
@@ -1971,7 +2000,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "INV", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "INV", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Uni.", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -2010,6 +2039,9 @@
                         },
                         "UNI": {
                             key: "uni"
+                        },
+                        "Uni.": {
+                            computed: "uni_avg"
                         },
                         "FBA SKU": {
                             key: "fba_sku"
@@ -2095,6 +2127,11 @@
                                 columns.forEach(col => {
                                     const colDef = columnDefs[col];
                                     if (colDef) {
+                                        if (colDef.computed === 'uni_avg') {
+                                            const avg = avgUniShipCarrierRates(item);
+                                            row.push(avg === null ? '' : parseFloat(avg.toFixed(2)));
+                                            return;
+                                        }
                                         const key = colDef.key;
                                         let value = item[key] !== undefined && item[key] !== null ? item[key] : '';
 
@@ -2148,7 +2185,7 @@
                                     return { wch: 20 }; // Wider for text columns
                                 } else if (["Status"].includes(col)) {
                                     return { wch: 12 };
-                                } else if (["FBA SKU", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA ship", "FBA manual ship"].includes(col)) {
+                                } else if (["FBA SKU", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Uni.", "FBA ship", "FBA manual ship"].includes(col)) {
                                     return { wch: 15 }; // Width for weight and CBM columns
                                 } else {
                                     return { wch: 12 }; // Default width for numeric columns
