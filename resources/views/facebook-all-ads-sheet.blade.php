@@ -1776,9 +1776,10 @@
 
         // ── Push SBGT to Meta ─────────────────────────────────────────
         // Collects every visible row that has a campaign id AND a non-
-        // empty Sbgt value, then POSTs them in one batch. The backend
-        // calls Meta once per campaign to update `daily_budget`.
+        // empty Sbgt value, then POSTs in chunks. The backend calls Meta
+        // once per campaign to update `daily_budget`.
         const SBGT_PUSH_URL = '/facebook-all-ads-sheet/push-sbgt';
+        const SBGT_PUSH_CHUNK_SIZE = 20;
 
         function collectSbgtRowsToPush() {
             if (!tabulator) return [];
@@ -1794,6 +1795,59 @@
                 }
             });
             return out;
+        }
+
+        function sbgtPushErrorMessage(body, status) {
+            if (!body || typeof body !== 'object') {
+                return status ? ('HTTP ' + status) : 'unknown error';
+            }
+            return body.error || body.message || 'unknown error';
+        }
+
+        async function pushSbgtInChunks(allRows, btn) {
+            const chunks = [];
+            for (let i = 0; i < allRows.length; i += SBGT_PUSH_CHUNK_SIZE) {
+                chunks.push(allRows.slice(i, i + SBGT_PUSH_CHUNK_SIZE));
+            }
+
+            const aggregated = { pushed: 0, failed: 0, skipped: 0, results: [] };
+            let done = 0;
+
+            for (const chunk of chunks) {
+                done += chunk.length;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Pushing '
+                    + done + '/' + allRows.length + '…';
+
+                const resp = await fetch(SBGT_PUSH_URL, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept':       'application/json',
+                    },
+                    body: JSON.stringify({ campaigns: chunk }),
+                });
+
+                let body = {};
+                try {
+                    body = await resp.json();
+                } catch (_) {
+                    throw new Error('Server returned a non-JSON response (HTTP '
+                        + resp.status + '). The request may have timed out — try fewer rows.');
+                }
+
+                if (!resp.ok || body.success === false) {
+                    throw new Error(sbgtPushErrorMessage(body, resp.status));
+                }
+
+                aggregated.pushed  += body.pushed  ?? 0;
+                aggregated.failed  += body.failed  ?? 0;
+                aggregated.skipped += body.skipped ?? 0;
+                aggregated.results.push(...(body.results || []));
+            }
+
+            return aggregated;
         }
 
         function renderSbgtResult(payload) {
@@ -1842,25 +1896,9 @@
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Pushing…';
 
-            fetch(SBGT_PUSH_URL, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                    'Accept':       'application/json',
-                },
-                body: JSON.stringify({ campaigns: rows }),
-            })
-                .then(r => r.json().then(j => ({ ok: r.ok, body: j })))
-                .then(({ ok, body }) => {
-                    if (!ok || body.success === false) {
-                        alert('Push SBGT failed: ' + (body.error || 'unknown error'));
-                        return;
-                    }
-                    renderSbgtResult(body);
-                })
-                .catch(err => alert('Network error: ' + err.message))
+            pushSbgtInChunks(rows, btn)
+                .then(payload => renderSbgtResult(payload))
+                .catch(err => alert('Push SBGT failed: ' + err.message))
                 .finally(() => {
                     btn.disabled = false;
                     btn.innerHTML = original;
