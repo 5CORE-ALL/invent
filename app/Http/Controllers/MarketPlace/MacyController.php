@@ -303,6 +303,58 @@ class MacyController extends Controller
         ]);
     }
 
+    /**
+     * Map / Miss / NMap for macys-pricing badges and all-marketplace-master Macys row.
+     * Matches macys_tabulator_view updateSummary() with default filters: INV &gt; 0, REQ only,
+     * exclude rows whose Parent starts with PARENT; |INV − MC INV| ≤ 3 → Map, else NMap.
+     */
+    public static function countMacysPricingBadgeTotals(iterable $rows): array
+    {
+        $map = 0;
+        $miss = 0;
+        $nmap = 0;
+
+        foreach ($rows as $row) {
+            if (is_object($row)) {
+                $row = (array) $row;
+            }
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $parent = (string) ($row['Parent'] ?? '');
+            if ($parent !== '' && str_starts_with($parent, 'PARENT')) {
+                continue;
+            }
+
+            $inv = (float) ($row['INV'] ?? 0);
+            if ($inv <= 0) {
+                continue;
+            }
+
+            $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? '')));
+            if ($nrReq !== 'REQ') {
+                continue;
+            }
+
+            $mcInv = (float) ($row['MC INV'] ?? 0);
+            $price = (float) ($row['MC Price'] ?? 0);
+
+            if ($price == 0.0) {
+                $miss++;
+                continue;
+            }
+
+            if (abs($inv - $mcInv) <= 3) {
+                $map++;
+            } else {
+                $nmap++;
+            }
+        }
+
+        return ['map' => $map, 'miss' => $miss, 'nmap' => $nmap];
+    }
+
     // Update NR/REQ for Tabulator
     public function updateNrReq(Request $request)
     {
@@ -1398,8 +1450,9 @@ class MacyController extends Controller
             $totalCogs = 0;
             $totalRoi = 0;
             $roiCount = 0;
-            $missingCount = 0;
-            $mappingCount = 0;
+            $badgeCounts = self::countMacysPricingBadgeTotals($filteredData);
+            $missingCount = $badgeCounts['miss'];
+            $mappingCount = $badgeCounts['nmap'];
             
             // Loop through each row (EXACT JavaScript forEach logic)
             foreach ($filteredData as $row) {
@@ -1415,11 +1468,6 @@ class MacyController extends Controller
                 if ($price > 0) {
                     $totalPrice += $price;
                     $priceCount++;
-                } else {
-                    // Only count missing prices for REQ items with INV > 0
-                    if ($nrReq === 'REQ' && $inv > 0) {
-                        $missingCount++;
-                    }
                 }
                 
                 $totalInv += $inv;
@@ -1446,15 +1494,6 @@ class MacyController extends Controller
                     $totalRoi += $roi;
                     $roiCount++;
                 }
-                
-                // Count mapping issues (REQ, INV > 0, not Missing, and diff > 3 tolerance)
-                if ($nrReq === 'REQ' && $inv > 0 && !$isMissing) {
-                    $ourInv = $inv;
-                    $mcInv = floatval($row['MC INV'] ?? 0);
-                    if (abs($ourInv - $mcInv) > 3) {
-                        $mappingCount++;
-                    }
-                }
             }
             
             // Calculate averages and percentages (EXACT JavaScript logic)
@@ -1470,6 +1509,7 @@ class MacyController extends Controller
                 'zero_sold_count' => $zeroSoldCount,
                 'missing_count' => $missingCount,
                 'mapping_count' => $mappingCount,
+                'nmap_count' => $mappingCount,
                 
                 // Financial Totals
                 'total_pft' => round($totalPft, 2),

@@ -266,63 +266,58 @@ class ChannelMasterController extends Controller
     /**
      * Map / Miss / NMap for Macys — same rules as macys-pricing badges.
      * Missing L: REQ + INV>0 + MC Price=0
-     * Missing M: REQ + INV>0 + MC Price>0 + |INV-MC INV|>3
+     * Missing M: REQ + INV>0 + MC Price>0 + |INV-MC INV|>3 (macys-pricing default filters)
      */
     private function getMacysLiveMapMissNMapFromPricingData(): array
     {
         try {
-            $req = Request::create('/macys-pricing-data', 'GET');
             $macyCtrl = app(\App\Http\Controllers\MarketPlace\MacyController::class);
-            $response = $macyCtrl->getViewMacysTabulatorData($req);
+            $response = $macyCtrl->getViewMacysTabulatorData(Request::create('/macys-data-json', 'GET'));
             $payload = json_decode($response->getContent(), true);
             $rows = $payload['data'] ?? [];
-            if (!is_array($rows)) {
+            if (! is_array($rows)) {
                 return $this->getMapAndMissCounts('macys');
             }
 
-            $map = 0;
-            $miss = 0;
-            $nmap = 0;
-            $views = 0; // Macys pricing table doesn't expose views like Temu/eBay.
-
-            foreach ($rows as $row) {
-                if (is_object($row)) {
-                    $row = (array) $row;
-                }
-                if (!is_array($row)) {
-                    continue;
-                }
-
-                $inv = (float) ($row['INV'] ?? 0);
-                $mcInv = (float) ($row['MC INV'] ?? 0);
-                $price = (float) ($row['MC Price'] ?? 0);
-                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
-                $isReq = ($nrReq === 'REQ');
-
-                if ($isReq && $inv > 0 && $price == 0.0) {
-                    $miss++;
-                }
-
-                if ($isReq && $inv > 0 && $price > 0) {
-                    $diff = abs($inv - $mcInv);
-                    if ($diff <= 3) {
-                        $map++;
-                    } else {
-                        $nmap++;
-                    }
-                }
-            }
+            $counts = \App\Http\Controllers\MarketPlace\MacyController::countMacysPricingBadgeTotals($rows);
 
             return [
-                'map' => $map,
-                'miss' => $miss,
-                'nmap' => $nmap,
-                'total_views' => $views,
+                'map' => $counts['map'],
+                'miss' => $counts['miss'],
+                'nmap' => $counts['nmap'],
+                'total_views' => 0,
             ];
         } catch (\Throwable $e) {
             Log::warning('Macys live map/miss/nmap fallback: ' . $e->getMessage());
             return $this->getMapAndMissCounts('macys');
         }
+    }
+
+    /**
+     * Replace stale cached Map/Miss/NMap on channel rows with live pricing-page counts.
+     */
+    private function overlayLiveMapMissNMapOnChannelRows(array $rows): array
+    {
+        $liveByChannel = [
+            'Macys' => fn () => $this->getMacysLiveMapMissNMapFromPricingData(),
+        ];
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($name === '' || ! isset($liveByChannel[$name])) {
+                continue;
+            }
+            $counts = $liveByChannel[$name]();
+            $row['Map'] = $counts['map'];
+            $row['Miss'] = $counts['miss'];
+            $row['NMap'] = $counts['nmap'];
+            if (array_key_exists('total_views', $counts)) {
+                $row['Total Views'] = $counts['total_views'];
+            }
+        }
+        unset($row);
+
+        return $rows;
     }
 
     /**
@@ -2589,6 +2584,9 @@ class ChannelMasterController extends Controller
                     'Reviews' => $channel->reviews_data['data'] ?? null,
                 ];
             })->toArray();
+
+            // Map/Miss/NMap: overlay live pricing-page counts so badges match macys-pricing (etc.)
+            $formattedData = $this->overlayLiveMapMissNMapOnChannelRows($formattedData);
             
             // Get summary data from cache
             $summaryData = \Cache::get('channel_master_summary_data', []);
