@@ -858,6 +858,12 @@ class FacebookAllAdsSheetController extends Controller
             ], 422);
         }
 
+        // Each campaign is one Meta API call plus a short backoff — a batch
+        // of ~95 GROUP VIDEO rows can exceed the default 30–60 s PHP limit.
+        $count = count($campaigns);
+        set_time_limit(max(120, $count * 4));
+        ignore_user_abort(true);
+
         $accessToken = config('services.meta.access_token');
         $apiVersion  = config('services.meta.api_version', 'v21.0');
         if (! $accessToken) {
