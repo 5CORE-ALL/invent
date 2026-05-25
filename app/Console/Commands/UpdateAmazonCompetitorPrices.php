@@ -12,10 +12,16 @@ class UpdateAmazonCompetitorPrices extends Command
 {
     protected $signature = 'amazon:update-prices {--search-query= : Update specific search query only} {--dry-run : Run without updating database}';
     protected $description = 'Automatically update Amazon competitor prices for existing searches (runs weekly via cron)';
-    protected $serpApiKey = '1ce23be0f3d775e0d631854b4856791aefa6e003415b28e33eb99b5a9c6a83c9';
 
     public function handle()
     {
+        $serpApiKey = config('services.serpapi.key');
+        if (!$serpApiKey) {
+            $this->error('SERPAPI_KEY is not set in .env');
+
+            return 1;
+        }
+
         $startTime = now();
         $this->info('Starting Amazon Competitor Price Update...');
         $this->info('Started at: ' . $startTime->format('Y-m-d H:i:s'));
@@ -60,7 +66,7 @@ class UpdateAmazonCompetitorPrices extends Command
             $this->info("\n[{$queriesProcessed}/" . count($searchQueries) . "] Processing: {$query}");
             
             try {
-                $result = $this->updateSearchQuery($query, $marketplace, $isDryRun);
+                $result = $this->updateSearchQuery($query, $marketplace, $isDryRun, $serpApiKey);
                 $totalUpdated += $result['updated'];
                 $totalUnchanged += $result['unchanged'];
                 $totalErrors += $result['errors'];
@@ -107,7 +113,7 @@ class UpdateAmazonCompetitorPrices extends Command
         return 0;
     }
 
-    protected function updateSearchQuery($searchQuery, $marketplace, $isDryRun)
+    protected function updateSearchQuery($searchQuery, $marketplace, $isDryRun, string $serpApiKey)
     {
         $updated = 0;
         $unchanged = 0;
@@ -121,7 +127,7 @@ class UpdateAmazonCompetitorPrices extends Command
                     'amazon_domain' => 'amazon.com',
                     'k' => $searchQuery,
                     'page' => $page,
-                    'api_key' => $this->serpApiKey,
+                    'api_key' => $serpApiKey,
                 ]);
 
                 if (!$response->successful()) {

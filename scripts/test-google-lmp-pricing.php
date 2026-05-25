@@ -41,7 +41,7 @@ function serpApiKey(): ?string
 {
     $key = config('services.serpapi.key');
 
-    return $key ?: '1ce23be0f3d775e0d631854b4856791aefa6e003415b28e33eb99b5a9c6a83c9';
+    return $key ?: null;
 }
 
 function fetchGoogleShoppingResults(string $query, int $limit = 5): array

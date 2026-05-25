@@ -14,10 +14,15 @@ class BackfillSkuCompetitorsRatings extends Command
                             {--asin= : Process only this ASIN}';
     protected $description = 'Backfill rating, reviews, old price, delivery for existing amazon_sku_competitors rows (calls SerpApi per ASIN).';
 
-    private string $serpApiKey = '1ce23be0f3d775e0d631854b4856791aefa6e003415b28e33eb99b5a9c6a83c9';
-
     public function handle(): int
     {
+        $serpApiKey = config('services.serpapi.key');
+        if (!$serpApiKey) {
+            $this->error('SERPAPI_KEY is not set in .env');
+
+            return 1;
+        }
+
         $limit = (int) $this->option('limit');
         $limit = min(max(1, $limit), 200);
         $singleAsin = $this->option('asin');
@@ -50,7 +55,7 @@ class BackfillSkuCompetitorsRatings extends Command
                     'engine' => 'amazon_product',
                     'amazon_domain' => 'amazon.com',
                     'asin' => $asin,
-                    'api_key' => $this->serpApiKey,
+                    'api_key' => $serpApiKey,
                 ]);
                 if (!$response->successful()) {
                     $noData++;

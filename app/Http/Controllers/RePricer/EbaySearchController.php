@@ -41,8 +41,7 @@ class EbaySearchController extends Controller
         $marketplace = $request->input('marketplace', 'ebay');
         $maxPages = $request->input('max_pages', 20); // Allow fetching more pages
         
-        // Hardcoded API key (same as Amazon)
-        $serpApiKey = '1ce23be0f3d775e0d631854b4856791aefa6e003415b28e33eb99b5a9c6a83c9';
+        $serpApiKey = config('services.serpapi.key');
         
         if (!$serpApiKey) {
             return response()->json([

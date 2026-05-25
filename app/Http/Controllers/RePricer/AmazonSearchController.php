@@ -44,8 +44,7 @@ class AmazonSearchController extends Controller
         $marketplace = $request->input('marketplace', 'amazon');
         $maxPages = $request->input('max_pages', 20);
         
-        // Hardcoded API key
-        $serpApiKey = '1ce23be0f3d775e0d631854b4856791aefa6e003415b28e33eb99b5a9c6a83c9';
+        $serpApiKey = config('services.serpapi.key');
         
         if (!$serpApiKey) {
             return response()->json([
@@ -500,7 +499,7 @@ class AmazonSearchController extends Controller
         $limit = min(max(1, $limit), 200);
         $singleAsin = $request->input('asin');
 
-        $serpApiKey = '1ce23be0f3d775e0d631854b4856791aefa6e003415b28e33eb99b5a9c6a83c9';
+        $serpApiKey = config('services.serpapi.key');
         if (!$serpApiKey) {
             return response()->json(['success' => false, 'message' => 'SerpApi key not configured'], 500);
         }
