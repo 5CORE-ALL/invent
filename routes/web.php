@@ -268,6 +268,7 @@ use App\Http\Controllers\PurchaseMaster\SupplierController;
 use App\Http\Controllers\PurchaseMaster\TransitContainerDetailsController;
 use App\Http\Controllers\PurchaseMaster\UpComingContainerController;
 use App\Http\Controllers\ResourcesController;
+use App\Http\Controllers\Payroll\PayrollController;
 use App\Http\Controllers\ResourcesMasterController;
 use App\Http\Controllers\RoutingController;
 use App\Http\Controllers\Sales\AmazonSalesController;
@@ -5207,6 +5208,39 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/users/copy-salary-lm-to-pp', [UserController::class, 'copySalaryLmToPp'])
         ->middleware('auth')
         ->name('users.copySalaryLmToPp');
+
+    // Payroll
+    Route::prefix('payroll')->middleware(['auth', 'can:payroll.manage'])->name('payroll.')->group(function () {
+        Route::get('/', [PayrollController::class, 'index'])->name('index');
+        Route::get('/month/{payrollMonth}/data', [PayrollController::class, 'monthData'])->name('month.data');
+        Route::post('/month', [PayrollController::class, 'storeMonth'])->name('month.store');
+        Route::put('/month/{payrollMonth}', [PayrollController::class, 'updateMonth'])->name('month.update');
+        Route::post('/month/{payrollMonth}/sync-employees', [PayrollController::class, 'syncEmployees'])->name('month.sync-employees');
+        Route::post('/month/{payrollMonth}/recalculate', [PayrollController::class, 'recalculate'])->name('month.recalculate');
+        Route::post('/month/{payrollMonth}/toggle-lock', [PayrollController::class, 'toggleLock'])->name('month.toggle-lock');
+        Route::post('/month/{payrollMonth}/components', [PayrollController::class, 'storeComponent'])->name('month.components.store');
+        Route::post('/month/{payrollMonth}/payments', [PayrollController::class, 'storePaymentDeduction'])->name('month.payments.store');
+        Route::post('/month/{payrollMonth}/generate-payslips', [PayrollController::class, 'generatePayslips'])->name('month.generate-payslips');
+        Route::post('/month/{payrollMonth}/release-payslips', [PayrollController::class, 'releasePayslips'])->name('month.release-payslips');
+        Route::post('/month/{payrollMonth}/release-it', [PayrollController::class, 'releaseItStatements'])->name('month.release-it');
+        Route::get('/month/{payrollMonth}/export', [PayrollController::class, 'exportMonth'])->name('month.export');
+        Route::put('/employee-salary/{payrollEmployeeSalary}', [PayrollController::class, 'updateEmployeeSalary'])->name('employee-salary.update');
+        Route::put('/components/{payrollSalaryComponent}', [PayrollController::class, 'updateComponent'])->name('components.update');
+        Route::delete('/components/{payrollSalaryComponent}', [PayrollController::class, 'destroyComponent'])->name('components.destroy');
+        Route::delete('/payments/{payrollPaymentDeduction}', [PayrollController::class, 'destroyPaymentDeduction'])->name('payments.destroy');
+        Route::get('/payslip/{payrollPayslip}', [PayrollController::class, 'viewPayslip'])->name('payslip.view');
+        Route::get('/payslip/{payrollPayslip}/print', [PayrollController::class, 'viewPayslipPrint'])->name('payslip.print');
+        Route::get('/previous-records', [PayrollController::class, 'previousRecords'])->name('previous-records');
+        Route::post('/previous-records', [PayrollController::class, 'storePreviousRecord'])->name('previous-records.store');
+        Route::post('/previous-records/import', [PayrollController::class, 'importPreviousCsv'])->name('previous-records.import');
+        Route::get('/arrears', [PayrollController::class, 'arrearsList'])->name('arrears.list');
+        Route::post('/arrears', [PayrollController::class, 'storeArrear'])->name('arrears.store');
+        Route::post('/arrears/{payrollArrear}/apply', [PayrollController::class, 'applyArrear'])->name('arrears.apply');
+        Route::delete('/arrears/{payrollArrear}', [PayrollController::class, 'destroyArrear'])->name('arrears.destroy');
+        Route::get('/settlements', [PayrollController::class, 'settlementsList'])->name('settlements.list');
+        Route::post('/settlements', [PayrollController::class, 'storeSettlement'])->name('settlements.store');
+        Route::post('/settlements/{payrollSettlement}/process', [PayrollController::class, 'processSettlement'])->name('settlements.process');
+    });
 
     // API endpoint for active users
     Route::get('/api/users/active', [UserController::class, 'getActiveUsers'])

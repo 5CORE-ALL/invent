@@ -12,6 +12,7 @@ return [
     'repricer.ebay-search.*' => 'repricer',
     'ai.title.manager' => 'ai_title',
     'users.add' => 'team',
+    'payroll.*' => 'team',
     'home' => 'dashboard',
     'all.marketplace.master' => 'marketplace',
     'roles' => 'team',

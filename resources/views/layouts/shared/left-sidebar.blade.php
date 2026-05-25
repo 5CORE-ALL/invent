@@ -3106,20 +3106,31 @@
             </li>
 
             {{-- Team Management --}}
+            @php
+                $teamMgmtActive = request()->routeIs('users.add')
+                    || (request()->routeIs('payroll.*') && Gate::allows('payroll.manage'));
+            @endphp
             <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#userManagement" aria-expanded="false" aria-controls="userManagement"
-                    class="side-nav-link">
+                <a data-bs-toggle="collapse" href="#userManagement" aria-expanded="{{ $teamMgmtActive ? 'true' : 'false' }}" aria-controls="userManagement"
+                    class="side-nav-link {{ $teamMgmtActive ? 'active' : '' }}">
                     <i class="ri-user-settings-line"></i>
                     <span>Team Management</span>
                     <span class="menu-arrow"></span>
                 </a>
-                <div class="collapse" id="userManagement">
+                <div class="collapse {{ $teamMgmtActive ? 'show' : '' }}" id="userManagement">
                     <ul class="side-nav-second-level">
                         <li>
-                            <a href="{{ route('users.add') }}">
+                            <a href="{{ route('users.add') }}" class="{{ request()->routeIs('users.add') ? 'active' : '' }}">
                                 <i class="ri-user-add-line me-2"></i>Users
                             </a>
                         </li>
+                        @can('payroll.manage')
+                        <li>
+                            <a href="{{ route('payroll.index') }}" class="{{ request()->routeIs('payroll.*') ? 'active' : '' }}">
+                                <i class="ri-wallet-3-line me-2"></i>Payroll
+                            </a>
+                        </li>
+                        @endcan
                     </ul>
                 </div>
             </li>

@@ -3217,8 +3217,8 @@
                 color: '#9333ea',
                 items: [
                     { name: 'Employee Directory', icon: '👥', route: '/hr/employees' },
-                    { name: 'Attendance Tracking', icon: '📅', route: '/hr/attendance' },
-                    { name: 'Payroll Management', icon: '💼', route: '/hr/payroll' }
+                    { name: 'Attendance Tracking', icon: '📅', route: '/hr/attendance' }@can('payroll.manage'),
+                    { name: 'Payroll Management', icon: '💼', route: "{{ route('payroll.index') }}" }@endcan
                 ]
             },
             'Software & IT': {

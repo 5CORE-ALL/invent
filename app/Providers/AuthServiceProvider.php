@@ -36,5 +36,11 @@ class AuthServiceProvider extends ServiceProvider
 
             return in_array(strtolower((string) $user->email), $emails, true);
         });
+
+        Gate::define('payroll.manage', function (User $user): bool {
+            $emails = array_map('strtolower', config('payroll.manager_emails', []));
+
+            return in_array(strtolower((string) $user->email), $emails, true);
+        });
     }
 }
