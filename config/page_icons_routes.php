@@ -24,6 +24,7 @@ return [
     'password.email' => 'auth',
     'password.reset' => 'auth',
 
+    'resources.*' => 'sidebar_resources',
     'resources-master.*' => 'sidebar_resources',
     'wms.*' => 'sidebar_warehouse',
 

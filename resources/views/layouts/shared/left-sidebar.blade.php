@@ -2957,6 +2957,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ route('resources.index') }}" class="side-nav-link {{ request()->routeIs('resources.*') ? 'active' : '' }}">
+                    <i class="ri-folder-shared-line"></i>
+                    <span> Resources </span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarResourcesMaster" aria-expanded="{{ request()->routeIs('resources-master.*') ? 'true' : 'false' }}" aria-controls="sidebarResourcesMaster"
                     class="side-nav-link {{ request()->routeIs('resources-master.*') ? 'active' : '' }}">
                     <i class="ri-folder-shield-2-line"></i>

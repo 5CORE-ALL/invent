@@ -267,6 +267,7 @@ use App\Http\Controllers\PurchaseMaster\SourcingController;
 use App\Http\Controllers\PurchaseMaster\SupplierController;
 use App\Http\Controllers\PurchaseMaster\TransitContainerDetailsController;
 use App\Http\Controllers\PurchaseMaster\UpComingContainerController;
+use App\Http\Controllers\ResourcesController;
 use App\Http\Controllers\ResourcesMasterController;
 use App\Http\Controllers\RoutingController;
 use App\Http\Controllers\Sales\AmazonSalesController;
@@ -5157,6 +5158,20 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/item/{resource}/thumbnail', [ResourcesMasterController::class, 'thumbnail'])->name('thumbnail');
         Route::post('/item/{resource}/view', [ResourcesMasterController::class, 'logView'])->name('view-log');
         Route::post('/item/{resource}/watch', [ResourcesMasterController::class, 'watch'])->name('watch');
+    });
+
+    Route::prefix('resources')->name('resources.')->group(function () {
+        Route::get('/', [ResourcesController::class, 'index'])->name('index');
+        Route::get('/data', [ResourcesController::class, 'data'])->name('data');
+        Route::post('/link', [ResourcesController::class, 'storeLink'])->name('link.store');
+        Route::post('/file', [ResourcesController::class, 'storeFile'])->name('file.store');
+        Route::post('/folder', [ResourcesController::class, 'storeFolder'])->name('folder.store');
+        Route::put('/item/{driverData}', [ResourcesController::class, 'update'])->whereNumber('driverData')->name('update');
+        Route::delete('/item/{driverData}', [ResourcesController::class, 'destroy'])->whereNumber('driverData')->name('destroy');
+        Route::put('/folder/{folder}', [ResourcesController::class, 'updateFolder'])->whereNumber('folder')->name('folder.update');
+        Route::delete('/folder/{folder}', [ResourcesController::class, 'destroyFolder'])->whereNumber('folder')->name('folder.destroy');
+        Route::get('/item/{driverData}/download', [ResourcesController::class, 'download'])->whereNumber('driverData')->name('download');
+        Route::get('/item/{driverData}/preview', [ResourcesController::class, 'preview'])->whereNumber('driverData')->name('preview');
     });
 
     // User management routes
