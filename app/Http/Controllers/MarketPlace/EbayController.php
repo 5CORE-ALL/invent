@@ -805,7 +805,7 @@ class EbayController extends Controller
             $row['CVR_60'] = $views > 0 ? round(($ebayL60 / $views) * 100, 2) : 0;
             $cvr = $row['SCVR']; // Use SCVR for SPRICE calculation
 
-            // NR & Hide (load from database, but not SPRICE/SPFT/SROI/SGPFT)
+            // NR & Hide (load from database, but not SPRICE/SPFT/SROI/SGROI/SGPFT)
             $row['NR'] = "";
             $row['Listed'] = null;
             $row['Live'] = null;
@@ -819,7 +819,7 @@ class EbayController extends Controller
                 if (is_array($raw)) {
                     $row['NR'] = $raw['NR'] ?? null;
                     $row['NRL'] = $raw['NRL'] ?? null;
-                    // Don't load SPRICE, SPFT, SROI, SGPFT from database - always calculate
+                    // Don't load SPRICE, SPFT, SROI, SGROI, SGPFT from database - always calculate
                     $row['spend_l30'] = $raw['Spend_L30'] ?? null;
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
@@ -882,16 +882,18 @@ class EbayController extends Controller
                     $sprice = 0;
                 }
                 
-                // Calculate SGPFT/SPFT/SROI only when we have a SPRICE to show
+                // Calculate SGPFT/SPFT/SGROI/SROI only when we have a SPRICE to show
                 $sgpft = $sprice > 0 ? round((($sprice * $percentage - $ship - $lp) / $sprice) * 100, 2) : 0;
                 $row['SGPFT'] = $sprice > 0 ? $sgpft : null;
                 $row['SPFT'] = $sprice > 0 ? $sgpft : null;
+                $row['SGROI'] = $sprice > 0 ? round($lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2) : null;
                 $row['SROI'] = $sprice > 0 ? round($lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2) : null;
             } else {
                 // If price is 0, set all to null/0
                 $row['SPRICE'] = null;
                 $row['SPFT'] = null;
                 $row['SROI'] = null;
+                $row['SGROI'] = null;
                 $row['SGPFT'] = null;
                 $row['has_custom_sprice'] = false;
                 $row['SPRICE_STATUS'] = null;
@@ -912,6 +914,14 @@ class EbayController extends Controller
             $r->{'PFT %'} = round($gpft - $channelAdsPct, 2);
             if (isset($r->SGPFT) && $r->SGPFT !== null && $r->SGPFT !== '') {
                 $r->SPFT = round((float) $r->SGPFT - $channelAdsPct, 2);
+                $sprice = (float) ($r->SPRICE ?? 0);
+                $lp = (float) ($r->LP_productmaster ?? 0);
+                $ship = (float) ($r->Ship_productmaster ?? 0);
+                $pct = (float) ($r->percentage ?? 1);
+                if ($sprice > 0 && $lp > 0) {
+                    $adDec = $channelAdsPct / 100;
+                    $r->SROI = round((($sprice * ($pct - $adDec) - $ship - $lp) / $lp) * 100, 2);
+                }
             }
         }
 
@@ -1020,6 +1030,7 @@ class EbayController extends Controller
             $parentRow->SPRICE = null;
             $parentRow->SPFT = null;
             $parentRow->SROI = null;
+            $parentRow->SGROI = null;
             $parentRow->SGPFT = null;
             $parentRow->has_custom_sprice = false;
             $parentRow->SPRICE_STATUS = null;
@@ -1214,7 +1225,7 @@ class EbayController extends Controller
         $isClear = ($spriceFloat === null || $spriceFloat <= 0);
 
         if ($isClear) {
-            // Clear suggested price: remove SPRICE/SPFT/SROI/SGPFT from stored value so refresh shows calculated price
+            // Clear suggested price: remove SPRICE/SPFT/SROI/SGROI/SGPFT from stored value so refresh shows calculated price
             $ebayDataView = EbayDataView::whereRaw('LOWER(TRIM(sku)) = ?', [strtolower(trim($sku))])->first();
             if (!$ebayDataView) {
                 $ebayDataView = new EbayDataView();
@@ -1224,7 +1235,7 @@ class EbayController extends Controller
                 ? $ebayDataView->value
                 : (json_decode($ebayDataView->value, true) ?: []);
             $merged = $existing;
-            unset($merged['SPRICE'], $merged['SPFT'], $merged['SROI'], $merged['SGPFT'], $merged['SPRICE_STATUS'], $merged['SPRICE_STATUS_UPDATED_AT']);
+            unset($merged['SPRICE'], $merged['SPFT'], $merged['SROI'], $merged['SGROI'], $merged['SGPFT'], $merged['SPRICE_STATUS'], $merged['SPRICE_STATUS_UPDATED_AT']);
             $ebayDataView->value = $merged;
             $ebayDataView->save();
             Log::info('SPRICE cleared for SKU', ['sku' => $sku]);
@@ -1232,6 +1243,7 @@ class EbayController extends Controller
                 'message' => 'SPRICE cleared.',
                 'spft_percent' => null,
                 'sroi_percent' => null,
+                'sgroi_percent' => null,
                 'sgpft_percent' => null
             ]);
         }
@@ -1306,13 +1318,15 @@ class EbayController extends Controller
         
         // SPFT = SGPFT - AD%
         $spft = round($sgpft - $adPercent, 2);
+        // SGROI = gross ROI on suggested price (same as GROI% but using SPRICE)
+        $sgroi = round($lp > 0 ? (($spriceFloat * $percentage - $lp - $ship) / $lp) * 100 : 0, 2);
         // SROI = ((SPRICE * (percentage - AD%/100) - ship - lp) / lp) * 100
         $adDecimal = $adPercent / 100;
         $sroi = round(
             $lp > 0 ? (($spriceFloat * ($percentage - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
             2
         );
-        Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'ad_percent' => $adPercent, 'spft' => $spft, 'sroi' => $sroi]);
+        Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'sgroi' => $sgroi, 'ad_percent' => $adPercent, 'spft' => $spft, 'sroi' => $sroi]);
 
         // Find by case-insensitive SKU so we update the same row that has Listed, Live, NRL, etc.
         $ebayDataView = EbayDataView::whereRaw('LOWER(TRIM(sku)) = ?', [strtolower(trim($sku))])->first();
@@ -1331,6 +1345,7 @@ class EbayController extends Controller
             'SPRICE' => $spriceFloat,
             'SPFT' => $spft,
             'SROI' => $sroi,
+            'SGROI' => $sgroi,
             'SGPFT' => $sgpft,
         ]);
 
@@ -1342,6 +1357,7 @@ class EbayController extends Controller
             'message' => 'Data saved successfully.',
             'spft_percent' => $spft,
             'sroi_percent' => $sroi,
+            'sgroi_percent' => $sgroi,
             'sgpft_percent' => $sgpft
         ]);
     }
@@ -1386,6 +1402,7 @@ class EbayController extends Controller
                     $existing['SPRICE'],
                     $existing['SPFT'],
                     $existing['SROI'],
+                    $existing['SGROI'],
                     $existing['SGPFT'],
                     $existing['SPRICE_STATUS'],
                     $existing['SPRICE_STATUS_UPDATED_AT']
@@ -1877,6 +1894,7 @@ class EbayController extends Controller
                 'SPRICE' => ['SPRICE', function($item) { return $item['SPRICE'] ? number_format($item['SPRICE'], 2) : ''; }],
                 'SPFT' => ['SPFT', function($item) { return $item['SPFT'] ? number_format($item['SPFT'], 0) : ''; }],
                 'SROI' => ['SROI', function($item) { return $item['SROI'] ? number_format($item['SROI'], 0) : ''; }],
+                'SGROI' => ['SGROI', function($item) { return $item['SGROI'] ? number_format($item['SGROI'], 0) : ''; }],
                 'SGPFT' => ['SGPFT', function($item) { return $item['SGPFT'] ? number_format($item['SGPFT'], 0) : ''; }],
                 'SCVR' => ['SCVR', function($item) { return number_format($item['SCVR'] ?? 0, 1); }],
                 'kw_spend_L30' => ['KW Spend L30', function($item) { return number_format($item['kw_spend_L30'] ?? 0, 2); }],

@@ -6,10 +6,6 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
-        .ebay-tabulator-page {
-            zoom: 0.9;
-        }
-
         /* LMP modal: full-viewport backdrop (avoid black gaps behind modal) */
         #lmpModal {
             z-index: 1060 !important;
@@ -48,63 +44,9 @@
             padding-right: 0px !important;
         }
 
-        /* Custom pagination label */
+        /* Custom pagination label (match ebay2-tabulator-view) */
         .tabulator-paginator label {
             margin-right: 5px;
-        }
-
-        /* Hide default pagination counter from footer */
-        .tabulator-footer .tabulator-page-counter {
-            display: none !important;
-        }
-
-        /* Pagination page buttons styling */
-        .tabulator-footer .tabulator-paginator .tabulator-page {
-            border: 1px solid #dee2e6;
-            padding: 4px 10px;
-            margin: 0 1px;
-            border-radius: 4px;
-            font-size: 13px;
-            color: #333;
-            background: #fff;
-            cursor: pointer;
-            min-width: 32px;
-            text-align: center;
-        }
-
-        .tabulator-footer .tabulator-paginator .tabulator-page:hover {
-            background: #e9ecef;
-        }
-
-        .tabulator-footer .tabulator-paginator .tabulator-page.active {
-            background: #0d6efd;
-            color: #fff;
-            border-color: #0d6efd;
-            font-weight: 600;
-        }
-
-        .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .tabulator-footer {
-            border-top: 1px solid #dee2e6;
-            padding: 6px 10px;
-            background: #f8f9fa;
-        }
-
-        .tabulator-footer .tabulator-paginator {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .tabulator-footer .tabulator-page-size {
-            border: 1px solid #dee2e6;
-            border-radius: 4px;
-            padding: 4px 6px;
-            font-size: 13px;
         }
 
         /* Link tooltip styling */
@@ -1047,9 +989,8 @@
                 </div>
 
                 <div id="ebay-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <!-- Parent / SKU dropdown + Play/Pause (same as product-master) + SKU Search + Pagination -->
-                    <div
-                        style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #e5e7eb;">
+                    <!-- View / Parent / SKU + search + row counter (toolbar matches ebay2-tabulator-view) -->
+                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #e5e7eb;">
                         <div class="d-flex align-items-center gap-1">
                             <label for="view-type-filter" class="form-label mb-0 text-nowrap small"
                                 style="font-size: 13px;">View:</label>
@@ -1068,17 +1009,6 @@
                                 <option value="">All (show all)</option>
                             </select>
                         </div>
-                        <div style="flex: 1; min-width: 200px; position: relative;">
-                            <i class="fa fa-search"
-                                style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 13px;"></i>
-                            <input type="text" id="sku-search" class="form-control form-control-sm"
-                                style="padding-left: 32px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px;"
-                                placeholder="Search by campaign name or SKU...">
-                        </div>
-                        <span id="custom-pagination-counter"
-                            style="font-size: 13px; color: #555; white-space: nowrap;"></span>
-                    </div>
-                    <div class="d-flex align-items-center mb-2" style="padding: 0 12px;">
                         <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
                             <button type="button" id="play-backward" class="btn btn-light rounded-circle"
                                 title="Previous parent">
@@ -1097,6 +1027,15 @@
                                 <i class="fas fa-step-forward"></i>
                             </button>
                         </div>
+                        <div style="flex: 1; min-width: 200px; position: relative;">
+                            <i class="fa fa-search"
+                                style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 13px;"></i>
+                            <input type="text" id="sku-search" class="form-control form-control-sm"
+                                style="padding-left: 32px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px;"
+                                placeholder="Search by campaign name or SKU...">
+                        </div>
+                        <span id="custom-pagination-counter"
+                            style="font-size: 13px; color: #555; white-space: nowrap; margin-left: 16px;"></span>
                     </div>
                     <!-- Table body (scrollable section) -->
                     <div id="ebay-table" style="flex: 1;"></div>
@@ -2196,6 +2135,8 @@
                                         .spft_percent : 0,
                                     SROI: response.sroi_percent != null ? response
                                         .sroi_percent : 0,
+                                    SGROI: response.sgroi_percent != null ? response
+                                        .sgroi_percent : 0,
                                     SGPFT: response.sgpft_percent != null ? response
                                         .sgpft_percent : 0,
                                     SPRICE_STATUS: numSprice > 0 ? 'saved' : null,
@@ -2886,6 +2827,7 @@
                         SPRICE: 0,
                         SGPFT: 0,
                         SPFT: 0,
+                        SGROI: 0,
                         SROI: 0,
                         SPRICE_STATUS: null,
                         has_custom_sprice: false
@@ -3129,16 +3071,13 @@
                 paginationSize: 100,
                 paginationSizeSelector: [10, 25, 50, 100, 200],
                 paginationCounter: function(pageSize, currentRow, currentPage, totalRows, totalPages) {
-                    var text;
-                    if (!totalRows || totalRows < 1) {
-                        text = "Showing 0 of 0 rows";
-                    } else {
-                        var start = currentRow;
-                        var end = Math.min(currentRow + pageSize - 1, totalRows);
-                        text = "Showing " + start + "-" + end + " of " + totalRows + " rows";
-                    }
+                    var start = currentRow;
+                    var end = Math.min(currentRow + pageSize - 1, totalRows);
+                    var text = totalRows > 0
+                        ? "Showing " + start + "-" + end + " of " + totalRows + " rows"
+                        : "Showing 0 of 0 rows";
                     $('#custom-pagination-counter').text(text);
-                    return text;
+                    return "";
                 },
                 columnCalcs: "both",
                 langs: {
@@ -4144,6 +4083,28 @@
                             else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
                             else if (percent >= 30 && percent < 50) color = '#28a745'; // green
                             else color = '#e83e8c'; // pink (50% and above)
+
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "S GROI",
+                        field: "SGROI",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return '';
+
+                            let color = '';
+                            // Same as GROI% / ROI% color logic
+                            if (percent < 50) color = '#a00211'; // red
+                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
+                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
 
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -6429,7 +6390,7 @@
             var pricingOnlyColumns = [
                 'image_path', 'Missing', 'eBay Stock', 'MAP', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
                 'GPFT%', 'AD%', 'PFT %', 'ROI%',
-                'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI'
+                'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SGROI', 'SROI'
             ];
             // Columns that are ONLY in KW Ads section (will be hidden in pricing view)
             var kwAdsOnlyColumns = [
@@ -7229,6 +7190,7 @@
                 'nr_req': 'NR/REQ',
                 'SPRICE': 'SPRICE',
                 'SPFT': 'SPFT',
+                'SGROI': 'SGROI',
                 'SROI': 'SROI',
                 'SGPFT': 'SGPFT',
                 'Listed': 'Listed',
