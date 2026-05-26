@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\UpdateEbaySPriceJob;
 use Illuminate\Http\Request;
+use App\Services\ShopifyPlsTokenService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -52,7 +53,7 @@ class UpdatePriceApiController extends Controller
             // Determine which store credentials to use
             if ($store === 'pls' || $store === 'prolightsounds') {
                 $storeUrl = "https://" . config('services.prolightsounds_shopify.store_url');
-                $accessToken = config('services.prolightsounds_shopify.password');
+                $accessToken = app(ShopifyPlsTokenService::class)->getAccessToken();
                 $storeName = 'ProLightSounds';
             } else {
                 // Default to B2C store

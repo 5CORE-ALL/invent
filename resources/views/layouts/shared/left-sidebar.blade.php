@@ -1020,8 +1020,6 @@
                             </a>
                             <div class="collapse" id="tiktok-web-ads">
                                 <ul class="side-nav-second-level">
-                                    <li><a href="{{ url('tiktokAnalysis') }}">Tiktok Analytics</a></li>
-
                                     <li>
                                         <a href="{{ route('tiktok.web.to.video') }}">Tiktok Video to Web</a>
                                     </li>
@@ -2032,10 +2030,6 @@
                 </a>
                 <div class="collapse" id="sidebarTiktokShop">
                     <ul class="side-nav-third-level">
-                        {{-- <li>
-                                        <a href="{{ url('tiktokAnalysis') }}">Tiktok Shop Analytics</a>
-                                    </li> --}}
-
                         <li>
                             <a href="{{ route('zero.tiktokshop') }}">Tiktok Shop 0 view</a>
                         </li>

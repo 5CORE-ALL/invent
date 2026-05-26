@@ -194,7 +194,6 @@ use App\Http\Controllers\MarketPlace\TemuLowVisibilityController;
 use App\Http\Controllers\MarketPlace\TemuZeroController;
 use App\Http\Controllers\MarketPlace\TiendamiaController;
 use App\Http\Controllers\MarketPlace\TiendamiaPricingController;
-use App\Http\Controllers\MarketPlace\TiktokController;
 use App\Http\Controllers\MarketPlace\TiktokShopController;
 use App\Http\Controllers\MarketPlace\WalmartControllerMarket;
 use App\Http\Controllers\MarketPlace\WayfairController;
@@ -3849,15 +3848,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_tiktokshop/import', [ListingTiktokShopController::class, 'import'])->name('listing_tiktokshop.import');
     Route::get('/listing_tiktokshop/export', [ListingTiktokShopController::class, 'export'])->name('listing_tiktokshop.export');
 
-    Route::get('tiktokAnalysis', action: [TiktokShopController::class, 'overallTiktok']);
-    Route::get('/tiktok/view-data', [TiktokShopController::class, 'getViewTiktokData']);
     Route::get('walmartPricingCVR', [TiktokShopController::class, 'tiktokPricingCVR'])->name('tiktok.pricing.cvr');
     Route::post('/update-all-tiktok-skus', [TiktokShopController::class, 'updateAllTiktokSkus']);
     Route::post('/tiktok/save-nr', [TiktokShopController::class, 'saveNrToDatabase']);
-    Route::post('/tiktok/update-listed-live', [TiktokShopController::class, 'updateListedLive']);
-    Route::post('/tiktok-analytics/import', [TiktokShopController::class, 'importTiktokAnalytics'])->name('tiktok.analytics.import');
-    Route::get('/tiktok-analytics/export', [TiktokShopController::class, 'exportTiktokAnalytics'])->name('tiktok.analytics.export');
-    Route::get('/tiktok-analytics/sample', [TiktokShopController::class, 'downloadSample'])->name('tiktok.analytics.sample');
 
     // listing MercariWShip
     Route::get('/zero-mercariwship', [MercariWShipZeroController::class, 'mercariWShipZeroview'])->name('zero.mercariwship');
@@ -4092,17 +4085,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/mercariwship-analytics/import', [MercariWShipController::class, 'importMercariWshipAnalytics'])->name('mercariwship.analytics.import');
     Route::get('/mercariwship-analytics/export', [MercariWShipController::class, 'exportMercariWshipAnalytics'])->name('mercariwship.analytics.export');
     Route::get('/mercariwship-analytics/sample', [MercariWShipController::class, 'downloadSample'])->name('mercariwship.analytics.sample');
-
-    // tiktok
-    Route::get('tiktokAnalysis', action: [TiktokController::class, 'overallTiktok']);
-    Route::get('/tiktok/view-data', [TiktokController::class, 'getViewTiktokData']);
-    Route::get('fbshopPricingCVR', [TiktokController::class, 'TiktokPricingCVR'])->name('tiktok.pricing.cvr');
-    Route::post('/update-all-tiktok-skus', [TiktokController::class, 'updateAllTiktokSkus']);
-    Route::post('/tiktok/save-nr', [TiktokController::class, 'saveNrToDatabase']);
-    Route::post('/tiktok/update-listed-live', [TiktokController::class, 'updateListedLive']);
-    Route::post('/tiktok-analytics/import', [TiktokController::class, 'importTiktokAnalytics'])->name('tiktok.analytics.import');
-    Route::get('/tiktok-analytics/export', [TiktokController::class, 'exportTiktokAnalytics'])->name('tiktok.analytics.export');
-    Route::get('/tiktok-analytics/sample', [TiktokController::class, 'downloadSample'])->name('tiktok.analytics.sample');
 
     // mercari wo ship
     Route::get('mercariwoshipAnalysis', action: [MercariWoShipController::class, 'overallMercariWoShip']);

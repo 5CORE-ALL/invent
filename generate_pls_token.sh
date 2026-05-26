@@ -1,23 +1,46 @@
 #!/bin/bash
+set -euo pipefail
 
-SHOPIFY_SHOP="5core-wholesale"
-SHOPIFY_CLIENT_ID="beb835d5966561d9952e9a12b72b7633"
-SHOPIFY_CLIENT_SECRET="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"
+# Load .env from project root when run from repo
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$ROOT/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT/.env"
+  set +a
+fi
 
-echo "Requesting access token from ${SHOPIFY_SHOP}.myshopify.com..."
+SHOPIFY_SHOP="${PROLIGHTSOUNDS_SHOPIFY_DOMAIN:-5core-wholesale.myshopify.com}"
+SHOPIFY_SHOP="${SHOPIFY_SHOP#https://}"
+SHOPIFY_SHOP="${SHOPIFY_SHOP#http://}"
+SHOPIFY_SHOP="${SHOPIFY_SHOP%%/*}"
+SHOPIFY_CLIENT_ID="${PROLIGHTSOUNDS_SHOPIFY_CLIENT_ID:-${PROLIGHTSOUNDS_SHOPIFY_API_KEY:-}}"
+SHOPIFY_CLIENT_SECRET="${PROLIGHTSOUNDS_SHOPIFY_CLIENT_SECRET:-}"
 
-TOKEN_RESPONSE=$(curl -s -X POST "https://${SHOPIFY_SHOP}.myshopify.com/admin/oauth/access_token" -H "Content-Type: application/x-www-form-urlencoded" -d "grant_type=client_credentials" -d "client_id=${SHOPIFY_CLIENT_ID}" -d "client_secret=${SHOPIFY_CLIENT_SECRET}")
+if [ -z "$SHOPIFY_CLIENT_ID" ] || [ -z "$SHOPIFY_CLIENT_SECRET" ]; then
+  echo "Missing PROLIGHTSOUNDS_SHOPIFY_CLIENT_ID / PROLIGHTSOUNDS_SHOPIFY_CLIENT_SECRET in .env"
+  exit 1
+fi
 
-ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
+echo "Requesting access token from ${SHOPIFY_SHOP}..."
 
-if [ "$ACCESS_TOKEN" = "null" ] || [ -z "$ACCESS_TOKEN" ]; then
+TOKEN_RESPONSE=$(curl -s -X POST "https://${SHOPIFY_SHOP}/admin/oauth/access_token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials" \
+  -d "client_id=${SHOPIFY_CLIENT_ID}" \
+  -d "client_secret=${SHOPIFY_CLIENT_SECRET}")
+
+ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | php -r 'echo json_decode(stream_get_contents(STDIN), true)["access_token"] ?? "";')
+
+if [ -z "$ACCESS_TOKEN" ]; then
   echo "Failed to get token: $TOKEN_RESPONSE"
   exit 1
 fi
 
 echo ""
-echo "Success! Access token generated:"
+echo "Success! Access token generated (expires in ~24h):"
 echo "$ACCESS_TOKEN"
 echo ""
-echo "Update your .env file line 198 with:"
+echo "Optional: update .env (auto-refresh is preferred):"
+echo "PROLIGHTSOUNDS_SHOPIFY_PASSWORD=$ACCESS_TOKEN"
 echo "PROLIGHTSOUNDS_SHOPIFY_ACCESS_TOKEN=$ACCESS_TOKEN"

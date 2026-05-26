@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\PLSProduct;
+use App\Services\ShopifyPlsTokenService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -22,9 +23,9 @@ class FetchPlsData extends Command
 
     public function handle()
     {
-        $shopUrl  = config('services.prolightsounds.domain');
-        $token    = config('services.prolightsounds.password') ?? config('services.prolightsounds.access_token');
-        $version  = "2025-01";
+        $shopUrl = config('services.prolightsounds.domain');
+        $token = app(ShopifyPlsTokenService::class)->getAccessToken();
+        $version = "2025-01";
 
         // Validate credentials
         if (empty($shopUrl) || empty($token)) {

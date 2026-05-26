@@ -133,8 +133,7 @@ class ShopifyCatalogSyncService
         if ($store === 'pls') {
             $domain = config('services.prolightsounds.domain')
                 ?? config('services.prolightsounds.store_url');
-            $token = config('services.prolightsounds.password')
-                ?? config('services.prolightsounds.access_token');
+            $token = app(ShopifyPlsTokenService::class)->getAccessToken();
 
             return [$domain, $token];
         }

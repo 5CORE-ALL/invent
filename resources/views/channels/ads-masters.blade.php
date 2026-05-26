@@ -1179,7 +1179,7 @@
                                     'walmart': '/walmartAnalysis',
                                     ' usa': '/usa-analytics',
                                     'shein': '/sheinAnalysis',
-                                    'tiktokshop': '/tiktokAnalysis',
+                                    'tiktokshop': '/tiktok-pricing',
                                 };
 
                                 const routeUrl = routeMap[channelName];

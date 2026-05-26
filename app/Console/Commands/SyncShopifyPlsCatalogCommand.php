@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\ShopifyCatalogSyncService;
+use App\Services\ShopifyPlsTokenService;
 use Illuminate\Console\Command;
 
 class SyncShopifyPlsCatalogCommand extends Command
@@ -13,9 +14,7 @@ class SyncShopifyPlsCatalogCommand extends Command
 
     public function handle(ShopifyCatalogSyncService $sync): int
     {
-        $domain = config('services.prolightsounds.domain') ?? config('services.prolightsounds.store_url');
-        $token = config('services.prolightsounds.password') ?? config('services.prolightsounds.access_token');
-        if (! $domain || ! $token) {
+        if (! app(ShopifyPlsTokenService::class)->isConfigured()) {
             $this->error('PLS Shopify credentials missing (services.prolightsounds).');
 
             return self::FAILURE;

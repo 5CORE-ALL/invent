@@ -1966,10 +1966,6 @@
                                 <div class="collapse" id="sidebarTiktokShop">
                                     <ul class="side-nav-third-level">
                                         <li>
-                                            <a href="{{ url('tiktokAnalysis') }}">Tiktok Shop Analytics</a>
-                                        </li>
-
-                                        <li>
                                             <a href="{{ route('zero.tiktokshop') }}">Tiktok Shop 0 view</a>
                                         </li>
 

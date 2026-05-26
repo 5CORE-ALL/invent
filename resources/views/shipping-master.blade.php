@@ -2577,8 +2577,9 @@
                                 'X-CSRF-TOKEN': csrfToken
                             },
                             body: formData
+                            
                         });
-
+ 
                         const result = await response.json();
 
                         // Update progress bar

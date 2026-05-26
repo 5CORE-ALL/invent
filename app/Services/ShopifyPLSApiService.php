@@ -22,6 +22,16 @@ class ShopifyPLSApiService
 {
     use ShopifyAdminRateLimitRetry;
 
+    private function plsDomain(): ?string
+    {
+        return app(ShopifyPlsTokenService::class)->getDomain();
+    }
+
+    private function plsToken(bool $forceRefresh = false): ?string
+    {
+        return app(ShopifyPlsTokenService::class)->getAccessToken($forceRefresh);
+    }
+
     /**
      * Update product title for the given SKU on PLS Shopify store.
      * Tries shopify_skus mapping first; on 404, falls back to GraphQL SKU search on PLS store.
@@ -31,17 +41,14 @@ class ShopifyPLSApiService
         Log::info('🚀 Push to ShopifyPLS - Started', ['sku' => $sku]);
 
         try {
-            $domain = config('services.prolightsounds.domain') ?? config('services.prolightsounds.store_url');
-            $token = config('services.prolightsounds.password');
+            $domain = $this->plsDomain();
+            $token = $this->plsToken();
 
             if (! $domain || ! $token) {
                 Log::warning('ShopifyPLS credentials not configured', ['sku' => $sku]);
 
                 return false;
             }
-
-            $domain = preg_replace('#^https?://#', '', $domain);
-            $domain = rtrim($domain, '/');
 
             $productId = null;
             $variantId = null;
@@ -329,14 +336,11 @@ class ShopifyPLSApiService
         }
 
         try {
-            $domain = config('services.prolightsounds.domain') ?? config('services.prolightsounds.store_url');
-            $token = config('services.prolightsounds.password');
+            $domain = $this->plsDomain();
+            $token = $this->plsToken();
             if (! $domain || ! $token) {
                 return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
             }
-
-            $domain = preg_replace('#^https?://#', '', $domain);
-            $domain = rtrim($domain, '/');
 
             $trim = trim($identifier);
             $productId = null;
@@ -472,14 +476,11 @@ class ShopifyPLSApiService
         }
 
         try {
-            $domain = config('services.prolightsounds.domain') ?? config('services.prolightsounds.store_url');
-            $token = config('services.prolightsounds.password');
+            $domain = $this->plsDomain();
+            $token = $this->plsToken();
             if (! $domain || ! $token) {
                 return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
             }
-
-            $domain = preg_replace('#^https?://#', '', $domain);
-            $domain = rtrim($domain, '/');
 
             $trim = trim($identifier);
             $productId = null;
@@ -599,14 +600,11 @@ class ShopifyPLSApiService
             return ['success' => false, 'message' => 'Description is empty.'];
         }
         try {
-            $domain = config('services.prolightsounds.domain') ?? config('services.prolightsounds.store_url');
-            $token = config('services.prolightsounds.password');
+            $domain = $this->plsDomain();
+            $token = $this->plsToken();
             if (! $domain || ! $token) {
                 return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
             }
-
-            $domain = preg_replace('#^https?://#', '', $domain);
-            $domain = rtrim($domain, '/');
 
             $trim = trim($identifier);
             $productId = null;
@@ -761,14 +759,11 @@ class ShopifyPLSApiService
         }
 
         try {
-            $domain = config('services.prolightsounds.domain') ?? config('services.prolightsounds.store_url');
-            $token = config('services.prolightsounds.password');
+            $domain = $this->plsDomain();
+            $token = $this->plsToken();
             if (! $domain || ! $token) {
                 return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
             }
-
-            $domain = preg_replace('#^https?://#', '', $domain);
-            $domain = rtrim($domain, '/');
 
             $trim = trim($identifier);
             $productId = null;
@@ -899,13 +894,12 @@ class ShopifyPLSApiService
         }
 
         try {
-            $domain = config('services.prolightsounds.domain') ?? config('services.prolightsounds.store_url');
-            $token  = config('services.prolightsounds.password');
+            $domain = $this->plsDomain();
+            $token = $this->plsToken();
             if (! $domain || ! $token) {
                 return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
             }
 
-            $domain = rtrim(preg_replace('#^https?://#', '', $domain), '/');
             $trim   = trim($identifier);
 
             // ── Resolve product ID ─────────────────────────────────────────
