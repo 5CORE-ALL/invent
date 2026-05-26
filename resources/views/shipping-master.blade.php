@@ -666,6 +666,15 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
+                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="temu_gofo">
+                                        <div class="th-vertical-label">Temu<br>GOFO</div>
+                                        <select id="filterTemuGofoCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Temu GOFO">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                            <option value="dash">− / —</option>
+                                            <option value="zero">0</option>
+                                        </select>
+                                    </th>
                                     <th class="th-has-filter shipping-rate-header" data-pm-ship-col="ebay2">
                                         <div class="th-vertical-label">Ebay2<br>ship</div>
                                         <select id="filterEbay2ShipCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Ebay2 ship">
@@ -678,15 +687,6 @@
                                     <th class="th-has-filter shipping-rate-header" data-pm-ship-col="gofo">
                                         <div class="th-vertical-label">GOFO</div>
                                         <select id="filterGofoCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter GOFO">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                            <option value="dash">− / —</option>
-                                            <option value="zero">0</option>
-                                        </select>
-                                    </th>
-                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="temu_gofo">
-                                        <div class="th-vertical-label">Temu<br>GOFO</div>
-                                        <select id="filterTemuGofoCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Temu GOFO">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                             <option value="dash">− / —</option>
@@ -943,21 +943,19 @@
                                 <input type="number" step="0.01" class="form-control fw-bold" id="editTemuShip" name="temu_ship" placeholder="Temu ship">
                             </div>
                             <div class="col-md-3">
-                                <label for="editEbay2Ship" class="form-label fw-bold">Ebay2 ship</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="editEbay2Ship" name="ebay2_ship" placeholder="Ebay2 ship">
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-3">
-                                <label for="editGofo" class="form-label fw-bold">GOFO</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="editGofo" name="gofo" placeholder="GOFO">
-                            </div>
-                            <div class="col-md-3">
                                 <label for="editTemuGofo" class="form-label fw-bold">Temu GOFO</label>
                                 <input type="number" step="0.01" class="form-control fw-bold" id="editTemuGofo" name="temu_gofo" placeholder="Temu GOFO">
                             </div>
                         </div>
                         <div class="row mb-3">
+                            <div class="col-md-3">
+                                <label for="editEbay2Ship" class="form-label fw-bold">Ebay2 ship</label>
+                                <input type="number" step="0.01" class="form-control fw-bold" id="editEbay2Ship" name="ebay2_ship" placeholder="Ebay2 ship">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="editGofo" class="form-label fw-bold">GOFO</label>
+                                <input type="number" step="0.01" class="form-control fw-bold" id="editGofo" name="gofo" placeholder="GOFO">
+                            </div>
                             <div class="col-md-3">
                                 <label for="editFedex" class="form-label fw-bold">Fedex</label>
                                 <input type="number" step="0.01" class="form-control fw-bold" id="editFedex" name="fedex" placeholder="Fedex">
@@ -1325,9 +1323,9 @@
 
                     appendCarrierShipCell(item.tt_ship);
                     appendCarrierShipCell(item.temu_ship);
+                    appendCarrierShipCell(item.temu_gofo);
                     appendCarrierShipCell(item.ebay2_ship);
                     appendCarrierShipCell(item.gofo);
-                    appendCarrierShipCell(item.temu_gofo);
                     appendCarrierShipCell(item.fedex);
                     appendCarrierShipCell(item.ups);
                     appendCarrierShipCell(item.usps);
@@ -1772,7 +1770,7 @@
             const PICK_PACK_RATE = 1;
 
             /** Fields averaged for the Avg column (excludes Pick Pack and Ebay2). */
-            const UNI_AVG_SHIP_FIELDS = ['tt_ship', 'temu_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'];
+            const UNI_AVG_SHIP_FIELDS = ['tt_ship', 'temu_ship', 'temu_gofo', 'gofo', 'fedex', 'ups', 'usps', 'uni'];
 
             function roundCarrierShipValue(n) {
                 return Math.round(n * 100) / 100;
@@ -2147,7 +2145,7 @@
                     const el = document.getElementById(id);
                     if (el) el.addEventListener('change', applyFilters);
                 });
-                ['filterShipCol', 'filterTtShipCol', 'filterTemuShipCol', 'filterEbay2ShipCol', 'filterGofoCol', 'filterTemuGofoCol', 'filterFedexCol', 'filterUpsCol', 'filterUspsCol', 'filterUniCol'].forEach(id => {
+                ['filterShipCol', 'filterTtShipCol', 'filterTemuShipCol', 'filterTemuGofoCol', 'filterEbay2ShipCol', 'filterGofoCol', 'filterFedexCol', 'filterUpsCol', 'filterUspsCol', 'filterUniCol'].forEach(id => {
                     const el = document.getElementById(id);
                     if (el) el.addEventListener('change', applyFilters);
                 });
@@ -2197,7 +2195,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "INV", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Temu GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "INV", "Ship", "TT 1 Ship", "Temu ship", "Temu GOFO", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -2219,14 +2217,14 @@
                         "Temu ship": {
                             key: "temu_ship"
                         },
+                        "Temu GOFO": {
+                            key: "temu_gofo"
+                        },
                         "Ebay2 ship": {
                             key: "ebay2_ship"
                         },
                         "GOFO": {
                             key: "gofo"
-                        },
-                        "Temu GOFO": {
-                            key: "temu_gofo"
                         },
                         "Fedex": {
                             key: "fedex"
@@ -2405,7 +2403,7 @@
                                     return { wch: 20 }; // Wider for text columns
                                 } else if (["Status"].includes(col)) {
                                     return { wch: 12 };
-                                } else if (["FBA SKU", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Temu GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA ship", "FBA manual ship"].includes(col)) {
+                                } else if (["FBA SKU", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "TT 1 Ship", "Temu ship", "Temu GOFO", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA ship", "FBA manual ship"].includes(col)) {
                                     return { wch: 15 }; // Width for weight and CBM columns
                                 } else {
                                     return { wch: 12 }; // Default width for numeric columns
