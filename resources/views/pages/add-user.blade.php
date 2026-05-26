@@ -270,7 +270,7 @@
                 <h2 class="text-primary fw-bold mb-1">Team Management</h2>
                 <p class="text-muted">View and manage users & performance</p>
             </div>
-            @if($canEdit)
+            @if($canEdit && $canViewSalary)
             <div class="d-flex gap-2 flex-wrap">
                 <button type="button" class="btn btn-primary" id="copySalaryBtn">
                     <i class="ri-file-copy-line me-2"></i>Copy Salary LM → PP
@@ -291,9 +291,8 @@
             @endif
         </div>
         
-        @if($canEdit)
+        @if($canEdit && $canViewSalary)
         <div class="mb-4">
-            @if($canEdit)
             <div class="d-flex gap-2 flex-nowrap w-100 salary-badges-container">
                 <span class="badge bg-primary fs-6 px-2 py-2 flex-fill text-center">
                     <i class="ri-team-line me-1"></i>
@@ -336,7 +335,6 @@
                     Advance: ₹{{ number_format($totalAdvIncOther, 0) }}
                 </span>
             </div>
-            @endif
         </div>
         @endif
 

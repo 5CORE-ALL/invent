@@ -317,7 +317,7 @@ class UserController extends Controller
 
     public function copySalaryLmToPp()
     {
-        if (! TeamManagementAccess::canEdit()) {
+        if (! TeamManagementAccess::canManageSalary()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to perform this operation.'
@@ -363,7 +363,7 @@ class UserController extends Controller
 
     public function importData(Request $request)
     {
-        if (! TeamManagementAccess::canEdit()) {
+        if (! TeamManagementAccess::canManageSalary()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to import data.'
@@ -542,7 +542,7 @@ class UserController extends Controller
 
     public function toggleSalaryVisibility(Request $request, User $user)
     {
-        if (! TeamManagementAccess::canEdit()) {
+        if (! TeamManagementAccess::canManageSalary()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to perform this action.'

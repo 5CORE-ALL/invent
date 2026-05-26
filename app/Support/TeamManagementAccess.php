@@ -51,4 +51,10 @@ class TeamManagementAccess
             config('team_management.editor_emails', [])
         );
     }
+
+    /** Edit users plus salary tab, import/export, and salary tools. */
+    public static function canManageSalary(?User $user = null): bool
+    {
+        return self::canEdit($user) && self::canViewSalary($user);
+    }
 }
