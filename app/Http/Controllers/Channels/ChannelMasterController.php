@@ -139,6 +139,37 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Default pricing / missing-listing page when channel_master.missing_link is empty.
+     */
+    private function defaultMissingLinkForChannel(string $channel): ?string
+    {
+        $paths = [
+            'PLS' => '/pls-pricing',
+        ];
+
+        $path = $paths[trim($channel)] ?? null;
+
+        return $path ? (str_starts_with($path, '/') ? $path : url($path)) : null;
+    }
+
+    /**
+     * Fill missing_link on channel rows when not set in channel_master / calculated data.
+     */
+    private function applyDefaultMissingLinks(array $rows): array
+    {
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($name === '' || ! empty($row['missing_link'])) {
+                continue;
+            }
+            $row['missing_link'] = $this->defaultMissingLinkForChannel($name);
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
      * Get Map, Miss, NMap, and total_views from amazon_channel_summary_data table
      * This is a generic helper that works for all channels
      */
@@ -300,6 +331,7 @@ class ChannelMasterController extends Controller
     {
         $liveByChannel = [
             'Macys' => fn () => $this->getMacysLiveMapMissNMapFromPricingData(),
+            'PLS' => fn () => $this->getPlsLiveMapMissNMapFromPricingData(),
         ];
 
         foreach ($rows as &$row) {
@@ -2587,6 +2619,7 @@ class ChannelMasterController extends Controller
 
             // Map/Miss/NMap: overlay live pricing-page counts so badges match macys-pricing (etc.)
             $formattedData = $this->overlayLiveMapMissNMapOnChannelRows($formattedData);
+            $formattedData = $this->applyDefaultMissingLinks($formattedData);
             
             // Get summary data from cache
             $summaryData = \Cache::get('channel_master_summary_data', []);
@@ -7483,6 +7516,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'sheet_link' => $channelData->sheet_link ?? null,
+            'missing_link' => $channelData->missing_link ?? $this->defaultMissingLinkForChannel('PLS'),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
