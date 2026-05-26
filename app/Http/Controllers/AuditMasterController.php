@@ -18,6 +18,7 @@ use App\Models\CcShippingChecklist;
 use App\Models\CcShippingReturnsChannelNext;
 use App\Models\CcShippingReturnsChecklist;
 use App\Models\ChannelMaster;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -563,6 +564,7 @@ class AuditMasterController extends Controller
         }
 
         $rLinkMap = [];
+        $this->ensureCcReturnsChannelLinksTable();
         if (Schema::hasTable('cc_returns_channel_links') && ! empty($channelIds)) {
             $rLinkMap = CcReturnsChannelLink::query()
                 ->whereIn('channel_id', $channelIds)
@@ -820,10 +822,11 @@ class AuditMasterController extends Controller
             'value'      => 'nullable|string|max:2048',
         ]);
 
+        $this->ensureCcReturnsChannelLinksTable();
         if (! Schema::hasTable('cc_returns_channel_links')) {
             return response()->json([
                 'success' => false,
-                'message' => 'R link table is not available yet — run migrations.',
+                'message' => 'Could not create R link storage — contact support or run: php artisan migrate',
             ], 500);
         }
 
@@ -2301,5 +2304,25 @@ class AuditMasterController extends Controller
             'bytes'   => strlen($html),
             'message' => 'SOP saved successfully.',
         ]);
+    }
+
+    /**
+     * Ensure cc_returns_channel_links exists (per-channel R link storage).
+     * Creates the table when migrations were not run on this environment.
+     */
+    private function ensureCcReturnsChannelLinksTable(): void
+    {
+        if (Schema::hasTable('cc_returns_channel_links')) {
+            return;
+        }
+
+        Schema::create('cc_returns_channel_links', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('channel_id')->unique();
+            $table->string('r_link', 2048)->nullable();
+            $table->unsignedBigInteger('updated_by_user_id')->nullable();
+            $table->string('updated_by_name', 191)->nullable();
+            $table->timestamps();
+        });
     }
 }
