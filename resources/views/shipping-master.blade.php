@@ -316,6 +316,11 @@
         .table-responsive tbody td.hide-item-wt-decl {
             display: none;
         }
+        /* Hide FBA SKU column */
+        .table-responsive thead th.hide-fba-sku-col,
+        .table-responsive tbody td.hide-fba-sku-col {
+            display: none;
+        }
 
         .table {
             margin-bottom: 0;
@@ -721,7 +726,7 @@
                                     <th class="shipping-rate-header" title="Average of TT 1 Ship, Temu, GOFO, Fedex, UPS, USPS, UNI (excludes Pick Pack and Ebay2)">
                                         <span class="th-vertical-label">Avg</span>
                                     </th>
-                                    <th class="th-has-filter th-parent-sku-col shipping-rate-header">
+                                    <th class="th-has-filter th-parent-sku-col shipping-rate-header hide-fba-sku-col">
                                         <div class="th-horizontal-label" style="font-size: 9px;">FBA SKU</div>
                                         <input type="text" id="fbaSkuSearch" class="form-control-sm header-search-120"
                                             placeholder="Search" style="font-size: 9px; padding: 2px 4px;">
@@ -1325,7 +1330,7 @@
                     row.appendChild(uniAvgCell);
 
                     const fbaSkuCell = document.createElement('td');
-                    fbaSkuCell.className = 'td-sku-col shipping-rate-cell';
+                    fbaSkuCell.className = 'td-sku-col shipping-rate-cell hide-fba-sku-col';
                     const fbaSkuVal = item.fba_sku != null && String(item.fba_sku).trim() !== '' ? String(item.fba_sku).trim() : '';
                     if (isParentRow) {
                         fbaSkuCell.textContent = fbaSkuVal ? formatSkuDisplayLimited(fbaSkuVal) : '-';
