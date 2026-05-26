@@ -196,6 +196,37 @@
                             <i class="fas fa-cloud-upload-alt me-1"></i>Push
                         </button>
 
+                        {{-- Export filtered rows + visible columns (respects
+                             Type / Search / Sbgt / Stat filters). --}}
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-success dropdown-toggle"
+                                    type="button"
+                                    id="faasExportBtn"
+                                    data-bs-toggle="dropdown"
+                                    data-bs-auto-close="true"
+                                    aria-expanded="false"
+                                    title="Export visible rows and columns">
+                                <i class="fas fa-file-export me-1"></i>Export
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end py-1"
+                                aria-labelledby="faasExportBtn">
+                                <li>
+                                    <button type="button"
+                                            class="dropdown-item"
+                                            id="faasExportCsvBtn">
+                                        <i class="fas fa-file-csv me-2 text-muted"></i>Export CSV
+                                    </button>
+                                </li>
+                                <li>
+                                    <button type="button"
+                                            class="dropdown-item"
+                                            id="faasExportExcelBtn">
+                                        <i class="fas fa-file-excel me-2 text-muted"></i>Export Excel
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+
                         <button type="button"
                                 class="btn btn-sm btn-success"
                                 data-bs-toggle="modal"
@@ -591,6 +622,7 @@
 
 @section('script')
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
     (function () {
@@ -2316,6 +2348,109 @@
                     btn.innerHTML = original;
                 });
         });
+
+        // ── Export (filtered rows + visible columns) ───────────────────
+        function faasColumnExportTitle(col) {
+            const raw = col.getDefinition().title || col.getField() || '';
+            const plain = String(raw).replace(/<[^>]*>/g, '').trim();
+            return plain || col.getField();
+        }
+
+        function faasVisibleExportColumns() {
+            if (!tabulator) return [];
+            return tabulator.getColumns()
+                .filter(col => col.isVisible())
+                .map(col => ({
+                    field: col.getField(),
+                    title: faasColumnExportTitle(col),
+                }))
+                .filter(c => c.field && ! c.field.startsWith('_'));
+        }
+
+        function faasExportCellValue(row, field) {
+            if (field === 'Audit') {
+                return row._audit_score != null ? `${row._audit_score}%` : '';
+            }
+            if (field === 'History') {
+                if (! row._audit_at) return '';
+                const d = new Date(String(row._audit_at).replace(' ', 'T'));
+                const when = isNaN(d)
+                    ? row._audit_at
+                    : d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+                return `${when} · ${row._audit_by || '—'}`;
+            }
+            const v = row[field];
+            if (v === null || v === undefined) return '';
+            return String(v);
+        }
+
+        function faasCsvEscapeCell(v) {
+            const s = String(v ?? '').replace(/"/g, '""');
+            return /[",\r\n]/.test(s) ? `"${s}"` : s;
+        }
+
+        function faasExportFilename(ext) {
+            const pageSlug = PAGE_TYPE === 'all' ? 'all_ads' : `${PAGE_TYPE}_ads`;
+            const dateStr  = new Date().toISOString().slice(0, 10);
+            return `facebook_${pageSlug}_${dateStr}.${ext}`;
+        }
+
+        function exportFaasData(format) {
+            if (! tabulator) {
+                alert('Table not loaded yet.');
+                return;
+            }
+
+            const rows = tabulator.getData('active');
+            if (! rows.length) {
+                alert('No data to export.');
+                return;
+            }
+
+            const columns = faasVisibleExportColumns();
+            if (! columns.length) {
+                alert('No visible columns to export.');
+                return;
+            }
+
+            if (format === 'csv') {
+                const header = columns.map(c => faasCsvEscapeCell(c.title));
+                const lines  = [header.join(',')];
+                rows.forEach(row => {
+                    lines.push(columns.map(c => faasCsvEscapeCell(faasExportCellValue(row, c.field))).join(','));
+                });
+                const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+                const a    = document.createElement('a');
+                a.href     = URL.createObjectURL(blob);
+                a.download = faasExportFilename('csv');
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(a.href);
+                return;
+            }
+
+            if (format === 'xlsx') {
+                if (typeof XLSX === 'undefined') {
+                    alert('Excel export is unavailable — reload the page and try again.');
+                    return;
+                }
+                const exportData = rows.map(row => {
+                    const obj = {};
+                    columns.forEach(c => {
+                        obj[c.title] = faasExportCellValue(row, c.field);
+                    });
+                    return obj;
+                });
+                const ws = XLSX.utils.json_to_sheet(exportData);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Facebook Ads');
+                XLSX.writeFile(wb, faasExportFilename('xlsx'));
+            }
+        }
+
+        document.getElementById('faasExportCsvBtn')?.addEventListener('click', () => exportFaasData('csv'));
+        document.getElementById('faasExportExcelBtn')?.addEventListener('click', () => exportFaasData('xlsx'));
 
         // Type filter is driven by AD_TYPES (static for this page) so
         // it can be built immediately, before the first data fetch.
