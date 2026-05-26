@@ -718,7 +718,7 @@
                                     <th class="shipping-rate-header pick-pack-col" title="Pick &amp; pack fee ($1 per SKU)">
                                         <span class="th-vertical-label">Pick<br>Pack</span>
                                     </th>
-                                    <th class="shipping-rate-header" title="Average of TT 1 Ship through UNI plus Pick Pack ($1)">
+                                    <th class="shipping-rate-header" title="Average of TT 1 Ship, Temu, GOFO, Fedex, UPS, USPS, UNI (excludes Pick Pack and Ebay2)">
                                         <span class="th-vertical-label">Avg</span>
                                     </th>
                                     <th class="th-has-filter th-parent-sku-col shipping-rate-header">
@@ -741,6 +741,9 @@
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
+                                    </th>
+                                    <th class="item-dim-header" title="Item Weight ACT (lb) converted to ounces — 16 oz = 1 lb">
+                                        <span class="th-vertical-label" style="font-size: 9px;">Item Weight<br>(OZ)</span>
                                     </th>
                                     <th class="th-has-filter item-dim-header hide-item-wt-decl">
                                         <div class="th-vertical-label" style="font-size: 9px;">Item WT DECL<br>(LB)</div>
@@ -1180,7 +1183,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="31" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="32" class="text-center">No data found</td></tr>';
                     return;
                 }
 
@@ -1317,7 +1320,8 @@
 
                     const uniAvgCell = document.createElement('td');
                     uniAvgCell.className = 'text-center shipping-rate-cell';
-                    uniAvgCell.textContent = formatNumber(avgUniShipCarrierRates(item), 2);
+                    const uniAvg = avgUniShipCarrierRates(item);
+                    uniAvgCell.textContent = uniAvg === null ? '-' : formatNumber(uniAvg, 2);
                     row.appendChild(uniAvgCell);
 
                     const fbaSkuCell = document.createElement('td');
@@ -1351,11 +1355,16 @@
                     wtActKgCell.textContent = cellVal(item.wt_act_kg, 1);
                     row.appendChild(wtActKgCell);
 
-                    // WT ACT column
+                    // WT ACT (LB) — actual weight converted to lb when only Kg is stored
                     const wtActCell = document.createElement('td');
                     wtActCell.className = 'text-center';
-                    wtActCell.textContent = cellVal(item.wt_act, 2);
+                    wtActCell.textContent = itemWeightActLbDisplay(item, isParentRow);
                     row.appendChild(wtActCell);
+
+                    const wtActOzCell = document.createElement('td');
+                    wtActOzCell.className = 'text-center item-weight-oz-col';
+                    wtActOzCell.textContent = itemWeightActOzDisplay(item, isParentRow);
+                    row.appendChild(wtActOzCell);
 
                     // WT DECL column
                     const wtDeclCell = document.createElement('td');
@@ -1738,11 +1747,11 @@
                 return v === null || v === undefined || v === '' || (typeof v === 'string' && v.trim() === '');
             }
 
-            /** Fixed pick &amp; pack fee per row (included in Avg). */
+            /** Fixed pick &amp; pack fee per row (display only; not included in Avg). */
             const PICK_PACK_RATE = 1;
 
-            /** Fields averaged for the Avg column (TT 1 Ship through UNI, plus Pick Pack). */
-            const UNI_AVG_SHIP_FIELDS = ['tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'fedex', 'ups', 'usps', 'uni'];
+            /** Fields averaged for the Avg column (excludes Pick Pack and Ebay2). */
+            const UNI_AVG_SHIP_FIELDS = ['tt_ship', 'temu_ship', 'gofo', 'fedex', 'ups', 'usps', 'uni'];
 
             function roundCarrierShipValue(n) {
                 return Math.round(n * 100) / 100;
@@ -1801,11 +1810,12 @@
             }
 
             function avgUniShipCarrierRates(item) {
-                const nums = [PICK_PACK_RATE];
+                const nums = [];
                 for (const key of UNI_AVG_SHIP_FIELDS) {
                     const n = parseComparableCarrierShipValue(item[key]);
                     if (n !== null && n > 0) nums.push(n);
                 }
+                if (nums.length === 0) return null;
                 return nums.reduce((a, b) => a + b, 0) / nums.length;
             }
 
@@ -1837,6 +1847,44 @@
             /** OZ → LB (16 oz = 1 lb), rounded to 2 decimals — matches conversion table. */
             function wtActOzToLb(oz) {
                 return Math.round((oz / 16) * 100) / 100;
+            }
+
+            const KG_TO_LB = 2.2046226218;
+
+            /** Item Weight ACT → lb: use WT ACT (lb), else convert Kg to lb. */
+            function itemWeightActLbResolved(item) {
+                const lb = parseFloat(item.wt_act);
+                if (Number.isFinite(lb) && lb > 0) {
+                    return Math.round(lb * 100) / 100;
+                }
+                const kg = parseFloat(item.wt_act_kg);
+                if (Number.isFinite(kg) && kg > 0) {
+                    return Math.round(kg * KG_TO_LB * 100) / 100;
+                }
+                return null;
+            }
+
+            function itemWeightActOzFromLb(lb) {
+                if (lb === null || !Number.isFinite(lb)) return null;
+                return Math.round(lb * 16 * 100) / 100;
+            }
+
+            function itemWeightActMissing(item) {
+                return isMissing(item.wt_act) && isMissing(item.wt_act_kg);
+            }
+
+            function itemWeightActLbDisplay(item, isParentRow) {
+                if (isParentRow) return '--';
+                if (itemWeightActMissing(item)) return '-';
+                const lb = itemWeightActLbResolved(item);
+                return lb === null ? '-' : formatNumber(lb, 2);
+            }
+
+            function itemWeightActOzDisplay(item, isParentRow) {
+                if (isParentRow) return '--';
+                if (itemWeightActMissing(item)) return '-';
+                const oz = itemWeightActOzFromLb(itemWeightActLbResolved(item));
+                return oz === null ? '-' : formatNumber(oz, 2);
             }
 
             /** 1–15 oz upper limits (lb) from conversion table. */
@@ -1937,11 +1985,15 @@
             /** Item WT ACT (lb) preset bands (filterWtAct select values). */
             function matchesWtActLbBand(item, band) {
                 if (!band || band === 'all') return true;
-                if (band === 'missing' || band === 'lb_0') {
-                    return isMissing(item.wt_act);
+                if (band === 'missing') {
+                    return itemWeightActMissing(item);
                 }
-                const w = parseFloat(item.wt_act);
-                if (!Number.isFinite(w)) return false;
+                if (band === 'lb_0') {
+                    const w = itemWeightActLbResolved(item);
+                    return w === null || w === 0;
+                }
+                const w = itemWeightActLbResolved(item);
+                if (w === null || !Number.isFinite(w)) return false;
                 if (band === 'oz_1599' || /^oz_\d+$/.test(band)) {
                     return matchesWtActOzLbBand(w, band);
                 }
@@ -2006,7 +2058,7 @@
                         return false;
                     }
 
-                    // WT ACT (lb) filter — preset bands on item.wt_act
+                    // WT ACT (lb) filter — resolved lb (from lb or converted kg)
                     if (filterWtAct !== 'all' && !matchesWtActLbBand(item, filterWtAct)) {
                         return false;
                     }
@@ -2122,7 +2174,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "INV", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "INV", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -2181,7 +2233,10 @@
                             key: "wt_act_kg"
                         },
                         "WT ACT (LB)": {
-                            key: "wt_act"
+                            computed: "item_weight_lb"
+                        },
+                        "Item Weight (OZ)": {
+                            computed: "item_weight_oz"
                         },
                         "WT DECL (LB)": {
                             key: "wt_decl"
@@ -2256,9 +2311,19 @@
                                             row.push(PICK_PACK_RATE);
                                             return;
                                         }
+                                        if (colDef.computed === 'item_weight_lb') {
+                                            const lb = itemWeightActLbResolved(item);
+                                            row.push(lb === null ? '' : parseFloat(lb.toFixed(2)));
+                                            return;
+                                        }
+                                        if (colDef.computed === 'item_weight_oz') {
+                                            const oz = itemWeightActOzFromLb(itemWeightActLbResolved(item));
+                                            row.push(oz === null ? '' : parseFloat(oz.toFixed(2)));
+                                            return;
+                                        }
                                         if (colDef.computed === 'uni_avg') {
                                             const avg = avgUniShipCarrierRates(item);
-                                            row.push(parseFloat(avg.toFixed(2)));
+                                            row.push(avg === null ? '' : parseFloat(avg.toFixed(2)));
                                             return;
                                         }
                                         const key = colDef.key;
@@ -2314,7 +2379,7 @@
                                     return { wch: 20 }; // Wider for text columns
                                 } else if (["Status"].includes(col)) {
                                     return { wch: 12 };
-                                } else if (["FBA SKU", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA ship", "FBA manual ship"].includes(col)) {
+                                } else if (["FBA SKU", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA ship", "FBA manual ship"].includes(col)) {
                                     return { wch: 15 }; // Width for weight and CBM columns
                                 } else {
                                     return { wch: 12 }; // Default width for numeric columns
