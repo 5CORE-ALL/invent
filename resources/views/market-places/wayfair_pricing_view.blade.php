@@ -233,10 +233,10 @@
                             <span class="badge bg-success fs-6 p-2 d-none" id="wf-total-profit-badge" style="font-weight:700;" aria-hidden="true">Profit: 0</span>
                             <span class="badge bg-info fs-6 p-2" id="wf-avg-gpft-badge" style="font-weight:700;color:#111;" title="Order-style: margin × L30 sales − LP×sold (margin from Marketplace % for Wayfair).">PFt: 0%</span>
                             <span class="badge bg-secondary fs-6 p-2" id="wf-avg-roi-badge" style="font-weight:700;color:#111;">ROI: 0%</span>
-                            <span class="badge bg-danger fs-6 p-2" id="wf-missing-badge" style="font-weight:700;cursor:pointer;" title="Click to filter: Missing L — SKUs with no uploaded Wayfair price (price = 0).">Missing L: 0</span>
+                            <span class="badge bg-danger fs-6 p-2" id="wf-missing-badge" style="font-weight:700;cursor:pointer;" title="Click to filter: Missing L — not NR, INV &gt; 0, no uploaded Wayfair price.">Missing L: 0</span>
                             <span class="badge fs-6 p-2" id="wf-test-badge" style="font-weight:700;background:#6f42c1;color:#fff;" title="Test: actual count via getRows(active)">Test: 0</span>
-                            <span class="badge fs-6 p-2" id="wf-map-count-badge" style="font-weight:700;background:#198754;color:#fff;cursor:pointer;" title="Click to filter: |INV − Wayfair stock| ≤ 3">Map: 0</span>
-                            <span class="badge fs-6 p-2" id="wf-nmap-count-badge" style="font-weight:700;background:#a71d2a;color:#fff;cursor:pointer;" title="Click to filter: N Map (|INV − Wayfair stock| &gt; 3)">N Map: 0</span>
+                            <span class="badge fs-6 p-2" id="wf-map-count-badge" style="font-weight:700;background:#198754;color:#fff;cursor:pointer;" title="Click to filter: listed, INV &gt; 0, price &gt; 0, |INV − Wayfair stock| ≤ 3">Map: 0</span>
+                            <span class="badge fs-6 p-2" id="wf-nmap-count-badge" style="font-weight:700;background:#a71d2a;color:#fff;cursor:pointer;" title="Click to filter: listed, INV &gt; 0, price &gt; 0, |INV − Wayfair stock| &gt; 3">N Map: 0</span>
                             <span class="badge fs-6 p-2" id="wf-zero-sold-badge" style="font-weight:700;background:#dc3545;color:#fff;cursor:pointer;" title="Click to filter: 0 sold (al30)">0 Sold: 0</span>
                             <span class="badge fs-6 p-2" id="wf-more-sold-badge" style="font-weight:700;background:#28a745;color:#fff;cursor:pointer;" title="Click to filter: sold &gt; 0">&gt;0 Sold: 0</span>
                         </div>
@@ -671,6 +671,26 @@
             return Number.isFinite(d) && Math.abs(d) > 3;
         }
 
+        /** Missing L — not NR, INV &gt; 0, no uploaded Wayfair price (Macys / channel-master pattern). */
+        function wfRowIsMissing(d) {
+            if (d.is_parent) return false;
+            if (String(d.nr || '').trim().toUpperCase() === 'NR') return false;
+            const inv = parseInt(d.inv, 10) || 0;
+            const price = parseFloat(d.price) || 0;
+            return inv > 0 && price <= 0;
+        }
+
+        /** Map status from raw inv vs ae_stock — listed rows with INV &gt; 0 and price &gt; 0 only. */
+        function wfRowMapStatus(d) {
+            if (d.is_parent || wfRowIsMissing(d)) return null;
+            const inv = parseInt(d.inv, 10) || 0;
+            const price = parseFloat(d.price) || 0;
+            if (inv <= 0 || price <= 0) return null;
+            const wfStock = parseInt(d.ae_stock, 10) || 0;
+            const diff = Math.abs(inv - wfStock);
+            return diff <= 3 ? 'map' : 'nmap';
+        }
+
         function wfClearSpriceForSelected() {
             if (wfUniformPriceModeActive) {
                 const limitToSelection = wfSelectedSkus.size > 0;
@@ -720,10 +740,7 @@
 
             rows.forEach(row => {
                 if (row.is_parent) return;
-                // Compute missing from raw data — same as Macy's pattern (no backend field dependency).
-                const nrVal = String(row.nr || '').trim().toUpperCase();
-                const price = parseFloat(row.price) || 0;
-                const isMissing = nrVal !== 'NR' && price <= 0;
+                const isMissing = wfRowIsMissing(row);
                 const fqty = parseFloat(row.al30) || 0;
                 const sales = parseFloat(row.sales) || 0;
                 const lp = parseFloat(row.lp) || 0;
@@ -746,12 +763,9 @@
                 if (isMissing) {
                     missingCount++;
                 } else {
-                    // Compute Map/N Map from raw data — same as Macy's (no backend field dependency).
-                    const inv = parseInt(row.inv, 10) || 0;
-                    const wfStock = parseInt(row.ae_stock, 10) || 0;
-                    const diff = Math.abs(inv - wfStock);
-                    if (diff <= 3) mapCount++;
-                    else nmapCount++;
+                    const mapStatus = wfRowMapStatus(row);
+                    if (mapStatus === 'map') mapCount++;
+                    else if (mapStatus === 'nmap') nmapCount++;
                 }
             });
 
@@ -862,9 +876,9 @@
                 });
             }
             if (mapFilter === 'map') {
-                table.addFilter(d => (d.map || '') === 'Map');
+                table.addFilter(d => wfRowMapStatus(d) === 'map');
             } else if (mapFilter === 'nmap') {
-                table.addFilter(d => wfWfStrictNMapFromMap(d.map || ''));
+                table.addFilter(d => wfRowMapStatus(d) === 'nmap');
             }
             if (dilColor !== 'all') {
                 table.addFilter(function(d) {
@@ -879,15 +893,10 @@
                 });
             }
             if (wfMissingActive) {
-                // Computed from raw data — same as Macy's Missing filter (no backend field).
-                table.addFilter(function(d) {
-                    if (d.is_parent) return false;
-                    if (String(d.nr || '').trim().toUpperCase() === 'NR') return false;
-                    return (parseFloat(d.price) || 0) <= 0;
-                });
+                table.addFilter(function(d) { return wfRowIsMissing(d); });
             }
-            if (wfMapActive) table.addFilter(d => (d.map || '') === 'Map');
-            if (wfNMapActive) table.addFilter(d => wfWfStrictNMapFromMap(d.map || ''));
+            if (wfMapActive) table.addFilter(d => wfRowMapStatus(d) === 'map');
+            if (wfNMapActive) table.addFilter(d => wfRowMapStatus(d) === 'nmap');
             if (wfZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (wfMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
 
@@ -1137,32 +1146,34 @@
                         }
                     },
                     {
-                        // Missing L: computed in JS from raw data — same pattern as Macy's Missing column.
-                        // NR rows and zero-INV rows are never missing. Missing = no uploaded Wayfair price.
+                        // Missing L: not NR + INV > 0 + no uploaded Wayfair price (Macys / channel-master pattern).
                         title: 'Missing L', field: 'missing', hozAlign: 'center',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            if (String(d.nr || '').trim().toUpperCase() === 'NR') return '';
-                            if ((parseFloat(d.price) || 0) > 0) return '';
+                            if (!wfRowIsMissing(d)) return '';
                             return '<span class="badge bg-danger">L</span>';
                         }
                     },
                     {
-                        // Map: computed in JS from inv vs ae_stock — same pattern as Macy's Mapping column.
+                        // Map: listed + INV > 0 + price > 0; |INV − Wayfair stock| ≤ 3 vs > 3.
                         title: 'Map',
                         field: 'map',
                         hozAlign: 'center',
                         width: 90,
-                        headerTooltip: 'Map when |INV − Wayfair stock| ≤ 3; N Map when > 3.',
+                        headerTooltip: 'Map when listed, INV > 0, price > 0, and |INV − Wayfair stock| ≤ 3.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            if (String(d.nr || '').trim().toUpperCase() === 'NR') return '';
-                            if ((parseFloat(d.price) || 0) <= 0) return '';
-                            const diff = Math.abs((parseInt(d.inv, 10) || 0) - (parseInt(d.ae_stock, 10) || 0));
-                            if (diff <= 3) return '<span style="color:#198754;font-weight:bold;">Map</span>';
-                            return '<span style="color:#dc3545;font-weight:bold;">N Map (' + diff + ')</span>';
+                            const mapStatus = wfRowMapStatus(d);
+                            if (mapStatus === 'map') {
+                                return '<span style="color:#198754;font-weight:bold;">Map</span>';
+                            }
+                            if (mapStatus === 'nmap') {
+                                const diff = Math.abs((parseInt(d.inv, 10) || 0) - (parseInt(d.ae_stock, 10) || 0));
+                                return '<span style="color:#dc3545;font-weight:bold;">N Map (' + diff + ')</span>';
+                            }
+                            return '';
                         }
                     },
                     {

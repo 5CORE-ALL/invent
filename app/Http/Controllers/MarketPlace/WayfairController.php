@@ -775,7 +775,7 @@ class WayfairController extends Controller
                 $isMissing = $price <= 0 && strtoupper($nrOut) !== 'NR';
 
                 $mapValue = '';
-                if (! $isMissing) {
+                if (! $isMissing && $inv > 0 && $price > 0) {
                     $diff     = abs($inv - $wfStock);
                     $mapValue = $diff <= 3 ? 'Map' : "N Map|{$diff}";
                 }
@@ -835,6 +835,57 @@ class WayfairController extends Controller
                 'error' => 'Failed to fetch pricing data: ' . $e->getMessage(),
             ], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
         }
+    }
+
+    /**
+     * Map / Miss / NMap for wayfair-pricing badges and all-marketplace-master Wayfair row.
+     * Matches wayfair_pricing_view updateSummary() + Missing L / Map columns (Macys-style):
+     *
+     * Missing L: not NR + INV > 0 + no uploaded Wayfair price.
+     * Map / NMap: not missing + INV > 0 + price > 0 + |INV − Wayfair stock| ≤ 3 (map) or > 3 (NMap).
+     */
+    public static function countWayfairPricingBadgeTotals(iterable $rows): array
+    {
+        $map = 0;
+        $miss = 0;
+        $nmap = 0;
+
+        foreach ($rows as $row) {
+            if (is_object($row)) {
+                $row = (array) $row;
+            }
+            if (! is_array($row) || ! empty($row['is_parent'])) {
+                continue;
+            }
+
+            $nr = strtoupper(trim((string) ($row['nr'] ?? '')));
+            $inv = (int) ($row['inv'] ?? 0);
+            $price = (float) ($row['price'] ?? 0);
+            $wfStock = (int) ($row['ae_stock'] ?? 0);
+
+            $isMissing = $nr !== 'NR' && $price <= 0;
+
+            if ($isMissing && $inv > 0) {
+                $miss++;
+                continue;
+            }
+
+            if ($inv > 0 && $price > 0) {
+                $diff = abs($inv - $wfStock);
+                if ($diff <= 3) {
+                    $map++;
+                } else {
+                    $nmap++;
+                }
+            }
+        }
+
+        return [
+            'map' => $map,
+            'miss' => $miss,
+            'nmap' => $nmap,
+            'total_views' => 0,
+        ];
     }
 
     public function saveWayfairSpriceUpdates(Request $request)
@@ -1195,6 +1246,11 @@ class WayfairController extends Controller
             $zeroSold = 0;
             $moreSold = 0;
 
+            $badgeTotals = self::countWayfairPricingBadgeTotals($allChildRows);
+            $missingCount = $badgeTotals['miss'];
+            $mapCount = $badgeTotals['map'];
+            $nmapCount = $badgeTotals['nmap'];
+
             foreach ($allChildRows as $r) {
                 $sales = (float) ($r['sales'] ?? 0);
                 $al30r = (float) ($r['al30'] ?? 0);
@@ -1226,19 +1282,6 @@ class WayfairController extends Controller
                 if ($inv > 0) {
                     $dilSum += ($ovL30 / $inv) * 100;
                     $dilCount++;
-                }
-                if (($r['missing'] ?? '') === 'M' && $inv > 0) {
-                    $missingCount++;
-                }
-                $mapCell = (string) ($r['map'] ?? '');
-                if ($mapCell === 'Map') {
-                    $mapCount++;
-                } elseif (str_starts_with($mapCell, 'N Map|')) {
-                    $rest = substr($mapCell, strlen('N Map|'));
-                    $diffVal = abs((float) trim((string) $rest));
-                    if ($diffVal > 3) {
-                        $nmapCount++;
-                    }
                 }
             }
 

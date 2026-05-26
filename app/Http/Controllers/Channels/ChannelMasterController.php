@@ -87,6 +87,7 @@ use App\Models\MercariWShipSheetdata;
 use App\Models\MercariWShipListingStatus;
 use App\Models\MercariWoShipListingStatus;
 use App\Http\Controllers\MarketPlace\PlsController;
+use App\Http\Controllers\MarketPlace\WayfairController;
 use App\Models\PlsListingStatus;
 use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
@@ -145,6 +146,7 @@ class ChannelMasterController extends Controller
     {
         $paths = [
             'PLS' => '/pls-pricing',
+            'Wayfair' => '/wayfair-pricing',
         ];
 
         $path = $paths[trim($channel)] ?? null;
@@ -332,6 +334,7 @@ class ChannelMasterController extends Controller
         $liveByChannel = [
             'Macys' => fn () => $this->getMacysLiveMapMissNMapFromPricingData(),
             'PLS' => fn () => $this->getPlsLiveMapMissNMapFromPricingData(),
+            'Wayfair' => fn () => $this->getWayfairLiveMapMissNMapFromPricingData(),
         ];
 
         foreach ($rows as &$row) {
@@ -374,6 +377,26 @@ class ChannelMasterController extends Controller
             Log::warning('PLS live map/miss/nmap fallback: ' . $e->getMessage());
 
             return $this->getMapAndMissCounts('pls');
+        }
+    }
+
+    /**
+     * Map / Miss / NMap for Wayfair — same rules as wayfair-pricing badges.
+     */
+    private function getWayfairLiveMapMissNMapFromPricingData(): array
+    {
+        try {
+            $response = app(WayfairController::class)->getWayfairPricingData(Request::create('/wayfair/pricing-data', 'GET'));
+            $rows = json_decode($response->getContent(), true);
+            if (! is_array($rows)) {
+                return $this->getMapAndMissCounts('wayfair');
+            }
+
+            return WayfairController::countWayfairPricingBadgeTotals($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Wayfair live map/miss/nmap fallback: ' . $e->getMessage());
+
+            return $this->getMapAndMissCounts('wayfair');
         }
     }
 
@@ -7623,8 +7646,8 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Wayfair')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('wayfair');
+        // Get Map and Miss counts from wayfair-pricing (live — same as pricing page badges)
+        $mapMissCounts = $this->getWayfairLiveMapMissNMapFromPricingData();
 
         $result[] = [
             'Channel '   => 'Wayfair',
@@ -7653,6 +7676,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'sheet_link' => $channelData->sheet_link ?? null,
+            'missing_link' => $channelData->missing_link ?? $this->defaultMissingLinkForChannel('Wayfair'),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
