@@ -684,6 +684,15 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
+                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="temu_gofo">
+                                        <div class="th-vertical-label">Temu<br>GOFO</div>
+                                        <select id="filterTemuGofoCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Temu GOFO">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                            <option value="dash">− / —</option>
+                                            <option value="zero">0</option>
+                                        </select>
+                                    </th>
                                     <th class="th-has-filter shipping-rate-header" data-pm-ship-col="fedex">
                                         <div class="th-vertical-label">Fedex</div>
                                         <select id="filterFedexCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Fedex">
@@ -944,6 +953,12 @@
                                 <input type="number" step="0.01" class="form-control fw-bold" id="editGofo" name="gofo" placeholder="GOFO">
                             </div>
                             <div class="col-md-3">
+                                <label for="editTemuGofo" class="form-label fw-bold">Temu GOFO</label>
+                                <input type="number" step="0.01" class="form-control fw-bold" id="editTemuGofo" name="temu_gofo" placeholder="Temu GOFO">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-3">
                                 <label for="editFedex" class="form-label fw-bold">Fedex</label>
                                 <input type="number" step="0.01" class="form-control fw-bold" id="editFedex" name="fedex" placeholder="Fedex">
                             </div>
@@ -1188,7 +1203,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="32" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="33" class="text-center">No data found</td></tr>';
                     return;
                 }
 
@@ -1312,6 +1327,7 @@
                     appendCarrierShipCell(item.temu_ship);
                     appendCarrierShipCell(item.ebay2_ship);
                     appendCarrierShipCell(item.gofo);
+                    appendCarrierShipCell(item.temu_gofo);
                     appendCarrierShipCell(item.fedex);
                     appendCarrierShipCell(item.ups);
                     appendCarrierShipCell(item.usps);
@@ -1756,7 +1772,7 @@
             const PICK_PACK_RATE = 1;
 
             /** Fields averaged for the Avg column (excludes Pick Pack and Ebay2). */
-            const UNI_AVG_SHIP_FIELDS = ['tt_ship', 'temu_ship', 'gofo', 'fedex', 'ups', 'usps', 'uni'];
+            const UNI_AVG_SHIP_FIELDS = ['tt_ship', 'temu_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'];
 
             function roundCarrierShipValue(n) {
                 return Math.round(n * 100) / 100;
@@ -2023,6 +2039,7 @@
                 const filterTemuShipCol = document.getElementById('filterTemuShipCol')?.value || 'all';
                 const filterEbay2ShipCol = document.getElementById('filterEbay2ShipCol')?.value || 'all';
                 const filterGofoCol = document.getElementById('filterGofoCol')?.value || 'all';
+                const filterTemuGofoCol = document.getElementById('filterTemuGofoCol')?.value || 'all';
                 const filterFedexCol = document.getElementById('filterFedexCol')?.value || 'all';
                 const filterUpsCol = document.getElementById('filterUpsCol')?.value || 'all';
                 const filterUspsCol = document.getElementById('filterUspsCol')?.value || 'all';
@@ -2093,6 +2110,7 @@
                     if (!matchesMarketplaceShipColFilter(item, 'temu_ship', filterTemuShipCol)) return false;
                     if (!matchesMarketplaceShipColFilter(item, 'ebay2_ship', filterEbay2ShipCol)) return false;
                     if (!matchesMarketplaceShipColFilter(item, 'gofo', filterGofoCol)) return false;
+                    if (!matchesMarketplaceShipColFilter(item, 'temu_gofo', filterTemuGofoCol)) return false;
                     if (!matchesMarketplaceShipColFilter(item, 'fedex', filterFedexCol)) return false;
                     if (!matchesMarketplaceShipColFilter(item, 'ups', filterUpsCol)) return false;
                     if (!matchesMarketplaceShipColFilter(item, 'usps', filterUspsCol)) return false;
@@ -2129,7 +2147,7 @@
                     const el = document.getElementById(id);
                     if (el) el.addEventListener('change', applyFilters);
                 });
-                ['filterShipCol', 'filterTtShipCol', 'filterTemuShipCol', 'filterEbay2ShipCol', 'filterGofoCol', 'filterFedexCol', 'filterUpsCol', 'filterUspsCol', 'filterUniCol'].forEach(id => {
+                ['filterShipCol', 'filterTtShipCol', 'filterTemuShipCol', 'filterEbay2ShipCol', 'filterGofoCol', 'filterTemuGofoCol', 'filterFedexCol', 'filterUpsCol', 'filterUspsCol', 'filterUniCol'].forEach(id => {
                     const el = document.getElementById(id);
                     if (el) el.addEventListener('change', applyFilters);
                 });
@@ -2179,7 +2197,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "INV", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "INV", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Temu GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -2206,6 +2224,9 @@
                         },
                         "GOFO": {
                             key: "gofo"
+                        },
+                        "Temu GOFO": {
+                            key: "temu_gofo"
                         },
                         "Fedex": {
                             key: "fedex"
@@ -2361,7 +2382,7 @@
                                             value = value === '' || value === null || value === undefined ? '' : parseFloat((parseFloat(value) || 0).toFixed(2));
                                         }
                                         // Format numeric columns (WT ACT KG, L, W, H, CBM, CTN fields, etc.)
-                                        else if (["wt_act_kg", "l", "w", "h", "l_cm", "w_cm", "h_cm", "ctn_l", "ctn_w", "ctn_h", "ctn_cbm", "ctn_qty", "ctn_cbm_each", "ship", "tt_ship", "temu_ship", "ebay2_ship", "gofo", "fedex", "ups", "usps", "uni", "fba_ship", "fba_manual_ship"].includes(key)) {
+                                        else if (["wt_act_kg", "l", "w", "h", "l_cm", "w_cm", "h_cm", "ctn_l", "ctn_w", "ctn_h", "ctn_cbm", "ctn_qty", "ctn_cbm_each", "ship", "tt_ship", "temu_ship", "ebay2_ship", "gofo", "temu_gofo", "fedex", "ups", "usps", "uni", "fba_ship", "fba_manual_ship"].includes(key)) {
                                             value = value === '' || value === null || value === undefined ? '' : (parseFloat(value) || 0);
                                         }
 
@@ -2384,7 +2405,7 @@
                                     return { wch: 20 }; // Wider for text columns
                                 } else if (["Status"].includes(col)) {
                                     return { wch: 12 };
-                                } else if (["FBA SKU", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA ship", "FBA manual ship"].includes(col)) {
+                                } else if (["FBA SKU", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Temu GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA ship", "FBA manual ship"].includes(col)) {
                                     return { wch: 15 }; // Width for weight and CBM columns
                                 } else {
                                     return { wch: 12 }; // Default width for numeric columns
@@ -2931,6 +2952,7 @@
                 document.getElementById('editTemuShip').value = shipNum(product.temu_ship);
                 document.getElementById('editEbay2Ship').value = shipNum(product.ebay2_ship);
                 document.getElementById('editGofo').value = shipNum(product.gofo);
+                document.getElementById('editTemuGofo').value = shipNum(product.temu_gofo);
                 document.getElementById('editFedex').value = shipNum(product.fedex);
                 document.getElementById('editUps').value = shipNum(product.ups);
                 document.getElementById('editUsps').value = shipNum(product.usps);
@@ -3000,6 +3022,7 @@
                     addNumericIfPresent('editTemuShip', 'temu_ship');
                     addNumericIfPresent('editEbay2Ship', 'ebay2_ship');
                     addNumericIfPresent('editGofo', 'gofo');
+                    addNumericIfPresent('editTemuGofo', 'temu_gofo');
                     addNumericIfPresent('editFedex', 'fedex');
                     addNumericIfPresent('editUps', 'ups');
                     addNumericIfPresent('editUsps', 'usps');

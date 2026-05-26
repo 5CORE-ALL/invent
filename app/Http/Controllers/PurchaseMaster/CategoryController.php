@@ -734,6 +734,7 @@ class CategoryController extends Controller
                 'temu_ship' => 'nullable|numeric',
                 'ebay2_ship' => 'nullable|numeric',
                 'gofo' => 'nullable|numeric',
+                'temu_gofo' => 'nullable|numeric',
                 'fedex' => 'nullable|numeric',
                 'ups' => 'nullable|numeric',
                 'usps' => 'nullable|numeric',
@@ -833,7 +834,7 @@ class CategoryController extends Controller
                 }
             }
 
-            foreach (['ship', 'tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'fedex', 'ups', 'usps', 'uni'] as $shipField) {
+            foreach (['ship', 'tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'] as $shipField) {
                 if (array_key_exists($shipField, $validated)) {
                     $v = $validated[$shipField];
                     $values[$shipField] = ($v !== null && $v !== '') ? (float) $v : null;
@@ -6587,6 +6588,13 @@ PROMPT;
                 'tt_ship' => 'tt_ship',
                 'temu_ship' => 'temu_ship',
                 'ebay2_ship' => 'ebay2_ship',
+                'gofo' => 'gofo',
+                'temu_gofo' => 'temu_gofo',
+                'temu__gofo' => 'temu_gofo',
+                'fedex' => 'fedex',
+                'ups' => 'ups',
+                'usps' => 'usps',
+                'uni' => 'uni',
             ];
 
             // Find column indices
@@ -6646,7 +6654,7 @@ PROMPT;
                         $value = trim($row[$colIndex]);
                         if ($value !== '') {
                             // Convert to float for numeric fields
-                            if (in_array($field, ['wt_act', 'wt_act_kg', 'wt_decl', 'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt', 'ctn_weight_kg', 'ctn_weight_lb', 'ship', 'tt_ship', 'temu_ship', 'ebay2_ship'])) {
+                            if (in_array($field, ['wt_act', 'wt_act_kg', 'wt_decl', 'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt', 'ctn_weight_kg', 'ctn_weight_lb', 'ship', 'tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'])) {
                                 $value = is_numeric($value) ? (float) $value : null;
                             } elseif ($field === 'ctn_instructions') {
                                 $value = mb_substr($value, 0, 100);
