@@ -653,6 +653,60 @@ class PlsController extends Controller
     }
 
     /**
+     * Map / Miss / NMap for pls-pricing badges and all-marketplace-master PLS row.
+     * Matches pls_pricing_view updateSummary() + MAP / N MP column (|INV − PLS INV| ≤ 3).
+     *
+     * Missing L: INV > 0 and price <= 0 (listed as Missing on pricing page).
+     * N Map: not Missing + INV > 0 + inventory mismatch beyond 3-unit tolerance.
+     * Map: not Missing + INV > 0 + within 3-unit tolerance (MP / green MAP column).
+     */
+    public static function countPlsPricingBadgeTotals(iterable $rows): array
+    {
+        $map = 0;
+        $miss = 0;
+        $nmap = 0;
+
+        foreach ($rows as $row) {
+            if (is_object($row)) {
+                $row = (array) $row;
+            }
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $inv = (float) ($row['inventory'] ?? 0);
+            $plsInv = (float) ($row['pls_inventory'] ?? 0);
+            $price = (float) ($row['price'] ?? 0);
+            $missing = (string) ($row['missing'] ?? '');
+
+            if ($inv > 0 && $price <= 0) {
+                $miss++;
+            }
+
+            if ($missing !== 'M') {
+                if ($inv > 0 && $plsInv === 0.0 && $inv > 3) {
+                    $nmap++;
+                } elseif ($inv > 0 && $plsInv > 0) {
+                    if ($inv !== $plsInv && abs($inv - $plsInv) > 3) {
+                        $nmap++;
+                    } else {
+                        $map++;
+                    }
+                } elseif ($inv > 0 && $plsInv === 0.0 && $inv <= 3) {
+                    $map++;
+                }
+            }
+        }
+
+        return [
+            'map' => $map,
+            'miss' => $miss,
+            'nmap' => $nmap,
+            'total_views' => 0,
+        ];
+    }
+
+    /**
      * Save PLS SPRICE and calculate SGPFT% and SROI%
      */
     public function savePlsSprice(Request $request)

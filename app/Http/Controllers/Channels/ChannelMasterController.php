@@ -86,7 +86,7 @@ use App\Models\MercariWoShipSheetdata;
 use App\Models\MercariWShipSheetdata;
 use App\Models\MercariWShipListingStatus;
 use App\Models\MercariWoShipListingStatus;
-use App\Models\PLSProduct;
+use App\Http\Controllers\MarketPlace\PlsController;
 use App\Models\PlsListingStatus;
 use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
@@ -362,66 +362,17 @@ class ChannelMasterController extends Controller
     {
         try {
             $req = Request::create('/pls-pricing-data-json', 'GET');
-            $plsCtrl = app(\App\Http\Controllers\MarketPlace\PlsController::class);
+            $plsCtrl = app(PlsController::class);
             $response = $plsCtrl->pricingDataJson($req);
             $rows = json_decode($response->getContent(), true);
-            if (!is_array($rows)) {
+            if (! is_array($rows)) {
                 return $this->getMapAndMissCounts('pls');
             }
 
-            $map = 0;
-            $miss = 0;
-            $nmap = 0;
-            $totalViews = 0;
-
-            foreach ($rows as $row) {
-                if (is_object($row)) {
-                    $row = (array) $row;
-                }
-                if (!is_array($row)) {
-                    continue;
-                }
-
-                $inv = (float) ($row['inventory'] ?? 0);
-                $plsInv = (float) ($row['pls_inventory'] ?? 0);
-                $price = (float) ($row['price'] ?? 0);
-                $missing = (string) ($row['missing'] ?? '');
-
-                // Count Missing: INV > 0 AND price <= 0 (same as pls-pricing badge logic)
-                if ($inv > 0 && $price <= 0) {
-                    $miss++;
-                }
-
-                // Count N Map: missing !== 'M' AND inventory mismatch > 3 (same as pls-pricing badge logic)
-                if ($missing !== 'M') {
-                    // Case 1: Our inventory > 0, PLS inventory = 0, and difference > 3
-                    if ($inv > 0 && $plsInv === 0.0 && $inv > 3) {
-                        $nmap++;
-                    }
-                    // Case 2: Both have inventory but difference > 3
-                    elseif ($inv > 0 && $plsInv > 0) {
-                        if ($inv !== $plsInv && abs($inv - $plsInv) > 3) {
-                            $nmap++;
-                        } else {
-                            // Within tolerance (≤3) - counts as Map
-                            $map++;
-                        }
-                    }
-                    // Case 3: Our inventory > 0, PLS inventory = 0, but within tolerance (≤3)
-                    elseif ($inv > 0 && $plsInv === 0.0 && $inv <= 3) {
-                        $map++;
-                    }
-                }
-            }
-
-            return [
-                'map' => $map,
-                'miss' => $miss,
-                'nmap' => $nmap,
-                'total_views' => $totalViews,
-            ];
+            return PlsController::countPlsPricingBadgeTotals($rows);
         } catch (\Throwable $e) {
             Log::warning('PLS live map/miss/nmap fallback: ' . $e->getMessage());
+
             return $this->getMapAndMissCounts('pls');
         }
     }
@@ -3320,6 +3271,9 @@ class ChannelMasterController extends Controller
         $salesByChannel = $this->buildSalesByChannelWithPercentage($finalData);
         $adSpendByColorAmazon = $this->getAdSpendByProductColorAmazonFamilyL30();
         $adSpendByColorByChannel = $this->getAdSpendByColorByChannelL30();
+
+        $finalData = $this->overlayLiveMapMissNMapOnChannelRows($finalData);
+        $finalData = $this->applyDefaultMissingLinks($finalData);
 
         return response()->json([
             'status'  => 200,
