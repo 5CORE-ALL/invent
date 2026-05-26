@@ -234,23 +234,31 @@
         .table-responsive tbody td.shipping-rate-cell.shipping-rate-low {
             color: #198754 !important;
         }
-        .table-responsive tbody tr:hover td.shipping-rate-cell.shipping-rate-high {
-            color: #dc3545 !important;
+        .table-responsive tbody td.shipping-rate-cell.shipping-rate-low-2 {
+            color: #0d6efd !important;
         }
-        .table-responsive tbody tr:hover td.shipping-rate-cell.shipping-rate-low {
-            color: #198754 !important;
+        .table-responsive tbody td.shipping-rate-cell.shipping-rate-low-3 {
+            color: #ca8a04 !important;
         }
-        .table-responsive tbody tr.shipping-parent-row td.shipping-rate-cell.shipping-rate-high {
-            color: #dc3545 !important;
-        }
-        .table-responsive tbody tr.shipping-parent-row td.shipping-rate-cell.shipping-rate-low {
-            color: #198754 !important;
-        }
+        .table-responsive tbody tr:hover td.shipping-rate-cell.shipping-rate-high,
+        .table-responsive tbody tr.shipping-parent-row td.shipping-rate-cell.shipping-rate-high,
         .table-responsive tbody tr.shipping-parent-row:hover td.shipping-rate-cell.shipping-rate-high {
             color: #dc3545 !important;
         }
+        .table-responsive tbody tr:hover td.shipping-rate-cell.shipping-rate-low,
+        .table-responsive tbody tr.shipping-parent-row td.shipping-rate-cell.shipping-rate-low,
         .table-responsive tbody tr.shipping-parent-row:hover td.shipping-rate-cell.shipping-rate-low {
             color: #198754 !important;
+        }
+        .table-responsive tbody tr:hover td.shipping-rate-cell.shipping-rate-low-2,
+        .table-responsive tbody tr.shipping-parent-row td.shipping-rate-cell.shipping-rate-low-2,
+        .table-responsive tbody tr.shipping-parent-row:hover td.shipping-rate-cell.shipping-rate-low-2 {
+            color: #0d6efd !important;
+        }
+        .table-responsive tbody tr:hover td.shipping-rate-cell.shipping-rate-low-3,
+        .table-responsive tbody tr.shipping-parent-row td.shipping-rate-cell.shipping-rate-low-3,
+        .table-responsive tbody tr.shipping-parent-row:hover td.shipping-rate-cell.shipping-rate-low-3 {
+            color: #ca8a04 !important;
         }
 
         /* Product Master Ship column only: light yellow bg, black text */
@@ -707,7 +715,10 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th class="shipping-rate-header" title="Average of TT 1 Ship through UNI (numeric values only)">
+                                    <th class="shipping-rate-header pick-pack-col" title="Pick &amp; pack fee ($1 per SKU)">
+                                        <span class="th-vertical-label">Pick<br>Pack</span>
+                                    </th>
+                                    <th class="shipping-rate-header" title="Average of TT 1 Ship through UNI plus Pick Pack ($1)">
                                         <span class="th-vertical-label">Avg</span>
                                     </th>
                                     <th class="th-has-filter th-parent-sku-col shipping-rate-header">
@@ -726,29 +737,9 @@
                                     </th>
                                     <th class="th-has-filter item-dim-header th-wt-act-lb-filter">
                                         <div class="th-vertical-label" style="font-size: 9px;">Item WT ACT<br>(LB)</div>
-                                        <select id="filterWtAct" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 140px;" title="Filter by Item WT ACT (lb)">
+                                        <select id="filterWtAct" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 180px;" title="Filter by Item WT ACT (oz / lb)">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
-                                            <option value="lb_0">0 lb</option>
-                                            <option value="lb_001_025">0.01 – 0.25 lb</option>
-                                            <option value="lb_0251_05">0.2501 – 0.5 lb</option>
-                                            <option value="lb_0501_075">0.5001 – 0.75 lb</option>
-                                            <option value="lb_0751_1">0.7501 – 1 lb</option>
-                                            <option value="lb_101_2">1.01 – 2 lb</option>
-                                            <option value="lb_201_3">2.01 – 3 lb</option>
-                                            <option value="lb_301_4">3.01 – 4 lb</option>
-                                            <option value="lb_401_5">4.01 – 5 lb</option>
-                                            <option value="lb_501_6">5.01 – 6 lb</option>
-                                            <option value="lb_601_7">6.01 – 7 lb</option>
-                                            <option value="lb_701_8">7.01 – 8 lb</option>
-                                            <option value="lb_801_9">8.01 – 9 lb</option>
-                                            <option value="lb_901_10">9.01 – 10 lb</option>
-                                            <option value="lb_1001_15">10.01 – 15 lb</option>
-                                            <option value="lb_1501_20">15.01 – 20 lb</option>
-                                            <option value="lb_2001_30">20.01 – 30 lb</option>
-                                            <option value="lb_301_40">30.1 – 40 lb</option>
-                                            <option value="lb_401_50">40.1 – 50 lb</option>
-                                            <option value="lb_gt50">&gt; 50 lb</option>
                                         </select>
                                     </th>
                                     <th class="th-has-filter item-dim-header hide-item-wt-decl">
@@ -1189,7 +1180,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="30" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="31" class="text-center">No data found</td></tr>';
                     return;
                 }
 
@@ -1319,14 +1310,14 @@
                     appendCarrierShipCell(item.uni);
                     highlightCarrierShipMinMax(carrierShipHighlight);
 
+                    const pickPackCell = document.createElement('td');
+                    pickPackCell.className = 'text-center shipping-rate-cell pick-pack-col';
+                    pickPackCell.textContent = formatNumber(PICK_PACK_RATE, 2);
+                    row.appendChild(pickPackCell);
+
                     const uniAvgCell = document.createElement('td');
                     uniAvgCell.className = 'text-center shipping-rate-cell';
-                    const uniAvg = avgUniShipCarrierRates(item);
-                    if (uniAvg === null) {
-                        uniAvgCell.textContent = '-';
-                    } else {
-                        uniAvgCell.textContent = formatNumber(uniAvg, 2);
-                    }
+                    uniAvgCell.textContent = formatNumber(avgUniShipCarrierRates(item), 2);
                     row.appendChild(uniAvgCell);
 
                     const fbaSkuCell = document.createElement('td');
@@ -1747,7 +1738,10 @@
                 return v === null || v === undefined || v === '' || (typeof v === 'string' && v.trim() === '');
             }
 
-            /** Fields averaged for the Avg column (TT 1 Ship through UNI). */
+            /** Fixed pick &amp; pack fee per row (included in Avg). */
+            const PICK_PACK_RATE = 1;
+
+            /** Fields averaged for the Avg column (TT 1 Ship through UNI, plus Pick Pack). */
             const UNI_AVG_SHIP_FIELDS = ['tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'fedex', 'ups', 'usps', 'uni'];
 
             function roundCarrierShipValue(n) {
@@ -1769,35 +1763,49 @@
                 return roundCarrierShipValue(n);
             }
 
+            const CARRIER_SHIP_RANK_STYLES = [
+                { cls: 'shipping-rate-low', color: '#198754' },
+                { cls: 'shipping-rate-low-2', color: '#0d6efd' },
+                { cls: 'shipping-rate-low-3', color: '#ca8a04' }
+            ];
+
+            function applyCarrierShipRankStyle(entry, style) {
+                entry.td.classList.add(style.cls);
+                entry.td.style.color = style.color;
+            }
+
             function highlightCarrierShipMinMax(entries) {
                 if (!entries || entries.length === 0) return;
-                const values = entries.map(e => e.value);
-                const min = Math.min(...values);
-                const max = Math.max(...values);
-                if (min === max) {
-                    if (entries.length === 1) {
-                        entries[0].td.classList.add('shipping-rate-high');
-                    }
+                if (entries.length === 1) {
+                    applyCarrierShipRankStyle(entries[0], { cls: 'shipping-rate-high', color: '#dc3545' });
                     return;
                 }
+                const max = Math.max(...entries.map(e => e.value));
+                const uniqueAsc = [...new Set(entries.map(e => e.value))].sort((a, b) => a - b);
+                if (uniqueAsc.length === 1) return;
+
                 entries.forEach(e => {
                     if (e.value === max) {
-                        e.td.classList.add('shipping-rate-high');
-                        e.td.style.color = '#dc3545';
-                    } else if (e.value === min) {
-                        e.td.classList.add('shipping-rate-low');
-                        e.td.style.color = '#198754';
+                        applyCarrierShipRankStyle(e, { cls: 'shipping-rate-high', color: '#dc3545' });
                     }
                 });
+
+                for (let i = 0; i < Math.min(3, uniqueAsc.length); i++) {
+                    const rankValue = uniqueAsc[i];
+                    if (rankValue === max) continue;
+                    const style = CARRIER_SHIP_RANK_STYLES[i];
+                    entries.forEach(e => {
+                        if (e.value === rankValue) applyCarrierShipRankStyle(e, style);
+                    });
+                }
             }
 
             function avgUniShipCarrierRates(item) {
-                const nums = [];
+                const nums = [PICK_PACK_RATE];
                 for (const key of UNI_AVG_SHIP_FIELDS) {
                     const n = parseComparableCarrierShipValue(item[key]);
                     if (n !== null && n > 0) nums.push(n);
                 }
-                if (nums.length === 0) return null;
                 return nums.reduce((a, b) => a + b, 0) / nums.length;
             }
 
@@ -1826,6 +1834,97 @@
                 return true;
             }
 
+            /** OZ → LB (16 oz = 1 lb), rounded to 2 decimals — matches conversion table. */
+            function wtActOzToLb(oz) {
+                return Math.round((oz / 16) * 100) / 100;
+            }
+
+            /** 1–15 oz upper limits (lb) from conversion table. */
+            const WT_ACT_OZ_LB_UPPER = [0.06, 0.13, 0.19, 0.25, 0.31, 0.38, 0.44, 0.50, 0.56, 0.63, 0.69, 0.75, 0.81, 0.88, 0.94];
+
+            /** Upward bands (lb); labels show oz range + converted lb. */
+            const WT_ACT_UPWARD_LB_BANDS = [
+                { key: 'lb_101_2', lbMin: 1.01, lbMax: 2 },
+                { key: 'lb_201_3', lbMin: 2.01, lbMax: 3 },
+                { key: 'lb_301_4', lbMin: 3.01, lbMax: 4 },
+                { key: 'lb_401_5', lbMin: 4.01, lbMax: 5 },
+                { key: 'lb_501_6', lbMin: 5.01, lbMax: 6 },
+                { key: 'lb_601_7', lbMin: 6.01, lbMax: 7 },
+                { key: 'lb_701_8', lbMin: 7.01, lbMax: 8 },
+                { key: 'lb_801_9', lbMin: 8.01, lbMax: 9 },
+                { key: 'lb_901_10', lbMin: 9.01, lbMax: 10 },
+                { key: 'lb_10_20', lbMin: 10.01, lbMax: 20 },
+                { key: 'lb_20_30', lbMin: 20.01, lbMax: 30 },
+                { key: 'lb_30_40', lbMin: 30.01, lbMax: 40 },
+                { key: 'lb_40_50', lbMin: 40.01, lbMax: 50 },
+                { key: 'lb_gt50', lbMin: 50.01, lbMax: null }
+            ];
+
+            function wtActLbBandOzMin(lb) {
+                return Math.ceil(lb * 16 - 1e-9);
+            }
+
+            function wtActLbBandOzMax(lb) {
+                return Math.floor(lb * 16 + 1e-9);
+            }
+
+            function wtActUpwardBandPrevMaxLb(index) {
+                return index === 0 ? 1 : WT_ACT_UPWARD_LB_BANDS[index - 1].lbMax;
+            }
+
+            function wtActUpwardBandLabel(band, index) {
+                if (band.lbMax === null) {
+                    const ozMin = Math.floor(wtActUpwardBandPrevMaxLb(index) * 16) + 1;
+                    return `> ${ozMin} oz (> ${wtActOzToLb(ozMin)} lb)`;
+                }
+                const ozMin = Math.floor(wtActUpwardBandPrevMaxLb(index) * 16) + 1;
+                const ozMax = Math.floor(band.lbMax * 16);
+                return `${ozMin} oz – ${ozMax} oz (${wtActOzToLb(ozMin)} – ${wtActOzToLb(ozMax)} lb)`;
+            }
+
+            function populateWtActLbFilterOptions() {
+                const sel = document.getElementById('filterWtAct');
+                if (!sel) return;
+                while (sel.options.length > 2) {
+                    sel.remove(2);
+                }
+                const add = (value, label) => {
+                    const o = document.createElement('option');
+                    o.value = value;
+                    o.textContent = label;
+                    sel.appendChild(o);
+                };
+                add('lb_0', '0 lb');
+                for (let oz = 1; oz <= 15; oz++) {
+                    add(`oz_${oz}`, `${oz} oz (${WT_ACT_OZ_LB_UPPER[oz - 1]} lb)`);
+                }
+                add('oz_1599', `15.99 oz (${wtActOzToLb(15.99)} lb)`);
+                WT_ACT_UPWARD_LB_BANDS.forEach((b, i) => add(b.key, wtActUpwardBandLabel(b, i)));
+            }
+
+            function matchesWtActOzLbBand(w, band) {
+                if (band === 'oz_1599') {
+                    return w > 0.94 && w <= 1;
+                }
+                const m = /^oz_(\d+)$/.exec(band);
+                if (!m) return false;
+                const oz = parseInt(m[1], 10);
+                if (oz < 1 || oz > 15) return false;
+                const upper = WT_ACT_OZ_LB_UPPER[oz - 1];
+                if (oz === 1) return w >= 0.01 && w <= upper;
+                const lower = WT_ACT_OZ_LB_UPPER[oz - 2];
+                return w > lower && w <= upper;
+            }
+
+            function matchesWtActUpwardLbBand(w, band) {
+                const idx = WT_ACT_UPWARD_LB_BANDS.findIndex(b => b.key === band);
+                if (idx === -1) return false;
+                const def = WT_ACT_UPWARD_LB_BANDS[idx];
+                const lowerExclusive = wtActUpwardBandPrevMaxLb(idx);
+                if (def.lbMax === null) return w > lowerExclusive;
+                return w > lowerExclusive && w <= def.lbMax;
+            }
+
             /** Item WT ACT (lb) preset bands (filterWtAct select values). */
             function matchesWtActLbBand(item, band) {
                 if (!band || band === 'all') return true;
@@ -1834,48 +1933,13 @@
                 }
                 const w = parseFloat(item.wt_act);
                 if (!Number.isFinite(w)) return false;
-                switch (band) {
-                    case 'lb_001_025':
-                        return w >= 0.01 && w <= 0.25;
-                    case 'lb_0251_05':
-                        return w >= 0.2501 && w <= 0.5;
-                    case 'lb_0501_075':
-                        return w >= 0.5001 && w <= 0.75;
-                    case 'lb_0751_1':
-                        return w >= 0.7501 && w <= 1;
-                    case 'lb_101_2':
-                        return w >= 1.01 && w <= 2;
-                    case 'lb_201_3':
-                        return w >= 2.01 && w <= 3;
-                    case 'lb_301_4':
-                        return w >= 3.01 && w <= 4;
-                    case 'lb_401_5':
-                        return w >= 4.01 && w <= 5;
-                    case 'lb_501_6':
-                        return w >= 5.01 && w <= 6;
-                    case 'lb_601_7':
-                        return w >= 6.01 && w <= 7;
-                    case 'lb_701_8':
-                        return w >= 7.01 && w <= 8;
-                    case 'lb_801_9':
-                        return w >= 8.01 && w <= 9;
-                    case 'lb_901_10':
-                        return w >= 9.01 && w <= 10;
-                    case 'lb_1001_15':
-                        return w >= 10.01 && w <= 15;
-                    case 'lb_1501_20':
-                        return w >= 15.01 && w <= 20;
-                    case 'lb_2001_30':
-                        return w >= 20.01 && w <= 30;
-                    case 'lb_301_40':
-                        return w >= 30.1 && w <= 40;
-                    case 'lb_401_50':
-                        return w >= 40.1 && w <= 50;
-                    case 'lb_gt50':
-                        return w > 50;
-                    default:
-                        return true;
+                if (band === 'oz_1599' || /^oz_\d+$/.test(band)) {
+                    return matchesWtActOzLbBand(w, band);
                 }
+                if (WT_ACT_UPWARD_LB_BANDS.some(b => b.key === band)) {
+                    return matchesWtActUpwardLbBand(w, band);
+                }
+                return true;
             }
 
             // Apply all filters
@@ -2049,7 +2113,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "INV", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Avg", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "INV", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -2088,6 +2152,9 @@
                         },
                         "UNI": {
                             key: "uni"
+                        },
+                        "Pick Pack": {
+                            computed: "pick_pack"
                         },
                         "Avg": {
                             computed: "uni_avg"
@@ -2176,9 +2243,13 @@
                                 columns.forEach(col => {
                                     const colDef = columnDefs[col];
                                     if (colDef) {
+                                        if (colDef.computed === 'pick_pack') {
+                                            row.push(PICK_PACK_RATE);
+                                            return;
+                                        }
                                         if (colDef.computed === 'uni_avg') {
                                             const avg = avgUniShipCarrierRates(item);
-                                            row.push(avg === null ? '' : parseFloat(avg.toFixed(2)));
+                                            row.push(parseFloat(avg.toFixed(2)));
                                             return;
                                         }
                                         const key = colDef.key;
@@ -2234,7 +2305,7 @@
                                     return { wch: 20 }; // Wider for text columns
                                 } else if (["Status"].includes(col)) {
                                     return { wch: 12 };
-                                } else if (["FBA SKU", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Avg", "FBA ship", "FBA manual ship"].includes(col)) {
+                                } else if (["FBA SKU", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA ship", "FBA manual ship"].includes(col)) {
                                     return { wch: 15 }; // Width for weight and CBM columns
                                 } else {
                                     return { wch: 12 }; // Default width for numeric columns
@@ -2982,6 +3053,8 @@
                 });
             }
             setupVerifiedDropdowns();
+
+            populateWtActLbFilterOptions();
 
             // Initialize (search and playback listeners once to avoid duplicates on reload)
             setupSearch();
