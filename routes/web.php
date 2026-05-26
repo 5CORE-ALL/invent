@@ -5177,7 +5177,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // User management routes
     Route::get('/users/add', [UserController::class, 'index'])
-        ->middleware('auth')
+        ->middleware(['auth', 'can:team.management.view'])
         ->name('users.add');
 
     Route::put('/users/{user}', [UserController::class, 'update'])

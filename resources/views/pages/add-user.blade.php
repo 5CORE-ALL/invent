@@ -347,11 +347,13 @@
                     <i class="ri-user-line me-2"></i>Users
                 </button>
             </li>
+            @if($canViewSalary)
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="salary-tab" data-bs-toggle="tab" data-bs-target="#salary-content" type="button" role="tab">
                     <i class="ri-money-dollar-circle-line me-2"></i>Salary
                 </button>
             </li>
+            @endif
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="performance-tab" data-bs-toggle="tab" data-bs-target="#performance-content" type="button" role="tab">
                     <i class="ri-bar-chart-line me-2"></i>Performance Management
@@ -504,23 +506,27 @@
                                     </td>
                                     <td>
                                         <div class="action-buttons">
+                                            @if($canEdit)
                                             <button type="button" class="btn-action edit-btn" data-user-id="{{ $user->id }}" title="Edit">
                                                 <i class="ri-edit-line"></i>
                                             </button>
+                                            @endif
                                             <button type="button" class="btn-action btn-user-icon user-icon-btn" data-user-id="{{ $user->id }}" title="User">
                                                 <i class="ri-user-line"></i>
                                             </button>
-                                            @if($user->id !== auth()->id())
+                                            @if($canEdit && $user->id !== auth()->id())
                                                 <button type="button" class="btn-action btn-danger-soft delete-btn" data-user-id="{{ $user->id }}" title="Deactivate user">
                                                     <i class="ri-delete-bin-line"></i>
                                                 </button>
                                             @endif
+                                            @if($canEdit)
                                             <button type="button" class="btn-action btn-success save-btn d-none" data-user-id="{{ $user->id }}" title="Save">
                                                 <i class="ri-check-line"></i>
                                             </button>
                                             <button type="button" class="btn-action btn-secondary cancel-btn d-none" data-user-id="{{ $user->id }}" title="Cancel">
                                                 <i class="ri-close-line"></i>
                                             </button>
+                                            @endif
                                         </div>
                                     </td>
                                 </tr>
@@ -2428,8 +2434,8 @@
             <!-- End Users Tab -->
 
             <!-- Salary Tab -->
+            @if($canViewSalary)
             <div class="tab-pane fade" id="salary-content" role="tabpanel">
-                @if($canEdit)
                 <div class="card shadow-sm">
                     <div class="card-body">
                         <!-- Search Form -->
@@ -2634,28 +2640,30 @@
                                             </td>
                                             <td>
                                                 <div class="action-buttons">
+                                                    @if($canEdit)
                                                     <button type="button" class="btn-action edit-btn" data-user-id="{{ $user->id }}" title="Edit">
                                                         <i class="ri-edit-line"></i>
                                                     </button>
+                                                    @endif
                                                     <button type="button" class="btn-action btn-user-icon user-icon-btn" data-user-id="{{ $user->id }}" title="User">
                                                         <i class="ri-user-line"></i>
                                                     </button>
-                                                    @if($user->id !== auth()->id())
+                                                    @if($canEdit && $user->id !== auth()->id())
                                                         <button type="button" class="btn-action btn-danger-soft delete-btn" data-user-id="{{ $user->id }}" title="Deactivate user">
                                                             <i class="ri-delete-bin-line"></i>
                                                         </button>
-                                                    @endif
-                                                    @if($canEdit)
                                                         <button type="button" class="btn-action btn-warning-soft salary-hide-btn" data-user-id="{{ $user->id }}" title="Hide from Salary">
                                                             <i class="ri-eye-off-line"></i>
                                                         </button>
                                                     @endif
+                                                    @if($canEdit)
                                                     <button type="button" class="btn-action btn-success save-btn d-none" data-user-id="{{ $user->id }}" title="Save">
                                                         <i class="ri-check-line"></i>
                                                     </button>
                                                     <button type="button" class="btn-action btn-secondary cancel-btn d-none" data-user-id="{{ $user->id }}" title="Cancel">
                                                         <i class="ri-close-line"></i>
                                                     </button>
+                                                    @endif
                                                 </div>
                                             </td>
                                         </tr>
@@ -2669,12 +2677,8 @@
                         </div>
                     </div>
                 </div>
-                @else
-                    <div class="alert alert-warning">
-                        <i class="ri-lock-line me-2"></i>You don't have permission to view salary information.
-                    </div>
-                @endif
             </div>
+            @endif
             <!-- End Salary Tab -->
 
             <!-- Performance Management Tab -->

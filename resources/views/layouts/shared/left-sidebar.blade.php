@@ -3106,6 +3106,7 @@
             </li>
 
             {{-- Team Management --}}
+            @can('team.management.view')
             @php
                 $teamMgmtActive = request()->routeIs('users.add')
                     || (request()->routeIs('payroll.*') && Gate::allows('payroll.manage'));
@@ -3134,6 +3135,7 @@
                     </ul>
                 </div>
             </li>
+            @endcan
 
             {{-- User --}}
 

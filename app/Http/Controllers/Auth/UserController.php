@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\RrPortfolioUser;
 use App\Models\User;
 use App\Services\TeamLoggerService;
+use App\Support\TeamManagementAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
@@ -15,6 +16,10 @@ class UserController extends Controller
 {
     public function index()
     {
+        if (! TeamManagementAccess::canView()) {
+            abort(403, 'You do not have permission to access Team Management.');
+        }
+
         // Active users only (not deactivated)
         // select() must run before withCount(): a later select() replaces columns and drops the count subquery.
         $users = User::query()
@@ -81,16 +86,26 @@ class UserController extends Controller
             return $user->show_in_salary !== false;
         });
 
-        // Check if current user has edit permission
-        $canEdit = auth()->check() && in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com']);
+        $canEdit = TeamManagementAccess::canEdit();
+        $canViewSalary = TeamManagementAccess::canViewSalary();
 
-        return view('pages.add-user', compact('users', 'salaryUsers', 'inactiveUsers', 'canEdit', 'totalSalaryPP', 'totalIncrement', 'teamLoggerData', 'previousMonth', 'emailMapping'));
+        return view('pages.add-user', compact(
+            'users',
+            'salaryUsers',
+            'inactiveUsers',
+            'canEdit',
+            'canViewSalary',
+            'totalSalaryPP',
+            'totalIncrement',
+            'teamLoggerData',
+            'previousMonth',
+            'emailMapping'
+        ));
     }
 
     public function update(Request $request, User $user)
     {
-        // Check permission - only president@5core.com and hr@5core.com can edit
-        if (!in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com'])) {
+        if (! TeamManagementAccess::canEdit()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to edit user data.'
@@ -207,7 +222,7 @@ class UserController extends Controller
 
     public function destroy(User $user)
     {
-        if (!in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com'])) {
+        if (! TeamManagementAccess::canEdit()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to delete users.'
@@ -265,7 +280,7 @@ class UserController extends Controller
 
     public function restore(int $id)
     {
-        if (!in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com'])) {
+        if (! TeamManagementAccess::canEdit()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to restore users.'
@@ -302,8 +317,7 @@ class UserController extends Controller
 
     public function copySalaryLmToPp()
     {
-        // Check permission
-        if (!in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com'])) {
+        if (! TeamManagementAccess::canEdit()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to perform this operation.'
@@ -349,8 +363,7 @@ class UserController extends Controller
 
     public function importData(Request $request)
     {
-        // Check permission
-        if (!in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com'])) {
+        if (! TeamManagementAccess::canEdit()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to import data.'
@@ -433,8 +446,7 @@ class UserController extends Controller
 
     public function exportData()
     {
-        // Check permission
-        if (!in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com'])) {
+        if (! TeamManagementAccess::canViewSalary()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to export data.'
@@ -530,8 +542,7 @@ class UserController extends Controller
 
     public function toggleSalaryVisibility(Request $request, User $user)
     {
-        // Check permission
-        if (!in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com'])) {
+        if (! TeamManagementAccess::canEdit()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to perform this action.'

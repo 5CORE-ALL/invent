@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\ResourceMaster;
 use App\Models\User;
 use App\Policies\ResourceMasterPolicy;
+use App\Support\TeamManagementAccess;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
 
@@ -41,6 +42,18 @@ class AuthServiceProvider extends ServiceProvider
             $emails = array_map('strtolower', config('payroll.manager_emails', []));
 
             return in_array(strtolower((string) $user->email), $emails, true);
+        });
+
+        Gate::define('team.management.view', function (User $user): bool {
+            return TeamManagementAccess::canView($user);
+        });
+
+        Gate::define('team.management.view-salary', function (User $user): bool {
+            return TeamManagementAccess::canViewSalary($user);
+        });
+
+        Gate::define('team.management.edit', function (User $user): bool {
+            return TeamManagementAccess::canEdit($user);
         });
     }
 }
