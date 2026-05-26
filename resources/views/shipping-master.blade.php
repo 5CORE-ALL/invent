@@ -228,6 +228,30 @@
         .table-responsive tbody tr:hover td.shipping-rate-cell.shipping-rate-alert {
             color: #b02a37 !important;
         }
+        .table-responsive tbody td.shipping-rate-cell.shipping-rate-high {
+            color: #dc3545 !important;
+        }
+        .table-responsive tbody td.shipping-rate-cell.shipping-rate-low {
+            color: #198754 !important;
+        }
+        .table-responsive tbody tr:hover td.shipping-rate-cell.shipping-rate-high {
+            color: #dc3545 !important;
+        }
+        .table-responsive tbody tr:hover td.shipping-rate-cell.shipping-rate-low {
+            color: #198754 !important;
+        }
+        .table-responsive tbody tr.shipping-parent-row td.shipping-rate-cell.shipping-rate-high {
+            color: #dc3545 !important;
+        }
+        .table-responsive tbody tr.shipping-parent-row td.shipping-rate-cell.shipping-rate-low {
+            color: #198754 !important;
+        }
+        .table-responsive tbody tr.shipping-parent-row:hover td.shipping-rate-cell.shipping-rate-high {
+            color: #dc3545 !important;
+        }
+        .table-responsive tbody tr.shipping-parent-row:hover td.shipping-rate-cell.shipping-rate-low {
+            color: #198754 !important;
+        }
 
         /* Product Master Ship column only: light yellow bg, black text */
         .table-responsive thead th.shipping-ship-col {
@@ -1276,37 +1300,24 @@
                     shipPmCell.classList.add('shipping-ship-col');
                     row.appendChild(shipPmCell);
 
-                    const ttShipCell = document.createElement('td');
-                    setShippingNumericCell(ttShipCell, item.tt_ship, isParentRow);
-                    row.appendChild(ttShipCell);
+                    const carrierShipHighlight = [];
+                    const appendCarrierShipCell = (rawValue) => {
+                        const td = document.createElement('td');
+                        setShippingNumericCell(td, rawValue, isParentRow);
+                        const value = carrierShipNumericFromCell(td);
+                        if (value !== null) carrierShipHighlight.push({ td, value });
+                        row.appendChild(td);
+                    };
 
-                    const temuShipCell = document.createElement('td');
-                    setShippingNumericCell(temuShipCell, item.temu_ship, isParentRow);
-                    row.appendChild(temuShipCell);
-
-                    const ebay2ShipCell = document.createElement('td');
-                    setShippingNumericCell(ebay2ShipCell, item.ebay2_ship, isParentRow);
-                    row.appendChild(ebay2ShipCell);
-
-                    const gofoCell = document.createElement('td');
-                    setShippingNumericCell(gofoCell, item.gofo, isParentRow);
-                    row.appendChild(gofoCell);
-
-                    const fedexCell = document.createElement('td');
-                    setShippingNumericCell(fedexCell, item.fedex, isParentRow);
-                    row.appendChild(fedexCell);
-
-                    const upsCell = document.createElement('td');
-                    setShippingNumericCell(upsCell, item.ups, isParentRow);
-                    row.appendChild(upsCell);
-
-                    const uspsCell = document.createElement('td');
-                    setShippingNumericCell(uspsCell, item.usps, isParentRow);
-                    row.appendChild(uspsCell);
-
-                    const uniCell = document.createElement('td');
-                    setShippingNumericCell(uniCell, item.uni, isParentRow);
-                    row.appendChild(uniCell);
+                    appendCarrierShipCell(item.tt_ship);
+                    appendCarrierShipCell(item.temu_ship);
+                    appendCarrierShipCell(item.ebay2_ship);
+                    appendCarrierShipCell(item.gofo);
+                    appendCarrierShipCell(item.fedex);
+                    appendCarrierShipCell(item.ups);
+                    appendCarrierShipCell(item.usps);
+                    appendCarrierShipCell(item.uni);
+                    highlightCarrierShipMinMax(carrierShipHighlight);
 
                     const uniAvgCell = document.createElement('td');
                     uniAvgCell.className = 'text-center shipping-rate-cell';
@@ -1739,14 +1750,52 @@
             /** Fields averaged for the Avg column (TT 1 Ship through UNI). */
             const UNI_AVG_SHIP_FIELDS = ['tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'fedex', 'ups', 'usps', 'uni'];
 
+            function roundCarrierShipValue(n) {
+                return Math.round(n * 100) / 100;
+            }
+
+            /** Numeric value shown in a carrier ship cell (matches displayed text, includes 0). */
+            function carrierShipNumericFromCell(td) {
+                const text = (td.textContent || '').trim();
+                if (text === '-' || text === '') return null;
+                const n = parseFloat(text.replace(/,/g, ''));
+                return Number.isFinite(n) ? roundCarrierShipValue(n) : null;
+            }
+
+            function parseComparableCarrierShipValue(raw) {
+                if (raw === null || raw === undefined || raw === '') return null;
+                const n = parseFloat(String(raw).replace(/,/g, ''));
+                if (!Number.isFinite(n)) return null;
+                return roundCarrierShipValue(n);
+            }
+
+            function highlightCarrierShipMinMax(entries) {
+                if (!entries || entries.length === 0) return;
+                const values = entries.map(e => e.value);
+                const min = Math.min(...values);
+                const max = Math.max(...values);
+                if (min === max) {
+                    if (entries.length === 1) {
+                        entries[0].td.classList.add('shipping-rate-high');
+                    }
+                    return;
+                }
+                entries.forEach(e => {
+                    if (e.value === max) {
+                        e.td.classList.add('shipping-rate-high');
+                        e.td.style.color = '#dc3545';
+                    } else if (e.value === min) {
+                        e.td.classList.add('shipping-rate-low');
+                        e.td.style.color = '#198754';
+                    }
+                });
+            }
+
             function avgUniShipCarrierRates(item) {
                 const nums = [];
                 for (const key of UNI_AVG_SHIP_FIELDS) {
-                    const raw = item[key];
-                    if (raw === null || raw === undefined || raw === '') continue;
-                    const n = parseFloat(raw);
-                    if (!Number.isFinite(n) || n <= 0) continue;
-                    nums.push(n);
+                    const n = parseComparableCarrierShipValue(item[key]);
+                    if (n !== null && n > 0) nums.push(n);
                 }
                 if (nums.length === 0) return null;
                 return nums.reduce((a, b) => a + b, 0) / nums.length;
