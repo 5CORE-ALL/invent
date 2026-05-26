@@ -9,6 +9,7 @@ use App\Models\AuditResult;
 use App\Models\AuditResultItem;
 use App\Models\CcMessageChannelNext;
 use App\Models\CcMessageChecklist;
+use App\Models\CcReturnsChannelLink;
 use App\Models\CcReturnsChannelNext;
 use App\Models\CcReturnsChecklist;
 use App\Models\CcShippingChannelLink;
@@ -446,16 +447,12 @@ class AuditMasterController extends Controller
             ->filter(fn ($row) => !empty($row->channel))
             ->values();
 
-        // Resolve M / H / R link per channel via the same scope rules used
-        // by /account-health-master/tabulator. eBay-group channels share
-        // one set of links; everything else uses its own per-channel scope.
-        // R link is owned by this page (added for CC Message & Returns) but
-        // is stored on the same metric-field definition row so the per-scope
-        // sharing model stays consistent.
+        // Resolve M / H link per channel via the same scope rules used by
+        // /account-health-master/tabulator. R link is per-channel in
+        // cc_returns_channel_links (like S link on cc-shipping).
         $ahmController = app(\App\Http\Controllers\Channels\AccountHealthMasterController::class);
         $scopeToMLink = [];
         $scopeToHLink = [];
-        $scopeToRLink = [];
 
         // Pre-load the LATEST + second-most-recent checklist submission per
         // channel for BOTH halves so the History + TAT columns can render
@@ -565,15 +562,21 @@ class AuditMasterController extends Controller
                 ->keyBy('channel_id');
         }
 
-        $hasRLink = Schema::hasColumn('account_health_metric_field_definitions', 'r_link');
+        $rLinkMap = [];
+        if (Schema::hasTable('cc_returns_channel_links') && ! empty($channelIds)) {
+            $rLinkMap = CcReturnsChannelLink::query()
+                ->whereIn('channel_id', $channelIds)
+                ->get()
+                ->keyBy('channel_id');
+        }
 
         $rows = $channels->map(function (ChannelMaster $c) use (
-            $ahmController, $hasLogo, $hasRLink,
-            &$scopeToMLink, &$scopeToHLink, &$scopeToRLink,
+            $ahmController, $hasLogo,
+            &$scopeToMLink, &$scopeToHLink,
             $latestChecklistMap, $prevChecklistMap,
             $latestReturnsMap,   $prevReturnsMap,
             $nextValueMap, $nextReturnsValueMap,
-            $sLinkMap
+            $sLinkMap, $rLinkMap
         ) {
             $scope = $ahmController->definitionScopeForChannel($c);
 
@@ -595,16 +598,6 @@ class AuditMasterController extends Controller
                     ->orderBy('id')
                     ->value('h_link');
             }
-            if ($hasRLink && ! array_key_exists($scope, $scopeToRLink)) {
-                $scopeToRLink[$scope] = \App\Models\AccountHealthMetricFieldDefinition::query()
-                    ->where('definition_scope', $scope)
-                    ->whereNotNull('r_link')
-                    ->where('r_link', '!=', '')
-                    ->orderBy('sort_order')
-                    ->orderBy('id')
-                    ->value('r_link');
-            }
-
             $latest = $latestChecklistMap[$c->id] ?? null;
             $latestArr = null;
             if ($latest) {
@@ -680,13 +673,16 @@ class AuditMasterController extends Controller
             $sLinkRow = $sLinkMap[$c->id] ?? null;
             $sLinkValue = $sLinkRow ? (trim((string) $sLinkRow->s_link) ?: null) : null;
 
+            $rLinkRow = $rLinkMap[$c->id] ?? null;
+            $rLinkValue = $rLinkRow ? (trim((string) $rLinkRow->r_link) ?: null) : null;
+
             return [
                 'id'                       => $c->id,
                 'channel'                  => $c->channel,
                 'logo'                     => $hasLogo ? ($c->logo ?? null) : null,
                 'm_link'                   => $scopeToMLink[$scope] ?: null,
                 'h_link'                   => $scopeToHLink[$scope] ?: null,
-                'r_link'                   => $hasRLink ? ($scopeToRLink[$scope] ?: null) : null,
+                'r_link'                   => $rLinkValue,
                 's_link'                   => $sLinkValue,
                 'latest_checklist'         => $latestArr,
                 'latest_returns_checklist' => $latestReturnsArr,
@@ -814,10 +810,8 @@ class AuditMasterController extends Controller
     }
 
     /**
-     * Save the per-scope R link (R = Returns) for the channel. Mirrors the
-     * /account-health-master/tabulator scope-link save flow but kept local
-     * to this page so we don't have to change the validation rules on the
-     * Account Health Master endpoint (which only allows m_link / h_link).
+     * Save the per-channel R link (Returns) — one URL per channel, same model
+     * as S link on cc-shipping (cc_shipping_channel_links).
      */
     public function storeCcRLink(Request $request)
     {
@@ -826,46 +820,46 @@ class AuditMasterController extends Controller
             'value'      => 'nullable|string|max:2048',
         ]);
 
-        if (! Schema::hasColumn('account_health_metric_field_definitions', 'r_link')) {
+        if (! Schema::hasTable('cc_returns_channel_links')) {
             return response()->json([
                 'success' => false,
-                'message' => 'R link column is not available yet — run migrations.',
+                'message' => 'R link table is not available yet — run migrations.',
             ], 500);
         }
 
         $channel = ChannelMaster::query()->findOrFail((int) $request->input('channel_id'));
-        $ahmController = app(\App\Http\Controllers\Channels\AccountHealthMasterController::class);
-        $scope = $ahmController->definitionScopeForChannel($channel);
 
         $raw = $request->input('value');
         $link = $raw === null ? null : trim((string) $raw);
-        if ($link === '') $link = null;
-
-        // Prefer updating the lowest-sort_order factor in the scope; if none
-        // exist yet, create a hidden placeholder row so we have somewhere to
-        // store the scope-wide link (same shape used by m_link / h_link).
-        $row = \App\Models\AccountHealthMetricFieldDefinition::query()
-            ->where('definition_scope', $scope)
-            ->orderBy('sort_order')
-            ->orderBy('id')
-            ->first();
-
-        if (! $row) {
-            $row = \App\Models\AccountHealthMetricFieldDefinition::query()->create([
-                'definition_scope' => $scope,
-                'field_key'        => '_link_holder',
-                'label'            => 'Link Holder',
-                'sort_order'       => 0,
-            ]);
+        if ($link === '') {
+            $link = null;
         }
 
-        $row->update(['r_link' => $link]);
+        $user = Auth::user();
+        $userName = null;
+        if ($user) {
+            $name = trim((string) ($user->name ?? ''));
+            if ($name === '') {
+                $email = (string) ($user->email ?? '');
+                $name = $email !== '' ? explode('@', $email)[0] : ('User #' . $user->id);
+            }
+            $userName = $name;
+        }
+
+        $row = CcReturnsChannelLink::updateOrCreate(
+            ['channel_id' => $channel->id],
+            [
+                'r_link'             => $link,
+                'updated_by_user_id' => Auth::id(),
+                'updated_by_name'    => $userName,
+            ]
+        );
 
         return response()->json([
-            'success' => true,
-            'scope'   => $scope,
-            'field'   => 'r_link',
-            'value'   => $link,
+            'success'    => true,
+            'channel_id' => $row->channel_id,
+            'field'      => 'r_link',
+            'value'      => $row->r_link,
         ]);
     }
 
@@ -1256,9 +1250,10 @@ class AuditMasterController extends Controller
         );
 
         return response()->json([
-            'success' => true,
-            'field'   => 's_link',
-            'value'   => $row->s_link,
+            'success'    => true,
+            'channel_id' => $row->channel_id,
+            'field'      => 's_link',
+            'value'      => $row->s_link,
         ]);
     }
 

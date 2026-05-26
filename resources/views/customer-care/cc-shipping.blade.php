@@ -784,6 +784,27 @@
             // scope-shared, so the front-end POSTs { channel_id, value }
             // and the controller updates exactly one row.
             const urlSLinkSave = @json(route('customer.care.cc.shipping.s.link.store'));
+            const PER_CHANNEL_LINK_FIELDS = ['s_link', 'r_link'];
+
+            function channelIdsMatch(rowId, targetId) {
+                if (rowId == null || targetId == null || rowId === '' || targetId === '') {
+                    return false;
+                }
+                return String(rowId) === String(targetId);
+            }
+
+            /** Update exactly one channel row after a per-channel link save (S / R link). */
+            function applyPerChannelLinkToTable(field, channelId, newVal) {
+                if (!window.__ccmrTable || !PER_CHANNEL_LINK_FIELDS.includes(field)) {
+                    return;
+                }
+                const target = window.__ccmrTable.getRows().find(r =>
+                    channelIdsMatch(r.getData().id, channelId));
+                if (!target) {
+                    return;
+                }
+                target.update({ [field]: newVal || null });
+            }
 
             // ---- Generic fetch + CSRF helper (copied from tabulator-master) ----
             function csrf() {
@@ -824,7 +845,11 @@
 
             function openScopeLinkModal(channelId, channelName, field, currentValue) {
                 if (!scopeLinkModal || typeof bootstrap === 'undefined') return;
-                scopeLinkCtx = { channelId, field };
+                if (channelId == null || channelId === '') {
+                    console.warn('Cannot edit link: missing channel id');
+                    return;
+                }
+                scopeLinkCtx = { channelId: String(channelId), field };
                 if (scopeLinkLabel) {
                     const fieldLabel = field === 'h_link' ? 'H link'
                         : field === 'r_link' ? 'R link'
@@ -848,8 +873,7 @@
             }
 
             function saveScopeLink(channelId, field, value) {
-                // R link is shared per scope across pages (writes to the
-                // AHM-shared field-definitions row).
+                // R link is per-channel (cc_returns_channel_links).
                 if (field === 'r_link') {
                     return api(urlRLinkSave, {
                         method: 'POST',
@@ -880,20 +904,22 @@
                     scopeLinkErrorEl.textContent = '';
                     scopeLinkErrorEl.classList.add('d-none');
                 }
-                saveScopeLink(scopeLinkCtx.channelId, scopeLinkCtx.field, val)
+                const ctxField = scopeLinkCtx.field;
+                const ctxChannelId = scopeLinkCtx.channelId;
+                saveScopeLink(ctxChannelId, ctxField, val)
                     .then(resp => {
-                        // Propagate the new value to every row in the same scope
-                        // so the user sees the new link icon immediately without
-                        // a page reload. The save endpoint stores per-scope, and
-                        // the response includes the canonical value back.
                         const newVal = (resp && Object.prototype.hasOwnProperty.call(resp, 'value'))
                             ? (resp.value || '')
                             : val;
-                        const field = scopeLinkCtx.field;
-                        if (window.__ccmrTable) {
+                        const channelId = (resp && resp.channel_id != null)
+                            ? resp.channel_id
+                            : ctxChannelId;
+                        if (PER_CHANNEL_LINK_FIELDS.includes(ctxField)) {
+                            applyPerChannelLinkToTable(ctxField, channelId, newVal);
+                        } else if (window.__ccmrTable) {
+                            // M / H links are scope-shared (not used on this page's columns).
                             window.__ccmrTable.getRows().forEach(r => {
-                                const data = r.getData();
-                                r.update({ [field]: newVal || null });
+                                r.update({ [ctxField]: newVal || null });
                             });
                         }
                         if (scopeLinkModal && typeof bootstrap !== 'undefined') {
@@ -1611,7 +1637,7 @@
 
             // ---- Build table data + columns ----
             const tableData = channelsWithLogo.map(row => ({
-                id:                       row.id      || null,
+                id:                       row.id != null ? row.id : null,
                 channel:                  row.channel || '',
                 logo:                     row.logo    || null,
                 m_link:                   row.m_link  || null,
