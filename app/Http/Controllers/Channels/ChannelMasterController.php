@@ -613,6 +613,110 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Live L30/L60 from shopify_order_items — same windows as /pp-sales-stats and getPurchasingPowerChannelData().
+     *
+     * @return array{l30_sales: float, l30_orders: int, qty: int, l60_sales: float, l60_orders: int, pft: float, cogs: float, l60_pft: float, l60_cogs: float}|null
+     */
+    private function getPurchasingPowerLiveMetricsSummary(): ?array
+    {
+        try {
+            $pst = 'America/Los_Angeles';
+            $todayPst = Carbon::now($pst);
+            $l30Start = $todayPst->copy()->subDays(29)->startOfDay();
+            $l30End = $todayPst->copy()->endOfDay();
+            $l60Start = $todayPst->copy()->subDays(59)->startOfDay();
+            $l60End = $todayPst->copy()->subDays(30)->endOfDay();
+
+            $l30 = $this->computePurchasingPowerMetricsFromShopify($l30Start, $l30End);
+            $l60 = $this->computePurchasingPowerMetricsFromShopify($l60Start, $l60End);
+
+            return [
+                'l30_sales' => $l30['sales'],
+                'l30_orders' => $l30['orders'],
+                'qty' => $l30['qty'],
+                'l60_sales' => $l60['sales'],
+                'l60_orders' => $l60['orders'],
+                'pft' => $l30['pft'],
+                'cogs' => $l30['cogs'],
+                'l60_pft' => $l60['pft'],
+                'l60_cogs' => $l60['cogs'],
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Purchasing Power live metrics summary failed: '.$e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * Overlay live Purchasing Power L30/L60 from Shopify so /all-marketplace-master matches /purchasing-power-sales
+     * even when channel_master_calculated_data was built before the latest Shopify sync.
+     */
+    private function overlayLivePurchasingPowerMetricsOnChannelRows(array $rows): array
+    {
+        $live = $this->getPurchasingPowerLiveMetricsSummary();
+        if ($live === null) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($name !== 'Purchasing Power') {
+                continue;
+            }
+
+            $l30Sales = (float) $live['l30_sales'];
+            $l60Sales = (float) $live['l60_sales'];
+
+            $row['L30 Sales'] = (int) round($l30Sales);
+            $row['L30 Orders'] = (int) $live['l30_orders'];
+            $row['Qty'] = (int) $live['qty'];
+            $row['L-60 Sales'] = (int) round($l60Sales);
+            $row['L60 Orders'] = (int) $live['l60_orders'];
+
+            if ($l60Sales > 0) {
+                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
+            }
+
+            $row['Total PFT'] = round($live['pft'], 2);
+            $row['cogs'] = round($live['cogs'], 2);
+
+            if ($l30Sales > 0) {
+                $gProfitPct = round(($live['pft'] / $l30Sales) * 100, 2);
+                $row['Gprofit%'] = $gProfitPct.'%';
+                $row['N PFT'] = $gProfitPct.'%';
+            }
+
+            if ($live['cogs'] > 0) {
+                $gRoi = round(($live['pft'] / $live['cogs']) * 100, 2);
+                $row['G Roi'] = $gRoi;
+                $row['N ROI'] = $gRoi;
+            }
+
+            if ($l60Sales > 0) {
+                $row['gprofitL60'] = round(($live['l60_pft'] / $l60Sales) * 100, 2).'%';
+            }
+
+            if ($live['l60_cogs'] > 0) {
+                $row['G RoiL60'] = round(($live['l60_pft'] / $live['l60_cogs']) * 100, 2);
+            }
+
+            $ySales = $this->computePurchasingPowerYSalesLikeAmazon();
+            if ($ySales !== null) {
+                $row['Y Sales'] = $ySales;
+            }
+
+            $l7Sales = $this->computePurchasingPowerL7SalesLikeAmazon();
+            if ($l7Sales !== null) {
+                $row['L7 Sales'] = $l7Sales;
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
      * Map / Miss / NMap for Macys — same rules as macys-pricing badges.
      * Missing L: REQ + INV>0 + MC Price=0
      * Missing M: REQ + INV>0 + MC Price>0 + |INV-MC INV|>3 (macys-pricing default filters)
@@ -2958,6 +3062,8 @@ class ChannelMasterController extends Controller
             $formattedData = $this->overlayLiveMapMissNMapOnChannelRows($formattedData);
             // Temu / Temu 2: overlay live L30/Y/L7 sales from tabulator (cached table can lag metrics sync)
             $formattedData = $this->overlayLiveTemuMetricsOnChannelRows($formattedData);
+            // Purchasing Power: overlay live L30/L60 from Shopify (matches /purchasing-power-sales)
+            $formattedData = $this->overlayLivePurchasingPowerMetricsOnChannelRows($formattedData);
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
             
             // Get summary data from cache
