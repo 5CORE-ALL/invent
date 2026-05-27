@@ -28,6 +28,7 @@ use App\Models\TemuRPricing;
 use App\Models\TemuLmp;
 use App\Models\TemuListingStatus;
 use App\Models\TemuCampaignReport;
+use App\Services\TemuShopifySalesService;
 use App\Models\TemuBadgeDailyData;
 use App\Models\EbayMetric;
 use App\Models\MarketplaceDailyMetric;
@@ -1667,293 +1668,51 @@ class TemuController extends Controller
 
     /**
      * Get daily data for Temu tabulator (sales page).
-     * Order data is taken from temu_daily_data and matched by SKU (contribution_sku,
-     * normalized to ProductMaster SKU). LP and temu_ship come from ProductMaster.
+     * Source: apicentral.shopify_order_items — same Temu identification as /shopify-orders.
      */
     public function getDailyData(Request $request)
     {
         try {
-            $normalizeSku = function ($sku) {
-                $sku = strtoupper(trim((string) $sku));
-                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
-                $sku = preg_replace('/\s+/', ' ', $sku);
-                return $sku;
-            };
+            [$start, $end] = TemuShopifySalesService::tabulatorL30Window();
+            $result = TemuShopifySalesService::getDailyDataRows($start, $end);
 
-            // 1. Get ProductMaster SKUs (excluding PARENT) - same universe as analytic/decrease page
-            $productMasterSkus = ProductMaster::orderBy('parent', 'asc')
-                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-                ->orderBy('sku', 'asc')
-                ->pluck('sku')
-                ->filter(function ($sku) {
-                    return stripos($sku, 'PARENT') === false;
-                })
-                ->unique()
-                ->values()
-                ->all();
-
-            $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
-                return [$normalizeSku($s) => true];
-            })->all();
-
-            // 2. Include orders whose contribution_sku normalizes to a ProductMaster SKU (so "abc" matches "ABC")
-            $allowedRawSkus = TemuDailyData::select('contribution_sku')->distinct()
-                ->get()
-                ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
-                    return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
-                })
-                ->pluck('contribution_sku')
-                ->unique()
-                ->values()
-                ->all();
-
-            $allTemuData = TemuDailyData::whereIn('contribution_sku', $allowedRawSkus)
-                ->orderBy('purchase_date', 'desc')
-                ->orderBy('order_id', 'desc')
-                ->get();
-
-            Log::info('Temu data fetched', [
-                'total_records' => $allTemuData->count(),
-                'unique_skus_in_temu' => $allTemuData->pluck('contribution_sku')->unique()->count()
-            ]);
-
-            // 3. ProductMaster keyed by normalized SKU for lookup (order "abc" -> PM "ABC")
-            $productMasters = ProductMaster::whereIn('sku', $productMasterSkus)->get();
-            $pmByNormalized = $productMasters->keyBy(function ($pm) use ($normalizeSku) {
-                return $normalizeSku($pm->sku);
-            });
-
-            // 5. Build result array
-            $result = [];
-
-            foreach ($allTemuData as $item) {
-                $sku = $item->contribution_sku;
-                $pm = $pmByNormalized[$normalizeSku($sku ?? '')] ?? null;
-                
-                // Get parent from ProductMaster if available
-                $parent = $pm ? $pm->parent : '';
-                
-                // Extract LP and Temu Ship from ProductMaster Values (only if PM exists)
-                $lp = 0;
-                $temuShip = 0;
-                
-                if ($pm) {
-                    $values = is_array($pm->Values) 
-                        ? $pm->Values 
-                        : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    
-                    // Get LP
-                    foreach ($values as $k => $v) {
-                        if (strtolower($k) === "lp") {
-                            $lp = floatval($v);
-                            break;
-                        }
-                    }
-                    if ($lp === 0 && isset($pm->lp)) {
-                        $lp = floatval($pm->lp);
-                    }
-
-                    // Get Temu Ship
-                    $temuShip = isset($values["temu_ship"]) 
-                        ? floatval($values["temu_ship"]) 
-                        : (isset($pm->temu_ship) ? floatval($pm->temu_ship) : 0);
-                }
-                
-                // Get base price and quantity from Temu data
-                $basePrice = $item->base_price_total !== null ? (float)$item->base_price_total : 0;
-                $quantity = $item->quantity_purchased !== null ? (int)$item->quantity_purchased : 0;
-                $total = $basePrice * $quantity;
-                
-                // Calculate FB Price (if total < 27, add 2.99)
-                $fbPrice = $total < 27 ? ($basePrice + 2.99) : $basePrice;
-                // Calculate PFT = (FB Prc * 0.96 - LP - Temu Ship) * Quantity (margin 96)
-                $pft = ($fbPrice * 0.96 - $lp - $temuShip) * $quantity;
-
-                $row = [
-                    'Parent' => $parent,
-                    'contribution_sku' => $item->contribution_sku ?? '',
-                    'order_id' => $item->order_id ?? '',
-                    'product_name_by_customer_order' => $item->product_name_by_customer_order ?? '',
-                    'variation' => $item->variation ?? '',
-                    'quantity_purchased' => $quantity,
-                    'quantity_shipped' => (int)($item->quantity_shipped ?? 0),
-                    'quantity_to_ship' => (int)($item->quantity_to_ship ?? 0),
-                    'base_price_total' => $basePrice,
-                    'fb_price' => round($fbPrice, 2),
-                    'lp' => $lp,
-                    'temu_ship' => $temuShip,
-                    'pft' => round($pft, 2),
-                    'order_status' => $item->order_status ?? '',
-                    'fulfillment_mode' => $item->fulfillment_mode ?? '',
-                    'tracking_number' => $item->tracking_number ?? '',
-                    'carrier' => $item->carrier ?? '',
-                    'created_at' => $item->purchase_date ? $item->purchase_date->format('Y-m-d H:i:s') : null,
-                ];
-
-                $result[] = $row;
-            }
-
-            Log::info('Temu daily data fetched (exact count match)', [
+            Log::info('Temu daily data fetched from shopify_order_items', [
                 'result_count' => count($result),
-                'temu_data_count' => $allTemuData->count(),
-                'unique_temu_skus' => count($allowedRawSkus),
-                'product_master_matches' => $productMasters->count(),
-                'match_check' => count($result) === $allTemuData->count() ? 'MATCH' : 'MISMATCH'
             ]);
+
             return response()->json($result);
         } catch (\Exception $e) {
-            Log::error('Error fetching Temu daily data: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
+            Log::error('Error fetching Temu daily data from shopify_order_items: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json(['error' => 'Failed to fetch data: ' . $e->getMessage()], 500);
         }
     }
 
     /**
-     * Get daily data for Temu L60 tabulator (sales page). Same logic as getDailyData but uses temu_daily_data_l60.
+     * Get L60 daily data for Temu tabulator — prior 30-day shopify_order_items window.
      */
     public function getDailyDataL60(Request $request)
     {
         try {
-            $normalizeSku = function ($sku) {
-                $sku = strtoupper(trim((string) $sku));
-                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
-                $sku = preg_replace('/\s+/', ' ', $sku);
-                return $sku;
-            };
+            [$start, $end] = TemuShopifySalesService::channelMasterL60Window();
+            $result = TemuShopifySalesService::getDailyDataRows($start, $end);
 
-            // 1. Get ProductMaster SKUs (excluding PARENT) - same universe as analytic/decrease page
-            $productMasterSkus = ProductMaster::orderBy('parent', 'asc')
-                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-                ->orderBy('sku', 'asc')
-                ->pluck('sku')
-                ->filter(function ($sku) {
-                    return stripos($sku, 'PARENT') === false;
-                })
-                ->unique()
-                ->values()
-                ->all();
-
-            $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
-                return [$normalizeSku($s) => true];
-            })->all();
-
-            // 2. Include orders whose contribution_sku normalizes to a ProductMaster SKU (so "abc" matches "ABC")
-            $allowedRawSkus = TemuDailyDataL60::select('contribution_sku')->distinct()
-                ->get()
-                ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
-                    return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
-                })
-                ->pluck('contribution_sku')
-                ->unique()
-                ->values()
-                ->all();
-
-            $allTemuData = TemuDailyDataL60::whereIn('contribution_sku', $allowedRawSkus)
-                ->orderBy('purchase_date', 'desc')
-                ->orderBy('order_id', 'desc')
-                ->get();
-
-            Log::info('Temu L60 data fetched', [
-                'total_records' => $allTemuData->count(),
-                'unique_skus_in_temu' => $allTemuData->pluck('contribution_sku')->unique()->count()
-            ]);
-
-            // 3. ProductMaster keyed by normalized SKU for lookup (order "abc" -> PM "ABC")
-            $productMasters = ProductMaster::whereIn('sku', $productMasterSkus)->get();
-            $pmByNormalized = $productMasters->keyBy(function ($pm) use ($normalizeSku) {
-                return $normalizeSku($pm->sku);
-            });
-
-            // 5. Build result array
-            $result = [];
-
-            foreach ($allTemuData as $item) {
-                $sku = $item->contribution_sku;
-                $pm = $pmByNormalized[$normalizeSku($sku ?? '')] ?? null;
-                
-                // Get parent from ProductMaster if available
-                $parent = $pm ? $pm->parent : '';
-                
-                // Extract LP and Temu Ship from ProductMaster Values (only if PM exists)
-                $lp = 0;
-                $temuShip = 0;
-                
-                if ($pm) {
-                    $values = is_array($pm->Values) 
-                        ? $pm->Values 
-                        : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    
-                    // Get LP
-                    foreach ($values as $k => $v) {
-                        if (strtolower($k) === "lp") {
-                            $lp = floatval($v);
-                            break;
-                        }
-                    }
-                    if ($lp === 0 && isset($pm->lp)) {
-                        $lp = floatval($pm->lp);
-                    }
-
-                    // Get Temu Ship
-                    $temuShip = isset($values["temu_ship"]) 
-                        ? floatval($values["temu_ship"]) 
-                        : (isset($pm->temu_ship) ? floatval($pm->temu_ship) : 0);
-                }
-                
-                // Get base price and quantity from Temu data
-                $basePrice = $item->base_price_total !== null ? (float)$item->base_price_total : 0;
-                $quantity = $item->quantity_purchased !== null ? (int)$item->quantity_purchased : 0;
-                $total = $basePrice * $quantity;
-                
-                // Calculate FB Price (if total < 27, add 2.99)
-                $fbPrice = $total < 27 ? ($basePrice + 2.99) : $basePrice;
-                // Calculate PFT = (FB Prc * 0.96 - LP - Temu Ship) * Quantity (margin 96)
-                $pft = ($fbPrice * 0.96 - $lp - $temuShip) * $quantity;
-
-                $row = [
-                    'Parent' => $parent,
-                    'contribution_sku' => $item->contribution_sku ?? '',
-                    'order_id' => $item->order_id ?? '',
-                    'product_name_by_customer_order' => $item->product_name_by_customer_order ?? '',
-                    'variation' => $item->variation ?? '',
-                    'quantity_purchased' => $quantity,
-                    'quantity_shipped' => (int)($item->quantity_shipped ?? 0),
-                    'quantity_to_ship' => (int)($item->quantity_to_ship ?? 0),
-                    'base_price_total' => $basePrice,
-                    'fb_price' => round($fbPrice, 2),
-                    'lp' => $lp,
-                    'temu_ship' => $temuShip,
-                    'pft' => round($pft, 2),
-                    'order_status' => $item->order_status ?? '',
-                    'fulfillment_mode' => $item->fulfillment_mode ?? '',
-                    'tracking_number' => $item->tracking_number ?? '',
-                    'carrier' => $item->carrier ?? '',
-                    'created_at' => $item->purchase_date ? $item->purchase_date->format('Y-m-d H:i:s') : null,
-                ];
-
-                $result[] = $row;
-            }
-
-            Log::info('Temu L60 daily data fetched (exact count match)', [
+            Log::info('Temu L60 daily data fetched from shopify_order_items', [
                 'result_count' => count($result),
-                'temu_data_count' => $allTemuData->count(),
-                'unique_temu_skus' => count($allowedRawSkus),
-                'product_master_matches' => $productMasters->count(),
-                'match_check' => count($result) === $allTemuData->count() ? 'MATCH' : 'MISMATCH'
             ]);
+
             return response()->json($result);
         } catch (\Exception $e) {
-            Log::error('Error fetching Temu L60 daily data: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
+            Log::error('Error fetching Temu L60 daily data from shopify_order_items: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json(['error' => 'Failed to fetch data: ' . $e->getMessage()], 500);
         }
     }
 
-    /**
-     * Get daily data for Temu 2 tabulator (sales page). Same logic as getDailyData but uses temu2_daily_data.
-     */
     public function getTemu2DailyData(Request $request)
     {
         try {

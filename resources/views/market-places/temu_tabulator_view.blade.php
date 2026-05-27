@@ -151,7 +151,7 @@
                         <label for="dailyDataUploadPeriod" class="form-label">Upload for</label>
                         <select id="dailyDataUploadPeriod" class="form-select form-select-sm" style="width: auto;">
                             <option value="L30">L30 Sales (temu_daily_data)</option>
-                            <option value="L60">L60 Sales (temu_daily_data_l60)</option>
+                            <option value="L60">L60 Sales (shopify_order_items)</option>
                         </select>
                     </div>
                     <div class="mb-3">
@@ -388,12 +388,7 @@
                     mutator: function(value, data, type, params, component) {
                         const basePrice = parseFloat(data.base_price_total) || 0;
                         const quantity = parseInt(data.quantity_purchased) || 0;
-                        const total = basePrice * quantity;
-                        
-                        if (total < 27) {
-                            return (basePrice + 2.99).toFixed(2);
-                        }
-                        return basePrice.toFixed(2);
+                        return temuFbPrice(basePrice, quantity).toFixed(2);
                     }
                 },
                 {
@@ -456,25 +451,13 @@
                         return `<span style="color: ${color}; font-weight: bold;">$${parseFloat(value).toFixed(2)}</span>`;
                     },
                     mutator: function(value, data, type, params, component) {
-                        const fbPrice = parseFloat(data.fb_price || data.base_price_total) || 0;
                         const basePrice = parseFloat(data.base_price_total) || 0;
                         const quantity = parseInt(data.quantity_purchased) || 0;
-                        const total = basePrice * quantity;
-                        
-                        // Calculate FB Price first
-                        let calculatedFbPrice = fbPrice;
-                        if (total < 27) {
-                            calculatedFbPrice = basePrice + 2.99;
-                        } else {
-                            calculatedFbPrice = basePrice;
-                        }
-                        
+                        const fbPrice = temuFbPrice(basePrice, quantity);
                         const lp = parseFloat(data.lp) || 0;
                         const temuShip = parseFloat(data.temu_ship) || 0;
-                        // PFT % = (price * 0.96 - lp - temuship) / price; dollar total = pft * price * quantity (price = FB Prc)
-                        const pftDecimal = calculatedFbPrice > 0 ? (calculatedFbPrice * 0.96 - lp - temuShip) / calculatedFbPrice : 0;
-                        const pftDollars = pftDecimal * calculatedFbPrice * quantity;
-                        return pftDollars.toFixed(2);
+                        const pftDecimal = fbPrice > 0 ? (fbPrice * 0.96 - lp - temuShip) / fbPrice : 0;
+                        return (pftDecimal * fbPrice * quantity).toFixed(2);
                     }
                 },
                 {
@@ -493,19 +476,8 @@
                     mutator: function(value, data, type, params, component) {
                         const basePrice = parseFloat(data.base_price_total) || 0;
                         const quantity = parseInt(data.quantity_purchased) || 0;
-                        const total = basePrice * quantity;
-                        
-                        // Calculate FB Price
-                        let calculatedFbPrice;
-                        if (total < 27) {
-                            calculatedFbPrice = basePrice + 2.99;
-                        } else {
-                            calculatedFbPrice = basePrice;
-                        }
-                        
-                        // L30 Sales = Quantity * FB Prc
-                        const l30Sales = quantity * calculatedFbPrice;
-                        return l30Sales.toFixed(2);
+                        const fbPrice = temuFbPrice(basePrice, quantity);
+                        return (quantity * fbPrice).toFixed(2);
                     }
                 },
                 {
@@ -559,6 +531,22 @@
             table.setFilter("contribution_sku", "like", value);
         });
 
+        // FB Prc: +$2.99 per unit when line total (base × qty) is under $27
+        function temuFbPrice(basePrice, quantity) {
+            const base = parseFloat(basePrice) || 0;
+            const qty = parseInt(quantity) || 0;
+            if (qty <= 0 || base <= 0) {
+                return 0;
+            }
+            return (base * qty) < 27 ? base + 2.99 : base;
+        }
+
+        function temuLinePrice(row) {
+            const basePrice = parseFloat(row.base_price_total) || 0;
+            const quantity = parseInt(row.quantity_purchased) || 0;
+            return temuFbPrice(basePrice, quantity);
+        }
+
         // Update summary stats
         // Update summary stats (matching eBay pattern exactly)
         function updateSummary() {
@@ -586,13 +574,11 @@
                 totalOrders++;
                 const quantity = parseInt(row.quantity_purchased) || 0;
                 const basePrice = parseFloat(row.base_price_total) || 0;
+                const fbPrice = temuFbPrice(basePrice, quantity);
                 const lp = parseFloat(row.lp) || 0;
                 const temuShip = parseFloat(row.temu_ship) || 0;
                 
                 totalQuantity += quantity;
-                // Use fbPrice logic to match all-marketplace-master calculation
-                const total = basePrice * quantity;
-                const fbPrice = total < 27 ? basePrice + 2.99 : basePrice;
                 totalRevenue += fbPrice * quantity;
                 
                 if (quantity > 0 && basePrice > 0) {
@@ -600,15 +586,11 @@
                     totalQuantityForPrice += quantity;
                 }
                 
-                // Only include rows with sales in PFT / L30 Sales / COGS (same as Temu decrease & Amazon)
                 const hasSales = quantity > 0 && basePrice > 0;
                 if (hasSales) {
-                    const total = basePrice * quantity;
-                    const calculatedFbPrice = total < 27 ? basePrice + 2.99 : basePrice;  // FB Prc = price for PFT formula
-                    // PFT % = (price * 0.96 - lp - temuship) / price; dollar = pft * price * quantity
-                    const pftDecimal = calculatedFbPrice > 0 ? (calculatedFbPrice * 0.96 - lp - temuShip) / calculatedFbPrice : 0;
-                    totalPft += pftDecimal * calculatedFbPrice * quantity;
-                    totalL30Sales += quantity * calculatedFbPrice;
+                    const pftDecimal = fbPrice > 0 ? (fbPrice * 0.96 - lp - temuShip) / fbPrice : 0;
+                    totalPft += pftDecimal * fbPrice * quantity;
+                    totalL30Sales += quantity * fbPrice;
                     totalCogs += lp * quantity;
                 }
             });
@@ -766,9 +748,8 @@
                             const hasSales = quantity > 0 && basePrice > 0;
                             
                             if (hasSales) {
-                                const total = basePrice * quantity;
-                                const calculatedFbPrice = total < 27 ? basePrice + 2.99 : basePrice;
-                                totalL60Sales += quantity * calculatedFbPrice;
+                                const fbPrice = temuFbPrice(basePrice, quantity);
+                                totalL60Sales += quantity * fbPrice;
                             }
                         });
                         

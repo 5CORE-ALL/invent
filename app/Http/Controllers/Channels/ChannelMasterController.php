@@ -122,6 +122,7 @@ use App\Models\WalmartMetrics;
 use App\Models\AmazonListingStatus;
 use App\Models\EbayListingStatus;
 use App\Models\TemuListingStatus;
+use App\Services\TemuShopifySalesService;
 use App\Models\BestbuyUSAListingStatus;
 use App\Models\AmazonChannelSummary;
 use Carbon\Carbon;
@@ -307,13 +308,29 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * L30 sales summary for Temu / Temu 2 — same source as /temu-tabulator & /temu2-tabulator badges
-     * (TemuController::buildTemuDecreaseDataResponse sales_summary).
+     * L30 sales summary — Temu from shopify_order_items (/shopify-orders); Temu 2 from tabulator.
      *
      * @return array{total_orders: int, total_quantity: int, total_revenue: float}|null
      */
     private function getTemuLiveSalesSummaryFromTabulator(bool $isTemu2 = false): ?array
     {
+        if (! $isTemu2) {
+            try {
+                [$start, $end] = TemuShopifySalesService::tabulatorL30Window();
+                $m = TemuShopifySalesService::computeMetrics($start, $end);
+
+                return [
+                    'total_orders' => $m['orders'],
+                    'total_quantity' => $m['qty'],
+                    'total_revenue' => $m['sales'],
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('Temu shopify live sales summary failed: '.$e->getMessage());
+
+                return null;
+            }
+        }
+
         try {
             $req = Request::create($isTemu2 ? '/temu2-decrease-data' : '/temu-decrease-data', 'GET');
             $temuCtrl = app(\App\Http\Controllers\MarketPlace\TemuController::class);
@@ -467,7 +484,23 @@ class ChannelMasterController extends Controller
      */
     private function resolveTemuL60SalesAndOrders(bool $isTemu2): array
     {
-        $channelKey = $isTemu2 ? 'temu2' : 'temu';
+        if (! $isTemu2) {
+            try {
+                [$start, $end] = TemuShopifySalesService::channelMasterL60Window();
+                $m = TemuShopifySalesService::computeMetrics($start, $end);
+
+                return [
+                    'sales' => (float) $m['sales'],
+                    'orders' => (int) $m['orders'],
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('Temu shopify L60 failed: '.$e->getMessage());
+
+                return ['sales' => 0.0, 'orders' => 0];
+            }
+        }
+
+        $channelKey = 'temu2';
         $l60Sales = 0.0;
         $l60Orders = 0;
 
@@ -3655,7 +3688,11 @@ class ChannelMasterController extends Controller
      */
     private function computeTemuYSalesLikeAmazon(bool $isTemu2): ?float
     {
-        $modelClass = $isTemu2 ? Temu2DailyData::class : TemuDailyData::class;
+        if (! $isTemu2) {
+            return TemuShopifySalesService::computeYSales();
+        }
+
+        $modelClass = Temu2DailyData::class;
 
         try {
             $latest = $modelClass::whereNotNull('purchase_date')->max('purchase_date');
@@ -4324,7 +4361,11 @@ class ChannelMasterController extends Controller
      */
     private function computeTemuL7SalesLikeAmazon(bool $isTemu2): ?float
     {
-        $modelClass = $isTemu2 ? Temu2DailyData::class : TemuDailyData::class;
+        if (! $isTemu2) {
+            return TemuShopifySalesService::computeL7Sales();
+        }
+
+        $modelClass = Temu2DailyData::class;
 
         try {
             $latest = $modelClass::whereNotNull('purchase_date')->max('purchase_date');
@@ -6804,94 +6845,38 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated by UpdateMarketplaceDailyMetrics)
-        $metrics = MarketplaceDailyMetric::where('channel', 'Temu')->latest('date')->first();
+        // L30 / L60 from shopify_order_items (apicentral) — same Temu identification as /shopify-orders.
+        [$l30Start, $l30End] = TemuShopifySalesService::tabulatorL30Window();
+        [$l60Start, $l60End] = TemuShopifySalesService::channelMasterL60Window();
+        $l30 = TemuShopifySalesService::computeMetrics($l30Start, $l30End);
+        $l60 = TemuShopifySalesService::computeMetrics($l60Start, $l60End);
 
-        // When no metrics yet (cron not run or no Temu daily data), return defaults so the page doesn't break
-        if (!$metrics) {
-            $channelData = ChannelMaster::where('channel', 'Temu')->first();
-            $mapMissCounts = $this->getTemuLiveMapMissNMapFromDecreaseData(false);
-            $result[] = [
-                'Channel '   => 'Temu',
-                'L-60 Sales' => 0,
-                'L30 Sales'  => 0,
-                'Growth'     => '0%',
-                'L60 Orders' => 0,
-                'L30 Orders' => 0,
-                'Qty'        => 0,
-                'Gprofit%'   => '0%',
-                'gprofitL60' => '0%',
-                'G Roi'      => 0,
-                'G RoiL60'   => 0,
-                'Total PFT'  => 0,
-                'N PFT'      => '0%',
-                'N ROI'      => '0%',
-                'KW Spent'   => 0,
-                'PT Spent'   => 0,
-                'HL Spent'   => 0,
-                'PMT Spent'  => 0,
-                'Shopping Spent' => 0,
-                'SERP Spent' => 0,
-                'Total Ad Spend' => 0,
-                'Ads%'       => '0%',
-                'TACOS %'    => '0%',
-                'type'       => $channelData->type ?? '',
-                'W/Ads'      => $channelData->w_ads ?? 0,
-                'NR'         => $channelData->nr ?? 0,
-                'Update'     => $channelData->update ?? 0,
-                'cogs'       => 0,
-                'Map'        => $mapMissCounts['map'],
-                'Miss'       => $mapMissCounts['miss'],
-                'NMap'       => $mapMissCounts['nmap'],
-                'Total Views' => $mapMissCounts['total_views'] ?? 0,
-                ...$this->getChannelHealthAndReviewsStub(),
-            ];
-            return response()->json([
-                'status' => 200,
-                'message' => 'Temu channel data (no metrics yet – run app:update-marketplace-daily-metrics)',
-                'data' => $result,
-            ]);
-        }
+        $l30Sales = $l30['sales'];
+        $l30Orders = $l30['orders'];
+        $totalQuantity = $l30['qty'];
+        $totalProfit = $l30['pft'];
+        $totalCogs = $l30['cogs'];
+        $l60Sales = $l60['sales'];
+        $l60Orders = $l60['orders'];
 
-        // L60: uploaded temu_daily_data_l60 first (matches /temu-tabulator L60 badge), else historical snapshot.
-        $l60Resolved = $this->resolveTemuL60SalesAndOrders(false);
-        $l60Sales = $l60Resolved['sales'];
-        $l60Orders = $l60Resolved['orders'];
+        $gProfitPct = $l30Sales > 0 ? round(($totalProfit / $l30Sales) * 100, 2) : 0.0;
+        $gRoi = $totalCogs > 0 ? round(($totalProfit / $totalCogs) * 100, 2) : 0.0;
+        $gprofitL60 = $l60Sales > 0 ? round(($l60['pft'] / $l60Sales) * 100, 2) : 0.0;
+        $gRoiL60 = $l60['cogs'] > 0 ? round(($l60['pft'] / $l60['cogs']) * 100, 2) : 0.0;
 
-        // L30 sales/orders/qty: live from tabulator (same as /temu-tabulator badge), not stale metrics cache.
-        $liveSales = $this->getTemuLiveSalesSummaryFromTabulator(false);
-        $l30Sales = $liveSales ? ($liveSales['total_revenue'] ?? 0) : ($metrics->total_sales ?? 0);
-        $l30Orders = $liveSales ? ($liveSales['total_orders'] ?? 0) : ($metrics->total_orders ?? 0);
-        $totalQuantity = $liveSales ? ($liveSales['total_quantity'] ?? 0) : ($metrics->total_quantity ?? 0);
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
-        $tacosPercentage = $metrics->tacos_percentage ?? 0;
-        $nPft = $metrics->n_pft ?? $gProfitPct;
-        $nRoi = $metrics->n_roi ?? $gRoi;
-        $temuSpent = $metrics->kw_spent ?? 0; // Temu ad spend is stored in kw_spent field
-
-        // Use same ad metrics source as temu_decrease badge logic.
         $temuAdMetrics = $this->fetchAdMetricsFromTables('temu');
         $totalAdSpend = (float) ($temuAdMetrics['Total Ad Spend'] ?? $this->fetchTotalAdSpendFromTables('temu'));
-        
-        // Calculate growth: ((L30 - L60) / L60) * 100
-        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
-        
-        // L60 profit percentage
-        $gprofitL60 = 0;
-        $gRoiL60 = 0;
-
-        // Ads% should match Temu page badge value.
+        $tacosPercentage = $l30Sales > 0 ? round(($totalAdSpend / $l30Sales) * 100, 2) : 0.0;
         $adsPercentage = isset($temuAdMetrics['Ads%'])
             ? (float) $temuAdMetrics['Ads%']
-            : ($l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0);
+            : $tacosPercentage;
+        $nPft = round($gProfitPct - $tacosPercentage, 2);
+        $netProfit = $totalProfit - $totalAdSpend;
+        $nRoi = $totalCogs > 0 ? round(($netProfit / $totalCogs) * 100, 2) : 0.0;
 
-        // Channel data
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
+
         $channelData = ChannelMaster::where('channel', 'Temu')->first();
-
-        // Map / Miss / NMap: same live rules as /temu-decrease (not amazon_channel_summary snapshot)
         $mapMissCounts = $this->getTemuLiveMapMissNMapFromDecreaseData(false);
 
         $result[] = [
@@ -6909,7 +6894,7 @@ class ChannelMasterController extends Controller
             'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
             'N ROI'      => round($nRoi, 2),
-            'KW Spent'   => $totalAdSpend, // Temu KW ad spend from temu_campaign_reports
+            'KW Spent'   => $totalAdSpend,
             'PT Spent'   => 0,
             'HL Spent'   => 0,
             'PMT Spent'  => 0,
@@ -6932,7 +6917,7 @@ class ChannelMasterController extends Controller
 
         return response()->json([
             'status' => 200,
-            'message' => 'Temu channel data fetched successfully',
+            'message' => 'Temu channel data fetched successfully (from shopify_order_items)',
             'data' => $result,
         ]);
     }

@@ -6,7 +6,6 @@ use Illuminate\Console\Command;
 use App\Models\MarketplaceDailyMetric;
 use App\Models\EbayOrder;
 use App\Models\Ebay2Order;
-use App\Models\TemuDailyData;
 use App\Models\TemuAdData;
 use App\Models\TemuCampaignReport;
 use App\Models\Temu2DailyData;
@@ -29,6 +28,7 @@ use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\ChannelMaster;
 use App\Http\Controllers\Sales\AmazonSalesController;
+use App\Services\TemuShopifySalesService;
 use App\Models\AmazonOrder;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\EbayPromotedListingReport;
@@ -840,185 +840,43 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateTemuMetrics($date)
     {
-        // Normalize SKU for matching (same as TemuController / temu-decrease)
-        $normalizeSku = function ($sku) {
-            $sku = strtoupper(trim((string) $sku));
-            $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
-            $sku = preg_replace('/\s+/', ' ', $sku);
-            return $sku;
-        };
+        [$start, $end] = TemuShopifySalesService::tabulatorL30Window();
+        $m = TemuShopifySalesService::computeMetrics($start, $end);
 
-        // Get ProductMaster SKUs (excluding PARENT) - same universe as temu-tabulator
-        $productMasterSkus = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy('sku', 'asc')
-            ->pluck('sku')
-            ->filter(function ($sku) {
-                return stripos($sku, 'PARENT') === false;
-            })
-            ->unique()
-            ->values()
-            ->all();
-
-        // Normalized PM SKU set + no-space fallback map — MUST mirror temu-tabulator's
-        // salesSummary loop in TemuController::buildTemuDecreaseDataResponse, otherwise the
-        // L30 total on /all-marketplace-master drifts from the badge on /temu-tabulator.
-        $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
-            return [$normalizeSku($s) => true];
-        })->all();
-        $noSpaceToNormalized = [];
-        foreach (array_keys($normalizedPmSet) as $nk) {
-            $noSpace = str_replace(' ', '', $nk);
-            if ($noSpace !== '') {
-                $noSpaceToNormalized[$noSpace] = $nk;
-            }
-        }
-
-        // Pull every Temu daily row and filter in-PHP using the same two-tier match
-        // (normalized exact, then no-space fallback) the tabulator uses. We can't use
-        // the previous whereIn() pre-filter because it dropped rows that only matched
-        // via the no-space fallback (≈$400 / 5 orders missing on Temu as of 2026-05-23).
-        $data = TemuDailyData::all();
-
-        if ($data->isEmpty()) {
+        if ($m['sales'] <= 0 && $m['qty'] <= 0) {
             return null;
         }
 
-        // Get ProductMaster keyed by normalized SKU (so order contribution_sku matches PM sku)
-        $allPms = ProductMaster::all();
-        $productMastersBySku = $allPms->keyBy('sku');
-        $productMastersByNormalized = $allPms->keyBy(function ($pm) use ($normalizeSku) {
-            return $normalizeSku($pm->sku ?? '');
-        });
-        $productMastersByNoSpace = $allPms->keyBy(function ($pm) use ($normalizeSku) {
-            return str_replace(' ', '', $normalizeSku($pm->sku ?? ''));
-        });
-
-        // Read Temu margin from marketplace_percentages (fallback 0.96)
-        $mp = MarketplacePercentage::where('marketplace', 'Temu')->first();
-        $percentage = $mp && $mp->percentage ? ($mp->percentage / 100) : 0.96;
-
-        $totalOrders = 0;
-        $totalQuantity = 0;
-        $totalRevenue = 0;
-        $totalL30Sales = 0;
-        $totalCogs = 0;
-        $totalPft = 0;
-        $totalWeightedPrice = 0;
-        $totalQuantityForPrice = 0;
-
-        foreach ($data as $row) {
-            // Skip rows with empty SKU or order_id (match temu-tabulator logic)
-            $rawSku  = trim((string) ($row->contribution_sku ?? ''));
-            $orderId = trim((string) ($row->order_id ?? ''));
-            if ($rawSku === '' || $orderId === '') {
-                continue;
-            }
-
-            // Match this order row to the ProductMaster universe exactly the way the
-            // temu-tabulator badge does: normalized → no-space fallback. Skip otherwise.
-            $normalizedRowSku        = $normalizeSku($rawSku);
-            $normalizedRowSkuNoSpace = str_replace(' ', '', $normalizedRowSku);
-            if (!isset($normalizedPmSet[$normalizedRowSku])
-                && !isset($noSpaceToNormalized[$normalizedRowSkuNoSpace])) {
-                continue;
-            }
-
-            // Look up ProductMaster (same three-tier strategy as the SKU match above)
-            $pm = $productMastersBySku[$rawSku]
-                ?? $productMastersByNormalized[$normalizedRowSku]
-                ?? $productMastersByNoSpace[$normalizedRowSkuNoSpace]
-                ?? null;
-
-            $totalOrders++;
-            $quantity  = (int)   ($row->quantity_purchased ?? 0);
-            $basePrice = (float) ($row->base_price_total ?? 0);
-
-            $totalQuantity += $quantity;
-
-            $total   = $basePrice * $quantity;
-            $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
-
-            // Revenue / L30 Sales: include every matched row (no hasSales gate). This is
-            // the value rendered as "Sales" on /all-marketplace-master and must agree
-            // with /temu-tabulator's sales summary card.
-            $totalRevenue  += $fbPrice * $quantity;
-            $totalL30Sales += $fbPrice * $quantity;
-
-            if ($quantity > 0 && $basePrice > 0) {
-                $totalWeightedPrice += $basePrice * $quantity;
-                $totalQuantityForPrice += $quantity;
-            }
-
-            // Get LP and temu_ship from ProductMaster (already fetched above as $pm)
-            $lp = 0;
-            $temuShip = 0;
-
-            if ($pm) {
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                foreach ($values as $k => $v) {
-                    if (strtolower($k) === "lp") {
-                        $lp = floatval($v);
-                        break;
-                    }
-                }
-                if ($lp === 0 && isset($pm->lp)) {
-                    $lp = floatval($pm->lp);
-                }
-                if (isset($values['temu_ship'])) {
-                    $temuShip = floatval($values['temu_ship']);
-                } elseif (isset($pm->temu_ship)) {
-                    $temuShip = floatval($pm->temu_ship);
-                }
-            }
-
-            // PFT/COGS only accumulate on rows with real qty + price (price=0 would
-            // divide by zero in the per-row PFT% calculation below).
-            if ($quantity > 0 && $basePrice > 0) {
-                // PFT % = (price * Temu margin - lp - temuship) / price; dollar = pft * price * quantity (price = FB Prc)
-                $pftDecimal = $fbPrice > 0 ? ($fbPrice * $percentage - $lp - $temuShip) / $fbPrice : 0;
-                $totalPft  += $pftDecimal * $fbPrice * $quantity;
-                $totalCogs += $lp * $quantity;
-            }
-        }
-
-        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
-        // PFT % = (Total PFT / L30 Sales) * 100 — same as temu tabulator (price * margin - lp - temuship) / price
+        $totalL30Sales = $m['sales'];
+        $totalPft = $m['pft'];
+        $totalCogs = $m['cogs'];
         $pftPercentage = $totalL30Sales > 0 ? ($totalPft / $totalL30Sales) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
-        // Calculate Temu Ad Spend (from temu_campaign_reports table, L30)
-        // Match the logic used in getTemuDecreaseData and fetchAdMetricsFromTables
         $temuSpent = TemuCampaignReport::where('report_range', 'L30')
             ->selectRaw('SUM(spend) as total_spend')
             ->value('total_spend') ?? 0;
 
-        // Calculate TACOS %: (Temu Spent / Total Sales) * 100
         $tacosPercentage = $totalL30Sales > 0 ? ($temuSpent / $totalL30Sales) * 100 : 0;
-
-        // Calculate N PFT: GPFT % - TACOS %
         $nPftPercentage = $pftPercentage - $tacosPercentage;
-
-        // Calculate N ROI: (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
         $netProfit = $totalPft - $temuSpent;
         $nRoiPercentage = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
 
         return [
-            'total_orders' => $totalOrders,
-            'total_quantity' => $totalQuantity,
-            'total_revenue' => $totalRevenue,
+            'total_orders' => $m['orders'],
+            'total_quantity' => $m['qty'],
+            'total_revenue' => $totalL30Sales,
             'total_sales' => $totalL30Sales,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
             'pft_percentage' => $pftPercentage,
             'roi_percentage' => $roiPercentage,
-            'avg_price' => $avgPrice,
+            'avg_price' => $m['qty'] > 0 ? round($totalL30Sales / $m['qty'], 2) : 0,
             'l30_sales' => $totalL30Sales,
-            'kw_spent' => round($temuSpent, 2), // Store Temu ad spend in kw_spent field
-            'pmt_spent' => 0, // Temu doesn't have separate PMT
+            'kw_spent' => round($temuSpent, 2),
+            'pmt_spent' => 0,
             'tacos_percentage' => round($tacosPercentage, 1),
-            'ads_percentage' => round($tacosPercentage, 1), // Add ads_percentage for Temu (same as TACOS)
+            'ads_percentage' => round($tacosPercentage, 1),
             'n_pft' => round($nPftPercentage, 1),
             'n_roi' => round($nRoiPercentage, 1),
         ];
