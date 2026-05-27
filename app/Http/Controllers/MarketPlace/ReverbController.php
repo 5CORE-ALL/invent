@@ -710,12 +710,16 @@ class ReverbController extends Controller
     {
         try {
             $response = $this->getViewReverbTabularData($request);
-            $data = json_decode($response->getContent(), true);
+            $payload = json_decode($response->getContent(), true);
+            $rows = $payload['data'] ?? [];
 
             // Auto-save daily summary in background (non-blocking)
-            $this->saveDailySummaryIfNeeded($data['data'] ?? []);
+            $this->saveDailySummaryIfNeeded($rows);
 
-            return response()->json($data['data'] ?? []);
+            return response()->json([
+                'data' => $rows,
+                'map_miss_summary' => $this->computeReverbMapMissCounts($rows),
+            ]);
         } catch (\Exception $e) {
             Log::error('Error fetching Reverb data for Tabulator: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to fetch data'], 500);
@@ -1429,6 +1433,58 @@ class ReverbController extends Controller
             // Don't break the main response if summary save fails
             Log::error('Error saving daily Reverb summary: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Missing L / Map / NMap totals — same rules as reverb-pricing badges and all-marketplace-master.
+     */
+    public function computeReverbMapMissCounts(array $rows): array
+    {
+        $map = 0;
+        $miss = 0;
+        $nmap = 0;
+        $views = 0;
+
+        foreach ($rows as $row) {
+            if (is_object($row)) {
+                $row = (array) $row;
+            }
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $parent = trim((string) ($row['Parent'] ?? ''));
+            if ($parent !== '' && str_starts_with(strtoupper($parent), 'PARENT')) {
+                continue;
+            }
+
+            $inv = (float) ($row['INV'] ?? 0);
+            $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
+            $isReq = ($nrReq === 'REQ');
+            $isMissing = (($row['Missing'] ?? '') === 'M');
+
+            if ($isMissing && $isReq && $inv > 0) {
+                $miss++;
+            }
+
+            if ($isReq && $inv > 0 && ! $isMissing) {
+                $mapValue = (string) ($row['MAP'] ?? '');
+                if ($mapValue === 'Map') {
+                    $map++;
+                    $views += (int) ($row['Views'] ?? 0);
+                } elseif (str_contains($mapValue, 'N Map|')) {
+                    $nmap++;
+                    $views += (int) ($row['Views'] ?? 0);
+                }
+            }
+        }
+
+        return [
+            'map' => $map,
+            'miss' => $miss,
+            'nmap' => $nmap,
+            'total_views' => $views,
+        ];
     }
 
     /**

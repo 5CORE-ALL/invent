@@ -889,6 +889,15 @@
         table = new Tabulator("#reverb-table", {
             ajaxURL: "/reverb-data-json",
             ajaxSorting: false,
+            ajaxResponse: function(url, params, response) {
+                if (response && response.map_miss_summary) {
+                    applyMapMissSummary(response.map_miss_summary);
+                }
+                if (response && Array.isArray(response.data)) {
+                    return response.data;
+                }
+                return response;
+            },
             layout: "fitDataStretch",
             pagination: true,
             paginationSize: 100,
@@ -1772,17 +1781,41 @@
                 });
         }
 
+        // Full table rows (ignore Tabulator filters — used when server summary unavailable)
+        function getSummaryRows() {
+            if (!table) return [];
+            const rows = table.getRows();
+            const data = (rows && rows.length)
+                ? rows.map(r => r.getData())
+                : (table.getData() || []);
+            return data.filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+        }
+
+        // Filtered rows for GPFT / sold / Amz badges
+        function getFilteredSummaryRows() {
+            if (!table) return [];
+            const rows = table.getRows('active');
+            const data = (rows && rows.length)
+                ? rows.map(r => r.getData())
+                : (table.getData('active') || []);
+            return data.filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+        }
+
+        // Server counts for Missing L / Map / N Map (matches all-marketplace-master)
+        function applyMapMissSummary(summary) {
+            if (!summary) return;
+            $('#missing-count-badge').text('Missing L: ' + (parseInt(summary.miss, 10) || 0).toLocaleString());
+            $('#map-count-badge').text('Map: ' + (parseInt(summary.map, 10) || 0).toLocaleString());
+            $('#inv-r-stock-badge').text('N Map: ' + (parseInt(summary.nmap, 10) || 0).toLocaleString());
+        }
+
         // Update summary badges
         function updateSummary() {
-            const data = table.getData('active').filter(row => {
-                // Don't filter by INV for summary - respect the dropdown filter instead
-                return !(row.Parent && row.Parent.startsWith('PARENT'));
-            });
+            const data = getFilteredSummaryRows();
 
             let totalGpft = 0;
             let zeroSoldCount = 0, moreSoldCount = 0;
             let lessAmzCount = 0, moreAmzCount = 0;
-            let missingCount = 0, mapCount = 0, invRStockCount = 0;
             let totalRdQty = 0, totalRdCogs = 0, totalRdSales = 0;
             let totalRevenueQtyPrice = 0;
             let totalProfitLive = 0;
@@ -1825,25 +1858,6 @@
                 if (amzPrice > 0 && rvPrice > 0 && rvPrice > amzPrice) {
                     moreAmzCount++;
                 }
-                
-                const inv = parseFloat(row['INV']) || 0;
-                const nrReq = row['nr_req'] || 'REQ';
-                const isMissing = row['Missing'] === 'M';
-                
-                // Count Missing (only REQ items with INV > 0)
-                if (isMissing && nrReq === 'REQ' && inv > 0) {
-                    missingCount++;
-                }
-                
-                const mapValue = row['MAP'] || '';
-                // Count Map / N Map (only REQ items with INV > 0 and NOT Missing)
-                if (nrReq === 'REQ' && inv > 0 && !isMissing) {
-                    if (mapValue === 'Map') {
-                        mapCount++;
-                    } else if (mapValue.includes('N Map|')) {
-                        invRStockCount++;
-                    }
-                }
             });
 
             const avgGpftListing = data.length > 0 ? totalGpft / data.length : 0;
@@ -1878,9 +1892,6 @@
             );
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount}`);
-            $('#missing-count-badge').text(`Missing L: ${missingCount.toLocaleString()}`);
-            $('#map-count-badge').text(`Map: ${mapCount.toLocaleString()}`);
-            $('#inv-r-stock-badge').text('N Map: ' + invRStockCount.toLocaleString());
         }
 
         // Build Column Visibility Dropdown

@@ -947,51 +947,8 @@ class ChannelMasterController extends Controller
                 return $this->getMapAndMissCounts('reverb');
             }
 
-            $map = 0;
-            $miss = 0;
-            $nmap = 0;
-            $views = 0;
-
-            foreach ($rows as $row) {
-                if (is_object($row)) {
-                    $row = (array) $row;
-                }
-                if (! is_array($row)) {
-                    continue;
-                }
-
-                $parent = trim((string) ($row['Parent'] ?? ''));
-                if ($parent !== '' && str_starts_with(strtoupper($parent), 'PARENT')) {
-                    continue;
-                }
-
-                $inv = (float) ($row['INV'] ?? 0);
-                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
-                $isReq = ($nrReq === 'REQ');
-                $isMissing = (($row['Missing'] ?? '') === 'M');
-
-                if ($isMissing && $isReq && $inv > 0) {
-                    $miss++;
-                }
-
-                if ($isReq && $inv > 0 && ! $isMissing) {
-                    $mapValue = (string) ($row['MAP'] ?? '');
-                    if ($mapValue === 'Map') {
-                        $map++;
-                        $views += (int) ($row['Views'] ?? 0);
-                    } elseif (str_contains($mapValue, 'N Map|')) {
-                        $nmap++;
-                        $views += (int) ($row['Views'] ?? 0);
-                    }
-                }
-            }
-
-            return [
-                'map' => $map,
-                'miss' => $miss,
-                'nmap' => $nmap,
-                'total_views' => $views,
-            ];
+            return app(\App\Http\Controllers\MarketPlace\ReverbController::class)
+                ->computeReverbMapMissCounts($rows);
         } catch (\Throwable $e) {
             Log::warning('Reverb live map/miss/nmap fallback: ' . $e->getMessage());
 

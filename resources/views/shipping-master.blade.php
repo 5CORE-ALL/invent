@@ -1926,10 +1926,52 @@
             /** 1–15 oz upper limits (lb) from conversion table. */
             const WT_ACT_OZ_LB_UPPER = [0.06, 0.13, 0.19, 0.25, 0.31, 0.38, 0.44, 0.50, 0.56, 0.63, 0.69, 0.75, 0.81, 0.88, 0.94];
 
-            /** Upward bands (lb); labels show oz range + converted lb. */
+            /** Oz bands shown in Item WT ACT (LB) filter dropdown. */
+            const WT_ACT_OZ_FILTER_OPTIONS = [2, 4, 6, 8, 12, 15];
+
+            /** Custom oz slab ranges (oz min/max); others use adjacent table limits. */
+            const WT_ACT_OZ_FILTER_SLABS = {
+                2: { ozMin: 0.01, ozMax: 2 },
+                4: { ozMin: 2.01, ozMax: 4 },
+                6: { ozMin: 4.01, ozMax: 6 },
+                8: { ozMin: 6.01, ozMax: 8 },
+                12: { ozMin: 8.01, ozMax: 12 },
+            };
+
+            const WT_ACT_OZ_1599_SLAB = { ozMin: 12.01, ozMax: 15.99 };
+
+            function wtActOzFilterSlabBounds(oz) {
+                const custom = WT_ACT_OZ_FILTER_SLABS[oz];
+                if (custom) {
+                    return {
+                        ozMin: custom.ozMin,
+                        ozMax: custom.ozMax,
+                        lbMin: custom.ozMin === 0.01 ? 0.01 : custom.ozMin / 16,
+                        lbMax: custom.ozMax / 16,
+                    };
+                }
+                return {
+                    ozMin: oz - 1,
+                    ozMax: oz,
+                    lbMin: WT_ACT_OZ_LB_UPPER[oz - 2],
+                    lbMax: WT_ACT_OZ_LB_UPPER[oz - 1],
+                };
+            }
+
+            function wtActOzFilterSlabLabel(oz) {
+                const b = wtActOzFilterSlabBounds(oz);
+                return `${b.ozMin}–${b.ozMax} oz (${wtActOzToLb(b.ozMin)} – ${wtActOzToLb(b.ozMax)} lb)`;
+            }
+
+            function wtActOz1599SlabLabel() {
+                const s = WT_ACT_OZ_1599_SLAB;
+                return `${s.ozMin}–${s.ozMax} oz (${wtActOzToLb(s.ozMin)} – ${wtActOzToLb(s.ozMax)} lb)`;
+            }
+
+            /** Upward bands (lb); labels show oz range + converted lb unless `label` is set. */
             const WT_ACT_UPWARD_LB_BANDS = [
-                { key: 'lb_101_2', lbMin: 1.01, lbMax: 2 },
-                { key: 'lb_201_3', lbMin: 2.01, lbMax: 3 },
+                { key: 'lb_101_2', lbMin: 1, lbMax: 2, label: '1 lb – 2 lb' },
+                { key: 'lb_201_3', lbMin: 2.01, lbMax: 3, label: '2.01 lb – 3 lb' },
                 { key: 'lb_301_4', lbMin: 3.01, lbMax: 4 },
                 { key: 'lb_401_5', lbMin: 4.01, lbMax: 5 },
                 { key: 'lb_501_6', lbMin: 5.01, lbMax: 6 },
@@ -1966,6 +2008,7 @@
             }
 
             function wtActUpwardBandLabel(band, index) {
+                if (band.label) return band.label;
                 if (band.lbMax === null) {
                     const ozMin = Math.floor(wtActUpwardBandPrevMaxLb(index) * 16) + 1;
                     return `> ${ozMin} oz (> ${wtActOzToLb(ozMin)} lb)`;
@@ -1988,33 +2031,42 @@
                     sel.appendChild(o);
                 };
                 add('lb_0', '0 lb');
-                for (let oz = 1; oz <= 15; oz++) {
-                    add(`oz_${oz}`, `${oz} oz (${WT_ACT_OZ_LB_UPPER[oz - 1]} lb)`);
-                }
-                add('oz_1599', `15.99 oz (${wtActOzToLb(15.99)} lb)`);
+                WT_ACT_OZ_FILTER_OPTIONS.forEach(oz => {
+                    add(`oz_${oz}`, wtActOzFilterSlabLabel(oz));
+                });
+                add('oz_1599', wtActOz1599SlabLabel());
                 WT_ACT_UPWARD_LB_BANDS.forEach((b, i) => add(b.key, wtActUpwardBandLabel(b, i)));
             }
 
             function matchesWtActOzLbBand(w, band) {
                 if (band === 'oz_1599') {
-                    return w > 0.94 && w <= 1;
+                    const s = WT_ACT_OZ_1599_SLAB;
+                    return w >= s.ozMin / 16 && w <= s.ozMax / 16;
                 }
                 const m = /^oz_(\d+)$/.exec(band);
                 if (!m) return false;
                 const oz = parseInt(m[1], 10);
                 if (oz < 1 || oz > 15) return false;
-                const upper = WT_ACT_OZ_LB_UPPER[oz - 1];
-                if (oz === 1) return w >= 0.01 && w <= upper;
-                const lower = WT_ACT_OZ_LB_UPPER[oz - 2];
-                return w > lower && w <= upper;
+                const b = wtActOzFilterSlabBounds(oz);
+                if (WT_ACT_OZ_FILTER_SLABS[oz]) {
+                    return w >= b.lbMin && w <= b.lbMax;
+                }
+                if (oz === 1) return w >= 0.01 && w <= b.lbMax;
+                return w > b.lbMin && w <= b.lbMax;
             }
 
             function matchesWtActUpwardLbBand(w, band) {
                 const idx = WT_ACT_UPWARD_LB_BANDS.findIndex(b => b.key === band);
                 if (idx === -1) return false;
                 const def = WT_ACT_UPWARD_LB_BANDS[idx];
+                if (def.lbMax === null) {
+                    const lower = def.lbMin != null ? def.lbMin : wtActUpwardBandPrevMaxLb(idx);
+                    return def.lbMin != null ? w >= lower : w > lower;
+                }
+                if (def.lbMin != null) {
+                    return w >= def.lbMin && w <= def.lbMax;
+                }
                 const lowerExclusive = wtActUpwardBandPrevMaxLb(idx);
-                if (def.lbMax === null) return w > lowerExclusive;
                 return w > lowerExclusive && w <= def.lbMax;
             }
 
