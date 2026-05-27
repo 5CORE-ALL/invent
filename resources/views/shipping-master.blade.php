@@ -1927,18 +1927,17 @@
             const WT_ACT_OZ_LB_UPPER = [0.06, 0.13, 0.19, 0.25, 0.31, 0.38, 0.44, 0.50, 0.56, 0.63, 0.69, 0.75, 0.81, 0.88, 0.94];
 
             /** Oz bands shown in Item WT ACT (LB) filter dropdown. */
-            const WT_ACT_OZ_FILTER_OPTIONS = [2, 4, 6, 8, 12, 15];
+            const WT_ACT_OZ_FILTER_OPTIONS = [2, 4, 6, 12];
 
             /** Custom oz slab ranges (oz min/max); others use adjacent table limits. */
             const WT_ACT_OZ_FILTER_SLABS = {
-                2: { ozMin: 0.01, ozMax: 2 },
-                4: { ozMin: 2.01, ozMax: 4 },
-                6: { ozMin: 4.01, ozMax: 6 },
-                8: { ozMin: 6.01, ozMax: 8 },
-                12: { ozMin: 8.01, ozMax: 12 },
+                2: { ozMin: 0.01, ozMax: 2, label: '0.01–2 oz (0.01 – 0.125 lb)' },
+                4: { ozMin: 2.01, ozMax: 4, label: '2.01–4 oz (0.126 – 0.25 lb)' },
+                6: { ozMin: 4.01, ozMax: 8, label: '4.01–8 oz (0.251 – 0.5 lb)' },
+                12: { ozMin: 8.01, ozMax: 12, label: '8.01–12 oz (0.51 – 0.75 lb)' },
             };
 
-            const WT_ACT_OZ_1599_SLAB = { ozMin: 12.01, ozMax: 15.99 };
+            const WT_ACT_OZ_1599_SLAB = { ozMin: 12.01, ozMax: 15.99, label: '12.01–15.99 oz (0.751 – 1 lb)' };
 
             function wtActOzFilterSlabBounds(oz) {
                 const custom = WT_ACT_OZ_FILTER_SLABS[oz];
@@ -1959,12 +1958,15 @@
             }
 
             function wtActOzFilterSlabLabel(oz) {
+                const custom = WT_ACT_OZ_FILTER_SLABS[oz];
+                if (custom && custom.label) return custom.label;
                 const b = wtActOzFilterSlabBounds(oz);
                 return `${b.ozMin}–${b.ozMax} oz (${wtActOzToLb(b.ozMin)} – ${wtActOzToLb(b.ozMax)} lb)`;
             }
 
             function wtActOz1599SlabLabel() {
                 const s = WT_ACT_OZ_1599_SLAB;
+                if (s.label) return s.label;
                 return `${s.ozMin}–${s.ozMax} oz (${wtActOzToLb(s.ozMin)} – ${wtActOzToLb(s.ozMax)} lb)`;
             }
 
@@ -1972,23 +1974,18 @@
             const WT_ACT_UPWARD_LB_BANDS = [
                 { key: 'lb_101_2', lbMin: 1, lbMax: 2, label: '1 lb – 2 lb' },
                 { key: 'lb_201_3', lbMin: 2.01, lbMax: 3, label: '2.01 lb – 3 lb' },
-                { key: 'lb_301_4', lbMin: 3.01, lbMax: 4 },
-                { key: 'lb_401_5', lbMin: 4.01, lbMax: 5 },
-                { key: 'lb_501_6', lbMin: 5.01, lbMax: 6 },
-                { key: 'lb_601_7', lbMin: 6.01, lbMax: 7 },
-                { key: 'lb_701_8', lbMin: 7.01, lbMax: 8 },
-                { key: 'lb_801_9', lbMin: 8.01, lbMax: 9 },
-                { key: 'lb_901_10', lbMin: 9.01, lbMax: 10 },
-                { key: 'lb_1001_11', lbMin: 10.01, lbMax: 11 },
-                { key: 'lb_1101_12', lbMin: 11.01, lbMax: 12 },
-                { key: 'lb_1201_13', lbMin: 12.01, lbMax: 13 },
-                { key: 'lb_1301_14', lbMin: 13.01, lbMax: 14 },
-                { key: 'lb_1401_15', lbMin: 14.01, lbMax: 15 },
-                { key: 'lb_1501_16', lbMin: 15.01, lbMax: 16 },
-                { key: 'lb_1601_17', lbMin: 16.01, lbMax: 17 },
-                { key: 'lb_1701_18', lbMin: 17.01, lbMax: 18 },
-                { key: 'lb_1801_19', lbMin: 18.01, lbMax: 19 },
-                { key: 'lb_1901_20', lbMin: 19.01, lbMax: 20 },
+                { key: 'lb_301_4', lbMin: 3.01, lbMax: 4, label: '3.01 lb – 4 lb' },
+                { key: 'lb_401_5', lbMin: 4.01, lbMax: 5, label: '4.01 lb – 5 lb' },
+                { key: 'lb_501_6', lbMin: 5.01, lbMax: 6, label: '5.01 lb – 6 lb' },
+                { key: 'lb_601_7', lbMin: 6.01, lbMax: 7, label: '6.01 lb – 7 lb' },
+                { key: 'lb_701_8', lbMin: 7.01, lbMax: 8, label: '7.01 lb – 8 lb' },
+                { key: 'lb_801_9', lbMin: 8.01, lbMax: 9, label: '8.01 lb – 9 lb' },
+                { key: 'lb_901_10', lbMin: 9.01, lbMax: 10, label: '9.01 lb – 10 lb' },
+                { key: 'lb_1001_11', lbMin: 10.01, lbMax: 11, label: '10.01 lb – 11 lb' },
+                { key: 'lb_1101_12', lbMin: 11.01, lbMax: 12, label: '11.01 lb – 12 lb' },
+                { key: 'lb_1201_13', lbMin: 12.01, lbMax: 13, label: '12.01 lb – 13 lb' },
+                { key: 'lb_1301_14', lbMin: 13.01, lbMax: 14, label: '13.01 lb – 14 lb' },
+                { key: 'lb_1401_20', lbMin: 14.01, lbMax: 20, label: '14.01 lb – 20 lb' },
                 { key: 'lb_20_30', lbMin: 20.01, lbMax: 30 },
                 { key: 'lb_30_40', lbMin: 30.01, lbMax: 40 },
                 { key: 'lb_40_50', lbMin: 40.01, lbMax: 50 },
