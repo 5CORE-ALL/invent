@@ -1986,10 +1986,11 @@
                 { key: 'lb_1201_13', lbMin: 12.01, lbMax: 13, label: '12.01 lb – 13 lb' },
                 { key: 'lb_1301_14', lbMin: 13.01, lbMax: 14, label: '13.01 lb – 14 lb' },
                 { key: 'lb_1401_20', lbMin: 14.01, lbMax: 20, label: '14.01 lb – 20 lb' },
-                { key: 'lb_20_30', lbMin: 20.01, lbMax: 30 },
-                { key: 'lb_30_40', lbMin: 30.01, lbMax: 40 },
-                { key: 'lb_40_50', lbMin: 40.01, lbMax: 50 },
-                { key: 'lb_gt50', lbMin: 50.01, lbMax: null }
+                { key: 'lb_20_30', lbMin: 20.01, lbMax: 25, label: '20.01 lb – 25 lb' },
+                { key: 'lb_2501_30', lbMin: 25.01, lbMax: 30, label: '25.01 lb – 30 lb' },
+                { key: 'lb_30_40', lbMin: 30.01, lbMax: 40, label: '30.01 lb – 40 lb' },
+                { key: 'lb_40_50', lbMin: 40.01, lbMax: 50, label: '40.01 lb – 50 lb' },
+                { key: 'lb_gt50', lbMin: 50.01, lbMax: null, label: '> 50.01 lb' }
             ];
 
             function wtActLbBandOzMin(lb) {
