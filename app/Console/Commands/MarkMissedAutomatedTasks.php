@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use Carbon\Carbon;
+use App\Support\TaskBusinessTime;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -32,7 +32,8 @@ class MarkMissedAutomatedTasks extends Command
         $this->info('Checking for missed automated tasks...');
         
         try {
-            $now = Carbon::now();
+            TaskBusinessTime::applyDatabaseSession();
+            $now = TaskBusinessTime::now();
             $marked = 0;
 
             // Find and mark missed tasks in chunks

@@ -490,6 +490,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/topdawg/sales-dashboard', [\App\Http\Controllers\MarketPlace\TopDawgSyncController::class, 'salesDashboard'])->name('topdawg.sales.dashboard');
     Route::get('/topdawg/sales-data', [\App\Http\Controllers\MarketPlace\TopDawgSyncController::class, 'getSalesData'])->name('topdawg.sales.data');
 
+    // TopDawg Pricing (Tabulator — price/stock from topdawg_products, map/miss like Reverb)
+    Route::get('/topdawg-pricing', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'pricingView'])->name('topdawg.pricing');
+    Route::get('/topdawg-data-json', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'dataJson'])->name('topdawg.data.json');
+
     // Route::get('/get-channel-sales-data', [ChannelMasterController::class, 'getChannelSalesData']);
     Route::get('/sales-trend-data', [ChannelMasterController::class, 'getSalesTrendData']);
     Route::get('/dashboard-metrics', [ChannelMasterController::class, 'getDashboardMetrics']);

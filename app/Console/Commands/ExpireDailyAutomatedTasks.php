@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Task;
 use App\Models\User;
+use App\Support\TaskBusinessTime;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Console\Command;
@@ -13,11 +14,10 @@ use Illuminate\Support\Facades\Log;
 /**
  * Auto-expire daily automated tasks that were not completed the same day.
  *
- * For every daily automate-task instance whose start_date day (Asia/Kolkata) is BEFORE today and whose
- * status is not Done/Archived: mark it missed, archive a copy to deleted_tasks, then soft-delete the
- * row from tasks. The Missed-badge stat reads from both tables so the count stays visible for 30 days.
+ * For every daily automate-task instance whose start_date day (office / business timezone) is BEFORE
+ * today and whose status is not Done/Archived: mark missed, archive to deleted_tasks, soft-delete.
  *
- * Scheduled daily at 00:05 IST in {@see \App\Console\Kernel::schedule()}. Manual trigger:
+ * Scheduled daily at 00:05 in {@see config('tasks.business_timezone')} — see Kernel. Manual trigger:
  * {@see \App\Http\Controllers\TaskController::expireDailyAutomatedTasks()}.
  */
 class ExpireDailyAutomatedTasks extends Command
@@ -32,14 +32,10 @@ class ExpireDailyAutomatedTasks extends Command
         $this->info('Expiring incomplete daily automated tasks' . ($dryRun ? ' [DRY RUN]' : '') . '...');
 
         try {
-            try {
-                DB::statement("SET time_zone = '+05:30'");
-            } catch (\Throwable $e) {
-                Log::warning('ExpireDailyAutomatedTasks: could not set session time_zone to Asia/Kolkata: ' . $e->getMessage());
-            }
+            TaskBusinessTime::applyDatabaseSession();
 
-            $now = Carbon::now('Asia/Kolkata');
-            $todayStart = Carbon::today('Asia/Kolkata')->startOfDay();
+            $now = TaskBusinessTime::now();
+            $todayStart = TaskBusinessTime::todayStart();
 
             $expired = 0;
             $archived = 0;

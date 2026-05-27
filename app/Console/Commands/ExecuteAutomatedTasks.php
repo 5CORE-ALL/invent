@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Task;
 use App\Services\TaskWhatsAppNotificationService;
+use App\Support\TaskBusinessTime;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -19,19 +20,13 @@ class ExecuteAutomatedTasks extends Command
         $this->info('Checking for automated tasks to execute...');
         $this->line('Note: daily automated tasks are handled by tasks:generate-daily-automated.');
 
-        $now = Carbon::now('Asia/Kolkata');
+        TaskBusinessTime::applyDatabaseSession();
+        $now = TaskBusinessTime::now();
         $currentTime = $now->format('H:i');
         $currentDay = strtolower($now->format('D')); // mon, tue, etc.
         $currentDate = $now->format('j'); // 1-31
-        $dayStart = $now->copy()->startOfDay();
-        $dayEnd = $now->copy()->endOfDay();
-
-        // Keep DB comparisons in same timezone as scheduling logic.
-        try {
-            DB::statement("SET time_zone = '+05:30'");
-        } catch (\Throwable $e) {
-            Log::warning('Could not set session time_zone to Asia/Kolkata: ' . $e->getMessage());
-        }
+        $dayStart = TaskBusinessTime::todayStart();
+        $dayEnd = TaskBusinessTime::todayEnd();
 
         // Get all active automated tasks (weekly/monthly; daily are handled by generate-daily-automated)
         $automatedTasks = DB::table('automate_tasks')
@@ -117,7 +112,7 @@ class ExecuteAutomatedTasks extends Command
                 $hour = $timeParts[0] ?? 0;
                 $minute = $timeParts[1] ?? 0;
                 $second = $timeParts[2] ?? 0;
-                $startDate = Carbon::today('Asia/Kolkata')->setTime($hour, $minute, $second);
+                $startDate = TaskBusinessTime::today()->setTime($hour, $minute, $second);
 
                 // For automated tasks: due_date = start_date + 5 days (standard completion window)
                 $dueDate = $startDate->copy()->addDays(5);

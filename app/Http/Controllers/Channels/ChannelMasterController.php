@@ -154,6 +154,7 @@ class ChannelMasterController extends Controller
             'Shein' => '/shein-pricing',
             'Faire' => '/faire-pricing',
             'Reverb' => '/reverb-pricing',
+            'TopDawg' => '/topdawg-pricing',
         ];
 
         $path = $paths[trim($channel)] ?? null;
@@ -346,6 +347,7 @@ class ChannelMasterController extends Controller
             'Shein' => fn () => $this->getSheinLiveMapMissNMapFromPricingData(),
             'Faire' => fn () => $this->getFaireLiveMapMissNMapFromPricingData(Request::create('/faire/pricing-data', 'GET')),
             'Reverb' => fn () => $this->getReverbLiveMapMissNMapFromPricingData(Request::create('/reverb-data-json', 'GET')),
+            'TopDawg' => fn () => $this->getTopDawgLiveMapMissNMapFromPricingData(),
         ];
 
         foreach ($rows as &$row) {
@@ -582,6 +584,28 @@ class ChannelMasterController extends Controller
             Log::warning('Reverb live map/miss/nmap fallback: ' . $e->getMessage());
 
             return $this->getMapAndMissCounts('reverb');
+        }
+    }
+
+    /**
+     * Map / Miss / NMap for TopDawg — same rules as topdawg-pricing (Missing L + |INV − TD Stock| ≤ 3).
+     */
+    private function getTopDawgLiveMapMissNMapFromPricingData(): array
+    {
+        try {
+            $response = app(\App\Http\Controllers\MarketPlace\TopDawgPricingController::class)
+                ->getViewTopDawgTabularData(Request::create('/topdawg-data-json', 'GET'));
+            $payload = json_decode($response->getContent(), true);
+            $rows = $payload['data'] ?? [];
+            if (! is_array($rows)) {
+                return $this->getMapAndMissCounts('topdawg');
+            }
+
+            return \App\Http\Controllers\MarketPlace\TopDawgPricingController::countTopDawgPricingBadgeTotals($rows);
+        } catch (\Throwable $e) {
+            Log::warning('TopDawg live map/miss/nmap fallback: ' . $e->getMessage());
+
+            return $this->getMapAndMissCounts('topdawg');
         }
     }
 
@@ -10288,6 +10312,7 @@ class ChannelMasterController extends Controller
                 'Miss'       => $mapMissCounts['miss'],
                 'NMap'       => $mapMissCounts['nmap'],
                 'Total Views' => $mapMissCounts['total_views'] ?? 0,
+                'missing_link' => $channelData->missing_link ?? $this->defaultMissingLinkForChannel('TopDawg'),
                 ...$this->getChannelHealthAndReviewsStub(),
             ];
 
@@ -10397,6 +10422,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            'missing_link' => $channelData->missing_link ?? $this->defaultMissingLinkForChannel('TopDawg'),
             ...$this->getChannelHealthAndReviewsStub(),
         ];
 

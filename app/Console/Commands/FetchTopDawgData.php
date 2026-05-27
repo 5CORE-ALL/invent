@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\TopDawgOrderMetric;
 use App\Models\TopDawgProduct;
 use App\Models\TopDawgSyncState;
+use App\Models\ShopifySku;
 use App\Services\TopDawgApiService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -186,22 +187,35 @@ class FetchTopDawgData extends Command
         if ($value === null) {
             return null;
         }
-        return trim((string) $value);
+        $normalized = ShopifySku::normalizeSkuForShopifyLookup((string) $value);
+
+        return $normalized !== '' ? $normalized : null;
     }
 
     protected function calculateQuantitiesFromMetrics(Carbon $start, Carbon $end): array
     {
-        if (!Schema::hasTable('topdawg_order_metrics')) {
+        if (! Schema::hasTable('topdawg_order_metrics')) {
             return [];
         }
-        return TopDawgOrderMetric::query()
+
+        $rows = TopDawgOrderMetric::query()
             ->whereBetween('order_date', [$start->toDateString(), $end->toDateString()])
             ->whereNotIn('status', ['returned', 'refunded', 'cancelled', 'declined', 'failed'])
             ->whereNotNull('sku')
             ->selectRaw('sku, SUM(quantity) as total_quantity')
             ->groupBy('sku')
-            ->pluck('total_quantity', 'sku')
-            ->toArray();
+            ->get();
+
+        $quantities = [];
+        foreach ($rows as $row) {
+            $key = ShopifySku::normalizeSkuForShopifyLookup($row->sku);
+            if ($key === '') {
+                continue;
+            }
+            $quantities[$key] = ($quantities[$key] ?? 0) + (int) $row->total_quantity;
+        }
+
+        return $quantities;
     }
 
     protected function bulkUpsertOrders(array $orders): void

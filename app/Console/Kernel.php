@@ -211,54 +211,52 @@ class Kernel extends ConsoleKernel
 
         /*
         |--------------------------------------------------------------------------
-        | TASK MANAGEMENT
+        | TASK MANAGEMENT (office timezone — config/tasks.php, NOT IST business window)
         |--------------------------------------------------------------------------
         */
-        // Run every 5 minutes; command itself time-gates to 12:01+ and duplicate checks prevent re-creation.
-        $ist($schedule->command('tasks:generate-daily-automated')
+        $taskTz = config('tasks.business_timezone', 'America/Los_Angeles');
+
+        // 24/7: daily instances must exist at start of California day; IST 09–20 window does not apply.
+        $schedule->command('tasks:generate-daily-automated')
             ->everyFiveMinutes()
-            ->timezone('Asia/Kolkata')
+            ->timezone($taskTz)
             ->name('generate-daily-automated-tasks')
             ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('tasks:mark-missed-automated')
+        $schedule->command('tasks:mark-missed-automated')
             ->twiceDaily(9, 18)
-            ->timezone('Asia/Kolkata')
+            ->timezone($taskTz)
             ->name('mark-missed-automated-tasks')
             ->withoutOverlapping()
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        // Auto-delete daily automated tasks not completed the same day.
-        // Runs at 00:05 IST so yesterday's incomplete daily auto-tasks are archived as Missed
-        // before today's new instances are generated (generator runs from 12:01 onward).
-        $ist($schedule->command('tasks:expire-daily-automated')
-            ->dailyAt('09:05')
-            ->timezone('Asia/Kolkata')
+        // Auto-delete incomplete daily auto-tasks at 00:05 office time (end of prior business day).
+        $schedule->command('tasks:expire-daily-automated')
+            ->dailyAt('00:05')
+            ->timezone($taskTz)
             ->name('expire-daily-automated-tasks')
             ->withoutOverlapping()
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        // Lightweight alert: log only when expected automated instances are missing.
-        $ist($schedule->command('tasks:automated-health-alert')
+        $schedule->command('tasks:automated-health-alert')
             ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
+            ->timezone($taskTz)
             ->name('automated-tasks-health-alert')
             ->withoutOverlapping()
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        // Weekly/monthly automated tasks: run every minute so schedule_time can match (daily handled by generate-daily at 00:01)
-        $ist($schedule->command('tasks:execute-automated')
+        $schedule->command('tasks:execute-automated')
             ->everyMinute()
-            ->timezone('Asia/Kolkata')
+            ->timezone($taskTz)
             ->name('execute-automated-tasks-weekly-monthly')
             ->withoutOverlapping(2)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
         // Clear Laravel log periodically
         $schedule->call(function () {

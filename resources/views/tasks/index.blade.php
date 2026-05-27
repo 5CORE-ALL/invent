@@ -1472,6 +1472,47 @@
     }
 
     /* Today Deleted modal — yellow row when deletion was made by the automated system */
+    .task-auto-del-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #dc3545;
+        cursor: help;
+        vertical-align: middle;
+        box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.2);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .task-auto-del-dot:hover {
+        transform: scale(1.2);
+        box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.35);
+    }
+    .task-auto-del-hit {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 28px;
+        cursor: help;
+        vertical-align: middle;
+    }
+    #task-auto-del-float-tip {
+        position: fixed;
+        z-index: 99999;
+        padding: 8px 12px;
+        background: rgba(33, 37, 41, 0.96);
+        color: #fff;
+        font-size: 12px;
+        line-height: 1.45;
+        border-radius: 8px;
+        max-width: 320px;
+        pointer-events: none;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+        display: none;
+        white-space: normal;
+        text-align: left;
+    }
+
     #todayDeletedModal .today-deleted-row-auto > td {
         background-color: #fff3cd !important; /* Bootstrap "warning" subtle yellow */
         border-left: 3px solid #ffc107;
@@ -1641,6 +1682,11 @@
 
         <div class="row">
             <div class="col-12">
+                <div class="alert alert-info py-2 px-3 mb-2 small mb-md-3" role="status">
+                    <i class="mdi mdi-clock-outline me-1"></i>
+                    <strong>Task calendar:</strong> TID, overdue, auto-delete, and Today Deleted use
+                    <strong>{{ $taskBusinessTzLabel ?? 'California (PT)' }}</strong> (office time), not your browser or India time.
+                </div>
                 <div class="card task-card">
                     <div class="card-body">
                         <div class="row mb-2">
@@ -1668,12 +1714,11 @@
                                             <i class="mdi mdi-refresh me-2"></i> Refresh
                                         </button>
 
-                                        @if($isAdmin)
+                                        @if(!empty($canShowTaskMaintenanceButtons))
                                         <button type="button" class="btn btn-outline-danger ms-2" id="expire-daily-auto-btn"
-                                            title="Auto-delete DAILY automated tasks that were not completed the same day (e.g. 23rd's task → expired on 24th) and count them in Missed. Weekly & Monthly automated tasks are NOT affected. Runs automatically every night at 00:05 IST.">
+                                            title="Auto-delete DAILY automated tasks not completed before the California business day ends. Runs at 12:05 AM {{ $taskBusinessTzShort ?? 'PT' }} each night. Weekly/monthly not affected.">
                                             <i class="mdi mdi-broom me-2"></i> Cleanup Missed Daily
                                         </button>
-                                        @endif
 
                                         <button type="button" class="btn btn-outline-secondary ms-2 position-relative" id="today-deleted-btn"
                                             data-bs-toggle="modal" data-bs-target="#todayDeletedModal"
@@ -1681,6 +1726,7 @@
                                             <i class="mdi mdi-undo-variant me-2"></i> Today Deleted
                                             <span class="badge bg-danger rounded-pill ms-1" id="today-deleted-badge" style="display:none;">0</span>
                                         </button>
+                                        @endif
 
 
                                         <!-- Playback Controls - Assignor -->
@@ -2096,7 +2142,7 @@
                 <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                     <div class="text-muted small">
                         <i class="mdi mdi-information-outline"></i>
-                        Only today's deletions are shown. After midnight (IST) use the Deleted/Archive page.
+                        Only today's deletions are shown ({{ $taskBusinessTzLabel ?? 'California (PT)' }}). After midnight office time, use Deleted/Archive.
                     </div>
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span class="small text-muted d-inline-flex align-items-center">
@@ -2586,6 +2632,9 @@
             var suppressAssignFilterApply = false;
             /** Set from session (e.g. Task Summary dot); OR filter assignor/assignee; cleared when assignee dropdown changes away from this name */
             var taskManagerSessionUserFocus = @json(trim((string) ($selectedUserName ?? '')));
+            var taskBusinessToday = @json($taskBusinessToday ?? '');
+            var taskBusinessTzShort = @json($taskBusinessTzShort ?? 'PT');
+            var taskBusinessTzLabel = @json($taskBusinessTzLabel ?? 'California (PT)');
 
             function currentUserIsAssigneeOnTask(rowData) {
                 if (!rowData) return false;
@@ -2812,6 +2861,75 @@
             }
             
             /** Parse start_date / TID; label e.g. "3rd Apr", title "DD/MM/YYYY" for tooltip. */
+            function addDaysYmd(ymd, days) {
+                var p = String(ymd).split('-').map(Number);
+                if (p.length < 3 || isNaN(p[0]) || isNaN(p[1]) || isNaN(p[2])) {
+                    return ymd;
+                }
+                var d = new Date(p[0], p[1] - 1, p[2] + days);
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            }
+
+            function isOverdueByBusinessTid(rowData) {
+                if (!rowData || rowData.status === 'Archived' || rowData.status === 'Done') {
+                    return false;
+                }
+                var bd = rowData.tid_business_date;
+                if (!bd || !taskBusinessToday) {
+                    return false;
+                }
+                return taskBusinessToday > addDaysYmd(bd, 1);
+            }
+
+            function formatTidFromBusinessDate(ymd) {
+                if (!ymd) {
+                    return null;
+                }
+                return formatTidCellParts(ymd + ' 12:00:00');
+            }
+
+            function escAttr(s) {
+                return String(s == null ? '' : s)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
+            }
+
+            function autoDeleteHoverText(row) {
+                if (!row || !row.auto_delete_at_human) {
+                    return '';
+                }
+                return String(row.auto_delete_at_human).replace(/\s*\(pending\)\s*$/i, '').trim();
+            }
+
+            var autoDelFloatTipEl = null;
+            function showAutoDelFloatTip(text, clientX, clientY) {
+                if (!text) {
+                    return;
+                }
+                if (!autoDelFloatTipEl) {
+                    autoDelFloatTipEl = document.createElement('div');
+                    autoDelFloatTipEl.id = 'task-auto-del-float-tip';
+                    document.body.appendChild(autoDelFloatTipEl);
+                }
+                autoDelFloatTipEl.textContent = text;
+                autoDelFloatTipEl.style.display = 'block';
+                autoDelFloatTipEl.style.left = Math.min(clientX + 14, window.innerWidth - 340) + 'px';
+                autoDelFloatTipEl.style.top = Math.min(clientY + 14, window.innerHeight - 80) + 'px';
+            }
+            function hideAutoDelFloatTip() {
+                if (autoDelFloatTipEl) {
+                    autoDelFloatTipEl.style.display = 'none';
+                }
+            }
+
+            $(document).on('mouseenter mousemove', '#tasks-table .task-auto-del-hit', function (e) {
+                var text = this.getAttribute('data-tip') || '';
+                showAutoDelFloatTip(text, e.clientX, e.clientY);
+            });
+            $(document).on('mouseleave', '#tasks-table .task-auto-del-hit', hideAutoDelFloatTip);
+
             function formatTidCellParts(value) {
                 if (!value) {
                     return null;
@@ -2954,9 +3072,15 @@
                                     return parts.join('');
                                 })()}
                                 ${(() => {
-                                    var tp = formatTidCellParts(task.start_date || task.tid);
-                                    return tp ? '<div><i class="mdi mdi-calendar"></i> ' + tp.label + '</div>' : '';
+                                    var tp = task.tid_business_date
+                                        ? formatTidFromBusinessDate(task.tid_business_date)
+                                        : formatTidCellParts(task.start_date || task.tid);
+                                    return tp ? '<div><i class="mdi mdi-calendar"></i> ' + tp.label + ' <span class="text-muted">(' + taskBusinessTzShort + ')</span></div>' : '';
                                 })()}
+                                ${task.auto_delete_at_human ? (function() {
+                                    var t = autoDeleteHoverText(task);
+                                    return '<div><span class="task-auto-del-hit" data-tip="' + escAttr(t) + '"><span class="task-auto-del-dot"></span></span> <span class="text-muted small">Auto-del</span></div>';
+                                })() : ''}
                             </div>
                             
                             <div class="mobile-task-actions">
@@ -3198,23 +3322,7 @@
                 rowFormatter: function(row) {
                     var data = row.getData();
                     
-                    // OVERDUE should match TID/statistics logic for consistent UI:
-                    // compare against start_date day + 1 day grace for all tasks.
-                    let isOverdue = false;
-                    
-                    if (data.status !== 'Archived' && data.start_date) {
-                        const startDate = new Date(data.start_date);
-                        if (!isNaN(startDate.getTime())) {
-                            startDate.setHours(0, 0, 0, 0);
-
-                            // Give all tasks a 1-day grace before overdue.
-                            startDate.setDate(startDate.getDate() + 1);
-
-                            const now = new Date();
-                            now.setHours(0, 0, 0, 0);
-                            isOverdue = now > startDate;
-                        }
-                    }
+                    let isOverdue = isOverdueByBusinessTid(data);
                     
                     // Reset dynamic classes before applying current state
                     row.getElement().classList.remove('automated-task', 'alt', 'overdue-task');
@@ -3408,38 +3516,47 @@
                             var rowData = cell.getRow().getData();
                             var value = cell.getValue();
                             
-                            if (value) {
-                                var fp = formatTidCellParts(value);
+                            if (value || rowData.tid_business_date) {
+                                var fp = rowData.tid_business_date
+                                    ? formatTidFromBusinessDate(rowData.tid_business_date)
+                                    : formatTidCellParts(value);
                                 if (!fp) {
                                     return '<span style="color: #adb5bd;">-</span>';
                                 }
-                                var year = fp.year;
-                                var month = fp.month;
-                                var day = fp.day;
                                 var label = fp.label;
-                                var titleFull = fp.title;
-
-                                var tidDate = new Date(year, month - 1, day);
-                                tidDate.setHours(0, 0, 0, 0);
-
-                                // Automated recurring tasks (daily/weekly/monthly):
-                                // allow a 1-day grace period before marking TID as red.
-                                var scheduleType = String(rowData.schedule_type || '').toLowerCase();
-                                var isAutomatedRecurring = !!rowData.is_automate_task && ['daily', 'weekly', 'monthly'].includes(scheduleType);
-                                if (isAutomatedRecurring) {
-                                    tidDate.setDate(tidDate.getDate() + 1);
-                                }
-
-                                var now = new Date();
-                                now.setHours(0, 0, 0, 0);
-                                var textColor = '#0d6efd'; // Default blue
-                                // Always red when overdue (past TID date), whether Done or not
-                                if (now > tidDate) {
-                                    textColor = '#dc3545'; // Red when overdue
-                                }
+                                var titleFull = fp.title + ' (' + taskBusinessTzShort + ')';
+                                var textColor = isOverdueByBusinessTid(rowData) ? '#dc3545' : '#0d6efd';
                                 return '<span style="color: ' + textColor + '; font-weight: 600; font-size: 11px;" title="' + titleFull + '">' + label + '</span>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
+                        }
+                    });
+
+                    // AUTO DEL — red dot; full time on hover (daily auto-tasks)
+                    cols.push({
+                        title: "AUTO DEL",
+                        titleFormatter: function() {
+                            return '<span title="Auto-delete (daily auto tasks) — hover row dot for time" style="font-weight:700;font-size:calc(11px * 0.9);color:#495057;">AUTO DEL</span>';
+                        },
+                        headerTooltip: "Daily automated tasks auto-delete at 12:05 AM {{ $taskBusinessTzShort ?? 'PT' }} the day after TID if not Done. Hover the dot for time.",
+                        field: "auto_delete_at_human",
+                        width: 52,
+                        minWidth: 44,
+                        widthGrow: 0,
+                        cssClass: "tasks-col-auto-del",
+                        headerClass: "tasks-col-auto-del",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hoverText = autoDeleteHoverText(row);
+                            if (!hoverText) {
+                                return '<span style="color: #adb5bd;">-</span>';
+                            }
+                            return '<span class="task-auto-del-hit" data-tip="' + escAttr(hoverText) + '" role="img" aria-label="' + escAttr(hoverText) + '">' +
+                                '<span class="task-auto-del-dot"></span></span>';
+                        },
+                        tooltip: function (cell) {
+                            return autoDeleteHoverText(cell.getRow().getData()) || false;
                         }
                     });
                     
@@ -4336,10 +4453,11 @@
                     }
                 });
             }
+            @if(!empty($canShowTaskMaintenanceButtons))
             refreshTodayDeletedBadge();
             setInterval(refreshTodayDeletedBadge, 60000);
-
             $('#todayDeletedModal').on('show.bs.modal', loadTodayDeleted);
+            @endif
             $('#today-deleted-refresh-btn').on('click', loadTodayDeleted);
 
             // ---- Selection: per-row + select-all ----

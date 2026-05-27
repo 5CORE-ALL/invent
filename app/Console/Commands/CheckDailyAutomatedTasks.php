@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use Carbon\Carbon;
+use App\Support\TaskBusinessTime;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -19,18 +19,13 @@ class CheckDailyAutomatedTasks extends Command
 
     public function handle()
     {
-        $now = Carbon::now('Asia/Kolkata');
+        TaskBusinessTime::applyDatabaseSession();
+        $now = TaskBusinessTime::now();
         $today = $now->toDateString();
-        $dayStart = Carbon::today('Asia/Kolkata')->startOfDay();
-        $dayEnd = Carbon::today('Asia/Kolkata')->endOfDay();
+        $dayStart = TaskBusinessTime::todayStart();
+        $dayEnd = TaskBusinessTime::todayEnd();
 
-        try {
-            DB::statement("SET time_zone = '+05:30'");
-        } catch (\Throwable $e) {
-            // continue
-        }
-
-        $this->info("Today (Asia/Kolkata): {$today}");
+        $this->info('Today ('.TaskBusinessTime::label().'): '.$today);
         $this->info("Checking daily automate_tasks for an existing task with start_date between {$dayStart->toDateTimeString()} and {$dayEnd->toDateTimeString()}");
         $this->newLine();
 
@@ -75,7 +70,7 @@ class CheckDailyAutomatedTasks extends Command
         $this->newLine();
         $this->info('Summary: ' . count($missing) . ' missing, ' . count($exists) . ' already have an instance for today.');
         if (count($missing) > 0) {
-            $this->warn('Fix: run tasks:generate-daily-automated again after ensuring duplicate check uses Asia/Kolkata (see GenerateDailyAutomatedTasks).');
+            $this->warn('Fix: run tasks:generate-daily-automated again (office timezone: '.TaskBusinessTime::tz().').');
         }
 
         return 0;

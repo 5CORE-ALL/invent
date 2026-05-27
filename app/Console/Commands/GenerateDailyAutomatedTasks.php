@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Task;
 use App\Services\TaskWhatsAppNotificationService;
+use App\Support\TaskBusinessTime;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -12,8 +13,6 @@ use Exception;
 
 class GenerateDailyAutomatedTasks extends Command
 {
-    private const FIXED_DAILY_TIME = '12:01:00';
-
     /**
      * The name and signature of the console command.
      *
@@ -31,7 +30,7 @@ class GenerateDailyAutomatedTasks extends Command
     /**
      * Execute the console command.
      * Daily task is skipped if: schedule_type != 'daily', status in (Done, Archived),
-     * or a task for this automate_task_id was already created today (same day in Asia/Kolkata).
+     * or a task for this automate_task_id was already created today (same day in office timezone).
      * MySQL GET_LOCK stops two servers / overlapping runs from inserting twice the same day.
      */
     public function handle(TaskWhatsAppNotificationService $taskWhatsApp)
@@ -39,15 +38,9 @@ class GenerateDailyAutomatedTasks extends Command
         $this->info('Starting automated task generation...');
         
         try {
-            // Use Asia/Kolkata timezone explicitly
-            $now = Carbon::now('Asia/Kolkata');
+            TaskBusinessTime::applyDatabaseSession();
+            $now = TaskBusinessTime::now();
             $today = $now->toDateString();
-            // Ensure duplicate check and stored datetimes are compared in same timezone (Asia/Kolkata)
-            try {
-                DB::statement("SET time_zone = '+05:30'");
-            } catch (\Throwable $e) {
-                Log::warning('Could not set session time_zone to Asia/Kolkata: ' . $e->getMessage());
-            }
 
             $this->info("Current date: {$today} {$now->format('H:i:s')}");
             $generated = 0;
@@ -61,8 +54,8 @@ class GenerateDailyAutomatedTasks extends Command
                 ->chunk(100, function ($automatedTasks) use ($now, $today, $taskWhatsApp, &$generated, &$skipped) {
                     foreach ($automatedTasks as $autoTask) {
                         try {
-                            $dayStart = Carbon::today('Asia/Kolkata')->startOfDay();
-                            $dayEnd = Carbon::today('Asia/Kolkata')->endOfDay();
+                            $dayStart = TaskBusinessTime::todayStart();
+                            $dayEnd = TaskBusinessTime::todayEnd();
                             $dayStartStr = $dayStart->format('Y-m-d H:i:s');
                             $dayEndStr = $dayEnd->format('Y-m-d H:i:s');
 
@@ -81,7 +74,7 @@ class GenerateDailyAutomatedTasks extends Command
                             }
 
                             try {
-                                // Ek din = ek instance: start_date ya created_at aaj IST window mein ho to dubara mat banao.
+                                // One instance per office calendar day (start_date or created_at in today's window).
                                 $alreadyExists = DB::table('tasks')
                                     ->where('automate_task_id', $autoTask->id)
                                     ->whereNull('deleted_at')
@@ -103,15 +96,13 @@ class GenerateDailyAutomatedTasks extends Command
                                     continue;
                                 }
 
-                            // Daily automation uses a single fixed time for consistency across all templates.
-                            $scheduleTime = self::FIXED_DAILY_TIME;
+                            $scheduleTime = TaskBusinessTime::dailyGenerateTime();
                             $timeParts = array_map('intval', explode(':', $scheduleTime));
                             $h = $timeParts[0] ?? 0;
                             $m = $timeParts[1] ?? 0;
                             $s = $timeParts[2] ?? 0;
-                            
-                            // Create start_date and due_date = today + schedule_time (using Asia/Kolkata timezone)
-                            $startDate = Carbon::today('Asia/Kolkata')->setTime($h, $m, $s);
+
+                            $startDate = TaskBusinessTime::today()->setTime($h, $m, $s);
                             $dueDate = $startDate->copy()->addDays(5);
                             
                             $this->info("Creating task: start_date={$startDate->format('Y-m-d H:i:s')}, title_date={$now->format('d-M-y')}");
@@ -161,7 +152,7 @@ class GenerateDailyAutomatedTasks extends Command
                                 'automate_task_id' => $autoTask->id,
                                 'task_type' => 'automate_task',
                                 'schedule_type' => 'daily',
-                                'schedule_time' => self::FIXED_DAILY_TIME,
+                                'schedule_time' => $scheduleTime,
                                 'status' => 'Todo',
                                 'rework_reason' => null,
                                 'delete_rating' => 0,

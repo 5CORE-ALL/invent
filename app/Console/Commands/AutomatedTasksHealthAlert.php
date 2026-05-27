@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\TaskBusinessTime;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -11,26 +12,20 @@ class AutomatedTasksHealthAlert extends Command
 {
     protected $signature = 'tasks:automated-health-alert {--title= : Diagnose specific automated task title} {--email= : Optional user email visibility check}';
     protected $description = 'Lightweight alert for missing automated task instances';
-    private const DAILY_GENERATION_TIME = '12:01';
-
     public function handle(): int
     {
-        $now = Carbon::now('Asia/Kolkata');
+        TaskBusinessTime::applyDatabaseSession();
+        $now = TaskBusinessTime::now();
         $currentTime = $now->format('H:i');
-        $dayStart = $now->copy()->startOfDay();
-        $dayEnd = $now->copy()->endOfDay();
+        $dailyGenHm = substr(TaskBusinessTime::dailyGenerateTime(), 0, 5);
+        $dayStart = TaskBusinessTime::todayStart();
+        $dayEnd = TaskBusinessTime::todayEnd();
         $currentDow = strtolower($now->format('D'));
         $currentDom = (string) ((int) $now->format('j'));
         $lastDom = (int) $now->copy()->endOfMonth()->format('j');
         $isEom = ((int) $currentDom) === $lastDom;
         $titleFilter = trim((string) $this->option('title'));
         $emailFilter = trim((string) $this->option('email'));
-
-        try {
-            DB::statement("SET time_zone = '+05:30'");
-        } catch (\Throwable $e) {
-            // Continue silently; alert still works with app timezone values.
-        }
 
         if ($titleFilter !== '') {
             return $this->diagnoseSpecificTitle(
@@ -63,7 +58,7 @@ class AutomatedTasksHealthAlert extends Command
                 ->whereNull('deleted_at')
                 ->exists();
 
-            $isDailyDueWindow = $currentTime >= self::DAILY_GENERATION_TIME;
+            $isDailyDueWindow = $currentTime >= $dailyGenHm;
             if ($scheduleType === 'daily' && !$hasTodayInstance && $isDailyDueWindow) {
                 $missingDaily[] = ['id' => $task->id, 'title' => (string) $task->title];
                 continue;
@@ -84,7 +79,8 @@ class AutomatedTasksHealthAlert extends Command
         $dueSample = array_slice(array_map(fn ($t) => "{$t['id']}:{$t['title']} ({$t['type']})", $missingDue), 0, 5);
 
         Log::warning('Automated task health alert: missing instances detected', [
-            'timestamp_ist' => $now->toDateTimeString(),
+            'timestamp_business' => $now->toDateTimeString(),
+            'business_tz' => TaskBusinessTime::tz(),
             'missing_daily_count' => count($missingDaily),
             'missing_due_weekly_monthly_count' => count($missingDue),
             'missing_daily_sample' => $dailySample,
@@ -124,7 +120,8 @@ class AutomatedTasksHealthAlert extends Command
                 ->whereNull('deleted_at')
                 ->exists();
 
-            $dailyDue = $scheduleType === 'daily' ? ($currentTime >= self::DAILY_GENERATION_TIME) : false;
+            $dailyGenHm = substr(TaskBusinessTime::dailyGenerateTime(), 0, 5);
+            $dailyDue = $scheduleType === 'daily' ? ($currentTime >= $dailyGenHm) : false;
             $dueNow = $scheduleType === 'daily'
                 ? $dailyDue
                 : $this->isDueNow($task, $currentTime, $currentDow, $currentDom, $isEom);

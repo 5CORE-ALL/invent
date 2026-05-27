@@ -31,6 +31,24 @@ class TaskPolicy
         'hritiksha',
     ];
 
+    /** Cleanup Missed Daily, Today Deleted, and related revert/archive tools. */
+    private const TASK_MAINTENANCE_TOOL_EMAILS = [
+        'president@5core.com',
+        'presiden@5core.com',
+        'software5@5core.com',
+    ];
+
+    public static function userCanAccessTaskMaintenanceTools(?User $user): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        $email = strtolower(trim((string) ($user->email ?? '')));
+
+        return $email !== '' && in_array($email, self::TASK_MAINTENANCE_TOOL_EMAILS, true);
+    }
+
     /**
      * Check if user is admin
      */
