@@ -1597,6 +1597,24 @@
                         </li>
 
                         <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarTopDawg" aria-expanded="false"
+                                aria-controls="sidebarTopDawg">
+                                <span> TopDawg </span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarTopDawg">
+                                <ul class="side-nav-third-level">
+                                    <li>
+                                        <a href="{{ route('topdawg.pricing') }}">TopDawg Analytics</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('topdawg.sales.dashboard') }}">TopDawg Sales Data</a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </li>
+
+                        <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#sidebarTemu" aria-expanded="false"
                                 aria-controls="sidebarTemu">
                                 <span> Temu </span>

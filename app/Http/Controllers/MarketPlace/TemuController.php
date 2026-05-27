@@ -33,6 +33,7 @@ use App\Models\EbayMetric;
 use App\Models\MarketplaceDailyMetric;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -879,6 +880,7 @@ class TemuController extends Controller
                 if (file_exists($filePath)) {
                     unlink($filePath);
                 }
+                $this->refreshTemuMetricsAfterDailyUpload(false);
             }
 
             return response()->json([
@@ -1015,6 +1017,9 @@ class TemuController extends Controller
 
             if ($chunk == $totalChunks - 1 && file_exists($filePath)) {
                 unlink($filePath);
+            }
+            if ($chunk == $totalChunks - 1) {
+                $this->refreshTemuMetricsAfterDailyUpload(false);
             }
 
             return response()->json([
@@ -1274,6 +1279,9 @@ class TemuController extends Controller
             if ($chunk == $totalChunks - 1 && file_exists($filePath)) {
                 unlink($filePath);
             }
+            if ($chunk == $totalChunks - 1) {
+                $this->refreshTemuMetricsAfterDailyUpload(true);
+            }
             return response()->json([
                 'success' => true,
                 'message' => "Chunk $chunk processed successfully",
@@ -1391,6 +1399,9 @@ class TemuController extends Controller
             }
             if ($chunk == $totalChunks - 1 && file_exists($filePath)) {
                 unlink($filePath);
+            }
+            if ($chunk == $totalChunks - 1) {
+                $this->refreshTemuMetricsAfterDailyUpload(true);
             }
             return response()->json([
                 'success' => true,
@@ -5362,6 +5373,34 @@ class TemuController extends Controller
         } catch (\Exception $e) {
             // Don't break the main response if summary save fails
             Log::error('Error saving daily Temu summary: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * After Temu / Temu 2 daily sales upload, refresh marketplace_daily_metrics and
+     * channel_master_calculated_data so /all-marketplace-master stays in sync with tabulator.
+     */
+    private function refreshTemuMetricsAfterDailyUpload(bool $isTemu2): void
+    {
+        try {
+            $php = PHP_BINARY;
+            $artisan = base_path('artisan');
+            $metricsCmd = escapeshellarg($php).' '.escapeshellarg($artisan).' app:update-marketplace-daily-metrics';
+            $channelCmd = escapeshellarg($php).' '.escapeshellarg($artisan).' channel:calculate-data --force';
+
+            if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+                pclose(popen('start /B '.$metricsCmd, 'r'));
+                pclose(popen('start /B '.$channelCmd, 'r'));
+            } else {
+                exec($metricsCmd.' > /dev/null 2>&1 &');
+                exec($channelCmd.' > /dev/null 2>&1 &');
+            }
+
+            Log::info('Queued Temu channel master refresh after daily upload', ['temu2' => $isTemu2]);
+        } catch (\Throwable $e) {
+            Log::warning('Temu channel master refresh after upload failed: '.$e->getMessage(), [
+                'temu2' => $isTemu2,
+            ]);
         }
     }
 }

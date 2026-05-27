@@ -101,7 +101,9 @@ use App\Models\SheinDailyData;
 use App\Models\SheinListingStatus;
 use App\Models\ShopifySku;
 use App\Models\TemuDailyData;
+use App\Models\TemuDailyDataL60;
 use App\Models\Temu2DailyData;
+use App\Models\Temu2DailyDataL60;
 use App\Models\TemuMetric;
 use App\Models\TemuProductSheet;
 use App\Models\TiendamiaProduct;
@@ -302,6 +304,279 @@ class ChannelMasterController extends Controller
 
             return $this->getMapAndMissCounts($ch);
         }
+    }
+
+    /**
+     * L30 sales summary for Temu / Temu 2 — same source as /temu-tabulator & /temu2-tabulator badges
+     * (TemuController::buildTemuDecreaseDataResponse sales_summary).
+     *
+     * @return array{total_orders: int, total_quantity: int, total_revenue: float}|null
+     */
+    private function getTemuLiveSalesSummaryFromTabulator(bool $isTemu2 = false): ?array
+    {
+        try {
+            $req = Request::create($isTemu2 ? '/temu2-decrease-data' : '/temu-decrease-data', 'GET');
+            $temuCtrl = app(\App\Http\Controllers\MarketPlace\TemuController::class);
+            $response = $isTemu2
+                ? $temuCtrl->getTemu2DecreaseData($req)
+                : $temuCtrl->getTemuDecreaseData($req);
+            $payload = json_decode($response->getContent(), true);
+            $summary = is_array($payload) ? ($payload['sales_summary'] ?? null) : null;
+            if (! is_array($summary)) {
+                return null;
+            }
+
+            return [
+                'total_orders' => (int) ($summary['total_orders'] ?? 0),
+                'total_quantity' => (int) ($summary['total_quantity'] ?? 0),
+                'total_revenue' => (float) ($summary['total_revenue'] ?? 0),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Temu live sales summary fallback: '.$e->getMessage(), ['temu2' => $isTemu2]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Sum L60 rows the same way /temu-tabulator's L60 Sales badge does
+     * (getDailyDataL60 rows + hasSales gate + fbPrice).
+     *
+     * @return array{total_orders: int, total_revenue: float}
+     */
+    private function summarizeTemuTabulatorL60Rows(array $rows): array
+    {
+        $totalRevenue = 0.0;
+        $orderIds = [];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $parent = (string) ($row['Parent'] ?? '');
+            if ($parent !== '' && stripos($parent, 'PARENT') === 0) {
+                continue;
+            }
+            $sku = trim((string) ($row['contribution_sku'] ?? ''));
+            $orderId = trim((string) ($row['order_id'] ?? ''));
+            if ($sku === '' || $orderId === '') {
+                continue;
+            }
+            $qty = (int) ($row['quantity_purchased'] ?? 0);
+            $base = (float) ($row['base_price_total'] ?? 0);
+            if ($qty <= 0 || $base <= 0) {
+                continue;
+            }
+            $lineTotal = $base * $qty;
+            $fbPrice = $lineTotal < 27 ? $base + 2.99 : $base;
+            $totalRevenue += $fbPrice * $qty;
+            $orderIds[$orderId] = true;
+        }
+
+        return [
+            'total_orders' => count($orderIds),
+            'total_revenue' => round($totalRevenue, 2),
+        ];
+    }
+
+    /**
+     * L60 sales from uploaded temu_daily_data_l60 / temu2_daily_data_l60 — same as tabulator L60 badge.
+     * Returns null when the L60 table is empty (caller should fall back to historical snapshot).
+     *
+     * @return array{total_orders: int, total_revenue: float}|null
+     */
+    private function getTemuLiveL60SalesSummary(bool $isTemu2 = false): ?array
+    {
+        try {
+            $table = $isTemu2 ? 'temu2_daily_data_l60' : 'temu_daily_data_l60';
+            if (! Schema::hasTable($table)) {
+                return null;
+            }
+
+            $modelClass = $isTemu2 ? Temu2DailyDataL60::class : TemuDailyDataL60::class;
+            if ($modelClass::count() === 0) {
+                return null;
+            }
+
+            if (! $isTemu2) {
+                $temuCtrl = app(\App\Http\Controllers\MarketPlace\TemuController::class);
+                $response = $temuCtrl->getDailyDataL60(Request::create('/temu/daily-data-l60', 'GET'));
+                $rows = json_decode($response->getContent(), true);
+
+                return is_array($rows) ? $this->summarizeTemuTabulatorL60Rows($rows) : null;
+            }
+
+            $normalizeSku = function ($sku) {
+                $sku = strtoupper(trim((string) $sku));
+                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+                $sku = preg_replace('/\s+/', ' ', $sku);
+
+                return $sku;
+            };
+
+            $productMasterSkus = ProductMaster::orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->pluck('sku')
+                ->filter(fn ($sku) => stripos($sku, 'PARENT') === false)
+                ->unique()
+                ->values()
+                ->all();
+
+            $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
+                return [$normalizeSku($s) => true];
+            })->all();
+
+            $allowedRawSkus = Temu2DailyDataL60::select('contribution_sku')->distinct()
+                ->get()
+                ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
+                    return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
+                })
+                ->pluck('contribution_sku')
+                ->unique()
+                ->values()
+                ->all();
+
+            $pmByNormalized = ProductMaster::whereIn('sku', $productMasterSkus)->get()
+                ->keyBy(fn ($pm) => $normalizeSku($pm->sku ?? ''));
+
+            $rows = [];
+            foreach (Temu2DailyDataL60::whereIn('contribution_sku', $allowedRawSkus)->get() as $item) {
+                $pm = $pmByNormalized[$normalizeSku($item->contribution_sku ?? '')] ?? null;
+                $rows[] = [
+                    'Parent' => $pm ? ($pm->parent ?? '') : '',
+                    'contribution_sku' => $item->contribution_sku,
+                    'order_id' => $item->order_id,
+                    'quantity_purchased' => $item->quantity_purchased,
+                    'base_price_total' => $item->base_price_total,
+                ];
+            }
+
+            return $this->summarizeTemuTabulatorL60Rows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Temu live L60 sales summary fallback: '.$e->getMessage(), ['temu2' => $isTemu2]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Resolve L60 sales/orders for Temu channels: uploaded L60 table first, then historical snapshot.
+     *
+     * @return array{sales: float, orders: int}
+     */
+    private function resolveTemuL60SalesAndOrders(bool $isTemu2): array
+    {
+        $channelKey = $isTemu2 ? 'temu2' : 'temu';
+        $l60Sales = 0.0;
+        $l60Orders = 0;
+
+        $liveL60 = $this->getTemuLiveL60SalesSummary($isTemu2);
+        if ($liveL60) {
+            return [
+                'sales' => (float) ($liveL60['total_revenue'] ?? 0),
+                'orders' => (int) ($liveL60['total_orders'] ?? 0),
+            ];
+        }
+
+        $derivedL60 = $this->deriveTemuL60FromHistoricalL30($channelKey);
+        if ($derivedL60) {
+            $l60Sales = (float) $derivedL60['sales'];
+            $l60Orders = (int) $derivedL60['orders'];
+        }
+
+        $legacyTable = $isTemu2 ? 'temu2_daily_data_l60' : 'temu_daily_data_l60';
+        if ($l60Sales <= 0 && Schema::hasTable($legacyTable)) {
+            $l60Data = DB::table($legacyTable)
+                ->select('order_id', 'base_price_total', 'quantity_purchased', 'contribution_sku')
+                ->get();
+
+            $uniqueOrders = [];
+            foreach ($l60Data as $row) {
+                $sku = trim((string) ($row->contribution_sku ?? ''));
+                $orderId = trim((string) ($row->order_id ?? ''));
+                if ($sku === '' || $orderId === '') {
+                    continue;
+                }
+                if (! in_array($orderId, $uniqueOrders, true)) {
+                    $uniqueOrders[] = $orderId;
+                    $l60Orders++;
+                }
+
+                $basePrice = (float) ($row->base_price_total ?? 0);
+                $quantity = (int) ($row->quantity_purchased ?? 0);
+                if ($quantity <= 0 || $basePrice <= 0) {
+                    continue;
+                }
+                $total = $basePrice * $quantity;
+                $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
+                $l60Sales += $fbPrice * $quantity;
+            }
+        }
+
+        return [
+            'sales' => $l60Sales,
+            'orders' => $l60Orders,
+        ];
+    }
+
+    /**
+     * Keep cached all-marketplace-master Temu / Temu 2 rows aligned with tabulator sales badges.
+     */
+    private function overlayLiveTemuMetricsOnChannelRows(array $rows): array
+    {
+        $liveByChannel = [
+            'Temu' => fn () => $this->getTemuLiveSalesSummaryFromTabulator(false),
+            'Temu 2' => fn () => $this->getTemuLiveSalesSummaryFromTabulator(true),
+        ];
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($name === '' || ! isset($liveByChannel[$name])) {
+                continue;
+            }
+
+            $isTemu2 = $name === 'Temu 2';
+            $liveSales = $liveByChannel[$name]();
+            $liveL60 = $this->resolveTemuL60SalesAndOrders($isTemu2);
+            $l60Sales = (float) $liveL60['sales'];
+
+            if ($liveSales) {
+                $l30Sales = (float) $liveSales['total_revenue'];
+                $row['L30 Sales'] = (int) round($l30Sales);
+                $row['L30 Orders'] = (int) $liveSales['total_orders'];
+                $row['Qty'] = (int) $liveSales['total_quantity'];
+            }
+
+            $row['L-60 Sales'] = (int) round($l60Sales);
+            $row['L60 Orders'] = (int) $liveL60['orders'];
+            if ($l60Sales > 0 && $liveSales) {
+                $row['Growth'] = round(((($liveSales['total_revenue'] ?? 0) - $l60Sales) / $l60Sales) * 100, 2).'%';
+            } elseif ($l60Sales > 0) {
+                $l30Cached = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L30 Sales'] ?? 0));
+                $row['Growth'] = round((($l30Cached - $l60Sales) / $l60Sales) * 100, 2).'%';
+            }
+
+            $ySales = $this->computeTemuYSalesLikeAmazon($isTemu2);
+            if ($ySales !== null) {
+                $row['Y Sales'] = $ySales;
+            }
+            $l7Sales = $this->computeTemuL7SalesLikeAmazon($isTemu2);
+            if ($l7Sales !== null) {
+                $row['L7 Sales'] = $l7Sales;
+            }
+
+            $mapMiss = $this->getTemuLiveMapMissNMapFromDecreaseData($isTemu2);
+            $row['Map'] = $mapMiss['map'];
+            $row['Miss'] = $mapMiss['miss'];
+            $row['NMap'] = $mapMiss['nmap'];
+            if (array_key_exists('total_views', $mapMiss)) {
+                $row['Total Views'] = $mapMiss['total_views'];
+            }
+        }
+        unset($row);
+
+        return $rows;
     }
 
     /**
@@ -2648,6 +2923,8 @@ class ChannelMasterController extends Controller
 
             // Map/Miss/NMap: overlay live pricing-page counts so badges match macys-pricing (etc.)
             $formattedData = $this->overlayLiveMapMissNMapOnChannelRows($formattedData);
+            // Temu / Temu 2: overlay live L30/Y/L7 sales from tabulator (cached table can lag metrics sync)
+            $formattedData = $this->overlayLiveTemuMetricsOnChannelRows($formattedData);
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
             
             // Get summary data from cache
@@ -6576,48 +6853,16 @@ class ChannelMasterController extends Controller
             ]);
         }
 
-        // Fetch L60 Sales and Orders.
-        // Primary source: historical L30 snapshot from ~30 days ago — by definition,
-        // L30 ending on day X equals "days 31..60 ago" once today is X+30. This makes
-        // L60 update daily instead of freezing at whatever was last manually uploaded
-        // into temu_daily_data_l60 (which is a truncate-and-replace table).
-        $l60Orders = 0;
-        $l60Sales  = 0;
+        // L60: uploaded temu_daily_data_l60 first (matches /temu-tabulator L60 badge), else historical snapshot.
+        $l60Resolved = $this->resolveTemuL60SalesAndOrders(false);
+        $l60Sales = $l60Resolved['sales'];
+        $l60Orders = $l60Resolved['orders'];
 
-        $derivedL60 = $this->deriveTemuL60FromHistoricalL30('temu');
-        if ($derivedL60) {
-            $l60Sales  = (float) $derivedL60['sales'];
-            $l60Orders = (int)   $derivedL60['orders'];
-        }
-
-        // Fallback: if no historical snapshot is available yet, use the manually-uploaded
-        // temu_daily_data_l60 file (preserves the original behavior so nothing breaks on
-        // fresh installs or before the snapshot history has accumulated).
-        if ($l60Sales <= 0 && Schema::hasTable('temu_daily_data_l60')) {
-            $l60Data = DB::table('temu_daily_data_l60')
-                ->select('order_id', 'base_price_total', 'quantity_purchased')
-                ->get();
-
-            $uniqueOrders = [];
-            foreach ($l60Data as $row) {
-                if ($row->order_id && !in_array($row->order_id, $uniqueOrders)) {
-                    $uniqueOrders[] = $row->order_id;
-                    $l60Orders++;
-                }
-
-                $basePrice = (float) ($row->base_price_total ?? 0);
-                $quantity  = (int)   ($row->quantity_purchased ?? 0);
-                $total     = $basePrice * $quantity;
-
-                // FB Price: orders under $27 carry +$2.99 shipping
-                $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
-                $l60Sales += $fbPrice * $quantity;
-            }
-        }
-
-        $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
+        // L30 sales/orders/qty: live from tabulator (same as /temu-tabulator badge), not stale metrics cache.
+        $liveSales = $this->getTemuLiveSalesSummaryFromTabulator(false);
+        $l30Sales = $liveSales ? ($liveSales['total_revenue'] ?? 0) : ($metrics->total_sales ?? 0);
+        $l30Orders = $liveSales ? ($liveSales['total_orders'] ?? 0) : ($metrics->total_orders ?? 0);
+        $totalQuantity = $liveSales ? ($liveSales['total_quantity'] ?? 0) : ($metrics->total_quantity ?? 0);
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -6745,45 +6990,16 @@ class ChannelMasterController extends Controller
             ]);
         }
 
-        // Fetch L60 Sales and Orders.
-        // Primary source: historical L30 snapshot from ~30 days ago (same rationale as Temu —
-        // see deriveTemuL60FromHistoricalL30). Eliminates the "L60 = L30" placeholder that
-        // was previously kicking in because temu2_daily_data_l60 is almost never populated.
-        $l60Orders = 0;
-        $l60Sales  = 0;
+        // L60: uploaded temu2_daily_data_l60 first, else historical snapshot.
+        $l60Resolved = $this->resolveTemuL60SalesAndOrders(true);
+        $l60Sales = $l60Resolved['sales'];
+        $l60Orders = $l60Resolved['orders'];
 
-        $derivedL60 = $this->deriveTemuL60FromHistoricalL30('temu2');
-        if ($derivedL60) {
-            $l60Sales  = (float) $derivedL60['sales'];
-            $l60Orders = (int)   $derivedL60['orders'];
-        }
-
-        // Fallback 1: manually-uploaded temu2_daily_data_l60 (legacy behavior)
-        if ($l60Sales <= 0 && Schema::hasTable('temu2_daily_data_l60')) {
-            $l60Data = DB::table('temu2_daily_data_l60')
-                ->select('order_id', 'base_price_total', 'quantity_purchased')
-                ->get();
-
-            $uniqueOrders = [];
-            foreach ($l60Data as $row) {
-                if ($row->order_id && !in_array($row->order_id, $uniqueOrders)) {
-                    $uniqueOrders[] = $row->order_id;
-                    $l60Orders++;
-                }
-
-                $basePrice = (float) ($row->base_price_total ?? 0);
-                $quantity  = (int)   ($row->quantity_purchased ?? 0);
-                $total     = $basePrice * $quantity;
-
-                // FB Price: orders under $27 carry +$2.99 shipping
-                $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
-                $l60Sales += $fbPrice * $quantity;
-            }
-        }
-
-        $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
+        // L30 sales/orders/qty: live from tabulator (same as /temu2-tabulator badge), not stale metrics cache.
+        $liveSales = $this->getTemuLiveSalesSummaryFromTabulator(true);
+        $l30Sales = $liveSales ? ($liveSales['total_revenue'] ?? 0) : ($metrics->total_sales ?? 0);
+        $l30Orders = $liveSales ? ($liveSales['total_orders'] ?? 0) : ($metrics->total_orders ?? 0);
+        $totalQuantity = $liveSales ? ($liveSales['total_quantity'] ?? 0) : ($metrics->total_quantity ?? 0);
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;

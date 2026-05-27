@@ -66,7 +66,6 @@
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary ({{ $topdawgPercentage ?? 95 }}% Margin)</h6>
                     <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color:#000;font-weight:bold;" title="Average GPFT% on filtered rows">AVG GPFT: 0%</span>
                         <span class="badge bg-success fs-6 p-2" id="total-td-l30-badge" style="color:#000;font-weight:bold;" title="Sum of TD L30 on filtered rows">TD L30: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-badge" style="color:#fff;font-weight:bold;cursor:pointer;" title="SKUs with TD L30 = 0">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-badge" style="background:#28a745;color:#fff;font-weight:bold;cursor:pointer;" title="SKUs with TD L30 &gt; 0">&gt; 0 Sold: 0</span>
@@ -124,13 +123,12 @@
 
     function updateSummary() {
         const data = getSummaryRows();
-        let totalTdL30 = 0, totalGpft = 0;
+        let totalTdL30 = 0;
         let zeroSold = 0, moreSold = 0, missing = 0, mapC = 0, nmapC = 0;
 
         data.forEach(row => {
             const tdL30 = parseInt(row['TD L30'], 10) || 0;
             totalTdL30 += tdL30;
-            totalGpft += parseFloat(row['GPFT%']) || 0;
             tdL30 === 0 ? zeroSold++ : moreSold++;
 
             const inv = parseFloat(row.INV) || 0;
@@ -144,7 +142,6 @@
             }
         });
 
-        $('#avg-gpft-badge').text('AVG GPFT: ' + (data.length ? Math.round(totalGpft / data.length) : 0) + '%');
         $('#total-td-l30-badge').text('TD L30: ' + totalTdL30.toLocaleString());
         $('#zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
         $('#more-sold-badge').text('> 0 Sold: ' + moreSold.toLocaleString());

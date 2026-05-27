@@ -4,7 +4,7 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\AmazonChannelSummary;
-use App\Models\ChannelMaster;
+use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TopDawgProduct;
@@ -260,9 +260,9 @@ class TopDawgPricingController extends Controller
 
     private function marketplacePercentage(): float
     {
-        $fromChannel = ChannelMaster::where('channel', 'TopDawg')->value('channel_percentage');
+        $fromTable = MarketplacePercentage::where('marketplace', 'TopDawg')->value('percentage');
 
-        return $fromChannel !== null ? (float) $fromChannel : 95.0;
+        return $fromTable !== null ? (float) $fromTable : 95.0;
     }
 
     private function normalizeSkuKey(?string $sku): string
