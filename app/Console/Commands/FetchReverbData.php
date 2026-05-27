@@ -59,13 +59,24 @@ class FetchReverbData extends Command
 
         // Create map of SKU to listing data - THIS IS THE SOURCE OF ALL SKUs
         $listingMap = [];
+        $duplicateSkuCount = 0;
         foreach ($listings as $item) {
-            $sku = isset($item['sku']) ? trim((string) $item['sku']) : '';
-            if ($sku !== '') {
-                $listingMap[$sku] = $item;
+            $sku = $this->normalizeSku($item['sku'] ?? '');
+            if ($sku === '') {
+                continue;
             }
+            if (isset($listingMap[$sku])) {
+                $duplicateSkuCount++;
+                if (! $this->shouldPreferListing($item, $listingMap[$sku])) {
+                    continue;
+                }
+            }
+            $listingMap[$sku] = $item;
         }
         $this->info('Found ' . count($listingMap) . ' total listings with SKUs.');
+        if ($duplicateSkuCount > 0) {
+            $this->warn("Merged {$duplicateSkuCount} duplicate SKU listing(s) (e.g. NBSP vs space); kept live/newest per SKU.");
+        }
 
         // Calculate quantities for each SKU (optimized single query)
         $rL30 = $this->calculateQuantitiesFromMetrics($l30Start, $l30End);
@@ -86,16 +97,7 @@ class FetchReverbData extends Command
             $rawInventory = (int) ($listing['inventory'] ?? 0);
             $bumpBid = $bumpBidBySku[$sku] ?? null;
             $listingId = $listing['id'] ?? null;
-            // Reverb API may return state as object { slug: 'live' }, or 'status', or _embedded.state
-            $state = $listing['state'] ?? $listing['status'] ?? null;
-            if (is_array($state)) {
-                $state = $state['slug'] ?? $state['name'] ?? $state['title'] ?? null;
-            }
-            if ($state === null && isset($listing['_embedded']['state'])) {
-                $emb = $listing['_embedded']['state'];
-                $state = is_array($emb) ? ($emb['slug'] ?? $emb['name'] ?? null) : $emb;
-            }
-            $listingState = $state ? strtolower((string) $state) : 'live';
+            $listingState = $this->resolveListingStateFromApi($listing) ?? 'live';
             $remainingInventory = ReverbApiService::effectiveInventoryQuantity($rawInventory, $listingState);
 
             $bulkData[] = [
@@ -420,7 +422,7 @@ class FetchReverbData extends Command
     {
         $this->info("Calculating quantities from metrics table for {$startDate->toDateString()} to {$endDate->toDateString()}...");
 
-        $quantities = ReverbOrderMetric::whereBetween('order_date', [$startDate->toDateString(), $endDate->toDateString()])
+        $rawQuantities = ReverbOrderMetric::whereBetween('order_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->whereNotIn('status', ['returned', 'refunded'])
             ->whereNotNull('sku')
             ->selectRaw('sku, SUM(quantity) as total_quantity')
@@ -428,7 +430,17 @@ class FetchReverbData extends Command
             ->pluck('total_quantity', 'sku')
             ->toArray();
 
-        $this->info("Found " . count($quantities) . " SKUs with orders in this period.");
+        $quantities = [];
+        foreach ($rawQuantities as $sku => $total) {
+            $normalized = $this->normalizeSku($sku);
+            if ($normalized === '') {
+                continue;
+            }
+            $quantities[$normalized] = ($quantities[$normalized] ?? 0) + (int) $total;
+        }
+
+        $this->info('Found ' . count($quantities) . ' SKUs with orders in this period.');
+
         return $quantities;
     }
 
@@ -481,7 +493,7 @@ class FetchReverbData extends Command
 
         $bySku = [];
         foreach ($data as $item) {
-            $sku = trim((string) ($item['sku'] ?? ''));
+            $sku = $this->normalizeSku($item['sku'] ?? '');
             if ($sku === '') {
                 continue;
             }
@@ -518,5 +530,57 @@ class FetchReverbData extends Command
             $this->error('Error replacing reverb_products: '.$e->getMessage());
             throw $e;
         }
+    }
+
+    /**
+     * Normalize SKU for storage and dedup (NBSP / unicode spaces → ASCII space).
+     */
+    protected function normalizeSku(mixed $sku): string
+    {
+        $sku = (string) $sku;
+        if ($sku === '') {
+            return '';
+        }
+        $sku = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $sku);
+        $sku = preg_replace('/\s+/u', ' ', $sku);
+
+        return trim($sku);
+    }
+
+    /**
+     * When Reverb returns multiple listings with the same normalized SKU, keep the best row.
+     */
+    protected function shouldPreferListing(array $candidate, array $current): bool
+    {
+        $candidatePriority = $this->listingStatePriority($this->resolveListingStateFromApi($candidate));
+        $currentPriority = $this->listingStatePriority($this->resolveListingStateFromApi($current));
+        if ($candidatePriority !== $currentPriority) {
+            return $candidatePriority > $currentPriority;
+        }
+
+        return (int) ($candidate['id'] ?? 0) > (int) ($current['id'] ?? 0);
+    }
+
+    protected function listingStatePriority(?string $state): int
+    {
+        return match (strtolower((string) $state)) {
+            'live', 'published' => 100,
+            'sold' => 50,
+            default => 10,
+        };
+    }
+
+    protected function resolveListingStateFromApi(array $listing): ?string
+    {
+        $state = $listing['state'] ?? $listing['status'] ?? null;
+        if (is_array($state)) {
+            $state = $state['slug'] ?? $state['name'] ?? $state['title'] ?? null;
+        }
+        if ($state === null && isset($listing['_embedded']['state'])) {
+            $emb = $listing['_embedded']['state'];
+            $state = is_array($emb) ? ($emb['slug'] ?? $emb['name'] ?? null) : $emb;
+        }
+
+        return $state !== null ? strtolower((string) $state) : null;
     }
 }

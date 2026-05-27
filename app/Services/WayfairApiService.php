@@ -61,13 +61,40 @@ class WayfairApiService
             $payload['scope'] = $scopeToUse;
         }
 
-        $response = Http::withoutVerifying()->asForm()->post('https://sso.auth.wayfair.com/oauth/token', $payload);
+        $response = $this->oauthHttpClient()
+            ->asForm()
+            ->post($this->authUrl, $payload);
 
         if ($response->failed()) {
             throw new \Exception('Failed to authenticate with Wayfair API: ' . $response->body());
         }
 
         return (string) $response->json('access_token');
+    }
+
+    /**
+     * HTTP client for Wayfair OAuth (longer timeout + retries for slow/unstable networks).
+     */
+    protected function oauthHttpClient(): \Illuminate\Http\Client\PendingRequest
+    {
+        $retries = max(1, (int) config('services.wayfair.oauth_retries', 3));
+        $retryDelayMs = 3000;
+
+        return Http::withoutVerifying()
+            ->connectTimeout((int) config('services.wayfair.connect_timeout', 30))
+            ->timeout((int) config('services.wayfair.http_timeout', 90))
+            ->retry($retries, $retryDelayMs, throw: false);
+    }
+
+    /**
+     * HTTP client for Wayfair GraphQL / feed API calls.
+     */
+    public function apiHttpClient(): \Illuminate\Http\Client\PendingRequest
+    {
+        return Http::withoutVerifying()
+            ->connectTimeout((int) config('services.wayfair.connect_timeout', 30))
+            ->timeout((int) config('services.wayfair.http_timeout', 90))
+            ->retry(3, 2000, throw: false);
     }
 
     /**
@@ -104,7 +131,7 @@ XML;
 
      private function getAccessToken()
     {
-        $response = Http::withoutVerifying()->asForm()->post($this->authUrl, [
+        $response = $this->oauthHttpClient()->asForm()->post($this->authUrl, [
             'grant_type' => $this->grantType,
             'audience' => $this->audience,
             'client_id' => $this->clientId,

@@ -351,6 +351,9 @@ return [
         'client_id' => env('WAYFAIR_CLIENT_ID'),
         'client_secret' => env('WAYFAIR_CLIENT_SECRET'),
         'audience' => env('WAYFAIR_AUDIENCE'),
+        'http_timeout' => (int) env('WAYFAIR_HTTP_TIMEOUT', 90),
+        'connect_timeout' => (int) env('WAYFAIR_CONNECT_TIMEOUT', 30),
+        'oauth_retries' => (int) env('WAYFAIR_OAUTH_RETRIES', 3),
         'supplier_id' => env('WAYFAIR_SUPPLIER_ID', '2603'),
         // Scope for catalog/title updates. If you get "Access Denied", run: php artisan wayfair:test-scopes
         'catalog_scope' => env('WAYFAIR_CATALOG_SCOPE', ''),

@@ -1088,7 +1088,7 @@
             }
         }
 
-        const AC_PRICING_FILTER_CHANNELS = ['Shein', 'Aliexpress', 'Faire'];
+        const AC_PRICING_FILTER_CHANNELS = ['Shein', 'Aliexpress', 'Faire', 'Reverb'];
         let acPricingCellHoverTimer = null;
 
         function acOpenPricingPageWithBadge(missingLink, badge) {

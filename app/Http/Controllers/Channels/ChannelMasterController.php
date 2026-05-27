@@ -153,6 +153,7 @@ class ChannelMasterController extends Controller
             'Aliexpress' => '/aliexpress-pricing',
             'Shein' => '/shein-pricing',
             'Faire' => '/faire-pricing',
+            'Reverb' => '/reverb-pricing',
         ];
 
         $path = $paths[trim($channel)] ?? null;
@@ -344,6 +345,7 @@ class ChannelMasterController extends Controller
             'Aliexpress' => fn () => $this->getAliexpressLiveMapMissNMapFromPricingData(),
             'Shein' => fn () => $this->getSheinLiveMapMissNMapFromPricingData(),
             'Faire' => fn () => $this->getFaireLiveMapMissNMapFromPricingData(Request::create('/faire/pricing-data', 'GET')),
+            'Reverb' => fn () => $this->getReverbLiveMapMissNMapFromPricingData(Request::create('/reverb-data-json', 'GET')),
         ];
 
         foreach ($rows as &$row) {
@@ -517,9 +519,9 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Map / Miss / NMap for Reverb — same rules as reverb-pricing (Missing badge + MAP / N MP column, |INV − R Stock| ≤ 3).
-     * Miss: REQ + INV>0 + not listed on Reverb (Missing === 'M').
-     * Map / NMap: REQ + INV>0 + listed + |INV − R Stock| ≤ 3 (map) or > 3 (NMap). Total Views summed for those listed rows.
+     * Map / Miss / NMap for Reverb — same rules as reverb-pricing (Missing L badge + MAP / N MP column, |INV − R Stock| ≤ 3).
+     * Miss: REQ + INV>0 + RV Price=0 (no live Reverb listing; same as Macys MC Price / Best Buy BB Price).
+     * Map / NMap: REQ + INV>0 + listed (RV Price>0) + |INV − R Stock| ≤ 3 (map) or > 3 (NMap). Total Views summed for those listed rows.
      */
     private function getReverbLiveMapMissNMapFromPricingData(Request $request): array
     {
@@ -559,14 +561,14 @@ class ChannelMasterController extends Controller
                 }
 
                 if ($isReq && $inv > 0 && ! $isMissing) {
-                    $rStock = (float) ($row['R Stock'] ?? 0);
-                    $diff = abs($inv - $rStock);
-                    if ($diff <= 3) {
+                    $mapValue = (string) ($row['MAP'] ?? '');
+                    if ($mapValue === 'Map') {
                         $map++;
-                    } else {
+                        $views += (int) ($row['Views'] ?? 0);
+                    } elseif (str_contains($mapValue, 'N Map|')) {
                         $nmap++;
+                        $views += (int) ($row['Views'] ?? 0);
                     }
-                    $views += (int) ($row['Views'] ?? 0);
                 }
             }
 
@@ -6267,6 +6269,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            'missing_link' => $channelData->missing_link ?? $this->defaultMissingLinkForChannel('Reverb'),
             ...$this->getChannelHealthAndReviewsStub(),
         ];
 

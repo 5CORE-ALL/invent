@@ -28,6 +28,10 @@
             height: 80px !important;
         }
 
+        #summary-stats .badge.active-filter {
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.85), 0 0 0 5px currentColor;
+        }
+
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0px !important;
         }
@@ -256,8 +260,9 @@
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;" title="Order dollars: (Σ RD sales − Σ COGS) ÷ Σ COGS; RD sales = per-SKU reverb_daily qty×amount">ROI (orders): 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs">MISSING: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="inv-r-stock-badge" style="color: white; font-weight: bold; cursor: pointer;" title="INV vs R Stock mismatch &gt; 3 (same tolerance as other channels)">N Map: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing listings (REQ + INV&gt;0 + RV Price = 0)">Missing L: 0</span>
+                        <span class="badge fs-6 p-2" id="map-count-badge" style="background-color: #198754; color: white; font-weight: bold; cursor: pointer;" title="Click to filter mapped stock (REQ + INV&gt;0 + |INV − R Stock| ≤ 3)">Map: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="inv-r-stock-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter stock mismatch (REQ + INV&gt;0 + |INV − R Stock| &gt; 3)">N Map: 0</span>
                     </div>
                 </div>
             </div>
@@ -459,19 +464,54 @@
             applyFilters();
         });
 
-        // Missing badge click handler - filter SKUs missing in Reverb
+        // Missing / Map / N Map badge filters (also opened from all-marketplace-master ?badge=)
         let missingFilterActive = false;
+        let mapFilterActive = false;
+        let invRStockFilterActive = false;
+
+        function clearReverbBadgeFilters() {
+            missingFilterActive = mapFilterActive = invRStockFilterActive = false;
+            zeroSoldFilterActive = moreSoldFilterActive = false;
+        }
+
+        function syncReverbBadgeFilterStyles() {
+            $('#missing-count-badge').toggleClass('active-filter', missingFilterActive);
+            $('#map-count-badge').toggleClass('active-filter', mapFilterActive);
+            $('#inv-r-stock-badge').toggleClass('active-filter', invRStockFilterActive);
+        }
+
+        function applyReverbUrlBadgeFilter() {
+            const badge = (new URLSearchParams(window.location.search).get('badge') || '').toLowerCase();
+            if (badge && table) {
+                clearReverbBadgeFilters();
+                if (badge === 'missing') missingFilterActive = true;
+                else if (badge === 'map') mapFilterActive = true;
+                else if (badge === 'nmap') invRStockFilterActive = true;
+                else if (badge === 'zero_sold') zeroSoldFilterActive = true;
+                else if (badge === 'more_sold') moreSoldFilterActive = true;
+                syncReverbBadgeFilterStyles();
+            }
+            applyFilters();
+        }
+
         $('#missing-count-badge').on('click', function() {
             missingFilterActive = !missingFilterActive;
-            invRStockFilterActive = false;
+            mapFilterActive = invRStockFilterActive = false;
+            syncReverbBadgeFilterStyles();
             applyFilters();
         });
 
-        // INV > R Stock badge click handler - filter SKUs where INV > R Stock
-        let invRStockFilterActive = false;
+        $('#map-count-badge').on('click', function() {
+            mapFilterActive = !mapFilterActive;
+            missingFilterActive = invRStockFilterActive = false;
+            syncReverbBadgeFilterStyles();
+            applyFilters();
+        });
+
         $('#inv-r-stock-badge').on('click', function() {
             invRStockFilterActive = !invRStockFilterActive;
-            missingFilterActive = false; // Deactivate other filters
+            missingFilterActive = mapFilterActive = false;
+            syncReverbBadgeFilterStyles();
             applyFilters();
         });
 
@@ -1105,7 +1145,7 @@
                     }
                 },
                 {
-                    title: "Missing",
+                    title: "Missing L",
                     field: "Missing",
                     hozAlign: "center",
                     width: 70,
@@ -1686,6 +1726,17 @@
                 });
             }
 
+            // Map filter — listed SKUs with INV matched to R Stock (|INV − R Stock| ≤ 3)
+            if (mapFilterActive) {
+                table.addFilter(function(data) {
+                    const mapValue = data['MAP'] || '';
+                    const inv = parseFloat(data['INV']) || 0;
+                    const nrReq = data['nr_req'] || 'REQ';
+                    const isMissing = (data['Missing'] || '') === 'M';
+                    return mapValue === 'Map' && nrReq === 'REQ' && inv > 0 && !isMissing;
+                });
+            }
+
             // N Map filter - show SKUs where stocks don't match (REQ items with INV > 0 and NOT Missing)
             if (invRStockFilterActive) {
                 table.addFilter(function(data) {
@@ -1731,7 +1782,7 @@
             let totalGpft = 0;
             let zeroSoldCount = 0, moreSoldCount = 0;
             let lessAmzCount = 0, moreAmzCount = 0;
-            let missingCount = 0, invRStockCount = 0;
+            let missingCount = 0, mapCount = 0, invRStockCount = 0;
             let totalRdQty = 0, totalRdCogs = 0, totalRdSales = 0;
             let totalRevenueQtyPrice = 0;
             let totalProfitLive = 0;
@@ -1785,9 +1836,13 @@
                 }
                 
                 const mapValue = row['MAP'] || '';
-                // Count N Map (only REQ items with INV > 0 and NOT Missing)
-                if (mapValue.includes('N Map|') && nrReq === 'REQ' && inv > 0 && !isMissing) {
-                    invRStockCount++;
+                // Count Map / N Map (only REQ items with INV > 0 and NOT Missing)
+                if (nrReq === 'REQ' && inv > 0 && !isMissing) {
+                    if (mapValue === 'Map') {
+                        mapCount++;
+                    } else if (mapValue.includes('N Map|')) {
+                        invRStockCount++;
+                    }
                 }
             });
 
@@ -1823,7 +1878,8 @@
             );
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount}`);
-            $('#missing-count-badge').text(`MISSING: ${missingCount}`);
+            $('#missing-count-badge').text(`Missing L: ${missingCount.toLocaleString()}`);
+            $('#map-count-badge').text(`Map: ${mapCount.toLocaleString()}`);
             $('#inv-r-stock-badge').text('N Map: ' + invRStockCount.toLocaleString());
         }
 
@@ -1904,7 +1960,7 @@
 
         table.on('dataLoaded', function() {
             setTimeout(function() {
-                applyFilters();
+                applyReverbUrlBadgeFilter();
                 updateSummary();
                 loadReverbDailyTotalsBadges();
             }, 100);

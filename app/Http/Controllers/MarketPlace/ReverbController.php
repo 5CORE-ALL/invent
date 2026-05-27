@@ -159,10 +159,10 @@ class ReverbController extends Controller
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Fetch reverb data for these SKUs
-        $reverbData = ReverbProduct::whereIn("sku", $skus)->get()->keyBy("sku");
+        $reverbData = $this->buildNormalizedSkuMap(ReverbProduct::whereIn("sku", $skus)->get());
 
         // Fetch all required data from ReverbViewData in a single query
-        $reverbViewData = ReverbViewData::whereIn("sku", $skus)->get()->keyBy("sku");
+        $reverbViewData = $this->buildNormalizedSkuMap(ReverbViewData::whereIn("sku", $skus)->get());
 
         // Process data from product master and shopify tables
         $processedData = [];
@@ -170,6 +170,7 @@ class ReverbController extends Controller
 
         foreach ($productMasterRows as $productMaster) {
             $sku = $productMaster->sku;
+            $skuNorm = $this->normalizeSkuKey($sku);
             $isParent = stripos($sku, "PARENT") !== false;
 
             // Initialize the data structure
@@ -205,8 +206,8 @@ class ReverbController extends Controller
             }
 
             // Add data from reverb_products if available
-            if (isset($reverbData[$sku])) {
-                $reverbItem = $reverbData[$sku];
+            if (isset($reverbData[$skuNorm])) {
+                $reverbItem = $reverbData[$skuNorm];
                 $reverbPrice = $reverbItem->price ?? 0;
                 $ship = $values["ship"] ?? 0;
 
@@ -226,8 +227,8 @@ class ReverbController extends Controller
             }
 
             // Add all data from reverb_view_data if available (Bump already set from reverb_products.bump_bid when present)
-            if (isset($reverbViewData[$sku])) {
-                $viewData = $reverbViewData[$sku];
+            if (isset($reverbViewData[$skuNorm])) {
+                $viewData = $reverbViewData[$skuNorm];
 
                 // Process values column (cast to array)
                 $valuesArr = $viewData->values ?: [];
@@ -807,21 +808,22 @@ class ReverbController extends Controller
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Fetch reverb data for these SKUs
-        $reverbData = ReverbProduct::whereIn("sku", $skus)->get()->keyBy("sku");
+        $reverbData = $this->buildNormalizedSkuMap(ReverbProduct::whereIn("sku", $skus)->get());
 
         // Fetch reverb view data for SPRICE
-        $reverbViewData = ReverbViewData::whereIn("sku", $skus)->get()->keyBy("sku");
+        $reverbViewData = $this->buildNormalizedSkuMap(ReverbViewData::whereIn("sku", $skus)->get());
 
         // Fetch reverb listing status for NR/REQ (same table as listing page)
-        $reverbListingStatus = ReverbListingStatus::whereIn("sku", $skus)
-            ->orderBy('updated_at', 'desc')
-            ->get()
-            ->keyBy("sku");
+        $reverbListingStatus = $this->buildNormalizedSkuMap(
+            ReverbListingStatus::whereIn("sku", $skus)
+                ->orderBy('updated_at', 'desc')
+                ->get()
+        );
 
         // Fetch Amazon data for price comparison
-        $amazonData = \App\Models\AmazonDatasheet::whereIn("sku", $skus)
-            ->get()
-            ->keyBy("sku");
+        $amazonData = $this->buildNormalizedSkuMap(
+            \App\Models\AmazonDatasheet::whereIn("sku", $skus)->get()
+        );
 
         // reverb_daily_data: per-SKU order aggregates (from Reverb API daily fetch, matched by sku)
         // Filter to L30 days (last 30 days including today)
@@ -847,8 +849,8 @@ class ReverbController extends Controller
                     ->selectRaw('SUM(quantity) as rd_qty')
                     ->selectRaw('SUM(quantity * COALESCE(product_subtotal, 0)) as rd_qty_x_subtotal')
                     ->selectRaw('SUM(quantity * COALESCE(amount, 0)) as rd_qty_x_amount')
-                    ->get()
-                    ->keyBy('sku');
+                    ->get();
+                $dailyBySku = $this->buildNormalizedSkuMap($dailyBySku);
             }
         }
 
@@ -858,6 +860,7 @@ class ReverbController extends Controller
 
         foreach ($productMasterRows as $productMaster) {
             $sku = $productMaster->sku;
+            $skuNorm = $this->normalizeSkuKey($sku);
             $isParent = stripos($sku, "PARENT") !== false;
 
             // Initialize the data structure
@@ -892,8 +895,8 @@ class ReverbController extends Controller
             }
 
             // Add data from reverb_products if available
-            if (isset($reverbData[$sku])) {
-                $reverbItem = $reverbData[$sku];
+            if (isset($reverbData[$skuNorm])) {
+                $reverbItem = $reverbData[$skuNorm];
                 $reverbPrice = $reverbItem->price ?? 0;
 
                 $processedItem["RV Price"] = $reverbPrice;
@@ -915,17 +918,14 @@ class ReverbController extends Controller
                 $processedItem["Missing"] = ''; // Will be set later based on INV and nr_req
             }
 
-            // Store temp values for MAP calculation after nr_req is set
-            $tempMissingCheck = !isset($reverbData[$sku]);
-
             // Calculate CVR percentage (L30 / Views * 100)
             $views = $processedItem["Views"];
             $rvL30 = $processedItem["RV L30"];
             $processedItem["CVR"] = $views > 0 ? round(($rvL30 / $views) * 100, 0) : 0;
 
             // Amazon Price
-            if (isset($amazonData[$sku])) {
-                $processedItem["A Price"] = $amazonData[$sku]->price ?? 0;
+            if (isset($amazonData[$skuNorm])) {
+                $processedItem["A Price"] = $amazonData[$skuNorm]->price ?? 0;
             } else {
                 $processedItem["A Price"] = 0;
             }
@@ -933,8 +933,8 @@ class ReverbController extends Controller
             // Get NR/REQ from reverb_listing_statuses (same table as listing page)
             $processedItem["nr_req"] = 'REQ'; // Default value
             
-            if (isset($reverbListingStatus[$sku])) {
-                $listingStatus = $reverbListingStatus[$sku];
+            if (isset($reverbListingStatus[$skuNorm])) {
+                $listingStatus = $reverbListingStatus[$skuNorm];
                 $statusValue = is_array($listingStatus->value) 
                     ? $listingStatus->value 
                     : (json_decode($listingStatus->value, true) ?? []);
@@ -961,10 +961,11 @@ class ReverbController extends Controller
             $inv = $processedItem["INV"];
             $rStock = $processedItem["R Stock"];
             $nrReq = $processedItem["nr_req"];
+            $rvPrice = floatval($processedItem["RV Price"] ?? 0);
             
-            // Missing: Only for REQ items with INV > 0
+            // Missing L: REQ + INV > 0 + no live Reverb listing (RV Price = 0 — same as Macys MC Price / Best Buy BB Price)
             $isMissing = false;
-            if ($nrReq === 'REQ' && $inv > 0 && $tempMissingCheck) {
+            if ($nrReq === 'REQ' && $inv > 0 && $rvPrice <= 0) {
                 $processedItem["Missing"] = 'M';
                 $isMissing = true;
             } else {
@@ -991,8 +992,8 @@ class ReverbController extends Controller
             $processedItem["SROI"] = 0;
             $processedItem["bump_req"] = 'REQ';
 
-            if (isset($reverbViewData[$sku])) {
-                $viewData = $reverbViewData[$sku];
+            if (isset($reverbViewData[$skuNorm])) {
+                $viewData = $reverbViewData[$skuNorm];
                 $valuesArr = $viewData->values ?: [];
                 
                 $processedItem["SPRICE"] = isset($valuesArr["SPRICE"]) ? floatval($valuesArr["SPRICE"]) : 0;
@@ -1040,7 +1041,7 @@ class ReverbController extends Controller
             $l30 = $processedItem["L30"];
             $processedItem["RV Dil%"] = $inv > 0 ? round(($l30 / $inv) * 100, 0) : 0;
 
-            $rd = $dailyBySku[$sku] ?? null;
+            $rd = $dailyBySku[$skuNorm] ?? null;
             $processedItem["reverb_daily_qty"] = $rd ? (int) $rd->rd_qty : 0;
             $processedItem["reverb_daily_qty_x_subtotal"] = $rd ? round((float) $rd->rd_qty_x_subtotal, 2) : 0;
             $processedItem["reverb_daily_qty_x_amount"] = $rd ? round((float) $rd->rd_qty_x_amount, 2) : 0;
@@ -1428,5 +1429,31 @@ class ReverbController extends Controller
             // Don't break the main response if summary save fails
             Log::error('Error saving daily Reverb summary: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Normalize SKU for cross-table joins (case, Unicode spaces — same rules as ShopifySku lookup).
+     */
+    private function normalizeSkuKey(?string $sku): string
+    {
+        return ShopifySku::normalizeSkuForShopifyLookup($sku);
+    }
+
+    /**
+     * @param  iterable<int, object|array<string, mixed>>  $items
+     * @return array<string, mixed>
+     */
+    private function buildNormalizedSkuMap(iterable $items, string $skuAttribute = 'sku'): array
+    {
+        $out = [];
+        foreach ($items as $item) {
+            $rawSku = is_array($item) ? ($item[$skuAttribute] ?? '') : ($item->{$skuAttribute} ?? '');
+            $key = $this->normalizeSkuKey((string) $rawSku);
+            if ($key !== '' && ! isset($out[$key])) {
+                $out[$key] = $item;
+            }
+        }
+
+        return $out;
     }
 }

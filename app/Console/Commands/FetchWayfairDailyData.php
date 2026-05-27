@@ -2,11 +2,11 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\DB;
 use App\Models\WayfairDailyData;
+use App\Services\WayfairApiService;
 use Carbon\Carbon;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 class FetchWayfairDailyData extends Command
 {
@@ -54,9 +54,14 @@ class FetchWayfairDailyData extends Command
         $cutoffDate = Carbon::today()->subDays($days);
         $this->info("Cutoff date: {$cutoffDate->toDateString()}");
 
+        if (! $this->clientId || ! $this->clientSecret) {
+            $this->error('WAYFAIR_CLIENT_ID and WAYFAIR_CLIENT_SECRET must be set in .env');
+
+            return 1;
+        }
+
         $token = $this->getAccessToken();
-        if (!$token) {
-            $this->error("Failed to retrieve access token.");
+        if (! $token) {
             return 1;
         }
 
@@ -72,18 +77,20 @@ class FetchWayfairDailyData extends Command
     }
 
     /**
-     * Get access token from Wayfair API
+     * Get access token from Wayfair API (via shared service: retries + 90s timeout).
      */
-    private function getAccessToken()
+    private function getAccessToken(): ?string
     {
-        $response = Http::asForm()->post($this->authUrl, [
-            'grant_type' => $this->grantType,
-            'audience' => $this->audience,
-            'client_id' => $this->clientId,
-            'client_secret' => $this->clientSecret,
-        ]);
+        try {
+            $this->info('Requesting Wayfair OAuth token (may take up to 90s per attempt)...');
 
-        return $response->successful() ? ($response->json()['access_token'] ?? null) : null;
+            return app(WayfairApiService::class)->getAccessTokenWithScope(null);
+        } catch (\Throwable $e) {
+            $this->error('Failed to retrieve access token: '.$e->getMessage());
+            $this->line('If this persists: confirm the server can reach https://sso.auth.wayfair.com (firewall/DNS), or raise WAYFAIR_HTTP_TIMEOUT in .env.');
+
+            return null;
+        }
     }
 
     /**
@@ -191,7 +198,7 @@ class FetchWayfairDailyData extends Command
         }
         GRAPHQL;
 
-        $response = Http::withoutVerifying()
+        $response = app(WayfairApiService::class)->apiHttpClient()
             ->withToken($token)
             ->post($this->graphqlUrl, [
                 'query' => $query,
