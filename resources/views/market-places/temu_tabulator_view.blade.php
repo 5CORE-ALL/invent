@@ -99,9 +99,6 @@
                     <button type="button" class="btn btn-sm btn-info" id="export-l7-btn">
                         <i class="fa fa-download"></i> Export L7
                     </button>
-                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDailyDataModal">
-                        <i class="fa fa-upload"></i> Upload Daily Data
-                    </button>
                     <a href="{{ route('temu.decrease') }}" class="btn btn-sm btn-outline-primary" title="View SKU analytics (DIL%, CVR, pricing, ads)">
                         <i class="fa fa-chart-line"></i> Temu Analytics
                     </a>
@@ -132,58 +129,6 @@
                     </div>
                     <!-- Table body (scrollable section) -->
                     <div id="temu-table" style="flex: 1;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- Upload Daily Data Modal -->
-    <div class="modal fade" id="uploadDailyDataModal" tabindex="-1" aria-labelledby="uploadDailyDataModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="uploadDailyDataModalLabel">
-                        <i class="fa fa-upload me-2"></i>Upload Temu Daily Data
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="dailyDataUploadPeriod" class="form-label">Upload for</label>
-                        <select id="dailyDataUploadPeriod" class="form-select form-select-sm" style="width: auto;">
-                            <option value="L30">L30 Sales (temu_daily_data)</option>
-                            <option value="L60">L60 Sales (shopify_order_items)</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="dailyDataFile" class="form-label">Select Excel File</label>
-                        <input type="file" class="form-control" id="dailyDataFile" accept=".xlsx,.xls,.csv">
-                        <div class="form-text">
-                            Supported formats: Excel (.xlsx, .xls) or CSV. Same format for L30 and L60.
-                            <br>
-                            <a href="{{ route('temu.daily.sample') }}" class="text-primary">
-                                <i class="fa fa-download me-1"></i>Download Sample Excel Template
-                            </a>
-                        </div>
-                    </div>
-                    
-                    <div id="uploadProgressContainer" style="display: none;">
-                        <div class="mb-2">
-                            <strong>Upload Progress:</strong>
-                        </div>
-                        <div class="progress mb-2" style="height: 25px;">
-                            <div id="uploadProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
-                                 role="progressbar" style="width: 0%">0%</div>
-                        </div>
-                        <div id="uploadStatus" class="text-muted small"></div>
-                    </div>
-
-                    <div id="uploadResult" class="alert" style="display: none;"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="startUploadBtn">
-                        <i class="fa fa-upload me-1"></i>Start Upload
-                    </button>
                 </div>
             </div>
         </div>
@@ -846,137 +791,6 @@
                 }
             });
         });
-
-        // Upload Daily Data Handler
-        $('#startUploadBtn').on('click', function() {
-            const fileInput = document.getElementById('dailyDataFile');
-            const file = fileInput.files[0];
-
-            if (!file) {
-                showToast('Please select a file to upload', 'error');
-                return;
-            }
-
-            // Validate file type
-            const validTypes = [
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                'application/vnd.ms-excel',
-                'text/csv'
-            ];
-            if (!validTypes.includes(file.type)) {
-                showToast('Please select a valid Excel or CSV file', 'error');
-                return;
-            }
-
-            // Show progress container
-            $('#uploadProgressContainer').show();
-            $('#uploadResult').hide();
-            $('#startUploadBtn').prop('disabled', true);
-
-            // Chunk settings
-            const totalChunks = 5;
-            const period = $('#dailyDataUploadPeriod').val() || 'L30';
-            const uploadUrl = period === 'L60' ? '/temu/upload-daily-data-l60-chunk' : '/temu/upload-daily-data-chunk';
-            const uploadId = (period === 'L60' ? 'temu_l60_' : 'temu_') + Date.now();
-            let currentChunk = 0;
-            let totalImported = 0;
-
-            function uploadChunk() {
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('chunk', currentChunk);
-                formData.append('totalChunks', totalChunks);
-                formData.append('uploadId', uploadId);
-                formData.append('_token', '{{ csrf_token() }}');
-
-                $.ajax({
-                    url: uploadUrl,
-                    type: 'POST',
-                    data: formData,
-                    processData: false,
-                    contentType: false,
-                    success: function(response) {
-                        if (response.success) {
-                            totalImported += response.imported || 0;
-                            const progress = response.progress || 0;
-
-                            $('#uploadProgressBar')
-                                .css('width', progress + '%')
-                                .text(Math.round(progress) + '%');
-
-                            $('#uploadStatus').text(
-                                `Processing chunk ${currentChunk + 1} of ${totalChunks}... (${totalImported} records imported so far)`
-                            );
-
-                            if (currentChunk < totalChunks - 1) {
-                                currentChunk++;
-                                setTimeout(uploadChunk, 500);
-                            } else {
-                                $('#uploadProgressBar')
-                                    .removeClass('progress-bar-animated')
-                                    .addClass('bg-success');
-
-                                $('#uploadResult')
-                                    .removeClass('alert-danger')
-                                    .addClass('alert-success')
-                                    .html(`<i class="fa fa-check-circle me-2"></i>Upload completed successfully! ${totalImported} records imported to ${period} Sales.`)
-                                    .show();
-
-                                $('#startUploadBtn').prop('disabled', false);
-                                showToast(`${period} Sales upload completed! ${totalImported} records imported.`, 'success');
-
-                                setTimeout(function() {
-                                    $('#uploadDailyDataModal').modal('hide');
-                                    resetUploadForm();
-                                    if (period === 'L30') table.setData('/temu/daily-data');
-                                }, 2000);
-                            }
-                        } else {
-                            throw new Error(response.message || 'Upload failed');
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        let errorMessage = 'Upload failed. Please try again.';
-                        if (xhr.responseJSON && xhr.responseJSON.message) {
-                            errorMessage = xhr.responseJSON.message;
-                        }
-
-                        $('#uploadProgressBar')
-                            .removeClass('progress-bar-animated')
-                            .addClass('bg-danger');
-
-                        $('#uploadResult')
-                            .removeClass('alert-success')
-                            .addClass('alert-danger')
-                            .html(`<i class="fa fa-exclamation-circle me-2"></i>${errorMessage}`)
-                            .show();
-
-                        $('#startUploadBtn').prop('disabled', false);
-                        showToast(errorMessage, 'error');
-                    }
-                });
-            }
-
-            uploadChunk();
-        });
-
-        // Reset upload form when modal is hidden
-        $('#uploadDailyDataModal').on('hidden.bs.modal', function() {
-            resetUploadForm();
-        });
-
-        function resetUploadForm() {
-            $('#dailyDataFile').val('');
-            $('#uploadProgressContainer').hide();
-            $('#uploadResult').hide();
-            $('#uploadProgressBar')
-                .removeClass('bg-success bg-danger')
-                .addClass('progress-bar-animated')
-                .css('width', '0%')
-                .text('0%');
-            $('#uploadStatus').text('');
-            $('#startUploadBtn').prop('disabled', false);
-        }
     });
 </script>
 @endsection
