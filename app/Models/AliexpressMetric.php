@@ -12,11 +12,12 @@ class AliexpressMetric extends Model
 {
     use HasFactory;
 
-    protected $table = 'aliexpress_metrics';
+    protected $table = 'aliexpress_metric';
 
     protected $fillable = [
         'product_id',
         'sku',
+        'product_name',
         'price',
         'l30',
         'l60',

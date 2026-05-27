@@ -254,6 +254,11 @@
         min-width: 0;
         flex: 1 1 200px;
     }
+    #columnControls .mip-toolbar-exec-filter {
+        flex: 0 0 auto;
+        flex-wrap: nowrap !important;
+        align-self: center;
+    }
 
     /* ── Fit MIP into one screen: flex column + scroll only the grid ── */
     .mip-minh-0 {
@@ -579,6 +584,9 @@
                                 <input type="text" class="form-control form-control-sm column-search mip-toolbar-search-input" data-search-column="3" placeholder="Search SKU..." autocomplete="off" aria-label="Filter by SKU">
                                 <input type="text" class="form-control form-control-sm column-search mip-toolbar-search-input" data-search-column="6" placeholder="Search Supplier..." autocomplete="off" aria-label="Filter by supplier">
                             </div>
+                            <div class="d-flex align-items-center flex-nowrap gap-2 mip-toolbar-exec-filter border-start ps-3 ms-1">
+                                @include('purchase-master.partials.page-exec-dropdown', ['pageKey' => 'mip'])
+                            </div>
                         </div>
 
                         <!-- Stats row: metrics (left) + export (right, single line) -->
@@ -611,6 +619,7 @@
                             </div>
                             </div>
                             <div class="mip-toolbar-export-cluster" title="Pick supplier (optional), then Export">
+                                @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'mip'])
                                 <button type="button" id="mip-bulk-edit-ddate-btn" class="btn btn-sm btn-primary fw-semibold d-inline-flex align-items-center gap-1 shadow-sm" title="Bulk edit delivery date for selected rows">
                                     <i class="fas fa-calendar-alt"></i>
                                     <span>Bulk Edit D-Date</span>

@@ -77,6 +77,10 @@
             -webkit-overflow-scrolling: touch;
             scrollbar-width: thin;
         }
+        #fr-summary-stats .fr-filter-badge.active-filter {
+            box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.45);
+            outline: 2px solid #0d6efd;
+        }
         #fr-summary-stats .ebay2-summary-badge-row > .badge {
             flex: 1 1 0;
             min-width: 0;
@@ -244,11 +248,11 @@
                             <span class="badge bg-success fs-6 p-2 d-none fr-badge-chart fr-hover-chart" id="fr-total-profit-badge" data-metric="total_pft" style="font-weight:700;cursor:pointer;" aria-hidden="true" title="View trend">Profit: 0</span>
                             <span class="badge bg-info fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-avg-gpft-badge" data-metric="avg_gpft" style="font-weight:700;color:#111;cursor:pointer;" title="Same as Faire Sales Data: total order-style profit ÷ total sales (0.75×wholesale revenue − LP×qty). Click or hover for trend.">PFt: 0%</span>
                             <span class="badge bg-secondary fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-avg-roi-badge" data-metric="avg_roi" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover for daily trend">ROI: 0%</span>
-                            <span class="badge bg-danger fs-6 p-2 fr-hover-chart" id="fr-missing-badge" data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">Missing L: 0</span>
-                            <span class="badge fs-6 p-2 fr-hover-chart" id="fr-map-count-badge" data-metric="map_count" style="font-weight:700;background:#198754;color:#fff;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">Map: 0</span>
-                            <span class="badge fs-6 p-2 fr-hover-chart" id="fr-nmap-count-badge" data-metric="nmap_count" style="font-weight:700;background:#a71d2a;color:#fff;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">N Map: 0</span>
-                            <span class="badge fs-6 p-2 fr-hover-chart" id="fr-zero-sold-badge" data-metric="zero_sold" style="font-weight:700;background:#dc3545;color:#fff;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">0 Sold: 0</span>
-                            <span class="badge fs-6 p-2 fr-hover-chart" id="fr-more-sold-badge" data-metric="more_sold" style="font-weight:700;background:#b6e0fe;color:#0f172a;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">&gt;0 Sold: 0</span>
+                            <span class="badge bg-danger fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-missing-badge" data-metric="missing_count" data-filter="missing" style="font-weight:700;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">Missing L: 0</span>
+                            <span class="badge fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-map-count-badge" data-metric="map_count" data-filter="map" style="font-weight:700;background:#198754;color:#fff;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">Map: 0</span>
+                            <span class="badge fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-nmap-count-badge" data-metric="nmap_count" data-filter="nmap" style="font-weight:700;background:#a71d2a;color:#fff;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">N Map: 0</span>
+                            <span class="badge fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-zero-sold-badge" data-metric="zero_sold" data-filter="zero_sold" style="font-weight:700;background:#dc3545;color:#fff;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">0 Sold: 0</span>
+                            <span class="badge fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-more-sold-badge" data-metric="more_sold" data-filter="more_sold" style="font-weight:700;background:#b6e0fe;color:#0f172a;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">&gt;0 Sold: 0</span>
                         </div>
                     </div>
 
@@ -1044,6 +1048,7 @@
                     return true;
                 });
             }
+            frSyncFilterBadgeActiveClasses();
             if (frMissingActive) table.addFilter(d => (d.missing || '').trim().toUpperCase() === 'M');
             if (frMapActive) table.addFilter(d => (d.map || '') === 'Map');
             if (frNMapActive) table.addFilter(d => (d.map || '').startsWith('N Map|'));
@@ -1489,9 +1494,32 @@
                 renderComplete: function() { updateSummary(); }
             });
 
+            function frSyncFilterBadgeActiveClasses() {
+                $('#fr-missing-badge').toggleClass('active-filter', frMissingActive);
+                $('#fr-map-count-badge').toggleClass('active-filter', frMapActive);
+                $('#fr-nmap-count-badge').toggleClass('active-filter', frNMapActive);
+                $('#fr-zero-sold-badge').toggleClass('active-filter', frZeroSoldActive);
+                $('#fr-more-sold-badge').toggleClass('active-filter', frMoreSoldActive);
+            }
+
+            function frApplyBadgeFilterFromUrl() {
+                const badge = (new URLSearchParams(window.location.search).get('badge') || '').toLowerCase();
+                if (!badge || !table) return;
+                frMissingActive = frMapActive = frNMapActive = frZeroSoldActive = frMoreSoldActive = false;
+                if (badge === 'missing') frMissingActive = true;
+                else if (badge === 'map') frMapActive = true;
+                else if (badge === 'nmap') frNMapActive = true;
+                else if (badge === 'zero_sold') frZeroSoldActive = true;
+                else if (badge === 'more_sold') frMoreSoldActive = true;
+                else return;
+                frSyncFilterBadgeActiveClasses();
+                applyFilters();
+            }
+
             table.on('tableBuilt', function() {
                 frBuildColumnDropdown();
                 frApplyColumnVisibilityFromServer();
+                frApplyBadgeFilterFromUrl();
             });
 
             table.on('scrollVertical', frRemoveImagePreview);

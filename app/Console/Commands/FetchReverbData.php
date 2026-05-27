@@ -29,7 +29,7 @@ class FetchReverbData extends Command
      *
      * @var string
      */
-    protected $description = 'Calculate Reverb L30/L60 data from metrics table and update products';
+    protected $description = 'Fetch Reverb listings/orders: replaces reverb_products (truncate + insert), upserts order metrics';
 
     /**
      * Execute the console command.
@@ -60,8 +60,8 @@ class FetchReverbData extends Command
         // Create map of SKU to listing data - THIS IS THE SOURCE OF ALL SKUs
         $listingMap = [];
         foreach ($listings as $item) {
-            $sku = $item['sku'] ?? null;
-            if ($sku) {
+            $sku = isset($item['sku']) ? trim((string) $item['sku']) : '';
+            if ($sku !== '') {
                 $listingMap[$sku] = $item;
             }
         }
@@ -83,7 +83,7 @@ class FetchReverbData extends Command
 
             $price = $listing['price']['amount'] ?? null;
             $views = $listing['stats']['views'] ?? null;
-            $remainingInventory = $listing['inventory'] ?? null;
+            $rawInventory = (int) ($listing['inventory'] ?? 0);
             $bumpBid = $bumpBidBySku[$sku] ?? null;
             $listingId = $listing['id'] ?? null;
             // Reverb API may return state as object { slug: 'live' }, or 'status', or _embedded.state
@@ -96,7 +96,7 @@ class FetchReverbData extends Command
                 $state = is_array($emb) ? ($emb['slug'] ?? $emb['name'] ?? null) : $emb;
             }
             $listingState = $state ? strtolower((string) $state) : 'live';
-            // Default 'live' when state missing so tab counts work (All vs Active); run reverb:fetch to refresh
+            $remainingInventory = ReverbApiService::effectiveInventoryQuantity($rawInventory, $listingState);
 
             $bulkData[] = [
                 'sku' => $sku,
@@ -113,9 +113,8 @@ class FetchReverbData extends Command
             ];
         }
 
-        // Bulk upsert using database transaction
-        $this->info('Bulk updating ' . count($bulkData) . ' records...');
-        $this->bulkUpsert($bulkData);
+        $this->info('Replacing reverb_products (' . count($bulkData) . ' listings from API)...');
+        $this->bulkReplaceProducts($bulkData);
 
         $endTime = microtime(true);
         $duration = round($endTime - $startTime, 2);
@@ -469,47 +468,55 @@ class FetchReverbData extends Command
     }
 
     /**
-     * Bulk upsert products using raw SQL for better performance
+     * Replace all reverb_products rows with the latest API snapshot (truncate + insert).
+     * Skips truncate when there is nothing to insert so a failed fetch does not wipe the table.
      */
-    protected function bulkUpsert(array $data): void
+    protected function bulkReplaceProducts(array $data): void
     {
         if (empty($data)) {
+            $this->warn('No Reverb listings to insert — reverb_products was not changed.');
+
             return;
         }
 
+        $bySku = [];
+        foreach ($data as $item) {
+            $sku = trim((string) ($item['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $item['sku'] = $sku;
+            $bySku[$sku] = $item;
+        }
+        $data = array_values($bySku);
+
+        if ($data === []) {
+            $this->warn('No valid SKUs in listing data — reverb_products was not changed.');
+
+            return;
+        }
+
+        $previousCount = ReverbProduct::count();
+
         try {
-            // Use chunking for very large datasets
-            $chunks = array_chunk($data, 500);
-            $totalChunks = count($chunks);
-            
-            foreach ($chunks as $index => $chunk) {
-                DB::transaction(function () use ($chunk) {
-                    foreach ($chunk as $item) {
-                        DB::table('reverb_products')
-                            ->updateOrInsert(
-                                ['sku' => $item['sku']],
-                                $item
-                            );
+            DB::transaction(function () use ($data) {
+                Schema::disableForeignKeyConstraints();
+                DB::table('reverb_products')->truncate();
+                Schema::enableForeignKeyConstraints();
+
+                $chunks = array_chunk($data, 500);
+                foreach ($chunks as $index => $chunk) {
+                    DB::table('reverb_products')->insert($chunk);
+                    if (count($chunks) > 1) {
+                        $this->info('  Inserted chunk '.($index + 1).' of '.count($chunks).'...');
                     }
-                });
-                
-                if ($totalChunks > 1) {
-                    $this->info("  Processed chunk " . ($index + 1) . " of {$totalChunks}...");
                 }
-            }
+            });
+
+            $this->info('reverb_products: truncated '.$previousCount.' row(s), inserted '.count($data).' listing(s).');
         } catch (\Exception $e) {
-            $this->error('Error bulk upserting products: ' . $e->getMessage());
-            // Fallback to individual inserts if bulk fails
-            foreach ($data as $item) {
-                try {
-                    ReverbProduct::updateOrCreate(
-                        ['sku' => $item['sku']],
-                        $item
-                    );
-                } catch (\Exception $e) {
-                    $this->warn('Failed to insert product ' . ($item['sku'] ?? 'unknown') . ': ' . $e->getMessage());
-                }
-            }
+            $this->error('Error replacing reverb_products: '.$e->getMessage());
+            throw $e;
         }
     }
 }

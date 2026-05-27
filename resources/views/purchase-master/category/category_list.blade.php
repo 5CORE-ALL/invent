@@ -76,6 +76,7 @@
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h4 class="card-title mb-0">Categories</h4>
                         <div class="d-flex gap-2 align-items-center">
+                            @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'categories'])
                             <div class="form-check mb-0">
                                 <input class="form-check-input" type="checkbox" id="select-all">
                                 <label class="form-check-label" for="select-all">Select All</label>

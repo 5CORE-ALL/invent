@@ -189,6 +189,7 @@
 
                     {{-- Single row: all filters left, counts right --}}
                     <div class="d-flex flex-wrap align-items-end to-order-filter-row mb-4">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'to_order'])
                         <div class="filter-item">
                             <label class="form-label fw-semibold d-block">▶️ Navigation</label>
                             <div class="btn-group" role="group">
@@ -255,6 +256,7 @@
                             <label for="search-input" class="form-label fw-semibold d-block">🔍 Search</label>
                             <input type="text" id="search-input" class="form-control" placeholder="Search..." style="width: 160px;">
                         </div>
+                        @include('purchase-master.partials.page-exec-dropdown', ['pageKey' => 'to_order'])
                         <div class="filter-item" id="bulk-supplier-bar">
                             <label class="form-label fw-semibold d-block">🏢 Bulk supplier</label>
                             <div class="d-flex align-items-center gap-2 flex-wrap">

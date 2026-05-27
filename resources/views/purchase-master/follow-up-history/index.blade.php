@@ -43,9 +43,12 @@
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                    <h4 class="mb-0">
-                        <i class="fas fa-comments"></i> Follow-Up History
-                    </h4>
+                    <div class="d-flex align-items-center gap-2">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'follow_up_history'])
+                        <h4 class="mb-0">
+                            <i class="fas fa-comments"></i> Follow-Up History
+                        </h4>
+                    </div>
                     <button class="btn btn-light btn-sm" id="add-remark-btn">
                         <i class="fas fa-plus"></i> Add New Update
                     </button>

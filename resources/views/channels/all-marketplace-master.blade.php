@@ -1088,6 +1088,22 @@
             }
         }
 
+        const AC_PRICING_FILTER_CHANNELS = ['Shein', 'Aliexpress', 'Faire'];
+        let acPricingCellHoverTimer = null;
+
+        function acOpenPricingPageWithBadge(missingLink, badge) {
+            if (!missingLink || !badge) return;
+            const sep = missingLink.indexOf('?') >= 0 ? '&' : '?';
+            window.open(missingLink + sep + 'badge=' + encodeURIComponent(badge), '_blank');
+        }
+
+        function acPricingHoverCellHtml(channel, chartMetric, filterBadge, valueHtml, extraStyle) {
+            if (!AC_PRICING_FILTER_CHANNELS.includes(channel)) {
+                return `<span style="${extraStyle || ''}">${valueHtml}</span>`;
+            }
+            return `<span class="ac-pricing-hover-cell" data-channel="${channel}" data-chart-metric="${chartMetric}" data-filter-badge="${filterBadge}" style="${extraStyle || ''}cursor:pointer;" title="Hover for trend · Click to filter on pricing page">${valueHtml}</span>`;
+        }
+
         $(document).ready(function() {
             // Initialize Tabulator
             table = new Tabulator("#marketplace-table", {
@@ -1207,12 +1223,21 @@
                                 return `<a href="${additionSheet}" target="_blank" style="${style}text-decoration:none;cursor:pointer;" title="Click to open addition sheet">${value}</a>${chartIcon}`;
                             }
 
-                            return `<span style="${style}">${value}</span>${chartIcon}`;
+                            const valueHtml = String(value);
+                            const body = acPricingHoverCellHtml(channel, 'missing_l', 'missing', valueHtml, style);
+                            return body + chartIcon;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
                                 var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                                return;
+                            }
+                            const hoverEl = e.target.closest('.ac-pricing-hover-cell');
+                            if (hoverEl) {
+                                e.stopPropagation();
+                                const rowData = cell.getRow().getData();
+                                acOpenPricingPageWithBadge(rowData['missing_link'] || '', hoverEl.getAttribute('data-filter-badge'));
                             }
                         },
                         bottomCalc: "sum",
@@ -1233,12 +1258,20 @@
                             const dotColor = value === 0 ? DEFAULT_DOT_GRAY : '#198754';
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="map" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             const style = value === 0 ? 'color:#6c757d;font-weight:600;' : 'color:#198754;font-weight:600;';
-                            return `<span style="${style}">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                            const valueHtml = value.toLocaleString('en-US');
+                            return acPricingHoverCellHtml(channel, 'map', 'map', valueHtml, style) + chartIcon;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
                                 var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                                return;
+                            }
+                            const hoverEl = e.target.closest('.ac-pricing-hover-cell');
+                            if (hoverEl) {
+                                e.stopPropagation();
+                                const rowData = cell.getRow().getData();
+                                acOpenPricingPageWithBadge(rowData['missing_link'] || '', hoverEl.getAttribute('data-filter-badge'));
                             }
                         },
                         bottomCalc: "sum",
@@ -1260,13 +1293,22 @@
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="nmap" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
 
                             const color = value === 0 ? 'green' : 'red';
+                            const style = `color:${color};font-weight:bold;`;
+                            const valueHtml = String(value);
 
-                            return `<span style="color:${color};font-weight:bold;">${value}</span>${chartIcon}`;
+                            return acPricingHoverCellHtml(channel, 'nmap', 'nmap', valueHtml, style) + chartIcon;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
                                 var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                                return;
+                            }
+                            const hoverEl = e.target.closest('.ac-pricing-hover-cell');
+                            if (hoverEl) {
+                                e.stopPropagation();
+                                const rowData = cell.getRow().getData();
+                                acOpenPricingPageWithBadge(rowData['missing_link'] || '', hoverEl.getAttribute('data-filter-badge'));
                             }
                         },
                         bottomCalc: "sum",
@@ -1363,6 +1405,36 @@
                         bottomCalcFormatter: function(cell) {
                             const value = Math.round(parseNumber(cell.getValue()));
                             return `<strong>$${value.toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "L60 Orders",
+                        field: "L60 Orders",
+                        headerTooltip: "Order count from the previous 30-day period (L60 window). AliExpress/Shein: from L60 sales upload table when populated.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        visible: true,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'l60_orders');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l60_orders" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View L60 Orders Chart"></i>`;
+                            if (!value) return `<span style="color:#adb5bd;">—</span>${chartIcon}`;
+                            return `<span style="font-weight: 600;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span');
+                                cv = cv ? parseFloat(cv.textContent.replace(/[,$%\s]/g, '')) : null;
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            return `<strong>${value.toLocaleString('en-US')}</strong>`;
                         }
                     },
                     {
@@ -3220,7 +3292,7 @@
             });
 
             // Initial load only: set column dot color from last-two values (same red/green/gray logic as chart).
-            var metricDotMetricKeys = ['missing_l','map','nmap','l30_sales','ad_spend','l30_orders','qty','gprofit','groi','ads_pct','npft','nroi','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp'];
+            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','ad_spend','l30_orders','qty','gprofit','groi','ads_pct','npft','nroi','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp'];
             function loadMetricDotTrends(tableData) {
                 if (typeof lastDotColorByKey === 'undefined') return;
                 var data = tableData && Array.isArray(tableData) ? tableData : (typeof table !== 'undefined' && table.getData ? table.getData() : []);
@@ -4093,6 +4165,7 @@
             // Metric label map for titles
             const metricLabels = {
                 'l60_sales': 'L60 Sales',
+                'l60_orders': 'L60 Orders',
                 'l30_sales': 'Sales',
                 'l30_orders': 'Orders',
                 'qty': 'Qty',
@@ -4151,6 +4224,31 @@
                 titleEl.text(titleEl.text().replace(/\(Rolling [^)]+\)/, `(Rolling ${adChartRangeLabel(days)})`));
 
                 loadAdBreakdownChart();
+            });
+
+            // Shein / Aliexpress / Faire: hover Miss|Map|NMap cell → trend chart; click → pricing page filter
+            $(document).on('mouseenter', '#marketplace-table .ac-pricing-hover-cell', function() {
+                const $el = $(this);
+                const channel = $el.data('channel');
+                const metric = $el.data('chart-metric');
+                if (!channel || !metric) return;
+                if (acPricingCellHoverTimer) clearTimeout(acPricingCellHoverTimer);
+                const cv = parseFloat(String($el.text()).replace(/,/g, '')) || null;
+                acPricingCellHoverTimer = setTimeout(function() {
+                    showMetricChart(channel, metric, cv);
+                }, 500);
+            });
+            $(document).on('mouseleave', '#marketplace-table .ac-pricing-hover-cell', function() {
+                if (acPricingCellHoverTimer) {
+                    clearTimeout(acPricingCellHoverTimer);
+                    acPricingCellHoverTimer = null;
+                }
+            });
+            $(document).on('mousedown', '#marketplace-table .ac-pricing-hover-cell', function() {
+                if (acPricingCellHoverTimer) {
+                    clearTimeout(acPricingCellHoverTimer);
+                    acPricingCellHoverTimer = null;
+                }
             });
 
             // Badge click handler — show overall (all channels) metric trend

@@ -347,6 +347,7 @@
                 <!-- Filters Row - First Row -->
                 <div class="column-controls card mb-3 p-3 shadow-sm" id="columnControls" style="background: #f8f9fa; border-radius: 8px;">
                     <div class="d-flex flex-wrap align-items-center gap-3">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'r2s'])
                         <!-- Navigation -->
                         <div class="col-auto">
                             <label class="form-label fw-semibold mb-1 d-block">▶️ Navigation</label>
@@ -407,6 +408,10 @@
                         <div class="col-auto">
                             <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Supplier</label>
                             <input type="search" id="r2sToolbarSupplierFilter" class="form-control border-2 rounded-2 fw-bold" style="min-width: 148px; height: 42px;" placeholder="Filter Supplier…" autocomplete="off" title="Contains match on Supplier column" aria-label="Filter rows by supplier">
+                        </div>
+
+                        <div class="col-auto d-flex align-items-center">
+                            @include('purchase-master.partials.page-exec-dropdown', ['pageKey' => 'r2s'])
                         </div>
 
                         <!-- Move to transit: container + Move (always visible) -->

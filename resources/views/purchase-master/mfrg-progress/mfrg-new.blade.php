@@ -168,6 +168,9 @@
                     </div>
 
                     <div class="row mb-4 g-3 align-items-end justify-content-between">
+                        <div class="col-auto d-flex align-items-end">
+                            @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'mip'])
+                        </div>
                         {{-- ▶️ Navigation --}}
                         <div class="col-auto">
                             <label class="form-label fw-semibold mb-1 d-block">▶️ Navigation</label>

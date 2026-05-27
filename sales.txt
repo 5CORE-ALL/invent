@@ -1,51 +1,271 @@
-Campaign activities	Channel	Type	Sessions	Sales	Orders	Conversion rate	Cost	ROAS	CPA	CTR	AOV	Orders from new customers	Orders from returning customers
-6.89096E+12	Facebook	paid	6,130	$316.74	5	0.08%	—	—	—	—	$63.35	5	0
-{{campaign_name}}	Facebook	paid	1,693	$1,000.92	22	1.30%	—	—	—	—	$45.50	19	3
-(No name)	Facebook	paid	689	$713.49	16	2.32%	—	—	—	—	$44.59	14	2
-120247588102310496	Facebook	paid	545	$812.51	14	2.57%	—	—	—	—	$58.04	13	1
-120228905985000496	Facebook	paid	535	$167.73	3	0.56%	—	—	—	—	$55.91	3	0
-120214559208410496	Facebook	paid	483	$255.89	9	1.86%	—	—	—	—	$28.43	8	1
-120229241993040496	Facebook	paid	480	$70.58	2	0.42%	—	—	—	—	$35.29	2	0
-120214563977100496	Facebook	paid	394	$319.94	4	1.02%	—	—	—	—	$79.99	4	0
-120232736484000496	Facebook	paid	351	$73.18	2	0.57%	—	—	—	—	$36.59	1	1
-120229247121340496	Facebook	paid	346	$196.42	2	0.58%	—	—	—	—	$98.21	2	0
-120214554973940496	Facebook	paid	343	$138.97	3	0.87%	—	—	—	—	$46.32	3	0
-120214565544660496	Facebook	paid	333	$211.94	7	2.10%	—	—	—	—	$30.28	6	1
-120214553654000496	Facebook	paid	333	$136.69	1	0.30%	—	—	—	—	$136.69	1	0
-120228840892480496	Facebook	paid	321	$0.00	0	0%	—	—	—	—	—	0	0
-120214558943310496	Facebook	paid	304	$158.94	6	1.97%	—	—	—	—	$26.49	6	0
-120229769099830496	Facebook	paid	304	$0.00	0	0%	—	—	—	—	—	0	0
-120223053174030496	Facebook	paid	291	$322.96	4	1.37%	—	—	—	—	$80.74	4	0
-120228674242530496	Facebook	paid	283	$113.16	3	1.06%	—	—	—	—	$37.72	3	0
-120223525639210496	Facebook	paid	280	$223.96	4	1.43%	—	—	—	—	$55.99	4	0
-120247501787500496	Facebook	paid	274	$293.39	7	2.55%	—	—	—	—	$41.91	5	2
-120247363140690496	Facebook	paid	271	$217.98	3	1.11%	—	—	—	—	$72.66	3	0
-120228805903950496	Facebook	paid	270	$164.39	4	1.48%	—	—	—	—	$41.10	3	1
-120229281131150496	Facebook	paid	255	$34.15	2	0.78%	—	—	—	—	$17.08	2	0
-120228854960690496	Facebook	paid	255	$245.59	7	2.75%	—	—	—	—	$35.08	7	0
-120230059854560496	Facebook	paid	252	$183.92	4	1.59%	—	—	—	—	$45.98	4	0
-120228670000390496	Facebook	paid	241	$91.97	2	0.83%	—	—	—	—	$45.99	2	0
-120229356823160496	Facebook	paid	237	$0.00	0	0%	—	—	—	—	—	0	0
-120228684753860496	Facebook	paid	233	$23.99	1	0.43%	—	—	—	—	$23.99	1	0
-120229336399670496	Facebook	paid	226	$62.71	4	1.77%	—	—	—	—	$15.68	4	0
-120229926483620496	Facebook	paid	226	$0.00	0	0%	—	—	—	—	—	0	0
-120238876055900496	Facebook	paid	222	$680.47	10	4.50%	—	—	—	—	$68.05	7	3
-120230079150330496	Facebook	paid	214	$79.98	2	0.93%	—	—	—	—	$39.99	1	1
-120247512105290496	Facebook	paid	214	$53.98	1	0.47%	—	—	—	—	$53.98	1	0
-120230058589180496	Facebook	paid	210	$232.15	5	2.38%	—	—	—	—	$46.43	4	1
-120214553420170496	Facebook	paid	209	$27.99	1	0.48%	—	—	—	—	$27.99	1	0
-120228900260470496	Facebook	paid	200	$0.00	0	0%	—	—	—	—	—	0	0
-120228633699330496	Facebook	paid	198	$71.98	2	1.01%	—	—	—	—	$35.99	1	1
-120230260529200496	Facebook	paid	197	$195.11	5	2.54%	—	—	—	—	$39.02	4	1
-120229342542920496	Facebook	paid	191	$85.65	2	1.05%	—	—	—	—	$42.83	2	0
-120229613886200496	Facebook	paid	189	$174.06	2	1.06%	—	—	—	—	$87.03	2	0
-120239273334010496	Facebook	paid	186	$59.99	1	0.54%	—	—	—	—	$59.99	1	0
-120228636411770496	Facebook	paid	179	$0.00	0	0%	—	—	—	—	—	0	0
-120228928535610496	Facebook	paid	176	$103.83	3	1.70%	—	—	—	—	$34.61	3	0
-120223064025890496	Facebook	paid	175	$26.45	1	0.57%	—	—	—	—	$26.45	1	0
-120229288643890496	Facebook	paid	171	$54.73	2	1.17%	—	—	—	—	$27.37	2	0
-120229668209950496	Facebook	paid	165	$59.99	1	0.61%	—	—	—	—	$59.99	1	0
-120214582836600496	Facebook	paid	165	$55.98	1	0.61%	—	—	—	—	$55.98	1	0
-120229285541090496	Facebook	paid	163	$0.00	0	0%	—	—	—	—	—	0	0
-120229362975770496	Facebook	paid	163	$37.57	2	1.23%	—	—	—	—	$18.79	1	1
-120230081340230496	Facebook	paid	161	$0.00	0	0%	—	—	—	—	—	0	0
+Order Number	Order Status	Owner	Buyer Name	Order date	Payment time	Payment method	Supply Price	Product Total	Shipping Cost	Estimated VAT	Whether the platform collects and pays for itself	Order Amount	DDP tariff	Store Promotion	Store Direct Discount	Platform Coupon	Item ID	Product Information	EANcode	SKU code	Order Note	Complete shipping address	Complete shipping address (Commonly used language)	Receiver name	Phone 	Mobile	Email	Detailed address	Zip code	additional_city (Real cities in Germany/Italy/Poland/Mexico)	City	State/Province	Buyer Country	National address (used only in SA)	Tax number	Shipping Method	Shipping Deadline	Tracking number	Shipping Time	Buyer Confirmation Time	Order type	Customized information
+8211754058160011	Unpaid	default firstName default lastName	Jon Bry	05/16/2026 16:42		Credit/Debit Card		US $139.98	US $0.00			US $139.98		US $0.00		US $7.00	1005010522971874	"【1】 5Core DJ Light Stand Stage Lighting Truss System Hand Crank Up Height Adjustable 65.5 to 111""
+(Quantity:2 piece)
+"		LS 120 CRANK * 2		9915 NW bartholomew DR、Portland、Oregon、United States		Jonathan Bry	+1	5034872651	google_115343271169700858325@aliexpress.com	9915 NW bartholomew DR 	97229		Portland	Oregon	United States			"Seller Shpping
+"					Non-semi-managed order	
+8210874669043733	Awaiting confirmation of receipt	default firstName default lastName	US20251102xfS9 user	05/14/2026 18:27	05/14/2026 18:27	CARD_APPLE_PAY		US $69.99	US $0.00			US $69.99		US $0.00		US $1.00	1005010522971874	"【1】 5Core DJ Light Stand Stage Lighting Truss System Hand Crank Up Height Adjustable 65.5 to 111""
+(Quantity:1 piece)
+"		LS 120 CRANK * 1		6810 North Fry Rd 11105、Katy、Texas、United States		Yaumel Osorio Lobaina	+1	2813307830	us20251102xfs9_93373@aliexpress.com	6810 North Fry Rd 11105	77449		Katy	Texas	United States			"Seller Shpping
+"		"Seller Shipping local:871849198087
+"	"05/15/2026 11:50
+"		Non-semi-managed order	
+8211037231796214	Completed	default firstName default lastName	Dave Song	05/14/2026 17:23	05/14/2026 17:23	WALLET_PAYPAL_CHECKOUT		US $48.99	US $0.00			US $48.99		US $0.00		US $14.74	1005010497254333	"【1】 5 Core Keyboard Stand Z Style Sturdy Adjustable Electric Piano Riser Holder With Wheels KS Z1 WH HD WHLS
+(Quantity:1 piece)
+"		KS Z1 WH HD WHLS * 1		522 wood ST、Cary、North Carolina、United States		David Song	+1	9178621183	g2tl84@gmail.com	522 wood ST 	27513		Cary	North Carolina	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338826482309
+"	"05/15/2026 11:50
+"	05/18/2026 08:24	Non-semi-managed order	
+8211564060868152	Awaiting confirmation of receipt	default firstName default lastName	US20260409CY2k user	05/14/2026 16:00	05/14/2026 16:01	CARD_GOOGLE_PAY		US $21.99	US $0.00			US $21.99		US $0.00			1005008587357437	"【1】 5 Core Compression Driver 3.5 Inch Tweeter Horn Throat 220W Peak Loud 8 Ohm Titanium Diaphragm CD 110
+(Quantity:1 piece)
+"		CD 110 * 1		506 rogge ST、Watsonville、California、United States		Isaiah Zuniga	+1	8314062605	us20260409cy2k_16815@aliexpress.com	506 rogge ST 	95076		Watsonville	California	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338826475301
+"	"05/15/2026 11:45
+"		Non-semi-managed order	
+8211031391846181	Awaiting confirmation of receipt	default firstName default lastName	Leland Brown	05/14/2026 13:20	05/14/2026 13:20	WALLET_PAYPAL_CHECKOUT		US $139.98	US $0.00			US $139.98		US $0.00		US $4.41	1005010522971874	"【1】 5Core DJ Light Stand Stage Lighting Truss System Hand Crank Up Height Adjustable 65.5 to 111""
+(Quantity:2 piece)
+"		LS 120 CRANK * 2		13545 S. Wright Rd.、Eagle、Michigan、United States		Leland Brown	517	3310027	sambrownmi@yahoo.com	13545 S. Wright Rd. 	48822		Eagle	Michigan	United States			"Seller Shpping
+"		"Seller Shipping local:871848720068
+"	"05/15/2026 08:31
+"		Non-semi-managed order	
+8210846508821329	Unpaid	default firstName default lastName	1488 user	05/13/2026 19:15				US $31.99	US $0.00			US $31.99		US $0.00		US $2.20	1005010489171352	"【1】 5 Core 12 Inch Subwoofer Speaker 1200W Peak 4Ohm Audio Replacement Sub woofer WF 12120 4OHM
+(Attributes:Size:12)
+(Quantity:1 piece)
+"		WF 12120 4OHM * 1		115 tudor CT、Malvern、Pennsylvania、United States		Dylan DOrazio	+1	6103681488	us2353041264ttjae@aliexpress.com	115 tudor CT 	19355		Malvern	Pennsylvania	United States			"Seller Shpping
+"					Non-semi-managed order	
+8210724418093905	Awaiting confirmation of receipt	default firstName default lastName	Verdes Durango Autobuses	05/12/2026 18:59	05/12/2026 18:59	Credit/Debit Card		US $32.99	US $0.00			US $32.99		US $0.00		US $2.00	1005009160077556	"【1】 5Core Speaker Stand Tripod 2Pcs Tall Adjustable 72 Inch DJ Studio Monitor Stands Pole Mount
+(Attributes:Color Name:black)
+(Quantity:1 piece)
+"		SS ECO 2PK BLK WoB * 1		1495 highway  29 lote 1、Athens、Georgia、United States		Marco Ramirez	706	7063804393	facebook_4085316935059000@aliexpress.com	1495 highway  29 lote 1 	30601		Athens	Georgia	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338824482752
+"	"05/13/2026 10:41
+"		Non-semi-managed order	
+8210700092518982	Awaiting confirmation of receipt	default firstName default lastName	peter joe	05/11/2026 15:22	05/11/2026 15:22	WALLET_PAYPAL_CHECKOUT		US $59.98	US $0.00			US $59.98		US $0.00		US $1.00	1005008953383863	"【1】 5 Core DJ Light Stand Height Adjustable 39-100"" Heavy Duty Tripod Stage Lights Stands w Light T Bar LS 100
+(Quantity:2 piece)
+"		LS 100 * 2		12 Longmeadow Ave、Worcester、Massachusetts、United States		Esther OSEI MENSAH	+1	7743865494	joepetgh@yahoo.com	12 Longmeadow Ave 	01606		Worcester	Massachusetts	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338824360227
+"	"05/13/2026 09:20
+"		Non-semi-managed order	
+8211618935826311	Awaiting confirmation of receipt	default firstName default lastName	Pat Craig	05/11/2026 06:39	05/11/2026 06:39	WALLET_PAYPAL_CHECKOUT		US $105.98	US $0.00			US $105.98		US $0.00			1005010309253420	"【1】 5 Core PA Horn Speaker 600W PMPO Compression Driver in 22 Inch Trumpet Throat Loud Audio System TRUMPET 22 + DU60
+(Quantity:2 piece)
+"		TRUMPET 22 + DU60 * 2		1946 County Road 53 None、Keenesburg、Colorado、United States		Patrick Craig	+1	3037488091	pat@wildlife-sanctuary.org	1946 County Road 53 None	80643		Keenesburg	Colorado	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338822243973
+"	"05/11/2026 10:46
+"		Non-semi-managed order	
+8210926918418202	Awaiting confirmation of receipt	default firstName default lastName	Justin Compton	05/10/2026 14:01	05/10/2026 14:01	Credit/Debit Card		US $20.99	US $0.00			US $20.99		US $0.00			1005008553586246	"【1】 5 Core Keyboard Stand Single X Style Adjustable Lift Piano Riser For 49 - 88 Keys KS 1X BLU
+(Quantity:1 piece)
+"		KS 1X BLU * 1		13758 Stansil Ave、Odessa、Florida、United States		Justin Compton	+1	4073508122	justincomp81@gmail.com	13758 Stansil Ave 	33556		Odessa	Florida	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338822221582
+"	"05/11/2026 10:39
+"		Non-semi-managed order	
+8210696560465649	Unpaid	default firstName default lastName	Charles David Emmanuel	05/09/2026 05:56		Credit/Debit Card		US $35.99	US $0.00			US $35.99		US $0.00			1005011578873960	"【1】 5 Core 15 Inch Guitar Speaker Replacement 450W 4 Ohm Low Distortion for Electric Guitar Amp Cabinet
+(Quantity:1 piece)
+"		WF 15 140 4OHM GTR * 1		NW 80th ST BP-142946、Miami、Florida、United States		Charles David Emmanuel	+1	7863606446	charlesdavidemmanuel3@gmail.com	NW 80th ST BP-142946	33195		Miami	Florida	United States			"Seller Shpping
+"					Non-semi-managed order	
+8211573496046259	Awaiting confirmation of receipt	default firstName default lastName	Ryan Brockman	05/09/2026 01:09	05/09/2026 01:09	WALLET_PAYPAL_CHECKOUT		US $131.99	US $0.00			US $131.99		US $0.00			1005012069593835	"【1】 5 Core Party Speaker 2Pc Bluetooth 250W Active Rechargeable Outdoor PA DJ System w 2 Wireless Mic
+(Quantity:1 piece)
+"		ACTIVE HOME 8 2-MIC 2PCS * 1		15865 S Wilshire Cir、Oregon city、Oregon、United States		Ryan Brockman	+1	5034225328	micvalenti@gmail.com	15865 S Wilshire Cir 	97045		Oregon city	Oregon	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338822210920
+"	"05/11/2026 10:34
+"		Non-semi-managed order	
+8210644895244010	Awaiting confirmation of receipt	default firstName default lastName	US shopper	05/09/2026 00:15	05/09/2026 00:15	WALLET_PAYPAL_CHECKOUT		US $53.99	US $0.00			US $53.99		US $0.00			1005011563220248	"【1】 5 Core Speaker Stand 2Pc Heavy Duty Adjustable Telescoping Height 59.5"" Triangle Base 100Lb Capacity
+(Quantity:1 piece)
+"		SS TRI BASE 64 BLK * 1		2210 Devon Ave、Eugene、Oregon、United States		David Herrmann	+1	6185301807	daherrm@gmail.com	2210 Devon Ave 	97408		Eugene	Oregon	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338820830823
+"	"05/09/2026 08:28
+"		Non-semi-managed order	
+8210846034116115	Awaiting confirmation of receipt	default firstName default lastName	Todd Allen	05/07/2026 00:15	05/07/2026 00:15	Credit/Debit Card		US $31.99	US $0.00			US $31.99		US $0.00		US $2.00	1005010489171352	"【1】 5 Core 12 Inch Subwoofer Speaker 1200W Peak 4Ohm Audio Replacement Sub woofer WF 12120 4OHM
+(Attributes:Size:12)
+(Quantity:1 piece)
+"		WF 12120 4OHM * 1		967 north Marshall Street、Henderson、Texas、United States		Todd Allen	+1	9038300883	toddallen1571@gmail.com	967 north Marshall Street 	75652		Henderson	Texas	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338819564760
+"	"05/07/2026 12:37
+"		Non-semi-managed order	
+8211699835314093	Order closed	default firstName default lastName	U**r	05/06/2026 12:48	05/06/2026 14:03	WALLET_PAYPAL_CHECKOUT		US $41.99	US $0.00			US $41.99		US $0.00			1005010464565260	"【1】 5 Core 2 Tier Keyboard Stand Combo Heavy Duty Adjustable Piano Stand with Extension Arm
+(Quantity:1 piece)
+"		KS 2X BPNK+ KS 2T PNK * 1		***49th St. Apartment 4、Weehawken、New Jersey、United States		Moha*********	1201	20****3424	mohamadham*****@gmail.com	***************rtment 4	07086		Weehawken	New Jersey	United States			"Seller Shpping
+"					Non-semi-managed order	
+8211695836283084	Awaiting confirmation of receipt	default firstName default lastName	Psw1 user	05/06/2026 09:42	05/06/2026 09:42	WALLET_PAYPAL_CHECKOUT		US $24.99	US $0.00			US $24.99		US $0.00		US $2.58	1005009837681653	"【1】 5 Core 8 Inch Subwoofer Speaker 500W Combined Peak 4Ohm Replacement Car Bass Sub Woofer WF 8""-890 1PC
+(Quantity:1 piece)
+"		WF 8"-890 1PC * 1		250 barney hawkin rd、Mickleton、New Jersey、United States		Paul Weil	+1	8569817560	psw1@comcast.net	250 barney hawkin rd 	08056		Mickleton	New Jersey	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338820496753
+"	"05/08/2026 12:17
+"		Non-semi-managed order	
+8211678718711944	Awaiting confirmation of receipt	default firstName default lastName	Chazz Singer	05/05/2026 18:00	05/05/2026 18:00	CARD_GOOGLE_PAY		US $31.99	US $0.00			US $31.99		US $0.00		US $3.00	1005008553522386	"【1】 5 Core Keyboard Stand Adjustable 21 - 33"" Z Style Metal Electric Piano Riser 330Lb Capacity Foldable KS Z1 BLU
+(Quantity:1 piece)
+"		KS Z1 BLU * 1		419 S Keystone Ave、Sayre、Pennsylvania、United States		Eric Diaz	+1	5704239148	defcon484@gmail.com	419 S Keystone Ave 	18840		Sayre	Pennsylvania	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338817895200
+"	"05/06/2026 04:42
+"		Non-semi-managed order	
+8211220766115274	Awaiting confirmation of receipt	default firstName default lastName	US20260418P1wd user	05/05/2026 12:04	05/05/2026 12:04	WALLET_PAYPAL_PAYLATER		US $127.99	US $0.00			US $127.99		US $0.00			1005010522971874	"【1】 5Core DJ Light Stand Stage Lighting Truss System Hand Crank Up Height Adjustable 65.5 to 111""
+(Quantity:1 piece)
+"		LS 120 CRANK * 1		3900 veterans DR F 404、Kent、Washington、United States		Patricio Minha	+1	2067246366	us20260418p1wd_47527@aliexpress.com	3900 veterans DR F 404	98032		Kent	Washington	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338817901000
+"	"05/06/2026 04:49
+"		Non-semi-managed order	
+8211182441421169	Order closed	default firstName default lastName	0**r	05/03/2026 21:57	05/03/2026 21:57	Credit/Debit Card		US $31.99	US $0.00			US $31.99		US $0.00		US $1.69	1005010489171352	"【1】 5 Core 12 Inch Subwoofer Speaker 1200W Peak 4Ohm Audio Replacement Sub woofer WF 12120 4OHM
+(Attributes:Size:12)
+(Quantity:1 piece)
+"		WF 12120 4OHM * 1		******kiowa RD、Apple valley、California、United States		Brya**********	+1	56****0202	us18225703*******@aliexpress.com	*******iowa RD 	92308		Apple valley	California	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338816350595
+"	"05/04/2026 12:06
+"		Non-semi-managed order	
+8210509290963905	Awaiting confirmation of receipt	default firstName default lastName	Verdes Durango Autobuses	05/03/2026 17:09	05/03/2026 17:10	Credit/Debit Card		US $127.99	US $0.00			US $127.99		US $0.00			1005010522971874	"【1】 5Core DJ Light Stand Stage Lighting Truss System Hand Crank Up Height Adjustable 65.5 to 111""
+(Quantity:1 piece)
+"		LS 120 CRANK * 1		1495 highway  29 lote 1、Athens、Georgia、United States		Marco Ramirez	706	7063804393	facebook_4085316935059000@aliexpress.com	1495 highway  29 lote 1 	30601		Athens	Georgia	United States			"Seller Shpping
+"		"Seller Shipping local:1ZC2063D0323864787
+"	"05/05/2026 06:15
+"		Non-semi-managed order	
+8211437980001700	Completed	default firstName default lastName	John Kehl	05/03/2026 16:21	05/03/2026 16:21	Credit/Debit Card		US $32.99	US $0.00			US $32.99		US $0.00			1005010309095865	"【1】 5 Core Drum Throne Padded Guitar Stool Adjustable Drummer Seat for Adults & Kids DS BLKCH CML BR
+(Quantity:1 piece)
+"		DS BLKCH CML BR * 1		6910 Manchester Drive、Plainfield、Illinois、United States		John Kehl	1	7085280977	johnbkehl@gmail.com	6910 Manchester Drive 	60586		Plainfield	Illinois	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338816340114
+"	"05/04/2026 12:00
+"	05/07/2026 16:49	Non-semi-managed order	
+8210496895616717	Awaiting confirmation of receipt	default firstName default lastName	US shopper	05/03/2026 08:37	05/03/2026 08:37	Credit/Debit Card		US $28.99	US $0.00			US $28.99		US $0.00		US $2.00	1005012081972055	"【1】 5 Core Projector Stand Floor Adjustable 53"" Universal Projectors Support for Home Office & Studio
+(Quantity:1 piece)
+"		PS SQB 135 BLK * 1		24 Winslow Rd、Sharon、Massachusetts、United States		Fan Liang Chan	+1	9702147692	flchan@gmail.com	24 Winslow Rd 	02067		Sharon	Massachusetts	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338816335271
+"	"05/04/2026 11:57
+"		Non-semi-managed order	
+8211134364304717	Completed	default firstName default lastName	Eduardo Zavala	05/02/2026 08:51	05/02/2026 08:51	Credit/Debit Card		US $39.99	US $0.00			US $39.99		US $0.00			1005008514651562	"【1】 5 Core 6.5 Inch Midrange Speaker + Tweeter Combo 500W PMPO 8Ohm Subwoofer 300W PMPO Tweeters MR6.5-8oHMX2PCS+TW-180X2PCS
+(Attributes:Size:6.5 inch)
+(Quantity:1 piece)
+"		MR6.5-8oHMX2PCS+TW BLT 180X2PCS * 1		44971rubidoux habitación、Indio、California、United States		eduardo zavala	+1	7603912513	lalozava991@gmail.com	44971rubidoux habitación	92201		Indio	California	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338816312340
+"	"05/04/2026 11:46
+"	05/09/2026 12:16	Non-semi-managed order	
+8210499121222523	Order closed	default firstName default lastName	J**h	05/01/2026 12:39		Credit/Debit Card		US $69.99	US $0.00			US $69.99		US $0.00		US $9.21	1005011579170193	"【1】 5 Core 8 inch PA Portable Bluetooth Party Speaker Karaoke Boombox + 2 Wireless Mics
+(Quantity:1 piece)
+"		ACTIVE HOME 8 2-MIC * 1		*********ntown RD、Maysville、Kentucky、United States		Jam********	+1	60****2289	chuck_cl******@yahoo.com	**********town RD 	41056		Maysville	Kentucky	United States			"Seller Shpping
+"					Non-semi-managed order	
+8210431131522087	Awaiting confirmation of receipt	default firstName default lastName	CYRUS DOGOLEA	04/30/2026 19:46	04/30/2026 19:46	CARD_APPLE_PAY		US $224.99	US $0.00			US $224.99		US $0.00			1005011570677925	"【1】 5Core Speaker Stand 2Pc Heavy Duty Adjustable Height 61"" DJ PA Stands 35mm Mount 100Lb Capacity
+(Quantity:1 piece)
+"		SS SQ WH * 1		451 9th AVE SW、Cedar rapids、Iowa、United States		Cyrus Dogolea	+1	9196500358	yieteedogolea@gmail.com	451 9th AVE SW 	52404		Cedar rapids	Iowa	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338814637148
+Seller Shipping local:9234690267338814638602
+"	"05/02/2026 09:03
+05/02/2026 09:03
+"		Non-semi-managed order	
+8211545519164309	Order closed	default firstName default lastName	d**r	04/30/2026 19:41	04/30/2026 19:44	Credit/Debit Card		US $28.99	US $0.00			US $28.99		US $0.00			1005010460689997	"【1】 5 Core 12 Inch Car Woofer Audio 300W 4Ohm Deep Bass Replacement Sub Woofer Component Loud Speaker
+(Quantity:1 piece)
+"		WF 12140 4OHM * 1		*************idge AVE、Los angeles、California、United States		Davi********	+1	21****4105	dc**@mailinator.com	**************dge AVE 	90043		Los angeles	California	United States			"Seller Shpping
+"					Non-semi-managed order	
+8211056207878171	Completed	default firstName default lastName	ykeokok user	04/28/2026 21:44	04/28/2026 21:44	Credit/Debit Card		US $47.99	US $0.00			US $47.99		US $0.00		US $5.00	1005008553401868	"【1】 5 Core Keyboard Stand Z Style Heavy Duty Sturdy Piano Riser Height Adjustable Holder KS Z1 BPNK HD
+(Quantity:1 piece)
+"		KS Z1 BPNK HD * 1		1827 W 23rd ST bsmt apt 2、Chicago、Illinois、United States		Alexandra a.	+1	7736994221	ykeokok@gmail.com	1827 W 23rd ST bsmt apt 2	60608		Chicago	Illinois	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338811821878
+"	"04/29/2026 07:22
+"	05/05/2026 10:38	Non-semi-managed order	
+8210472266128250	Completed	default firstName default lastName	Mtmanmaxx user	04/28/2026 13:41	04/28/2026 13:43	Credit/Debit Card		US $35.99	US $0.00			US $35.99		US $0.00			1005009160077556	"【1】 5Core Speaker Stand Tripod 2Pcs Tall Adjustable 72 Inch DJ Studio Monitor Stands Pole Mount
+(Attributes:Color Name:Blue)
+(Quantity:1 piece)
+"		SS ECO 2PK SKY BLU WoB * 1		27 N Bighorn st、Byron、Wyoming、United States		Tim Maxwell	+1	3072875670	Mtmanmaxx@gmail.com	27 N Bighorn st 	82412		Byron	Wyoming	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338811826385
+"	"04/29/2026 07:24
+"	05/06/2026 14:04	Non-semi-managed order	
+8210430647440070	Order closed	default firstName default lastName	j**r	04/28/2026 11:09		Credit/Debit Card		US $17.99	US $0.00			US $17.99		US $0.00			1005008520671849	"【1】 5 Core Megaphone 30W Bull Horn PA Speaker w 800 Yards Range Loud Siren Voice Amplifier Portable 6R
+(Quantity:1 piece)
+"		6R * 1		**********74th Ave、Miami、Florida、United States		D01-20730******************	+1	30****3939	josed1***@gmail.com	***********4th Ave 	33166		Miami	Florida	United States			"Seller Shpping
+"					Non-semi-managed order	
+8211041806167211	Awaiting confirmation of receipt	default firstName default lastName	Jesus Lopez	04/28/2026 08:09	04/28/2026 08:09	OTHER_COUPON		US $41.99	US $0.00			US $41.99		US $0.00		US $1.00	1005010464565260	"【1】 5 Core 2 Tier Keyboard Stand Combo Heavy Duty Adjustable Piano Stand with Extension Arm
+(Quantity:1 piece)
+"		KS 2X BPNK+ KS 2T PNK * 1		1020 E 54th st 2、Chicago、Illinois、United States		Douglas Lopez	+1	7738958736	jl20042911@gmail.com	1020 E 54th st 2	60615		Chicago	Illinois	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338811026693
+"	"04/28/2026 09:46
+"		Non-semi-managed order	
+8210436821600215	Awaiting confirmation of receipt	default firstName default lastName	ae109397 user	04/26/2026 21:00	04/26/2026 21:00	WALLET_PAYPAL_PAYLATER		US $40.85	US $0.00			US $40.85		US $0.00		US $0.00	1005008957034135	"【1】 5 Core DJ Light Stand Pair Height Adjustable 39-100"" Heavy Duty Tripod Stage Lights Stands w Light T Bar LS 100 2PCS
+(Quantity:1 piece)
+"		LS 100 2PCS * 1		300 layne BLVD #205 Miguel Fernandez、Hallandale beach、Florida、United States		Miguel Fernandez	+1	7862735947	mgtheaudiomanipulator@gmail.com	300 layne BLVD #205 Miguel Fernandez	33009		Hallandale beach	Florida	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338809586062
+"	"04/27/2026 08:32
+"		Non-semi-managed order	
+8211438956435865	Order closed	default firstName default lastName	A**g	04/26/2026 06:37	04/26/2026 06:37	Credit/Debit Card		US $87.98	US $0.00			US $87.98		US $0.00		US $10.00	1005011579026696	"【1】 5 Core 15 Inch Guitar Speaker Replacement 2000W 8 Ohm Low Distortion for Electric Guitar Amp Cabinet
+(Quantity:2 piece)
+"		FR 15 140 MS GTR * 2		*************er Drive、Kissimmee、Florida、United States		gusta**********	+1	40****8719	gustavod*****@gmail.com	**************r Drive 	34746		Kissimmee	Florida	United States			"Seller Shpping
+"					Non-semi-managed order	
+8210558517202220	Order closed	default firstName default lastName	J**l	04/25/2026 04:32	04/25/2026 04:34	CREDITPAY_KLARNA		US $89.98	US $0.00			US $89.98		US $0.00			1005008514598484	"【1】 5 Core 15"" Subwoofer Speaker 2000W Full Range PA DJ Audio Sub Woofer 8Ohm Bass Replacement Driver FR 15 140 MS
+(Attributes:Size:15)
+(Quantity:2 piece)
+"		FR 15 140 MS * 2		*******deira ST casa、Miramar、Florida、United States		jose*********	+1	30****0939	sandojos****@gmail.com	************ ST casa	33023		Miramar	Florida	United States			"Seller Shpping
+"					Non-semi-managed order	
+8210352000077245	Completed	default firstName default lastName	Britney Reinke	04/24/2026 15:59	04/24/2026 15:59	Credit/Debit Card		US $41.99	US $0.00			US $41.99		US $0.00		US $4.00	1005010464565260	"【1】 5 Core 2 Tier Keyboard Stand Combo Heavy Duty Adjustable Piano Stand with Extension Arm
+(Quantity:1 piece)
+"		KS 2X BPNK+ KS 2T PNK * 1		206 West San Ysidro Boulevard Apt 90、San ysidro、California、United States		Britney Reinke	+1	6194839401	britney17reinke@gmail.com	206 West San Ysidro Boulevard Apt 90	92173		San ysidro	California	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338808502414
+"	"04/25/2026 07:53
+"	05/01/2026 17:46	Non-semi-managed order	
+8211219093702299	Awaiting confirmation of receipt	default firstName default lastName	Thiago Rampazzo	04/24/2026 10:32	04/24/2026 10:32	Credit/Debit Card		US $43.00	US $0.00			US $43.00		US $0.00			1005008957034135	"【1】 5 Core DJ Light Stand Pair Height Adjustable 39-100"" Heavy Duty Tripod Stage Lights Stands w Light T Bar LS 100 2PCS
+(Quantity:1 piece)
+"		LS 100 2PCS * 1		30 N Ridge Rd、Livingston、New Jersey、United States		Thiago Rampazzo	+1	2016201199	thiago.rampazzo@outlook.com	30 N Ridge Rd 	07039		Livingston	New Jersey	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338808507877
+"	"04/25/2026 08:05
+"		Non-semi-managed order	
+8210288899970966	Awaiting confirmation of receipt	default firstName default lastName	Raye Clemente	04/24/2026 09:26	04/24/2026 09:27	Credit/Debit Card		US $23.99	US $0.00			US $23.99		US $0.00			1005010574382827	"【1】 5 Core Keyboard Stand Double X Style Adjustable Lift Piano Riser For 49 - 88 Keys KS 2X BPNK
+(Quantity:1 piece)
+"		KS 2X BPNK * 1		3355 S kinnickinnic AVE Apt 5、Milwaukee、Wisconsin、United States		Raye Clemente	1	9365850768	gritar@gmail.com	3355 S kinnickinnic AVE Apt 5	53207		Milwaukee	Wisconsin	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338808505408
+"	"04/25/2026 08:00
+"		Non-semi-managed order	
+8210286330589832	Order closed	default firstName default lastName	C** 	04/24/2026 05:37		CARD_GOOGLE_PAY		US $44.99	US $0.00			US $44.99		US $0.00			1005008514598484	"【1】 5 Core 15"" Subwoofer Speaker 2000W Full Range PA DJ Audio Sub Woofer 8Ohm Bass Replacement Driver FR 15 140 MS
+(Attributes:Size:15)
+(Quantity:1 piece)
+"		FR 15 140 MS * 1		**** hub AVE、Bakersfield、California、United States		Sanov**********	+1	66****2309	november******@gmail.com	*****hub AVE 	93304		Bakersfield	California	United States			"Seller Shpping
+"					Non-semi-managed order	
+8210271851828673	Awaiting confirmation of receipt	default firstName default lastName	Anthony Knight	04/23/2026 13:40	04/23/2026 13:41	Credit/Debit Card		US $91.98	US $0.00			US $91.98		US $0.00		US $1.00	1005009160077556	"【1】 5Core Speaker Stand Tripod 2Pcs Tall Adjustable 72 Inch DJ Studio Monitor Stands Pole Mount
+(Attributes:Color Name:black)
+(Quantity:2 piece)
+"		SS ECO 2PK BLK WoB * 2		3395 NIAGARA ST、Denver、Colorado、United States		ANTHONY KNIGHT	+1	7192005054	40hz.ent@gmail.com	3395 NIAGARA ST 	80207		Denver	Colorado	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338808504494
+"	"04/25/2026 07:58
+"		Non-semi-managed order	
+8210327366310548	Completed	default firstName default lastName	SERGIO GONZALEZ	04/23/2026 11:41	04/23/2026 11:41	Credit/Debit Card		US $40.85	US $0.00			US $40.85		US $0.00		US $0.00	1005008957034135	"【1】 5 Core DJ Light Stand Pair Height Adjustable 39-100"" Heavy Duty Tripod Stage Lights Stands w Light T Bar LS 100 2PCS
+(Quantity:1 piece)
+"		LS 100 2PCS * 1		7487 W 3500 S、Magna、Utah、United States		Sergio Gonzalez Diaz	+1	8013301373	sergio.gonzalez941005@gmail.com	7487 W 3500 S 	84044		Magna	Utah	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338808503336
+"	"04/25/2026 07:55
+"	05/02/2026 21:27	Non-semi-managed order	
+8211368474687837	Awaiting confirmation of receipt	default firstName default lastName	ae113673 user	04/22/2026 15:22	04/22/2026 15:22	CARD_APPLE_PAY		US $40.85	US $0.00			US $40.85		US $0.00		US $3.47	1005008957034135	"【1】 5 Core DJ Light Stand Pair Height Adjustable 39-100"" Heavy Duty Tripod Stage Lights Stands w Light T Bar LS 100 2PCS
+(Quantity:1 piece)
+"		LS 100 2PCS * 1		434 S neptune DR、Satellite beach、Florida、United States		Gary Mirling	+1	3212431329	garymirling88@gmail.com	434 S neptune DR 	32937		Satellite beach	Florida	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338807928697
+"	"04/24/2026 09:40
+"		Non-semi-managed order	
+8211033420585817	Awaiting confirmation of receipt	default firstName default lastName	Jadson Silva	04/22/2026 12:38	04/22/2026 12:38	WALLET_PAYPAL_CHECKOUT		US $45.99	US $0.00			US $45.99		US $0.00			1005009160077556	"【1】 5Core Speaker Stand Tripod 2Pcs Tall Adjustable 72 Inch DJ Studio Monitor Stands Pole Mount
+(Attributes:Color Name:black)
+(Quantity:1 piece)
+"		SS ECO 2PK BLK WoB * 1		104 foxbridge village RD、Branford、Connecticut、United States		Jadson	+1	2034602426	jadsonbass2@gmail.com	104 foxbridge village RD 	06405		Branford	Connecticut	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338807924781
+"	"04/24/2026 09:37
+"		Non-semi-managed order	
+8211033181586142	Completed	default firstName default lastName	Craig Patrick	04/22/2026 12:31	04/22/2026 12:31	CARD_APPLE_PAY		US $52.99	US $0.00			US $52.99		US $0.00			1005010309253420	"【1】 5 Core PA Horn Speaker 600W PMPO Compression Driver in 22 Inch Trumpet Throat Loud Audio System TRUMPET 22 + DU60
+(Quantity:1 piece)
+"		TRUMPET 22 + DU60 * 1		2195 county road 55、Keenesburg、Colorado、United States		Patrick Craig	+1	3037488091	yptjs8k4fs@privaterelay.appleid.com	2195 county road 55 	80643		Keenesburg	Colorado	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338807916953
+"	"04/24/2026 09:33
+"	05/09/2026 21:20	Non-semi-managed order	
+8211032625118154	Order closed	default firstName default lastName	S**e	04/22/2026 12:14	04/22/2026 12:14	WALLET_PAYPAL_CHECKOUT		US $28.99	US $0.00			US $28.99		US $0.00			1005010460689997	"【1】 5 Core 12 Inch Car Woofer Audio 300W 4Ohm Deep Bass Replacement Sub Woofer Component Loud Speaker
+(Quantity:1 piece)
+"		WF 12140 4OHM * 1		********141st ST Bay 8 KCJ02400、Opa locka、Florida、United States		shant************	+1	87****3503	sherikaych******@gmail.com	***********************KCJ02400	33054		Opa locka	Florida	United States			"Seller Shpping
+"					Non-semi-managed order	
+8210208178990845	Completed	default firstName default lastName	Reginald Key	04/20/2026 15:29	04/20/2026 15:30	Credit/Debit Card		US $24.99	US $0.00			US $24.99		US $0.00			1005009837681653	"【1】 5 Core 8 Inch Subwoofer Speaker 500W Combined Peak 4Ohm Replacement Car Bass Sub Woofer WF 8""-890 1PC
+(Quantity:1 piece)
+"		WF 8"-890 1PC * 1		2210 vance AVE、Alexandria、Louisiana、United States		Reginald key	+1	3188542071	facebook_122117128844570338@aliexpress.com	2210 vance AVE 	71301		Alexandria	Louisiana	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338804323563
+"	"04/21/2026 03:41
+"	04/27/2026 13:37	Non-semi-managed order	
+8210208251997747	Completed	default firstName default lastName	Rexie SAAVED	04/20/2026 15:15	04/20/2026 15:15	Credit/Debit Card		US $43.00	US $0.00			US $43.00		US $0.00			1005008957034135	"【1】 5 Core DJ Light Stand Pair Height Adjustable 39-100"" Heavy Duty Tripod Stage Lights Stands w Light T Bar LS 100 2PCS
+(Quantity:1 piece)
+"		LS 100 2PCS * 1		22943 bussey DR、Plainfield、Illinois、United States		rexie john saavedra	+1	3312466989	rexiesaaved@gmail.com	22943 bussey DR 	60586		Plainfield	Illinois	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338804323921
+"	"04/21/2026 03:43
+"	05/02/2026 21:47	Non-semi-managed order	
+8210454194072506	Order closed	default firstName default lastName	b**r	04/20/2026 07:49				US $59.99	US $0.00			US $59.99		US $0.00			1005011563220248	"【1】 5 Core Speaker Stand 2Pc Heavy Duty Adjustable Telescoping Height 59.5"" Triangle Base 100Lb Capacity
+(Quantity:1 piece)
+"		SS TRI BASE 64 BLK * 1		*************ntain dr 138、Orlando、Florida、United States		Jeanf************	+1	32****2269	brandnewstor********@gmail.com	*****************n dr 138	32839		Orlando	Florida	United States			"Seller Shpping
+"					Non-semi-managed order	
+8210394431582416	Awaiting confirmation of receipt	default firstName default lastName	1314 user	04/17/2026 18:56	04/17/2026 18:56	Credit/Debit Card		US $35.99	US $0.00			US $35.99		US $0.00		US $2.00	1005011579733301	"【1】 5 Core 6x9 Car Speaker Pair 800W 4Ohm 2 Way Coaxial Speaker Audio w Super Tweeter Fit for Vehicle
+(Quantity:1 piece)
+"		CS 69 2W * 1		884 N Van Dyne Dr E 204、Saratoga springs、Utah、United States		Cesar Plua	+1	3852541314	us1756690916vauae@aliexpress.com	884 N Van Dyne Dr E 204	84045		Saratoga springs	Utah	United States			"Seller Shpping
+"		"Seller Shipping local:9234690267338802426464
+"	"04/18/2026 07:12
+"		Non-semi-managed order	

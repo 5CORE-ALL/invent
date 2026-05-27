@@ -605,7 +605,31 @@
             return d !== null && d > 3;
         }
 
+        function ttIsParentRow(data) {
+            return data && (data.is_parent === true || (data.Parent && String(data.Parent).startsWith('PARENT ')));
+        }
+
+        function ttRowIsMissing(d) {
+            if (ttIsParentRow(d)) return false;
+            return String(d.Missing || '').trim().toUpperCase() === 'M';
+        }
+
+        function ttRowIsMap(d) {
+            if (ttIsParentRow(d)) return false;
+            if (ttRowIsMissing(d)) return false;
+            const mapValue = d.MAP;
+            if (mapValue === 'Map') return true;
+            const diff = ttAbsDiffFromMapValue(mapValue);
+            return diff !== null && diff <= 3;
+        }
+
+        function ttRowIsNMap(d) {
+            if (ttIsParentRow(d)) return false;
+            return ttIsStrictNMapMapValue(d.MAP, ttRowIsMissing(d));
+        }
+
         $(document).ready(function() {
+            let ttAllSkuRows = [];
             let ttBadgeChartInstance = null;
             let ttBadgeChartDays = 30;
             let ttBadgeChartMetricKey = '';
@@ -1033,79 +1057,128 @@
                 clearSpriceForSelected();
             });
 
-            // 0 Sold badge click handler (same mutual exclusivity as ebay2-tabulator-view)
             let zeroSoldFilterActive = false;
-            $('#zero-sold-count-badge').on('click', function() {
-                zeroSoldFilterActive = !zeroSoldFilterActive;
-                moreSoldFilterActive = false;
-                missingFilterActive = false;
-                mapFilterActive = false;
-                invTTStockFilterActive = false;
-                adsBadgeFilter = null;
-                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
-                applyFilters();
-            });
-
-            // > 0 Sold badge click handler
             let moreSoldFilterActive = false;
-            $('#more-sold-count-badge').on('click', function() {
-                moreSoldFilterActive = !moreSoldFilterActive;
+            let missingFilterActive = false;
+            let mapFilterActive = false;
+            let invTTStockFilterActive = false;
+            let adsBadgeFilter = null;
+
+            function ttDismissBadgeChartModal() {
+                if (ttBadgeHoverTimer) {
+                    clearTimeout(ttBadgeHoverTimer);
+                    ttBadgeHoverTimer = null;
+                }
+                const modalEl = document.getElementById('ttBadgeChartModal');
+                if (!modalEl) return;
+                const inst = bootstrap.Modal.getInstance(modalEl);
+                if (inst) inst.hide();
+            }
+
+            function updateTtSummaryBadgeStyles() {
+                const badges = [{
+                    active: zeroSoldFilterActive,
+                    sel: '#zero-sold-count-badge',
+                    glow: 'rgba(220, 53, 69, 0.8)'
+                }, {
+                    active: moreSoldFilterActive,
+                    sel: '#more-sold-count-badge',
+                    glow: 'rgba(14, 165, 233, 0.75)'
+                }, {
+                    active: missingFilterActive,
+                    sel: '#missing-count-badge',
+                    glow: 'rgba(220, 53, 69, 0.8)'
+                }, {
+                    active: mapFilterActive,
+                    sel: '#map-count-badge',
+                    glow: 'rgba(40, 167, 69, 0.8)'
+                }, {
+                    active: invTTStockFilterActive,
+                    sel: '#inv-tt-stock-badge',
+                    glow: 'rgba(167, 29, 42, 0.85)'
+                }];
+                badges.forEach(function(b) {
+                    const $el = $(b.sel);
+                    if (!$el.length) return;
+                    if (b.active) {
+                        $el.css('opacity', '1').css('box-shadow', '0 0 10px ' + b.glow).addClass(
+                            'border border-3 border-dark');
+                    } else {
+                        $el.css('opacity', '').css('box-shadow', 'none').removeClass(
+                            'border border-3 border-dark');
+                    }
+                });
+            }
+
+            function ttClearSummaryBadgeFilters() {
                 zeroSoldFilterActive = false;
+                moreSoldFilterActive = false;
                 missingFilterActive = false;
                 mapFilterActive = false;
                 invTTStockFilterActive = false;
-                adsBadgeFilter = null;
-                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
-                applyFilters();
-            });
+            }
 
-            // Missing L badge click handler
-            let missingFilterActive = false;
-            $('#missing-count-badge').on('click', function() {
-                missingFilterActive = !missingFilterActive;
-                if (missingFilterActive) {
-                    mapFilterActive = false;
-                    invTTStockFilterActive = false;
-                }
-                zeroSoldFilterActive = false;
-                moreSoldFilterActive = false;
-                adsBadgeFilter = null;
-                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
-                applyFilters();
-            });
-
-            // Map badge click handler
-            let mapFilterActive = false;
-            $('#map-count-badge').on('click', function() {
-                mapFilterActive = !mapFilterActive;
-                if (mapFilterActive) {
-                    missingFilterActive = false;
-                    invTTStockFilterActive = false;
-                }
-                zeroSoldFilterActive = false;
-                moreSoldFilterActive = false;
-                adsBadgeFilter = null;
-                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
-                applyFilters();
-            });
-
-            // N Map badge — same scope as MAP column / ebay2 N Map badge
-            let invTTStockFilterActive = false;
-            $('#inv-tt-stock-badge').on('click', function() {
-                invTTStockFilterActive = !invTTStockFilterActive;
-                if (invTTStockFilterActive) {
+            function ttOnSummaryFilterBadgeClick(type) {
+                ttDismissBadgeChartModal();
+                if (type === 'zero-sold') {
+                    zeroSoldFilterActive = !zeroSoldFilterActive;
+                    moreSoldFilterActive = false;
                     missingFilterActive = false;
                     mapFilterActive = false;
+                    invTTStockFilterActive = false;
+                } else if (type === 'more-sold') {
+                    moreSoldFilterActive = !moreSoldFilterActive;
+                    zeroSoldFilterActive = false;
+                    missingFilterActive = false;
+                    mapFilterActive = false;
+                    invTTStockFilterActive = false;
+                } else if (type === 'missing') {
+                    missingFilterActive = !missingFilterActive;
+                    mapFilterActive = false;
+                    invTTStockFilterActive = false;
+                    zeroSoldFilterActive = false;
+                    moreSoldFilterActive = false;
+                } else if (type === 'map') {
+                    mapFilterActive = !mapFilterActive;
+                    missingFilterActive = false;
+                    invTTStockFilterActive = false;
+                    zeroSoldFilterActive = false;
+                    moreSoldFilterActive = false;
+                } else if (type === 'nmap') {
+                    invTTStockFilterActive = !invTTStockFilterActive;
+                    missingFilterActive = false;
+                    mapFilterActive = false;
+                    zeroSoldFilterActive = false;
+                    moreSoldFilterActive = false;
                 }
-                zeroSoldFilterActive = false;
-                moreSoldFilterActive = false;
                 adsBadgeFilter = null;
                 $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
                 applyFilters();
+                updateTtSummaryBadgeStyles();
+            }
+
+            $('#zero-sold-count-badge').on('click', function(e) {
+                e.stopPropagation();
+                ttOnSummaryFilterBadgeClick('zero-sold');
+            });
+            $('#more-sold-count-badge').on('click', function(e) {
+                e.stopPropagation();
+                ttOnSummaryFilterBadgeClick('more-sold');
+            });
+            $('#missing-count-badge').on('click', function(e) {
+                e.stopPropagation();
+                ttOnSummaryFilterBadgeClick('missing');
+            });
+            $('#map-count-badge').on('click', function(e) {
+                e.stopPropagation();
+                ttOnSummaryFilterBadgeClick('map');
+            });
+            $('#inv-tt-stock-badge').on('click', function(e) {
+                e.stopPropagation();
+                ttOnSummaryFilterBadgeClick('nmap');
             });
 
             // Ads section badge filter (like tiktok utilized page) - toggle on click
-            let adsBadgeFilter = null;
             $(document).on('click', '.ads-section-badge', function() {
                 const filter = $(this).data('ads-filter');
                 adsBadgeFilter = (adsBadgeFilter === filter) ? null : filter;
@@ -1114,12 +1187,9 @@
                     $('#utilized-count-section .ads-section-badge[data-ads-filter="' + adsBadgeFilter +
                         '"]').addClass('border border-3 border-dark');
                 }
-                missingFilterActive = false;
-                mapFilterActive = false;
-                invTTStockFilterActive = false;
-                zeroSoldFilterActive = false;
-                moreSoldFilterActive = false;
+                ttClearSummaryBadgeFilters();
                 applyFilters();
+                updateTtSummaryBadgeStyles();
                 if (typeof updateUtilizedCounts === 'function') updateUtilizedCounts();
             });
 
@@ -2665,8 +2735,17 @@
 
             // Helper: parent summary rows must never be hidden by filters
             function isParentRow(data) {
-                return data && (data.is_parent === true || (data.Parent && String(data.Parent).startsWith(
-                    'PARENT ')));
+                return ttIsParentRow(data);
+            }
+
+            function ttRefreshAllSkuRows() {
+                if (!table) {
+                    ttAllSkuRows = [];
+                    return;
+                }
+                ttAllSkuRows = table.getData('all').filter(function(row) {
+                    return !ttIsParentRow(row);
+                });
             }
 
             // Apply filters
@@ -2825,29 +2904,27 @@
                     });
                 }
 
-                // Missing filter (parent rows always visible)
+                // Missing L filter (parent rows always visible)
                 if (missingFilterActive) {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return true;
-                        return data.Missing === 'M';
+                        return ttRowIsMissing(data);
                     });
                 }
 
-                // Map filter (parent rows always visible)
+                // Map filter — listed + |INV − TT Stock| ≤ 3 (matches MAP column)
                 if (mapFilterActive) {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return true;
-                        const isMissing = String(data.Missing || '').trim().toUpperCase() === 'M';
-                        return data.MAP === 'Map' && !isMissing;
+                        return ttRowIsMap(data);
                     });
                 }
 
-                // N Map filter — legacy Diff|/N Map| rows with |diff| > 3 only (≤3 is Map)
+                // N Map filter — |INV − TT Stock| > 3 only (≤3 is Map)
                 if (invTTStockFilterActive) {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return true;
-                        const isMissing = String(data.Missing || '').trim().toUpperCase() === 'M';
-                        return ttIsStrictNMapMapValue(data['MAP'], isMissing);
+                        return ttRowIsNMap(data);
                     });
                 }
 
@@ -2974,6 +3051,7 @@
                 }
 
                 updateSummary();
+                updateTtSummaryBadgeStyles();
             }
 
             $('#row-type-filter, #inventory-filter, #gpft-filter, #cvr-filter, #roi-filter, #tiktok-stock-filter, #ad-click-filter, #tl30-filter')
@@ -2983,9 +3061,9 @@
 
             // Update summary badges
             function updateSummary() {
-                const data = table.getData('active').filter(row => {
-                    return !(row.Parent && row.Parent.startsWith('PARENT '));
-                });
+                const data = table.getData('active').filter(row => !ttIsParentRow(row));
+                const badgeRows = (ttAllSkuRows && ttAllSkuRows.length) ? ttAllSkuRows : table.getData('all')
+                    .filter(row => !ttIsParentRow(row));
 
                 let totalSales = 0,
                     totalPft = 0,
@@ -3018,31 +3096,23 @@
                     totalInv += parseFloat(row.INV) || 0;
                     totalL30 += parseFloat(row['TT L30']) || 0;
 
-                    if (l30 === 0) {
-                        zeroSoldCount++;
-                    } else {
-                        moreSoldCount++;
-                    }
-
                     const roi = parseFloat(row['ROI%']) || 0;
                     if (roi !== 0) {
                         totalRoi += roi;
                         roiCount++;
                     }
+                });
 
-                    const isMissing = String(row['Missing'] || '').trim().toUpperCase() === 'M';
-                    if (isMissing) {
-                        missingCount++;
+                badgeRows.forEach(row => {
+                    const l30 = parseFloat(row['TT L30']) || 0;
+                    if (l30 === 0) {
+                        zeroSoldCount++;
+                    } else {
+                        moreSoldCount++;
                     }
-
-                    const mapValue = row['MAP'];
-                    if (mapValue === 'Map' && !isMissing) {
-                        mapCount++;
-                    }
-
-                    if (ttIsStrictNMapMapValue(mapValue, isMissing)) {
-                        invTTStockCount++;
-                    }
+                    if (ttRowIsMissing(row)) missingCount++;
+                    if (ttRowIsMap(row)) mapCount++;
+                    if (ttRowIsNMap(row)) invTTStockCount++;
                 });
 
                 const avgGpft = data.length > 0 ? totalGpft / data.length : 0;
@@ -3239,9 +3309,11 @@
             table.on('dataLoaded', function() {
                 function afterLoad() {
                     setTimeout(function() {
+                        ttRefreshAllSkuRows();
                         applyFilters();
                         updateSummary();
                         updateUtilizedCounts();
+                        updateTtSummaryBadgeStyles();
                     }, 100);
                 }
                 fetch(TTP_CFG.distinctCampaign)

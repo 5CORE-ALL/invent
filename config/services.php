@@ -452,6 +452,7 @@ return [
         'app_secret' => env('ALIEXPRESS_APP_SECRET'),
         /** OAuth token value (sent as `session` for dropshipping /sync API) */
         'access_token' => env('ALIEXPRESS_ACCESS_TOKEN'),
+        'redirect_uri' => env('ALIEXPRESS_REDIRECT_URI', env('APP_URL')),
         /**
          * Dropshipping API POST URL (must end with /sync).
          * Default: https://api-sg.aliexpress.com/sync

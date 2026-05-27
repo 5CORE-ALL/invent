@@ -254,6 +254,8 @@ use App\Http\Controllers\PurchaseMaster\InstructionsItemPkgController;
 use App\Http\Controllers\PurchaseMaster\FollowUpHistoryController;
 use App\Http\Controllers\PurchaseMaster\LedgerMasterController;
 use App\Http\Controllers\PurchaseMaster\MFRGInProgressController;
+use App\Http\Controllers\PurchaseMaster\PurchasePageExecController;
+use App\Http\Controllers\PurchaseMaster\PurchasePageInfoController;
 use App\Http\Controllers\PurchaseMaster\OnRoadTransitController;
 use App\Http\Controllers\PurchaseMaster\OnSeaTransitController;
 use App\Http\Controllers\PurchaseMaster\PurchaseController;
@@ -3525,6 +3527,19 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Update Forecast Sheet
     Route::post('/update-forecast-data', [ForecastAnalysisController::class, 'updateForcastSheet'])->name('update.forecast.data');
 
+    // Purchase pipeline page executive assignment (To Order / MIP / R2S)
+    Route::controller(PurchasePageExecController::class)->group(function () {
+        Route::get('/purchase-page-exec/{pageKey}', 'show')->name('purchase.page.exec.show');
+        Route::post('/purchase-page-exec/{pageKey}/assignment', 'updateAssignment')->name('purchase.page.exec.assignment');
+        Route::post('/purchase-page-exec/options', 'storeOption')->name('purchase.page.exec.options');
+    });
+
+    // Purchase page info notes (HTML modal on purchase pages)
+    Route::controller(PurchasePageInfoController::class)->group(function () {
+        Route::get('/purchase-page-info/{pageKey}', 'show')->name('purchase.page.info.show');
+        Route::post('/purchase-page-info/{pageKey}', 'update')->name('purchase.page.info.update');
+    });
+
     // MFRG In Progress
     Route::controller(MFRGInProgressController::class)->group(function () {
         Route::get('/mfrg-in-progress', 'index')->name('mfrg.in.progress');
@@ -3786,7 +3801,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Aliexpress Daily Data routes
     Route::post('/aliexpress/upload-daily-data', [AliexpressController::class, 'uploadDailyDataChunk'])->name('aliexpress.upload.daily.data');
+    Route::post('/aliexpress/upload-daily-data-l60', [AliexpressController::class, 'uploadDailyDataL60Chunk'])->name('aliexpress.upload.daily.data.l60');
     Route::get('/aliexpress/daily-data', [AliexpressController::class, 'getDailyData'])->name('aliexpress.get.daily.data');
+    Route::get('/aliexpress/l60-sales', [AliexpressController::class, 'getL60Sales'])->name('aliexpress.get.l60.sales');
     Route::get('/aliexpress-tabulator', [AliexpressController::class, 'aliexpressTabulatorView'])->name('aliexpress.tabulator.view');
     Route::get('/aliexpress-lmp', [AliexpressController::class, 'aliexpressLmpPage'])->name('aliexpress.lmp');
     Route::post('/aliexpress-lmp/upload', [AliexpressController::class, 'uploadAliexpressLmp'])->name('aliexpress.lmp.upload');
@@ -3796,6 +3813,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/aliexpress/pricing-data', [AliexpressController::class, 'getPricingData'])->name('aliexpress.pricing.data');
     Route::get('/aliexpress/pricing-price-sample', [AliexpressController::class, 'downloadPricingPriceSample'])->name('aliexpress.pricing.price.sample');
     Route::post('/aliexpress/pricing-upload-price', [AliexpressController::class, 'uploadPricingPriceSheet'])->name('aliexpress.pricing.upload.price');
+    Route::post('/aliexpress/pricing-sync-api', [AliexpressController::class, 'syncPricingFromApi'])->name('aliexpress.pricing.sync.api');
     Route::post('/aliexpress/save-sprice', [AliexpressController::class, 'saveSpriceUpdates'])->name('aliexpress.pricing.save.sprice');
     Route::get('/aliexpress/badge-chart-data', [AliexpressController::class, 'badgeChartData'])->name('aliexpress.badge.chart');
     Route::post('/aliexpress-column-visibility', [AliexpressController::class, 'saveAliexpressColumnVisibility'])->name('aliexpress.save.column.visibility');

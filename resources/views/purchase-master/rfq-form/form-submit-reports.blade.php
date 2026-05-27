@@ -71,7 +71,8 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <div class="d-flex flex-wrap justify-content-end align-items-center mb-3 gap-2">
-                    <div class="d-flex flex-wrap gap-2">
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'rfq_form_reports'])
                         <button id="export-btn" class="btn btn-sm btn-success">
                             <i class="fas fa-file-excel"></i> Export Excel
                         </button>

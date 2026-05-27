@@ -1507,22 +1507,18 @@ class TikTokPricingController extends Controller
                     $roiCount++;
                 }
                 
-                // Count Missing
-                if (strtoupper(trim((string)($row['Missing'] ?? ''))) === 'M') {
+                $isMissing = (strtoupper(trim((string)($row['Missing'] ?? ''))) === 'M');
+                if ($isMissing) {
                     $missingCount++;
                 }
-                
-                $isMissing = (strtoupper(trim((string)($row['Missing'] ?? ''))) === 'M');
 
-                // Count Map / N Map (Reverb-style: |INV − TT Stock| ≤ 3 = Map; listed rows only)
+                // Count Map / N Map (|INV − TT Stock| ≤ 3 = Map; > 3 = N Map; listed rows only)
                 $mapValue = $row['MAP'] ?? '';
-                if ($mapValue === 'Map' && ! $isMissing) {
-                    $mapCount++;
-                }
-                // N Map: only when |INV − TT Stock| > 3 (≤3 is Map; exclude stale N Map|/Diff| with small diffs)
                 if (! $isMissing && $mapValue) {
                     $absDiff = null;
-                    if (str_starts_with($mapValue, 'N Map|')) {
+                    if ($mapValue === 'Map') {
+                        $absDiff = 0;
+                    } elseif (str_starts_with($mapValue, 'N Map|')) {
                         $rest = substr($mapValue, strlen('N Map|'));
                         $f = 0.0;
                         if (sscanf((string) $rest, '%f', $f) === 1) {
@@ -1535,8 +1531,12 @@ class TikTokPricingController extends Controller
                             $absDiff = abs($f);
                         }
                     }
-                    if ($absDiff !== null && $absDiff > 3) {
-                        $invTTStockCount++;
+                    if ($absDiff !== null) {
+                        if ($absDiff <= 3) {
+                            $mapCount++;
+                        } else {
+                            $invTTStockCount++;
+                        }
                     }
                 }
             }

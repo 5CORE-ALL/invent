@@ -245,7 +245,7 @@
                             <span class="badge bg-success fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-pft-badge" data-metric="total_pft" style="font-weight:700;cursor:pointer;color:#111;" title="Click or hover (½s) for daily trend">PFT: $0</span>
                             <span class="badge bg-warning fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-al30-badge" data-metric="total_al30" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover (½s) for daily trend">Sh L30: 0</span>
                             <span class="badge bg-info fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-avg-gpft-badge" data-metric="avg_gpft" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover (½s) for daily trend">GPFT: 0%</span>
-                            <span class="badge bg-danger fs-6 p-2 ae-hover-chart" id="ae-missing-badge" data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">Missing: 0</span>
+                            <span class="badge bg-danger fs-6 p-2 ae-hover-chart" id="ae-missing-badge" data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">Missing L: 0</span>
                             <span class="badge fs-6 p-2 ae-hover-chart" id="ae-map-badge" data-metric="map_count" style="font-weight:700;cursor:pointer;background:#198754;color:#fff;" title="Click to filter · Hover ½s for daily trend">Map: 0</span>
                             <span class="badge fs-6 p-2 ae-hover-chart" id="ae-nmap-badge" data-metric="nmap_count" style="font-weight:700;cursor:pointer;background:#a71d2a;color:#fff;" title="Click to filter · Hover ½s for daily trend">N Map: 0</span>
                             <span class="badge fs-6 p-2 ae-hover-chart" id="ae-zero-sold-badge" data-metric="zero_sold" style="font-weight:700;cursor:pointer;background:#dc3545;color:#fff;" title="Click to filter · Hover ½s for daily trend">0 Sold: 0</span>
@@ -351,6 +351,19 @@
         let aeNMapActive     = false;
         let aeZeroSoldActive = false;
         let aeMoreSoldActive = false;
+
+        function aeApplyBadgeFilterFromUrl() {
+            const badge = (new URLSearchParams(window.location.search).get('badge') || '').toLowerCase();
+            if (!badge || !table) return;
+            aeMissingActive = aeMapActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
+            if (badge === 'missing') aeMissingActive = true;
+            else if (badge === 'map') aeMapActive = true;
+            else if (badge === 'nmap') aeNMapActive = true;
+            else if (badge === 'zero_sold') aeZeroSoldActive = true;
+            else if (badge === 'more_sold') aeMoreSoldActive = true;
+            else return;
+            applyFilters();
+        }
 
         // Price Mode (mirrors TikTok exactly)
         let decreaseModeActive = false;
@@ -480,12 +493,24 @@
             return `$${(parseFloat(value) || 0).toFixed(2)}`;
         }
 
-        /** Shein map "N Map|{abs diff}" — N Map badge/filter only when diff > 3 (≤3 is Map). */
-        function aeSheinStrictNMapFromMap(mapVal) {
-            if (!mapVal || typeof mapVal !== 'string' || !mapVal.startsWith('N Map|')) return false;
-            const part = mapVal.split('|')[1];
-            const d = parseFloat(String(part == null ? '' : part).trim(), 10);
-            return Number.isFinite(d) && Math.abs(d) > 3;
+        /** INV vs Shein stock = Map if diff ≤ 3 OR ≤ 3% of INV (same as amazon_tabulator_view). */
+        function sheinInvWithinMapTolerance(inv, sheinStock) {
+            const invNum = parseFloat(inv) || 0;
+            const shNum = parseFloat(sheinStock) || 0;
+            if (invNum <= 0) return true;
+            const diff = Math.abs(invNum - shNum);
+            if (diff <= 3 + 1e-9) return true;
+            return diff <= invNum * 0.03 + 1e-9;
+        }
+
+        /** True when row counts as Missing L (Amazon: INV>0, NR=REQ, not on Shein price sheet). */
+        function sheinRowIsMissingL(row) {
+            if (!row || row.is_parent) return false;
+            const inv = parseFloat(row.inv) || 0;
+            const nr = (row.NR || '').trim();
+            const isMissingShein = !!row.is_missing_shein || (String(row.missing || '').trim().toUpperCase() === 'M');
+            const price = parseFloat(row.special_offer) || 0;
+            return inv > 0 && nr === 'REQ' && (isMissingShein || price <= 0);
         }
 
         // ── applyFilters (mirrors TikTok applyFilters) ────────────────
@@ -563,11 +588,24 @@
                 });
             }
 
-            // Map filter
+            // Map filter (Amazon: listed, INV>0, NR=REQ, INV vs Shein stock tolerance)
             if (mapFilter === 'map') {
-                table.addFilter(d => (d.map || '') === 'Map');
+                table.addFilter(d => {
+                    if (d.is_parent) return false;
+                    const inv = parseFloat(d.inv) || 0;
+                    const nr = (d.NR || '').trim();
+                    if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return false;
+                    return parseFloat(d.special_offer) > 0 && sheinInvWithinMapTolerance(inv, d.shein_stock);
+                });
             } else if (mapFilter === 'nmap') {
-                table.addFilter(d => aeSheinStrictNMapFromMap(d.map || ''));
+                table.addFilter(d => {
+                    if (d.is_parent) return false;
+                    const inv = parseFloat(d.inv) || 0;
+                    const nr = (d.NR || '').trim();
+                    if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return false;
+                    if (parseFloat(d.special_offer) <= 0) return false;
+                    return !sheinInvWithinMapTolerance(inv, d.shein_stock);
+                });
             }
 
             // DIL% filter (identical to TikTok)
@@ -585,9 +623,29 @@
             }
 
             // Badge-click filters
-            if (aeMissingActive)  table.addFilter(d => (d.missing || '').trim().toUpperCase() === 'M');
-            if (aeMapActive)      table.addFilter(d => (d.map     || '') === 'Map');
-            if (aeNMapActive)     table.addFilter(d => aeSheinStrictNMapFromMap(d.map || ''));
+            if (aeMissingActive) {
+                table.addFilter(d => sheinRowIsMissingL(d));
+            }
+            if (aeMapActive) {
+                table.addFilter(d => {
+                    if (d.is_parent) return false;
+                    const inv = parseFloat(d.inv) || 0;
+                    const nr = (d.NR || '').trim();
+                    if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return false;
+                    return parseFloat(d.special_offer) > 0 && sheinInvWithinMapTolerance(inv, d.shein_stock);
+                });
+            }
+            if (aeNMapActive) {
+                table.addFilter(d => {
+                    if (d.is_parent) return false;
+                    const inv = parseFloat(d.inv) || 0;
+                    const nr = (d.NR || '').trim();
+                    if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return false;
+                    const price = parseFloat(d.special_offer) || 0;
+                    if (price <= 0) return false;
+                    return !sheinInvWithinMapTolerance(inv, d.shein_stock);
+                });
+            }
             if (aeZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (aeMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
         }
@@ -632,12 +690,15 @@
 
             rows.forEach(row => {
                 if (row.is_parent) return;
-                const isMissing = (row.missing || '').trim().toUpperCase() === 'M';
                 const al30   = parseFloat(row.al30)   || 0;
                 const inv    = parseFloat(row.inv)    || 0;
                 const ovL30  = parseFloat(row.ov_l30) || 0;
+                const nr     = (row.NR || '').trim();
+                const isMissingShein = !!row.is_missing_shein;
+                const rowPrice = parseFloat(row.special_offer) || 0;
+                const isMissingL = sheinRowIsMissingL(row);
 
-                if (!isMissing) {
+                if (!isMissingL) {
                     totalSales += parseFloat(row.sales) || 0;
                     totalPft += al30 * (parseFloat(row.profit) || 0);
 
@@ -651,10 +712,18 @@
                 totalAl30 += al30;
                 if (al30 === 0) zeroSold++; else moreSold++;
                 if (inv > 0) { dilSum += (ovL30 / inv) * 100; dilCount++; }
-                if (isMissing) missingCount++;
-                const mapVal = (row.map || '').trim();
-                if (!isMissing && mapVal === 'Map') mapCount++;
-                else if (aeSheinStrictNMapFromMap(mapVal)) nmapCount++;
+
+                if (inv > 0 && nr === 'REQ') {
+                    if (isMissingShein || rowPrice <= 0) {
+                        missingCount++;
+                    } else if (!isMissingShein && rowPrice > 0) {
+                        if (sheinInvWithinMapTolerance(inv, row.shein_stock)) {
+                            mapCount++;
+                        } else {
+                            nmapCount++;
+                        }
+                    }
+                }
             });
 
             const avgGpft = gpftCount > 0 ? gpftSum / gpftCount : 0;
@@ -666,7 +735,7 @@
             $('#ae-total-pft-badge').text(totalPft !== 0 || totalSales > 0 ? `PFT: $${Math.round(totalPft).toLocaleString()}` : 'PFT: –');
             $('#ae-total-al30-badge').text(`Sh L30: ${totalAl30.toLocaleString()}`);
             $('#ae-avg-gpft-badge').text(gpftCount  > 0 ? `GPFT: ${Math.round(avgGpft)}%`  : 'GPFT: –');
-            $('#ae-missing-badge').text(`Missing: ${missingCount.toLocaleString()}`);
+            $('#ae-missing-badge').text(`Missing L: ${missingCount.toLocaleString()}`);
             $('#ae-map-badge').text(`Map: ${mapCount.toLocaleString()}`);
             $('#ae-nmap-badge').text(`N Map: ${nmapCount.toLocaleString()}`);
             $('#ae-zero-sold-badge').text(`0 Sold: ${zeroSold.toLocaleString()}`);
@@ -683,6 +752,7 @@
                 ajaxResponse: function(url, params, response) {
                     summaryDataCache = normalizeRows(response);
                     updateSummary(summaryDataCache);
+                    setTimeout(aeApplyBadgeFilterFromUrl, 0);
                     return response;
                 },
                 layout: "fitDataStretch",
@@ -835,14 +905,15 @@
                         }
                     },
                     {
-                        title: "Missing",
+                        title: "Missing L",
                         field: "missing",
                         hozAlign: "center",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            const value = (cell.getValue() || '').toString().trim().toUpperCase();
-                            if (value === 'M') return '<span class="badge bg-danger">M</span>';
+                            if (sheinRowIsMissingL(d)) {
+                                return '<span class="badge bg-danger">L</span>';
+                            }
                             return '';
                         }
                     },
@@ -854,17 +925,17 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            const val = (cell.getValue() || '').trim();
-                            if (val === 'Map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
-                            if (val.startsWith('N Map|')) {
-                                const part = val.split('|')[1];
-                                const ad = Math.abs(parseFloat(String(part || '').trim(), 10) || 0);
-                                if (Number.isFinite(ad) && ad <= 3) {
-                                    return '<span style="color:#198754;font-weight:bold;">Map</span>';
-                                }
-                                return `<span style="color:#dc3545;font-weight:bold;">N Map (${part})</span>`;
+                            const inv = parseFloat(d.inv) || 0;
+                            const nr = (d.NR || '').trim();
+                            if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return '';
+                            const rowPrice = parseFloat(d.special_offer) || 0;
+                            if (rowPrice <= 0) return '';
+                            const sheinStock = parseFloat(d.shein_stock) || 0;
+                            if (sheinInvWithinMapTolerance(inv, sheinStock)) {
+                                return '<span style="color:#198754;font-weight:bold;">Map</span>';
                             }
-                            return '';
+                            const diff = Math.round(Math.abs(inv - sheinStock));
+                            return `<span style="color:#dc3545;font-weight:bold;">N Map (${diff})</span>`;
                         }
                     },
                     {
@@ -1113,28 +1184,38 @@
                 saveSpriceUpdates([{ sku: sku, sprice: sprice }]);
             });
 
-            // Badge click filters (identical to TikTok)
-            $('#ae-missing-badge').on('click', function() {
+            // Badge click → table filter (hover opens chart via ae-hover-chart)
+            $('#ae-missing-badge').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
                 aeMissingActive = !aeMissingActive;
                 aeMapActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
                 applyFilters();
             });
-            $('#ae-map-badge').on('click', function() {
+            $('#ae-map-badge').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
                 aeMapActive = !aeMapActive;
                 aeMissingActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
                 applyFilters();
             });
-            $('#ae-nmap-badge').on('click', function() {
+            $('#ae-nmap-badge').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
                 aeNMapActive = !aeNMapActive;
                 aeMissingActive = aeMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
                 applyFilters();
             });
-            $('#ae-zero-sold-badge').on('click', function() {
+            $('#ae-zero-sold-badge').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
                 aeZeroSoldActive = !aeZeroSoldActive;
                 aeMoreSoldActive = aeMissingActive = aeMapActive = aeNMapActive = false;
                 applyFilters();
             });
-            $('#ae-more-sold-badge').on('click', function() {
+            $('#ae-more-sold-badge').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
                 aeMoreSoldActive = !aeMoreSoldActive;
                 aeZeroSoldActive = aeMissingActive = aeMapActive = aeNMapActive = false;
                 applyFilters();

@@ -459,6 +459,7 @@
 
                     <!-- ── Row 2: Searches + Filters ── -->
                         <div class="d-flex align-items-center flex-wrap gap-2">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'forecast'])
                         <!-- Column Searches -->
                         <input type="text" id="search-sku"      class="form-control form-control-sm border-primary" placeholder="SKU…"      autocomplete="off" style="width:140px;">
                         <input type="text" id="search-parent"   class="form-control form-control-sm border-primary" placeholder="Parent…"   autocomplete="off" style="width:130px;">
@@ -487,6 +488,10 @@
 
                         <!-- Row Type -->
                         <select id="row-data-type" class="form-select form-select-sm border border-primary" style="width:150px;" aria-label="Row type"></select>
+
+                        <span class="vr align-self-stretch opacity-25"></span>
+
+                        @include('purchase-master.partials.page-exec-dropdown', ['pageKey' => 'forecast'])
 
                         <!-- NRP multiselect -->
                         <div class="dropdown d-inline-block">

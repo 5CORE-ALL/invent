@@ -46,9 +46,12 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h4 class="mb-0">Claim & Reimbursement</h4>
-                    <button id="add-new-row" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#claimModal">
+                    <div class="d-flex align-items-center gap-2">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'claim_reimbursement'])
+                        <button id="add-new-row" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#claimModal">
                         <i class="fas fa-plus-circle me-1"></i>Add Claim / Reimbursement
                     </button>
+                    </div>
                 </div>
                 <div class="row mb-3">
                     <div class="col-md-4 col-lg-3">

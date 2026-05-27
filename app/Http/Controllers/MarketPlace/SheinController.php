@@ -1352,6 +1352,10 @@ class SheinController extends Controller
 
                 $metaRecord = $viewMetaBySku->get($normalizedSku);
                 $meta       = $metaRecord ? ($metaRecord->value ?? []) : [];
+                if (! is_array($meta)) {
+                    $meta = [];
+                }
+                $nr         = $this->resolveSheinNrFromMeta($meta, $productMaster !== null);
                 $sprice     = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
 
                 // Use special_offer_price only for all calculations
@@ -1363,19 +1367,15 @@ class SheinController extends Controller
                 $sroi   = ($sprice > 0 && $lp > 0) ? round((($sprice * $margin - $lp - $ship) / $lp) * 100, 2) : 0;
 
                 $displaySku = $productMaster?->sku ?? ($priceRow->sku ?? $normalizedSku);
-                // Missing only when special_offer_price is 0 or no row exists
-                $isMissing  = !$priceRow || $spOffer <= 0;
+                $isMissingShein = ! $priceRow || $spOffer <= 0;
 
-                // MAP: |INV − Shein stock| ≤ 3 → Map (same tolerance as other pricing pages)
-                if ($isMissing) {
+                if ($isMissingShein) {
                     $mapValue = '';
                 } else {
                     $adiff = abs($inv - $sheinStock);
-                    if ($adiff <= 3) {
-                        $mapValue = 'Map';
-                    } else {
-                        $mapValue = 'N Map|' . $adiff;
-                    }
+                    $mapValue = $this->sheinInvWithinMapTolerance((float) $inv, (float) $sheinStock)
+                        ? 'Map'
+                        : 'N Map|' . (int) round($adiff);
                 }
 
                 $rows[] = [
@@ -1383,7 +1383,9 @@ class SheinController extends Controller
                     'parent'       => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
                     'is_parent'    => false,
                     'image'        => $imageSrc,
-                    'missing'      => $isMissing ? 'M' : '',
+                    'NR'           => $nr,
+                    'is_missing_shein' => $isMissingShein,
+                    'missing'      => $isMissingShein ? 'M' : '',
                     'map'          => $mapValue,
                     'gpft'         => round($gpft,  2),
                     'groi'         => round($groi,  2),
@@ -1469,20 +1471,93 @@ class SheinController extends Controller
     }
 
     /**
-     * N Map badge logic — same as shein_pricing_view.js aeSheinStrictNMapFromMap.
+     * NR for map/missing rules — mirrors Amazon NRL → NR (REQ vs NR).
+     *
+     * @param  array<string, mixed>  $meta
      */
-    private function sheinStrictNMapFromMapValue(string $mapVal): bool
+    private function resolveSheinNrFromMeta(array $meta, bool $hasProductMaster): ?string
     {
-        $mapVal = trim($mapVal);
-        if ($mapVal === '' || ! str_starts_with($mapVal, 'N Map|')) {
-            return false;
+        $nrl = strtoupper(trim((string) ($meta['NRL'] ?? '')));
+        if ($nrl === 'NRL') {
+            return 'NR';
         }
-        $rest = trim(substr($mapVal, strlen('N Map|')));
-        if ($rest === '' || ! is_numeric($rest)) {
-            return false;
+        if ($nrl === 'REQ') {
+            return 'REQ';
         }
 
-        return abs((float) $rest) > 3;
+        $nr = $meta['NR'] ?? $meta['NRP'] ?? null;
+        if (is_bool($nr)) {
+            return $nr ? 'NR' : ($hasProductMaster ? 'REQ' : null);
+        }
+        $nrOut = strtoupper(trim((string) $nr));
+        if ($nrOut === 'NR' || $nrOut === 'NRL') {
+            return 'NR';
+        }
+        if ($nrOut === 'REQ' || $nrOut === 'TRUE' || $nrOut === '1') {
+            return $nrOut === 'REQ' ? 'REQ' : ($hasProductMaster ? 'REQ' : null);
+        }
+
+        return $hasProductMaster ? 'REQ' : null;
+    }
+
+    /** INV vs Shein stock = Map if diff ≤ 3 units OR ≤ 3% of Shopify INV (amazon INV vs INV_AMZ). */
+    private function sheinInvWithinMapTolerance(float $inv, float $sheinStock): bool
+    {
+        if ($inv <= 0) {
+            return true;
+        }
+        $diff = abs($inv - $sheinStock);
+        if ($diff <= 3.0) {
+            return true;
+        }
+
+        return $diff <= ($inv * 0.03);
+    }
+
+    /**
+     * Map / Miss / NMap — same rules as shein_pricing_view badges (Amazon-aligned).
+     */
+    public static function countSheinPricingBadgeTotals(iterable $rows): array
+    {
+        $map = 0;
+        $miss = 0;
+        $nmap = 0;
+
+        foreach ($rows as $row) {
+            if (is_object($row)) {
+                $row = (array) $row;
+            }
+            if (! is_array($row) || ! empty($row['is_parent'])) {
+                continue;
+            }
+
+            $inv = (float) ($row['inv'] ?? 0);
+            $nrValue = (string) ($row['NR'] ?? '');
+            $isMissingShein = (bool) ($row['is_missing_shein'] ?? false);
+            $rowPrice = (float) ($row['special_offer'] ?? 0);
+
+            if ($inv > 0 && $nrValue === 'REQ') {
+                if ($isMissingShein || $rowPrice <= 0) {
+                    $miss++;
+                } elseif (! $isMissingShein && $rowPrice > 0) {
+                    $sheinStock = (float) ($row['shein_stock'] ?? 0);
+                    $diff = abs($inv - $sheinStock);
+                    $within = $inv <= 0 || $diff <= 3.0 || $diff <= ($inv * 0.03);
+                    if ($within) {
+                        $map++;
+                    } else {
+                        $nmap++;
+                    }
+                }
+            }
+        }
+
+        return [
+            'map' => $map,
+            'miss' => $miss,
+            'nmap' => $nmap,
+            'total_views' => 0,
+        ];
     }
 
     /**
@@ -1509,14 +1584,19 @@ class SheinController extends Controller
             $moreSold = 0;
             $dilSum = 0.0;
             $dilCount = 0;
-            $missingCount = 0;
-            $mapCount = 0;
-            $nmapCount = 0;
+            $badgeTotals = self::countSheinPricingBadgeTotals($children);
+            $missingCount = $badgeTotals['miss'];
+            $mapCount = $badgeTotals['map'];
+            $nmapCount = $badgeTotals['nmap'];
 
             foreach ($children as $row) {
-                $isMissing = strtoupper(trim((string) ($row['missing'] ?? ''))) === 'M';
-                $al30 = (float) ($row['al30'] ?? 0);
                 $inv = (float) ($row['inv'] ?? 0);
+                $nrValue = (string) ($row['NR'] ?? '');
+                $isMissingShein = (bool) ($row['is_missing_shein'] ?? false);
+                $rowPrice = (float) ($row['special_offer'] ?? 0);
+                $isMissingL = $inv > 0 && $nrValue === 'REQ' && ($isMissingShein || $rowPrice <= 0);
+
+                $al30 = (float) ($row['al30'] ?? 0);
                 $ovL30 = (float) ($row['ov_l30'] ?? 0);
                 $profit = (float) ($row['profit'] ?? 0);
                 $lp = (float) ($row['lp'] ?? 0);
@@ -1532,18 +1612,8 @@ class SheinController extends Controller
                     $dilSum += ($ovL30 / $inv) * 100;
                     $dilCount++;
                 }
-                if ($isMissing) {
-                    $missingCount++;
-                }
 
-                $mapVal = trim((string) ($row['map'] ?? ''));
-                if (! $isMissing && $mapVal === 'Map') {
-                    $mapCount++;
-                } elseif ($this->sheinStrictNMapFromMapValue($mapVal)) {
-                    $nmapCount++;
-                }
-
-                if (! $isMissing) {
+                if (! $isMissingL) {
                     $totalSales += (float) ($row['sales'] ?? 0);
                     $totalPft += $al30 * $profit;
 

@@ -101,6 +101,12 @@
             -webkit-overflow-scrolling: touch;
             scrollbar-width: thin;
         }
+        #summary-stats .ae-filter-badge.active-filter {
+            outline: 3px solid #0d6efd;
+            outline-offset: 2px;
+            box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.35);
+        }
+
         #summary-stats .ebay2-summary-badge-row > .badge {
             flex: 1 1 0;
             min-width: 0;
@@ -120,11 +126,26 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Aliexpress Analytics',
-        'sub_title'  => 'SKU metrics, pricing, and trends (separate from the sales view)',
+        'sub_title'  => 'Upload AE export (sku, price, stock) — exact SKU match only; AL30 from daily order upload',
     ])
 
     <div class="row">
         <div class="col-12">
+            <div class="card border-warning mb-3">
+                <div class="card-header bg-warning bg-opacity-25 py-2">
+                    <strong><i class="fas fa-upload me-1"></i> List price upload</strong>
+                    <span class="text-muted small ms-2">Columns: <strong>sku</strong>, <strong>price</strong>, <strong>stock</strong> (optional).</span>
+                </div>
+                <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
+                    <a href="{{ route('aliexpress.pricing.price.sample') }}" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-download"></i> Sample CSV
+                    </a>
+                    <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#uploadAePriceModal">
+                        <i class="fas fa-upload"></i> Upload price sheet
+                    </button>
+                </div>
+            </div>
+
             <div class="card">
                 <div class="card-body">
 
@@ -230,10 +251,6 @@
                         <button type="button" id="export-pricing-btn" class="btn btn-sm btn-success">
                             <i class="fas fa-file-csv"></i> Export CSV
                         </button>
-                        <button type="button" class="btn btn-sm btn-warning"
-                            data-bs-toggle="modal" data-bs-target="#uploadPriceSheetModal">
-                            <i class="fas fa-upload"></i> Upload Price
-                        </button>
                         <a href="{{ route('aliexpress.lmp.sample') }}" class="btn btn-sm btn-outline-secondary">
                             <i class="fas fa-download"></i> LMP sample
                         </a>
@@ -267,20 +284,39 @@
                     {{-- ── Summary badges ── --}}
                     <div id="summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
                         <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
-                            <span class="badge bg-primary  fs-6 p-2 ae-badge-chart" id="ae-total-sales-badge" data-metric="total_sales" style="font-weight:700;cursor:pointer;">Sales: $0</span>
-                            <span class="badge bg-warning  fs-6 p-2 ae-badge-chart" id="ae-total-al30-badge"  data-metric="total_al30"  style="font-weight:700;color:#111;cursor:pointer;">AL30: 0</span>
-                            <span class="badge bg-success  fs-6 p-2 ae-badge-chart" id="ae-total-profit-badge" data-metric="total_pft"  style="font-weight:700;cursor:pointer;">Profit: $0</span>
-                            <span class="badge bg-info     fs-6 p-2 ae-badge-chart" id="ae-avg-gpft-badge"    data-metric="avg_gpft"    style="font-weight:700;color:#111;cursor:pointer;">GPFT: 0%</span>
-                            <span class="badge bg-danger   fs-6 p-2 ae-badge-chart" id="ae-missing-badge"     data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click for trend / filter">Missing L: 0</span>
-                            <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-map-badge"         data-metric="map_count"     style="font-weight:700;cursor:pointer;background:#198754;color:#fff;" title="Click for trend / filter">Map: 0</span>
-                            <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-nmap-badge"       data-metric="nmap_count"    style="font-weight:700;cursor:pointer;background:#a71d2a;color:#fff;" title="Click for trend / filter">N Map: 0</span>
-                            <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-zero-sold-badge"   data-metric="zero_sold"     style="font-weight:700;cursor:pointer;background:#dc3545;color:#fff;" title="Click for trend / filter">0 Sold: 0</span>
-                            <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-more-sold-badge"   data-metric="more_sold"     style="font-weight:700;cursor:pointer;background:#b6e0fe;color:#0f172a;" title="Click for trend / filter">&gt;0 Sold: 0</span>
-                            <span class="badge bg-secondary fs-6 p-2 ae-badge-chart" id="ae-avg-roi-badge"    data-metric="avg_roi"     style="font-weight:700;color:#111;cursor:pointer;">ROI: 0%</span>
+                            <span class="badge bg-primary  fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-sales-badge" data-metric="total_sales" style="font-weight:700;cursor:pointer;" title="Click or hover (½s) for daily trend">Sales: $0</span>
+                            <span class="badge bg-warning  fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-al30-badge"  data-metric="total_al30"  style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover (½s) for daily trend">AL30: 0</span>
+                            <span class="badge bg-success  fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-profit-badge" data-metric="total_pft"  style="font-weight:700;cursor:pointer;" title="Click or hover (½s) for daily trend">Profit: $0</span>
+                            <span class="badge bg-info     fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-avg-gpft-badge"    data-metric="avg_gpft"    style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover (½s) for daily trend">GPFT: 0%</span>
+                            <span class="badge bg-danger   fs-6 p-2 ae-hover-chart ae-filter-badge" id="ae-missing-badge"     data-metric="missing_count" data-filter="missing" style="font-weight:700;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">Missing L: 0</span>
+                            <span class="badge fs-6 p-2 ae-hover-chart ae-filter-badge" id="ae-map-badge"         data-metric="map_count"     data-filter="map" style="font-weight:700;cursor:pointer;background:#198754;color:#fff;" title="Click to filter table · Hover ½s for daily trend">Map: 0</span>
+                            <span class="badge fs-6 p-2 ae-hover-chart ae-filter-badge" id="ae-nmap-badge"        data-metric="nmap_count"    data-filter="nmap" style="font-weight:700;cursor:pointer;background:#a71d2a;color:#fff;" title="Click to filter table · Hover ½s for daily trend">N Map: 0</span>
+                            <span class="badge fs-6 p-2 ae-hover-chart ae-filter-badge" id="ae-zero-sold-badge"   data-metric="zero_sold"     data-filter="zero_sold" style="font-weight:700;cursor:pointer;background:#dc3545;color:#fff;" title="Click to filter table · Hover ½s for daily trend">0 Sold: 0</span>
+                            <span class="badge fs-6 p-2 ae-hover-chart ae-filter-badge" id="ae-more-sold-badge"   data-metric="more_sold"     data-filter="more_sold" style="font-weight:700;cursor:pointer;background:#b6e0fe;color:#0f172a;" title="Click to filter table · Hover ½s for daily trend">&gt;0 Sold: 0</span>
+                            <span class="badge bg-secondary fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-avg-roi-badge"    data-metric="avg_roi"     style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover (½s) for daily trend">ROI: 0%</span>
                         </div>
                     </div>
 
                     <div id="aliexpress-pricing-table"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="uploadAePriceModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Upload AliExpress price sheet</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="file" class="form-control" id="aePriceSheetFile" accept=".xlsx,.xls,.csv,.txt">
+                    <small class="text-muted d-block mt-2">Headers: <strong>sku</strong>, <strong>price</strong>, optional <strong>stock</strong> (or ae_stock).</small>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-warning" id="aeUploadPriceSheetBtn">Upload</button>
                 </div>
             </div>
         </div>
@@ -341,33 +377,6 @@
                         <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
                         <p class="text-muted small mb-0">No trend data yet. Data is saved each time the page loads.</p>
                     </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="uploadPriceSheetModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Upload price sheet</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="mb-2">
-                        <a href="{{ route('aliexpress.pricing.price.sample') }}" class="btn btn-sm btn-outline-secondary">
-                            <i class="fas fa-download"></i> Download sample CSV
-                        </a>
-                    </p>
-                    <input type="file" class="form-control" id="priceSheetFile" accept=".xlsx,.xls,.csv,.txt">
-                    <small class="text-muted d-block mt-2">
-                        Headers: <strong>sku</strong>, <strong>price</strong>, optional <strong>stock</strong>.
-                        Use Excel (.xlsx, .xls) or CSV/TSV (comma or tab).
-                    </small>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-warning" id="uploadPriceSheetBtn">Upload</button>
                 </div>
             </div>
         </div>
@@ -448,6 +457,44 @@
         let aeNMapActive     = false;
         let aeZeroSoldActive = false;
         let aeMoreSoldActive = false;
+        let aeBadgeHoverTimer = null;
+
+        function aeClearBadgeHoverTimer() {
+            if (aeBadgeHoverTimer) {
+                clearTimeout(aeBadgeHoverTimer);
+                aeBadgeHoverTimer = null;
+            }
+        }
+
+        function aeHideBadgeChartModal() {
+            const el = document.getElementById('aeBadgeChartModal');
+            if (!el || typeof bootstrap === 'undefined') return;
+            const inst = bootstrap.Modal.getInstance(el);
+            if (inst) inst.hide();
+        }
+
+        function aeSyncFilterBadgeActiveClasses() {
+            if (typeof jQuery === 'undefined') return;
+            $('#ae-missing-badge').toggleClass('active-filter', aeMissingActive);
+            $('#ae-map-badge').toggleClass('active-filter', aeMapActive);
+            $('#ae-nmap-badge').toggleClass('active-filter', aeNMapActive);
+            $('#ae-zero-sold-badge').toggleClass('active-filter', aeZeroSoldActive);
+            $('#ae-more-sold-badge').toggleClass('active-filter', aeMoreSoldActive);
+        }
+
+        function aeApplyBadgeFilterFromUrl() {
+            const badge = (new URLSearchParams(window.location.search).get('badge') || '').toLowerCase();
+            if (!badge || !table) return;
+            aeMissingActive = aeMapActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
+            if (badge === 'missing') aeMissingActive = true;
+            else if (badge === 'map') aeMapActive = true;
+            else if (badge === 'nmap') aeNMapActive = true;
+            else if (badge === 'zero_sold') aeZeroSoldActive = true;
+            else if (badge === 'more_sold') aeMoreSoldActive = true;
+            else return;
+            aeSyncFilterBadgeActiveClasses();
+            applyFilters();
+        }
 
         // Price Mode (mirrors TikTok exactly)
         let decreaseModeActive = false;
@@ -566,12 +613,24 @@
             return `$${(parseFloat(value) || 0).toFixed(2)}`;
         }
 
-        /** AE map "N Map|{abs diff}" — N Map filter only when diff > 3 (≤3 is Map). */
-        function aeAliStrictNMapFromMap(mapVal) {
-            if (!mapVal || typeof mapVal !== 'string' || !mapVal.startsWith('N Map|')) return false;
-            const part = mapVal.split('|')[1];
-            const d = parseFloat(String(part == null ? '' : part).trim(), 10);
-            return Number.isFinite(d) && Math.abs(d) > 3;
+        /** INV vs AE stock = Map if diff ≤ 3 OR ≤ 3% of INV (same as amazon_tabulator_view). */
+        function aeInvWithinMapTolerance(inv, aeStock) {
+            const invNum = parseFloat(inv) || 0;
+            const aeNum = parseFloat(aeStock) || 0;
+            if (invNum <= 0) return true;
+            const diff = Math.abs(invNum - aeNum);
+            if (diff <= 3 + 1e-9) return true;
+            return diff <= invNum * 0.03 + 1e-9;
+        }
+
+        /** True when row counts as Missing L (Amazon: INV>0, NR=REQ, not on AE export). */
+        function aeRowIsMissingL(row) {
+            if (!row || row.is_parent) return false;
+            const inv = parseFloat(row.inv) || 0;
+            const nr = (row.NR || '').trim();
+            const isMissingAe = !!row.is_missing_aliexpress || (String(row.missing || '').trim().toUpperCase() === 'M');
+            const price = parseFloat(row.price) || 0;
+            return inv > 0 && nr === 'REQ' && (isMissingAe || price <= 0);
         }
 
         // ── applyFilters (mirrors TikTok applyFilters) ────────────────
@@ -666,11 +725,24 @@
                 });
             }
 
-            // Map filter
+            // Map filter (Amazon: listed, INV>0, NR=REQ, INV vs AE stock tolerance)
             if (mapFilter === 'map') {
-                table.addFilter(d => (d.map || '') === 'Map');
+                table.addFilter(d => {
+                    if (d.is_parent) return false;
+                    const inv = parseFloat(d.inv) || 0;
+                    const nr = (d.NR || '').trim();
+                    if (inv <= 0 || nr !== 'REQ' || d.is_missing_aliexpress) return false;
+                    return parseFloat(d.price) > 0 && aeInvWithinMapTolerance(inv, d.ae_stock);
+                });
             } else if (mapFilter === 'nmap') {
-                table.addFilter(d => aeAliStrictNMapFromMap(d.map || ''));
+                table.addFilter(d => {
+                    if (d.is_parent) return false;
+                    const inv = parseFloat(d.inv) || 0;
+                    const nr = (d.NR || '').trim();
+                    if (inv <= 0 || nr !== 'REQ' || d.is_missing_aliexpress) return false;
+                    if (parseFloat(d.price) <= 0) return false;
+                    return !aeInvWithinMapTolerance(inv, d.ae_stock);
+                });
             }
 
             // DIL% filter (identical to TikTok)
@@ -688,9 +760,29 @@
             }
 
             // Badge-click filters
-            if (aeMissingActive)  table.addFilter(d => (d.missing || '').trim().toUpperCase() === 'M');
-            if (aeMapActive)      table.addFilter(d => (d.map     || '') === 'Map');
-            if (aeNMapActive)     table.addFilter(d => aeAliStrictNMapFromMap(d.map || ''));
+            if (aeMissingActive) {
+                table.addFilter(d => aeRowIsMissingL(d));
+            }
+            if (aeMapActive) {
+                table.addFilter(d => {
+                    if (d.is_parent) return false;
+                    const inv = parseFloat(d.inv) || 0;
+                    const nr = (d.NR || '').trim();
+                    if (inv <= 0 || nr !== 'REQ' || d.is_missing_aliexpress) return false;
+                    return parseFloat(d.price) > 0 && aeInvWithinMapTolerance(inv, d.ae_stock);
+                });
+            }
+            if (aeNMapActive) {
+                table.addFilter(d => {
+                    if (d.is_parent) return false;
+                    const inv = parseFloat(d.inv) || 0;
+                    const nr = (d.NR || '').trim();
+                    if (inv <= 0 || nr !== 'REQ' || d.is_missing_aliexpress) return false;
+                    const price = parseFloat(d.price) || 0;
+                    if (price <= 0) return false;
+                    return !aeInvWithinMapTolerance(inv, d.ae_stock);
+                });
+            }
             if (aeZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (aeMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
         }
@@ -732,12 +824,15 @@
 
             rows.forEach(row => {
                 if (row.is_parent) return;
-                const isMissing = (row.missing || '').trim().toUpperCase() === 'M';
                 const al30   = parseFloat(row.al30)   || 0;
                 const profit = parseFloat(row.profit) || 0;
-                const mapVal = (row.map || '').trim();
+                const inv    = parseFloat(row.inv)    || 0;
+                const nr     = (row.NR || '').trim();
+                const isMissingAe = !!row.is_missing_aliexpress;
+                const rowPrice = parseFloat(row.price) || 0;
+                const isMissingL = aeRowIsMissingL(row);
 
-                if (!isMissing) {
+                if (!isMissingL) {
                     totalProfit += al30 * profit;
                     totalSales  += parseFloat(row.sales) || 0;
 
@@ -750,9 +845,18 @@
 
                 totalAl30 += al30;
                 if (al30 === 0) zeroSold++; else moreSold++;
-                if (isMissing) missingCount++;
-                if (!isMissing && mapVal === 'Map') mapCount++;
-                else if (aeAliStrictNMapFromMap(mapVal)) nmapCount++;
+
+                if (inv > 0 && nr === 'REQ') {
+                    if (isMissingAe || rowPrice <= 0) {
+                        missingCount++;
+                    } else if (!isMissingAe && rowPrice > 0) {
+                        if (aeInvWithinMapTolerance(inv, row.ae_stock)) {
+                            mapCount++;
+                        } else {
+                            nmapCount++;
+                        }
+                    }
+                }
             });
 
             const avgGpft = gpftCount > 0 ? gpftSum / gpftCount : 0;
@@ -778,6 +882,7 @@
                 ajaxResponse: function(url, params, response) {
                     summaryDataCache = normalizeRows(response);
                     updateSummary(summaryDataCache);
+                    setTimeout(aeApplyBadgeFilterFromUrl, 0);
                     return response;
                 },
                 layout: "fitDataStretch",
@@ -969,8 +1074,9 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            const value = (cell.getValue() || '').toString().trim().toUpperCase();
-                            if (value === 'M') return '<span class="badge bg-danger">L</span>';
+                            if (aeRowIsMissingL(d)) {
+                                return '<span class="badge bg-danger">L</span>';
+                            }
                             return '';
                         }
                     },
@@ -982,17 +1088,17 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            const val = (cell.getValue() || '').trim();
-                            if (val === 'Map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
-                            if (val.startsWith('N Map|')) {
-                                const part = val.split('|')[1];
-                                const ad = Math.abs(parseFloat(String(part || '').trim(), 10) || 0);
-                                if (Number.isFinite(ad) && ad <= 3) {
-                                    return '<span style="color:#198754;font-weight:bold;">Map</span>';
-                                }
-                                return `<span style="color:#dc3545;font-weight:bold;">N Map (${part})</span>`;
+                            const inv = parseFloat(d.inv) || 0;
+                            const nr = (d.NR || '').trim();
+                            if (inv <= 0 || nr !== 'REQ' || d.is_missing_aliexpress) return '';
+                            const rowPrice = parseFloat(d.price) || 0;
+                            if (rowPrice <= 0) return '';
+                            const aeStock = parseFloat(d.ae_stock) || 0;
+                            if (aeInvWithinMapTolerance(inv, aeStock)) {
+                                return '<span style="color:#198754;font-weight:bold;">Map</span>';
                             }
-                            return '';
+                            const diff = Math.round(Math.abs(inv - aeStock));
+                            return `<span style="color:#dc3545;font-weight:bold;">N Map (${diff})</span>`;
                         }
                     },
                     {
@@ -1236,30 +1342,29 @@
                 saveSpriceUpdates([{ sku: sku, sprice: sprice }]);
             });
 
-            // Badge click filters (identical to TikTok)
-            $('#ae-missing-badge').on('click', function() {
-                aeMissingActive = !aeMissingActive;
-                aeMapActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
-                applyFilters();
-            });
-            $('#ae-map-badge').on('click', function() {
-                aeMapActive = !aeMapActive;
-                aeMissingActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
-                applyFilters();
-            });
-            $('#ae-nmap-badge').on('click', function() {
-                aeNMapActive = !aeNMapActive;
-                aeMissingActive = aeMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
-                applyFilters();
-            });
-            $('#ae-zero-sold-badge').on('click', function() {
-                aeZeroSoldActive = !aeZeroSoldActive;
-                aeMoreSoldActive = aeMissingActive = aeMapActive = aeNMapActive = false;
-                applyFilters();
-            });
-            $('#ae-more-sold-badge').on('click', function() {
-                aeMoreSoldActive = !aeMoreSoldActive;
-                aeZeroSoldActive = aeMissingActive = aeMapActive = aeNMapActive = false;
+            // Click filter badges → table filter only (never chart)
+            $(document).on('click', '.ae-filter-badge', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                aeClearBadgeHoverTimer();
+                aeHideBadgeChartModal();
+
+                const filterKey = String($(this).data('filter') || '').toLowerCase();
+                aeMissingActive = aeMapActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
+
+                if (filterKey === 'missing') {
+                    aeMissingActive = !aeMissingActive;
+                } else if (filterKey === 'map') {
+                    aeMapActive = !aeMapActive;
+                } else if (filterKey === 'nmap') {
+                    aeNMapActive = !aeNMapActive;
+                } else if (filterKey === 'zero_sold') {
+                    aeZeroSoldActive = !aeZeroSoldActive;
+                } else if (filterKey === 'more_sold') {
+                    aeMoreSoldActive = !aeMoreSoldActive;
+                }
+
+                aeSyncFilterBadgeActiveClasses();
                 applyFilters();
             });
 
@@ -1381,40 +1486,39 @@
                 });
             });
 
-            $('#uploadPriceSheetBtn').on('click', function() {
-                const file = document.getElementById('priceSheetFile').files[0];
+            $('#aeUploadPriceSheetBtn').on('click', function() {
+                const file = document.getElementById('aePriceSheetFile').files[0];
                 if (!file) {
-                    alert('Please select a file first.');
+                    aeNotify('Please select a file first.', 'warning');
                     return;
                 }
-
                 const formData = new FormData();
                 formData.append('price_file', file);
                 formData.append('_token', '{{ csrf_token() }}');
-
+                const $btn = $(this);
+                $btn.prop('disabled', true);
                 $.ajax({
-                    url: '/aliexpress/pricing-upload-price',
+                    url: '{{ route("aliexpress.pricing.upload.price") }}',
                     type: 'POST',
                     data: formData,
                     processData: false,
                     contentType: false,
                     success: function(response) {
-                        if (window.toastr) {
-                            toastr.success(response.message || 'Price upload completed.');
-                        } else {
-                            alert(response.message || 'Price upload completed.');
+                        aeNotify(response.message || 'Upload completed.', 'success');
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById('uploadAePriceModal')).hide();
+                        $('#aePriceSheetFile').val('');
+                        if (table) {
+                            table.setData('/aliexpress/pricing-data');
                         }
-                        $('#uploadPriceSheetModal').modal('hide');
-                        $('#priceSheetFile').val('');
-                        table.setData('/aliexpress/pricing-data');
                     },
                     error: function(xhr) {
-                        const message = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Price upload failed.';
-                        if (window.toastr) {
-                            toastr.error(message);
-                        } else {
-                            alert(message);
-                        }
+                        const message = (xhr.responseJSON && xhr.responseJSON.message)
+                            ? xhr.responseJSON.message
+                            : 'Upload failed.';
+                        aeNotify(message, 'error');
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false);
                     }
                 });
             });
@@ -1576,13 +1680,35 @@
                 });
             }
 
-            $(document).on('click', '.ae-badge-chart', function() {
-                aeBadgeMetric = $(this).data('metric');
+            function aeOpenBadgeChartModal(metricKey) {
+                aeBadgeMetric = metricKey;
                 aeBadgeDays   = 30;
                 $('#aeBadgeChartRange').val('30');
                 $('#aeBadgeChartTitle').text('Aliexpress – ' + (aeBadgeLabels[aeBadgeMetric] || aeBadgeMetric) + ' Trend');
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('aeBadgeChartModal')).show();
                 aeLoadChart();
+            }
+
+            $(document).on('mouseenter', '.ae-hover-chart', function() {
+                const metric = $(this).data('metric');
+                if (!metric) return;
+                aeClearBadgeHoverTimer();
+                aeBadgeHoverTimer = setTimeout(function() {
+                    aeOpenBadgeChartModal(metric);
+                }, 500);
+            });
+            $(document).on('mouseleave', '.ae-hover-chart', function() {
+                aeClearBadgeHoverTimer();
+            });
+            $(document).on('mousedown', '.ae-hover-chart.ae-filter-badge', function() {
+                aeClearBadgeHoverTimer();
+            });
+
+            $(document).on('click', '.ae-badge-chart', function(e) {
+                if ($(this).hasClass('ae-filter-badge')) return;
+                e.stopPropagation();
+                const m = $(this).data('metric');
+                if (m) aeOpenBadgeChartModal(m);
             });
 
             $(document).on('change', '#aeBadgeChartRange', function() {

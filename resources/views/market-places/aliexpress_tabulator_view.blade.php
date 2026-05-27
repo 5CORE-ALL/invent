@@ -72,13 +72,16 @@
                         <i class="fa fa-file-excel"></i> Export
                     </button>
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDailyDataModal">
-                        <i class="fa fa-upload"></i> Upload Daily Data
+                        <i class="fa fa-upload"></i> Upload L30 Sales
+                    </button>
+                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadL60Modal">
+                        <i class="fa fa-upload"></i> Upload L60 Sales
                     </button>
                 </div>
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary Statistics</h6>
+                    <h6 class="mb-3">Summary Statistics (L30 Data)</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
@@ -89,6 +92,18 @@
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT Total: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-commission-badge" style="color: white; font-weight: bold;">Commission: $0.00</span>
+                    </div>
+                    <h6 class="mb-2 mt-3">L60 Statistics</h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        <span class="badge fs-6 p-2" id="l60-sales-badge" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-weight: bold;">
+                            <i class="fa fa-chart-line"></i> L60 Sales: $0.00
+                        </span>
+                        <span class="badge fs-6 p-2" id="l60-orders-badge" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; font-weight: bold;">
+                            <i class="fa fa-shopping-cart"></i> L60 Orders: 0
+                        </span>
+                        <span class="badge fs-6 p-2" id="l60-quantity-badge" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; font-weight: bold;">
+                            <i class="fa fa-box"></i> L60 Quantity: 0
+                        </span>
                     </div>
                 </div>
             </div>
@@ -110,7 +125,7 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="uploadDailyDataModalLabel">
-                        <i class="fa fa-upload me-2"></i>Upload Aliexpress Daily Data
+                        <i class="fa fa-upload me-2"></i>Upload Aliexpress L30 Sales Data
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -119,7 +134,10 @@
                         <label for="dailyDataFile" class="form-label">Select Excel File</label>
                         <input type="file" class="form-control" id="dailyDataFile" accept=".xlsx,.xls,.csv">
                         <div class="form-text">
-                            Supported formats: Excel (.xlsx, .xls) or CSV
+                            Supported formats: Excel (.xlsx, .xls) or CSV.<br>
+                            <strong>SKU column:</strong> use the AliExpress export column <code>SKU code</code>.
+                            Values like <code>LS 120 CRANK * 2</code> are split automatically — SKU <code>LS 120 CRANK</code>, Quantity <code>2</code>.
+                            Order id column: <code>Order Number</code>.
                         </div>
                     </div>
                     
@@ -140,6 +158,45 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-primary" id="startUploadBtn">
                         <i class="fa fa-upload me-1"></i>Start Upload
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload L60 Modal -->
+    <div class="modal fade" id="uploadL60Modal" tabindex="-1" aria-labelledby="uploadL60ModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="uploadL60ModalLabel">
+                        <i class="fa fa-upload me-2"></i>Upload Aliexpress L60 Sales Data
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="dailyDataFileL60" class="form-label">Select Excel File</label>
+                        <input type="file" class="form-control" id="dailyDataFileL60" accept=".xlsx,.xls,.csv,.txt">
+                        <div class="form-text">
+                            Same export format as L30 (<code>SKU code</code>, <code>Order Number</code>, etc.).
+                            <span class="text-info">Stores in a separate L60 table (60-day period export).</span>
+                        </div>
+                    </div>
+                    <div id="uploadL60ProgressContainer" style="display: none;">
+                        <div class="mb-2"><strong>Upload Progress:</strong></div>
+                        <div class="progress mb-2" style="height: 25px;">
+                            <div id="uploadL60ProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                                 role="progressbar" style="width: 0%">0%</div>
+                        </div>
+                        <div id="uploadL60Status" class="text-muted small"></div>
+                    </div>
+                    <div id="uploadL60Result" class="alert" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-success" id="startUploadL60Btn">
+                        <i class="fa fa-upload me-1"></i>Upload L60
                     </button>
                 </div>
             </div>
@@ -183,6 +240,26 @@
                 'X-CSRF-TOKEN': '{{ csrf_token() }}'
             }
         });
+
+        function loadL60Sales() {
+            $.ajax({
+                url: '/aliexpress/l60-sales',
+                type: 'GET',
+                success: function(response) {
+                    if (response.success && response.data) {
+                        const data = response.data;
+                        $('#l60-sales-badge').html(`<i class="fa fa-chart-line"></i> L60 Sales: $${parseFloat(data.total_sales).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+                        $('#l60-orders-badge').html(`<i class="fa fa-shopping-cart"></i> L60 Orders: ${parseInt(data.total_orders).toLocaleString()}`);
+                        $('#l60-quantity-badge').html(`<i class="fa fa-box"></i> L60 Quantity: ${parseInt(data.total_quantity).toLocaleString()}`);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error loading L60 sales:', error);
+                }
+            });
+        }
+
+        loadL60Sales();
         
         // Initialize Tabulator
         console.log("Initializing Tabulator for Aliexpress Daily Data...");
@@ -242,7 +319,7 @@
             }],
             columns: [
                 {
-                    title: "Order ID",
+                    title: "Order #",
                     field: "order_id",
                     width: 180,
                     frozen: true,
@@ -250,22 +327,29 @@
                     headerFilterPlaceholder: "Search..."
                 },
                 {
-                    title: "SKU Code",
+                    title: "SKU",
                     field: "sku_code",
                     width: 150,
                     frozen: true,
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search SKU...",
-                    cssClass: "text-primary fw-bold"
+                    cssClass: "text-primary fw-bold",
+                    formatter: function(cell) {
+                        const v = (cell.getValue() || '').toString().trim();
+                        return v || '—';
+                    }
                 },
                 {
-                    title: "Quantity",
+                    title: "Qty",
                     field: "quantity",
-                    width: 80,
+                    width: 70,
                     hozAlign: "center",
                     sorter: "number",
+                    bottomCalc: "sum",
                     formatter: function(cell) {
-                        return cell.getValue() || 1;
+                        const v = parseInt(cell.getValue(), 10);
+                        const n = Number.isFinite(v) && v > 0 ? v : 1;
+                        return `<span class="fw-bold">${n}</span>`;
                     }
                 },
                 {
@@ -814,6 +898,121 @@
 
             uploadChunk();
         });
+
+        // Upload L60 Sales Handler
+        $('#startUploadL60Btn').on('click', function() {
+            const fileInput = document.getElementById('dailyDataFileL60');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                showToast('Please select a file to upload', 'error');
+                return;
+            }
+
+            $('#uploadL60ProgressContainer').show();
+            $('#uploadL60Result').hide();
+            $('#startUploadL60Btn').prop('disabled', true);
+
+            const totalChunks = 1;
+            const uploadId = 'aliexpress_l60_' + Date.now();
+            let currentChunk = 0;
+            let totalImported = 0;
+
+            function uploadL60Chunk() {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('chunk', currentChunk);
+                formData.append('totalChunks', totalChunks);
+                formData.append('uploadId', uploadId);
+                formData.append('_token', '{{ csrf_token() }}');
+
+                $.ajax({
+                    url: '/aliexpress/upload-daily-data-l60',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        if (response.success) {
+                            totalImported += response.imported || 0;
+                            const progress = Math.round(((currentChunk + 1) / totalChunks) * 100);
+
+                            $('#uploadL60ProgressBar')
+                                .css('width', progress + '%')
+                                .text(Math.round(progress) + '%');
+
+                            $('#uploadL60Status').text(
+                                `Processing chunk ${currentChunk + 1} of ${totalChunks}... (${totalImported} records imported so far)`
+                            );
+
+                            if (currentChunk < totalChunks - 1) {
+                                currentChunk++;
+                                setTimeout(uploadL60Chunk, 500);
+                            } else {
+                                $('#uploadL60ProgressBar')
+                                    .removeClass('progress-bar-animated')
+                                    .addClass('bg-success');
+
+                                $('#uploadL60Result')
+                                    .removeClass('alert-danger')
+                                    .addClass('alert-success')
+                                    .html(`<i class="fa fa-check-circle me-2"></i>L60 upload completed! ${totalImported} records imported.`)
+                                    .show();
+
+                                $('#startUploadL60Btn').prop('disabled', false);
+                                showToast(`L60 upload completed! ${totalImported} records imported.`, 'success');
+
+                                setTimeout(function() {
+                                    $('#uploadL60Modal').modal('hide');
+                                    resetUploadL60Form();
+                                    loadL60Sales();
+                                }, 2000);
+                            }
+                        } else {
+                            throw new Error(response.message || 'Upload failed');
+                        }
+                    },
+                    error: function(xhr) {
+                        let errorMessage = 'L60 upload failed. Please try again.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            errorMessage = xhr.responseJSON.message;
+                        }
+
+                        $('#uploadL60ProgressBar')
+                            .removeClass('progress-bar-animated')
+                            .addClass('bg-danger');
+
+                        $('#uploadL60Result')
+                            .removeClass('alert-success')
+                            .addClass('alert-danger')
+                            .html(`<i class="fa fa-exclamation-circle me-2"></i>${errorMessage}`)
+                            .show();
+
+                        $('#startUploadL60Btn').prop('disabled', false);
+                        showToast(errorMessage, 'error');
+                    }
+                });
+            }
+
+            uploadL60Chunk();
+        });
+
+        $('#uploadL60Modal').on('hidden.bs.modal', function() {
+            resetUploadL60Form();
+        });
+
+        function resetUploadL60Form() {
+            $('#dailyDataFileL60').val('');
+            $('#uploadL60ProgressContainer').hide();
+            $('#uploadL60Result').hide();
+            $('#uploadL60ProgressBar')
+                .removeClass('bg-success bg-danger')
+                .addClass('progress-bar-animated')
+                .css('width', '0%')
+                .text('0%');
+            $('#uploadL60Status').text('');
+            $('#startUploadL60Btn').prop('disabled', false);
+        }
 
         // Reset upload form when modal is hidden
         $('#uploadDailyDataModal').on('hidden.bs.modal', function() {

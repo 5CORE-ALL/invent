@@ -151,6 +151,7 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
                     <div class="d-flex gap-4 align-items-center">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'arrived_container'])
                         <div class="fw-semibold text-dark" style="font-size: 1rem;">
                             📦 To. Ctns: <span class="text-success" id="total-cartons-display">0</span>
                         </div>

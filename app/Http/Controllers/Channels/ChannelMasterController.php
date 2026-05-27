@@ -86,6 +86,9 @@ use App\Models\MercariWoShipSheetdata;
 use App\Models\MercariWShipSheetdata;
 use App\Models\MercariWShipListingStatus;
 use App\Models\MercariWoShipListingStatus;
+use App\Http\Controllers\MarketPlace\AliexpressController;
+use App\Http\Controllers\MarketPlace\FaireController;
+use App\Http\Controllers\MarketPlace\SheinController;
 use App\Http\Controllers\MarketPlace\PlsController;
 use App\Http\Controllers\MarketPlace\WayfairController;
 use App\Models\PlsListingStatus;
@@ -147,6 +150,9 @@ class ChannelMasterController extends Controller
         $paths = [
             'PLS' => '/pls-pricing',
             'Wayfair' => '/wayfair-pricing',
+            'Aliexpress' => '/aliexpress-pricing',
+            'Shein' => '/shein-pricing',
+            'Faire' => '/faire-pricing',
         ];
 
         $path = $paths[trim($channel)] ?? null;
@@ -335,6 +341,9 @@ class ChannelMasterController extends Controller
             'Macys' => fn () => $this->getMacysLiveMapMissNMapFromPricingData(),
             'PLS' => fn () => $this->getPlsLiveMapMissNMapFromPricingData(),
             'Wayfair' => fn () => $this->getWayfairLiveMapMissNMapFromPricingData(),
+            'Aliexpress' => fn () => $this->getAliexpressLiveMapMissNMapFromPricingData(),
+            'Shein' => fn () => $this->getSheinLiveMapMissNMapFromPricingData(),
+            'Faire' => fn () => $this->getFaireLiveMapMissNMapFromPricingData(Request::create('/faire/pricing-data', 'GET')),
         ];
 
         foreach ($rows as &$row) {
@@ -397,6 +406,46 @@ class ChannelMasterController extends Controller
             Log::warning('Wayfair live map/miss/nmap fallback: ' . $e->getMessage());
 
             return $this->getMapAndMissCounts('wayfair');
+        }
+    }
+
+    /**
+     * Map / Miss / NMap for AliExpress — same rules as aliexpress-pricing badges.
+     */
+    private function getAliexpressLiveMapMissNMapFromPricingData(): array
+    {
+        try {
+            $response = app(AliexpressController::class)->getPricingData(Request::create('/aliexpress/pricing-data', 'GET'));
+            $rows = json_decode($response->getContent(), true);
+            if (! is_array($rows)) {
+                return $this->getMapAndMissCounts('aliexpress');
+            }
+
+            return AliexpressController::countAliexpressPricingBadgeTotals($rows);
+        } catch (\Throwable $e) {
+            Log::warning('AliExpress live map/miss/nmap fallback: ' . $e->getMessage());
+
+            return $this->getMapAndMissCounts('aliexpress');
+        }
+    }
+
+    /**
+     * Map / Miss / NMap for Shein — same rules as shein-pricing badges.
+     */
+    private function getSheinLiveMapMissNMapFromPricingData(): array
+    {
+        try {
+            $response = app(SheinController::class)->getSheinPricingData(Request::create('/shein/pricing-data', 'GET'));
+            $rows = json_decode($response->getContent(), true);
+            if (! is_array($rows)) {
+                return $this->getMapAndMissCounts('shein');
+            }
+
+            return SheinController::countSheinPricingBadgeTotals($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Shein live map/miss/nmap fallback: ' . $e->getMessage());
+
+            return $this->getMapAndMissCounts('shein');
         }
     }
 
@@ -735,53 +784,33 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Map / Miss / NMap for Faire — same rules as /faire-pricing (|INV − Faire stock| ≤ 3 → Map; miss = Missing L).
+     * Map / Miss / NMap for Faire — same rules as /faire-pricing (Amazon-aligned: REQ + INV>0 + no price → Missing L; Map if |INV−stock| ≤ 3 or ≤ 3% INV).
      */
     private function getFaireLiveMapMissNMapFromPricingData(Request $request): array
     {
         try {
-            $response = app(\App\Http\Controllers\MarketPlace\FaireController::class)->getFairePricingData($request);
-            $raw = json_decode($response->getContent(), true);
-            if (! is_array($raw) || isset($raw['error'])) {
+            $response = app(FaireController::class)->getFairePricingData($request);
+            $rows = json_decode($response->getContent(), true);
+            if (! is_array($rows) || isset($rows['error'])) {
                 return $this->getMapAndMissCounts('faire');
             }
 
-            $map = 0;
-            $miss = 0;
-            $nmap = 0;
+            $totals = FaireController::countFairePricingBadgeTotals($rows);
             $views = 0;
-
-            foreach ($raw as $row) {
+            foreach ($rows as $row) {
                 if (is_object($row)) {
                     $row = (array) $row;
                 }
-                if (! is_array($row)) {
+                if (! is_array($row) || ! empty($row['is_parent'])) {
                     continue;
                 }
-                if (! empty($row['is_parent'])) {
-                    continue;
-                }
-
                 $views += (int) ($row['ov_l30'] ?? 0);
-
-                if (strtoupper(trim((string) ($row['missing'] ?? ''))) === 'M') {
-                    $miss++;
-
-                    continue;
-                }
-
-                $mapVal = (string) ($row['map'] ?? '');
-                if ($mapVal === 'Map') {
-                    $map++;
-                } elseif (str_starts_with($mapVal, 'N Map|')) {
-                    $nmap++;
-                }
             }
 
             return [
-                'map' => $map,
-                'miss' => $miss,
-                'nmap' => $nmap,
+                'map' => $totals['map'],
+                'miss' => $totals['miss'],
+                'nmap' => $totals['nmap'],
                 'total_views' => $views,
             ];
         } catch (\Throwable $e) {
@@ -7878,6 +7907,7 @@ class ChannelMasterController extends Controller
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            'missing_link' => $channelData->missing_link ?? $this->defaultMissingLinkForChannel('Faire'),
             ...$this->getChannelHealthAndReviewsStub(),
         ];
 
@@ -8469,8 +8499,7 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Shein')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('shein');
+        $mapMissCounts = $this->getSheinLiveMapMissNMapFromPricingData();
 
         $result[] = [
             'Channel '   => 'Shein',
@@ -8499,6 +8528,7 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'missing_link' => $channelData->missing_link ?? $this->defaultMissingLinkForChannel('Shein'),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
@@ -9345,109 +9375,15 @@ class ChannelMasterController extends Controller
      */
     private function aggregateAliexpressDailyDataLikeTabulator(): ?array
     {
-        $data = AliexpressDailyData::all();
-        if ($data->isEmpty()) {
-            return null;
-        }
+        return app(AliexpressController::class)->aggregateOrderRowsForChannelMaster('l30');
+    }
 
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
-        $marketplaceData = ChannelMaster::where('channel', 'Aliexpress')->first();
-        $percentage = $marketplaceData !== null
-            ? (float) ($marketplaceData->channel_percentage ?? 100)
-            : 100.0;
-        if ($percentage <= 0) {
-            $percentage = 89.0;
-        }
-        $margin = $percentage / 100.0;
-
-        $totalOrders = 0;
-        $totalQuantity = 0;
-        $totalRevenue = 0.0;
-        $totalCogs = 0.0;
-        $totalPft = 0.0;
-        $totalWeightedPrice = 0.0;
-        $totalQuantityForPrice = 0;
-
-        foreach ($data as $row) {
-            $status = strtolower((string) ($row->order_status ?? ''));
-            if (str_contains($status, 'refund') || str_contains($status, 'return')
-                || str_contains($status, 'cancel') || str_contains($status, 'closed')) {
-                continue;
-            }
-
-            if (empty($row->sku_code) || empty($row->order_id)) {
-                continue;
-            }
-
-            $quantity = max(1, (int) ($row->quantity ?? 1));
-
-            $lineRevenue = (float) ($row->product_total ?? 0);
-            if ($lineRevenue <= 0) {
-                $lineRevenue = (float) ($row->supply_price ?? 0);
-            }
-            if ($lineRevenue <= 0) {
-                $lineRevenue = (float) ($row->order_amount ?? 0);
-            }
-
-            $totalOrders++;
-            $totalQuantity += $quantity;
-            $totalRevenue += $lineRevenue;
-
-            $unitPrice = $quantity > 0 ? $lineRevenue / $quantity : 0.0;
-            if ($quantity > 0 && $unitPrice > 0) {
-                $totalWeightedPrice += $unitPrice * $quantity;
-                $totalQuantityForPrice += $quantity;
-            }
-
-            $sku = strtoupper(trim((string) ($row->sku_code ?? '')));
-            $lp = 0.0;
-            $ship = 0.0;
-
-            if ($sku !== '' && isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-                $values = is_array($pm->Values)
-                    ? $pm->Values
-                    : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                foreach ($values as $k => $v) {
-                    if (strtolower((string) $k) === 'lp') {
-                        $lp = (float) $v;
-                        break;
-                    }
-                }
-                if ($lp === 0.0 && isset($pm->lp)) {
-                    $lp = (float) $pm->lp;
-                }
-
-                $ship = isset($values['ship'])
-                    ? (float) $values['ship']
-                    : (isset($pm->ship) ? (float) $pm->ship : 0.0);
-            }
-
-            $cogs = $lp * $quantity;
-            $totalCogs += $cogs;
-
-            $pft = (($unitPrice * $margin) - $lp - $ship) * $quantity;
-            $totalPft += $pft;
-        }
-
-        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0.0;
-        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0.0;
-        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
-
-        return [
-            'total_orders' => $totalOrders,
-            'total_quantity' => $totalQuantity,
-            'total_sales' => $totalRevenue,
-            'total_cogs' => $totalCogs,
-            'total_pft' => $totalPft,
-            'pft_percentage' => $pftPercentage,
-            'roi_percentage' => $roiPercentage,
-            'avg_price' => $avgPrice,
-        ];
+    /**
+     * AliExpress L60 — same rules as L30, from aliexpress_daily_data_l60 upload.
+     */
+    private function aggregateAliexpressDailyDataL60LikeTabulator(): ?array
+    {
+        return app(AliexpressController::class)->aggregateOrderRowsForChannelMaster('l60');
     }
 
     public function getAliexpressChannelData(Request $request)
@@ -9460,10 +9396,19 @@ class ChannelMasterController extends Controller
             $metrics = MarketplaceDailyMetric::where('channel', 'AliExpress')->latest('date')->first();
         }
 
-        // Get L60 data from sheet data for comparison
-        $query = AliExpressSheetData::where('sku', 'not like', '%Parent%');
-        $l60Orders = $query->sum('aliexpress_l60');
-        $l60Sales  = (clone $query)->selectRaw('SUM(aliexpress_l60 * price) as total')->value('total') ?? 0;
+        $l60Agg = $this->aggregateAliexpressDailyDataL60LikeTabulator();
+        if ($l60Agg !== null) {
+            $l60Orders = (int) ($l60Agg['total_orders'] ?? 0);
+            $l60Sales = (float) ($l60Agg['total_sales'] ?? 0);
+            $gprofitL60 = (float) ($l60Agg['pft_percentage'] ?? 0);
+            $gRoiL60 = (float) ($l60Agg['roi_percentage'] ?? 0);
+        } else {
+            $query = AliExpressSheetData::where('sku', 'not like', '%Parent%');
+            $l60Orders = (int) $query->sum('aliexpress_l60');
+            $l60Sales = (float) ((clone $query)->selectRaw('SUM(aliexpress_l60 * price) as total')->value('total') ?? 0);
+            $gprofitL60 = 0;
+            $gRoiL60 = 0;
+        }
 
         if ($agg !== null) {
             $l30Sales = $agg['total_sales'];
@@ -9487,10 +9432,6 @@ class ChannelMasterController extends Controller
         
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
-        
-        // L60 profit percentage
-        $gprofitL60 = 0;
-        $gRoiL60 = 0;
 
         // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
         $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
@@ -9498,8 +9439,7 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Aliexpress')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('aliexpress');
+        $mapMissCounts = $this->getAliexpressLiveMapMissNMapFromPricingData();
 
         $result[] = [
             'Channel '   => 'Aliexpress',
@@ -9528,6 +9468,7 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'missing_link' => $channelData->missing_link ?? $this->defaultMissingLinkForChannel('Aliexpress'),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
@@ -11877,6 +11818,8 @@ class ChannelMasterController extends Controller
 
             // Map frontend metric names to summary_data keys
             $metricMap = [
+                'l60_sales' => 'l60_sales',
+                'l60_orders' => 'l60_orders',
                 'l30_sales' => 'l30_sales',
                 // Yesterday's sales (snapshot was added later; older days will lack this key
                 // and are skipped below so the chart only shows real Y Sales history).
@@ -12167,6 +12110,7 @@ class ChannelMasterController extends Controller
             // Same metricMap as getChannelMetricChartData so value extraction matches chart exactly
             $metricMap = [
                 'l60_sales' => 'l60_sales',
+                'l60_orders' => 'l60_orders',
                 'l30_sales' => 'l30_sales',
                 'l30_orders' => 'l30_orders',
                 'qty' => 'total_quantity',
@@ -12183,7 +12127,7 @@ class ChannelMasterController extends Controller
                 'total_views' => 'total_views',
                 'inv_at_lp' => 'inv_at_lp',
             ];
-            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l30_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp'];
+            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp'];
             $out = [];
 
             foreach ($channelKeys as $channel) {

@@ -137,9 +137,12 @@
 
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h4 class="mb-0">China Load</h4>
-                    <button id="add-new-row" class="btn btn-success">
-                        <i class="fas fa-plus-circle me-1"></i> Add New
-                    </button>
+                    <div class="d-flex align-items-center gap-2">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'china_load'])
+                        <button id="add-new-row" class="btn btn-success">
+                            <i class="fas fa-plus-circle me-1"></i> Add New
+                        </button>
+                    </div>
                 </div>
 
                 <div id="china-load-table"></div>

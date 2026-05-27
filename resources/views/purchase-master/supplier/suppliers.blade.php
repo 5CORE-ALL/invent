@@ -163,7 +163,8 @@
                             @endif
                         </span>
                     </div>
-                    <div class="d-flex gap-2">
+                    <div class="d-flex gap-2 align-items-center">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'suppliers'])
                         <button type="button" class="btn btn-primary" data-bs-toggle="modal"
                             data-bs-target="#addSupplierModal">
                             <i class="mdi mdi-plus me-1"></i> Add Supplier

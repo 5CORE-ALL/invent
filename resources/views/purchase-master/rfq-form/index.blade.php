@@ -41,7 +41,8 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <div class="d-flex flex-wrap justify-content-end align-items-center mb-3 gap-2">
-                    <div class="d-flex flex-wrap gap-2">
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'rfq_form'])
                         <button id="add-new-row" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#createRFQFormModal">
                             <i class="fas fa-plus-circle me-1"></i> Create RFQ Form
                         </button>

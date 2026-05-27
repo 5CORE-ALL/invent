@@ -95,8 +95,8 @@
         <div class="card shadow-sm">
             <div class="card-body">
 
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4 class="mb-0">On Road Transit</h4>
+                <div class="d-flex align-items-center mb-3">
+                    @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'on_road_transit'])
                 </div>
 
                 <div id="on-road-transit-table"></div>
