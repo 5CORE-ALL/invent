@@ -185,6 +185,7 @@ use App\Http\Controllers\MarketPlace\ReverbController;
 use App\Http\Controllers\MarketPlace\ReverbLowVisibilityController;
 use App\Http\Controllers\MarketPlace\ReverbZeroController;
 use App\Http\Controllers\MarketPlace\SheinController;
+use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
 use App\Http\Controllers\MarketPlace\Shopifyb2cController;
 use App\Http\Controllers\MarketPlace\Shopifyb2cLowVisibilityController;
 use App\Http\Controllers\MarketPlace\Shopifyb2cZeroController;
@@ -3186,6 +3187,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shopifyB2C-zero-view', action: [Shopifyb2cZeroController::class, 'shopifyb2cZeroView'])->name('shopifyB2C.zero.view');
     Route::get('/shopifyB2C-low-visibility-view', action: [Shopifyb2cLowVisibilityController::class, 'shopifyb2cLowVisibilityView'])->name('shopifyB2C.low.visibility.view');
     Route::get('/shopifyB2C', [Shopifyb2cController::class, 'shopifyb2cView'])->name('shopifyB2C');
+    Route::get('/shopify-ads-master', [ShopifyAdsMasterController::class, 'index'])->name('shopify.ads.master');
+    Route::get('/shopify-ads-master/data', [ShopifyAdsMasterController::class, 'data'])->name('shopify.ads.master.data');
     Route::post('/shopifyb2c/saveLowProfit', [Shopifyb2cController::class, 'saveLowProfit']);
     Route::post('/shopifyb2c-analytics/import', [Shopifyb2cController::class, 'importShopifyB2CAnalytics'])->name('shopifyb2c.analytics.import');
     Route::get('/shopifyb2c-analytics/export', [Shopifyb2cController::class, 'exportShopifyB2CAnalytics'])->name('shopifyb2c.analytics.export');

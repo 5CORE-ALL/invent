@@ -1374,6 +1374,10 @@
                                         </li>
 
                                         <li>
+                                            <a href="{{ route('shopify.ads.master') }}">Shopify Ads - Master</a>
+                                        </li>
+
+                                        <li>
                                             <a href="{{ url('shopify-pricing-increase-decrease') }}">Pricing - Increase/Decrease</a>
                                         </li>
 
