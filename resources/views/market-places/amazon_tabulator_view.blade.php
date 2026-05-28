@@ -365,6 +365,10 @@
                         <i class="fas fa-download"></i> Export view
                     </button>
 
+                    <button id="export-lmp-btn" class="btn btn-sm btn-warning">
+                        <i class="fas fa-file-export"></i> Export LMP
+                    </button>
+
                     <a href="{{ url('/amazon-export-sprice-upload') }}" class="btn btn-sm btn-info">
                         <i class="fas fa-download"></i> SPRICE N Upload
                     </a>
@@ -6194,6 +6198,105 @@ $('#nmap-count').text(missingCount.toLocaleString());
             window.URL.revokeObjectURL(url);
             
             showToast('success', 'Exported ' + data.length + ' rows');
+        });
+
+        // Export LMP — flatten all competitor entries for every SKU into one CSV
+        $('#export-lmp-btn').on('click', function() {
+            if (!table) {
+                alert('Table not loaded');
+                return;
+            }
+
+            const allRows = table.getData();
+            const lmpRows = [];
+
+            allRows.forEach(function(row) {
+                if (row.is_parent_summary) return;
+                const sku = row['(Child) sku'] || '';
+                const currentPrice = row.price || '';
+                const entries = row.lmp_entries || [];
+
+                if (entries.length === 0) {
+                    // Include SKU with no competitors so every SKU is represented
+                    lmpRows.push({
+                        sku: sku,
+                        current_price: currentPrice,
+                        lmp_lowest: row.lmp_price || '',
+                        comp_asin: '',
+                        comp_title: '',
+                        comp_price: '',
+                        comp_seller: '',
+                        comp_rating: '',
+                        comp_reviews: '',
+                        comp_monthly_revenue: '',
+                        comp_monthly_units: '',
+                        comp_buy_box_owner: '',
+                        comp_seller_type: '',
+                        comp_link: ''
+                    });
+                } else {
+                    entries.forEach(function(comp) {
+                        lmpRows.push({
+                            sku: sku,
+                            current_price: currentPrice,
+                            lmp_lowest: row.lmp_price || '',
+                            comp_asin: comp.asin || '',
+                            comp_title: comp.title || comp.product_title || '',
+                            comp_price: comp.price !== null && comp.price !== undefined ? comp.price : '',
+                            comp_seller: comp.seller_name || '',
+                            comp_rating: comp.rating !== null && comp.rating !== undefined ? comp.rating : '',
+                            comp_reviews: comp.reviews !== null && comp.reviews !== undefined ? comp.reviews : '',
+                            comp_monthly_revenue: comp.monthly_revenue !== null && comp.monthly_revenue !== undefined ? comp.monthly_revenue : '',
+                            comp_monthly_units: comp.monthly_units_sold !== null && comp.monthly_units_sold !== undefined ? comp.monthly_units_sold : '',
+                            comp_buy_box_owner: comp.buy_box_owner || '',
+                            comp_seller_type: comp.seller_type || '',
+                            comp_link: comp.link || comp.product_link || ''
+                        });
+                    });
+                }
+            });
+
+            if (lmpRows.length === 0) {
+                alert('No LMP data to export');
+                return;
+            }
+
+            const headers = [
+                'SKU', 'Current Price', 'LMP Lowest', 'Comp ASIN', 'Comp Title',
+                'Comp Price', 'Comp Seller', 'Rating', 'Reviews',
+                'Monthly Revenue', 'Monthly Units', 'Buy Box Owner', 'Seller Type', 'Link'
+            ];
+            const fields = [
+                'sku', 'current_price', 'lmp_lowest', 'comp_asin', 'comp_title',
+                'comp_price', 'comp_seller', 'comp_rating', 'comp_reviews',
+                'comp_monthly_revenue', 'comp_monthly_units', 'comp_buy_box_owner', 'comp_seller_type', 'comp_link'
+            ];
+
+            function escapeCsvCell(val) {
+                val = String(val === null || val === undefined ? '' : val);
+                val = val.replace(/"/g, '""');
+                if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+                    val = '"' + val + '"';
+                }
+                return val;
+            }
+
+            let csv = headers.map(escapeCsvCell).join(',') + '\n';
+            lmpRows.forEach(function(r) {
+                csv += fields.map(function(f) { return escapeCsvCell(r[f]); }).join(',') + '\n';
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'Amazon_LMP_Export_' + new Date().toISOString().split('T')[0] + '.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+
+            showToast('success', 'Exported LMP data for ' + lmpRows.length + ' competitor rows');
         });
     </script>
 @endsection
