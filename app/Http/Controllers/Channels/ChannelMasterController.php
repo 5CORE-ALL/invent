@@ -6184,24 +6184,19 @@ class ChannelMasterController extends Controller
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
 
-        // L60 Sales = previous 30-day period (days 31-60) from mirakl_daily_data
-        // (channel_name = "Macy's, Inc." in Mirakl feed).
-        $thirtyDaysAgo = Carbon::now()->subDays(30);
-        $sixtyDaysAgo  = Carbon::now()->subDays(60);
-        $l60Agg = \App\Models\MiraklDailyData::where('channel_name', "Macy's, Inc.")
-            ->where('status', '!=', 'CLOSED')
-            ->whereBetween('order_created_at', [$sixtyDaysAgo, $thirtyDaysAgo])
-            ->selectRaw('COUNT(*) as order_count, COALESCE(SUM(unit_price * quantity), 0) as total_sales')
-            ->first();
-        $l60Orders = (int) ($l60Agg->order_count ?? 0);
-        $l60Sales  = (float) ($l60Agg->total_sales ?? 0);
+        // L60: same source/filter/math as L30 (period='l60' + status NOT IN [CLOSED, CHANNEL_SPECIFIC])
+        // so Growth and gprofitL60/G RoiL60 are apples-to-apples with L30.
+        // Previous logic ran a date-range query in IST while L30 uses Mirakl's period column
+        // and excluded only CLOSED, which double-counted CHANNEL_SPECIFIC rows and skewed Growth.
+        $l60Summary = $this->computeMacysL60SummaryFromMirakl();
+        $l60Sales = $l60Summary['sales'];
+        $l60Orders = $l60Summary['orders'];
 
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
-        // L60 profit percentage (calculate from L60 data if needed)
-        $gprofitL60 = 0;
-        $gRoiL60 = 0;
+        $gprofitL60 = $l60Sales > 0 ? ($l60Summary['pft'] / $l60Sales) * 100 : 0;
+        $gRoiL60 = $l60Summary['cogs'] > 0 ? ($l60Summary['pft'] / $l60Summary['cogs']) * 100 : 0;
 
         // N PFT = same as Gprofit% for Macys (no ads)
         $nPft = $gProfitPct;
@@ -6254,6 +6249,95 @@ class ChannelMasterController extends Controller
             'message' => 'Macys channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Macy L60 sales/orders/PFT/COGS from mirakl_daily_data (period='l60', channel = "Macy's, Inc.").
+     * Mirrors MacysSalesController L30 math (same status filter, margin, ship/weight rules)
+     * so Growth and gprofitL60/G RoiL60 on /all-marketplace-master stay consistent.
+     *
+     * @return array{sales: float, orders: int, qty: int, pft: float, cogs: float}
+     */
+    private function computeMacysL60SummaryFromMirakl(): array
+    {
+        $orders = \App\Models\MiraklDailyData::where('channel_name', "Macy's, Inc.")
+            ->where('period', 'l60')
+            ->whereNotIn('status', ['CLOSED', 'CHANNEL_SPECIFIC'])
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return ['sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
+        }
+
+        $skus = $orders->pluck('sku')->filter()->unique()->toArray();
+        $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
+        $margin = ($marketplaceData ? $marketplaceData->percentage : 76) / 100;
+
+        $sales = 0.0;
+        $orderCount = 0;
+        $qty = 0;
+        $pft = 0.0;
+        $cogs = 0.0;
+
+        foreach ($orders as $order) {
+            if (! $order->sku || $order->sku === '') {
+                continue;
+            }
+
+            $orderCount++;
+            $quantity = (float) ($order->quantity ?? 1);
+            $unitPrice = (float) ($order->unit_price ?? 0);
+            $saleAmount = $unitPrice * $quantity;
+
+            $qty += (int) $quantity;
+            $sales += $saleAmount;
+
+            $lp = 0.0;
+            $ship = 0.0;
+            $weightAct = 0.0;
+            if (isset($productMasters[$order->sku])) {
+                $pm = $productMasters[$order->sku];
+                $values = is_array($pm->Values) ? $pm->Values :
+                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === 'lp') {
+                        $lp = (float) $v;
+                        break;
+                    }
+                }
+                if ($lp === 0.0 && isset($pm->lp)) {
+                    $lp = (float) $pm->lp;
+                }
+                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0.0);
+                if (isset($values['wt_act'])) {
+                    $weightAct = (float) $values['wt_act'];
+                }
+            }
+
+            $tWeight = $weightAct * $quantity;
+            if ((int) $quantity === 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1 && $tWeight < 20) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
+            }
+
+            $cogs += $lp * $quantity;
+            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
+            $pft += $pftEach * $quantity;
+        }
+
+        return [
+            'sales' => $sales,
+            'orders' => $orderCount,
+            'qty' => $qty,
+            'pft' => $pft,
+            'cogs' => $cogs,
+        ];
     }
 
     private function getMacysMissingListingCount()
