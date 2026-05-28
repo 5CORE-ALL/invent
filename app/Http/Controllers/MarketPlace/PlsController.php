@@ -780,6 +780,43 @@ class PlsController extends Controller
             'has_custom_sprice' => true
         ]);
     }
+
+    /**
+     * Batch-clear SPRICE for multiple PLS SKUs
+     */
+    public function clearPlsSprice(Request $request)
+    {
+        $updates = $request->input('updates', []);
+
+        if (empty($updates)) {
+            return response()->json(['error' => 'No updates provided'], 400);
+        }
+
+        $cleared = 0;
+        foreach ($updates as $item) {
+            $sku = $item['sku'] ?? null;
+            if (!$sku) continue;
+
+            $dataView = PLSDataView::firstOrNew(['sku' => $sku]);
+            $currentValue = $dataView->value;
+            if (is_string($currentValue)) {
+                $currentValue = json_decode($currentValue, true) ?: [];
+            } elseif (!is_array($currentValue)) {
+                $currentValue = [];
+            }
+
+            unset($currentValue['sprice'], $currentValue['sgpft'], $currentValue['sroi']);
+            $dataView->value = $currentValue;
+            $dataView->save();
+            $cleared++;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => "SPRICE cleared for {$cleared} SKU(s)",
+            'cleared' => $cleared
+        ]);
+    }
 }
 
 

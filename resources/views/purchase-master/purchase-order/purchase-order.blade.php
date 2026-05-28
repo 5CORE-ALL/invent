@@ -222,6 +222,62 @@
         padding: 4px 8px;
     }
 
+    .po-number-dot-wrap {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 32px;
+        min-width: 32px;
+    }
+    .po-number-dot-wrap::before {
+        content: "";
+        position: absolute;
+        inset: -6px -10px -42px -10px;
+        z-index: 0;
+    }
+    .po-status-dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        display: inline-block;
+        background: #22c55e;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+        position: relative;
+        z-index: 1;
+        cursor: default;
+    }
+    .po-number-hover-card {
+        display: none;
+        position: absolute;
+        z-index: 20;
+        top: calc(100% + 2px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+        padding: 4px 8px;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #212529;
+    }
+    .po-number-dot-wrap:hover .po-number-hover-card {
+        display: inline-flex;
+    }
+    .po-number-hover-card .po-copy-number-btn {
+        line-height: 1;
+        color: #2563eb;
+        text-decoration: none !important;
+    }
+    .po-number-hover-card .po-copy-number-btn:hover {
+        color: #1d4ed8;
+    }
+
 </style>
 @endsection
 @section('content')
@@ -283,6 +339,7 @@
                         <thead class="table-light text-center align-middle">
                             <tr>
                                 <th style="width: 40px;"><input type="checkbox" id="select-all-po" title="Select all"></th>
+                                <th class="po-sortable" data-sort="po_number" style="cursor: pointer; user-select: none;">PO Number <i class="fas fa-sort ms-1 sort-icon"></i></th>
                                 <th class="po-sortable" data-sort="po_date" style="cursor: pointer; user-select: none;">PO Date <i class="fas fa-sort ms-1 sort-icon"></i></th>
                                 <th class="po-sortable" data-sort="supplier_name" style="cursor: pointer; user-select: none;">Supplier <i class="fas fa-sort ms-1 sort-icon"></i></th>
                                 <th class="po-sortable" data-sort="sku_list" style="cursor: pointer; user-select: none;">Summary <i class="fas fa-sort ms-1 sort-icon"></i></th>
@@ -549,6 +606,14 @@
                 renderPaginationControls(filtered);
             });
         });
+
+        document.getElementById("po-table-body").addEventListener("click", function (e) {
+            const btn = e.target.closest(".po-copy-number-btn");
+            if (!btn) return;
+            e.preventDefault();
+            e.stopPropagation();
+            copyPoNumber(btn.getAttribute("data-po") || "", btn);
+        });
         document.addEventListener('click', function(e) {
             if (e.target.closest('.generate-pdf-btn')) {
                 const orderId = e.target.closest('.generate-pdf-btn').dataset.orderId;
@@ -778,6 +843,61 @@
         });
     }
 
+    function escapeHtml(str) {
+        return String(str ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/"/g, "&quot;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    }
+
+    function renderPoNumberCell(poNumber) {
+        const po = String(poNumber || "").trim();
+        if (!po) {
+            return '<span class="text-muted">-</span>';
+        }
+        const esc = escapeHtml(po);
+        return `<div class="po-number-dot-wrap">
+            <span class="po-status-dot" title="${esc}"></span>
+            <div class="po-number-hover-card">
+                <span class="po-number-text">${esc}</span>
+                <button type="button" class="btn btn-sm btn-link p-0 po-copy-number-btn" data-po="${esc}" title="Copy PO Number" aria-label="Copy PO Number">
+                    <i class="far fa-copy"></i>
+                </button>
+            </div>
+        </div>`;
+    }
+
+    function copyPoNumber(text, btn) {
+        const value = String(text || "").trim();
+        if (!value) return;
+        const done = function () {
+            if (!btn) return;
+            const icon = btn.querySelector("i");
+            if (!icon) return;
+            icon.className = "fas fa-check text-success";
+            setTimeout(function () { icon.className = "far fa-copy"; }, 1200);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(value).then(done).catch(function () {
+                fallbackCopy(value);
+                done();
+            });
+        } else {
+            fallbackCopy(value);
+            done();
+        }
+    }
+
+    function fallbackCopy(text) {
+        const tmp = document.createElement("textarea");
+        tmp.value = text;
+        document.body.appendChild(tmp);
+        tmp.select();
+        try { document.execCommand("copy"); } catch (e) {}
+        document.body.removeChild(tmp);
+    }
+
     function sortData(arr, key, dir) {
         if (!key || !arr.length) return arr;
         const mult = dir === 'asc' ? 1 : -1;
@@ -855,6 +975,7 @@
             const tr = document.createElement("tr");
             tr.innerHTML = `
                 <td class="text-center"><input type="checkbox" class="order-checkbox" data-order-id="${order.id}"/></td>
+                <td class="text-center">${renderPoNumberCell(order.po_number)}</td>
                 <td class="text-center">${order.po_date || '-'}</td>
                 <td>${order.supplier_name || '-'}</td>
                 <td class="small">${order.sku_list || '-'}</td>

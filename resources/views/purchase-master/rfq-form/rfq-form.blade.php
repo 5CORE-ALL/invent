@@ -563,7 +563,7 @@
                     <div class="form-row">
                         <div class="form-group">
                             <div class="form-group">
-                                <label for="moq" class="required">MOQ</label>
+                                <label for="moq" class="required" title="Minimum Order Quantity">MOQ</label>
                                 <input type="number" id="moq" name="moq" step="0.01" min="0"
                                     placeholder="0" required>
                             </div>

@@ -131,6 +131,44 @@
         max-width: 64px;
     }
 
+    .mip-po-dot-wrap {
+        min-height: 32px;
+        min-width: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+    }
+    .mip-po-dot-btn {
+        line-height: 1;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        text-decoration: none !important;
+        cursor: pointer;
+    }
+    .mip-po-dot-btn .mip-po-status-dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        display: inline-block;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+    }
+    .mip-po-pdf-btn {
+        line-height: 1;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #3bc0c3;
+        font-size: 1rem;
+        cursor: pointer;
+        opacity: 0.9;
+    }
+    .mip-po-pdf-btn:hover {
+        color: #2a9a9d;
+        opacity: 1;
+    }
+
     .wide-table .mip-sku-cell {
         gap: 4px;
         max-width: 100%;
@@ -220,6 +258,16 @@
     }
     #columnControls #play-auto i.fa-play {
         margin-left: -1px; /* Center the play triangle - FA icon has slight right bias */
+    }
+    #columnControls #play-po-auto i.fa-play {
+        margin-left: -1px;
+    }
+    #columnControls #play-exec-auto i.fa-play {
+        margin-left: -1px;
+    }
+    #columnControls .po-navigation-group,
+    #columnControls .exec-navigation-group {
+        flex-shrink: 0;
     }
     #columnControls .stat-panel {
         flex: 0 1 auto;
@@ -548,6 +596,34 @@
                                     <i class="fas fa-comment-alt"></i> Follow-Up History
                                 </button>
                             </div>
+                            <div class="btn-group po-navigation-group d-flex align-items-center gap-1 ms-2 border-start ps-2" role="group" aria-label="PO navigation">
+                                <button id="play-po-backward" class="btn btn-light rounded-circle shadow-sm" title="Previous PO">
+                                    <i class="fas fa-step-backward"></i>
+                                </button>
+                                <button id="play-po-pause" class="btn btn-light rounded-circle shadow-sm" style="display: none;" title="Pause PO filter">
+                                    <i class="fas fa-pause"></i>
+                                </button>
+                                <button id="play-po-auto" class="btn btn-info rounded-circle shadow-sm text-white" title="Play by PO (oldest first)">
+                                    <i class="fas fa-play"></i>
+                                </button>
+                                <button id="play-po-forward" class="btn btn-light rounded-circle shadow-sm" title="Next PO">
+                                    <i class="fas fa-step-forward"></i>
+                                </button>
+                            </div>
+                            <div class="btn-group exec-navigation-group d-flex align-items-center gap-1 ms-2 border-start ps-2" role="group" aria-label="Executive navigation">
+                                <button id="play-exec-backward" class="btn btn-light rounded-circle shadow-sm" title="Previous executive">
+                                    <i class="fas fa-step-backward"></i>
+                                </button>
+                                <button id="play-exec-pause" class="btn btn-light rounded-circle shadow-sm" style="display: none;" title="Pause executive filter">
+                                    <i class="fas fa-pause"></i>
+                                </button>
+                                <button id="play-exec-auto" class="btn btn-warning rounded-circle shadow-sm text-dark" title="Play by executive">
+                                    <i class="fas fa-play"></i>
+                                </button>
+                                <button id="play-exec-forward" class="btn btn-light rounded-circle shadow-sm" title="Next executive">
+                                    <i class="fas fa-step-forward"></i>
+                                </button>
+                            </div>
                             <button type="button" class="btn btn-warning d-flex align-items-center gap-1 text-dark" id="archiveSelectedBtn" style="border-radius: 6px; display: none;" title="Archive selected rows — restore from History">
                                 <i class="fas fa-archive"></i> Archive
                             </button>
@@ -617,12 +693,26 @@
                                 <div class="text-muted" style="font-size: 0.975rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">🏭 Current Supplier</div>
                                 <div id="current-supplier" class="fw-bold text-white" style="font-size: 1rem; line-height: 1.2; background-color: #28a745; padding: 2px 8px; border-radius: 4px;">-</div>
                             </div>
+                            <div class="flex-shrink-0" style="display: none; width: 1px; height: 32px; background: #dee2e6; margin: 0 8px;" id="po-badge-vr"></div>
+                            <div class="stat-panel" style="display: none;" id="po-badge-container">
+                                <div class="text-muted" style="font-size: 0.975rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">📄 Current PO</div>
+                                <div id="current-po" class="fw-bold text-white" style="font-size: 1rem; line-height: 1.2; background-color: #17a2b8; padding: 2px 8px; border-radius: 4px;">-</div>
+                            </div>
+                            <div class="flex-shrink-0" style="display: none; width: 1px; height: 32px; background: #dee2e6; margin: 0 8px;" id="exec-badge-vr"></div>
+                            <div class="stat-panel" style="display: none;" id="exec-badge-container">
+                                <div class="text-muted" style="font-size: 0.975rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">👤 Current Exec</div>
+                                <div id="current-exec" class="fw-bold text-dark" style="font-size: 1rem; line-height: 1.2; background-color: #ffc107; padding: 2px 8px; border-radius: 4px;">-</div>
+                            </div>
                             </div>
                             <div class="mip-toolbar-export-cluster" title="Pick supplier (optional), then Export">
                                 @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'mip'])
                                 <button type="button" id="mip-bulk-edit-ddate-btn" class="btn btn-sm btn-primary fw-semibold d-inline-flex align-items-center gap-1 shadow-sm" title="Bulk edit delivery date for selected rows">
                                     <i class="fas fa-calendar-alt"></i>
                                     <span>Bulk Edit D-Date</span>
+                                </button>
+                                <button type="button" id="mip-bulk-edit-po-btn" class="btn btn-sm btn-primary fw-semibold d-inline-flex align-items-center gap-1 shadow-sm" title="Bulk edit PO for selected rows">
+                                    <i class="fas fa-file-invoice"></i>
+                                    <span>Bulk Edit PO</span>
                                 </button>
                                 <button type="button" id="all-suppliers-followup-btn" class="btn btn-sm btn-info fw-semibold d-inline-flex align-items-center gap-1 shadow-sm text-white" title="View all suppliers follow-up status">
                                     <i class="fas fa-users"></i>
@@ -725,6 +815,59 @@
                     </div>
                 </div>
 
+                <!-- Single PO edit modal -->
+                <div class="modal fade" id="mipPoDataModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title mb-0">
+                                    PO
+                                    <span class="ms-1 text-white-50 small" id="mipPoModalSku"></span>
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <label for="mipPoModalInput" class="form-label fw-semibold">PO Number</label>
+                                <input type="text" id="mipPoModalInput" class="form-control" maxlength="100" placeholder="Enter PO number">
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                                <button type="button" class="btn btn-primary" id="mipPoModalSaveBtn">Save</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bulk Edit PO Modal -->
+                <div class="modal fade" id="bulkEditPoModal" tabindex="-1" aria-labelledby="bulkEditPoModalLabel" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title" id="bulkEditPoModalLabel">
+                                    <i class="fas fa-file-invoice"></i> Bulk Edit PO
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="alert alert-info mb-3">
+                                    <i class="fas fa-info-circle"></i>
+                                    <span id="bulk-po-selected-count">0</span> rows selected
+                                </div>
+                                <div class="mb-3">
+                                    <label for="bulk-po-number-input" class="form-label fw-bold">PO Number:</label>
+                                    <input type="text" class="form-control" id="bulk-po-number-input" maxlength="100" placeholder="Enter PO number (leave empty to clear)">
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-primary" id="apply-bulk-po-btn">
+                                    <i class="fas fa-check"></i> Apply to Selected
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Bulk Edit Delivery Date Modal -->
                 <div class="modal fade" id="bulkEditDDateModal" tabindex="-1" aria-labelledby="bulkEditDDateModalLabel" aria-hidden="true">
                     <div class="modal-dialog">
@@ -798,6 +941,7 @@
                                     SKU
                                     <div class="resizer"></div>
                                 </th>
+                                <th data-column="28" class="text-center" style="width: 115px; min-width: 100px;" title="Executive Assigned">Exec<div class="resizer"></div></th>
                                 <th data-column="18" class="text-center" hidden>NRP<div class="resizer"></div></th>
                                 <th data-column="4" class="text-center">QTY<div class="resizer"></div></th>
                                 <th data-column="10" class="text-center">O<br/>Date<div class="resizer"></div></th>
@@ -805,6 +949,7 @@
                                 <th data-column="5" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="6" class="text-center" style="width: 112.5px; min-width: 112.5px; max-width: 112.5px;">Supplier<div class="resizer"></div></th>
                                 <th data-column="26" class="text-center" style="width: 96px; min-width: 88px; max-width: 120px;">Platform<div class="resizer"></div></th>
+                                <th data-column="27" class="text-center" style="width: 72px; min-width: 64px;">PO<div class="resizer"></div></th>
                                 <th data-column="7" hidden>Advance<br/>Amt<div class="resizer"></div></th>
                                 <th data-column="8" hidden>Adv<br/>Date<div class="resizer"></div></th>
                                 <th data-column="9" hidden>pay conf.<br/>date<div class="resizer"></div></th>
@@ -884,6 +1029,21 @@
                                                 </button>
                                             @endif
                                         </div>
+                                    </td>
+                                    <td data-column="28" class="text-center align-middle mip-exec-cell">
+                                        @php
+                                            $mipExecSelected = trim((string) ($pageExec ?? ''));
+                                            $mipExecDisabled = empty($execCanEdit);
+                                        @endphp
+                                        <select class="form-select form-select-sm mip-grid-exec-select"
+                                            style="width: 100px; min-width: 90px; padding: 4px 8px; font-size: 0.875rem;"
+                                            @if ($mipExecDisabled) disabled @endif
+                                            aria-label="Executive Assigned">
+                                            <option value="" @selected($mipExecSelected === '')>— Unassigned —</option>
+                                            @foreach ($execOptions ?? [] as $execName)
+                                                <option value="{{ e($execName) }}" @selected($mipExecSelected === $execName)>{{ $execName }}</option>
+                                            @endforeach
+                                        </select>
                                     </td>
                                     <td data-column="18" class="text-center" hidden>
                                         @php
@@ -1023,6 +1183,39 @@
                                             </div>
                                         @else
                                             <span class="text-muted">-</span>
+                                        @endif
+                                    </td>
+                                    <td data-column="27" class="text-center align-middle mip-po-cell">
+                                        @php
+                                            $isRtsRow = ($item->source_table ?? '') === 'ready_to_ship';
+                                            $mipPoNum = trim((string) ($item->mip_po_number ?? ''));
+                                            $mipPoHas = $mipPoNum !== '';
+                                            $mipPoTip = $mipPoHas ? e($mipPoNum) : 'Data Required';
+                                            $mipPoColor = $mipPoHas ? '#22c55e' : '#dc3545';
+                                        @endphp
+                                        @if ($isRtsRow)
+                                            <span class="text-muted">—</span>
+                                        @else
+                                            <div class="mip-po-dot-wrap">
+                                                <button type="button"
+                                                    class="mip-po-dot-btn"
+                                                    data-mip-id="{{ (int) ($item->id ?? 0) }}"
+                                                    data-sku="{{ e($item->sku ?? '') }}"
+                                                    data-po="{{ e($mipPoNum) }}"
+                                                    title="{{ $mipPoTip }}"
+                                                    aria-label="{{ $mipPoTip }}">
+                                                    <span class="mip-po-status-dot" style="background-color: {{ $mipPoColor }};"></span>
+                                                </button>
+                                                @if ($mipPoHas)
+                                                    <button type="button"
+                                                        class="mip-po-pdf-btn"
+                                                        data-po="{{ e($mipPoNum) }}"
+                                                        title="View PO PDF"
+                                                        aria-label="View PO PDF">
+                                                        <i class="mdi mdi-magnify" aria-hidden="true"></i>
+                                                    </button>
+                                                @endif
+                                            </div>
                                         @endif
                                     </td>
                                     <td data-column="7" hidden>
@@ -1560,6 +1753,7 @@
     }
 
     window.MIP_SUPPLIER_PLATFORMS = @json($supplier_platforms_by_name ?? []);
+    window.MIP_EXEC_OPTIONS = @json($execOptions ?? []);
 
     function mipEscapeHtml(str) {
         return String(str == null ? '' : str)
@@ -1696,6 +1890,88 @@
         const mipTbody = table.querySelector('tbody');
         /** Static snapshot of row nodes at load; filter/sort re-query when needed inside rAF. */
         const rows = table.querySelectorAll('tbody tr');
+
+        let mipGridExecSaving = false;
+
+        function syncMipGridExecSelects(assignedExec, options) {
+            const val = assignedExec || '';
+            document.querySelectorAll('.mip-grid-exec-select').forEach(function (sel) {
+                if (options && options.length) {
+                    sel.innerHTML = '';
+                    const blank = document.createElement('option');
+                    blank.value = '';
+                    blank.textContent = '— Unassigned —';
+                    sel.appendChild(blank);
+                    options.forEach(function (name) {
+                        const opt = document.createElement('option');
+                        opt.value = name;
+                        opt.textContent = name;
+                        sel.appendChild(opt);
+                    });
+                }
+                sel.value = val;
+                sel.dataset.lastValue = val;
+            });
+            const topSelect = document.getElementById('page-exec-select-mip');
+            if (topSelect && topSelect.value !== val) {
+                topSelect.value = val;
+                topSelect.dataset.lastValue = val;
+            }
+        }
+
+        document.querySelectorAll('.mip-grid-exec-select').forEach(function (sel) {
+            sel.dataset.lastValue = sel.value || '';
+        });
+
+        if (mipTbody) {
+            mipTbody.addEventListener('change', async function (e) {
+                const sel = e.target.closest('.mip-grid-exec-select');
+                if (!sel || !mipTbody.contains(sel)) return;
+                if (sel.disabled || mipGridExecSaving) return;
+                const newVal = sel.value;
+                const prev = sel.dataset.lastValue || '';
+                if (newVal === prev) return;
+                mipGridExecSaving = true;
+                try {
+                    const res = await fetch('/purchase-page-exec/mip/assignment', {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        },
+                        body: JSON.stringify({ assigned_exec: newVal || null }),
+                    });
+                    const data = await res.json().catch(function () { return {}; });
+                    if (!res.ok) {
+                        throw new Error(data.message || 'Save failed');
+                    }
+                    syncMipGridExecSelects(newVal);
+                    document.dispatchEvent(new CustomEvent('purchase-page-exec-changed', {
+                        detail: { pageKey: 'mip', assignedExec: newVal || null },
+                    }));
+                } catch (err) {
+                    alert(err.message || 'Could not save executive assignment');
+                    sel.value = prev;
+                } finally {
+                    mipGridExecSaving = false;
+                }
+            });
+        }
+
+        document.addEventListener('purchase-page-exec-changed', function (e) {
+            if (!e.detail || e.detail.pageKey !== 'mip') return;
+            syncMipGridExecSelects(e.detail.assignedExec || '');
+        });
+
+        document.addEventListener('purchase-page-exec-options-changed', function (e) {
+            const options = e.detail && e.detail.options;
+            if (!options) return;
+            const topSelect = document.getElementById('page-exec-select-mip');
+            const current = topSelect ? topSelect.value : @json($pageExec ?? '');
+            syncMipGridExecSelects(current, options);
+        });
 
         // Image preview: one delegated listener (was 3 listeners × every row image)
         if (mipTbody) {
@@ -1924,6 +2200,194 @@
                 } finally {
                     applyBulkDDateBtn.disabled = false;
                     applyBulkDDateBtn.innerHTML = '<i class="fas fa-check"></i> Apply to Selected';
+                }
+            });
+        }
+
+        let activeMipPoRow = null;
+        let activeMipPoId = null;
+        let activeMipPoSku = null;
+
+        function mipEscapeAttr(s) {
+            return String(s ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function renderMipPoDotHtml(mipId, sku, poNumber) {
+            const po = String(poNumber || '').trim();
+            const has = po.length > 0;
+            const tip = has ? mipEscapeAttr(po) : 'Data Required';
+            const color = has ? '#22c55e' : '#dc3545';
+            const pdfBtn = has
+                ? '<button type="button" class="mip-po-pdf-btn" data-po="' + mipEscapeAttr(po) + '" title="View PO PDF" aria-label="View PO PDF">' +
+                    '<i class="mdi mdi-magnify" aria-hidden="true"></i></button>'
+                : '';
+            return '<div class="mip-po-dot-wrap">' +
+                '<button type="button" class="mip-po-dot-btn" data-mip-id="' + mipId + '" data-sku="' + mipEscapeAttr(sku) + '" data-po="' + mipEscapeAttr(po) + '" title="' + tip + '" aria-label="' + tip + '">' +
+                '<span class="mip-po-status-dot" style="background-color:' + color + ';"></span></button>' +
+                pdfBtn +
+                '</div>';
+        }
+
+        function openMipPoPdf(poNumber) {
+            const po = String(poNumber || '').trim();
+            if (!po) return;
+            window.open('/purchase-order/by-po/' + encodeURIComponent(po) + '/generate-pdf', '_blank', 'noopener');
+        }
+
+        function updateMipPoCell(row, poNumber) {
+            if (!row) return;
+            const cell = row.querySelector('td[data-column="27"]');
+            if (!cell || cell.querySelector(':scope > .text-muted')) return;
+            const mipId = row.getAttribute('data-mip-id') || '';
+            const sku = row.getAttribute('data-sku') || '';
+            cell.innerHTML = renderMipPoDotHtml(mipId, sku, poNumber);
+        }
+
+        function openMipPoModal(mipId, sku, poNumber, row) {
+            activeMipPoRow = row || null;
+            activeMipPoId = mipId;
+            activeMipPoSku = sku;
+            document.getElementById('mipPoModalSku').textContent = sku ? '(' + sku + ')' : '';
+            document.getElementById('mipPoModalInput').value = poNumber || '';
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('mipPoDataModal')).show();
+            setTimeout(function () {
+                const inp = document.getElementById('mipPoModalInput');
+                if (inp) {
+                    inp.focus();
+                    inp.select();
+                }
+            }, 300);
+        }
+
+        if (mipTbody) {
+            mipTbody.addEventListener('click', function (e) {
+                const pdfBtn = e.target.closest('.mip-po-pdf-btn');
+                if (pdfBtn && mipTbody.contains(pdfBtn)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openMipPoPdf(pdfBtn.getAttribute('data-po') || '');
+                    return;
+                }
+                const poBtn = e.target.closest('.mip-po-dot-btn');
+                if (!poBtn || !mipTbody.contains(poBtn)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                openMipPoModal(
+                    poBtn.getAttribute('data-mip-id'),
+                    poBtn.getAttribute('data-sku') || '',
+                    poBtn.getAttribute('data-po') || '',
+                    poBtn.closest('tr')
+                );
+            });
+        }
+
+        const mipPoModalSaveBtn = document.getElementById('mipPoModalSaveBtn');
+        if (mipPoModalSaveBtn) {
+            mipPoModalSaveBtn.addEventListener('click', async function () {
+                if (!activeMipPoId) return;
+                const inp = document.getElementById('mipPoModalInput');
+                const poNumber = (inp?.value || '').trim().slice(0, 100);
+                mipPoModalSaveBtn.disabled = true;
+                try {
+                    const res = await fetch('/mfrg-progress-po/update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        },
+                        body: JSON.stringify({
+                            mfrg_progress_id: parseInt(activeMipPoId, 10),
+                            sku: activeMipPoSku || '',
+                            po_number: poNumber,
+                        }),
+                    });
+                    const data = await res.json();
+                    if (!data.success) {
+                        throw new Error(data.message || 'Save failed');
+                    }
+                    updateMipPoCell(activeMipPoRow, data.po_number != null ? String(data.po_number) : poNumber);
+                    bootstrap.Modal.getInstance(document.getElementById('mipPoDataModal'))?.hide();
+                } catch (err) {
+                    alert(err.message || 'Save failed');
+                } finally {
+                    mipPoModalSaveBtn.disabled = false;
+                }
+            });
+        }
+
+        document.getElementById('mipPoDataModal')?.addEventListener('hidden.bs.modal', function () {
+            activeMipPoRow = null;
+            activeMipPoId = null;
+            activeMipPoSku = null;
+        });
+
+        const bulkEditPoBtn = document.getElementById('mip-bulk-edit-po-btn');
+        if (bulkEditPoBtn) {
+            bulkEditPoBtn.addEventListener('click', function () {
+                const selectedCheckboxes = document.querySelectorAll('.row-checkbox:checked');
+                if (selectedCheckboxes.length === 0) {
+                    alert('Please select at least one row to edit');
+                    return;
+                }
+                document.getElementById('bulk-po-selected-count').textContent = selectedCheckboxes.length;
+                document.getElementById('bulk-po-number-input').value = '';
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('bulkEditPoModal')).show();
+            });
+        }
+
+        const applyBulkPoBtn = document.getElementById('apply-bulk-po-btn');
+        if (applyBulkPoBtn) {
+            applyBulkPoBtn.addEventListener('click', async function () {
+                const poNumber = (document.getElementById('bulk-po-number-input')?.value || '').trim().slice(0, 100);
+                const selectedCheckboxes = document.querySelectorAll('.row-checkbox:checked');
+                const items = [];
+                selectedCheckboxes.forEach(function (cb) {
+                    const row = cb.closest('tr');
+                    if (!row) return;
+                    const mipId = parseInt(row.getAttribute('data-mip-id') || '', 10);
+                    if (!mipId) return;
+                    items.push({
+                        mfrg_progress_id: mipId,
+                        sku: row.getAttribute('data-sku') || cb.dataset.sku || '',
+                    });
+                });
+                if (items.length === 0) {
+                    alert('No valid MIP rows selected');
+                    return;
+                }
+                applyBulkPoBtn.disabled = true;
+                applyBulkPoBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+                try {
+                    const response = await fetch('/mfrg-progress-po/bulk-update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        },
+                        body: JSON.stringify({ items: items, po_number: poNumber }),
+                    });
+                    const result = await response.json();
+                    if (!result.success) {
+                        throw new Error(result.message || 'Failed to update');
+                    }
+                    const savedPo = result.po_number != null ? String(result.po_number) : poNumber;
+                    selectedCheckboxes.forEach(function (cb) {
+                        updateMipPoCell(cb.closest('tr'), savedPo);
+                    });
+                    alert('Successfully updated ' + (result.updated_count || items.length) + ' row(s)');
+                    bootstrap.Modal.getInstance(document.getElementById('bulkEditPoModal'))?.hide();
+                    selectedCheckboxes.forEach(function (cb) { cb.checked = false; });
+                } catch (error) {
+                    alert('Error updating PO: ' + error.message);
+                } finally {
+                    applyBulkPoBtn.disabled = false;
+                    applyBulkPoBtn.innerHTML = '<i class="fas fa-check"></i> Apply to Selected';
                 }
             });
         }
@@ -3110,6 +3574,51 @@
 </script>
 <script>
     // Helper function to sort rows by order date (oldest first) - Global scope
+    function mipGetRowPoNumber(row) {
+        if (!row) return '';
+        const btn = row.querySelector('.mip-po-dot-btn');
+        return btn ? String(btn.getAttribute('data-po') || '').trim() : '';
+    }
+
+    function mipGetRowExec(row) {
+        if (!row) return '';
+        const sel = row.querySelector('.mip-grid-exec-select');
+        return sel ? String(sel.value || '').trim() : '';
+    }
+
+    function mipExecDisplayLabel(execName) {
+        const val = String(execName || '').trim();
+        return val === '' ? 'Unassigned' : val;
+    }
+
+    function mipPoSortKey(po) {
+        const s = String(po || '').trim().toUpperCase();
+        const m = s.match(/^PO-(\d{2})(\d{2})(\d{2})-(\d+)$/);
+        if (m) {
+            const dd = parseInt(m[1], 10);
+            const mm = parseInt(m[2], 10);
+            const yy = parseInt(m[3], 10);
+            const serial = parseInt(m[4], 10);
+            const year = yy >= 70 ? 1900 + yy : 2000 + yy;
+            const ts = new Date(year, mm - 1, dd).getTime();
+            if (!isNaN(ts)) {
+                return ts * 1000 + serial;
+            }
+        }
+        return s;
+    }
+
+    function mipSortPoNumbersOldestFirst(list) {
+        return [...list].sort(function (a, b) {
+            const ka = mipPoSortKey(a);
+            const kb = mipPoSortKey(b);
+            if (typeof ka === 'number' && typeof kb === 'number') {
+                return ka - kb;
+            }
+            return String(ka).localeCompare(String(kb));
+        });
+    }
+
     function sortRowsByOrderDate(rows) {
         const tbody = document.querySelector('table.wide-table tbody');
         if (!tbody) return;
@@ -3221,6 +3730,254 @@
 
         const suppliers = [];
         let supplierIndex = 0;
+        let supplierPlayActive = false;
+
+        const poNumbers = [];
+        let poIndex = 0;
+        let poPlayActive = false;
+
+        const execNames = [];
+        let execIndex = 0;
+        let execPlayActive = false;
+
+        function mipResetOtherPlayModes(except) {
+            if (except !== 'supplier') mipResetSupplierPlayUi();
+            if (except !== 'po') mipResetPoPlayUi();
+            if (except !== 'exec') mipResetExecPlayUi();
+        }
+
+        function mipRefreshPlayStats() {
+            setTimeout(function () {
+                calculateTotalCBM();
+                calculateTotalAmount();
+                calculateTotalOrderItems();
+                updateFollowSupplierCount();
+                updateCounts();
+                mipPagCurrentPage = 1;
+                mipApplyPagination();
+            }, 50);
+        }
+
+        function mipShowAllMipStageRows() {
+            rows.forEach(function (row) {
+                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const rowStage = rowStageSelect || rowStageAttr;
+                row.style.display = isMipPageStage(rowStage) ? '' : 'none';
+            });
+        }
+
+        function mipHideSupplierPlayBadge() {
+            const supplierBadgeContainer = document.getElementById('supplier-badge-container');
+            const supplierBadgeVr = document.getElementById('supplier-badge-vr');
+            if (supplierBadgeContainer) supplierBadgeContainer.style.display = 'none';
+            if (supplierBadgeVr) supplierBadgeVr.style.display = 'none';
+            const supplierBadge = document.getElementById('current-supplier');
+            if (supplierBadge) supplierBadge.textContent = '-';
+        }
+
+        function mipHidePoPlayBadge() {
+            const poBadgeContainer = document.getElementById('po-badge-container');
+            const poBadgeVr = document.getElementById('po-badge-vr');
+            if (poBadgeContainer) poBadgeContainer.style.display = 'none';
+            if (poBadgeVr) poBadgeVr.style.display = 'none';
+            const poBadge = document.getElementById('current-po');
+            if (poBadge) poBadge.textContent = '-';
+        }
+
+        function mipHideExecPlayBadge() {
+            const execBadgeContainer = document.getElementById('exec-badge-container');
+            const execBadgeVr = document.getElementById('exec-badge-vr');
+            if (execBadgeContainer) execBadgeContainer.style.display = 'none';
+            if (execBadgeVr) execBadgeVr.style.display = 'none';
+            const execBadge = document.getElementById('current-exec');
+            if (execBadge) execBadge.textContent = '-';
+        }
+
+        function mipResetSupplierPlayUi() {
+            supplierPlayActive = false;
+            const playAutoBtn = document.getElementById('play-auto');
+            const playPauseBtn = document.getElementById('play-pause');
+            if (playAutoBtn) playAutoBtn.style.display = 'inline-block';
+            if (playPauseBtn) playPauseBtn.style.display = 'none';
+            mipHideSupplierPlayBadge();
+        }
+
+        function mipResetPoPlayUi() {
+            poPlayActive = false;
+            const playPoAutoBtn = document.getElementById('play-po-auto');
+            const playPoPauseBtn = document.getElementById('play-po-pause');
+            if (playPoAutoBtn) playPoAutoBtn.style.display = 'inline-block';
+            if (playPoPauseBtn) playPoPauseBtn.style.display = 'none';
+            mipHidePoPlayBadge();
+        }
+
+        function mipResetExecPlayUi() {
+            execPlayActive = false;
+            const playExecAutoBtn = document.getElementById('play-exec-auto');
+            const playExecPauseBtn = document.getElementById('play-exec-pause');
+            if (playExecAutoBtn) playExecAutoBtn.style.display = 'inline-block';
+            if (playExecPauseBtn) playExecPauseBtn.style.display = 'none';
+            mipHideExecPlayBadge();
+        }
+
+        function refreshExecList() {
+            execNames.length = 0;
+            const opts = window.MIP_EXEC_OPTIONS || [];
+            const present = new Set();
+
+            rows.forEach(function (row) {
+                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const rowStage = rowStageSelect || rowStageAttr;
+                if (!isMipPageStage(rowStage)) return;
+                present.add(mipGetRowExec(row));
+            });
+
+            if (present.has('')) {
+                execNames.push('');
+            }
+            opts.forEach(function (name) {
+                const n = String(name || '').trim();
+                if (n && present.has(n) && !execNames.includes(n)) {
+                    execNames.push(n);
+                }
+            });
+
+            if (execNames.length === 0) {
+                execNames.push('');
+                opts.forEach(function (name) {
+                    const n = String(name || '').trim();
+                    if (n && !execNames.includes(n)) execNames.push(n);
+                });
+            }
+
+            if (execIndex >= execNames.length) {
+                execIndex = 0;
+            }
+        }
+
+        function showExecRows(execName) {
+            execPlayActive = true;
+            const targetExec = String(execName || '').trim();
+            const visibleRows = [];
+
+            rows.forEach(function (row) {
+                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const rowStage = rowStageSelect || rowStageAttr;
+
+                if (!isMipPageStage(rowStage)) {
+                    row.style.display = 'none';
+                    return;
+                }
+
+                const rowExec = mipGetRowExec(row);
+                if (rowExec === targetExec) {
+                    row.style.display = '';
+                    visibleRows.push(row);
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+
+            if (visibleRows.length > 0) {
+                sortRowsByOrderDate(visibleRows);
+            }
+
+            mipHideSupplierPlayBadge();
+            mipHidePoPlayBadge();
+
+            const execBadgeContainer = document.getElementById('exec-badge-container');
+            const execBadgeVr = document.getElementById('exec-badge-vr');
+            const execBadge = document.getElementById('current-exec');
+            if (execBadgeContainer) execBadgeContainer.style.display = 'block';
+            if (execBadgeVr) execBadgeVr.style.display = 'block';
+            if (execBadge) execBadge.textContent = mipExecDisplayLabel(targetExec);
+
+            mipRefreshPlayStats();
+        }
+
+        function playNextExec() {
+            if (execNames.length === 0) return;
+            execIndex = (execIndex + 1) % execNames.length;
+            showExecRows(execNames[execIndex]);
+        }
+
+        function refreshPoList() {
+            poNumbers.length = 0;
+            const seen = new Set();
+            rows.forEach(function (row) {
+                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const rowStage = rowStageSelect || rowStageAttr;
+                if (!isMipPageStage(rowStage)) return;
+
+                const po = mipGetRowPoNumber(row);
+                if (!po || seen.has(po)) return;
+                seen.add(po);
+                poNumbers.push(po);
+            });
+            const sorted = mipSortPoNumbersOldestFirst(poNumbers);
+            poNumbers.length = 0;
+            sorted.forEach(function (po) { poNumbers.push(po); });
+            if (poIndex >= poNumbers.length) {
+                poIndex = 0;
+            }
+        }
+
+        function showPoRows(poNumber) {
+            poPlayActive = true;
+            const targetPo = String(poNumber || '').trim();
+            const visibleRows = [];
+
+            rows.forEach(function (row) {
+                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const rowStage = rowStageSelect || rowStageAttr;
+
+                if (!isMipPageStage(rowStage)) {
+                    row.style.display = 'none';
+                    return;
+                }
+
+                const rowPo = mipGetRowPoNumber(row);
+                if (rowPo && rowPo === targetPo) {
+                    row.style.display = '';
+                    visibleRows.push(row);
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+
+            if (visibleRows.length > 0) {
+                sortRowsByOrderDate(visibleRows);
+            }
+
+            mipHideSupplierPlayBadge();
+            mipHideExecPlayBadge();
+
+            const poBadgeContainer = document.getElementById('po-badge-container');
+            const poBadgeVr = document.getElementById('po-badge-vr');
+            const poBadge = document.getElementById('current-po');
+            if (poBadgeContainer) poBadgeContainer.style.display = 'block';
+            if (poBadgeVr) poBadgeVr.style.display = 'block';
+            if (poBadge) poBadge.textContent = targetPo || '-';
+
+            mipRefreshPlayStats();
+        }
+
+        function playNextPo() {
+            if (poNumbers.length === 0) return;
+            poIndex = (poIndex + 1) % poNumbers.length;
+            showPoRows(poNumbers[poIndex]);
+        }
+
         let intervalId = null;
 
         // Collect unique suppliers (from MIP and R2S stage rows)
@@ -3248,6 +4005,7 @@
         });
 
         function showSupplierRows(supplier) {
+            supplierPlayActive = true;
             const visibleRows = [];
             
             rows.forEach(row => {
@@ -3288,6 +4046,8 @@
             const supplierBadgeContainer = document.getElementById("supplier-badge-container");
             const supplierBadge = document.getElementById("current-supplier");
             const supplierBadgeVr = document.getElementById("supplier-badge-vr");
+            mipHidePoPlayBadge();
+            mipHideExecPlayBadge();
             if (supplierBadgeContainer) {
                 supplierBadgeContainer.style.display = "block";
             }
@@ -3310,15 +4070,7 @@
             }
 
             // Update counts after a small delay to ensure DOM is updated
-            setTimeout(() => {
-                calculateTotalCBM();
-                calculateTotalAmount();
-                calculateTotalOrderItems();
-                updateFollowSupplierCount();
-                updateCounts(); // Update pending status counts based on visible rows
-                mipPagCurrentPage = 1;
-                mipApplyPagination();
-            }, 50);
+            mipRefreshPlayStats();
         }
 
         function playNextSupplier() {
@@ -3362,68 +4114,106 @@
             if (playAutoBtn) {
                 e.preventDefault();
                 e.stopPropagation();
-                
-                // Refresh supplier list before playing
+
+                mipResetOtherPlayModes('supplier');
+
                 refreshSupplierList();
                 if (suppliers.length === 0) {
                     alert("No suppliers found. Please add suppliers to rows.");
                     return;
                 }
-                
+
+                supplierPlayActive = true;
                 playAutoBtn.style.display = "none";
                 const playPauseBtn = document.getElementById("play-pause");
                 if (playPauseBtn) {
                     playPauseBtn.style.display = "inline-block";
                 }
-                
-                supplierIndex = 0; // Start from first supplier
+
+                supplierIndex = 0;
                 showSupplierRows(suppliers[supplierIndex]);
+                return;
+            }
+
+            const playPoAutoBtn = e.target.closest("#play-po-auto");
+            if (playPoAutoBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                mipResetOtherPlayModes('po');
+
+                refreshPoList();
+                if (poNumbers.length === 0) {
+                    alert("No PO numbers found. Add PO numbers to MIP rows first.");
+                    return;
+                }
+
+                poPlayActive = true;
+                playPoAutoBtn.style.display = "none";
+                const playPoPauseBtn = document.getElementById("play-po-pause");
+                if (playPoPauseBtn) {
+                    playPoPauseBtn.style.display = "inline-block";
+                }
+
+                poIndex = 0;
+                showPoRows(poNumbers[poIndex]);
+                return;
+            }
+
+            const playExecAutoBtn = e.target.closest("#play-exec-auto");
+            if (playExecAutoBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                mipResetOtherPlayModes('exec');
+
+                refreshExecList();
+                if (execNames.length === 0) {
+                    alert("No executives found.");
+                    return;
+                }
+
+                execPlayActive = true;
+                playExecAutoBtn.style.display = "none";
+                const playExecPauseBtn = document.getElementById("play-exec-pause");
+                if (playExecPauseBtn) {
+                    playExecPauseBtn.style.display = "inline-block";
+                }
+
+                execIndex = 0;
+                showExecRows(execNames[execIndex]);
             }
         });
 
         document.getElementById("play-pause").addEventListener("click", function () {
-            this.style.display = "none";
-            document.getElementById("play-auto").style.display = "inline-block";
-            
-            // Hide supplier badge when pausing
-            const supplierBadgeContainer = document.getElementById("supplier-badge-container");
-            const supplierBadgeVr = document.getElementById("supplier-badge-vr");
-            if (supplierBadgeContainer) {
-                supplierBadgeContainer.style.display = "none";
-            }
-            if (supplierBadgeVr) {
-                supplierBadgeVr.style.display = "none";
-            }
-            
-            // Show MIP and R2S stage rows when pausing
-            rows.forEach(row => {
-                // Check stage from data attribute first (more reliable)
-                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-                const stageSelect = row.querySelector('.editable-select-stage');
-                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                const rowStage = rowStageSelect || rowStageAttr;
-                
-                // Show MIP/R2S stage rows
-                if (isMipPageStage(rowStage)) {
-                    row.style.display = "";
-                } else {
-                    row.style.display = "none";
-                }
-            });
-            
-            const title = document.getElementById("current-supplier");
-            if (title) title.textContent = "-";
-            calculateTotalCBM();
-            calculateTotalAmount();
-            calculateTotalOrderItems();
-            updateFollowSupplierCount();
-            updateCounts(); // Update pending status counts when pausing
-            mipPagCurrentPage = 1;
-            mipApplyPagination();
+            mipResetSupplierPlayUi();
+            mipShowAllMipStageRows();
+            mipRefreshPlayStats();
         });
 
+        document.getElementById("play-po-pause").addEventListener("click", function () {
+            mipResetPoPlayUi();
+            mipShowAllMipStageRows();
+            mipRefreshPlayStats();
+        });
+
+        document.getElementById("play-exec-pause").addEventListener("click", function () {
+            mipResetExecPlayUi();
+            mipShowAllMipStageRows();
+            mipRefreshPlayStats();
+        });
 
         document.getElementById("play-forward").addEventListener("click", function () {
+            if (execPlayActive) {
+                if (execNames.length === 0) refreshExecList();
+                if (execNames.length > 0) playNextExec();
+                return;
+            }
+            if (poPlayActive) {
+                if (poNumbers.length === 0) refreshPoList();
+                if (poNumbers.length > 0) playNextPo();
+                return;
+            }
             if (suppliers.length === 0) {
                 refreshSupplierList();
             }
@@ -3433,6 +4223,22 @@
         });
 
         document.getElementById("play-backward").addEventListener("click", function () {
+            if (execPlayActive) {
+                if (execNames.length === 0) refreshExecList();
+                if (execNames.length > 0) {
+                    execIndex = (execIndex - 1 + execNames.length) % execNames.length;
+                    showExecRows(execNames[execIndex]);
+                }
+                return;
+            }
+            if (poPlayActive) {
+                if (poNumbers.length === 0) refreshPoList();
+                if (poNumbers.length > 0) {
+                    poIndex = (poIndex - 1 + poNumbers.length) % poNumbers.length;
+                    showPoRows(poNumbers[poIndex]);
+                }
+                return;
+            }
             if (suppliers.length === 0) {
                 refreshSupplierList();
             }
@@ -3440,6 +4246,70 @@
                 supplierIndex = (supplierIndex - 1 + suppliers.length) % suppliers.length;
                 showSupplierRows(suppliers[supplierIndex]);
             }
+        });
+
+        document.getElementById("play-po-forward").addEventListener("click", function () {
+            if (poNumbers.length === 0) refreshPoList();
+            if (poNumbers.length === 0) {
+                alert("No PO numbers found. Add PO numbers to MIP rows first.");
+                return;
+            }
+            if (!poPlayActive) {
+                mipResetOtherPlayModes('po');
+                poPlayActive = true;
+                document.getElementById("play-po-auto").style.display = "none";
+                document.getElementById("play-po-pause").style.display = "inline-block";
+                if (poIndex >= poNumbers.length) poIndex = 0;
+            }
+            playNextPo();
+        });
+
+        document.getElementById("play-po-backward").addEventListener("click", function () {
+            if (poNumbers.length === 0) refreshPoList();
+            if (poNumbers.length === 0) {
+                alert("No PO numbers found. Add PO numbers to MIP rows first.");
+                return;
+            }
+            if (!poPlayActive) {
+                mipResetOtherPlayModes('po');
+                poPlayActive = true;
+                document.getElementById("play-po-auto").style.display = "none";
+                document.getElementById("play-po-pause").style.display = "inline-block";
+            }
+            poIndex = (poIndex - 1 + poNumbers.length) % poNumbers.length;
+            showPoRows(poNumbers[poIndex]);
+        });
+
+        document.getElementById("play-exec-forward").addEventListener("click", function () {
+            if (execNames.length === 0) refreshExecList();
+            if (execNames.length === 0) {
+                alert("No executives found.");
+                return;
+            }
+            if (!execPlayActive) {
+                mipResetOtherPlayModes('exec');
+                execPlayActive = true;
+                document.getElementById("play-exec-auto").style.display = "none";
+                document.getElementById("play-exec-pause").style.display = "inline-block";
+                if (execIndex >= execNames.length) execIndex = 0;
+            }
+            playNextExec();
+        });
+
+        document.getElementById("play-exec-backward").addEventListener("click", function () {
+            if (execNames.length === 0) refreshExecList();
+            if (execNames.length === 0) {
+                alert("No executives found.");
+                return;
+            }
+            if (!execPlayActive) {
+                mipResetOtherPlayModes('exec');
+                execPlayActive = true;
+                document.getElementById("play-exec-auto").style.display = "none";
+                document.getElementById("play-exec-pause").style.display = "inline-block";
+            }
+            execIndex = (execIndex - 1 + execNames.length) % execNames.length;
+            showExecRows(execNames[execIndex]);
         });
 
         function updateCounts() {

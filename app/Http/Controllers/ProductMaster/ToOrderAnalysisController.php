@@ -5,12 +5,15 @@ namespace App\Http\Controllers\ProductMaster;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Models\InstructionsItemPkg;
+use App\Models\InstructionsCartonDesign;
 use App\Models\JungleScoutProductData;
 use App\Models\MfrgProgress;
 use App\Models\ShopifySku;
 use App\Models\Supplier;
 use App\Models\ToOrderAnalysis;
 use App\Models\ToOrderReview;
+use App\Models\AmazonSkuCompetitor;
+use App\Services\PurchasePageExecService;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
@@ -286,7 +289,14 @@ class ToOrderAnalysisController extends Controller
 
     public function toOrderAnalysisNew(){
         $allSuppliers = Supplier::distinctNamesForListPage()->all();
-        return view('purchase-master.to-order-analysis', compact('allSuppliers'));
+        $execService = app(PurchasePageExecService::class);
+
+        return view('purchase-master.to-order-analysis', [
+            'allSuppliers' => $allSuppliers,
+            'execOptions' => $execService->getOptions(),
+            'pageExec' => $execService->getAssignment('to_order') ?? '',
+            'execCanEdit' => PurchasePageExecService::userCanEdit(),
+        ]);
     }
 
     public function getToOrderAnalysis()
@@ -333,6 +343,10 @@ class ToOrderAnalysisController extends Controller
                 ->whereIn('product_master_id', $productData->pluck('id')->filter()->unique()->values())
                 ->get()
                 ->keyBy('product_master_id');
+            $instructionsCartonDesignByProductId = InstructionsCartonDesign::query()
+                ->whereIn('product_master_id', $productData->pluck('id')->filter()->unique()->values())
+                ->get()
+                ->keyBy('product_master_id');
             $forecastData = DB::table('forecast_analysis')->get()->keyBy(fn($row) => strtoupper(trim($row->sku)));
             $amazonDataMap = DB::table('amazon_data_view')
                 ->select('sku', 'value')
@@ -340,6 +354,9 @@ class ToOrderAnalysisController extends Controller
                 ->keyBy(fn($item) => strtoupper(trim($item->sku)));
 
             $shopifySkus = ShopifySku::all()->keyBy(fn($item) => strtoupper(trim($item->sku)));
+            $lmpLookups = AmazonSkuCompetitor::buildGroupedLookup('amazon');
+            $lmpDetailsLookup = $lmpLookups['details'];
+            $lmpLowestLookup = $lmpLookups['lowest'];
             $allReviews = \App\Models\ToOrderReview::all()->keyBy(fn($r) => strtoupper(trim($r->sku)) . '|' . strtoupper(trim($r->parent)));
 
             $skusForReviews = $allSkus;
@@ -347,8 +364,11 @@ class ToOrderAnalysisController extends Controller
 
             // MSL: same as forecast page – from movement_analysis (Total/Total month)*4, fallback to forecast_analysis.s_msl
             $movementMap = DB::table('movement_analysis')->get()->keyBy(fn($item) => strtoupper(trim($item->sku ?? '')));
+            $qcIssuesBySku = $this->buildQcPackingIssuesBySku($allSkus);
 
             $processedData = [];
+            $execService = app(PurchasePageExecService::class);
+            $pageExec = $execService->getAssignment('to_order') ?? '';
 
             foreach ($allSkus as $sheetSku) {
                 if ($sheetSku === '') {
@@ -439,6 +459,14 @@ class ToOrderAnalysisController extends Controller
                     $instructionsItemPkg = $pkgRow && $pkgRow->instructions !== null ? (string) $pkgRow->instructions : '';
                 }
 
+                $instructionsCartonDesign = '';
+                if ($product && $product->id) {
+                    $cartonDesignRow = $instructionsCartonDesignByProductId->get($product->id);
+                    $instructionsCartonDesign = $cartonDesignRow && $cartonDesignRow->instructions !== null
+                        ? (string) $cartonDesignRow->instructions
+                        : '';
+                }
+
                 // Monthly data for MONTH VIEW modal (Jan–Dec, same as forecast)
                 $monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                 $monthData = array_fill_keys($monthNames, 0);
@@ -461,10 +489,12 @@ class ToOrderAnalysisController extends Controller
                     'packing_instructions' => $packingInstructions,
                     'packing_cdr_path' => $packingCdrPath,
                     'instructions_item_pkg' => $instructionsItemPkg,
+                    'instructions_carton_design' => $instructionsCartonDesign,
                     'Date of Appr'    => $toOrder->date_apprvl ?? '',
                     'Clink'           => ($forecast ? ($forecast->clink ?? '') : ''),
                     // Use stored supplier; only fallback to parent lookup when never set (null). Empty = user chose "Select" so keep blank.
                     'Supplier'        => $toOrder->supplier_name !== null ? (string) $toOrder->supplier_name : ($supplierName ?? ''),
+                    'Exec'            => $pageExec,
                     'msl'             => $mslValue,
                     's_msl'           => $sMsl,
                     'lp_msl'          => $lpMsl,
@@ -476,6 +506,7 @@ class ToOrderAnalysisController extends Controller
                     'stage'           => strtolower(trim((string) ($faItem->stage ?? ($forecast?->stage ?? '')))),
                     'nr'              => ($forecast ? ($forecast->nr ?? '') : ''),
                     'nrl'             => $toOrder->nrl ?? '',
+                    'issues'          => $qcIssuesBySku[$sheetSku] ?? '',
                     'Adv date'        => $toOrder->advance_date ?? '',
                     'order_qty'       => $toOrder->order_qty ?? '',
                     'is_parent'       => stripos($sheetSku, 'PARENT') !== false,
@@ -486,16 +517,23 @@ class ToOrderAnalysisController extends Controller
                     'seller_link'     => $amazonValue['seller_link'] ?? '',
 
                     'Reviews'         => $review ? (string) ($review->reviews_note ?? '') : '',
-                    'has_review'      => $review ? true : false,
+                    'has_review'      => $review && (
+                        trim((string) ($review->positive_review ?? '')) !== ''
+                        || trim((string) ($review->negative_review ?? '')) !== ''
+                        || trim((string) ($review->improvement ?? '')) !== ''
+                    ),
                     'positive_review' => $review->positive_review ?? null,
                     'negative_review' => $review->negative_review ?? null,
                     'improvement'     => $review->improvement ?? null,
                     'date_updated'    => $review->date_updated ?? null,
-                ], $monthData);
+                ], $monthData, $this->lmpFieldsForSku($sheetSku, $lmpDetailsLookup, $lmpLowestLookup));
             }
 
             return response()->json([
-                "data" => $processedData
+                'data' => $processedData,
+                'exec_options' => $execService->getOptions(),
+                'page_exec' => $pageExec,
+                'exec_can_edit' => PurchasePageExecService::userCanEdit(),
             ]);
 
         } catch (\Throwable $e) {
@@ -539,6 +577,30 @@ class ToOrderAnalysisController extends Controller
             $result[$sku] = ['rating' => $rating, 'reviews' => $reviews];
         }
         return $result;
+    }
+
+    /**
+     * LMP fields from amazon_sku_competitors (same source as /amazon-tabulator-view).
+     *
+     * @return array{lmp_price: float|null, lmp_link: string|null, lmp_entries_total: int}
+     */
+    private function lmpFieldsForSku(string $sku, $lmpDetailsLookup, $lmpLowestLookup): array
+    {
+        $skuLookupKey = AmazonSkuCompetitor::normalizeSkuKey($sku);
+        $lmpEntries = $lmpDetailsLookup->get($skuLookupKey);
+        if (! $lmpEntries instanceof \Illuminate\Support\Collection) {
+            $lmpEntries = collect();
+        }
+
+        $lowestLmp = $lmpLowestLookup->get($skuLookupKey);
+
+        return [
+            'lmp_price' => ($lowestLmp && isset($lowestLmp->price) && is_numeric($lowestLmp->price))
+                ? (float) $lowestLmp->price
+                : null,
+            'lmp_link' => $lowestLmp->product_link ?? null,
+            'lmp_entries_total' => $lmpEntries->count(),
+        ];
     }
 
     /**
@@ -696,6 +758,7 @@ class ToOrderAnalysisController extends Controller
             'rfq_report_link' => $forecast?->rfq_report ?? null,
             'supplier_name' => null,
             'nrl' => null,
+            'issues' => null,
             'advance_date' => null,
             'order_qty' => null,
         ];
@@ -976,13 +1039,76 @@ class ToOrderAnalysisController extends Controller
 
         ToOrderReview::updateOrCreate(
             [
-                'parent' => $request->input('parent'),
-                'sku' => $request->input('sku'),
+                'parent' => trim((string) $request->input('parent', '')),
+                'sku' => trim((string) $request->input('sku', '')),
             ],
             $data
         );
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Active QC & Packing issues keyed by normalized SKU (from qc_and_packing_issues).
+     *
+     * @param array<int, string> $skus
+     * @return array<string, string>
+     */
+    private function buildQcPackingIssuesBySku(array $skus): array
+    {
+        $normalized = array_values(array_unique(array_filter(array_map(
+            fn ($s) => strtoupper(trim((string) $s)),
+            $skus
+        ))));
+
+        if ($normalized === []) {
+            return [];
+        }
+
+        $wanted = array_fill_keys($normalized, true);
+        $bySku = [];
+
+        $rows = DB::table('qc_and_packing_issues')
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->orderByDesc('id')
+            ->get(['sku', 'what_happened', 'issue', 'issue_remark']);
+
+        foreach ($rows as $row) {
+            $skuKey = strtoupper(trim((string) ($row->sku ?? '')));
+            if ($skuKey === '' || ! isset($wanted[$skuKey])) {
+                continue;
+            }
+            $line = $this->formatQcPackingIssueLine($row);
+            if ($line === '') {
+                continue;
+            }
+            $bySku[$skuKey] = isset($bySku[$skuKey])
+                ? $bySku[$skuKey] . "\n" . $line
+                : $line;
+        }
+
+        return $bySku;
+    }
+
+    private function formatQcPackingIssueLine(object $row): string
+    {
+        $issue = trim((string) ($row->issue ?? ''));
+        $remark = trim((string) ($row->issue_remark ?? ''));
+        $whatHappened = trim((string) ($row->what_happened ?? ''));
+
+        if ($issue !== '' && $remark !== '') {
+            return $issue . ': ' . $remark;
+        }
+        if ($issue !== '') {
+            return $issue;
+        }
+        if ($remark !== '') {
+            return $remark;
+        }
+
+        return $whatHappened;
     }
 
     public function deleteToOrderAnalysis(Request $request)

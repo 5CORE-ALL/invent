@@ -1,6 +1,7 @@
 @extends('layouts.vertical', ['title' => 'PLS Pricing', 'sidenav' => 'condensed'])
 
 @section('css')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
@@ -104,6 +105,14 @@
                     <button id="export-btn" class="btn btn-sm btn-info">
                         <i class="fas fa-file-excel"></i> Export CSV
                     </button>
+
+                    <button id="pls-price-mode-btn" type="button" class="btn btn-sm btn-secondary">
+                        <i class="fas fa-exchange-alt"></i> Price %
+                    </button>
+
+                    <button id="pls-clear-sprice-btn" class="btn btn-sm btn-danger" style="display: none;">
+                        <i class="fas fa-eraser"></i> Clear SPRICE
+                    </button>
                 </div>
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
@@ -120,6 +129,25 @@
             </div>
 
             <div class="card-body" style="padding: 0;">
+                <!-- Discount Input Box (shown when Price % mode is active and SKUs are selected) -->
+                <div id="pls-discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
+                    <div class="d-flex align-items-center gap-2">
+                        <span id="pls-selected-skus-count" class="fw-bold"></span>
+                        <span class="d-flex align-items-center gap-2">
+                            <select id="pls-discount-type-select" class="form-select form-select-sm" style="width: 120px;">
+                                <option value="percentage">Percentage</option>
+                                <option value="value">Value ($)</option>
+                            </select>
+                        </span>
+                        <label class="mb-0 fw-bold">Value:</label>
+                        <input type="number" id="pls-discount-input" class="form-control form-control-sm"
+                            placeholder="Enter %" step="0.01" style="width: 100px;">
+                        <button id="pls-apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
+                        <button id="pls-clear-sprice-selected-btn" class="btn btn-sm btn-danger">
+                            <i class="fa fa-trash"></i> Clear SPRICE
+                        </button>
+                    </div>
+                </div>
                 <div id="pls-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <div class="p-2 bg-light border-bottom">
                         <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU...">
@@ -251,6 +279,27 @@
                 }
             },
             columns: [
+                {
+                    title: "Select",
+                    field: "_select",
+                    hozAlign: "center",
+                    headerSort: false,
+                    visible: false,
+                    titleFormatter: function(column) {
+                        return `<div style="display:flex;align-items:center;justify-content:center;gap:5px;">
+                            <span>Select</span>
+                            <input type="checkbox" id="pls-select-all-checkbox" style="cursor:pointer;" title="Select All">
+                        </div>`;
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sku = rowData.sku;
+                        if (!sku) return '';
+                        const isChecked = plsSelectedSkus.has(sku) ? 'checked' : '';
+                        return `<input type="checkbox" class="pls-sku-select-checkbox" data-sku="${sku}" ${isChecked} style="cursor:pointer;">`;
+                    },
+                    width: 60
+                },
                 {
                     title: "Image",
                     field: "image_path",
@@ -629,7 +678,6 @@
                     field: "_push",
                     hozAlign: "center",
                     headerSort: false,
-                    tooltip: "Push price to PLS marketplace",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku || '';
@@ -981,6 +1029,322 @@
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
             showToast('Export downloaded!', 'success');
         });
+
+        // ─── Price % (Increase / Decrease / Same Price) ───────────────────────
+
+        let plsDecreaseModeActive = false;
+        let plsIncreaseModeActive = false;
+        let plsSamePriceModeActive = false;
+        let plsSelectedSkus = new Set();
+
+        function roundToRetailPrice(price) {
+            if (price < 20.99) return +price.toFixed(2);
+            const roundedDollar = Math.ceil(price);
+            return +(roundedDollar - 0.01).toFixed(2);
+        }
+
+        function roundToRetailPrice49(price) {
+            if (price < 20.99) return +price.toFixed(2);
+            const roundedDollar = Math.ceil(price);
+            return +(roundedDollar - 0.51).toFixed(2);
+        }
+
+        function plsUpdateSelectedCount() {
+            const count = plsSelectedSkus.size;
+            $('#pls-selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
+            $('#pls-discount-input-container').toggle(
+                count > 0 || plsDecreaseModeActive || plsIncreaseModeActive || plsSamePriceModeActive
+            );
+            // Show/hide the standalone Clear SPRICE btn in toolbar
+            $('#pls-clear-sprice-btn').toggle(count > 0);
+        }
+
+        function plsUpdateSelectAllCheckbox() {
+            if (!table) return;
+            const activeData = table.getData('active').filter(r => !r.parent || !String(r.parent).toUpperCase().startsWith('PARENT'));
+            if (!activeData.length) { $('#pls-select-all-checkbox').prop('checked', false); return; }
+            const allSelected = activeData.every(r => r.sku && plsSelectedSkus.has(r.sku));
+            $('#pls-select-all-checkbox').prop('checked', allSelected);
+        }
+
+        function syncPlsPriceModeUi() {
+            if (!table || !table.getColumn) return;
+            const $btn = $('#pls-price-mode-btn');
+            const selectColumn = table.getColumn('_select');
+
+            if (plsDecreaseModeActive) {
+                $btn.removeClass('btn-secondary btn-success btn-outline-primary').addClass('btn-danger')
+                    .html('<i class="fas fa-arrow-down"></i> Decrease ON');
+                if (selectColumn) selectColumn.show();
+                return;
+            }
+            if (plsIncreaseModeActive) {
+                $btn.removeClass('btn-secondary btn-danger btn-outline-primary').addClass('btn-success')
+                    .html('<i class="fas fa-arrow-up"></i> Increase ON');
+                if (selectColumn) selectColumn.show();
+                return;
+            }
+            if (plsSamePriceModeActive) {
+                $btn.removeClass('btn-secondary btn-danger btn-success').addClass('btn-outline-primary')
+                    .html('<i class="fas fa-equals"></i> Same Price ON');
+                if (selectColumn) selectColumn.show();
+                return;
+            }
+            // All modes off
+            $btn.removeClass('btn-danger btn-success btn-outline-primary').addClass('btn-secondary')
+                .html('<i class="fas fa-exchange-alt"></i> Price %');
+            if (selectColumn) selectColumn.hide();
+            plsSelectedSkus.clear();
+            $('.pls-sku-select-checkbox').prop('checked', false);
+            $('#pls-select-all-checkbox').prop('checked', false);
+            $('#pls-discount-input-container').hide();
+            plsUpdateSelectedCount();
+        }
+
+        // Toggle through modes: off → Decrease → Increase → Same Price → off
+        $('#pls-price-mode-btn').on('click', function() {
+            if (!plsDecreaseModeActive && !plsIncreaseModeActive && !plsSamePriceModeActive) {
+                plsDecreaseModeActive = true;
+            } else if (plsDecreaseModeActive) {
+                plsDecreaseModeActive = false;
+                plsIncreaseModeActive = true;
+            } else if (plsIncreaseModeActive) {
+                plsIncreaseModeActive = false;
+                plsSamePriceModeActive = true;
+            } else {
+                plsSamePriceModeActive = false;
+            }
+            syncPlsPriceModeUi();
+        });
+
+        // Discount type dropdown change
+        $('#pls-discount-type-select').on('change', function() {
+            const type = $(this).val();
+            const $input = $('#pls-discount-input');
+            if (type === 'percentage') {
+                $input.attr('placeholder', 'Enter %').attr('max', '100');
+            } else {
+                $input.attr('placeholder', 'Enter value ($)').removeAttr('max');
+            }
+        });
+
+        // Select-all checkbox
+        $(document).on('change', '#pls-select-all-checkbox', function() {
+            const isChecked = $(this).prop('checked');
+            const activeData = table ? table.getData('active') : [];
+            activeData.forEach(function(row) {
+                if (row.parent && String(row.parent).toUpperCase().startsWith('PARENT')) return;
+                if (row.sku) {
+                    if (isChecked) plsSelectedSkus.add(row.sku);
+                    else plsSelectedSkus.delete(row.sku);
+                }
+            });
+            $('.pls-sku-select-checkbox').each(function() {
+                const sku = $(this).data('sku');
+                $(this).prop('checked', plsSelectedSkus.has(sku));
+            });
+            plsUpdateSelectedCount();
+        });
+
+        // Individual checkbox
+        $(document).on('change', '.pls-sku-select-checkbox', function() {
+            const sku = $(this).data('sku');
+            if ($(this).prop('checked')) plsSelectedSkus.add(sku);
+            else plsSelectedSkus.delete(sku);
+            plsUpdateSelectedCount();
+            plsUpdateSelectAllCheckbox();
+        });
+
+        // saveSpriceWithRetry for PLS
+        function plsSaveSpriceWithRetry(sku, sprice, row, retryCount = 0) {
+            return new Promise(function(resolve, reject) {
+                if (row) row.update({ sprice: sprice });
+
+                $.ajax({
+                    url: '/save-pls-sprice',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: { sku: sku, sprice: sprice },
+                    success: function(response) {
+                        // Re-find row in case table redrew
+                        let targetRow = row;
+                        if (table && table.getRows) {
+                            table.getRows().forEach(function(r) {
+                                if (r.getData().sku === sku) targetRow = r;
+                            });
+                        }
+                        if (targetRow) {
+                            targetRow.update({
+                                sprice: parseFloat(sprice),
+                                sgpft: response.sgpft_percent != null ? response.sgpft_percent : 0,
+                                sroi:  response.sroi_percent  != null ? response.sroi_percent  : 0,
+                                has_custom_sprice: true
+                            });
+                            targetRow.reformat();
+                        }
+                        resolve(response);
+                    },
+                    error: function(xhr) {
+                        if (retryCount < 1) {
+                            setTimeout(function() {
+                                plsSaveSpriceWithRetry(sku, sprice, row, retryCount + 1).then(resolve).catch(reject);
+                            }, 2000);
+                        } else {
+                            reject({ error: true, xhr: xhr });
+                        }
+                    }
+                });
+            });
+        }
+
+        // Apply discount/increase/same-price to selected SKUs
+        function plsApplyDiscount() {
+            if (!plsDecreaseModeActive && !plsIncreaseModeActive && !plsSamePriceModeActive) {
+                showToast('Turn on Price % (Decrease, Increase, or Same Price)', 'error');
+                return;
+            }
+            if (plsSelectedSkus.size === 0) {
+                showToast('Please select at least one SKU', 'error');
+                return;
+            }
+
+            const rawInput   = $('#pls-discount-input').val();
+            const inputValue = parseFloat(String(rawInput || '').replace(',', '.'));
+            const discountType = $('#pls-discount-type-select').val();
+
+            if (!plsSamePriceModeActive) {
+                if (rawInput === '' || rawInput == null) {
+                    showToast('Please enter a value (% or $)', 'error');
+                    return;
+                }
+                if (isNaN(inputValue) || inputValue < 0) {
+                    showToast('Please enter a valid positive number', 'error');
+                    return;
+                }
+                if (discountType === 'percentage' && inputValue > 100) {
+                    showToast('Percentage cannot exceed 100', 'error');
+                    return;
+                }
+            }
+
+            const allData = table.getData('all');
+            let updatedCount = 0, errorCount = 0;
+            const totalSkus = plsSelectedSkus.size;
+            const appliedAsSamePrice = plsSamePriceModeActive;
+
+            allData.forEach(function(row) {
+                if (row.parent && String(row.parent).toUpperCase().startsWith('PARENT')) return;
+                const sku = row.sku;
+                if (!plsSelectedSkus.has(sku)) return;
+
+                const originalPrice = parseFloat(row.price) || 0;
+                if (originalPrice <= 0) return;
+
+                let newPriceNum;
+                if (plsSamePriceModeActive) {
+                    let newSPrice = roundToRetailPrice(originalPrice);
+                    if (newSPrice.toFixed(2) === originalPrice.toFixed(2)) {
+                        newSPrice = roundToRetailPrice49(newSPrice);
+                    }
+                    newPriceNum = parseFloat(newSPrice.toFixed(2));
+                } else {
+                    let newSPrice;
+                    if (discountType === 'percentage') {
+                        const decimal = inputValue / 100;
+                        newSPrice = plsIncreaseModeActive
+                            ? originalPrice * (1 + decimal)
+                            : originalPrice * (1 - decimal);
+                    } else {
+                        newSPrice = plsIncreaseModeActive
+                            ? originalPrice + inputValue
+                            : Math.max(0.01, originalPrice - inputValue);
+                    }
+                    newSPrice = Math.max(0.01, newSPrice);
+                    newSPrice = roundToRetailPrice(newSPrice);
+                    if (newSPrice.toFixed(2) === originalPrice.toFixed(2)) {
+                        newSPrice = roundToRetailPrice49(newSPrice);
+                    }
+                    newPriceNum = parseFloat(newSPrice.toFixed(2));
+                }
+
+                const originalSprice = parseFloat(row.sprice) || 0;
+                const tableRow = table.getRows().find(function(r) { return r.getData().sku === sku; });
+
+                if (tableRow) tableRow.update({ sprice: newPriceNum });
+
+                plsSaveSpriceWithRetry(sku, newPriceNum, tableRow)
+                    .then(function() {
+                        updatedCount++;
+                        if (updatedCount + errorCount === totalSkus) {
+                            showToast(
+                                appliedAsSamePrice
+                                    ? `SPRICE set to price for ${updatedCount} SKU(s)`
+                                    : `Applied to ${updatedCount} SKU(s)`,
+                                'success'
+                            );
+                        }
+                    })
+                    .catch(function() {
+                        errorCount++;
+                        if (tableRow) tableRow.update({ sprice: originalSprice });
+                        if (updatedCount + errorCount === totalSkus) {
+                            showToast(`Applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
+                        }
+                    });
+            });
+        }
+
+        $('#pls-apply-discount-btn').on('click', function() { plsApplyDiscount(); });
+        $('#pls-discount-input').on('keypress', function(e) {
+            if (e.which === 13) plsApplyDiscount();
+        });
+
+        // Clear SPRICE for selected SKUs
+        function plsClearSpriceForSelected() {
+            if (plsSelectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+            if (!confirm(`Clear SPRICE for ${plsSelectedSkus.size} selected SKU(s)?`)) return;
+
+            const updates = [];
+            table.getRows().forEach(function(row) {
+                const rowData = row.getData();
+                const sku = rowData.sku;
+                if (!sku || !plsSelectedSkus.has(sku)) return;
+                if (rowData.parent && String(rowData.parent).toUpperCase().startsWith('PARENT')) return;
+                row.update({ sprice: 0, sgpft: 0, sroi: 0, has_custom_sprice: false });
+                updates.push({ sku: sku });
+            });
+
+            if (updates.length === 0) {
+                showToast('No SPRICE values to clear', 'error');
+                return;
+            }
+
+            $.ajax({
+                url: '/pls-clear-sprice',
+                method: 'POST',
+                contentType: 'application/json',
+                dataType: 'json',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                    'Accept': 'application/json'
+                },
+                data: JSON.stringify({ updates: updates }),
+                success: function(response) {
+                    showToast(response.message || `SPRICE cleared for ${updates.length} SKU(s)`, 'success');
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to clear SPRICE';
+                    showToast(msg, 'error');
+                }
+            });
+        }
+
+        $('#pls-clear-sprice-selected-btn').on('click', function() { plsClearSpriceForSelected(); });
+        $('#pls-clear-sprice-btn').on('click', function() { plsClearSpriceForSelected(); });
+
     });
 </script>
 @endsection

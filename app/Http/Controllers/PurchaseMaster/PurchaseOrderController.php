@@ -224,8 +224,27 @@ class PurchaseOrderController extends Controller
         $order = DB::table('purchase_orders')->where('id', $orderId)->first();
         if (!$order) abort(404, 'Purchase Order not found');
 
-        $items = json_decode($order->items ?? '[]');
+        return $this->renderPurchaseOrderPdf($order);
+    }
 
+    public function generatePdfByPoNumber(string $poNumber)
+    {
+        $poNumber = trim(urldecode($poNumber));
+        if ($poNumber === '') {
+            abort(404, 'Purchase Order not found');
+        }
+
+        $order = DB::table('purchase_orders')->where('po_number', $poNumber)->first();
+        if (!$order) {
+            abort(404, 'Purchase Order not found');
+        }
+
+        return $this->renderPurchaseOrderPdf($order);
+    }
+
+    private function renderPurchaseOrderPdf(object $order)
+    {
+        $items = json_decode($order->items ?? '[]');
         $supplier = DB::table('suppliers')->where('id', $order->supplier_id)->first();
 
         return view('purchase-master.purchase-order.proforma', [

@@ -604,7 +604,7 @@
                             </ul>
                         </div>
                         <div class="dropdown">
-                            <button class="btn btn-sm btn-warning dropdown-toggle" type="button" id="bulkEditMoqBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                            <button class="btn btn-sm btn-warning dropdown-toggle" type="button" id="bulkEditMoqBtn" data-bs-toggle="dropdown" aria-expanded="false" title="Minimum Order Quantity">
                                 MOQ
                             </button>
                             <ul class="dropdown-menu" aria-labelledby="bulkEditMoqBtn">
@@ -1883,6 +1883,7 @@
                 {
                     title: "MOQ",
                     field: "MOQ",
+                    headerTooltip: "Minimum Order Quantity",
                     accessor: row => (row ? row["MOQ"] : ''),
                     headerSort: true,
                     hozAlign: "center",
@@ -3131,7 +3132,7 @@
                         table.updateColumnDefinition("order_given",     { title: "MIP" });
                         table.updateColumnDefinition("readyToShipQty",  { title: "R2S" });
                         table.updateColumnDefinition("transit",         { title: "Trn" });
-                        table.updateColumnDefinition("MOQ",             { title: "MOQ" });
+                        table.updateColumnDefinition("MOQ",             { title: "MOQ", headerTooltip: "Minimum Order Quantity" });
                     } finally {
                         if (typeof table.restoreRedraw === 'function') table.restoreRedraw();
                     }

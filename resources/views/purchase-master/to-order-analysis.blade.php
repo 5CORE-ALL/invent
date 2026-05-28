@@ -173,6 +173,116 @@
             max-height: 88px;
             overflow: auto;
         }
+
+        /* NRP: REQ = green, 2BDC (NR) = red, LATER = yellow — medium dot + invisible select */
+        .nrp-dot-cell {
+            min-height: 36px;
+            min-width: 44px;
+        }
+        .nrp-dot-cell .nrp-status-dot,
+        .toa-data-dot-wrap .toa-status-dot,
+        .toa-data-dot-btn .toa-status-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            display: inline-block;
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+        }
+        .nrp-dot-cell .nrp-status-dot {
+            /* inherits shared dot rules above */
+        }
+        .nrp-dot-cell .nrp-nr-select {
+            opacity: 0;
+            cursor: pointer;
+            margin: 0 !important;
+            border: 0 !important;
+            padding: 0 !important;
+            background: transparent !important;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        .toa-data-dot-wrap {
+            min-height: 36px;
+            min-width: 44px;
+        }
+        .toa-data-dot-btn {
+            line-height: 1;
+            text-decoration: none !important;
+        }
+
+        .toa-moq-btn {
+            min-width: 44px;
+            min-height: 28px;
+            line-height: 1.2;
+            text-decoration: none !important;
+            cursor: pointer;
+        }
+        .toa-moq-btn:hover {
+            text-decoration: underline !important;
+        }
+
+        /* Column header tooltips (Tabulator) — up to 2× header size, bold */
+        .tabulator-tooltip {
+            font-size: 2.16rem !important;
+            font-weight: 700 !important;
+            line-height: 1.35 !important;
+            padding: 12px 18px !important;
+            border-radius: 8px !important;
+            box-shadow: 0 6px 22px rgba(15, 23, 42, 0.22) !important;
+            max-width: min(92vw, 560px);
+            white-space: normal;
+            text-align: center;
+        }
+
+        /* Status-dot hover badges — up to 2× cell text, bold */
+        .toa-data-dot-btn,
+        .nrp-dot-cell {
+            position: relative;
+        }
+        .purchase-hover-tip-badge {
+            display: none;
+            position: absolute;
+            z-index: 2500;
+            left: 50%;
+            bottom: calc(100% + 8px);
+            transform: translateX(-50%);
+            background: #1e293b;
+            color: #fff;
+            font-size: 2rem;
+            font-weight: 700;
+            line-height: 1.35;
+            padding: 10px 16px;
+            border-radius: 8px;
+            white-space: nowrap;
+            max-width: min(92vw, 420px);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            pointer-events: none;
+            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.28);
+        }
+        .purchase-hover-tip-badge--wrap {
+            white-space: normal;
+            text-align: center;
+            overflow: visible;
+            text-overflow: unset;
+        }
+        .toa-data-dot-btn:hover .purchase-hover-tip-badge,
+        .nrp-dot-cell:hover .purchase-hover-tip-badge {
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .tabulator-tooltip {
+                font-size: 1.65rem !important;
+                padding: 10px 14px !important;
+            }
+            .purchase-hover-tip-badge {
+                font-size: 1.5rem;
+                padding: 8px 12px;
+            }
+        }
     </style>
 @endsection
 @section('content')
@@ -227,7 +337,7 @@
                             </select>
                         </div>
                         <div class="filter-item">
-                            <label class="form-label fw-semibold d-block">📦 MOQ</label>
+                            <label class="form-label fw-semibold d-block" title="Minimum order quantity">📦 MOQ</label>
                             <select id="moq-filter" class="form-select border border-primary" title="Filter by approved quantity (MOQ)">
                                 <option value="" selected>All (0 &amp; &gt;0)</option>
                                 <option value="zero">MOQ = 0</option>
@@ -412,6 +522,88 @@
         </div>
     </div>
 
+    {{-- LMP Competitors Modal (same data source as /amazon-tabulator-view) --}}
+    <div class="modal fade" id="toaLmpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="fa fa-shopping-cart"></i> LMP Competitors for SKU: <span id="toaLmpSku"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="toaLmpDataList">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading competitors...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- MOQ edit modal --}}
+    <div class="modal fade" id="toaMoqModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title mb-0">
+                        MOQ
+                        <span class="ms-1 text-white-50 small" id="toaMoqModalSku"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <label for="toaMoqModalInput" class="form-label fw-semibold">Approved quantity (MOQ)</label>
+                    <input type="number" id="toaMoqModalInput" class="form-control" min="0" max="99999" step="1" placeholder="Enter MOQ">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="toaMoqModalSaveBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Instruction data modal (Item Pkg, Instr Carton, Design fields) --}}
+    <div class="modal fade" id="toaDataModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title mb-0">
+                        <span id="toaDataModalTitle">Instructions</span>
+                        <span class="ms-1 text-white-50 small" id="toaDataModalSku"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="toaDataModalEmpty" class="alert alert-warning d-none mb-0">Data required</div>
+                    <div id="toaDataModalFileWrap" class="d-none">
+                        <p class="mb-2 text-break fw-semibold" id="toaDataModalFileLabel"></p>
+                        <a id="toaDataModalFileLink" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-file-download me-1"></i> Download file
+                        </a>
+                    </div>
+                    <textarea id="toaDataModalTextarea" class="form-control d-none" rows="8" maxlength="2000"></textarea>
+                    <input type="text" id="toaDataModalInput" class="form-control d-none" maxlength="100">
+                    <div id="toaDataModalReadonly" class="border rounded p-3 bg-light d-none" style="white-space:pre-wrap;word-break:break-word;"></div>
+                    <p id="toaDataModalSourceNote" class="text-muted small mb-0 mt-2 d-none">Source: QC &amp; Packing (<a href="/customer-care/qc-and-packing" target="_blank" rel="noopener">open page</a>)</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary d-none" id="toaDataModalCopyBtn">
+                        <i class="far fa-copy me-1"></i> Copy
+                    </button>
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary d-none" id="toaDataModalSaveBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -440,6 +632,55 @@
             let hideTimeout;
             let uniqueSuppliers = [];
             let allSuppliers = @json($allSuppliers ?? []);
+            let execOptions = @json($execOptions ?? []);
+            let execCanEdit = @json($execCanEdit ?? false);
+            let pageExecSaving = false;
+
+            function renderExecSelect(value, disabled) {
+                const selected = (value || "").trim();
+                let html = `<option value=""${selected === "" ? " selected" : ""}>— Unassigned —</option>`;
+                execOptions.forEach(function (name) {
+                    const esc = escapeHtmlAttr(name);
+                    const label = String(name).replace(/</g, "&lt;");
+                    html += `<option value="${esc}"${selected === name ? " selected" : ""}>${label}</option>`;
+                });
+                const dis = disabled ? " disabled" : "";
+                return `<select class="form-select form-select-sm to-order-exec-select"${dis} style="width: 100px; min-width: 90px; padding: 4px 8px; font-size: 0.875rem;">${html}</select>`;
+            }
+
+            async function savePageExecAssignment(assignedExec) {
+                if (pageExecSaving) return;
+                pageExecSaving = true;
+                try {
+                    const res = await fetch("/purchase-page-exec/to_order/assignment", {
+                        method: "POST",
+                        headers: {
+                            "Accept": "application/json",
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest",
+                            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+                        },
+                        body: JSON.stringify({ assigned_exec: assignedExec || null }),
+                    });
+                    const data = await res.json().catch(function () { return {}; });
+                    if (!res.ok) {
+                        throw new Error(data.message || "Save failed");
+                    }
+                    const topSelect = document.getElementById("page-exec-select-to_order");
+                    if (topSelect && topSelect.value !== (assignedExec || "")) {
+                        topSelect.value = assignedExec || "";
+                        topSelect.dataset.lastValue = assignedExec || "";
+                    }
+                    document.dispatchEvent(new CustomEvent("purchase-page-exec-changed", {
+                        detail: { pageKey: "to_order", assignedExec: assignedExec || null },
+                    }));
+                } catch (err) {
+                    alert(err.message || "Could not save executive assignment");
+                    throw err;
+                } finally {
+                    pageExecSaving = false;
+                }
+            }
 
             function escapeHtmlAttr(s) {
                 return String(s ?? '')
@@ -448,60 +689,233 @@
                     .replace(/</g, '&lt;');
             }
 
-            async function saveToOrderCtnInstructions(productId, sku, parent, newText, inputEl, cell) {
-                try {
-                    const res = await fetch('/dim-wt-master/update', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                        },
-                        body: JSON.stringify({
-                            product_id: parseInt(productId, 10),
-                            sku: sku,
-                            parent: parent || '',
-                            ctn_instructions: newText.length ? newText : null
-                        })
-                    });
-                    const data = await res.json();
-                    if (!res.ok) {
-                        throw new Error(data.message || 'Save failed');
-                    }
-                    inputEl.dataset.prev = newText;
-                    cell.getRow().update({ ctn_instructions: newText }, true);
-                } catch (e) {
-                    alert(e.message || 'Could not save Instructions CTN');
-                    inputEl.value = inputEl.dataset.prev != null ? inputEl.dataset.prev : '';
-                }
+            const TOA_DATA_FIELD_META = {
+                instructions_item_pkg: { title: "Item Pkg.", editable: true, multiline: true, maxLength: 2000 },
+                ctn_instructions: { title: "Instr Carton", editable: true, multiline: false, maxLength: 100 },
+                packing_instructions: { title: "Design Instr.", editable: false, multiline: true, maxLength: 0 },
+                instructions_carton_design: { title: "Design Instr Carton", editable: true, multiline: true, maxLength: 2000 },
+                packing_cdr_path: { title: "CDR", editable: false, isFilePath: true },
+                issues: { title: "Issues", editable: false, multiline: true, maxLength: 0, qcSource: true },
+            };
+
+            let activeToaDataRow = null;
+            let activeToaDataField = null;
+            let activeMoqRow = null;
+
+            function renderDesignDataDot(rawValue, meta) {
+                meta = meta || {};
+                const v = (rawValue || "").trim();
+                const hasData = v.length > 0;
+                const dotColor = hasData ? "#22c55e" : "#dc3545";
+                const tip = hasData
+                    ? escapeHtmlAttr(meta.tip != null ? meta.tip : v)
+                    : "Data required";
+                const field = escapeHtmlAttr(meta.field || "");
+                const sku = escapeHtmlAttr(meta.sku || "");
+                const parent = escapeHtmlAttr(meta.parent || "");
+                const pid = meta.pid ? String(meta.pid) : "";
+                const editable = meta.editable === false ? "0" : "1";
+                const tipHtml = escapeHtmlAttr(tip);
+                const wrapClass = hasData && tip.length > 36 ? " purchase-hover-tip-badge--wrap" : "";
+                return `<div class="toa-data-dot-wrap d-flex justify-content-center align-items-center w-100">
+                    <button type="button" class="toa-data-dot-btn btn btn-link p-0 border-0"
+                        data-field="${field}" data-sku="${sku}" data-parent="${parent}" data-pid="${pid}" data-editable="${editable}"
+                        aria-label="${tipHtml}">
+                        <span class="toa-status-dot" style="background-color:${dotColor};"></span>
+                        <span class="purchase-hover-tip-badge${wrapClass}">${tipHtml}</span>
+                    </button>
+                </div>`;
             }
 
-            async function saveToOrderInstructionsItemPkg(productId, sku, newText, textareaEl, cell) {
-                try {
-                    const res = await fetch('/instructions-item-pkg/update', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                        },
-                        body: JSON.stringify({
-                            product_id: parseInt(productId, 10),
-                            sku: sku,
-                            instructions: newText
-                        })
+            function renderToaDataDotCell(cell, fieldKey, opts) {
+                opts = opts || {};
+                const row = cell.getRow().getData();
+                if (row.is_parent) {
+                    return '<span class="text-muted small">—</span>';
+                }
+                if (opts.requireProductId && !row.product_master_id) {
+                    return renderDesignDataDot("", { field: fieldKey, sku: row.SKU, parent: row.Parent, editable: false });
+                }
+                const meta = TOA_DATA_FIELD_META[fieldKey] || {};
+                let tipOverride = null;
+                if (meta.isFilePath) {
+                    const raw = String(cell.getValue() ?? "").trim();
+                    tipOverride = raw ? (raw.split(/[/\\]/).pop() || raw) : null;
+                }
+                if (fieldKey === "issues") {
+                    const raw = String(cell.getValue() ?? "").trim();
+                    if (raw) {
+                        const firstLine = raw.split("\n")[0];
+                        tipOverride = firstLine.length > 160 ? firstLine.slice(0, 157) + "..." : firstLine;
+                    }
+                }
+                return renderDesignDataDot(cell.getValue(), {
+                    field: fieldKey,
+                    sku: row.SKU,
+                    parent: row.Parent,
+                    pid: row.product_master_id,
+                    editable: meta.editable !== false,
+                    tip: tipOverride,
+                });
+            }
+
+            function toaFileUrl(raw) {
+                const path = String(raw || "").trim();
+                if (!path) return "";
+                return /^https?:\/\//i.test(path) ? path : ("/" + path.replace(/^\//, ""));
+            }
+
+            function openToaMoqModal(rowData) {
+                const skuEl = document.getElementById("toaMoqModalSku");
+                const inp = document.getElementById("toaMoqModalInput");
+                const val = rowData.approved_qty;
+                const num = parseInt(val, 10);
+                skuEl.textContent = rowData.SKU ? `(${rowData.SKU})` : "";
+                inp.value = (val !== "" && val != null && !isNaN(num)) ? num : "";
+                bootstrap.Modal.getOrCreateInstance(document.getElementById("toaMoqModal")).show();
+                setTimeout(function () { inp.focus(); inp.select(); }, 300);
+            }
+
+            async function saveToaMoq(rowData, newValue) {
+                const sku = rowData.SKU || "";
+                const res = await fetch("/update-link", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+                    },
+                    body: JSON.stringify({ sku: sku, column: "approved_qty", value: newValue }),
+                });
+                const data = await res.json();
+                if (!data.success) {
+                    throw new Error(data.message || "Save failed");
+                }
+                return newValue;
+            }
+
+            function openToaDataModal(fieldKey, rowData, opts) {
+                opts = opts || {};
+                const meta = TOA_DATA_FIELD_META[fieldKey] || { title: fieldKey, editable: false };
+                const editable = opts.editable === false ? false : meta.editable !== false;
+                const val = String(rowData[fieldKey] ?? "").trim();
+                const sku = rowData.SKU || "";
+                const modalEl = document.getElementById("toaDataModal");
+                const titleEl = document.getElementById("toaDataModalTitle");
+                const skuEl = document.getElementById("toaDataModalSku");
+                const emptyEl = document.getElementById("toaDataModalEmpty");
+                const ta = document.getElementById("toaDataModalTextarea");
+                const inp = document.getElementById("toaDataModalInput");
+                const ro = document.getElementById("toaDataModalReadonly");
+                const fileWrap = document.getElementById("toaDataModalFileWrap");
+                const fileLabel = document.getElementById("toaDataModalFileLabel");
+                const fileLink = document.getElementById("toaDataModalFileLink");
+                const sourceNote = document.getElementById("toaDataModalSourceNote");
+                const saveBtn = document.getElementById("toaDataModalSaveBtn");
+                const copyBtn = document.getElementById("toaDataModalCopyBtn");
+
+                titleEl.textContent = meta.title || fieldKey;
+                skuEl.textContent = sku ? `(${sku})` : "";
+
+                ta.classList.add("d-none");
+                inp.classList.add("d-none");
+                ro.classList.add("d-none");
+                fileWrap.classList.add("d-none");
+                sourceNote?.classList.add("d-none");
+                emptyEl.classList.add("d-none");
+                saveBtn.classList.add("d-none");
+                copyBtn.classList.add("d-none");
+
+                if (editable) {
+                    if (meta.multiline) {
+                        ta.classList.remove("d-none");
+                        ta.value = val;
+                        ta.maxLength = meta.maxLength || 2000;
+                        ta.readOnly = false;
+                    } else {
+                        inp.classList.remove("d-none");
+                        inp.value = val;
+                        inp.maxLength = meta.maxLength || 100;
+                        inp.readOnly = false;
+                    }
+                    saveBtn.classList.remove("d-none");
+                    if (val) copyBtn.classList.remove("d-none");
+                } else {
+                    if (val) {
+                        if (meta.isFilePath) {
+                            fileWrap.classList.remove("d-none");
+                            const base = val.split(/[/\\]/).pop() || val;
+                            fileLabel.textContent = base;
+                            fileLink.href = toaFileUrl(val);
+                            fileLink.setAttribute("download", base);
+                        } else {
+                            ro.classList.remove("d-none");
+                            ro.textContent = val;
+                            if (meta.qcSource) {
+                                sourceNote?.classList.remove("d-none");
+                            } else {
+                                copyBtn.classList.remove("d-none");
+                            }
+                        }
+                    } else {
+                        emptyEl.classList.remove("d-none");
+                        if (meta.qcSource) {
+                            emptyEl.textContent = "Data required — add issues on QC & packing page.";
+                            sourceNote?.classList.remove("d-none");
+                        } else {
+                            emptyEl.textContent = "Data required";
+                        }
+                    }
+                }
+
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            }
+
+            async function saveToaDataField(fieldKey, rowData, newText) {
+                const pid = parseInt(rowData.product_master_id, 10);
+                const sku = rowData.SKU || "";
+                const parent = rowData.Parent || "";
+                const csrf = document.querySelector('meta[name="csrf-token"]').content;
+
+                if (fieldKey === "instructions_item_pkg") {
+                    const res = await fetch("/instructions-item-pkg/update", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-TOKEN": csrf },
+                        body: JSON.stringify({ product_id: pid, sku: sku, instructions: newText }),
                     });
                     const data = await res.json();
-                    if (!res.ok) {
-                        throw new Error(data.message || 'Save failed');
-                    }
-                    const stored = data.instructions != null ? String(data.instructions) : '';
-                    textareaEl.dataset.prev = stored;
-                    cell.getRow().update({ instructions_item_pkg: stored }, true);
-                } catch (e) {
-                    alert(e.message || 'Could not save Instructions item PKG');
-                    textareaEl.value = textareaEl.dataset.prev != null ? textareaEl.dataset.prev : '';
+                    if (!res.ok) throw new Error(data.message || "Save failed");
+                    return data.instructions != null ? String(data.instructions) : "";
                 }
+
+                if (fieldKey === "instructions_carton_design") {
+                    const res = await fetch("/instructions-carton-design/update", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-TOKEN": csrf },
+                        body: JSON.stringify({ product_id: pid, sku: sku, instructions: newText }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.message || "Save failed");
+                    return data.instructions != null ? String(data.instructions) : "";
+                }
+
+                if (fieldKey === "ctn_instructions") {
+                    const res = await fetch("/dim-wt-master/update", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-TOKEN": csrf },
+                        body: JSON.stringify({
+                            product_id: pid,
+                            sku: sku,
+                            parent: parent,
+                            ctn_instructions: newText.length ? newText : null,
+                        }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.message || "Save failed");
+                    return newText;
+                }
+
+                throw new Error("This field cannot be saved here.");
             }
 
             function openMonthModal(monthData, sku) {
@@ -614,37 +1028,60 @@
                         field: "SKU", 
                         headerFilter: "input",
                         width: 180,
+                        headerTooltip: "Short name of product",
                         headerFilterPlaceholder: " Filter SKU...",
                         headerFilterLiveFilter: true,
                     },
                     {
+                        title: "Exec",
+                        field: "Exec",
+                        hozAlign: "center",
+                        width: 115,
+                        minWidth: 100,
+                        headerSort: true,
+                        headerTooltip: "Executive assigned",
+                        formatter: function (cell) {
+                            const value = (cell.getValue() || "").trim();
+                            const html = renderExecSelect(value, !execCanEdit);
+                            setTimeout(function () {
+                                const select = cell.getElement().querySelector(".to-order-exec-select");
+                                if (!select || select.dataset.bound === "1") return;
+                                select.dataset.bound = "1";
+                                select.dataset.prev = value;
+                                select.addEventListener("change", async function () {
+                                    const newVal = this.value;
+                                    const prev = this.dataset.prev || "";
+                                    if (newVal === prev) return;
+                                    try {
+                                        await savePageExecAssignment(newVal);
+                                        this.dataset.prev = newVal;
+                                    } catch (e) {
+                                        this.value = prev;
+                                    }
+                                });
+                            }, 0);
+                            return html;
+                        },
+                    },
+                    {
                         title: "MOQ",
                         field: "approved_qty",
+                        headerTooltip: "Minimum order quantity",
                         hozAlign: "center",
+                        vertAlign: "middle",
+                        width: 80,
+                        minWidth: 70,
                         formatter: function (cell) {
-                            const value = cell.getValue() || "";
-                            
-                            const html = `
-                                    <div style="display:flex; justify-content:center; align-items:center; width:100%;">
-                                        <input type="number" 
-                                            class="form-control form-control-sm order_qty" 
-                                            value="${value}" 
-                                            min="0" max="99999" 
-                                            style="width:80px; text-align:center;">
-                                    </div>
-                                `;
-
-                            setTimeout(() => {
-                                const input = cell.getElement().querySelector(".order_qty");
-                                if (input) {
-                                    input.addEventListener("change", function () {
-                                        const newValue = this.value;
-                                        saveLinkUpdate(cell, newValue);
-                                    });
-                                }
-                            }, 10);
-
-                            return html;
+                            const row = cell.getRow().getData();
+                            const val = cell.getValue();
+                            const num = parseInt(val, 10);
+                            const hasVal = val !== "" && val != null && !isNaN(num);
+                            const display = hasVal ? num : "—";
+                            const sku = escapeHtmlAttr(row.SKU || "");
+                            return `<div class="d-flex justify-content-center align-items-center w-100">
+                                <button type="button" class="toa-moq-btn btn btn-link p-0 border-0 text-dark fw-semibold"
+                                    data-sku="${sku}" title="Click to edit MOQ">${display}</button>
+                            </div>`;
                         }
                     },
                     {
@@ -653,6 +1090,7 @@
                         hozAlign: "center",
                         headerSort: true,
                         width: 90,
+                        headerTooltip: "Minimum stock level (4 months requirement)",
                         formatter: function(cell) {
                             const msl = cell.getValue();
                             const val = msl != null && msl !== '' ? parseInt(msl, 10) : 0;
@@ -693,21 +1131,28 @@
                     {
                         title: "DOA",
                         field: "Date of Appr",
-                        width: 150,
-                        minWidth: 145,
+                        width: 80,
+                        minWidth: 72,
+                        headerTooltip: "Approval (needs to be ordered within 15 days max)",
                         sorter: "date",
                         sorterParams: { format: "YYYY-MM-DD", alignEmptyValues: "bottom" },
                         formatter: function (cell) {
                             const value = cell.getValue() || "";
                             let displayText = "-";
                             let bgColor = "";
+                            const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
                             if (value) {
-                                const d = new Date(value);
-                                const day = String(d.getDate()).padStart(2, "0");
-                                const month = String(d.getMonth() + 1).padStart(2, "0");
-                                const year = d.getFullYear();
-                                displayText = `${day}-${month}-${year}`;
+                                let d;
+                                const parts = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+                                if (parts) {
+                                    d = new Date(parseInt(parts[1], 10), parseInt(parts[2], 10) - 1, parseInt(parts[3], 10));
+                                } else {
+                                    d = new Date(value);
+                                }
+                                if (!isNaN(d.getTime())) {
+                                    displayText = `${d.getDate()} ${monthNames[d.getMonth()]}`;
+                                }
 
                                 const today = new Date();
                                 today.setHours(0, 0, 0, 0);
@@ -722,7 +1167,7 @@
                                 }
                             }
 
-                            return `<span style="min-width:100px; display:inline-block; ${bgColor}">${displayText}</span>`;
+                            return `<span style="min-width:52px; display:inline-block; ${bgColor}">${displayText}</span>`;
                         }
                     },
                     {
@@ -747,164 +1192,81 @@
                         }
                     },
                     {
-                        title: "Instructions item PKG",
+                        title: "Item Pkg.",
                         field: "instructions_item_pkg",
-                        width: 300,
-                        minWidth: 200,
-                        vertAlign: "top",
+                        width: 70,
+                        minWidth: 60,
+                        hozAlign: "center",
+                        vertAlign: "middle",
                         headerSort: false,
-                        headerTooltip: "Item packaging instructions (instructions_item_pkg table); same as Dim Wt Master",
+                        headerTooltip: "Packaging instruction for a single unit",
                         formatter: function (cell) {
-                            const row = cell.getRow().getData();
-                            if (row.is_parent) {
-                                return '<span class="text-muted small">—</span>';
-                            }
-                            const pid = row.product_master_id;
-                            if (!pid) {
-                                return '<span class="text-muted small" title="No matching product_master row">—</span>';
-                            }
-                            const sku = row.SKU || '';
-                            const val = cell.getValue() || '';
-                            const html = `<div class="toa-item-pkg-wrap">
-                                <textarea class="form-control form-control-sm toa-item-pkg-textarea" maxlength="2000" rows="3"
-                                    data-product-id="${pid}" data-sku="${escapeHtmlAttr(sku)}"></textarea>
-                            </div>`;
-                            setTimeout(() => {
-                                const root = cell.getElement();
-                                if (!root) return;
-                                const ta = root.querySelector('.toa-item-pkg-textarea');
-                                if (!ta) return;
-                                ta.value = val;
-                                if (!ta.dataset.bound) {
-                                    ta.dataset.bound = '1';
-                                    ta.dataset.prev = val;
-                                    ta.addEventListener('focusout', function () {
-                                        const newV = this.value.trim().slice(0, 2000);
-                                        const prev = this.dataset.prev != null ? this.dataset.prev : '';
-                                        if (newV === prev) return;
-                                        saveToOrderInstructionsItemPkg(pid, sku, newV, this, cell);
-                                    });
-                                } else {
-                                    ta.dataset.prev = val;
-                                }
-                            }, 0);
-                            return html;
+                            return renderToaDataDotCell(cell, "instructions_item_pkg", { requireProductId: true });
                         }
                     },
                     {
-                        title: "Instructions CTN",
+                        title: "Instr<br>Carton",
                         field: "ctn_instructions",
-                        width: 250,
-                        minWidth: 190,
+                        width: 70,
+                        minWidth: 60,
+                        hozAlign: "center",
+                        vertAlign: "middle",
                         headerSort: false,
-                        headerTooltip: "Instructions CTN (max 100 chars); same Values field as Dim Wt Master (CTN)",
+                        headerTooltip: "Packaging instructions for carton",
                         formatter: function (cell) {
-                            const row = cell.getRow().getData();
-                            const pid = row.product_master_id;
-                            if (!pid) {
-                                return '<span class="text-muted small" title="No matching product_master row">—</span>';
-                            }
-                            const sku = row.SKU || '';
-                            const parent = row.Parent || '';
-                            const val = cell.getValue() || '';
-                            const escVal = escapeHtmlAttr(val);
-                            const html = `<div class="toa-ctn-instr-wrap d-flex align-items-center justify-content-center gap-1 flex-wrap">
-                                <input type="text" class="form-control form-control-sm toa-ctn-instructions-input" maxlength="100"
-                                    value="${escVal}"
-                                    data-product-id="${pid}" data-sku="${escapeHtmlAttr(sku)}" data-parent="${escapeHtmlAttr(parent)}"
-                                    style="min-width:110px;max-width:190px;font-size:12px;">
-                                <button type="button" class="btn btn-sm btn-outline-secondary toa-copy-instr py-0 px-2" title="Copy Instructions CTN"><i class="far fa-copy"></i></button>
-                            </div>`;
-                            setTimeout(() => {
-                                const root = cell.getElement();
-                                if (!root) return;
-                                const input = root.querySelector('.toa-ctn-instructions-input');
-                                const btn = root.querySelector('.toa-copy-instr');
-                                if (input && !input.dataset.bound) {
-                                    input.dataset.bound = '1';
-                                    input.dataset.prev = val;
-                                    input.addEventListener('focusout', function () {
-                                        const newV = this.value.trim().slice(0, 100);
-                                        const prev = this.dataset.prev != null ? this.dataset.prev : '';
-                                        if (newV === prev) return;
-                                        saveToOrderCtnInstructions(pid, sku, parent, newV, this, cell);
-                                    });
-                                } else if (input) {
-                                    input.dataset.prev = val;
-                                }
-                                if (btn && input && !btn.dataset.bound) {
-                                    btn.dataset.bound = '1';
-                                    btn.addEventListener('click', function (ev) {
-                                        ev.preventDefault();
-                                        ev.stopPropagation();
-                                        const t = (input.value || '').trim();
-                                        if (navigator.clipboard && navigator.clipboard.writeText) {
-                                            navigator.clipboard.writeText(t).catch(() => {});
-                                        } else {
-                                            input.select();
-                                            try {
-                                                document.execCommand('copy');
-                                            } catch (e) {}
-                                        }
-                                    });
-                                }
-                            }, 0);
-                            return html;
+                            return renderToaDataDotCell(cell, "ctn_instructions", { requireProductId: true });
                         }
                     },
                     {
-                        title: "Design Instructions",
+                        title: "Design<br>Instr.",
                         field: "packing_instructions",
-                        width: 280,
-                        minWidth: 180,
-                        vertAlign: "top",
+                        width: 70,
+                        minWidth: 60,
+                        hozAlign: "center",
+                        vertAlign: "middle",
                         headerSort: false,
-                        headerTooltip: "Packing Inner Design — product_master.Values.packing_instructions",
+                        headerTooltip: "Instructions for single unit box design",
                         formatter: function (cell) {
-                            const row = cell.getRow().getData();
-                            if (row.is_parent) {
-                                return '<span class="text-muted small">—</span>';
-                            }
-                            const v = (cell.getValue() || "").trim();
-                            if (!v) {
-                                return '<span class="text-muted small">—</span>';
-                            }
-                            const div = document.createElement("div");
-                            const preview = v.length > 160 ? v.slice(0, 160) + "…" : v;
-                            div.textContent = preview;
-                            const titleAttr = escapeHtmlAttr(v);
-                            return (
-                                '<div class="toa-packing-design-instr" title="' + titleAttr + '">' +
-                                div.innerHTML.replace(/\n/g, "<br>") +
-                                "</div>"
-                            );
+                            return renderToaDataDotCell(cell, "packing_instructions");
+                        }
+                    },
+                    {
+                        title: "Design<br>Instr<br>Carton",
+                        field: "instructions_carton_design",
+                        width: 70,
+                        minWidth: 60,
+                        hozAlign: "center",
+                        vertAlign: "middle",
+                        headerSort: false,
+                        headerTooltip: "Design instructions for carton",
+                        formatter: function (cell) {
+                            return renderToaDataDotCell(cell, "instructions_carton_design", { requireProductId: true });
                         }
                     },
                     {
                         title: "CDR",
                         field: "packing_cdr_path",
-                        width: 72,
+                        width: 70,
                         minWidth: 60,
                         hozAlign: "center",
                         vertAlign: "middle",
                         headerSort: false,
-                        headerTooltip: "Packing Inner Design — product_master.Values.packing_cdr_path",
+                        headerTooltip: "Coral draw files for inner and carton box",
                         formatter: function (cell) {
-                            const row = cell.getRow().getData();
-                            if (row.is_parent) {
-                                return '<span class="text-muted">—</span>';
-                            }
-                            const raw = (cell.getValue() || "").trim();
-                            if (!raw) {
-                                return '<span class="text-muted">—</span>';
-                            }
-                            const u = /^https?:\/\//i.test(raw) ? raw : ("/" + String(raw).replace(/^\//, ""));
-                            const base = raw.split(/[/\\]/).pop() || "file";
-                            return (
-                                '<a href="' + escapeHtmlAttr(u) + '" target="_blank" rel="noopener" ' +
-                                'class="btn btn-sm btn-outline-secondary py-0 px-2" download title="' + escapeHtmlAttr(base) + '">' +
-                                '<i class="fas fa-file-download"></i></a>'
-                            );
+                            return renderToaDataDotCell(cell, "packing_cdr_path");
+                        }
+                    },
+                    {
+                        title: "Issues",
+                        field: "issues",
+                        width: 70,
+                        minWidth: 60,
+                        hozAlign: "center",
+                        vertAlign: "middle",
+                        headerSort: false,
+                        headerTooltip: "Previous issue that needs to be rectified in the next purchase",
+                        formatter: function (cell) {
+                            return renderToaDataDotCell(cell, "issues");
                         }
                     },
                     {
@@ -933,11 +1295,11 @@
                         }
                     },
                     {
-                        title: "Jungle",
+                        title: "Amz.",
                         field: "rating",
                         hozAlign: "center",
                         headerSort: false,
-                        tooltip: "Rating and reviews from Jungle Scout",
+                        headerTooltip: "Amazon reviews",
                         formatter: function(cell) {
                             const rating = cell.getValue();
                             const rowData = cell.getRow().getData();
@@ -961,6 +1323,52 @@
                         width: 80
                     },
                     {
+                        title: "LMP",
+                        field: "lmp_price",
+                        hozAlign: "center",
+                        headerSort: true,
+                        headerTooltip: "Lowest market price and competition product links",
+                        width: 100,
+                        formatter: function (cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent) {
+                                return '<span class="text-muted">—</span>';
+                            }
+
+                            const lmpPrice = cell.getValue();
+                            const sku = rowData.SKU || "";
+                            const totalCompetitors = parseInt(rowData.lmp_entries_total, 10) || 0;
+                            const lmpLink = rowData.lmp_link || "";
+
+                            if (!lmpPrice && totalCompetitors === 0) {
+                                return '<span style="color: #999;">N/A</span>';
+                            }
+
+                            let html = '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">';
+
+                            if (lmpPrice) {
+                                const priceFormatted = "$" + parseFloat(lmpPrice).toFixed(2);
+                                if (lmpLink) {
+                                    html += `<a href="${escapeHtmlAttr(lmpLink)}" target="_blank" rel="noopener"
+                                        style="color:#28a745;font-weight:600;font-size:14px;text-decoration:none;"
+                                        title="Lowest competitor link">${priceFormatted}</a>`;
+                                } else {
+                                    html += `<span style="color:#28a745;font-weight:600;font-size:14px;">${priceFormatted}</span>`;
+                                }
+                            }
+
+                            if (totalCompetitors > 0) {
+                                html += `<a href="#" class="toa-view-lmp-competitors" data-sku="${escapeHtmlAttr(sku)}"
+                                    style="color:#007bff;text-decoration:none;cursor:pointer;font-size:11px;">
+                                    <i class="fa fa-eye"></i> View ${totalCompetitors}
+                                </a>`;
+                            }
+
+                            html += "</div>";
+                            return html;
+                        }
+                    },
+                    {
                         title: "Review",
                         field: "Review",
                         formatter: function(cell){
@@ -973,31 +1381,30 @@
                         }
                     },
                     {
-                        title: "B / S",
+                        title: "Amz",
                         field: "buyer_link",
                         hozAlign: "center",
+                        headerTooltip: "Our product link to amazon",
                         formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const buyerLink = rowData.buyer_link || "";
-                            const sellerLink = rowData.seller_link || "";
+                            const buyerLink = (cell.getRow().getData().buyer_link || "").trim();
 
-                            if (!buyerLink && !sellerLink) {
+                            if (!buyerLink) {
                                 return '<span class="text-muted">-</span>';
                             }
 
-                            const buyerBtn = buyerLink
-                                ? `<a href="${buyerLink}" target="_blank" class="btn btn-sm btn-outline-primary" title="Buyer Link" style="min-width:30px;padding:2px 8px;">B</a>`
-                                : '';
-                            const sellerBtn = sellerLink
-                                ? `<a href="${sellerLink}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Seller Link" style="min-width:30px;padding:2px 8px;">S</a>`
-                                : '';
-
-                            return `<div style="display:flex;justify-content:center;gap:6px;">${buyerBtn}${sellerBtn}</div>`;
+                            return `<div style="display:flex;align-items:center;justify-content:center;">
+                                <a href="${escapeHtmlAttr(buyerLink)}" target="_blank" rel="noopener noreferrer"
+                                    class="btn btn-sm btn-outline-primary py-0 px-2"
+                                    title="Our product link to amazon" aria-label="Our product link to amazon">
+                                    <i class="mdi mdi-link"></i>
+                                </a>
+                            </div>`;
                         },
                     },
                     {
                         title: "C link",
                         field: "Clink",
+                        headerTooltip: "Comparison link",
                         formatter: linkFormatter,
                         editor: "input",
                         hozAlign: "center",
@@ -1008,6 +1415,7 @@
                     {
                         title: "RFQ Form",
                         field: "RFQ Form Link",
+                        headerTooltip: "Request for quote form",
                         formatter: linkFormatter,
                         editor: "input",  
                         hozAlign: "center",
@@ -1018,6 +1426,7 @@
                     {
                         title: "RFQ Report",
                         field: "Rfq Report Link",
+                        headerTooltip: "Request for quote comparison report",
                         formatter: linkFormatter,
                         editor: "input",         
                         hozAlign: "center",
@@ -1102,6 +1511,9 @@
                     {
                         title: "NRP",
                         field: "nr",
+                        headerTooltip: "Required / not required / later",
+                        minWidth: 52,
+                        hozAlign: "center",
                         accessor: row => {
                             const val = row?.["nr"];
                             // Return null/undefined as empty string, but preserve actual values
@@ -1121,17 +1533,29 @@
                             if (!value || value === '') value = 'REQ';
                             if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') value = 'REQ';
                             const sku = rowData["SKU"] || '', parent = rowData["Parent"] || '';
-                            let bgColor = '#ffffff', textColor = '#000000';
-                            if (value === 'NR') { bgColor = '#dc3545'; textColor = '#ffffff'; }
-                            else if (value === 'REQ') { bgColor = '#28a745'; textColor = '#000000'; }
-                            else if (value === 'LATER') { bgColor = '#ffc107'; textColor = '#000000'; }
+                            let dotColor = '#22c55e';
+                            let tip = 'REQ';
+                            if (value === 'NR') {
+                                dotColor = '#dc3545';
+                                tip = '2BDC';
+                            } else if (value === 'LATER') {
+                                dotColor = '#facc15';
+                                tip = 'LATER';
+                            }
+                            const tipLabel = `${tip} (click to change)`;
+                            const tipEsc = escapeHtmlAttr(tipLabel);
                             const html = `
-                                <select class="form-select form-select-sm editable-select" data-type="NR" data-sku='${sku}' data-parent='${parent}'
-                                    style="width: auto; min-width: 85px; padding: 4px 8px; font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6; background-color: ${bgColor}; color: ${textColor};">
-                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
-                                    <option value="NR" ${value === 'NR' ? 'selected' : ''}>2BDC</option>
-                                    <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
-                                </select>`;
+                                <div class="nrp-dot-cell position-relative d-flex justify-content-center align-items-center w-100" aria-label="${tipEsc}">
+                                    <span class="nrp-status-dot" style="background-color:${dotColor};" aria-hidden="true"></span>
+                                    <span class="purchase-hover-tip-badge">${escapeHtmlAttr(tip)}</span>
+                                    <select class="form-select form-select-sm editable-select nrp-nr-select position-absolute top-0 start-0 w-100 h-100"
+                                        data-type="NR" data-sku='${sku}' data-parent='${parent}'
+                                        aria-label="NRP: ${tip}">
+                                        <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
+                                        <option value="NR" ${value === 'NR' ? 'selected' : ''}>2BDC</option>
+                                        <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
+                                    </select>
+                                </div>`;
                             if (onRendered) onRendered(function() {
                                 const el = cell.getElement().querySelector('select');
                                 if (el) el.value = value;
@@ -1143,6 +1567,13 @@
                 ajaxResponse: (url, params, response) => {
                     let data = response.data;
 
+                    if (Array.isArray(response.exec_options)) {
+                        execOptions = response.exec_options;
+                    }
+                    if (typeof response.exec_can_edit === "boolean") {
+                        execCanEdit = response.exec_can_edit;
+                    }
+
                     // Backend already returns the Forecast yellow cohort only; do not drop MIP (or other) stage
                     // rows here — Forecast star count (e.g. 146) can include stage=mip when pipeline qty is still empty.
                     let filtered = data.filter(item => {
@@ -1153,6 +1584,30 @@
                     uniqueSuppliers = [...new Set(filtered.map(item => item.Supplier))].filter(Boolean);
                     return filtered;
                 },
+            });
+
+            function syncToOrderExecColumn(assignedExec) {
+                const val = assignedExec || "";
+                table.getRows().forEach(function (row) {
+                    row.update({ Exec: val }, true);
+                    const select = row.getCell("Exec")?.getElement()?.querySelector(".to-order-exec-select");
+                    if (select && select.value !== val) {
+                        select.value = val;
+                        select.dataset.prev = val;
+                    }
+                });
+            }
+
+            document.addEventListener("purchase-page-exec-changed", function (e) {
+                if (e.detail?.pageKey !== "to_order") return;
+                syncToOrderExecColumn(e.detail.assignedExec);
+            });
+
+            document.addEventListener("purchase-page-exec-options-changed", function (e) {
+                if (Array.isArray(e.detail?.options)) {
+                    execOptions = e.detail.options;
+                }
+                table.redraw(true);
             });
 
             table.on("rowSelectionChanged", function(data, rows) {
@@ -1533,8 +1988,8 @@
                                         table.clearFilter();
                                     }
                                 } else if (field === "NR") {
-                                    // Update row data - this will automatically trigger formatter
-                                    row.update({ nr: value }, true);
+                                    row.update({ nr: value });
+                                    row.reformat();
                                 }
                             }
                         }
@@ -1806,31 +2261,172 @@
             table.on("cellEdited", updateCounts);
 
             // add and edit review
+            let activeReviewRow = null;
+
             document.addEventListener("click", function(e){
-                if(e.target && e.target.classList.contains("review-btn")){
-                    const row = Tabulator.findTable("#toOrderAnalysis-table")[0].getRow(e.target.closest(".tabulator-row"));
-                    if(!row) return;
-                    const rowData = row.getData();
+                const btn = e.target.closest(".review-btn");
+                if (!btn) return;
 
-                    const action = e.target.getAttribute("data-action");
+                const rowEl = btn.closest(".tabulator-row");
+                const tbl = Tabulator.findTable("#toOrderAnalysis-table")[0];
+                if (!rowEl || !tbl) return;
 
-                    document.getElementById("review_parent").value = rowData.Parent || "";
-                    document.getElementById("review_sku").value = rowData.SKU || "";
-                    document.getElementById("review_supplier").value = rowData.Supplier || "";
-                    document.getElementById("positive_review").value = rowData.positive_review || "";
-                    document.getElementById("negative_review").value = rowData.negative_review || "";
-                    document.getElementById("improvement").value = rowData.improvement || "";
-                    document.getElementById("date_updated").value = rowData.date_updated || "";
-                    document.getElementById("clink").href = rowData.Clink || "#";
+                const row = tbl.getRow(rowEl);
+                if (!row) return;
 
-                    const reviewModal = new bootstrap.Modal(document.getElementById("reviewModal"));
-                    reviewModal.show();
+                activeReviewRow = row;
+                const rowData = row.getData();
+                const today = new Date().toISOString().split("T")[0];
+
+                document.getElementById("review_parent").value = rowData.Parent || "";
+                document.getElementById("review_sku").value = rowData.SKU || "";
+                document.getElementById("review_supplier").value = rowData.Supplier || "";
+                document.getElementById("positive_review").value = rowData.positive_review || "";
+                document.getElementById("negative_review").value = rowData.negative_review || "";
+                document.getElementById("improvement").value = rowData.improvement || "";
+                document.getElementById("date_updated").value = rowData.date_updated || today;
+                document.getElementById("clink").href = rowData.Clink || "#";
+
+                const reviewModal = new bootstrap.Modal(document.getElementById("reviewModal"));
+                reviewModal.show();
+            });
+
+            document.getElementById("reviewModal")?.addEventListener("hidden.bs.modal", function () {
+                activeReviewRow = null;
+            });
+
+            document.addEventListener("click", function (e) {
+                const moqBtn = e.target.closest(".toa-moq-btn");
+                if (moqBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const sku = moqBtn.dataset.sku || "";
+                    const tbl = Tabulator.findTable("#toOrderAnalysis-table")[0] || table;
+                    const match = sku ? tbl.searchRows("SKU", "=", sku)[0] : null;
+                    if (!match) return;
+                    activeMoqRow = match;
+                    openToaMoqModal(match.getData());
+                    return;
+                }
+
+                const dotBtn = e.target.closest(".toa-data-dot-btn");
+                if (!dotBtn) return;
+                e.preventDefault();
+                e.stopPropagation();
+
+                const fieldKey = dotBtn.dataset.field;
+                const sku = dotBtn.dataset.sku || "";
+                if (!fieldKey) return;
+
+                const tbl = Tabulator.findTable("#toOrderAnalysis-table")[0] || table;
+                const match = sku ? tbl.searchRows("SKU", "=", sku)[0] : null;
+                if (!match) return;
+
+                activeToaDataRow = match;
+                activeToaDataField = fieldKey;
+                openToaDataModal(fieldKey, match.getData(), {
+                    editable: dotBtn.dataset.editable !== "0",
+                });
+            });
+
+            document.getElementById("toaDataModal")?.addEventListener("hidden.bs.modal", function () {
+                activeToaDataRow = null;
+                activeToaDataField = null;
+            });
+
+            document.getElementById("toaMoqModal")?.addEventListener("hidden.bs.modal", function () {
+                activeMoqRow = null;
+            });
+
+            document.getElementById("toaMoqModalSaveBtn")?.addEventListener("click", async function () {
+                if (!activeMoqRow) return;
+                const inp = document.getElementById("toaMoqModalInput");
+                const raw = (inp?.value || "").trim();
+                if (raw === "" || isNaN(parseInt(raw, 10))) {
+                    alert("Please enter a valid MOQ.");
+                    inp?.focus();
+                    return;
+                }
+                const newValue = String(Math.max(0, Math.min(99999, parseInt(raw, 10))));
+                const saveBtn = document.getElementById("toaMoqModalSaveBtn");
+                saveBtn.disabled = true;
+                try {
+                    await saveToaMoq(activeMoqRow.getData(), newValue);
+                    activeMoqRow.update({ approved_qty: newValue });
+                    activeMoqRow.reformat();
+                    bootstrap.Modal.getInstance(document.getElementById("toaMoqModal"))?.hide();
+                } catch (err) {
+                    alert(err.message || "Save failed");
+                } finally {
+                    saveBtn.disabled = false;
+                }
+            });
+
+            document.getElementById("toaMoqModalInput")?.addEventListener("keydown", function (e) {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    document.getElementById("toaMoqModalSaveBtn")?.click();
+                }
+            });
+
+            document.getElementById("toaDataModalCopyBtn")?.addEventListener("click", function () {
+                const ta = document.getElementById("toaDataModalTextarea");
+                const inp = document.getElementById("toaDataModalInput");
+                const ro = document.getElementById("toaDataModalReadonly");
+                let text = "";
+                if (ta && !ta.classList.contains("d-none")) {
+                    text = ta.value;
+                } else if (inp && !inp.classList.contains("d-none")) {
+                    text = inp.value;
+                } else if (ro && !ro.classList.contains("d-none")) {
+                    text = ro.textContent;
+                }
+                text = (text || "").trim();
+                if (!text) return;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).catch(function () {});
+                } else {
+                    const tmp = document.createElement("textarea");
+                    tmp.value = text;
+                    document.body.appendChild(tmp);
+                    tmp.select();
+                    try { document.execCommand("copy"); } catch (err) {}
+                    document.body.removeChild(tmp);
+                }
+            });
+
+            document.getElementById("toaDataModalSaveBtn")?.addEventListener("click", async function () {
+                if (!activeToaDataRow || !activeToaDataField) return;
+                const meta = TOA_DATA_FIELD_META[activeToaDataField] || {};
+                const ta = document.getElementById("toaDataModalTextarea");
+                const inp = document.getElementById("toaDataModalInput");
+                let newText = "";
+                if (meta.multiline) {
+                    newText = (ta?.value || "").trim().slice(0, meta.maxLength || 2000);
+                } else {
+                    newText = (inp?.value || "").trim().slice(0, meta.maxLength || 100);
+                }
+                const rowData = activeToaDataRow.getData();
+                const saveBtn = document.getElementById("toaDataModalSaveBtn");
+                saveBtn.disabled = true;
+                try {
+                    const saved = await saveToaDataField(activeToaDataField, rowData, newText);
+                    const upd = {};
+                    upd[activeToaDataField] = saved;
+                    activeToaDataRow.update(upd);
+                    activeToaDataRow.reformat();
+                    bootstrap.Modal.getInstance(document.getElementById("toaDataModal"))?.hide();
+                } catch (err) {
+                    alert(err.message || "Save failed");
+                } finally {
+                    saveBtn.disabled = false;
                 }
             });
 
             $('#reviewForm').on('submit', function(e) {
                 e.preventDefault();
-                const formData = new FormData(this);
+                const form = this;
+                const formData = new FormData(form);
                 $.ajax({
                     url: '{{ route('save.to_order_review') }}',
                     method: 'POST',
@@ -1842,8 +2438,24 @@
                     },
                     success: res => {
                         if (res.success) {
+                            const saved = {
+                                has_review: true,
+                                positive_review: form.positive_review.value,
+                                negative_review: form.negative_review.value,
+                                improvement: form.improvement.value,
+                                date_updated: form.date_updated.value,
+                            };
+                            if (activeReviewRow) {
+                                activeReviewRow.update(saved);
+                            } else {
+                                const sku = form.sku.value;
+                                const match = table.searchRows("SKU", "=", sku)[0];
+                                if (match) {
+                                    match.update(saved);
+                                }
+                            }
                             alert('Review saved successfully!');
-                            $('#reviewModal').modal('hide');
+                            bootstrap.Modal.getInstance(document.getElementById("reviewModal"))?.hide();
                         } else {
                             alert('Failed to save review: ' + (res.message || 'Unknown error'));
                         }
@@ -1853,6 +2465,102 @@
                             'Unknown error occurred'));
                     }
                 });
+            });
+
+            function renderToaLmpCompetitorsList(competitors, lowestPrice) {
+                if (!competitors || competitors.length === 0) {
+                    $("#toaLmpDataList").html(
+                        '<div class="alert alert-info"><i class="fa fa-info-circle"></i> No competitors found for this SKU</div>'
+                    );
+                    return;
+                }
+
+                let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm">';
+                html += `<thead class="table-light"><tr>
+                    <th>#</th><th>Image</th><th>ASIN</th><th>Product Title</th><th>Seller</th>
+                    <th>Price</th><th>Rating</th><th>Reviews</th><th>Link</th>
+                </tr></thead><tbody>`;
+
+                competitors.forEach(function (item, index) {
+                    const isLowest = Math.abs(parseFloat(item.price) - parseFloat(lowestPrice)) < 0.01;
+                    const rowClass = isLowest ? "table-success" : "";
+                    const priceFormatted = "$" + parseFloat(item.price).toFixed(2);
+                    const productLink = item.link || item.product_link || "#";
+                    const productTitle = item.title || item.product_title || "N/A";
+                    const sellerName = item.seller_name || "—";
+                    const imageUrl = item.image || "";
+                    const imageHtml = imageUrl
+                        ? `<img src="${escapeHtmlAttr(imageUrl)}" style="width:50px;height:50px;object-fit:contain;" alt="">`
+                        : '<span style="color:#999;">—</span>';
+                    const rating = item.rating
+                        ? `<span style="color:#ffc107;">${parseFloat(item.rating).toFixed(1)} <i class="fa fa-star"></i></span>`
+                        : '<span style="color:#999;">—</span>';
+                    const reviews = item.reviews
+                        ? `<span>${parseInt(item.reviews, 10).toLocaleString()}</span>`
+                        : '<span style="color:#999;">—</span>';
+
+                    html += `<tr class="${rowClass}">
+                        <td class="text-center"><strong>${index + 1}</strong></td>
+                        <td class="text-center">${imageHtml}</td>
+                        <td><span class="text-primary fw-semibold" style="font-size:11px;">${escapeHtmlAttr(item.asin || "N/A")}</span></td>
+                        <td style="font-size:11px;" title="${escapeHtmlAttr(productTitle)}">${escapeHtmlAttr(productTitle.length > 60 ? productTitle.substring(0, 60) + "…" : productTitle)}</td>
+                        <td style="font-size:11px;">${escapeHtmlAttr(sellerName)}</td>
+                        <td><strong>${priceFormatted}${isLowest ? ' <i class="fa fa-trophy text-success"></i>' : ""}</strong></td>
+                        <td class="text-center">${rating}</td>
+                        <td class="text-center">${reviews}</td>
+                        <td class="text-center">
+                            <a href="${escapeHtmlAttr(productLink)}" target="_blank" rel="noopener" class="btn btn-sm btn-info" title="View product">
+                                <i class="fa fa-external-link"></i>
+                            </a>
+                        </td>
+                    </tr>`;
+                });
+
+                html += "</tbody></table></div>";
+                $("#toaLmpDataList").html(html);
+            }
+
+            function loadToaLmpModal(sku) {
+                $("#toaLmpSku").text(sku);
+                const modal = new bootstrap.Modal(document.getElementById("toaLmpModal"));
+                modal.show();
+
+                $("#toaLmpDataList").html(`
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading competitors...</p>
+                    </div>
+                `);
+
+                $.ajax({
+                    url: "/amazon/competitors",
+                    method: "GET",
+                    data: { sku: sku },
+                    success: function (response) {
+                        if (response.success) {
+                            renderToaLmpCompetitorsList(response.competitors, response.lowest_price);
+                        } else {
+                            $("#toaLmpDataList").html(
+                                '<div class="alert alert-warning"><i class="fa fa-info-circle"></i> No competitors found for this SKU.</div>'
+                            );
+                        }
+                    },
+                    error: function () {
+                        $("#toaLmpDataList").html(
+                            '<div class="alert alert-warning"><i class="fa fa-info-circle"></i> Could not load competitor data.</div>'
+                        );
+                    }
+                });
+            }
+
+            $(document).on("click", ".toa-view-lmp-competitors", function (e) {
+                e.preventDefault();
+                const sku = $(this).data("sku");
+                if (sku) {
+                    loadToaLmpModal(sku);
+                }
             });
 
             globalPreview.addEventListener("mouseenter", () => clearTimeout(hideTimeout));

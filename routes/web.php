@@ -251,9 +251,11 @@ use App\Http\Controllers\PurchaseMaster\ChinaLoadController;
 use App\Http\Controllers\PurchaseMaster\ClaimReimbursementController;
 use App\Http\Controllers\PurchaseMaster\ContainerPlanningController;
 use App\Http\Controllers\PurchaseMaster\InstructionsItemPkgController;
+use App\Http\Controllers\PurchaseMaster\InstructionsCartonDesignController;
 use App\Http\Controllers\PurchaseMaster\FollowUpHistoryController;
 use App\Http\Controllers\PurchaseMaster\LedgerMasterController;
 use App\Http\Controllers\PurchaseMaster\MFRGInProgressController;
+use App\Http\Controllers\PurchaseMaster\MfrgProgressPoController;
 use App\Http\Controllers\PurchaseMaster\PurchasePageExecController;
 use App\Http\Controllers\PurchaseMaster\PurchasePageInfoController;
 use App\Http\Controllers\PurchaseMaster\OnRoadTransitController;
@@ -2341,6 +2343,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/store-purchase-orders', 'store')->name('purchase-orders.store');
         Route::get('/purchase-orders/list', 'getPurchaseOrdersData')->name('purchase-orders.data');
         Route::get('/purchase-orders/convert', 'convert')->name('purchase-orders.convert');
+        Route::get('/purchase-order/by-po/{poNumber}/generate-pdf', 'generatePdfByPoNumber')->name('generate-pdf-by-po');
         Route::get('/purchase-order/{id}/generate-pdf', 'generatePdf')->name('generate-pdf');
         Route::post('/purchase-orders/delete', 'deletePurchaseOrders');
         Route::post('/purchase-orders/{id}/archive', 'archivePurchaseOrder');
@@ -3408,6 +3411,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/dim-wt-master/store', [CategoryController::class, 'storeDimWtMaster'])->name('dim.wt.master.store');
     Route::post('/dim-wt-master/update', [CategoryController::class, 'updateDimWtMaster'])->name('dim.wt.master.update');
     Route::post('/instructions-item-pkg/update', [InstructionsItemPkgController::class, 'update'])->name('instructions.item.pkg.update');
+    Route::post('/instructions-carton-design/update', [InstructionsCartonDesignController::class, 'update'])->name('instructions.carton.design.update');
     Route::post('/qc-improvement-req-before-item-pkg/update', [QcImprovementReqBeforeItemPkgController::class, 'update'])->name('qc.improvement.req.before.item.pkg.update');
     Route::post('/dim-wt-master/import', [CategoryController::class, 'importDimWtMaster'])->name('dim.wt.master.import');
     Route::post('/dim-wt-master/push-data', [CategoryController::class, 'pushDimWtDataToPlatforms'])->name('dim.wt.master.push');
@@ -3559,6 +3563,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         Route::get('/mfrg-in-progress/new', 'newMfrgView')->name('mfrg.in.progress.new');
         Route::get('/mfrg-in-progress/data', 'getMfrgProgressData')->name('mfrg.in.progress.data');
+    });
+
+    Route::controller(MfrgProgressPoController::class)->group(function () {
+        Route::post('/mfrg-progress-po/update', 'update')->name('mfrg.progress.po.update');
+        Route::post('/mfrg-progress-po/bulk-update', 'bulkUpdate')->name('mfrg.progress.po.bulk-update');
     });
 
     // Follow-up History
@@ -4030,6 +4039,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/pls-pricing', [PlsController::class, 'pricingView'])->name('pls.pricing');
     Route::get('/pls-pricing-data-json', [PlsController::class, 'pricingDataJson']);
     Route::post('/save-pls-sprice', [PlsController::class, 'savePlsSprice']);
+    Route::post('/pls-clear-sprice', [PlsController::class, 'clearPlsSprice']);
     Route::post('/pls-analytics/import', [PlsController::class, 'importPlsAnalytics'])->name('pls.analytics.import');
     Route::get('/pls-analytics/export', [PlsController::class, 'exportPlsAnalytics'])->name('pls.analytics.export');
     Route::get('/pls-analytics/sample', [PlsController::class, 'downloadSample'])->name('pls.analytics.sample');

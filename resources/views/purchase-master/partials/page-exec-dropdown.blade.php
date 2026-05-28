@@ -148,6 +148,9 @@
             select.dataset.lastValue = select.value;
             try {
                 await saveAssignment(pageKey, select.value);
+                document.dispatchEvent(new CustomEvent('purchase-page-exec-changed', {
+                    detail: { pageKey: pageKey, assignedExec: select.value || null },
+                }));
             } catch (err) {
                 alert(err.message || 'Could not save assignment');
                 select.value = previous;
@@ -172,6 +175,9 @@
                 select.value = current;
                 select.dataset.lastValue = current;
                 setAddUi(root, false);
+                document.dispatchEvent(new CustomEvent('purchase-page-exec-options-changed', {
+                    detail: { options: result.options || payload.options },
+                }));
             } catch (err) {
                 alert(err.message || 'Could not add executive');
             } finally {

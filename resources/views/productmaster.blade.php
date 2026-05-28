@@ -1001,7 +1001,7 @@
                                     <th>Temu Ship</th>
                                     <th>Unit</th>
                                     <th>UPC</th>
-                                    <th>MOQ</th>
+                                    <th title="Minimum Order Quantity">MOQ</th>
                                     </tr>
                                 </thead>
                                 <tbody id="missingImagesTableBody">
@@ -1186,7 +1186,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="moq" class="form-label fw-bold"
-                                                        style="color: #4A5568;">MOQ</label>
+                                                        style="color: #4A5568;" title="Minimum Order Quantity">MOQ</label>
                                                     <input type="text" class="form-control" id="moq"
                                                         placeholder="Enter MOQ"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -1683,7 +1683,7 @@
                                     <th>FRGHT</th>
                                     <th>SHIP</th>
                                     <th>TEMU SHIP</th>
-                                    <th>MOQ</th>
+                                    <th title="Minimum Order Quantity">MOQ</th>
                                     <th>EBAY2 SHIP</th>
                                     {{-- <th>INITIAL QUANTITY</th> --}}
                                     <th>Label QTY</th>
@@ -3276,6 +3276,10 @@
                         <option value="missing" ${savedFilterValue === 'missing' ? 'selected' : ''}>Missing</option>
                     </select>
                 `;
+                        }
+
+                        if (colName === "MOQ") {
+                            th.title = "Minimum Order Quantity";
                         }
 
                         thead.appendChild(th);

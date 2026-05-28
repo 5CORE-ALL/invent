@@ -12,6 +12,7 @@ use App\Models\SheinDataView;
 use App\Models\SheinDailyData;
 use App\Models\SheinDailyDataL60;
 use App\Models\ShopifySku;
+use App\Services\SheinShopifySalesService;
 use App\Models\AmazonChannelSummary;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -824,102 +825,51 @@ class SheinController extends Controller
     }
 
     /**
-     * Get L60 sales statistics from shein_daily_data_l60 table
+     * Get L60 sales statistics — prior 30-day shopify_order_items window (Sen Shp).
      */
     public function getL60Sales(Request $request)
     {
         try {
-            $marketplaceMarginDecimal = $this->sheinMarketplaceMarginPercent() / 100;
+            [$start, $end] = SheinShopifySalesService::channelMasterL60Window();
+            $totals = SheinShopifySalesService::computeL60Totals($start, $end);
 
-            // Get all L60 data and calculate totals
-            $excludedStatuses = ['refund', 'return', 'cancel', 'closed', 'exchange'];
-            
-            $l60Data = SheinDailyDataL60::query()
-                ->where(function ($q) use ($excludedStatuses) {
-                    foreach ($excludedStatuses as $s) {
-                        $q->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ["%{$s}%"]);
-                    }
-                })
-                ->get();
-
-            $totalOrders = 0;
-            $totalQuantity = 0;
-            $totalSales = 0;
-
-            $normalizeSku = static fn($v) => strtoupper(trim((string) $v));
-            $productMasters = $this->productMasterByNormalizedSku();
-
-            foreach ($l60Data as $row) {
-                // Count rows with order_number OR seller_sku
-                $orderNum = trim((string) ($row->order_number ?? ''));
-                $sellerSku = trim((string) ($row->seller_sku ?? ''));
-                if (!$orderNum && !$sellerSku) {
-                    continue;
-                }
-
-                $totalOrders++;
-                
-                $quantity = max(0, (int) ($row->quantity ?? 0));
-                $productPrice = (float) ($row->product_price ?? 0);
-                $estRev = (float) ($row->estimated_merchandise_revenue ?? 0);
-                
-                // Line revenue: prefer unit price × qty; fall back to Est. Revenue
-                $lineRevenue = $productPrice > 0 ? ($productPrice * $quantity) : ($estRev > 0 ? $estRev : 0);
-                
-                $totalQuantity += $quantity;
-                $totalSales += $lineRevenue;
-            }
+            Log::info('Shein L60 sales fetched from shopify_order_items', $totals);
 
             return response()->json([
                 'success' => true,
-                'data' => [
-                    'total_sales' => round($totalSales, 2),
-                    'total_orders' => $totalOrders,
-                    'total_quantity' => $totalQuantity,
-                ]
+                'data' => $totals,
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching Shein L60 sales: ' . $e->getMessage());
+            Log::error('Error fetching Shein L60 sales from shopify_order_items: ' . $e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
-     * Get daily data for Shein tabulator view
+     * Get daily data for Shein tabulator view.
+     * Source: apicentral.shopify_order_items — same Shein identification as /shopify-orders (Sen Shp).
      */
     public function getDailyData(Request $request)
     {
         try {
-            $marketplaceMarginDecimal = $this->sheinMarketplaceMarginPercent() / 100;
+            [$start, $end] = SheinShopifySalesService::tabulatorL30Window();
+            $data = SheinShopifySalesService::getDailyDataRows($start, $end);
 
-            // Get all Shein daily data
-            $data = SheinDailyData::orderBy('order_processed_on', 'desc')->get();
-
-            $normalizeSku = static fn($v) => strtoupper(trim((string) $v));
-            $productMasters = $this->productMasterByNormalizedSku();
-
-            $data = $data->map(function ($item) use ($productMasters, $normalizeSku) {
-                $key = $item->seller_sku ? $normalizeSku($item->seller_sku) : '';
-                $pm = $key !== '' ? $productMasters->get($key) : null;
-                if (! $pm instanceof ProductMaster) {
-                    $pm = null;
-                }
-                $resolved = $this->lpAndShipFromProductMaster($pm);
-                $item->lp = $resolved['lp'];
-                $item->ship = $resolved['ship'];
-
-                return $item;
-            });
+            Log::info('Shein daily data fetched from shopify_order_items', [
+                'result_count' => count($data),
+            ]);
 
             return response()->json([
-                'data' => $data->values()->all(),
-                'marketplace_margin_decimal' => $marketplaceMarginDecimal,
+                'data' => $data,
+                'marketplace_margin_decimal' => SheinShopifySalesService::sheinMarginDecimal(),
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching Shein daily data: ' . $e->getMessage());
+            Log::error('Error fetching Shein daily data from shopify_order_items: ' . $e->getMessage());
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }

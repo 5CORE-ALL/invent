@@ -29,6 +29,7 @@ use App\Models\MarketplacePercentage;
 use App\Models\ChannelMaster;
 use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Services\EbayChannelMetricsService;
+use App\Services\SheinShopifySalesService;
 use App\Services\TemuShopifySalesService;
 use App\Models\AmazonOrder;
 use App\Models\AmazonSpCampaignReport;
@@ -1074,117 +1075,32 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateSheinMetrics($date)
     {
-        // Get Shein daily data
-        $data = SheinDailyData::all();
+        // L30 from Shopify Sen Shp (same source as /shein-tabulator).
+        // Previous logic read app/uploads-only shein_daily_data which no longer reflects live sales.
+        [$start, $end] = SheinShopifySalesService::tabulatorL30Window();
+        $summary = SheinShopifySalesService::computeChannelSummary($start, $end);
 
-        if ($data->isEmpty()) {
+        if ($summary['total_orders'] === 0 && $summary['total_sales'] <= 0.00001) {
             return null;
         }
 
-        $pctRow = MarketplacePercentage::where('marketplace', 'Shein')->first();
-        $marginPct = 100.0;
-        if ($pctRow && $pctRow->percentage !== null && $pctRow->percentage !== '') {
-            $marginPct = (float) $pctRow->percentage;
-        }
-        $margin = $marginPct / 100.0;
-
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper(trim((string) $item->sku));
-        });
-
-        $totalOrders = 0;
-        $totalQuantity = 0;
-        $totalRevenue = 0;
-        $totalCogs = 0;
-        $totalPft = 0;
-        $totalCommission = 0;
-        $totalWeightedPrice = 0;
-        $totalQuantityForPrice = 0;
-
-        foreach ($data as $row) {
-            $orderNum = trim((string) ($row->order_number ?? ''));
-            $sellerSku = trim((string) ($row->seller_sku ?? ''));
-            if ($orderNum === '' && $sellerSku === '') {
-                continue;
-            }
-
-            // Skip refunded/returned/cancelled orders (same as shein_tabulator_view updateSummary)
-            $orderStatus = strtolower((string) ($row->order_status ?? ''));
-            if (str_contains($orderStatus, 'refund')
-                || str_contains($orderStatus, 'returned')
-                || str_contains($orderStatus, 'cancelled')) {
-                continue;
-            }
-
-            $totalOrders++;
-            $quantity = (int) ($row->quantity ?? 0);
-            $productPrice = (float) ($row->product_price ?? 0);
-            $commission = (float) ($row->commission ?? 0);
-
-            $totalQuantity += $quantity;
-            $totalRevenue += $productPrice * $quantity;
-            $totalCommission += $commission;
-
-            if ($quantity > 0 && $productPrice > 0) {
-                $totalWeightedPrice += $productPrice * $quantity;
-                $totalQuantityForPrice += $quantity;
-            }
-
-            $skuKey = strtoupper(trim((string) ($row->seller_sku ?? '')));
-            $lp = 0.0;
-            $ship = 0.0;
-
-            if ($skuKey !== '' && isset($productMasters[$skuKey])) {
-                $pm = $productMasters[$skuKey];
-                $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                foreach ($values as $k => $v) {
-                    if (strtolower((string) $k) === 'lp') {
-                        $lp = (float) $v;
-                        break;
-                    }
-                }
-                if ($lp === 0.0 && isset($pm->lp)) {
-                    $lp = (float) $pm->lp;
-                }
-
-                if (isset($values['ship'])) {
-                    $ship = (float) $values['ship'];
-                } elseif (isset($pm->ship)) {
-                    $ship = (float) $pm->ship;
-                }
-            }
-
-            $cogs = $lp * $quantity;
-            $totalCogs += $cogs;
-
-            // PFT: (unit price × marketplace keep-rate − LP − Ship) × Qty — matches /shein/daily-data + tabulator
-            $pft = ($productPrice * $margin - $lp - $ship) * $quantity;
-            $totalPft += $pft;
-        }
-
-        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
-        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
-        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
-
         // Shein has no ads, so N ROI = G ROI and N PFT = G PFT
         return [
-            'total_orders' => $totalOrders,
-            'total_quantity' => $totalQuantity,
-            'total_revenue' => $totalRevenue,
-            'total_sales' => $totalRevenue,
-            'total_cogs' => $totalCogs,
-            'total_pft' => $totalPft,
-            'pft_percentage' => round($pftPercentage, 1),
-            'roi_percentage' => round($roiPercentage, 1),
-            'avg_price' => $avgPrice,
-            'l30_sales' => $totalRevenue,
-            'total_commission' => $totalCommission,
+            'total_orders' => $summary['total_orders'],
+            'total_quantity' => $summary['total_quantity'],
+            'total_revenue' => $summary['total_sales'],
+            'total_sales' => $summary['total_sales'],
+            'total_cogs' => $summary['total_cogs'],
+            'total_pft' => $summary['total_pft'],
+            'pft_percentage' => round($summary['pft_percentage'], 1),
+            'roi_percentage' => round($summary['roi_percentage'], 1),
+            'avg_price' => $summary['avg_price'],
+            'l30_sales' => $summary['total_sales'],
+            'total_commission' => $summary['total_commission'],
             'kw_spent' => 0,
             'pmt_spent' => 0,
-            'n_pft' => $totalPft,
-            'n_roi' => round($roiPercentage, 1),
+            'n_pft' => $summary['total_pft'],
+            'n_roi' => round($summary['roi_percentage'], 1),
         ];
     }
 

@@ -123,6 +123,7 @@ use App\Models\AmazonListingStatus;
 use App\Models\EbayListingStatus;
 use App\Models\TemuListingStatus;
 use App\Services\EbayChannelMetricsService;
+use App\Services\SheinShopifySalesService;
 use App\Services\TemuShopifySalesService;
 use App\Models\BestbuyUSAListingStatus;
 use App\Models\AmazonChannelSummary;
@@ -8794,88 +8795,103 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        $agg = $this->aggregateSheinDailyDataLikeTabulator();
+        // L30 + L60 from Shopify Sen Shp (same source as /shein-tabulator).
+        // Old paths (shein_daily_data + shein_daily_data_l60 + sheet fallback) are kept as fallback
+        // only when the Shopify pull is empty, so legacy uploads don't disappear.
+        [$l30Start, $l30End] = SheinShopifySalesService::tabulatorL30Window();
+        $shopifyL30 = SheinShopifySalesService::computeChannelSummary($l30Start, $l30End);
+
         $metrics = MarketplaceDailyMetric::where('channel', 'Shein')->latest('date')->first();
-        $sheetAgg = null;
-        if ($agg === null) {
-            $sheetAgg = $this->aggregateSheinSheetSalesFallback();
-        }
+        $shopifyHasTotals = $shopifyL30['total_orders'] > 0 || $shopifyL30['total_sales'] > 0.00001;
 
-        $aggLooksEmpty = $agg !== null
-            && $agg['total_orders'] === 0
-            && ($agg['total_sales'] ?? 0) <= 0.00001
-            && SheinDailyData::query()->exists();
-
-        $metricsHasTotals = $metrics && (
-            (float) ($metrics->total_sales ?? 0) > 0.00001
-            || (int) ($metrics->total_orders ?? 0) > 0
-        );
-
-        // Prefer live daily aggregate when it has totals; if daily exists but sums to 0, use saved metrics when those have totals; then sheet; else daily zeros.
-        if ($agg !== null && ! $aggLooksEmpty) {
-            $l30Sales = $agg['total_sales'];
-            $l30Orders = $agg['total_orders'];
-            $totalQuantity = $agg['total_quantity'];
-            $totalProfit = $agg['total_pft'];
-            $totalCogs = $agg['total_cogs'];
-            $gProfitPct = $agg['pft_percentage'];
-            $gRoi = $agg['roi_percentage'];
-            $nPftValue = $totalProfit;
-            $nRoi = $gRoi;
-        } elseif ($aggLooksEmpty && $metricsHasTotals) {
-            $l30Sales = (float) ($metrics->total_sales ?? 0);
-            $l30Orders = (int) ($metrics->total_orders ?? 0);
-            $totalQuantity = (int) ($metrics->total_quantity ?? 0);
-            $totalProfit = (float) ($metrics->total_pft ?? 0);
-            $totalCogs = (float) ($metrics->total_cogs ?? 0);
-            $gProfitPct = (float) ($metrics->pft_percentage ?? 0);
-            $gRoi = (float) ($metrics->roi_percentage ?? 0);
-            $nPftValue = (float) ($metrics->n_pft ?? $totalProfit);
-            $nRoi = (float) ($metrics->n_roi ?? $gRoi);
-        } elseif ($agg !== null) {
-            $l30Sales = $agg['total_sales'];
-            $l30Orders = $agg['total_orders'];
-            $totalQuantity = $agg['total_quantity'];
-            $totalProfit = $agg['total_pft'];
-            $totalCogs = $agg['total_cogs'];
-            $gProfitPct = $agg['pft_percentage'];
-            $gRoi = $agg['roi_percentage'];
-            $nPftValue = $totalProfit;
-            $nRoi = $gRoi;
-        } elseif ($sheetAgg !== null) {
-            $l30Sales = $sheetAgg['total_sales'];
-            $l30Orders = $sheetAgg['total_orders'];
-            $totalQuantity = $sheetAgg['total_quantity'];
-            $totalProfit = $sheetAgg['total_pft'];
-            $totalCogs = $sheetAgg['total_cogs'];
-            $gProfitPct = $sheetAgg['pft_percentage'];
-            $gRoi = $sheetAgg['roi_percentage'];
+        if ($shopifyHasTotals) {
+            $l30Sales = $shopifyL30['total_sales'];
+            $l30Orders = $shopifyL30['total_orders'];
+            $totalQuantity = $shopifyL30['total_quantity'];
+            $totalProfit = $shopifyL30['total_pft'];
+            $totalCogs = $shopifyL30['total_cogs'];
+            $gProfitPct = $shopifyL30['pft_percentage'];
+            $gRoi = $shopifyL30['roi_percentage'];
             $nPftValue = $totalProfit;
             $nRoi = $gRoi;
         } else {
-            $l30Sales = (float) ($metrics?->total_sales ?? 0);
-            $l30Orders = (int) ($metrics?->total_orders ?? 0);
-            $totalQuantity = (int) ($metrics?->total_quantity ?? 0);
-            $totalProfit = (float) ($metrics?->total_pft ?? 0);
-            $totalCogs = (float) ($metrics?->total_cogs ?? 0);
-            $gProfitPct = (float) ($metrics?->pft_percentage ?? 0);
-            $gRoi = (float) ($metrics?->roi_percentage ?? 0);
-            $nPftValue = (float) ($metrics?->n_pft ?? $totalProfit);
-            $nRoi = (float) ($metrics?->n_roi ?? $gRoi);
+            // Legacy fallback chain: shein_daily_data → marketplace_daily_metrics → shein sheet.
+            $agg = $this->aggregateSheinDailyDataLikeTabulator();
+            $sheetAgg = $agg === null ? $this->aggregateSheinSheetSalesFallback() : null;
+            $aggLooksEmpty = $agg !== null
+                && $agg['total_orders'] === 0
+                && ($agg['total_sales'] ?? 0) <= 0.00001
+                && SheinDailyData::query()->exists();
+            $metricsHasTotals = $metrics && (
+                (float) ($metrics->total_sales ?? 0) > 0.00001
+                || (int) ($metrics->total_orders ?? 0) > 0
+            );
+
+            if ($agg !== null && ! $aggLooksEmpty) {
+                $l30Sales = $agg['total_sales'];
+                $l30Orders = $agg['total_orders'];
+                $totalQuantity = $agg['total_quantity'];
+                $totalProfit = $agg['total_pft'];
+                $totalCogs = $agg['total_cogs'];
+                $gProfitPct = $agg['pft_percentage'];
+                $gRoi = $agg['roi_percentage'];
+                $nPftValue = $totalProfit;
+                $nRoi = $gRoi;
+            } elseif ($aggLooksEmpty && $metricsHasTotals) {
+                $l30Sales = (float) ($metrics->total_sales ?? 0);
+                $l30Orders = (int) ($metrics->total_orders ?? 0);
+                $totalQuantity = (int) ($metrics->total_quantity ?? 0);
+                $totalProfit = (float) ($metrics->total_pft ?? 0);
+                $totalCogs = (float) ($metrics->total_cogs ?? 0);
+                $gProfitPct = (float) ($metrics->pft_percentage ?? 0);
+                $gRoi = (float) ($metrics->roi_percentage ?? 0);
+                $nPftValue = (float) ($metrics->n_pft ?? $totalProfit);
+                $nRoi = (float) ($metrics->n_roi ?? $gRoi);
+            } elseif ($sheetAgg !== null) {
+                $l30Sales = $sheetAgg['total_sales'];
+                $l30Orders = $sheetAgg['total_orders'];
+                $totalQuantity = $sheetAgg['total_quantity'];
+                $totalProfit = $sheetAgg['total_pft'];
+                $totalCogs = $sheetAgg['total_cogs'];
+                $gProfitPct = $sheetAgg['pft_percentage'];
+                $gRoi = $sheetAgg['roi_percentage'];
+                $nPftValue = $totalProfit;
+                $nRoi = $gRoi;
+            } else {
+                $l30Sales = (float) ($metrics?->total_sales ?? 0);
+                $l30Orders = (int) ($metrics?->total_orders ?? 0);
+                $totalQuantity = (int) ($metrics?->total_quantity ?? 0);
+                $totalProfit = (float) ($metrics?->total_pft ?? 0);
+                $totalCogs = (float) ($metrics?->total_cogs ?? 0);
+                $gProfitPct = (float) ($metrics?->pft_percentage ?? 0);
+                $gRoi = (float) ($metrics?->roi_percentage ?? 0);
+                $nPftValue = (float) ($metrics?->n_pft ?? $totalProfit);
+                $nRoi = (float) ($metrics?->n_roi ?? $gRoi);
+            }
         }
-        
-        // L60 sales from shein_daily_data_l60 table
-        $l60Agg = $this->aggregateSheinDailyDataL60LikeTabulator();
-        $l60Orders = 0;
-        $l60Sales = 0;
-        $gprofitL60 = 0;
-        $gRoiL60 = 0;
-        
-        if ($l60Agg !== null) {
-            $l60Orders = $l60Agg['total_orders'];
-            $l60Sales = $l60Agg['total_sales'];
-            $gprofitL60 = $l60Agg['pft_percentage'];
-            $gRoiL60 = $l60Agg['roi_percentage'];
+
+        // L60 from Shopify Sen Shp (days 31–60 PST). Fallback to legacy shein_daily_data_l60
+        // when Shopify returns nothing in that window.
+        [$l60Start, $l60End] = SheinShopifySalesService::channelMasterL60Window();
+        $shopifyL60 = SheinShopifySalesService::computeChannelSummary($l60Start, $l60End);
+
+        if ($shopifyL60['total_orders'] > 0 || $shopifyL60['total_sales'] > 0.00001) {
+            $l60Orders = $shopifyL60['total_orders'];
+            $l60Sales = $shopifyL60['total_sales'];
+            $gprofitL60 = $shopifyL60['pft_percentage'];
+            $gRoiL60 = $shopifyL60['roi_percentage'];
+        } else {
+            $l60Agg = $this->aggregateSheinDailyDataL60LikeTabulator();
+            $l60Orders = 0;
+            $l60Sales = 0;
+            $gprofitL60 = 0;
+            $gRoiL60 = 0;
+            if ($l60Agg !== null) {
+                $l60Orders = $l60Agg['total_orders'];
+                $l60Sales = $l60Agg['total_sales'];
+                $gprofitL60 = $l60Agg['pft_percentage'];
+                $gRoiL60 = $l60Agg['roi_percentage'];
+            }
         }
         
         // Calculate growth: (L30 - L60) / L60 * 100 when L60 > 0

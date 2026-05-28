@@ -7,6 +7,7 @@ use App\Models\MfrgProgress;
 use App\Models\PurchaseOrder;
 use App\Models\ReadyToShip;
 use App\Models\Supplier;
+use App\Services\PurchasePageExecService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -36,6 +37,7 @@ class MFRGInProgressController extends Controller
             $item->nr = 'RTS';
             $item->order_qty = $item->qty ?? 0;
             $item->ready_to_ship = 'No'; // Set to 'No' so it won't be filtered out
+            $item->mip_po_number = '';
             // Keep original fields: sku, supplier, zone, packing, terms, etc.
         }
 
@@ -62,6 +64,9 @@ class MFRGInProgressController extends Controller
             'data' => $combinedData,
             'suppliers' => $supplierCache['names'],
             'supplier_platforms_by_name' => $supplierCache['platformsByName'],
+            'execOptions' => app(PurchasePageExecService::class)->getOptions(),
+            'pageExec' => app(PurchasePageExecService::class)->getAssignment('mip') ?? '',
+            'execCanEdit' => PurchasePageExecService::userCanEdit(),
         ]);
     }
 
@@ -319,7 +324,36 @@ class MFRGInProgressController extends Controller
             return $rowStage === 'mip' || $rowStage === 'r2s' || $rowStage === '';
         });
 
+        self::attachMipPoNumbers($mfrgData);
+
         return $mfrgData;
+    }
+
+    /**
+     * Attach PO numbers from mfrg_progress_po (separate table).
+     */
+    private static function attachMipPoNumbers(Collection $mfrgData): void
+    {
+        $ids = $mfrgData->pluck('id')->filter()->unique()->values()->all();
+        if ($ids === []) {
+            foreach ($mfrgData as $row) {
+                $row->mip_po_number = '';
+            }
+
+            return;
+        }
+
+        $poByMipId = DB::table('mfrg_progress_po')
+            ->whereIn('mfrg_progress_id', $ids)
+            ->get()
+            ->keyBy('mfrg_progress_id');
+
+        foreach ($mfrgData as $row) {
+            $id = $row->id ?? null;
+            $row->mip_po_number = ($id && isset($poByMipId[$id]))
+                ? trim((string) $poByMipId[$id]->po_number)
+                : '';
+        }
     }
 
     /**

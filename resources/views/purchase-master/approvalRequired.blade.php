@@ -844,6 +844,7 @@
                 {
                     title: "MOQ",
                     field: "MOQ",
+                    headerTooltip: "Minimum Order Quantity",
                     accessor: row => row["MOQ"],
                     headerSort: false,
                     formatter: function(cell) {
