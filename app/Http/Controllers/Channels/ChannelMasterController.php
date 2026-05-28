@@ -7825,14 +7825,14 @@ class ChannelMasterController extends Controller
         $percentage = MarketplacePercentage::where('marketplace', 'LIKE', '%PLS%')->value('percentage') ?? 100;
         $percentage = $percentage / 100; // convert % to fraction
 
-        // Load product masters (lp, ship) keyed by SKU
+        // Load product masters (lp, ship) keyed by normalized SKU (NBSP / space tolerant)
         $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
+            return ShopifySku::normalizeSkuForShopifyLookup($item->sku);
         });
 
         // Get PLS products with current prices and L30 sales volume
         $plsProducts = \App\Models\PLSProduct::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
+            return ShopifySku::normalizeSkuForShopifyLookup($item->sku);
         });
 
         // Calculate weighted GPFT and ROI using CURRENT PRICES (same as Pricing page)
@@ -7841,7 +7841,7 @@ class ChannelMasterController extends Controller
         $totalCogs    = 0;
 
         foreach ($plsProducts as $plsProduct) {
-            $sku       = strtoupper($plsProduct->sku);
+            $skuNorm   = ShopifySku::normalizeSkuForShopifyLookup($plsProduct->sku);
             $price     = (float) $plsProduct->price;
             $plsL30    = (int) $plsProduct->p_l30;
 
@@ -7852,8 +7852,8 @@ class ChannelMasterController extends Controller
             $lp   = 0;
             $ship = 0;
 
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
+            if (isset($productMasters[$skuNorm])) {
+                $pm = $productMasters[$skuNorm];
 
                 $values = is_array($pm->Values) ? $pm->Values :
                         (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
@@ -7937,18 +7937,28 @@ class ChannelMasterController extends Controller
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
         $shopifyData = ShopifySku::mapByProductSkus($skus);
-        $statusData = PlsListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusByNorm = [];
+        foreach (PlsListingStatus::whereIn('sku', $skus)->get() as $row) {
+            $key = ShopifySku::normalizeSkuForShopifyLookup($row->sku);
+            if ($key !== '' && ! isset($statusByNorm[$key])) {
+                $statusByNorm[$key] = $row;
+            }
+        }
 
         $missingListingCount = 0;
 
         foreach ($productMasters as $item) {
             $sku = trim($item->sku);
+            $skuNorm = ShopifySku::normalizeSkuForShopifyLookup($sku);
             $isParent = stripos($sku, 'PARENT') !== false;
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($sku)?->inv ?? 0;
 
-            if ($isParent || floatval($inv) <= 0) continue;
+            if ($isParent || floatval($inv) <= 0) {
+                continue;
+            }
 
-            $status = $statusData[$sku]->value ?? null;
+            $statusRow = $statusByNorm[$skuNorm] ?? null;
+            $status = $statusRow?->value ?? null;
             if (is_string($status)) {
                 $status = json_decode($status, true);
             }
