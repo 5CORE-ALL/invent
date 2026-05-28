@@ -1,4 +1,9 @@
-@extends('layouts.vertical', ['title' => 'Google Ads Campaigns (raw)', 'sidenav' => 'condensed'])
+@php
+    $pageTitle = 'Google Shopping';
+    $pageSubtitle = 'Google Ads';
+@endphp
+
+@extends('layouts.vertical', ['title' => $pageTitle, 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -196,13 +201,40 @@
             width: 100%;
             min-height: 400px;
         }
+
+        .faas-stat-badge {
+            display: inline-block;
+            flex-shrink: 0;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 6px 12px;
+            border-radius: 6px;
+            white-space: nowrap;
+            line-height: 1.2;
+            cursor: pointer;            /* clicks open the trend chart */
+            transition: transform 0.1s ease;
+        }
+        .faas-stat-badge:hover { transform: translateY(-1px); filter: brightness(1.1); }
+        /* Compact title so the badge strip has more horizontal room. */
+        .faas-toolbar-title { font-size: 1rem; flex-shrink: 0; }
+        .faas-stat-badge--count { background: #475569; }   /* slate   */
+        .faas-stat-badge--impr  { background: #4c7ed8; }   /* blue    */
+        .faas-stat-badge--clk   { background: #f59e0b; }   /* amber   */
+        .faas-stat-badge--spend { background: #ef4444; }   /* red     */
+        .faas-stat-badge--sales { background: #16a34a; }   /* green   */
+        .faas-stat-badge--sold  { background: #8b5cf6; }   /* purple  */
+        .faas-stat-badge--acos  { background: #ea580c; }   /* orange  */
+        .faas-stat-badge--ctr   { background: #0891b2; }   /* cyan    */
+        .faas-stat-badge--cvr   { background: #db2777; }   /* pink    */
+
     </style>
 @endsection
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'google_ads_campaigns (raw)',
-        'sub_title'  => '',
+        'page_title' => $pageTitle,
+        'sub_title'  => $pageSubtitle,
     ])
 
     <div class="row">
@@ -210,6 +242,46 @@
             <div class="card">
                 <div class="card-body">
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+
+                        <div class="d-flex align-items-center flex-nowrap gap-2 flex-grow-1 overflow-x-auto py-1"
+                            style="min-width:0;">
+                            {{-- Live sums of key Tabulator columns
+                                across whatever rows are currently visible
+                                (after search / header filters). Updated by
+                                updateMetricBadges() in the script below. --}}
+                            {{-- Count badge — number of rows currently
+                                visible (after search + Sbgt filter). Not
+                                a chart link; clicking does nothing. --}}
+                            <span id="faasL30SpendBadge" data-metric="spend" data-label="L30 Spend"
+                                class="faas-stat-badge faas-stat-badge--spend badge-chart-link"
+                                title="Click for trend">L30 SPEND:<span id="faasL30SpendValue">0</span></span>
+
+                            <span id="faasClicksBadge" data-metric="clicks" data-label="Clicks"
+                                class="faas-stat-badge faas-stat-badge--impr badge-chart-link"
+                                title="Click for trend">CLICKS:<span id="faasClicksValue">0</span></span>
+
+                            <span id="faasL30SoldBadge" data-metric="sold" data-label="Sold"
+                                class="faas-stat-badge faas-stat-badge--clk badge-chart-link"
+                                title="Click for trend">L30 SOLD :<span id="faasL30SoldValue">0</span></span>
+
+                            <span id="faasL30SalesBadge" data-metric="sales" data-label="L30 Sales"
+                                class="faas-stat-badge faas-stat-badge--spend badge-chart-link"
+                                title="Click for trend">L30 SALES:<span id="faasL30SalesValue">$0</span></span>
+
+                            <span id="faasAcosBadge" data-metric="acos" data-label="ACOS"
+                                class="faas-stat-badge faas-stat-badge--sales badge-chart-link"
+                                title="Click for trend">ACOS:<span id="faasAcosValue">0%</span></span>
+
+                            <span id="faasCvrBadge" data-metric="cvr" data-label="CVR"
+                                class="faas-stat-badge faas-stat-badge--sold badge-chart-link"
+                                title="Click for trend">CVR:<span id="faasCvrValue">0%</span></span>
+
+                            <span id="faasTotalBgtBadge" data-metric="bgt" data-label="Total BGT"
+                                class="faas-stat-badge faas-stat-badge--acos badge-chart-link"
+                                title="Click for trend">TOTAL BGT:<span id="faasTotalBgtValue">$0</span></span>
+                            
+                        </div>
+                        
                         <span id="gac-raw-total" class="badge bg-secondary">Total: —</span>
                         <span id="gac-raw-page-info" class="badge bg-light text-dark border">Page: —</span>
                         <button type="button" id="gac-raw-refresh" class="btn btn-sm btn-outline-primary">
@@ -453,23 +525,71 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="gacRawBadgeChartModal" tabindex="-1" aria-labelledby="gacRawBadgeChartModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2" style="background:#0d6efd;color:#fff;">
+                    <h6 class="modal-title fw-bold" id="gacRawBadgeChartModalLabel">
+                        <i class="fas fa-chart-line me-1"></i>
+                        <span id="gacRawBadgeChartTitle">Trend</span>
+                    </h6>
+                    <div class="ms-auto d-flex align-items-center gap-2">
+                        <select id="gacRawBadgeChartRange" class="form-select form-select-sm" style="width:120px;">
+                            <option value="7">7 Days</option>
+                            <option value="14">14 Days</option>
+                            <option value="32" selected>32 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="d-flex">
+                        <div style="flex:1; min-height:320px; padding:10px;">
+                            <canvas id="gacRawBadgeChartCanvas"></canvas>
+                            <p class="text-center text-muted small mb-0 d-none" id="gacRawBadgeChartEmpty">
+                                No history available for this metric in the selected window.
+                            </p>
+                        </div>
+                        <div style="width:120px; border-left:1px solid #dee2e6; padding:14px 10px; text-align:center;">
+                            <div class="small text-uppercase fw-bold" style="color:#dc3545;">Highest</div>
+                            <div class="fs-5 fw-bold" id="gacRawBadgeChartHighest">—</div>
+                            <hr class="my-2">
+                            <div class="small text-uppercase fw-bold" style="color:#6c757d;">Median</div>
+                            <div class="fs-5 fw-bold" id="gacRawBadgeChartMedian">—</div>
+                            <hr class="my-2">
+                            <div class="small text-uppercase fw-bold" style="color:#198754;">Lowest</div>
+                            <div class="fs-5 fw-bold" id="gacRawBadgeChartLowest">—</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const dataUrl = @json(route('google.ads.campaigns.raw.data'));
-            const gacRawRuleGetUrl = @json(route('google.ads.campaigns.raw.rule'));
-            const gacRawRuleSaveUrl = @json(route('google.ads.campaigns.raw.rule.save'));
-            const gacRawPushSbgtUrl = @json(route('google.ads.campaigns.raw.push.sbgt'));
-            const gacRawPushSbidUrl = @json(route('google.ads.campaigns.raw.push.sbid'));
-            const gacRawU7PieDistribUrl = @json(route('google.ads.campaigns.raw.u7.distribution'));
-            const gacRawU7PieHistoryUrl = @json(route('google.ads.campaigns.raw.u7.history'));
-            window.gacRawRule = @json($gshoppingRawRule);
+            const dataUrl = @json(route('google.shopping.campaigns.data'));
+            const gacRawRuleGetUrl = @json(route('google.shopping.campaigns.rule'));
+            const gacRawRuleSaveUrl = @json(route('google.shopping.campaigns.rule.save'));
+            const gacRawPushSbgtUrl = @json(route('google.shopping.campaigns.push.sbgt'));
+            const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
+            const gacRawBadgeHistoryUrl = @json(route('google.shopping.campaigns.badge.history'));
+            const gacRawU7PieDistribUrl = @json(route('google.shopping.campaigns.u7.distribution'));
+            const gacRawU7PieHistoryUrl = @json(route('google.shopping.campaigns.u7.history'));
+            window.gacRawRule = @json($googleShoppingRule);
             let table;
             let gacRawU7PieChart = null;
             let gacRawU7PieRefreshTimer = null;
+            let gacRawBadgeChart = null;
+            let gacRawActiveBadgeMetric = null;
+            let gacRawActiveBadgeLabel = '';
             const GAC_RAW_U7_PIE_MODAL_CHART_H = 400;
 
             function updatePageInfoBadge() {
@@ -482,6 +602,13 @@
                 } catch (e) {
                     el.textContent = 'Page: —';
                 }
+            }
+
+            function gacRawRefreshTableUiSoon() {
+                setTimeout(function() {
+                    updatePageInfoBadge();
+                    updateMetricBadges();
+                }, 0);
             }
 
             function gacRawFilterParamVal(id) {
@@ -830,9 +957,10 @@
                 ajaxParams: function() {
                     return gacRawCurrentFilterParams();
                 },
-                // Table width = sum of columns sized from header + cell text (see Tabulator layout docs)
-                layout: 'fitDataTable',
-                layoutColumnsOnNewData: true,
+                // Fixed height prevents Tabulator's variable-height resize loop from recursing on Windows/browser zoom.
+                height: '650px',
+                layout: 'fitData',
+                layoutColumnsOnNewData: false,
                 pagination: true,
                 paginationMode: 'remote',
                 paginationSize: 100,
@@ -842,7 +970,7 @@
                 paginationInitialPage: 1,
                 sortMode: 'remote',
                 placeholder: 'No rows in google_ads_campaigns.',
-                selectable: true,
+                selectableRows: true,
                 autoColumns: true,
                 autoColumnsDefinitions: function(defs) {
                     if (!defs.some(function(d) { return d.field === '__gac_select'; })) {
@@ -869,6 +997,7 @@
                         cpc_L7: 'L7 CPC',
                         cpc_L2: 'L2 CPC',
                         cpc_L1: 'L1 CPC',
+                        ad_sold_L30: 'Sold',
                         ad_sales_L30: 'L30 Sales',
                         acos_l30: 'ACOS L30',
                         ub7: '7 UB%',
@@ -981,6 +1110,7 @@
                         l2_spend: true,
                         l1_spend: true,
                         metrics_clicks: true,
+                        ad_sold_L30: true,
                         ad_sales_L30: true,
                         acos_l30: true,
                         ub7: true,
@@ -1021,7 +1151,10 @@
                         }
                         if (Object.prototype.hasOwnProperty.call(utilizedStyleTitles, col.field)) {
                             col.title = utilizedStyleTitles[col.field];
-                            if (col.field === 'ad_sales_L30') {
+                            if (col.field === 'ad_sold_L30') {
+                                col.formatter = intLocaleFormatter;
+                                col.minWidth = Math.max(col.minWidth || 0, 57);
+                            } else if (col.field === 'ad_sales_L30') {
                                 col.formatter = moneyRoundedFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 77);
                             } else if (col.field === 'acos_l30') {
@@ -1070,6 +1203,7 @@
                     }
 
                     gacRawSummaryFromResponse(response);
+                    gacRawRefreshTableUiSoon();
 
                     return {
                         last_page: lastPage,
@@ -1086,17 +1220,11 @@
                 }
             });
 
-            table.on('pageLoaded', updatePageInfoBadge);
+            table.on('pageLoaded', function() {
+                gacRawRefreshTableUiSoon();
+            });
             table.on('dataLoaded', function() {
-                updatePageInfoBadge();
-                // Re-measure after formatters (e.g. toLocaleString) change cell text width
-                requestAnimationFrame(function() {
-                    try {
-                        if (table && typeof table.redraw === 'function') {
-                            table.redraw(true);
-                        }
-                    } catch (e) { /* ignore */ }
-                });
+                gacRawRefreshTableUiSoon();
             });
 
             table.on('dataLoadError', function(error) {
@@ -1108,7 +1236,7 @@
             });
 
             document.getElementById('gac-raw-refresh').addEventListener('click', function() {
-                Promise.resolve(table.setData(dataUrl)).finally(updatePageInfoBadge);
+                Promise.resolve(table.setData(dataUrl)).finally(gacRawRefreshTableUiSoon);
             });
 
             document.getElementById('gac-raw-export').addEventListener('click', function() {
@@ -1208,7 +1336,7 @@
                         var text = (b.message ? b.message + '\n\n' : '') + (b.output || '');
                         gacShowPushResult(title, text, b.ok ? 'success' : 'error');
                         if (b.ok && table) {
-                            Promise.resolve(table.setData(dataUrl)).finally(updatePageInfoBadge);
+                            Promise.resolve(table.setData(dataUrl)).finally(gacRawRefreshTableUiSoon);
                         }
                     })
                     .catch(function(err) {
@@ -1328,6 +1456,291 @@
                     under_fallback: gacNum('gacSbidUnderFallback'),
                 };
             }
+            function gacRawNumber(value) {
+                if (value === null || value === undefined || value === '') {
+                    return 0;
+                }
+                if (typeof value === 'number') {
+                    return Number.isFinite(value) ? value : 0;
+                }
+                var n = parseFloat(String(value).replace(/[$,%\s,]/g, ''));
+                return Number.isFinite(n) ? n : 0;
+            }
+
+            function gacRawWholeMoney(value) {
+                return '$' + Math.round(value).toLocaleString();
+            }
+
+            function gacRawPercent(numerator, denominator, decimals) {
+                if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) {
+                    return '0%';
+                }
+                return ((numerator / denominator) * 100).toLocaleString(undefined, {
+                    minimumFractionDigits: decimals,
+                    maximumFractionDigits: decimals
+                }) + '%';
+            }
+
+            // Update the metric badges with sums from the rows currently loaded/visible in Tabulator.
+            function updateMetricBadges() {
+                var spendEl = document.getElementById('faasL30SpendValue');
+                var clicksEl = document.getElementById('faasClicksValue');
+                var soldEl = document.getElementById('faasL30SoldValue');
+                var salesEl = document.getElementById('faasL30SalesValue');
+                var acosEl = document.getElementById('faasAcosValue');
+                var cvrEl = document.getElementById('faasCvrValue');
+                var bgtEl = document.getElementById('faasTotalBgtValue');
+                if (!spendEl || !clicksEl || !soldEl || !salesEl || !acosEl || !cvrEl || !bgtEl || !table) {
+                    return;
+                }
+
+                var spendSum = 0;
+                var clicksSum = 0;
+                var soldSum = 0;
+                var salesSum = 0;
+                var bgtSum = 0;
+                var rows = [];
+                try {
+                    rows = table.getData('active') || [];
+                } catch (e) {
+                    rows = [];
+                }
+
+                rows.forEach(function(row) {
+                    spendSum += gacRawNumber(row.spend);
+                    clicksSum += gacRawNumber(row.metrics_clicks);
+                    soldSum += gacRawNumber(row.ad_sold_L30);
+                    salesSum += gacRawNumber(row.ad_sales_L30);
+                    bgtSum += gacRawNumber(row.bgt);
+                });
+
+                spendEl.textContent = gacRawWholeMoney(spendSum);
+                clicksEl.textContent = Math.round(clicksSum).toLocaleString();
+                soldEl.textContent = Math.round(soldSum).toLocaleString();
+                salesEl.textContent = gacRawWholeMoney(salesSum);
+                acosEl.textContent = gacRawPercent(spendSum, salesSum, 0);
+                cvrEl.textContent = gacRawPercent(soldSum, clicksSum, 1);
+                bgtEl.textContent = gacRawWholeMoney(bgtSum);
+            }
+
+            function gacRawFormatBadgeChartValue(metric, value) {
+                var n = Number(value);
+                if (!Number.isFinite(n)) return '—';
+                if (metric === 'spend' || metric === 'sales' || metric === 'bgt') {
+                    return '$' + Math.round(n).toLocaleString();
+                }
+                if (metric === 'acos' || metric === 'cvr') {
+                    return n.toFixed(1) + '%';
+                }
+                return Math.round(n).toLocaleString();
+            }
+
+            function gacRawVisibleCampaignIds() {
+                if (!table) return [];
+                var seen = {};
+                var out = [];
+                try {
+                    (table.getData('active') || []).forEach(function(row) {
+                        var raw = row && row.campaign_id != null ? String(row.campaign_id) : '';
+                        var id = raw.replace(/\D/g, '');
+                        if (id && !seen[id]) {
+                            seen[id] = true;
+                            out.push(id);
+                        }
+                    });
+                } catch (e) {
+                    return [];
+                }
+                return out;
+            }
+
+            function gacRawOpenBadgeChart(metric, label) {
+                gacRawActiveBadgeMetric = metric;
+                gacRawActiveBadgeLabel = label || metric.toUpperCase();
+                var modalEl = document.getElementById('gacRawBadgeChartModal');
+                if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                }
+                gacRawLoadBadgeChart(metric, gacRawActiveBadgeLabel);
+            }
+
+            function gacRawLoadBadgeChart(metric, label) {
+                var rangeEl = document.getElementById('gacRawBadgeChartRange');
+                var days = parseInt((rangeEl && rangeEl.value) || '32', 10) || 32;
+                var titleEl = document.getElementById('gacRawBadgeChartTitle');
+                if (titleEl) {
+                    titleEl.textContent = (label || metric.toUpperCase()) + ' (Daily L' + days + ')';
+                }
+
+                var params = new URLSearchParams({ metric: metric, days: String(days) });
+                var ids = gacRawVisibleCampaignIds();
+                if (ids.length) {
+                    params.set('campaign_ids', ids.join(','));
+                }
+
+                fetch(gacRawBadgeHistoryUrl + '?' + params.toString(), {
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                    .then(function(res) { return res.json(); })
+                    .then(function(resp) {
+                        gacRawRenderBadgeChart(metric, (resp && resp.data) || []);
+                    })
+                    .catch(function(err) {
+                        console.error('google shopping badge history failed', err);
+                        gacRawRenderBadgeChart(metric, []);
+                    });
+            }
+
+            function gacRawRenderBadgeChart(metric, data) {
+                var canvas = document.getElementById('gacRawBadgeChartCanvas');
+                var emptyEl = document.getElementById('gacRawBadgeChartEmpty');
+                if (!canvas || typeof Chart === 'undefined') return;
+
+                if (gacRawBadgeChart) {
+                    gacRawBadgeChart.destroy();
+                    gacRawBadgeChart = null;
+                }
+                ['gacRawBadgeChartHighest', 'gacRawBadgeChartMedian', 'gacRawBadgeChartLowest'].forEach(function(id) {
+                    var el = document.getElementById(id);
+                    if (el) el.textContent = '—';
+                });
+
+                if (!data.length) {
+                    canvas.style.display = 'none';
+                    if (emptyEl) emptyEl.classList.remove('d-none');
+                    return;
+                }
+                canvas.style.display = '';
+                if (emptyEl) emptyEl.classList.add('d-none');
+
+                var labels = data.map(function(row) { return row.date; });
+                var values = data.map(function(row) { return Number(row.value) || 0; });
+                var min = Math.min.apply(Math, values);
+                var max = Math.max.apply(Math, values);
+                var sorted = values.slice().sort(function(a, b) { return a - b; });
+                var mid = Math.floor(sorted.length / 2);
+                var median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                var range = (max - min) || 1;
+                var yMin = Math.max(0, min - range * 0.1);
+                var yMax = max + range * 0.1;
+                var red = '#dc3545';
+                var green = '#198754';
+                var gray = '#6c757d';
+                var inverted = metric === 'acos';
+
+                function setStat(id, value) {
+                    var el = document.getElementById(id);
+                    if (!el) return;
+                    el.textContent = gacRawFormatBadgeChartValue(metric, value);
+                }
+                setStat('gacRawBadgeChartHighest', max);
+                setStat('gacRawBadgeChartMedian', median);
+                setStat('gacRawBadgeChartLowest', min);
+
+                var pointColors = values.map(function(value, i) {
+                    if (i === 0) return gray;
+                    if (value === values[i - 1]) return gray;
+                    if (inverted) return value < values[i - 1] ? green : red;
+                    return value > values[i - 1] ? green : red;
+                });
+
+                var medianLinePlugin = {
+                    id: 'gacRawMedianLine',
+                    afterDraw: function(chart) {
+                        var yScale = chart.scales.y;
+                        var xScale = chart.scales.x;
+                        var ctx = chart.ctx;
+                        var y = yScale.getPixelForValue(median);
+                        ctx.save();
+                        ctx.setLineDash([6, 4]);
+                        ctx.strokeStyle = gray;
+                        ctx.lineWidth = 1.2;
+                        ctx.beginPath();
+                        ctx.moveTo(xScale.left, y);
+                        ctx.lineTo(xScale.right, y);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                };
+
+                gacRawBadgeChart = new Chart(canvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: gacRawActiveBadgeLabel,
+                            data: values,
+                            backgroundColor: 'rgba(13,110,253,0.08)',
+                            borderColor: '#0d6efd',
+                            borderWidth: 1.6,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: pointColors,
+                            pointBorderColor: pointColors
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { top: 20, right: 16, bottom: 10, left: 16 } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        return gacRawFormatBadgeChartValue(metric, ctx.parsed.y);
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                min: yMin,
+                                max: yMax,
+                                ticks: {
+                                    callback: function(value) {
+                                        return gacRawFormatBadgeChartValue(metric, value);
+                                    }
+                                }
+                            },
+                            x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 45 } }
+                        }
+                    },
+                    plugins: [medianLinePlugin]
+                });
+            }
+
+            document.querySelectorAll('.badge-chart-link').forEach(function(el) {
+                el.addEventListener('click', function() {
+                    var metric = this.dataset.metric;
+                    if (!metric) return;
+                    gacRawOpenBadgeChart(metric, this.dataset.label || metric.toUpperCase());
+                });
+            });
+
+            var badgeRangeEl = document.getElementById('gacRawBadgeChartRange');
+            if (badgeRangeEl) {
+                badgeRangeEl.addEventListener('change', function() {
+                    if (gacRawActiveBadgeMetric) {
+                        gacRawLoadBadgeChart(gacRawActiveBadgeMetric, gacRawActiveBadgeLabel);
+                    }
+                });
+            }
+
+            var badgeModalEl = document.getElementById('gacRawBadgeChartModal');
+            if (badgeModalEl) {
+                badgeModalEl.addEventListener('hidden.bs.modal', function() {
+                    if (gacRawBadgeChart) {
+                        gacRawBadgeChart.destroy();
+                        gacRawBadgeChart = null;
+                    }
+                });
+            }
+
+
             function gacRefreshRuleFromServer(cb) {
                 fetch(gacRawRuleGetUrl, {
                     method: 'GET',
@@ -1391,7 +1804,7 @@
                             }
                             return Promise.resolve(table.setData(dataUrl));
                         })
-                        .then(function() { updatePageInfoBadge(); })
+                        .then(function() { gacRawRefreshTableUiSoon(); })
                         .catch(function() {
                             if (errEl) {
                                 errEl.textContent = 'Network or server error.';
@@ -1449,7 +1862,7 @@
                             }
                             return Promise.resolve(table.setData(dataUrl));
                         })
-                        .then(function() { updatePageInfoBadge(); })
+                        .then(function() { gacRawRefreshTableUiSoon(); })
                         .catch(function() {
                             if (sErr) {
                                 sErr.textContent = 'Network or server error.';

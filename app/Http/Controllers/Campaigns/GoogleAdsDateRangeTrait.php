@@ -109,13 +109,13 @@ trait GoogleAdsDateRangeTrait
         $totalClicks = $campaignRanges->sum('metrics_clicks');
         $totalImpressions = $campaignRanges->sum('metrics_impressions');
         
-        // Prefer GA4 actual data (from GA4 API) if available, otherwise use Google Ads API data
+        // Prefer GA4 actual revenue; sold units must stay whole-number GA4 purchases.
         $totalGA4ActualSales = $campaignRanges->sum('ga4_actual_revenue');
         $totalGA4ActualUnits = $campaignRanges->sum('ga4_actual_sold_units');
         
-        // Use GA4 actual data if available (non-zero), otherwise fallback to Google Ads API data
+        // Do not fallback sold units to Google Ads conversions because they can be fractional.
         $totalGA4Sales = ($totalGA4ActualSales > 0) ? $totalGA4ActualSales : $campaignRanges->sum('ga4_ad_sales');
-        $totalGA4Units = ($totalGA4ActualUnits > 0) ? $totalGA4ActualUnits : $campaignRanges->sum('ga4_sold_units');
+        $totalGA4Units = $totalGA4ActualUnits;
 
         // Calculate CPC: cost per click
         // If there are no clicks, CPC is 0 (this is correct - you can't have a CPC without clicks)

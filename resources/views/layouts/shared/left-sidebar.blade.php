@@ -1470,6 +1470,10 @@
                                     </li>
 
                                     <li>
+                                        <a href="{{ route('shopify.ads.master') }}">Shopify Ads - Master</a>
+                                    </li>
+
+                                    <li>
                                         <a href="{{ url('shopify-pricing-increase-decrease') }}">
                                             Pricing - Increase/Decrease</a>
                                     </li>
@@ -1935,17 +1939,9 @@
                 </a>
                 <div class="collapse" id="sidebarGoogleShopping">
                     <ul class="side-nav-third-level">
+                        
                         <li>
-                            <a href="{{ route('google.shopping.running') }}">G-Shopping Running Ads</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('google.shopping.utilized') }}">G-Shopping Utilized's</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('google.shopping.report') }}">G-Shopping Report</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('google.ads.campaigns.raw') }}">G-Shopping DB (raw)</a>
+                            <a href="{{ route('google.shopping.campaigns') }}">Google Shopping</a>
                         </li>
                         <li>
                             <a href="{{ route('google.serp.list') }}">Google SERP</a>
