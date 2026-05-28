@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
-class GoogleAdsCampaignsRawController extends Controller
+class GoogleShoppingCampaignsController extends Controller
 {
     public function __construct()
     {
@@ -21,20 +21,20 @@ class GoogleAdsCampaignsRawController extends Controller
      * Tabular view of google_ads_campaigns rows only (no SKU matching or transforms).
      */
     public function index()
-    { //dd(GoogleShoppingCampaignsRawRule::resolvedRule());
+    {
         return view('campaign.google-shopping', [
-            'gshoppingRawRule' => GoogleShoppingCampaignsRawRule::resolvedRule(),
+            'googleShoppingRule' => GoogleShoppingCampaignsRawRule::resolvedRule(),
         ]);
     }
 
-    public function getRawRule(): JsonResponse
+    public function getRule(): JsonResponse
     {
         return response()->json([
             'rule' => GoogleShoppingCampaignsRawRule::resolvedRule(),
         ]);
     }
 
-    public function saveRawRule(Request $request): JsonResponse
+    public function saveRule(Request $request): JsonResponse
     {
         try {
             $normalized = GoogleShoppingCampaignsRawRule::normalizeRule($request->all());
@@ -46,7 +46,7 @@ class GoogleAdsCampaignsRawController extends Controller
             ], 422);
         } catch (\Throwable $e) {
             return response()->json([
-                'message' => 'Could not save G-Shopping raw rule.',
+                'message' => 'Could not save Google Shopping rule.',
                 'error' => $e->getMessage(),
                 'status' => 500,
             ], 500);

@@ -1,4 +1,9 @@
-@extends('layouts.vertical', ['title' => 'Google Ads Campaigns (raw)', 'sidenav' => 'condensed'])
+@php
+    $pageTitle = 'Google Shopping';
+    $pageSubtitle = 'Google Ads';
+@endphp
+
+@extends('layouts.vertical', ['title' => $pageTitle, 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -228,8 +233,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'google_shopping',
-        'sub_title'  => '',
+        'page_title' => $pageTitle,
+        'sub_title'  => $pageSubtitle,
     ])
 
     <div class="row">
@@ -570,15 +575,15 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const dataUrl = @json(route('google.ads.campaigns.raw.data'));
-            const gacRawRuleGetUrl = @json(route('google.ads.campaigns.raw.rule'));
-            const gacRawRuleSaveUrl = @json(route('google.ads.campaigns.raw.rule.save'));
-            const gacRawPushSbgtUrl = @json(route('google.ads.campaigns.raw.push.sbgt'));
-            const gacRawPushSbidUrl = @json(route('google.ads.campaigns.raw.push.sbid'));
-            const gacRawBadgeHistoryUrl = @json(route('google.ads.campaigns.raw.badge.history'));
-            const gacRawU7PieDistribUrl = @json(route('google.ads.campaigns.raw.u7.distribution'));
-            const gacRawU7PieHistoryUrl = @json(route('google.ads.campaigns.raw.u7.history'));
-            window.gacRawRule = @json($gshoppingRawRule);
+            const dataUrl = @json(route('google.shopping.campaigns.data'));
+            const gacRawRuleGetUrl = @json(route('google.shopping.campaigns.rule'));
+            const gacRawRuleSaveUrl = @json(route('google.shopping.campaigns.rule.save'));
+            const gacRawPushSbgtUrl = @json(route('google.shopping.campaigns.push.sbgt'));
+            const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
+            const gacRawBadgeHistoryUrl = @json(route('google.shopping.campaigns.badge.history'));
+            const gacRawU7PieDistribUrl = @json(route('google.shopping.campaigns.u7.distribution'));
+            const gacRawU7PieHistoryUrl = @json(route('google.shopping.campaigns.u7.history'));
+            window.gacRawRule = @json($googleShoppingRule);
             let table;
             let gacRawU7PieChart = null;
             let gacRawU7PieRefreshTimer = null;

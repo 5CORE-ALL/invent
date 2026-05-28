@@ -1919,7 +1919,7 @@
                     <ul class="side-nav-third-level">
                         
                         <li>
-                            <a href="{{ route('google.ads.campaigns.raw') }}">Google Shopping</a>
+                            <a href="{{ route('google.shopping.campaigns') }}">Google Shopping</a>
                         </li>
                         <li>
                             <a href="{{ route('google.serp.list') }}">Google SERP</a>
