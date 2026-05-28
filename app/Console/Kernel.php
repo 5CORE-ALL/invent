@@ -998,29 +998,31 @@ class Kernel extends ConsoleKernel
         | REVERB
         |--------------------------------------------------------------------------
         */
-        // $schedule->command('reverb:fetch')
-        //     ->everyFiveMinutes()
-        //     ->timezone('UTC')
-        //     ->name('reverb-fetch')
-        //     ->withoutOverlapping()
-        //     ->runInBackground()
-        //     ->appendOutputTo($log);
+        // Reverb: same daily-morning pattern as eBay (09:35–09:45) so all marketplaces
+        // refresh once in the IST morning. Heavy commands — no need to run every 5 min.
+        $ist($schedule->command('reverb:fetch')
+            ->dailyAt('09:50')
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-fetch')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
 
-        // $schedule->command('reverb:daily --days=60')
-        //     ->dailyAt('01:10')
-        //     ->timezone('Asia/Kolkata')
-        //     ->name('reverb-daily')
-        //     ->withoutOverlapping()
-        //     ->runInBackground()
-        //     ->appendOutputTo($log);
+        $ist($schedule->command('reverb:daily --days=60')
+            ->dailyAt('09:55')
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-daily')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
 
-        // $schedule->command('reverb:sync-listing-statuses')
-        //     ->everySixHours()
-        //     ->timezone('UTC')
-        //     ->name('reverb-sync-listing-statuses')
-        //     ->withoutOverlapping(60)
-        //     ->runInBackground()
-        //     ->appendOutputTo($log);
+        $ist($schedule->command('reverb:sync-listing-statuses')
+            ->dailyAt('10:00')
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-sync-listing-statuses')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
 
         // $schedule->command('shopify:retry-pending-orders')
         //     ->hourly()
