@@ -480,8 +480,9 @@ class FetchReverbData extends Command
     }
 
     /**
-     * Replace all reverb_products rows with the latest API snapshot (truncate + insert).
-     * Skips truncate when there is nothing to insert so a failed fetch does not wipe the table.
+     * Replace all reverb_products rows with the latest API snapshot (delete + insert).
+     * Uses DELETE not TRUNCATE — MySQL TRUNCATE implicitly commits and breaks DB::transaction().
+     * Skips replace when there is nothing to insert so a failed fetch does not wipe the table.
      */
     protected function bulkReplaceProducts(array $data): void
     {
@@ -504,7 +505,7 @@ class FetchReverbData extends Command
         try {
             DB::transaction(function () use ($data) {
                 Schema::disableForeignKeyConstraints();
-                DB::table('reverb_products')->truncate();
+                DB::table('reverb_products')->delete();
                 Schema::enableForeignKeyConstraints();
 
                 $chunks = array_chunk($data, 500);
@@ -518,7 +519,7 @@ class FetchReverbData extends Command
                 }
             });
 
-            $this->info('reverb_products: truncated '.$previousCount.' row(s), inserted '.count($data).' listing(s).');
+            $this->info('reverb_products: replaced '.$previousCount.' row(s) with '.count($data).' listing(s).');
         } catch (\Exception $e) {
             $this->error('Error replacing reverb_products: '.$e->getMessage());
             throw $e;
