@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
-class GoogleAdsCampaignsRawController extends Controller
+class GoogleShoppingCampaignsController extends Controller
 {
     public function __construct()
     {
@@ -22,19 +22,19 @@ class GoogleAdsCampaignsRawController extends Controller
      */
     public function index()
     {
-        return view('campaign.google-ads-campaigns-raw', [
-            'gshoppingRawRule' => GoogleShoppingCampaignsRawRule::resolvedRule(),
+        return view('campaign.google-shopping', [
+            'googleShoppingRule' => GoogleShoppingCampaignsRawRule::resolvedRule(),
         ]);
     }
 
-    public function getRawRule(): JsonResponse
+    public function getRule(): JsonResponse
     {
         return response()->json([
             'rule' => GoogleShoppingCampaignsRawRule::resolvedRule(),
         ]);
     }
 
-    public function saveRawRule(Request $request): JsonResponse
+    public function saveRule(Request $request): JsonResponse
     {
         try {
             $normalized = GoogleShoppingCampaignsRawRule::normalizeRule($request->all());
@@ -46,7 +46,7 @@ class GoogleAdsCampaignsRawController extends Controller
             ], 422);
         } catch (\Throwable $e) {
             return response()->json([
-                'message' => 'Could not save G-Shopping raw rule.',
+                'message' => 'Could not save Google Shopping rule.',
                 'error' => $e->getMessage(),
                 'status' => 500,
             ], 500);
@@ -336,6 +336,111 @@ class GoogleAdsCampaignsRawController extends Controller
     }
 
     /**
+     * Daily badge trend values for the Google Shopping toolbar chart.
+     * Optional query: campaign_ids=123,456 limits the chart to the rows currently visible in the grid.
+     */
+    public function badgeHistory(Request $request): JsonResponse
+    {
+        $metric = strtolower((string) $request->input('metric', ''));
+        $days = max(1, min(180, (int) $request->input('days', 32)));
+        $allowed = ['spend', 'clicks', 'sold', 'sales', 'acos', 'cvr', 'bgt'];
+        if (! in_array($metric, $allowed, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unknown metric.',
+                'data' => [],
+            ], 422);
+        }
+
+        $campaignIds = [];
+        $rawCampaignIds = (string) $request->input('campaign_ids', '');
+        foreach (explode(',', $rawCampaignIds) as $id) {
+            $d = preg_replace('/\D/', '', trim($id));
+            if ($d !== '' && strlen($d) <= 32) {
+                $campaignIds[$d] = true;
+            }
+            if (count($campaignIds) >= 1000) {
+                break;
+            }
+        }
+
+        $tz = config('app.timezone');
+        $end = Carbon::now($tz)->startOfDay();
+        $start = $end->copy()->subDays($days - 1);
+
+        $query = DB::table('google_ads_campaigns')
+            ->whereNotNull('date')
+            ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')]);
+        if ($campaignIds !== []) {
+            $query->whereIn('campaign_id', array_keys($campaignIds));
+        }
+
+        $rows = $query
+            ->groupBy('date')
+            ->orderBy('date')
+            ->selectRaw('
+                date,
+                SUM(metrics_cost_micros) / 1000000.0 AS spend,
+                SUM(metrics_clicks) AS clicks,
+                SUM(ga4_actual_revenue) AS actual_sales,
+                SUM(ga4_ad_sales) AS ad_sales,
+                SUM(ga4_actual_sold_units) AS actual_sold,
+                SUM(COALESCE(budget_amount_micros, 0)) / 1000000.0 AS bgt
+            ')
+            ->get()
+            ->keyBy('date');
+
+        $data = [];
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $key = $d->format('Y-m-d');
+            $row = $rows->get($key);
+            $spend = (float) ($row->spend ?? 0);
+            $clicks = (float) ($row->clicks ?? 0);
+            $sales = ((float) ($row->actual_sales ?? 0)) > 0 ? (float) $row->actual_sales : (float) ($row->ad_sales ?? 0);
+            $sold = (float) ($row->actual_sold ?? 0);
+            $bgt = (float) ($row->bgt ?? 0);
+
+            switch ($metric) {
+                case 'spend':
+                    $value = round($spend, 2);
+                    break;
+                case 'clicks':
+                    $value = $clicks;
+                    break;
+                case 'sold':
+                    $value = $sold;
+                    break;
+                case 'sales':
+                    $value = round($sales, 2);
+                    break;
+                case 'acos':
+                    $value = $sales > 0 ? round(($spend / $sales) * 100, 1) : 0;
+                    break;
+                case 'cvr':
+                    $value = $clicks > 0 ? round(($sold / $clicks) * 100, 1) : 0;
+                    break;
+                case 'bgt':
+                    $value = round($bgt, 2);
+                    break;
+                default:
+                    $value = 0;
+            }
+
+            $data[] = [
+                'date' => $d->format('M d'),
+                'value' => $value,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'metric' => $metric,
+            'days' => $days,
+            'data' => $data,
+        ]);
+    }
+
+    /**
      * One row per campaign for the raw grid (before U7/U2/U1/Sts filters). Optional $forcedEndYmd (Y-m-d) anchors windows for history.
      *
      * @return \Illuminate\Database\Query\Builder
@@ -417,7 +522,7 @@ class GoogleAdsCampaignsRawController extends Controller
         $ga30Sub = DB::table('google_ads_campaigns');
         $applyBounds($ga30Sub);
         $ga30Sub->whereNotNull('campaign_id')
-            ->selectRaw('campaign_id, SUM(ga4_actual_revenue) as sum_ga4_actual, SUM(ga4_ad_sales) as sum_ga4_ads')
+            ->selectRaw('campaign_id, SUM(ga4_actual_revenue) as sum_ga4_actual, SUM(ga4_ad_sales) as sum_ga4_ads, SUM(ga4_actual_sold_units) as sum_ga4_actual_sold')
             ->groupBy('campaign_id');
 
         $latestSub = DB::table('google_ads_campaigns');
@@ -473,6 +578,7 @@ class GoogleAdsCampaignsRawController extends Controller
             ->addSelect(DB::raw('COALESCE(cClicksL1.sum_clicks_l1, 0) as clicks_sum_l1'))
             ->addSelect(DB::raw('COALESCE(cGa30.sum_ga4_actual, 0) as sum_ga4_actual'))
             ->addSelect(DB::raw('COALESCE(cGa30.sum_ga4_ads, 0) as sum_ga4_ads'))
+            ->addSelect(DB::raw('COALESCE(cGa30.sum_ga4_actual_sold, 0) as sum_ga4_actual_sold'))
             ->addSelect(DB::raw('(CASE WHEN COALESCE(cGa30.sum_ga4_actual, 0) > 0 THEN COALESCE(cGa30.sum_ga4_actual, 0) ELSE COALESCE(cGa30.sum_ga4_ads, 0) END) as sales_l30_agg'));
 
         return $query;
@@ -532,6 +638,7 @@ class GoogleAdsCampaignsRawController extends Controller
     {
         $spend = '(cSpend.sum_micros / 1000000.0)';
         $sales = '(CASE WHEN COALESCE(cGa30.sum_ga4_actual, 0) > 0 THEN COALESCE(cGa30.sum_ga4_actual, 0) ELSE COALESCE(cGa30.sum_ga4_ads, 0) END)';
+        $sold = 'COALESCE(cGa30.sum_ga4_actual_sold, 0)';
         $acosExpr = "(CASE "
             ."WHEN ROUND({$sales}) >= 1 THEN (ROUND({$spend}) / ROUND({$sales})) * 100.0 "
             ."WHEN ROUND({$spend}) > 0 THEN 100.0 "
@@ -543,7 +650,8 @@ class GoogleAdsCampaignsRawController extends Controller
             'l7_spend' => 'COALESCE(cSpendL7.sum_micros_l7, 0)',
             'l2_spend' => 'COALESCE(cSpendL2.sum_micros_l2, 0)',
             'l1_spend' => 'COALESCE(cSpendL1.sum_micros_l1, 0)',
-            'metrics_clicks' => 'g.metrics_clicks',
+            'metrics_clicks' => 'COALESCE(cClicks30.sum_clicks_30, 0)',
+            'ad_sold_L30' => $sold,
             'ad_sales_L30' => $sales,
             'acos_l30' => $acosExpr,
             'bgt' => 'COALESCE(g.budget_amount_micros, 0)',
@@ -818,6 +926,8 @@ class GoogleAdsCampaignsRawController extends Controller
         $clicksL1 = (int) ($arr['clicks_sum_l1'] ?? 0);
         unset($arr['clicks_sum_30'], $arr['clicks_sum_l7'], $arr['clicks_sum_l2'], $arr['clicks_sum_l1']);
 
+        // Show/sum L30 clicks in the grid; g.metrics_clicks is only the latest date row.
+        $arr['metrics_clicks'] = $clicks30;
         $arr['cpc_L30'] = $clicks30 > 0 ? round($spend / $clicks30, 6) : 0.0;
         $arr['cpc_L7'] = $clicksL7 > 0 ? round($l7Spend / $clicksL7, 6) : 0.0;
         $arr['cpc_L2'] = $clicksL2 > 0 ? round($l2Spend / $clicksL2, 6) : 0.0;
@@ -825,9 +935,11 @@ class GoogleAdsCampaignsRawController extends Controller
 
         $sumActual = (float) ($arr['sum_ga4_actual'] ?? 0);
         $sumAds = (float) ($arr['sum_ga4_ads'] ?? 0);
-        unset($arr['sum_ga4_actual'], $arr['sum_ga4_ads']);
+        $sumActualSold = (float) ($arr['sum_ga4_actual_sold'] ?? 0);
+        unset($arr['sum_ga4_actual'], $arr['sum_ga4_ads'], $arr['sum_ga4_actual_sold']);
 
         $salesL30 = $sumActual > 0 ? $sumActual : $sumAds;
+        $arr['ad_sold_L30'] = $sumActualSold;
         $arr['ad_sales_L30'] = $salesL30;
 
         $spendR = (int) round($spend);
@@ -918,6 +1030,7 @@ class GoogleAdsCampaignsRawController extends Controller
             'cpc_L7',
             'cpc_L2',
             'cpc_L1',
+            'ad_sold_L30',
             'ad_sales_L30',
             'acos_l30',
             'ub7',

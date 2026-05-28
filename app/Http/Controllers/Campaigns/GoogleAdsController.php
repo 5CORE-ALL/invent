@@ -37,7 +37,7 @@ class GoogleAdsController extends Controller
                 date,
                 SUM(metrics_clicks) as clicks, 
                 SUM(metrics_cost_micros) / 1000000 as spend, 
-                SUM(ga4_sold_units) as orders, 
+                SUM(ga4_actual_sold_units) as orders, 
                 SUM(ga4_ad_sales) as sales
             ')
             ->whereDate('date', '>=', $thirtyDaysAgo)
@@ -88,7 +88,7 @@ class GoogleAdsController extends Controller
                 date,
                 SUM(metrics_clicks) as clicks, 
                 SUM(metrics_cost_micros) / 1000000 as spend, 
-                SUM(ga4_sold_units) as orders, 
+                SUM(ga4_actual_sold_units) as orders, 
                 SUM(ga4_ad_sales) as sales
             ')
             ->whereDate('date', '>=', $thirtyDaysAgo)
@@ -158,7 +158,7 @@ class GoogleAdsController extends Controller
                 SUM(ga4_actual_revenue) as ga4_sales,
                 SUM(ga4_actual_sold_units) as ga4_orders,
                 SUM(ga4_ad_sales) as ad_sales,
-                SUM(ga4_sold_units) as ad_orders
+                SUM(ga4_actual_sold_units) as ad_orders
             ')
             ->where('advertising_channel_type', 'SHOPPING')
             ->where('campaign_status', '!=', 'ARCHIVED')
@@ -230,7 +230,7 @@ class GoogleAdsController extends Controller
                 date,
                 SUM(metrics_clicks) as clicks, 
                 SUM(metrics_cost_micros) / 1000000 as spend, 
-                SUM(ga4_sold_units) as orders, 
+                SUM(ga4_actual_sold_units) as orders, 
                 SUM(ga4_ad_sales) as sales
             ')
             ->whereDate('date', '>=', $thirtyDaysAgo)
@@ -286,7 +286,7 @@ class GoogleAdsController extends Controller
                 date,
                 SUM(metrics_clicks) as clicks, 
                 SUM(metrics_cost_micros) / 1000000 as spend, 
-                SUM(ga4_sold_units) as orders, 
+                SUM(ga4_actual_sold_units) as orders, 
                 SUM(ga4_ad_sales) as sales
             ')
             ->whereDate('date', '>=', $thirtyDaysAgo)
@@ -338,7 +338,7 @@ class GoogleAdsController extends Controller
                 date,
                 SUM(metrics_clicks) as clicks, 
                 SUM(metrics_cost_micros) / 1000000 as spend, 
-                SUM(ga4_sold_units) as orders, 
+                SUM(ga4_actual_sold_units) as orders, 
                 SUM(ga4_ad_sales) as sales
             ')
             ->whereDate('date', '>=', $thirtyDaysAgo)
@@ -390,7 +390,7 @@ class GoogleAdsController extends Controller
                 date,
                 SUM(metrics_clicks) as clicks, 
                 SUM(metrics_cost_micros) / 1000000 as spend, 
-                SUM(ga4_sold_units) as orders, 
+                SUM(ga4_actual_sold_units) as orders, 
                 SUM(ga4_ad_sales) as sales
             ')
             ->whereDate('date', '>=', $thirtyDaysAgo)
@@ -458,7 +458,7 @@ class GoogleAdsController extends Controller
                 'metrics_cost_micros',
                 'metrics_clicks',
                 'metrics_impressions',
-                'ga4_sold_units',
+                'ga4_actual_sold_units',
                 'ga4_ad_sales'
             )
             ->where('advertising_channel_type', 'SEARCH')
@@ -570,7 +570,7 @@ class GoogleAdsController extends Controller
                 'metrics_cost_micros',
                 'metrics_clicks',
                 'metrics_impressions',
-                'ga4_sold_units',
+                'ga4_actual_sold_units',
                 'ga4_ad_sales'
             )
             ->whereBetween('date', [$dateRanges['L60']['start'], $dateRanges['L60']['end']])
@@ -696,9 +696,8 @@ class GoogleAdsController extends Controller
                 'metrics_cost_micros',
                 'metrics_clicks',
                 'metrics_impressions',
-                'ga4_sold_units',
-                'ga4_ad_sales',
                 'ga4_actual_sold_units',
+                'ga4_ad_sales',
                 'ga4_actual_revenue'
             )
             ->where('advertising_channel_type', 'SHOPPING')
@@ -1108,7 +1107,7 @@ class GoogleAdsController extends Controller
                 'metrics_cost_micros',
                 'metrics_clicks',
                 'metrics_impressions',
-                'ga4_sold_units',
+                'ga4_actual_sold_units',
                 'ga4_ad_sales'
             )
             ->whereBetween('date', [$dateRanges['L60']['start'], $dateRanges['L60']['end']])
@@ -1443,7 +1442,7 @@ class GoogleAdsController extends Controller
                 SUM(ga4_actual_revenue) as ga4_sales,
                 SUM(ga4_actual_sold_units) as ga4_orders,
                 SUM(ga4_ad_sales) as ad_sales,
-                SUM(ga4_sold_units) as ad_orders
+                SUM(ga4_actual_sold_units) as ad_orders
             ')
             ->whereDate('date', '>=', $startDate)
             ->whereDate('date', '<=', $endDate);
@@ -1557,7 +1556,7 @@ class GoogleAdsController extends Controller
                 SUM(metrics_impressions) as impressions,
                 SUM(ga4_actual_sold_units) as ga4_actual_orders,
                 SUM(ga4_actual_revenue) as ga4_actual_sales,
-                SUM(ga4_sold_units) as ga4_orders,
+                SUM(ga4_actual_sold_units) as ga4_orders,
                 SUM(ga4_ad_sales) as ga4_sales
             ')
             ->whereNotNull('date')
@@ -1746,7 +1745,7 @@ class GoogleAdsController extends Controller
                 SUM(metrics_clicks) as clicks,
                 SUM(metrics_cost_micros) / 1000000 as spend,
                 SUM(ga4_actual_sold_units) as ga4_actual_orders,
-                SUM(ga4_sold_units) as ga4_orders
+                SUM(ga4_actual_sold_units) as ga4_orders
             ')
             ->whereNotNull('date')
             ->where('advertising_channel_type', 'SHOPPING')
@@ -1879,7 +1878,7 @@ class GoogleAdsController extends Controller
                 SUM(metrics_clicks) as clicks,
                 SUM(metrics_cost_micros) / 1000000 as spend,
                 SUM(ga4_actual_sold_units) as ga4_actual_orders,
-                SUM(ga4_sold_units) as ga4_orders
+                SUM(ga4_actual_sold_units) as ga4_orders
             ')
             ->whereNotNull('date')
             ->where('advertising_channel_type', 'SHOPPING')
@@ -1986,7 +1985,7 @@ class GoogleAdsController extends Controller
                 SUM(metrics_cost_micros) / 1000000 as spend,
                 SUM(ga4_actual_sold_units) as ga4_actual_orders,
                 SUM(ga4_actual_revenue) as ga4_actual_sales,
-                SUM(ga4_sold_units) as ga4_orders, 
+                SUM(ga4_actual_sold_units) as ga4_orders, 
                 SUM(ga4_ad_sales) as ga4_sales
             ')
             ->whereDate('date', '>=', $startDate)
@@ -2083,7 +2082,7 @@ class GoogleAdsController extends Controller
                 'metrics_cost_micros',
                 'metrics_clicks',
                 'metrics_impressions',
-                'ga4_sold_units',
+                'ga4_actual_sold_units',
                 'ga4_ad_sales'
             )
             ->whereBetween('date', [$dateRanges['L7']['start'], $dateRanges['L7']['end']])

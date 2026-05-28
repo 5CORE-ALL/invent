@@ -1,4 +1,3 @@
-
 <?php
 
 use App\Http\Controllers\AdsMaster\AdsMasterController;
@@ -45,7 +44,7 @@ use App\Http\Controllers\Campaigns\EbayPMPAdsController;
 use App\Http\Controllers\Campaigns\EbayCampaignAdsController;
 use App\Http\Controllers\Campaigns\Ebay2CampaignAdsController;
 use App\Http\Controllers\Campaigns\EbayRunningAdsController;
-use App\Http\Controllers\Campaigns\GoogleAdsCampaignsRawController;
+use App\Http\Controllers\Campaigns\GoogleShoppingCampaignsController;
 use App\Http\Controllers\Campaigns\GoogleAdsController;
 use App\Http\Controllers\Campaigns\TiktokAdsController;
 use App\Http\Controllers\Campaigns\WalmartMissingAdsController;
@@ -4905,15 +4904,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/walmart/running/ads/data', 'getWalmartRunningAdsData');
         Route::get('/adv-walmart/ad-running/save-data', 'getAdvWalmartRunningSaveData')->name('adv-walmart.ad-running.save-data');
     });
-    Route::controller(GoogleAdsCampaignsRawController::class)->group(function () {
-        Route::get('/google/shopping/campaigns-raw', 'index')->name('google.ads.campaigns.raw');
-        Route::get('/google/shopping/campaigns-raw/data', 'data')->name('google.ads.campaigns.raw.data');
-        Route::get('/google/shopping/campaigns-raw/rule', 'getRawRule')->name('google.ads.campaigns.raw.rule');
-        Route::post('/google/shopping/campaigns-raw/rule', 'saveRawRule')->name('google.ads.campaigns.raw.rule.save');
-        Route::post('/google/shopping/campaigns-raw/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.ads.campaigns.raw.push.sbgt');
-        Route::post('/google/shopping/campaigns-raw/push-sbid', 'pushSbidShopping')->name('google.ads.campaigns.raw.push.sbid');
-        Route::post('/google/shopping/campaigns-raw/u7-distribution', 'u7Distribution')->name('google.ads.campaigns.raw.u7.distribution');
-        Route::post('/google/shopping/campaigns-raw/u7-distribution-history', 'u7DistributionHistory')->name('google.ads.campaigns.raw.u7.history');
+    Route::controller(GoogleShoppingCampaignsController::class)->group(function () {
+        Route::get('/google/shopping/google-shopping', 'index')->name('google.shopping.campaigns');
+        Route::get('/google/shopping/google-shopping/data', 'data')->name('google.shopping.campaigns.data');
+        Route::get('/google/shopping/google-shopping/rule', 'getRule')->name('google.shopping.campaigns.rule');
+        Route::post('/google/shopping/google-shopping/rule', 'saveRule')->name('google.shopping.campaigns.rule.save');
+        Route::post('/google/shopping/google-shopping/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.shopping.campaigns.push.sbgt');
+        Route::post('/google/shopping/google-shopping/push-sbid', 'pushSbidShopping')->name('google.shopping.campaigns.push.sbid');
+        Route::get('/google/shopping/google-shopping/badge-history', 'badgeHistory')->name('google.shopping.campaigns.badge.history');
+        Route::post('/google/shopping/google-shopping/u7-distribution', 'u7Distribution')->name('google.shopping.campaigns.u7.distribution');
+        Route::post('/google/shopping/google-shopping/u7-distribution-history', 'u7DistributionHistory')->name('google.shopping.campaigns.u7.history');
     });
 
     Route::controller(GoogleAdsController::class)->group(function () {
