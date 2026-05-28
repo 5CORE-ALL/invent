@@ -45,6 +45,12 @@ class FetchEbayOrders extends Command
 
         $this->info("Fetched " . count($l30Orders) . " L30 orders and " . count($l60Orders) . " L60 orders");
 
+        $deletedL30 = EbayOrder::where('period', 'l30')->delete();
+        $this->info("Deleted {$deletedL30} old L30 orders");
+
+        $deletedL60 = EbayOrder::where('period', 'l60')->delete();
+        $this->info("Deleted {$deletedL60} old L60 orders");
+
         $this->insertOrders($l30Orders, 'l30');
         $this->insertOrders($l60Orders, 'l60');
 
@@ -53,16 +59,20 @@ class FetchEbayOrders extends Command
 
     private function dateRanges()
     {
-        $today = Carbon::today();
+        // Match eBay order timestamps (same as fetch-ebay2-orders).
+        // API rejects end dates in the future — L30 end is "now", not endOfDay().
+        $tz = 'America/Los_Angeles';
+        $today = Carbon::now($tz)->startOfDay();
+        $now = Carbon::now($tz);
 
         return [
             'l30' => [
-                'start' => $today->copy()->subDays(30),  // 30 days ago
-                'end' => $today->copy()->subDay(),       // yesterday
+                'start' => $today->copy()->subDays(30)->startOfDay(),
+                'end' => $now->copy(),
             ],
             'l60' => [
-                'start' => $today->copy()->subDays(60),  // 60 days ago
-                'end' => $today->copy()->subDays(31),    // 31 days ago
+                'start' => $today->copy()->subDays(60)->startOfDay(),
+                'end' => $today->copy()->subDays(30)->endOfDay(),
             ],
         ];
     }
@@ -100,8 +110,8 @@ class FetchEbayOrders extends Command
     private function fetchOrders($token, $range)
     {
         $orders = [];
-        $from = $range['start']->format('Y-m-d\TH:i:s.000\Z');
-        $to = $range['end']->format('Y-m-d\TH:i:s.000\Z');
+        $from = $range['start']->copy()->utc()->format('Y-m-d\TH:i:s.000\Z');
+        $to = $range['end']->copy()->utc()->format('Y-m-d\TH:i:s.000\Z');
 
         $url = "https://api.ebay.com/sell/fulfillment/v1/order?filter=creationdate:[{$from}..{$to}]&limit=200";
 

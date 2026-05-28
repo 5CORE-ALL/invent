@@ -47,8 +47,14 @@ class FetchEbay3DailyData extends Command
 
         // Calculate date boundaries using California timezone (America/Los_Angeles) to match eBay order times
         $now = Carbon::now('America/Los_Angeles')->startOfDay();
-        $cutoffDate = $now->copy()->subDays($days);
-        $l30Start = $now->copy()->subDays(30);
+        $cutoffDate = $now->copy()->subDays($days)->startOfDay();
+        $l30Start = $now->copy()->subDays(30)->startOfDay();
+
+        // Drop rows older than the fetch window so period l30/l60 stays accurate
+        $pruned = Ebay3DailyData::where('creation_date', '<', $cutoffDate)->delete();
+        if ($pruned > 0) {
+            $this->info("Pruned {$pruned} eBay 3 rows older than {$days} days.");
+        }
 
         // Fetch and store orders
         $this->fetchAndStoreOrders($token, $cutoffDate, $l30Start);

@@ -626,9 +626,10 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         $ist($schedule->command('app:fetch-ebay-reports')
-            ->hourly()
+            ->dailyAt('14:00')
+            ->timezone('Asia/Kolkata')
             ->name('fetch-ebay-reports')
-            ->withoutOverlapping(self::HF_MUTEX_HOURLY)
+            ->withoutOverlapping(180)
             ->runInBackground()
             ->appendOutputTo($log));
 

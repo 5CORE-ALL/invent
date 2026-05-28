@@ -28,6 +28,7 @@ use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\ChannelMaster;
 use App\Http\Controllers\Sales\AmazonSalesController;
+use App\Services\EbayChannelMetricsService;
 use App\Services\TemuShopifySalesService;
 use App\Models\AmazonOrder;
 use App\Models\AmazonSpCampaignReport;
@@ -290,15 +291,16 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateEbayMetrics($date)
     {
-        // Get L30 orders data
-        $orders = EbayOrder::with('items')
-            ->where('period', 'l30')
-            ->where('status', '!=', 'CANCELLED')
-            ->get();
+        // L30 from app:fetch-ebay-orders (period = l30, Pacific window) — same filter as Channel Master
+        $orders = EbayChannelMetricsService::applyActiveOrderFilter(
+            EbayOrder::with('items')->where('period', 'l30')
+        )->get();
 
         if ($orders->isEmpty()) {
             return null;
         }
+
+        $percentageDecimal = EbayChannelMetricsService::percentageDecimal(1);
 
         $productMasters = ProductMaster::all()->keyBy(function ($item) {
             return strtoupper($item->sku);
@@ -387,8 +389,8 @@ class UpdateMarketplaceDailyMetrics extends Command
                 $cogs = $lp * $quantity;
                 $totalCogs += $cogs;
 
-                // PFT Each = (unitPrice * 0.85) - lp - ship_cost
-                $pftEach = ($unitPrice * 0.85) - $lp - $shipCost;
+                // PFT Each = (unitPrice * channel %) - lp - ship_cost
+                $pftEach = ($unitPrice * $percentageDecimal) - $lp - $shipCost;
 
                 // T PFT = pft_each * quantity
                 $pft = $pftEach * $quantity;
@@ -471,10 +473,10 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateEbay2Metrics($date)
     {
-        // Get L30 orders data from ebay2_orders (same as Ebay2SalesController)
-        $orders = Ebay2Order::with('items')
-            ->where('period', 'l30')
-            ->get();
+        // L30 from app:fetch-ebay2-orders (period = l30) — same active-order filter as Channel Master
+        $orders = EbayChannelMetricsService::applyActiveOrderFilter(
+            Ebay2Order::with('items')->where('period', 'l30')
+        )->get();
 
         if ($orders->isEmpty()) {
             return null;
@@ -513,9 +515,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             }
         }
 
-        // Get marketplace percentage for eBay 2
-        // NOTE: Ebay2SalesController uses hardcoded 0.85, so we use the same for consistency
-        $percentageDecimal = 0.85;
+        $percentageDecimal = EbayChannelMetricsService::percentageDecimal(2);
 
         $totalOrders = 0;
         $totalQuantity = 0;
@@ -668,103 +668,19 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateEbay3Metrics($date)
     {
-        // Get L30 orders data from ebay3_daily_data
-        $orders = DB::table('ebay3_daily_data')->where('period', 'l30')->get();
-
-        if ($orders->isEmpty()) {
+        // L30 from ebay3:daily (period = l30) — shared with Channel Master (EbayChannelMetricsService)
+        $lines = EbayChannelMetricsService::summarizeEbay3L30Lines();
+        if ($lines === null) {
             return null;
         }
 
-        // Get unique SKUs from orders
-        $skus = $orders->pluck('sku')->filter()->unique()->toArray();
-
-        // Fetch ProductMaster data
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
-        // Get marketplace percentage for eBay 3 (85%)
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'EbayThree')->first();
-        $percentageDecimal = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.85;
-
-        $totalOrders = 0;
-        $totalQuantity = 0;
-        $totalRevenue = 0;
-        $totalCogs = 0;
-        $totalPft = 0;
-        $totalWeightedPrice = 0;
-        $totalQuantityForPrice = 0;
-
-        foreach ($orders as $order) {
-            $sku = strtoupper($order->sku ?? '');
-            if (empty($sku)) continue;
-
-            $totalOrders++;
-            $quantity = (int) ($order->quantity ?? 1);
-            // IMPORTANT: unit_price in ebay3_daily_data is the TOTAL line item cost (not per unit)
-            $lineItemTotal = (float) ($order->unit_price ?? 0);
-            $perUnitPrice = $quantity > 0 ? $lineItemTotal / $quantity : 0;
-            
-            $totalQuantity += $quantity;
-            $totalRevenue += $lineItemTotal; // Already the total, don't multiply by quantity
-
-            if ($quantity > 0 && $perUnitPrice > 0) {
-                $totalWeightedPrice += $perUnitPrice * $quantity;
-                $totalQuantityForPrice += $quantity;
-            }
-
-            // Get LP, Ship and Weight Act from ProductMaster
-            $lp = 0;
-            $ship = 0;
-            $weightAct = 0;
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                
-                // Get LP
-                foreach ($values as $k => $v) {
-                    if (strtolower($k) === "lp") {
-                        $lp = floatval($v);
-                        break;
-                    }
-                }
-                if ($lp === 0 && isset($pm->lp)) {
-                    $lp = floatval($pm->lp);
-                }
-                
-                // Get Ship
-                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? floatval($pm->ship) : 0);
-                
-                // Get Weight Act
-                if (isset($values['wt_act'])) {
-                    $weightAct = floatval($values['wt_act']);
-                }
-            }
-
-            // T Weight = Weight Act * Quantity
-            $tWeight = $weightAct * $quantity;
-
-            // Ship Cost calculation (same as Ebay3SalesController)
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
-
-            // COGS = LP * quantity
-            $cogs = $lp * $quantity;
-            $totalCogs += $cogs;
-
-            // PFT Each = (per_unit_price * 0.85) - lp - ship_cost
-            $pftEach = ($perUnitPrice * $percentageDecimal) - $lp - $shipCost;
-
-            // T PFT = pft_each * quantity
-            $pft = $pftEach * $quantity;
-            $totalPft += $pft;
-        }
+        $totalOrders = $lines['total_orders'];
+        $totalQuantity = $lines['total_quantity'];
+        $totalRevenue = $lines['total_revenue'];
+        $totalCogs = $lines['total_cogs'];
+        $totalPft = $lines['total_pft'];
+        $totalWeightedPrice = $lines['total_weighted_price'];
+        $totalQuantityForPrice = $lines['total_quantity_for_price'];
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
         $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
@@ -2806,8 +2722,9 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateDobaMetrics($date)
     {
-        // Get Doba L30 orders from DobaDailyData (matching DobaSalesController)
-        $orders = DobaDailyData::where('period', 'L30')
+        // L30 from doba_daily_data (period stored lowercase by doba:daily), cancelled excluded
+        $orders = DobaDailyData::whereRaw('LOWER(period) = ?', ['l30'])
+            ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'])
             ->get();
 
         if ($orders->isEmpty()) {

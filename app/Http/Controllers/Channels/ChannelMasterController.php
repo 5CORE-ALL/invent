@@ -122,6 +122,7 @@ use App\Models\WalmartMetrics;
 use App\Models\AmazonListingStatus;
 use App\Models\EbayListingStatus;
 use App\Models\TemuListingStatus;
+use App\Services\EbayChannelMetricsService;
 use App\Services\TemuShopifySalesService;
 use App\Models\BestbuyUSAListingStatus;
 use App\Models\AmazonChannelSummary;
@@ -605,6 +606,66 @@ class ChannelMasterController extends Controller
             $row['NMap'] = $mapMiss['nmap'];
             if (array_key_exists('total_views', $mapMiss)) {
                 $row['Total Views'] = $mapMiss['total_views'];
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Overlay live eBay 1/2/3 L30 (marketplace_daily_metrics) + L60 (orders / ebay3 dates)
+     * so cached channel_master_calculated_data stays fast but sales match latest fetch + metrics sync.
+     */
+    private function overlayLiveEbayMetricsOnChannelRows(array $rows): array
+    {
+        $displayToWhich = [
+            'eBay' => 1,
+            'EbayTwo' => 2,
+            'EbayThree' => 3,
+        ];
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($name === '' || ! isset($displayToWhich[$name])) {
+                continue;
+            }
+
+            $which = $displayToWhich[$name];
+            $live = EbayChannelMetricsService::liveChannelSummary($which);
+            if ($live === null) {
+                continue;
+            }
+
+            $l30Sales = (float) $live['l30_sales'];
+            $l60Sales = (float) $live['l60_sales'];
+
+            $row['L30 Sales'] = (int) round($l30Sales);
+            $row['L30 Orders'] = (int) $live['l30_orders'];
+            $row['Qty'] = (int) $live['qty'];
+            $row['L-60 Sales'] = (int) round($l60Sales);
+            $row['L60 Orders'] = (int) $live['l60_orders'];
+
+            if ($l60Sales > 0) {
+                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
+            }
+
+            if ($l60Sales > 0 && isset($live['l60_profit'])) {
+                $row['gprofitL60'] = round(($live['l60_profit'] / $l60Sales) * 100, 2).'%';
+            }
+
+            if (! empty($live['l60_cogs']) && isset($live['l60_profit'])) {
+                $row['G RoiL60'] = round(($live['l60_profit'] / $live['l60_cogs']) * 100, 2);
+            }
+
+            $ySales = $this->computeEbayYSalesLikeAmazon($which);
+            if ($ySales !== null) {
+                $row['Y Sales'] = $ySales;
+            }
+
+            $l7Sales = $this->computeEbayL7SalesLikeAmazon($which);
+            if ($l7Sales !== null) {
+                $row['L7 Sales'] = $l7Sales;
             }
         }
         unset($row);
@@ -3019,6 +3080,8 @@ class ChannelMasterController extends Controller
             $formattedData = $this->overlayLiveMapMissNMapOnChannelRows($formattedData);
             // Temu / Temu 2: overlay live L30/Y/L7 sales from tabulator (cached table can lag metrics sync)
             $formattedData = $this->overlayLiveTemuMetricsOnChannelRows($formattedData);
+            // eBay 1/2/3: overlay L30 metrics + L60 orders (matches fetch-ebay-orders + update-marketplace-daily-metrics)
+            $formattedData = $this->overlayLiveEbayMetricsOnChannelRows($formattedData);
             // Purchasing Power: overlay live L30/L60 from Shopify (matches /purchasing-power-sales)
             $formattedData = $this->overlayLivePurchasingPowerMetricsOnChannelRows($formattedData);
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
@@ -5469,40 +5532,25 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated)
-        $metrics = MarketplaceDailyMetric::where('channel', 'eBay')->latest('date')->first();
-        
-        // Get L60 data from orders for comparison
-        $l60OrdersQuery = EbayOrder::where('period', 'l60');
-        $l60Orders = $l60OrdersQuery->count();
-        
-        // Calculate L60 Sales
-        $sixtyDaysAgo = now()->subDays(60);
-        $thirtyDaysAgo = now()->subDays(30);
-        $l60OrderItems = EbayOrder::where('order_date', '>=', $sixtyDaysAgo)
-            ->where('order_date', '<', $thirtyDaysAgo)
-            ->join('ebay_order_items', 'ebay_orders.id', '=', 'ebay_order_items.ebay_order_id')
-            ->select('ebay_order_items.price', 'ebay_order_items.quantity')
-            ->get();
-        
-        $l60Sales = 0;
-        foreach ($l60OrderItems as $item) {
-            $quantity = (float) $item->quantity;
-            if ($quantity > 0) {
-                $l60Sales += (float) $item->price;
-            }
-        }
+        // L30: marketplace_daily_metrics (app:update-marketplace-daily-metrics + period l30 orders)
+        $metrics = EbayChannelMetricsService::latestDailyMetrics('eBay');
 
-        $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
-        $tacosPercentage = $metrics->tacos_percentage ?? 0;
-        $nPft = $metrics->n_pft ?? 0;
-        $nRoi = $metrics->n_roi ?? 0;
+        $l60 = EbayChannelMetricsService::summarizeL60Orders(1);
+        $l60Orders = $l60['orders'];
+        $l60Sales = $l60['sales'];
+        $totalProfitL60 = $l60['total_profit'];
+        $totalCogsL60 = $l60['total_cogs'];
+
+        $l30Sales = $metrics?->total_sales ?? 0;
+        $l30Orders = $metrics?->total_orders ?? 0;
+        $totalQuantity = $metrics?->total_quantity ?? 0;
+        $totalProfit = $metrics?->total_pft ?? 0;
+        $totalCogs = $metrics?->total_cogs ?? 0;
+        $gProfitPct = $metrics?->pft_percentage ?? 0;
+        $gRoi = $metrics?->roi_percentage ?? 0;
+        $tacosPercentage = $metrics?->tacos_percentage ?? 0;
+        $nPft = $metrics?->n_pft ?? 0;
+        $nRoi = $metrics?->n_roi ?? 0;
 
         $tabL30Units = $this->getEbayTabulatorL30UnitsForCvr('ebay');
         if ($tabL30Units !== null) {
@@ -5517,10 +5565,9 @@ class ChannelMasterController extends Controller
         
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
-        
-        // L60 profit percentage (still needs calculation if needed)
-        $gprofitL60 = 0;
-        $gRoiL60 = 0;
+
+        $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
+        $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
         // Calculate Ads %
         $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
@@ -5578,81 +5625,24 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated, same as Amazon)
-        $metrics = MarketplaceDailyMetric::where('channel', 'eBay 2')->latest('date')->first();
-        
-        // Get L60 data from orders for comparison
-        $ordersL60 = Ebay2Order::with('items')
-            ->where('period', 'l60')
-            ->get();
+        $metrics = EbayChannelMetricsService::latestDailyMetrics('eBay 2');
 
-        // Calculate L60 Sales and metrics
-        $l60Orders = 0;
-        $l60Sales = 0;
-        $totalProfitL60 = 0;
-        $totalCogsL60 = 0;
+        $l60 = EbayChannelMetricsService::summarizeL60Orders(2);
+        $l60Orders = $l60['orders'];
+        $l60Sales = $l60['sales'];
+        $totalProfitL60 = $l60['total_profit'];
+        $totalCogsL60 = $l60['total_cogs'];
 
-        // Get eBay 2 marketing percentage
-        $percentage = ChannelMaster::where('channel', 'EbayTwo')->value('channel_percentage') ?? 85;
-        $percentageDecimal = $percentage / 100;
-
-        // Load product masters (lp, ship) keyed by SKU
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
-        foreach ($ordersL60 as $order) {
-            foreach ($order->items as $item) {
-                if (!$item->sku || $item->sku === '') continue;
-
-                $l60Orders++;
-                $quantity = (int) ($item->quantity ?? 1);
-                $price = (float) ($item->price ?? 0);
-                $l60Sales += $price;
-
-                $unitPrice = $quantity > 0 ? $price / $quantity : 0;
-
-                $sku = strtoupper($item->sku);
-                $lp = 0;
-                $ship = 0;
-
-                if (isset($productMasters[$sku])) {
-                    $pm = $productMasters[$sku];
-                    $values = is_array($pm->Values) ? $pm->Values :
-                            (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                    foreach ($values as $k => $v) {
-                        if (strtolower($k) === "lp") {
-                            $lp = floatval($v);
-                            break;
-                        }
-                    }
-                    if ($lp === 0 && isset($pm->lp)) {
-                        $lp = floatval($pm->lp);
-                    }
-
-                    $ship = isset($values["ebay2_ship"]) && $values["ebay2_ship"] !== null 
-                        ? floatval($values["ebay2_ship"]) 
-                        : (isset($values["ship"]) ? floatval($values["ship"]) : 0);
-                }
-
-                $totalCogsL60 += ($lp * $quantity);
-                $pftEach = ($unitPrice * $percentageDecimal) - $lp - $ship;
-                $totalProfitL60 += ($pftEach * $quantity);
-            }
-        }
-
-        // Use pre-calculated metrics from MarketplaceDailyMetric (same as Amazon)
-        $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
-        $tacosPercentage = $metrics->tacos_percentage ?? 0;
-        $nPft = $metrics->n_pft ?? 0;
-        $nRoi = $metrics->n_roi ?? 0;
+        $l30Sales = $metrics?->total_sales ?? 0;
+        $l30Orders = $metrics?->total_orders ?? 0;
+        $totalQuantity = $metrics?->total_quantity ?? 0;
+        $totalProfit = $metrics?->total_pft ?? 0;
+        $totalCogs = $metrics?->total_cogs ?? 0;
+        $gProfitPct = $metrics?->pft_percentage ?? 0;
+        $gRoi = $metrics?->roi_percentage ?? 0;
+        $tacosPercentage = $metrics?->tacos_percentage ?? 0;
+        $nPft = $metrics?->n_pft ?? 0;
+        $nRoi = $metrics?->n_roi ?? 0;
 
         $tabL30Units2 = $this->getEbayTabulatorL30UnitsForCvr('ebay2');
         if ($tabL30Units2 !== null) {
@@ -5769,77 +5759,24 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated, same as Amazon/eBay 2)
-        $metrics = MarketplaceDailyMetric::where('channel', 'eBay 3')->latest('date')->first();
-        
-        // Calculate L60 Sales using date range (same as eBay 1) - NOT using period field
-        $sixtyDaysAgo = now()->subDays(60);
-        $thirtyDaysAgo = now()->subDays(30);
-        
-        $ordersL60 = DB::table('ebay3_daily_data')
-            ->where('creation_date', '>=', $sixtyDaysAgo)
-            ->where('creation_date', '<', $thirtyDaysAgo)
-            ->where('quantity', '>', 0)  // Only include orders with quantity > 0
-            ->get();
+        $metrics = EbayChannelMetricsService::latestDailyMetrics('eBay 3');
 
-        // Load product masters (lp, ship) keyed by SKU
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
+        $l60 = EbayChannelMetricsService::summarizeEbay3L60();
+        $l60Orders = $l60['orders'];
+        $l60Sales = $l60['sales'];
+        $totalProfitL60 = $l60['total_profit'];
+        $totalCogsL60 = $l60['total_cogs'];
 
-        // Get eBay marketing percentage from marketplace_percentages (85% for eBay 3)
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'EbayThree')->first();
-        $percentageDecimal = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.85;
-
-        // Calculate L60 metrics
-        $l60Orders = 0;
-        $uniqueOrders = [];
-        $l60Sales = 0;
-        $totalProfitL60 = 0;
-        $totalCogsL60 = 0;
-
-        foreach ($ordersL60 as $order) {
-            // Count unique orders
-            if ($order->order_id && !in_array($order->order_id, $uniqueOrders)) {
-                $uniqueOrders[] = $order->order_id;
-                $l60Orders++;
-            }
-            
-            $sku = strtoupper($order->sku ?? '');
-            if (empty($sku)) continue;
-
-            $qty = floatval($order->quantity ?? 1);
-            $price = floatval($order->unit_price ?? 0);
-            
-            // Apply marketplace percentage to sales (seller gets 85%, eBay takes 15%)
-            $l60Sales += ($price * $qty) * $percentageDecimal;
-
-            $lp = 0;
-            $ship = 0;
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
-            }
-
-            $pftPerUnit = ($price * $percentageDecimal) - $lp - $ship;
-            $totalProfitL60 += $pftPerUnit * $qty;
-            $totalCogsL60 += $lp * $qty;
-        }
-
-        // Use pre-calculated metrics from MarketplaceDailyMetric (same as Amazon/eBay 2)
-        $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
-        $tacosPercentage = $metrics->tacos_percentage ?? 0;
-        $nPft = $metrics->n_pft ?? 0;
-        $nRoi = $metrics->n_roi ?? 0;
+        $l30Sales = $metrics?->total_sales ?? 0;
+        $l30Orders = $metrics?->total_orders ?? 0;
+        $totalQuantity = $metrics?->total_quantity ?? 0;
+        $totalProfit = $metrics?->total_pft ?? 0;
+        $totalCogs = $metrics?->total_cogs ?? 0;
+        $gProfitPct = $metrics?->pft_percentage ?? 0;
+        $gRoi = $metrics?->roi_percentage ?? 0;
+        $tacosPercentage = $metrics?->tacos_percentage ?? 0;
+        $nPft = $metrics?->n_pft ?? 0;
+        $nRoi = $metrics?->n_roi ?? 0;
 
         $tabL30Units3 = $this->getEbayTabulatorL30UnitsForCvr('ebay3');
         if ($tabL30Units3 !== null) {
@@ -6731,16 +6668,15 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Use pre-calculated metrics from MarketplaceDailyMetric (like Amazon, eBay 2, Temu)
+        // L30 metrics from app:update-marketplace-daily-metrics
         $latestMetric = MarketplaceDailyMetric::where('channel', 'Doba')
             ->orderBy('date', 'desc')
             ->first();
 
-        // Get L60 data for comparison (60 days ago)
-        $l60Date = Carbon::today()->subDays(60)->format('Y-m-d');
-        $l60Metric = MarketplaceDailyMetric::where('channel', 'Doba')
-            ->where('date', $l60Date)
-            ->first();
+        // L60: compute directly from doba_daily_data (period = 'l60'), same rules as calculateDobaMetrics.
+        // Previous logic looked up marketplace_daily_metrics for "today - 60d", which almost never exists
+        // (command runs for today only) and even when present means "L30 ending 60d ago" rather than today's L60.
+        $l60Summary = $this->computeDobaL60SummaryFromDailyData();
 
         // Current metrics
         $l30Sales = $latestMetric ? $latestMetric->l30_sales : 0;
@@ -6753,11 +6689,11 @@ class ChannelMasterController extends Controller
         $nPftPct = $latestMetric ? $latestMetric->n_pft : 0;
         $nRoi = $latestMetric ? $latestMetric->n_roi : 0;
 
-        // L60 metrics
-        $l60Sales = $l60Metric ? $l60Metric->l30_sales : 0;
-        $l60Orders = $l60Metric ? $l60Metric->total_orders : 0;
-        $gprofitL60 = $l60Metric ? $l60Metric->pft_percentage : 0;
-        $gRoiL60 = $l60Metric ? $l60Metric->roi_percentage : 0;
+        // L60 metrics (direct from doba_daily_data)
+        $l60Sales = $l60Summary['sales'];
+        $l60Orders = $l60Summary['orders'];
+        $gprofitL60 = $l60Sales > 0 ? ($l60Summary['pft'] / $l60Sales) * 100 : 0;
+        $gRoiL60 = $l60Summary['cogs'] > 0 ? ($l60Summary['pft'] / $l60Summary['cogs']) * 100 : 0;
 
         // Growth calculation
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
@@ -6807,6 +6743,80 @@ class ChannelMasterController extends Controller
             'message' => 'Doba channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Doba L60 sales/orders/PFT/COGS from doba_daily_data (period = l60) — mirrors
+     * calculateDobaMetrics L30 math so Growth and gprofitL60 on /all-marketplace-master are accurate.
+     *
+     * @return array{sales: float, orders: int, qty: int, pft: float, cogs: float}
+     */
+    private function computeDobaL60SummaryFromDailyData(): array
+    {
+        $orders = \App\Models\DobaDailyData::whereRaw('LOWER(period) = ?', ['l60'])
+            ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'])
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return ['sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
+        }
+
+        $skus = $orders->pluck('sku')->filter()->unique()->values()->toArray();
+        $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $margin = 0.95;
+        $sales = 0.0;
+        $orderCount = 0;
+        $qty = 0;
+        $pft = 0.0;
+        $cogs = 0.0;
+
+        foreach ($orders as $order) {
+            if (! $order->sku || $order->sku === '') {
+                continue;
+            }
+
+            $orderCount++;
+            $quantity = (int) ($order->quantity ?? 1);
+            $itemPrice = (float) ($order->item_price ?? 0);
+            $totalPrice = (float) ($order->total_price ?? 0);
+
+            $qty += $quantity;
+            $sales += $totalPrice;
+
+            $lp = 0.0;
+            $ship = 0.0;
+            if (isset($productMasters[$order->sku])) {
+                $pm = $productMasters[$order->sku];
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                if (isset($values['lp'])) {
+                    $lp = (float) $values['lp'];
+                }
+                if (isset($values['ship'])) {
+                    $ship = (float) $values['ship'];
+                }
+            }
+
+            $cogs += $lp * $quantity;
+
+            $shipCost = $quantity > 0 ? ($quantity === 1 ? $ship : $ship / $quantity) : $ship;
+
+            if (strtolower($order->order_type ?? '') === 'pickup with a prepaid label') {
+                $pftEach = ($itemPrice * $margin) - $lp;
+            } else {
+                $pftEach = ($itemPrice * $margin) - $shipCost - $lp;
+            }
+            $pft += $pftEach * $quantity;
+        }
+
+        return [
+            'sales' => $sales,
+            'orders' => $orderCount,
+            'qty' => $qty,
+            'pft' => $pft,
+            'cogs' => $cogs,
+        ];
     }
 
     private function getDobaMissingListingCount()
