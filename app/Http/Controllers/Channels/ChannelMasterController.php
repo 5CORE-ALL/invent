@@ -6184,10 +6184,9 @@ class ChannelMasterController extends Controller
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
 
-        // L60: same source/filter/math as L30 (period='l60' + status NOT IN [CLOSED, CHANNEL_SPECIFIC])
-        // so Growth and gprofitL60/G RoiL60 are apples-to-apples with L30.
-        // Previous logic ran a date-range query in IST while L30 uses Mirakl's period column
-        // and excluded only CLOSED, which double-counted CHANNEL_SPECIFIC rows and skewed Growth.
+        // L60 = previous 30-day period (days 31–60) from mirakl_daily_data, same filter (!= CLOSED)
+        // as before so existing numbers don't shift. PFT/COGS now also computed from those rows
+        // so gprofitL60 / G RoiL60 are real (previously hardcoded to 0).
         $l60Summary = $this->computeMacysL60SummaryFromMirakl();
         $l60Sales = $l60Summary['sales'];
         $l60Orders = $l60Summary['orders'];
@@ -6252,17 +6251,21 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Macy L60 sales/orders/PFT/COGS from mirakl_daily_data (period='l60', channel = "Macy's, Inc.").
-     * Mirrors MacysSalesController L30 math (same status filter, margin, ship/weight rules)
-     * so Growth and gprofitL60/G RoiL60 on /all-marketplace-master stay consistent.
+     * Macy L60 sales/orders/PFT/COGS from mirakl_daily_data, days 31–60 window (same as
+     * pre-existing L60 logic — date-range query, CLOSED-only status filter — so L60 Sales / L60 Orders
+     * stay identical to before). PFT/COGS use MacysSalesController L30 math so gprofitL60 and G RoiL60
+     * actually populate (they were hardcoded to 0 before).
      *
      * @return array{sales: float, orders: int, qty: int, pft: float, cogs: float}
      */
     private function computeMacysL60SummaryFromMirakl(): array
     {
+        $thirtyDaysAgo = Carbon::now()->subDays(30);
+        $sixtyDaysAgo = Carbon::now()->subDays(60);
+
         $orders = \App\Models\MiraklDailyData::where('channel_name', "Macy's, Inc.")
-            ->where('period', 'l60')
-            ->whereNotIn('status', ['CLOSED', 'CHANNEL_SPECIFIC'])
+            ->where('status', '!=', 'CLOSED')
+            ->whereBetween('order_created_at', [$sixtyDaysAgo, $thirtyDaysAgo])
             ->get();
 
         if ($orders->isEmpty()) {
