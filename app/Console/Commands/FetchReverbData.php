@@ -491,16 +491,7 @@ class FetchReverbData extends Command
             return;
         }
 
-        $bySku = [];
-        foreach ($data as $item) {
-            $sku = $this->normalizeSku($item['sku'] ?? '');
-            if ($sku === '') {
-                continue;
-            }
-            $item['sku'] = $sku;
-            $bySku[$sku] = $item;
-        }
-        $data = array_values($bySku);
+        $data = $this->dedupeProductRowsForInsert($data);
 
         if ($data === []) {
             $this->warn('No valid SKUs in listing data — reverb_products was not changed.');
@@ -518,6 +509,8 @@ class FetchReverbData extends Command
 
                 $chunks = array_chunk($data, 500);
                 foreach ($chunks as $index => $chunk) {
+                    // Safety net: never send duplicate SKUs to MySQL (case/unicode variants).
+                    $chunk = $this->dedupeProductRowsForInsert($chunk);
                     DB::table('reverb_products')->insert($chunk);
                     if (count($chunks) > 1) {
                         $this->info('  Inserted chunk '.($index + 1).' of '.count($chunks).'...');
@@ -533,18 +526,49 @@ class FetchReverbData extends Command
     }
 
     /**
-     * Normalize SKU for storage and dedup (NBSP / unicode spaces → ASCII space).
+     * Collapse rows that MySQL treats as the same SKU (case / spacing / PCS variants).
+     *
+     * @param  array<int, array<string, mixed>>  $data
+     * @return array<int, array<string, mixed>>
+     */
+    protected function dedupeProductRowsForInsert(array $data): array
+    {
+        $bySku = [];
+        foreach ($data as $item) {
+            $key = ReverbProduct::normalizeSkuForLookup($item['sku'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+            if (isset($bySku[$key]) && ! $this->shouldPreferProductRow($item, $bySku[$key])) {
+                continue;
+            }
+            $item['sku'] = $key;
+            $bySku[$key] = $item;
+        }
+
+        return array_values($bySku);
+    }
+
+    /**
+     * Normalize SKU for storage and dedup (same rules as reverb-pricing lookup).
      */
     protected function normalizeSku(mixed $sku): string
     {
-        $sku = (string) $sku;
-        if ($sku === '') {
-            return '';
-        }
-        $sku = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $sku);
-        $sku = preg_replace('/\s+/u', ' ', $sku);
+        return ReverbProduct::normalizeSkuForLookup((string) $sku);
+    }
 
-        return trim($sku);
+    /**
+     * When duplicate normalized SKUs reach bulk insert, keep live/newest listing row.
+     */
+    protected function shouldPreferProductRow(array $candidate, array $current): bool
+    {
+        $candidatePriority = $this->listingStatePriority($candidate['listing_state'] ?? null);
+        $currentPriority = $this->listingStatePriority($current['listing_state'] ?? null);
+        if ($candidatePriority !== $currentPriority) {
+            return $candidatePriority > $currentPriority;
+        }
+
+        return (int) ($candidate['reverb_listing_id'] ?? 0) > (int) ($current['reverb_listing_id'] ?? 0);
     }
 
     /**
