@@ -24,6 +24,10 @@ class ShopifyService implements ShopifyServiceInterface
 {
     private ?Client $client = null;
 
+    public function __construct(
+        protected ShopifyCustomerClassifier $customerClassifier
+    ) {}
+
     public function isConfigured(): bool
     {
         return $this->normalizedStoreDomain() !== '' && $this->accessToken() !== '';
@@ -48,7 +52,7 @@ class ShopifyService implements ShopifyServiceInterface
         $response = $this->sendWithRetries('GET', $this->absoluteAdminUrl($path));
         $decoded = $this->decodeJsonBody($response);
         $customers = $decoded['customers'] ?? [];
-
+        
         if (! is_array($customers)) {
             $customers = [];
         }
@@ -112,8 +116,20 @@ class ShopifyService implements ShopifyServiceInterface
      *     shopify_order_id: int,
      *     shopify_customer_id: int|null,
      *     total_price: mixed,
+     *     subtotal_price: mixed,
+     *     total_discounts: mixed,
+     *     total_tax: mixed,
+     *     shipping_price: float|null,
      *     currency: mixed,
+     *     source_name: string|null,
+     *     source_identifier: string|null,
+     *     landing_site: string|null,
+     *     referring_site: string|null,
+     *     line_items_count: int,
      *     order_status: string|null,
+     *     financial_status: string|null,
+     *     fulfillment_status: string|null,
+     *     cancelled_at: string|null,
      *     order_date: string|null,
      *     last_synced_at: string,
      *     raw_payload: array<string, mixed>
@@ -149,12 +165,61 @@ class ShopifyService implements ShopifyServiceInterface
             'shopify_order_id' => (int) $row['id'],
             'shopify_customer_id' => $shopifyCustomerId,
             'total_price' => $row['current_total_price'] ?? $row['total_price'] ?? null,
+            'subtotal_price' => $row['current_subtotal_price'] ?? $row['subtotal_price'] ?? null,
+            'total_discounts' => $row['current_total_discounts'] ?? $row['total_discounts'] ?? null,
+            'total_tax' => $row['current_total_tax'] ?? $row['total_tax'] ?? null,
+            'shipping_price' => $this->shippingPriceFromOrderRow($row),
             'currency' => $row['currency'] ?? $row['presentment_currency'] ?? null,
+            'source_name' => $this->nullableString($row['source_name'] ?? null),
+            'source_identifier' => $this->nullableString($row['source_identifier'] ?? null),
+            'landing_site' => $this->nullableString($row['landing_site'] ?? null),
+            'referring_site' => $this->nullableString($row['referring_site'] ?? null),
+            'line_items_count' => $this->lineItemsCountFromOrderRow($row),
             'order_status' => $orderStatus,
+            'financial_status' => $financial !== '' ? $financial : null,
+            'fulfillment_status' => $fulfillment !== '' ? $fulfillment : null,
+            'cancelled_at' => ! empty($row['cancelled_at']) ? (string) $row['cancelled_at'] : null,
             'order_date' => $createdAt !== null && $createdAt !== '' ? (string) $createdAt : null,
             'last_synced_at' => now()->toIso8601String(),
             'raw_payload' => $row,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    protected function shippingPriceFromOrderRow(array $row): ?float
+    {
+        if (isset($row['total_shipping_price_set']['shop_money']['amount'])) {
+            return (float) $row['total_shipping_price_set']['shop_money']['amount'];
+        }
+
+        $shippingLines = $row['shipping_lines'] ?? null;
+        if (! is_array($shippingLines)) {
+            return null;
+        }
+
+        $total = 0.0;
+        foreach ($shippingLines as $line) {
+            if (is_array($line) && isset($line['price']) && is_numeric($line['price'])) {
+                $total += (float) $line['price'];
+            }
+        }
+
+        return $total > 0 ? $total : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    protected function lineItemsCountFromOrderRow(array $row): int
+    {
+        $lineItems = $row['line_items'] ?? null;
+        if (! is_array($lineItems)) {
+            return 0;
+        }
+
+        return count($lineItems);
     }
 
     /**
@@ -231,6 +296,49 @@ class ShopifyService implements ShopifyServiceInterface
     }
 
     /**
+     * @param  array<string, mixed>  $data
+     */
+    public function createCustomerFromCrm(array $data): ShopifyCustomer
+    {
+        $payload = $this->customerPayloadFromCrmData($data);
+        $response = $this->sendWithRetries('POST', $this->absoluteAdminUrl('customers.json'), [
+            'json' => ['customer' => $payload],
+        ]);
+        $decoded = $this->decodeJsonBody($response);
+        $row = $decoded['customer'] ?? null;
+        if (! is_array($row) || ! isset($row['id'])) {
+            throw new ShopifyApiException('Shopify did not return a customer after create.');
+        }
+
+        return $this->upsertReturnedCustomerRow($row, isset($data['customer_id']) ? (int) $data['customer_id'] : null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function updateShopifyCustomerFromCrm(ShopifyCustomer $record, array $data): ShopifyCustomer
+    {
+        $shopifyId = (int) $record->shopify_customer_id;
+        if ($shopifyId <= 0) {
+            return $this->createCustomerFromCrm($data);
+        }
+
+        $payload = $this->customerPayloadFromCrmData($data);
+        $payload['id'] = $shopifyId;
+
+        $response = $this->sendWithRetries('PUT', $this->absoluteAdminUrl('customers/'.$shopifyId.'.json'), [
+            'json' => ['customer' => $payload],
+        ]);
+        $decoded = $this->decodeJsonBody($response);
+        $row = $decoded['customer'] ?? null;
+        if (! is_array($row) || ! isset($row['id'])) {
+            throw new ShopifyApiException('Shopify did not return a customer after update.');
+        }
+
+        return $this->upsertReturnedCustomerRow($row, isset($data['customer_id']) ? (int) $data['customer_id'] : $record->customer_id);
+    }
+
+    /**
      * @throws \InvalidArgumentException When the row cannot be matched or auto-created in CRM
      */
     public function ensureCrmCustomerForShopifyRecord(ShopifyCustomer $shopifyCustomer): Customer
@@ -302,7 +410,10 @@ class ShopifyService implements ShopifyServiceInterface
         }
     }
 
-    protected function sendWithRetries(string $method, string $url): ResponseInterface
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    protected function sendWithRetries(string $method, string $url, array $options = []): ResponseInterface
     {
         $maxAttempts = max(1, (int) config('services.shopify.max_retries', 5));
         $attempt = 0;
@@ -311,7 +422,7 @@ class ShopifyService implements ShopifyServiceInterface
             $attempt++;
 
             try {
-                $response = $this->httpClient()->request($method, $url);
+                $response = $this->httpClient()->request($method, $url, $options);
             } catch (ConnectException $e) {
                 Log::warning('ShopifyService: connection error', [
                     'message' => $e->getMessage(),
@@ -457,6 +568,75 @@ class ShopifyService implements ShopifyServiceInterface
         }
 
         return min(2 * $attempt, 10);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    protected function customerPayloadFromCrmData(array $data): array
+    {
+        [$firstName, $lastName] = $this->splitName((string) ($data['name'] ?? ''));
+
+        $payload = array_filter([
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'email' => $this->nullableString($data['email'] ?? null),
+            'phone' => $this->nullableString($data['phone'] ?? null),
+            'tags' => $this->nullableString($data['tags'] ?? null),
+        ], static fn ($value) => $value !== null && $value !== '');
+
+        $address = array_filter([
+            'province' => $this->nullableString($data['province'] ?? null),
+            'zip' => $this->nullableString($data['zip'] ?? null),
+            'phone' => $this->nullableString($data['phone'] ?? null),
+            'default' => true,
+        ], static fn ($value) => $value !== null && $value !== '');
+
+        if (count($address) > 1) {
+            $payload['addresses'] = [$address];
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @return array{0: string|null, 1: string|null}
+     */
+    protected function splitName(string $name): array
+    {
+        $name = trim(preg_replace('/\s+/', ' ', $name) ?? $name);
+        if ($name === '') {
+            return [null, null];
+        }
+
+        $parts = explode(' ', $name, 2);
+
+        return [$parts[0] ?: null, $parts[1] ?? null];
+    }
+
+    protected function nullableString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        return $value !== '' ? $value : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    protected function upsertReturnedCustomerRow(array $row, ?int $crmCustomerId = null): ShopifyCustomer
+    {
+        $record = $this->upsertCustomerRow($row);
+        if ($crmCustomerId !== null && $crmCustomerId > 0) {
+            $record->forceFill(['customer_id' => $crmCustomerId])->save();
+        }
+
+        return $record->refresh();
     }
 
     protected function nextPageUrl(string $linkHeader): ?string
@@ -618,6 +798,7 @@ class ShopifyService implements ShopifyServiceInterface
             $attributes
         );
 
+        $record = $this->customerClassifier->classify($record);
         $this->linkShopifyCustomerToCrmCustomer($record);
 
         return $record;
@@ -716,13 +897,37 @@ class ShopifyService implements ShopifyServiceInterface
             [
                 'shopify_customer_id' => $normalized['shopify_customer_id'],
                 'total_price' => $normalized['total_price'],
+                'subtotal_price' => $normalized['subtotal_price'],
+                'total_discounts' => $normalized['total_discounts'],
+                'total_tax' => $normalized['total_tax'],
+                'shipping_price' => $normalized['shipping_price'],
                 'currency' => $normalized['currency'],
+                'source_name' => $normalized['source_name'],
+                'source_identifier' => $normalized['source_identifier'],
+                'landing_site' => $normalized['landing_site'],
+                'referring_site' => $normalized['referring_site'],
+                'line_items_count' => $normalized['line_items_count'],
                 'order_status' => $normalized['order_status'],
+                'financial_status' => $normalized['financial_status'],
+                'fulfillment_status' => $normalized['fulfillment_status'],
+                'cancelled_at' => $normalized['cancelled_at'] !== null
+                    ? Carbon::parse($normalized['cancelled_at'])
+                    : null,
                 'order_date' => $orderDate,
                 'last_synced_at' => $lastSyncedAt,
                 'raw_payload' => $normalized['raw_payload'],
             ]
         );
+
+        if ($order->shopify_customer_id !== null) {
+            $customer = ShopifyCustomer::query()
+                ->where('shopify_customer_id', $order->shopify_customer_id)
+                ->first();
+
+            if ($customer !== null) {
+                $this->customerClassifier->classify($customer, $normalized['raw_payload']);
+            }
+        }
 
         Event::dispatch(new ShopifyOrderImported($order, $wasNew));
 

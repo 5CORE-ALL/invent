@@ -17,11 +17,19 @@ class ShopifyCustomer extends Model
         'phone',
         'sync_status',
         'raw_payload',
+        'customer_type',
+        'marketplace_channel',
+        'classification_source',
+        'classification_reason',
+        'classification_overridden',
+        'classified_at',
         'last_synced_at',
     ];
 
     protected $casts = [
         'raw_payload' => 'array',
+        'classification_overridden' => 'boolean',
+        'classified_at' => 'datetime',
         'last_synced_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
