@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\Crm\Contracts\FollowUpServiceInterface;
 use App\Services\Crm\Contracts\ShopifyServiceInterface;
 use App\Services\Crm\Exceptions\ShopifyApiException;
+use App\Services\Crm\ShopifyCustomerClassifier;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -27,7 +28,8 @@ class ShopifyController extends Controller
 {
     public function __construct(
         protected ShopifyServiceInterface $shopifyService,
-        protected FollowUpServiceInterface $followUpService
+        protected FollowUpServiceInterface $followUpService,
+        protected ShopifyCustomerClassifier $customerClassifier
     ) {}
 
     public function shopifyCustomersIndex(): View
@@ -46,8 +48,21 @@ class ShopifyController extends Controller
 
         return view('crm.shopify.customers', [
             'crmAssignees' => $assignees,
-            'tagFilters' => $this->customerTagFilters(),
+            'tagFilters' => $this->customerClassifier->classificationTagsForTypes(['wholesale', 'dropshipper']),
+            'marketplaceChannels' => $this->customerClassifier->marketplaceChannelOptions(),
         ]);
+    }
+
+    public function shopifyCustomerTags(Request $request): JsonResponse
+    {
+        $type = trim((string) $request->input('customer_type', ''));
+
+        $allowedB2bTypes = ['wholesale', 'dropshipper'];
+        $types = $type !== '' && in_array($type, $allowedB2bTypes, true)
+            ? [$type]
+            : $allowedB2bTypes;
+
+        return response()->json($this->customerClassifier->classificationTagsForTypes($types));
     }
 
     public function storeCustomerFollowUp(StoreShopifyCustomerFollowUpRequest $request, ShopifyCustomer $shopify_customer): JsonResponse
@@ -326,6 +341,13 @@ class ShopifyController extends Controller
             'province' => $defaultAddress['province'] ?? null,
             'zip' => $defaultAddress['zip'] ?? null,
             'tags' => $this->tagsFromPayload($payload),
+            'channel' => $this->customerClassifier->channelLabel($customer->marketplace_channel),
+            'channel_source' => $customer->classification_reason,
+            'customer_type' => $customer->customer_type,
+            'marketplace_channel' => $customer->marketplace_channel,
+            'marketplace_channel_label' => $this->customerClassifier->channelLabel($customer->marketplace_channel),
+            'classification_source' => $customer->classification_source,
+            'classification_reason' => $customer->classification_reason,
             'sync_status' => $customer->sync_status,
             'last_synced_at' => $customer->last_synced_at?->toIso8601String(),
         ];
@@ -346,93 +368,14 @@ class ShopifyController extends Controller
 
         return view('crm.shopify.others', [
             'crmAssignees' => $assignees,
+            'tagFilters' => $this->customerTagFilters(['marketplace']),
+            'marketplaceChannels' => $this->customerClassifier->marketplaceChannelOptions(),
         ]);
     }
 
     public function shopifyOthersData(Request $request): JsonResponse
     {
-        $marketplaceDomains = [
-            'members.ebay.com',
-            'marketplace.amazon.com',
-            'u.shipping.temuemail.com',
-            'ul.shipping.temuemail.com',
-            'us.notification.mirakl.net',
-            'scs.tiktokw.us',
-            'private-relay.reverb.com',
-            'no-reply.com',
-            'relay.walmart.com',
-        ];
-
-        $perPage = max(5, min(100, (int) $request->input('per_page', 25)));
-
-        $query = ShopifyCustomer::query()
-            ->select([
-                'id',
-                'shopify_customer_id',
-                'customer_id',
-                'email',
-                'first_name',
-                'last_name',
-                'phone',
-                'sync_status',
-                'last_synced_at',
-            ])
-            ->where(function ($q) use ($marketplaceDomains) {
-                foreach ($marketplaceDomains as $domain) {
-                    $q->orWhere('email', 'like', '%@'.$domain);
-                }
-            })
-            ->orderByDesc('last_synced_at')
-            ->orderByDesc('id');
-
-        if ($request->filled('q')) {
-            $term = trim((string) $request->input('q'));
-            $like = '%'.addcslashes($term, '%_\\').'%';
-            $query->where(function ($q) use ($like, $term) {
-                $q->where('email', 'like', $like)
-                    ->orWhere('phone', 'like', $like)
-                    ->orWhere('first_name', 'like', $like)
-                    ->orWhere('last_name', 'like', $like);
-                if ($term !== '' && ctype_digit($term)) {
-                    $q->orWhere('shopify_customer_id', (int) $term);
-                }
-            });
-        }
-
-        $paginator = $query->paginate($perPage);
-
-        $rows = $paginator->getCollection()->map(static function (ShopifyCustomer $c) {
-            $name = trim(implode(' ', array_filter([(string) ($c->first_name ?? ''), (string) ($c->last_name ?? '')])));
-
-            if ($name === '' && $c->email) {
-                $localPart = explode('@', $c->email)[0];
-                $segment = explode('.', $localPart)[0];
-                $name = ucfirst(rtrim($segment, '0123456789'));
-            }
-
-            return [
-                'id' => $c->id,
-                'shopify_customer_id' => $c->shopify_customer_id,
-                'customer_id' => $c->customer_id,
-                'name' => $name !== '' ? $name : null,
-                'email' => $c->email,
-                'phone' => $c->phone,
-                'sync_status' => $c->sync_status,
-                'last_synced_at' => $c->last_synced_at?->toIso8601String(),
-            ];
-        })->values();
-
-        return response()->json([
-            'data' => $rows,
-            'meta' => [
-                'current_page' => $paginator->currentPage(),
-                'last_page' => $paginator->lastPage(),
-                'per_page' => $paginator->perPage(),
-                'total' => $paginator->total(),
-                'from' => $paginator->firstItem(),
-                'to' => $paginator->lastItem(),
-            ],
-        ]);
+        return $this->shopifyCustomerDataResponse($request, ['marketplace']);
     }
 
     public function shopifyOrdersIndex(): View
@@ -533,22 +476,22 @@ class ShopifyController extends Controller
 
     public function shopifyCustomersData(Request $request): JsonResponse
     {
+        return $this->shopifyCustomerDataResponse($request, ['wholesale', 'dropshipper']);
+    }
+
+    /**
+     * @param  array<int, string>|null  $defaultTypes
+     */
+    protected function shopifyCustomerDataResponse(Request $request, ?array $defaultTypes = null): JsonResponse
+    {
         $perPage = max(5, min(100, (int) $request->input('per_page', 25)));
         $sortBy = $this->normalizeCustomerSortBy($request->input('sort_by'));
         $sortDir = $this->normalizeSortDirection($request->input('sort_dir'));
         $tag = trim((string) $request->input('tag', ''));
-
-        $marketplaceDomains = [
-            'members.ebay.com',
-            'marketplace.amazon.com',
-            'u.shipping.temuemail.com',
-            'ul.shipping.temuemail.com',
-            'us.notification.mirakl.net',
-            'scs.tiktokw.us',
-            'private-relay.reverb.com',
-            'no-reply.com',
-            'relay.walmart.com',
-        ];
+        $customerType = trim((string) $request->input('customer_type', ''));
+        $marketplaceChannel = trim((string) $request->input('marketplace_channel', ''));
+        $classificationSource = trim((string) $request->input('classification_source', ''));
+        $syncStatus = trim((string) $request->input('sync_status', ''));
 
         $query = ShopifyCustomer::query()
             ->select([
@@ -561,10 +504,22 @@ class ShopifyController extends Controller
                 'phone',
                 'sync_status',
                 'raw_payload',
+                'customer_type',
+                'marketplace_channel',
+                'classification_source',
+                'classification_reason',
+                'classification_overridden',
+                'classified_at',
                 'last_synced_at',
             ]);
 
-        $this->applyBaseCustomerVisibility($query, $marketplaceDomains);
+        $this->applyCustomerClassificationFilters(
+            $query,
+            $customerType !== '' ? [$customerType] : $defaultTypes,
+            $marketplaceChannel,
+            $classificationSource,
+            $syncStatus
+        );
 
         if ($request->filled('q')) {
             $term = trim((string) $request->input('q'));
@@ -591,57 +546,9 @@ class ShopifyController extends Controller
         $this->applyCustomerSort($query, $sortBy, $sortDir);
 
         $paginator = $query->paginate($perPage);
-        $customerIds = $paginator->getCollection()
-            ->pluck('shopify_customer_id')
-            ->filter()
+        $rows = $paginator->getCollection()
+            ->map(fn (ShopifyCustomer $c) => $this->shopifyCustomerResponseRow($c))
             ->values();
-
-        $orderChannels = $customerIds->isNotEmpty()
-            ? ShopifyOrder::query()
-                ->whereIn('shopify_customer_id', $customerIds)
-                ->orderByDesc('order_date')
-                ->orderByDesc('id')
-                ->get(['shopify_customer_id', 'raw_payload'])
-                ->groupBy('shopify_customer_id')
-                ->map(function ($orders) {
-                    $payload = $orders->first()?->raw_payload;
-
-                    return is_array($payload) ? $this->channelDetailsFromOrderPayload($payload) : null;
-                })
-            : collect();
-
-        $rows = $paginator->getCollection()->map(function (ShopifyCustomer $c) use ($orderChannels) {
-            $name = trim(implode(' ', array_filter([(string) ($c->first_name ?? ''), (string) ($c->last_name ?? '')])));
-
-            if ($name === '' && $c->email) {
-                $localPart = explode('@', $c->email)[0];
-                $segment = explode('.', $localPart)[0];
-                $name = ucfirst(rtrim($segment, '0123456789'));
-            }
-
-            $payload = is_array($c->raw_payload) ? $c->raw_payload : [];
-            $tags = $this->tagsFromPayload($payload);
-            $channelDetails = $orderChannels->get($c->shopify_customer_id);
-            $defaultAddress = isset($payload['default_address']) && is_array($payload['default_address'])
-                ? $payload['default_address']
-                : [];
-
-            return [
-                'id' => $c->id,
-                'shopify_customer_id' => $c->shopify_customer_id,
-                'customer_id' => $c->customer_id,
-                'name' => $name !== '' ? $name : null,
-                'email' => $c->email,
-                'phone' => $c->phone,
-                'province' => $defaultAddress['province'] ?? null,
-                'zip' => $defaultAddress['zip'] ?? null,
-                'channel' => $channelDetails['label'] ?? null,
-                'channel_source' => $channelDetails['source'] ?? null,
-                'tags' => $tags,
-                'sync_status' => $c->sync_status,
-                'last_synced_at' => $c->last_synced_at?->toIso8601String(),
-            ];
-        })->values();
 
         return response()->json([
             'data' => $rows,
@@ -655,28 +562,132 @@ class ShopifyController extends Controller
                 'sort_by' => $sortBy,
                 'sort_dir' => $sortDir,
                 'tag' => $tag,
+                'customer_type' => $customerType,
+                'marketplace_channel' => $marketplaceChannel,
+                'classification_source' => $classificationSource,
+                'sync_status' => $syncStatus,
+                'summary' => $this->customerClassificationSummary($defaultTypes),
+                'filtered_stats' => $this->filteredCustomerStats($query),
             ],
         ]);
     }
 
-    protected function customerTagFilters(): array
+    /**
+     * @param  array<int, string>|null  $types
+     */
+    protected function applyCustomerClassificationFilters($query, ?array $types, string $marketplaceChannel, string $classificationSource, string $syncStatus): void
     {
-        $marketplaceDomains = [
-            'members.ebay.com',
-            'marketplace.amazon.com',
-            'u.shipping.temuemail.com',
-            'ul.shipping.temuemail.com',
-            'us.notification.mirakl.net',
-            'scs.tiktokw.us',
-            'private-relay.reverb.com',
-            'no-reply.com',
-            'relay.walmart.com',
-        ];
+        if ($types !== null && $types !== []) {
+            $query->where(function ($q) use ($types) {
+                $q->whereIn('customer_type', $types);
+                if (in_array('unknown', $types, true)) {
+                    $q->orWhereNull('customer_type');
+                }
+            });
+        }
 
+        if ($marketplaceChannel !== '') {
+            $query->where('marketplace_channel', $marketplaceChannel);
+        }
+
+        if ($classificationSource !== '') {
+            $query->where('classification_source', $classificationSource);
+        }
+
+        if ($syncStatus !== '') {
+            $query->where('sync_status', $syncStatus);
+        }
+    }
+
+    /**
+     * @param  array<int, string>|null  $types
+     */
+    protected function customerClassificationSummary(?array $types = null): array
+    {
+        $query = ShopifyCustomer::query();
+        if ($types !== null && $types !== []) {
+            $query->where(function ($q) use ($types) {
+                $q->whereIn('customer_type', $types);
+                if (in_array('unknown', $types, true)) {
+                    $q->orWhereNull('customer_type');
+                }
+            });
+        }
+
+        $counts = $query
+            ->selectRaw("COALESCE(customer_type, 'unknown') as type, COUNT(*) as total")
+            ->groupByRaw("COALESCE(customer_type, 'unknown')")
+            ->pluck('total', 'type')
+            ->all();
+
+        return [
+            'all' => array_sum(array_map('intval', $counts)),
+            'direct' => (int) ($counts['direct'] ?? 0),
+            'marketplace' => (int) ($counts['marketplace'] ?? 0),
+            'wholesale' => (int) ($counts['wholesale'] ?? 0),
+            'dropshipper' => (int) ($counts['dropshipper'] ?? 0),
+            'unknown' => (int) ($counts['unknown'] ?? 0),
+        ];
+    }
+
+    protected function filteredCustomerStats($baseQuery): array
+    {
+        // MySQL doesn't allow LIMIT/ORDER in an IN() subquery, so strip them from the clone.
+        $idSubquery = clone $baseQuery;
+        $idSubquery->getQuery()->limit  = null;
+        $idSubquery->getQuery()->offset = null;
+        $idSubquery->getQuery()->orders = null;
+        $idSubquery->select('shopify_customers.id');
+
+        // Order stats — join filtered customers with their Shopify orders
+        $orderStats = ShopifyCustomer::query()
+            ->from('shopify_customers')
+            ->whereIn('shopify_customers.id', $idSubquery)
+            ->join('shopify_orders as so', 'shopify_customers.shopify_customer_id', '=', 'so.shopify_customer_id')
+            ->selectRaw(
+                'COUNT(so.id) as total_orders,'.
+                'SUM(COALESCE(so.total_price, 0)) as total_order_value,'.
+                'COUNT(DISTINCT shopify_customers.id) as customers_with_orders'
+            )
+            ->first();
+
+        $totalOrderValue     = (float) ($orderStats->total_order_value ?? 0);
+        $customersWithOrders = (int)   ($orderStats->customers_with_orders ?? 0);
+        $totalOrders         = (int)   ($orderStats->total_orders ?? 0);
+        $avgOrderValue       = $totalOrders > 0 ? round($totalOrderValue / $totalOrders, 2) : 0;
+
+        // Additional customer-side counts (no join needed)
+        $linkedToCrm  = ShopifyCustomer::whereIn('id', $idSubquery)->whereNotNull('customer_id')->count();
+        $missingEmail = ShopifyCustomer::whereIn('id', $idSubquery)
+            ->where(function ($q) { $q->whereNull('email')->orWhere('email', ''); })
+            ->count();
+
+        return [
+            'total_orders'          => $totalOrders,
+            'total_order_value'     => round($totalOrderValue, 2),
+            'avg_order_value'       => $avgOrderValue,
+            'customers_with_orders' => $customersWithOrders,
+            'linked_to_crm'         => $linkedToCrm,
+            'missing_email'         => $missingEmail,
+        ];
+    }
+
+    /**
+     * @param  array<int, string>|null  $types
+     */
+    protected function customerTagFilters(?array $types = null): array
+    {
         $query = ShopifyCustomer::query()
             ->whereNotNull('raw_payload');
 
-        $this->applyBaseCustomerVisibility($query, $marketplaceDomains);
+        if ($types !== null && $types !== []) {
+            $query->where(function ($q) use ($types) {
+                $q->whereIn('customer_type', $types);
+                if (in_array('unknown', $types, true)) {
+                    $q->orWhereNull('customer_type');
+                }
+            });
+        }
 
         $tagStrings = $query
             ->selectRaw("DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.\"tags\"')) as tags")
@@ -768,6 +779,9 @@ class ShopifyController extends Controller
             'province',
             'zip',
             'channel',
+            'customer_type',
+            'marketplace_channel',
+            'classification_source',
             'tags',
             'sync_status',
             'last_synced_at',
@@ -794,7 +808,9 @@ class ShopifyController extends Controller
             'phone' => $query->orderByRaw("LOWER(COALESCE(shopify_customers.phone, '')) {$dir}"),
             'province' => $query->orderByRaw("LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(shopify_customers.raw_payload, '$.\"default_address\".\"province\"')), '')) {$dir}"),
             'zip' => $query->orderByRaw("LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(shopify_customers.raw_payload, '$.\"default_address\".\"zip\"')), '')) {$dir}"),
-            'channel' => $query->orderByRaw($this->latestOrderChannelSortExpression()." {$dir}"),
+            'channel', 'marketplace_channel' => $query->orderByRaw("LOWER(COALESCE(shopify_customers.marketplace_channel, '')) {$dir}"),
+            'customer_type' => $query->orderByRaw("LOWER(COALESCE(shopify_customers.customer_type, '')) {$dir}"),
+            'classification_source' => $query->orderByRaw("LOWER(COALESCE(shopify_customers.classification_source, '')) {$dir}"),
             'tags' => $query->orderByRaw("LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(shopify_customers.raw_payload, '$.\"tags\"')), '')) {$dir}"),
             'sync_status' => $query->orderByRaw("LOWER(COALESCE(shopify_customers.sync_status, '')) {$dir}"),
             default => $query->orderBy('shopify_customers.last_synced_at', $dir),

@@ -8,31 +8,96 @@
 
     @include('crm.shopify._nav', ['active' => 'others'])
 
-    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
-        <a href="{{ route('crm.dashboard') }}" class="btn btn-outline-secondary btn-sm">Dashboard</a>
+    <style>
+        .mkt-stat-strip { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:.5rem 1rem; margin-bottom:.75rem; display:flex; flex-wrap:wrap; gap:0; }
+        .mkt-stat-item { flex:1 1 auto; min-width:120px; padding:.35rem .75rem; border-right:1px solid #e2e8f0; }
+        .mkt-stat-item:last-child { border-right:none; }
+        .mkt-stat-label { font-size:.65rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#94a3b8; margin-bottom:.1rem; }
+        .mkt-stat-value { font-size:1.05rem; font-weight:800; color:#0f172a; line-height:1.1; }
+        .mkt-stat-sub { font-size:.68rem; color:#64748b; }
+        .mkt-filter-bar { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:.4rem .75rem; margin-bottom:.75rem; display:flex; align-items:center; gap:.4rem; flex-wrap:nowrap; }
+        .mkt-filter-bar .form-control-sm, .mkt-filter-bar .form-select-sm { height:30px; font-size:.8rem; padding:.2rem .5rem; border-color:#e2e8f0; border-radius:6px; background-color:#f8fafc; }
+        .mkt-filter-bar .form-select-sm { padding-right:1.6rem; }
+        .mkt-filter-bar .mkt-sep { width:1px; height:18px; background:#e2e8f0; flex-shrink:0; }
+        .mkt-filter-bar .mkt-search { flex:1 1 180px; min-width:140px; max-width:280px; }
+        .mkt-filter-bar .mkt-channel { width:140px; }
+        .mkt-filter-bar .mkt-tag { width:140px; }
+        .mkt-filter-bar .mkt-source { width:130px; }
+        .mkt-filter-bar .mkt-perpage { width:70px; }
+        @media(max-width:767px){ .mkt-stat-item{ border-right:none; border-bottom:1px solid #e2e8f0; } .mkt-stat-item:last-child{border-bottom:none;} .mkt-filter-bar{flex-wrap:wrap;} }
+    </style>
+
+    {{-- Stat strip --}}
+    <div class="mkt-stat-strip" id="crm-others-summary">
+        <div class="mkt-stat-item">
+            <div class="mkt-stat-label">Filtered</div>
+            <div class="mkt-stat-value" id="mkt-stat-total">—</div>
+            <div class="mkt-stat-sub">Marketplace customers</div>
+        </div>
+        <div class="mkt-stat-item">
+            <div class="mkt-stat-label">Total Orders</div>
+            <div class="mkt-stat-value" id="mkt-stat-orders">—</div>
+            <div class="mkt-stat-sub"><span id="mkt-stat-customers-ordered">—</span> customers ordered</div>
+        </div>
+        <div class="mkt-stat-item">
+            <div class="mkt-stat-label">Order Revenue</div>
+            <div class="mkt-stat-value" id="mkt-stat-revenue">—</div>
+            <div class="mkt-stat-sub">Linked Shopify orders</div>
+        </div>
+        <div class="mkt-stat-item">
+            <div class="mkt-stat-label">Avg Order Value</div>
+            <div class="mkt-stat-value" id="mkt-stat-aov">—</div>
+            <div class="mkt-stat-sub">Per order</div>
+        </div>
+        <div class="mkt-stat-item">
+            <div class="mkt-stat-label">Linked to CRM</div>
+            <div class="mkt-stat-value" id="mkt-stat-linked">—</div>
+            <div class="mkt-stat-sub"><span id="mkt-stat-no-email">—</span> missing email</div>
+        </div>
     </div>
 
-    <div class="card mb-3">
-        <div class="card-body py-2">
-            <div class="row g-2 align-items-end">
-                <div class="col-md-4">
-                    <label class="form-label small mb-0" for="crm-others-search">Search</label>
-                    <input type="search" id="crm-others-search" class="form-control form-control-sm"
-                           placeholder="Email, phone, name, Shopify ID" autocomplete="off">
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small mb-0" for="crm-others-per-page">Per page</label>
-                    <select id="crm-others-per-page" class="form-select form-select-sm">
-                        @foreach ([10, 25, 50, 100] as $n)
-                            <option value="{{ $n }}" @selected($n === 25)>{{ $n }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <button type="button" id="crm-others-apply-filters" class="btn btn-sm btn-outline-primary w-100">Apply</button>
-                </div>
-            </div>
+    {{-- Single-line filter bar --}}
+    <div class="mkt-filter-bar mb-3">
+        <div class="mkt-search">
+            <input type="search" id="crm-others-search" class="form-control form-control-sm"
+                   placeholder="&#128269; Search name, email, phone…" autocomplete="off">
         </div>
+        <div class="mkt-sep"></div>
+        <div class="mkt-channel">
+            <select id="crm-others-channel" class="form-select form-select-sm" title="Channel">
+                <option value="">All channels</option>
+                @foreach (($marketplaceChannels ?? []) as $value => $label)
+                    <option value="{{ $value }}">{{ $label }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div class="mkt-tag">
+            <select id="crm-others-tag" class="form-select form-select-sm" title="Tags">
+                <option value="">All tags</option>
+                @foreach (($tagFilters ?? []) as $tag)
+                    <option value="{{ $tag }}">{{ $tag }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div class="mkt-source">
+            <select id="crm-others-source" class="form-select form-select-sm" title="Source">
+                <option value="">All sources</option>
+                <option value="email_domain">Email domain</option>
+                <option value="order_source">Order source</option>
+                <option value="tag">Tag</option>
+                <option value="manual">Manual</option>
+                <option value="fallback">Fallback</option>
+            </select>
+        </div>
+        <div class="mkt-perpage">
+            <select id="crm-others-per-page" class="form-select form-select-sm" title="Per page">
+                @foreach ([10, 25, 50, 100] as $n)
+                    <option value="{{ $n }}" @selected($n === 25)>{{ $n }}</option>
+                @endforeach
+            </select>
+        </div>
+        {{-- hidden apply trigger kept for JS compatibility --}}
+        <button type="button" id="crm-others-apply-filters" class="d-none">Apply</button>
     </div>
 
     <div class="card position-relative" id="crm-others-list-card">
@@ -57,6 +122,9 @@
                             <th>Name</th>
                             <th>Email</th>
                             <th>Phone</th>
+                            <th>Channel</th>
+                            <th>Source</th>
+                            <th>Tags</th>
                             <th>CRM customer</th>
                             <th>Sync</th>
                             <th>Last synced</th>
@@ -65,7 +133,7 @@
                     </thead>
                     <tbody id="crm-others-customers-tbody">
                         <tr>
-                            <td colspan="8" class="text-muted text-center py-4">Loading…</td>
+                            <td colspan="11" class="text-muted text-center py-4">Loading…</td>
                         </tr>
                     </tbody>
                 </table>
@@ -185,6 +253,9 @@
             const tableRegion = document.getElementById('crm-others-table-region');
             const alertEl = document.getElementById('crm-others-list-alert');
             const searchInput = document.getElementById('crm-others-search');
+            const channelSelect = document.getElementById('crm-others-channel');
+            const tagSelect = document.getElementById('crm-others-tag');
+            const sourceSelect = document.getElementById('crm-others-source');
             const perPageSelect = document.getElementById('crm-others-per-page');
             const applyBtn = document.getElementById('crm-others-apply-filters');
             const paginationWrap = document.getElementById('crm-others-pagination-wrap');
@@ -195,10 +266,34 @@
             const pageNumbersEl = document.getElementById('crm-others-page-numbers');
             const pageSummary = document.getElementById('crm-others-page-summary');
 
+            const fmtMoney = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
+            const fmtNum   = new Intl.NumberFormat('en-US');
+
+            function updateStats(meta) {
+                meta = meta || {};
+                const fs = meta.filtered_stats || {};
+                const setEl = function (id, val, money) {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    if (val == null) { el.textContent = '—'; return; }
+                    el.textContent = money ? fmtMoney.format(val) : fmtNum.format(val);
+                };
+                setEl('mkt-stat-total',             meta.total);
+                setEl('mkt-stat-orders',            fs.total_orders);
+                setEl('mkt-stat-customers-ordered', fs.customers_with_orders);
+                setEl('mkt-stat-revenue',           fs.total_order_value,  true);
+                setEl('mkt-stat-aov',               fs.avg_order_value,    true);
+                setEl('mkt-stat-linked',            fs.linked_to_crm);
+                setEl('mkt-stat-no-email',          fs.missing_email);
+            }
+
             let state = {
                 page: 1,
                 perPage: parseInt(perPageSelect.value, 10) || 25,
                 q: '',
+                marketplaceChannel: '',
+                tag: '',
+                classificationSource: '',
                 lastPage: 1,
                 total: 0,
             };
@@ -221,6 +316,9 @@
                 if (applyBtn) applyBtn.disabled = on;
                 if (perPageSelect) perPageSelect.disabled = on;
                 if (searchInput) searchInput.disabled = on;
+                if (channelSelect) channelSelect.disabled = on;
+                if (tagSelect) tagSelect.disabled = on;
+                if (sourceSelect) sourceSelect.disabled = on;
                 if (on) {
                     [firstBtn, prevBtn, nextBtn, lastBtn].forEach(function (b) { if (b) b.disabled = true; });
                     if (pageNumbersEl) pageNumbersEl.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
@@ -300,13 +398,33 @@
                 return td;
             }
 
+            function humanLabel(value) {
+                if (!value) return '—';
+                return String(value).replace(/[_-]+/g, ' ').replace(/\b\w/g, function (m) { return m.toUpperCase(); });
+            }
+
+            function badgeTd(value, badgeClass, title) {
+                const td = document.createElement('td');
+                td.className = 'small';
+                if (value) {
+                    const badge = document.createElement('span');
+                    badge.className = badgeClass || 'badge bg-light text-dark border';
+                    badge.textContent = humanLabel(value);
+                    if (title) badge.title = title;
+                    td.appendChild(badge);
+                } else {
+                    td.textContent = '—';
+                }
+                return td;
+            }
+
             function renderRows(rows) {
                 if (!tbody) return;
                 tbody.innerHTML = '';
                 if (!rows.length) {
                     const tr = document.createElement('tr');
                     const td = document.createElement('td');
-                    td.colSpan = 8;
+                    td.colSpan = 11;
                     td.className = 'text-muted text-center py-4';
                     td.textContent = 'No marketplace customers found.';
                     tr.appendChild(td);
@@ -323,6 +441,23 @@
                     const tdName = tdText(r.name || '');
                     const tdEmail = tdText(r.email);
                     const tdPhone = tdText(r.phone);
+                    const tdChannel = badgeTd(r.marketplace_channel_label || r.channel, 'badge bg-info-subtle text-info border', r.classification_reason || '');
+                    const tdSource = badgeTd(r.classification_source, 'badge bg-light text-dark border', r.classification_reason || '');
+
+                    const tdTags = document.createElement('td');
+                    const tags = Array.isArray(r.tags) ? r.tags : [];
+                    if (tags.length) {
+                        tags.forEach(function (tag) {
+                            const span = document.createElement('span');
+                            span.className = 'badge bg-secondary-subtle text-secondary border me-1 mb-1';
+                            span.style.fontSize = '0.7rem';
+                            span.textContent = tag;
+                            tdTags.appendChild(span);
+                        });
+                    } else {
+                        tdTags.className = 'small';
+                        tdTags.textContent = '—';
+                    }
 
                     const tdCrm = document.createElement('td');
                     tdCrm.className = 'small';
@@ -358,6 +493,9 @@
                     tr.appendChild(tdName);
                     tr.appendChild(tdEmail);
                     tr.appendChild(tdPhone);
+                    tr.appendChild(tdChannel);
+                    tr.appendChild(tdSource);
+                    tr.appendChild(tdTags);
                     tr.appendChild(tdCrm);
                     tr.appendChild(tdSync);
                     tr.appendChild(tdLast);
@@ -450,6 +588,9 @@
                 state.page = Math.max(1, page);
                 const params = new URLSearchParams({ page: String(state.page), per_page: String(state.perPage) });
                 if (state.q) params.set('q', state.q);
+                if (state.marketplaceChannel) params.set('marketplace_channel', state.marketplaceChannel);
+                if (state.tag) params.set('tag', state.tag);
+                if (state.classificationSource) params.set('classification_source', state.classificationSource);
                 setListLoading(true, opts.loadingMessage || 'Loading customers…');
                 try {
                     const res = await fetch(dataUrl + '?' + params.toString(), {
@@ -474,6 +615,7 @@
                     }
                     renderRows(json.data || []);
                     updatePagination(json.meta || {});
+                    updateStats(json.meta || {});
                 } catch (e) {
                     if (e.name === 'AbortError') return;
                     const msg = e && e.message ? e.message : 'Failed to load customers.';
@@ -482,7 +624,7 @@
                         tbody.innerHTML = '';
                         const tr = document.createElement('tr');
                         const td = document.createElement('td');
-                        td.colSpan = 8;
+                        td.colSpan = 11;
                         td.className = 'text-center py-4';
                         const wrap = document.createElement('div');
                         wrap.className = 'text-danger small mb-2';
@@ -596,9 +738,17 @@
 
             applyBtn?.addEventListener('click', function () {
                 state.q = (searchInput?.value || '').trim();
+                state.marketplaceChannel = (channelSelect?.value || '').trim();
+                state.tag = (tagSelect?.value || '').trim();
+                state.classificationSource = (sourceSelect?.value || '').trim();
                 state.perPage = parseInt(perPageSelect?.value || '25', 10) || 25;
                 loadPage(1);
             });
+
+            channelSelect?.addEventListener('change', function () { applyBtn?.click(); });
+            tagSelect?.addEventListener('change', function () { applyBtn?.click(); });
+            sourceSelect?.addEventListener('change', function () { applyBtn?.click(); });
+            perPageSelect?.addEventListener('change', function () { applyBtn?.click(); });
 
             searchInput?.addEventListener('keydown', function (ev) {
                 if (ev.key === 'Enter') { ev.preventDefault(); applyBtn?.click(); }

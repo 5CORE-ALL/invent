@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\Crm\Customer;
 use App\Models\Crm\ShopifyCustomer;
+use App\Models\Crm\ShopifyOrder;
 use App\Models\User;
 use App\Services\Crm\Contracts\ShopifyServiceInterface;
+use App\Services\Crm\ShopifyCustomerClassifier;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
@@ -264,6 +266,306 @@ class ShopifyCustomerSyncTest extends TestCase
 
         $this->assertNotNull($seededRow);
         $this->assertSame(['A', 'B', 'C'], $seededRow['tags'], 'Spaces around commas should be trimmed.');
+    }
+
+    public function test_classifier_marks_wholesale_customer_from_tags(): void
+    {
+        $record = ShopifyCustomer::query()->create([
+            'shopify_customer_id' => 9_900_000_105,
+            'email' => 'wholesale.customer@example.com',
+            'first_name' => 'Wholesale',
+            'last_name' => 'Buyer',
+            'phone' => null,
+            'sync_status' => 'synced',
+            'last_synced_at' => now(),
+            'raw_payload' => $this->sampleApiCustomer([
+                'id' => 9_900_000_105,
+                'email' => 'wholesale.customer@example.com',
+                'tags' => 'VIP, wholesale',
+            ]),
+        ]);
+
+        app(ShopifyCustomerClassifier::class)->classify($record);
+        $record->refresh();
+
+        $this->assertSame('wholesale', $record->customer_type);
+        $this->assertNull($record->marketplace_channel);
+        $this->assertSame('tag', $record->classification_source);
+    }
+
+    public function test_classifier_marks_requested_business_tags_as_wholesale(): void
+    {
+        $classifier = app(ShopifyCustomerClassifier::class);
+        $requestedTags = [
+            'Car stereo store',
+            'DJ Service 0 orders',
+            'Dj shop',
+            'DJ Store',
+            'DJ supply store',
+            'Drum School',
+            'Drum Store',
+            'Guitar store',
+            'Home audio store',
+            'Musical instrument store',
+            'Musician',
+            'Music School',
+            'Music Store',
+            'Piano Store',
+            'Recording studio',
+            'Record store',
+            'Resellers 0 Orders',
+            'Shop',
+            'VerifiedByWholesaleAllInOne',
+            'Violin Shop',
+            'wholesaler 0 orders',
+            'Wholesaler less orders',
+            'wholeseller',
+        ];
+
+        foreach ($requestedTags as $index => $tag) {
+            $id = 9_900_000_150 + $index;
+            $record = ShopifyCustomer::query()->create([
+                'shopify_customer_id' => $id,
+                'email' => 'business.tag.'.$index.'@example.com',
+                'first_name' => 'Business',
+                'last_name' => 'Tag',
+                'phone' => null,
+                'sync_status' => 'synced',
+                'last_synced_at' => now(),
+                'raw_payload' => $this->sampleApiCustomer([
+                    'id' => $id,
+                    'email' => 'business.tag.'.$index.'@example.com',
+                    'tags' => $tag,
+                ]),
+            ]);
+
+            $classifier->classify($record);
+            $record->refresh();
+
+            $this->assertSame('wholesale', $record->customer_type, "Tag [{$tag}] should classify as wholesale.");
+            $this->assertSame('tag', $record->classification_source);
+        }
+    }
+
+    public function test_classifier_marks_dropshipper_customer_from_tags(): void
+    {
+        $record = ShopifyCustomer::query()->create([
+            'shopify_customer_id' => 9_900_000_170,
+            'email' => 'dropshipper.customer@example.com',
+            'first_name' => 'Dropshipper',
+            'last_name' => 'Customer',
+            'phone' => null,
+            'sync_status' => 'synced',
+            'last_synced_at' => now(),
+            'raw_payload' => $this->sampleApiCustomer([
+                'id' => 9_900_000_170,
+                'email' => 'dropshipper.customer@example.com',
+                'tags' => 'Dropshipper',
+            ]),
+        ]);
+
+        app(ShopifyCustomerClassifier::class)->classify($record);
+        $record->refresh();
+
+        $this->assertSame('dropshipper', $record->customer_type);
+        $this->assertNull($record->marketplace_channel);
+        $this->assertSame('tag', $record->classification_source);
+    }
+
+    public function test_classifier_marks_requested_marketplace_tags_as_marketplace(): void
+    {
+        $classifier = app(ShopifyCustomerClassifier::class);
+        $tags = [
+            'Aliexpress' => 'aliexpress',
+            'Best Buy USA' => 'bestbuy-usa',
+            'Faire' => 'faire',
+            'Inbox Shop Chat' => 'inbox-shop-chat',
+            'Mercari' => 'mercari-w-ship',
+        ];
+
+        $index = 0;
+        foreach ($tags as $tag => $channel) {
+            $id = 9_900_000_190 + $index;
+            $record = ShopifyCustomer::query()->create([
+                'shopify_customer_id' => $id,
+                'email' => 'marketplace.tag.'.$index.'@example.com',
+                'first_name' => 'Marketplace',
+                'last_name' => 'Tag',
+                'phone' => null,
+                'sync_status' => 'synced',
+                'last_synced_at' => now(),
+                'raw_payload' => $this->sampleApiCustomer([
+                    'id' => $id,
+                    'email' => 'marketplace.tag.'.$index.'@example.com',
+                    'tags' => $tag,
+                ]),
+            ]);
+
+            $classifier->classify($record);
+            $record->refresh();
+
+            $this->assertSame('marketplace', $record->customer_type, "Tag [{$tag}] should classify as marketplace.");
+            $this->assertSame($channel, $record->marketplace_channel);
+            $this->assertSame('tag', $record->classification_source);
+            $index++;
+        }
+    }
+
+    public function test_classifier_marks_marketplace_customer_from_email_domain(): void
+    {
+        $record = ShopifyCustomer::query()->create([
+            'shopify_customer_id' => 9_900_000_106,
+            'email' => 'buyer@marketplace.amazon.com',
+            'first_name' => 'Amazon',
+            'last_name' => 'Buyer',
+            'phone' => null,
+            'sync_status' => 'synced',
+            'last_synced_at' => now(),
+            'raw_payload' => $this->sampleApiCustomer([
+                'id' => 9_900_000_106,
+                'email' => 'buyer@marketplace.amazon.com',
+                'tags' => '',
+            ]),
+        ]);
+
+        app(ShopifyCustomerClassifier::class)->classify($record);
+        $record->refresh();
+
+        $this->assertSame('marketplace', $record->customer_type);
+        $this->assertSame('amazon', $record->marketplace_channel);
+        $this->assertSame('email_domain', $record->classification_source);
+    }
+
+    public function test_classifier_marks_marketplace_customer_from_latest_order_source(): void
+    {
+        $record = ShopifyCustomer::query()->create([
+            'shopify_customer_id' => 9_900_000_107,
+            'email' => 'order.source@example.com',
+            'first_name' => 'Order',
+            'last_name' => 'Source',
+            'phone' => null,
+            'sync_status' => 'synced',
+            'last_synced_at' => now(),
+            'raw_payload' => $this->sampleApiCustomer([
+                'id' => 9_900_000_107,
+                'email' => 'order.source@example.com',
+                'tags' => '',
+            ]),
+        ]);
+
+        ShopifyOrder::query()->create([
+            'shopify_order_id' => 9_900_010_107,
+            'shopify_customer_id' => $record->shopify_customer_id,
+            'total_price' => 10,
+            'currency' => 'USD',
+            'order_status' => 'paid',
+            'order_date' => now(),
+            'raw_payload' => [
+                'source_name' => 'eBay',
+                'tags' => '',
+            ],
+        ]);
+
+        app(ShopifyCustomerClassifier::class)->classify($record);
+        $record->refresh();
+
+        $this->assertSame('marketplace', $record->customer_type);
+        $this->assertSame('ebay', $record->marketplace_channel);
+        $this->assertSame('order_source', $record->classification_source);
+    }
+
+    public function test_main_customer_data_excludes_marketplace_by_default(): void
+    {
+        ShopifyCustomer::query()->create([
+            'shopify_customer_id' => 9_900_000_108,
+            'email' => 'direct.customer@example.com',
+            'first_name' => 'Direct',
+            'last_name' => 'Customer',
+            'phone' => null,
+            'sync_status' => 'synced',
+            'customer_type' => 'direct',
+            'last_synced_at' => now(),
+            'raw_payload' => $this->sampleApiCustomer([
+                'id' => 9_900_000_108,
+                'email' => 'direct.customer@example.com',
+                'tags' => '',
+            ]),
+        ]);
+
+        ShopifyCustomer::query()->create([
+            'shopify_customer_id' => 9_900_000_109,
+            'email' => 'marketplace.customer@marketplace.amazon.com',
+            'first_name' => 'Marketplace',
+            'last_name' => 'Customer',
+            'phone' => null,
+            'sync_status' => 'synced',
+            'customer_type' => 'marketplace',
+            'marketplace_channel' => 'amazon',
+            'last_synced_at' => now(),
+            'raw_payload' => $this->sampleApiCustomer([
+                'id' => 9_900_000_109,
+                'email' => 'marketplace.customer@marketplace.amazon.com',
+                'tags' => '',
+            ]),
+        ]);
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->getJson(route('crm.shopify.customers.data') . '?per_page=100');
+        $response->assertOk();
+
+        $emails = collect($response->json('data'))->pluck('email');
+        $this->assertContains('direct.customer@example.com', $emails);
+        $this->assertNotContains('marketplace.customer@marketplace.amazon.com', $emails);
+    }
+
+    public function test_marketplace_customer_data_filters_by_channel(): void
+    {
+        ShopifyCustomer::query()->create([
+            'shopify_customer_id' => 9_900_000_110,
+            'email' => 'amazon.customer@marketplace.amazon.com',
+            'first_name' => 'Amazon',
+            'last_name' => 'Customer',
+            'phone' => null,
+            'sync_status' => 'synced',
+            'customer_type' => 'marketplace',
+            'marketplace_channel' => 'amazon',
+            'classification_source' => 'email_domain',
+            'last_synced_at' => now(),
+            'raw_payload' => $this->sampleApiCustomer([
+                'id' => 9_900_000_110,
+                'email' => 'amazon.customer@marketplace.amazon.com',
+                'tags' => '',
+            ]),
+        ]);
+
+        ShopifyCustomer::query()->create([
+            'shopify_customer_id' => 9_900_000_111,
+            'email' => 'ebay.customer@members.ebay.com',
+            'first_name' => 'Ebay',
+            'last_name' => 'Customer',
+            'phone' => null,
+            'sync_status' => 'synced',
+            'customer_type' => 'marketplace',
+            'marketplace_channel' => 'ebay',
+            'classification_source' => 'email_domain',
+            'last_synced_at' => now(),
+            'raw_payload' => $this->sampleApiCustomer([
+                'id' => 9_900_000_111,
+                'email' => 'ebay.customer@members.ebay.com',
+                'tags' => '',
+            ]),
+        ]);
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->getJson(route('crm.shopify.others.data') . '?marketplace_channel=amazon&per_page=100');
+        $response->assertOk();
+
+        $emails = collect($response->json('data'))->pluck('email');
+        $this->assertContains('amazon.customer@marketplace.amazon.com', $emails);
+        $this->assertNotContains('ebay.customer@members.ebay.com', $emails);
+        $this->assertSame('marketplace', $response->json('data.0.customer_type'));
     }
 
     public function test_manual_create_pushes_customer_to_shopify_and_stores_returned_payload(): void

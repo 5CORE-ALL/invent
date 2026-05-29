@@ -3,49 +3,190 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Shopify',
-        'sub_title' => 'Customers · Admin API',
+        'sub_title' => 'B2B Customers',
     ])
 
     @include('crm.shopify._nav', ['active' => 'customers'])
 
-    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
-        <a href="{{ route('crm.dashboard') }}" class="btn btn-outline-secondary btn-sm">Dashboard</a>
-        <button type="button" id="crm-shopify-sync-btn" class="btn btn-primary btn-sm">
-            <span class="sync-label">Sync from Shopify</span>
-            <span class="sync-spinner spinner-border spinner-border-sm d-none ms-1" role="status" aria-hidden="true"></span>
-        </button>
-        <button type="button" id="crm-shopify-create-btn" class="btn btn-success btn-sm">Create customer</button>
-        <button type="button" id="crm-shopify-import-btn" class="btn btn-outline-primary btn-sm">Import Excel</button>
-        <span id="crm-shopify-sync-status" class="small text-muted" aria-live="polite"></span>
+    <style>
+        .b2b-action-sep { width:1px; height:18px; background:#e2e8f0; flex-shrink:0; margin:0 .15rem; }
+        .b2b-stat-strip { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:.5rem 1rem; margin-bottom:.75rem; display:flex; flex-wrap:wrap; gap:0; }
+        .b2b-stat-item { flex:1 1 auto; min-width:120px; padding:.35rem .75rem; border-right:1px solid #e2e8f0; }
+        .b2b-stat-item:last-child { border-right:none; }
+        .b2b-stat-label { font-size:.65rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#94a3b8; margin-bottom:.1rem; }
+        .b2b-stat-value { font-size:1.05rem; font-weight:800; color:#0f172a; line-height:1.1; }
+        .b2b-stat-sub { font-size:.68rem; color:#64748b; }
+        .b2b-filter-bar { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:.4rem .75rem; margin-bottom:.75rem; display:flex; align-items:center; gap:.4rem; flex-wrap:nowrap; }
+        .b2b-filter-bar .form-control-sm, .b2b-filter-bar .form-select-sm { height:30px; font-size:.8rem; padding:.2rem .5rem; border-color:#e2e8f0; border-radius:6px; background-color:#f8fafc; }
+        .b2b-filter-bar .form-select-sm { padding-right:1.6rem; }
+        .b2b-filter-bar .b2b-filter-sep { width:1px; height:18px; background:#e2e8f0; flex-shrink:0; }
+        .b2b-filter-bar [data-filter-control] { flex-shrink:0; }
+        .b2b-filter-bar [data-filter-control="search"] { flex:1 1 180px; min-width:140px; max-width:260px; }
+        .b2b-filter-bar [data-filter-control="customerType"] { width:120px; }
+        .b2b-filter-bar [data-filter-control="tag"] { width:140px; position:relative; }
+        .b2b-filter-bar [data-filter-control="classificationSource"] { width:120px; }
+        .b2b-filter-bar [data-filter-control="marketplaceChannel"] { width:130px; }
+        .b2b-filter-bar [data-filter-control="syncStatus"] { width:110px; }
+        .b2b-filter-bar [data-filter-control="perPage"] { width:70px; }
+        .b2b-filter-tag-wrap { position:relative; display:flex; align-items:center; width:100%; }
+        .b2b-filter-tag-wrap select { width:100%; }
+        .b2b-filter-tag-wrap .b2b-tag-spin { position:absolute; right:1.6rem; pointer-events:none; }
+        .b2b-btn-customize { flex-shrink:0; color:#94a3b8; border:1px solid #e2e8f0; background:#f8fafc; border-radius:6px; padding:.2rem .55rem; font-size:.8rem; line-height:1.6; cursor:pointer; display:flex; align-items:center; gap:.25rem; white-space:nowrap; }
+        .b2b-btn-customize:hover { background:#f1f5f9; color:#475569; }
+        @media(max-width:767px){ .b2b-stat-item{ border-right:none; border-bottom:1px solid #e2e8f0; } .b2b-stat-item:last-child{border-bottom:none;} .b2b-filter-bar{ flex-wrap:wrap; } }
+    </style>
+
+    {{-- Stat strip — updates with every filter change --}}
+    <div class="b2b-stat-strip" id="crm-shopify-summary">
+        <div class="b2b-stat-item">
+            <div class="b2b-stat-label">Filtered</div>
+            <div class="b2b-stat-value" data-summary-key="all">—</div>
+            <div class="b2b-stat-sub">
+                <span data-summary-key="wholesale">—</span> wholesale ·
+                <span data-summary-key="dropshipper">—</span> dropship
+            </div>
+        </div>
+        <div class="b2b-stat-item">
+            <div class="b2b-stat-label">Total Orders</div>
+            <div class="b2b-stat-value" data-fstat="total_orders">—</div>
+            <div class="b2b-stat-sub"><span data-fstat="customers_with_orders">—</span> customers ordered</div>
+        </div>
+        <div class="b2b-stat-item">
+            <div class="b2b-stat-label">Order Revenue</div>
+            <div class="b2b-stat-value" data-fstat="total_order_value">—</div>
+            <div class="b2b-stat-sub">Linked Shopify orders</div>
+        </div>
+        <div class="b2b-stat-item">
+            <div class="b2b-stat-label">Avg Order Value</div>
+            <div class="b2b-stat-value" data-fstat="avg_order_value">—</div>
+            <div class="b2b-stat-sub">Per order</div>
+        </div>
+        <div class="b2b-stat-item">
+            <div class="b2b-stat-label">Linked to CRM</div>
+            <div class="b2b-stat-value" data-fstat="linked_to_crm">—</div>
+            <div class="b2b-stat-sub"><span data-fstat="missing_email">—</span> missing email</div>
+        </div>
     </div>
 
-    <div class="card mb-3">
-        <div class="card-body py-2">
-            <div class="row g-2 align-items-end">
-                <div class="col-md-3">
-                    <label class="form-label small mb-0" for="crm-shopify-search">Search</label>
-                    <input type="search" id="crm-shopify-search" class="form-control form-control-sm"
-                           placeholder="Email, phone, name, Shopify ID" autocomplete="off">
+    {{-- Single-line filter bar --}}
+    <div class="b2b-filter-bar mb-3" id="crm-shopify-filter-bar">
+
+        <div data-filter-control="search">
+            <input type="search" id="crm-shopify-search" class="form-control form-control-sm"
+                   placeholder="&#128269; Search name, email, phone…" autocomplete="off">
+        </div>
+
+        <div class="b2b-filter-sep"></div>
+
+        <div data-filter-control="customerType">
+            <select id="crm-shopify-customer-type" class="form-select form-select-sm" title="Customer type">
+                <option value="">All B2B</option>
+                <option value="wholesale">Wholesale</option>
+                <option value="dropshipper">Dropshipper</option>
+            </select>
+        </div>
+
+        <div data-filter-control="tag">
+            <div class="b2b-filter-tag-wrap">
+                <select id="crm-shopify-tag" class="form-select form-select-sm" title="Segment">
+                    <option value="">All segments</option>
+                    @foreach (($tagFilters ?? []) as $tag)
+                        <option value="{{ $tag }}">{{ $tag }}</option>
+                    @endforeach
+                </select>
+                <span id="crm-shopify-tag-loading" class="b2b-tag-spin spinner-border spinner-border-sm d-none text-secondary" role="status" style="width:.65rem;height:.65rem;"></span>
+            </div>
+        </div>
+
+        <div data-filter-control="classificationSource">
+            <select id="crm-shopify-source" class="form-select form-select-sm" title="Source">
+                <option value="">All sources</option>
+                <option value="tag">Tag</option>
+                <option value="email_domain">Email domain</option>
+                <option value="order_source">Order source</option>
+                <option value="manual">Manual</option>
+                <option value="fallback">Fallback</option>
+            </select>
+        </div>
+
+        <div data-filter-control="marketplaceChannel">
+            <select id="crm-shopify-marketplace-channel" class="form-select form-select-sm" title="Marketplace channel">
+                <option value="">All channels</option>
+                @foreach (($marketplaceChannels ?? []) as $value => $label)
+                    <option value="{{ $value }}">{{ $label }}</option>
+                @endforeach
+            </select>
+        </div>
+
+        <div data-filter-control="syncStatus">
+            <select id="crm-shopify-sync-status-filter" class="form-select form-select-sm" title="Sync status">
+                <option value="">All statuses</option>
+                <option value="synced">Synced</option>
+            </select>
+        </div>
+
+        <div data-filter-control="perPage">
+            <select id="crm-shopify-per-page" class="form-select form-select-sm" title="Per page">
+                @foreach ([10, 25, 50, 100] as $n)
+                    <option value="{{ $n }}" @selected($n === 25)>{{ $n }}</option>
+                @endforeach
+            </select>
+        </div>
+
+        <div class="b2b-filter-sep ms-auto"></div>
+
+        {{-- Customize dropdown --}}
+        <div class="dropdown flex-shrink-0">
+            <button class="b2b-btn-customize dropdown-toggle" type="button"
+                    id="crm-shopify-filter-customize-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" data-bs-boundary="window" aria-expanded="false">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M6 10.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5z"/>
+                </svg>
+                Filters
+            </button>
+            <div class="dropdown-menu dropdown-menu-end p-3 shadow-sm" aria-labelledby="crm-shopify-filter-customize-btn" style="min-width:200px;">
+                <div class="small fw-semibold mb-2 text-muted">Show / hide filters</div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="crm-shopify-show-filter-search" data-filter-visibility="search">
+                    <label class="form-check-label small" for="crm-shopify-show-filter-search">Search</label>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label small mb-0" for="crm-shopify-tag">Tags</label>
-                    <select id="crm-shopify-tag" class="form-select form-select-sm">
-                        <option value="">All tags</option>
-                        @foreach (($tagFilters ?? []) as $tag)
-                            <option value="{{ $tag }}">{{ $tag }}</option>
-                        @endforeach
-                    </select>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="crm-shopify-show-filter-type" data-filter-visibility="customerType">
+                    <label class="form-check-label small" for="crm-shopify-show-filter-type">Customer type</label>
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label small mb-0" for="crm-shopify-per-page">Per page</label>
-                    <select id="crm-shopify-per-page" class="form-select form-select-sm">
-                        @foreach ([10, 25, 50, 100] as $n)
-                            <option value="{{ $n }}" @selected($n === 25)>{{ $n }}</option>
-                        @endforeach
-                    </select>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="crm-shopify-show-filter-tag" data-filter-visibility="tag">
+                    <label class="form-check-label small" for="crm-shopify-show-filter-tag">Segment</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="crm-shopify-show-filter-source" data-filter-visibility="classificationSource">
+                    <label class="form-check-label small" for="crm-shopify-show-filter-source">Source</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="crm-shopify-show-filter-channel" data-filter-visibility="marketplaceChannel">
+                    <label class="form-check-label small" for="crm-shopify-show-filter-channel">Marketplace channel</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="crm-shopify-show-filter-sync" data-filter-visibility="syncStatus">
+                    <label class="form-check-label small" for="crm-shopify-show-filter-sync">Sync status</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="crm-shopify-show-filter-per-page" data-filter-visibility="perPage">
+                    <label class="form-check-label small" for="crm-shopify-show-filter-per-page">Per page</label>
                 </div>
             </div>
         </div>
+
+        <div class="b2b-action-sep"></div>
+
+        {{-- Action buttons inline in filter bar --}}
+        <button type="button" id="crm-shopify-sync-btn" class="btn btn-primary btn-sm flex-shrink-0" style="height:30px;font-size:.8rem;padding:.2rem .65rem;white-space:nowrap;">
+            <span class="sync-label">Sync</span>
+            <span class="sync-spinner spinner-border spinner-border-sm d-none ms-1" role="status" aria-hidden="true"></span>
+        </button>
+        <button type="button" id="crm-shopify-create-btn" class="btn btn-success btn-sm flex-shrink-0" style="height:30px;font-size:.8rem;padding:.2rem .65rem;white-space:nowrap;">+ Create</button>
+        <button type="button" id="crm-shopify-import-btn" class="btn btn-outline-secondary btn-sm flex-shrink-0" style="height:30px;font-size:.8rem;padding:.2rem .65rem;white-space:nowrap;">Import</button>
+        <span id="crm-shopify-sync-status" class="small text-muted flex-shrink-0" aria-live="polite" style="font-size:.72rem;"></span>
     </div>
 
     <div class="card position-relative" id="crm-shopify-list-card">
@@ -84,8 +225,14 @@
                             <th>
                                 <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="zip">Zip</button>
                             </th>
-                            <th class="d-none">
+                            <th>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="customer_type">Type</button>
+                            </th>
+                            <th>
                                 <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="channel">Channel</button>
+                            </th>
+                            <th>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="classification_source">Source</button>
                             </th>
                             <th>
                                 <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="tags">Tags</button>
@@ -102,7 +249,7 @@
                     </thead>
                     <tbody id="crm-shopify-customers-tbody">
                         <tr>
-                            <td colspan="12" class="text-muted text-center py-4">Loading…</td>
+                            <td colspan="14" class="text-muted text-center py-4">Loading…</td>
                         </tr>
                     </tbody>
                 </table>
@@ -307,7 +454,14 @@
             const syncSpinner = syncBtn?.querySelector('.sync-spinner');
             const searchInput = document.getElementById('crm-shopify-search');
             const tagSelect = document.getElementById('crm-shopify-tag');
+            const typeSelect = document.getElementById('crm-shopify-customer-type');
+            const sourceSelect = document.getElementById('crm-shopify-source');
+            const marketplaceChannelSelect = document.getElementById('crm-shopify-marketplace-channel');
+            const syncStatusSelect = document.getElementById('crm-shopify-sync-status-filter');
             const perPageSelect = document.getElementById('crm-shopify-per-page');
+            const filterControls = document.querySelectorAll('[data-filter-control]');
+            const filterVisibilityInputs = document.querySelectorAll('[data-filter-visibility]');
+            const summaryEls = document.querySelectorAll('#crm-shopify-summary [data-summary-key]');
             const paginationWrap = document.getElementById('crm-shopify-pagination-wrap');
             const prevBtn = document.getElementById('crm-shopify-prev');
             const nextBtn = document.getElementById('crm-shopify-next');
@@ -316,22 +470,94 @@
             const pageNumbersEl = document.getElementById('crm-shopify-page-numbers');
             const pageSummary = document.getElementById('crm-shopify-page-summary');
             const sortButtons = document.querySelectorAll('.crm-shopify-sort');
+            const filterVisibilityStorageKey = 'crm.shopify.customers.visibleFilters.v3';
+            const defaultVisibleFilters = {
+                search: true,
+                customerType: true,
+                tag: true,
+                classificationSource: false,
+                marketplaceChannel: false,
+                syncStatus: false,
+                perPage: true,
+            };
 
             let state = {
                 page: 1,
                 perPage: parseInt(perPageSelect.value, 10) || 25,
                 q: '',
                 tag: '',
+                customerType: '',
+                classificationSource: '',
+                marketplaceChannel: '',
+                syncStatus: '',
                 sortBy: 'last_synced_at',
                 sortDir: 'desc',
                 lastPage: 1,
                 total: 0,
             };
+            let visibleFilters = loadVisibleFilters();
 
             let loadSeq = 0;
             let listAbort = null;
             let successHideTimer = null;
             let filterDebounceTimer = null;
+
+            function loadVisibleFilters() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(filterVisibilityStorageKey) || '{}');
+                    return Object.assign({}, defaultVisibleFilters, stored && typeof stored === 'object' ? stored : {});
+                } catch (e) {
+                    return Object.assign({}, defaultVisibleFilters);
+                }
+            }
+
+            function saveVisibleFilters() {
+                try {
+                    localStorage.setItem(filterVisibilityStorageKey, JSON.stringify(visibleFilters));
+                } catch (e) {}
+            }
+
+            function filterValueForKey(key) {
+                if (key === 'search') return (searchInput?.value || '').trim();
+                if (key === 'tag') return (tagSelect?.value || '').trim();
+                if (key === 'customerType') return (typeSelect?.value || '').trim();
+                if (key === 'classificationSource') return (sourceSelect?.value || '').trim();
+                if (key === 'marketplaceChannel') return (marketplaceChannelSelect?.value || '').trim();
+                if (key === 'syncStatus') return (syncStatusSelect?.value || '').trim();
+                return '';
+            }
+
+            function clearFilterValueForKey(key) {
+                if (key === 'search' && searchInput) searchInput.value = '';
+                if (key === 'tag' && tagSelect) tagSelect.value = '';
+                if (key === 'customerType' && typeSelect) typeSelect.value = '';
+                if (key === 'classificationSource' && sourceSelect) sourceSelect.value = '';
+                if (key === 'marketplaceChannel' && marketplaceChannelSelect) marketplaceChannelSelect.value = '';
+                if (key === 'syncStatus' && syncStatusSelect) syncStatusSelect.value = '';
+            }
+
+            function applyFilterVisibility(options) {
+                options = options || {};
+                let clearedHiddenFilter = false;
+
+                filterControls.forEach(function (control) {
+                    const key = control.getAttribute('data-filter-control');
+                    const visible = visibleFilters[key] !== false;
+                    control.classList.toggle('d-none', !visible);
+
+                    if (!visible && options.clearHidden && filterValueForKey(key) !== '') {
+                        clearFilterValueForKey(key);
+                        clearedHiddenFilter = true;
+                    }
+                });
+
+                filterVisibilityInputs.forEach(function (input) {
+                    const key = input.getAttribute('data-filter-visibility');
+                    input.checked = visibleFilters[key] !== false;
+                });
+
+                return clearedHiddenFilter;
+            }
 
             function setTableBusy(busy) {
                 if (tableRegion) {
@@ -351,6 +577,10 @@
                 if (perPageSelect) perPageSelect.disabled = on;
                 if (searchInput) searchInput.disabled = on;
                 if (tagSelect) tagSelect.disabled = on;
+                if (typeSelect) typeSelect.disabled = on;
+                if (sourceSelect) sourceSelect.disabled = on;
+                if (marketplaceChannelSelect) marketplaceChannelSelect.disabled = on;
+                if (syncStatusSelect) syncStatusSelect.disabled = on;
                 sortButtons.forEach(function (button) {
                     button.disabled = on;
                 });
@@ -459,6 +689,55 @@
                 return td;
             }
 
+            function humanLabel(value) {
+                if (!value) return '—';
+                return String(value).replace(/[_-]+/g, ' ').replace(/\b\w/g, function (m) { return m.toUpperCase(); });
+            }
+
+            function badgeTd(value, badgeClass, title) {
+                const td = document.createElement('td');
+                td.className = 'small';
+                if (value) {
+                    const badge = document.createElement('span');
+                    badge.className = badgeClass || 'badge bg-light text-dark border';
+                    badge.textContent = humanLabel(value);
+                    if (title) badge.title = title;
+                    td.appendChild(badge);
+                } else {
+                    td.textContent = '—';
+                }
+                return td;
+            }
+
+            const fmtMoney = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
+            const fmtNum   = new Intl.NumberFormat('en-US');
+
+            function updateSummary(summary, meta) {
+                summary = summary || {};
+                // type counts
+                summaryEls.forEach(function (el) {
+                    const key = el.getAttribute('data-summary-key') || '';
+                    el.textContent = fmtNum.format(summary[key] || 0);
+                });
+                // filtered total = paginator total
+                const totalEl = document.querySelector('[data-summary-key="all"]');
+                if (totalEl && meta && meta.total != null) {
+                    totalEl.textContent = fmtNum.format(meta.total);
+                }
+                // filtered stats
+                const fs = (meta && meta.filtered_stats) || {};
+                document.querySelectorAll('[data-fstat]').forEach(function (el) {
+                    const key = el.getAttribute('data-fstat') || '';
+                    const val = fs[key];
+                    if (val == null) { el.textContent = '—'; return; }
+                    if (key === 'total_order_value' || key === 'avg_order_value') {
+                        el.textContent = fmtMoney.format(val);
+                    } else {
+                        el.textContent = fmtNum.format(val);
+                    }
+                });
+            }
+
             function updateSortHeaders(meta) {
                 meta = meta || {};
                 state.sortBy = meta.sort_by || state.sortBy;
@@ -479,7 +758,7 @@
                 if (!rows.length) {
                     const tr = document.createElement('tr');
                     const td = document.createElement('td');
-                    td.colSpan = 12;
+                    td.colSpan = 14;
                     td.className = 'text-muted text-center py-4';
                     td.textContent = 'No customers found. Try syncing from Shopify or adjust search.';
                     tr.appendChild(td);
@@ -500,19 +779,23 @@
                     const tdProvince = tdText(r.province);
                     const tdZip = tdText(r.zip);
 
+                    const tdType = badgeTd(r.customer_type || 'unknown', 'badge bg-primary-subtle text-primary border', r.classification_reason || '');
+
                     const tdChannel = document.createElement('td');
-                    tdChannel.className = 'small d-none';
-                    if (r.channel) {
+                    tdChannel.className = 'small';
+                    if (r.marketplace_channel_label || r.channel) {
                         const badge = document.createElement('span');
                         badge.className = 'badge bg-info-subtle text-info border';
-                        badge.textContent = r.channel;
-                        if (r.channel_source) {
-                            badge.title = 'Order source: ' + r.channel_source;
+                        badge.textContent = r.marketplace_channel_label || r.channel;
+                        if (r.classification_reason || r.channel_source) {
+                            badge.title = r.classification_reason || r.channel_source;
                         }
                         tdChannel.appendChild(badge);
                     } else {
                         tdChannel.textContent = '—';
                     }
+
+                    const tdSource = badgeTd(r.classification_source, 'badge bg-light text-dark border', r.classification_reason || '');
 
                     const tdTags = document.createElement('td');
                     const tags = Array.isArray(r.tags) ? r.tags : [];
@@ -567,7 +850,9 @@
                     tr.appendChild(tdPhone);
                     tr.appendChild(tdProvince);
                     tr.appendChild(tdZip);
+                    tr.appendChild(tdType);
                     tr.appendChild(tdChannel);
+                    tr.appendChild(tdSource);
                     tr.appendChild(tdTags);
                     tr.appendChild(tdCrm);
                     tr.appendChild(tdSync);
@@ -684,6 +969,18 @@
                 if (state.tag) {
                     params.set('tag', state.tag);
                 }
+                if (state.customerType) {
+                    params.set('customer_type', state.customerType);
+                }
+                if (state.classificationSource) {
+                    params.set('classification_source', state.classificationSource);
+                }
+                if (state.marketplaceChannel) {
+                    params.set('marketplace_channel', state.marketplaceChannel);
+                }
+                if (state.syncStatus) {
+                    params.set('sync_status', state.syncStatus);
+                }
 
                 setListLoading(true, opts.loadingMessage || 'Loading customers…');
 
@@ -718,6 +1015,7 @@
                     renderRows(json.data || []);
                     updatePagination(json.meta || {});
                     updateSortHeaders(json.meta || {});
+                    updateSummary((json.meta || {}).summary || {}, json.meta || {});
                 } catch (e) {
                     if (e.name === 'AbortError') return;
                     const msg = e && e.message
@@ -730,7 +1028,7 @@
                         tbody.innerHTML = '';
                         const tr = document.createElement('tr');
                         const td = document.createElement('td');
-                        td.colSpan = 12;
+                        td.colSpan = 14;
                         td.className = 'text-center py-4';
                         const wrap = document.createElement('div');
                         wrap.className = 'text-danger small mb-2';
@@ -1057,6 +1355,10 @@
                 }
                 state.q = (searchInput?.value || '').trim();
                 state.tag = (tagSelect?.value || '').trim();
+                state.customerType = (typeSelect?.value || '').trim();
+                state.classificationSource = (sourceSelect?.value || '').trim();
+                state.marketplaceChannel = (marketplaceChannelSelect?.value || '').trim();
+                state.syncStatus = (syncStatusSelect?.value || '').trim();
                 state.perPage = parseInt(perPageSelect?.value || '25', 10) || 25;
                 loadPage(1);
             }
@@ -1068,9 +1370,65 @@
                 filterDebounceTimer = setTimeout(applyFiltersNow, 350);
             }
 
+            // ── Dynamic tag refresh when customer type changes ──────
+            const tagLoadingSpinner = document.getElementById('crm-shopify-tag-loading');
+            const tagsUrl = @json(route('crm.shopify.customers.tags'));
+
+            async function refreshTagsForType(customerType) {
+                if (!tagSelect) return;
+
+                if (tagLoadingSpinner) tagLoadingSpinner.classList.remove('d-none');
+                tagSelect.disabled = true;
+
+                try {
+                    const url = tagsUrl + (customerType ? '?customer_type=' + encodeURIComponent(customerType) : '');
+                    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+                    if (!res.ok) return;
+                    const tags = await res.json();
+
+                    const currentVal = tagSelect.value;
+                    tagSelect.innerHTML = '<option value="">All segments</option>';
+                    tags.forEach(function (tag) {
+                        const opt = document.createElement('option');
+                        opt.value = tag;
+                        opt.textContent = tag;
+                        if (tag === currentVal) opt.selected = true;
+                        tagSelect.appendChild(opt);
+                    });
+
+                    // If the previously selected tag no longer exists for this type, clear it
+                    if (currentVal && !tags.includes(currentVal)) {
+                        tagSelect.value = '';
+                    }
+                } catch (_) {
+                    // silently ignore fetch errors — keep current options
+                } finally {
+                    tagSelect.disabled = false;
+                    if (tagLoadingSpinner) tagLoadingSpinner.classList.add('d-none');
+                }
+            }
+
             searchInput?.addEventListener('input', applyFiltersDebounced);
             tagSelect?.addEventListener('change', applyFiltersNow);
+            typeSelect?.addEventListener('change', async function () {
+                await refreshTagsForType(typeSelect.value);
+                applyFiltersNow();
+            });
+            sourceSelect?.addEventListener('change', applyFiltersNow);
+            marketplaceChannelSelect?.addEventListener('change', applyFiltersNow);
+            syncStatusSelect?.addEventListener('change', applyFiltersNow);
             perPageSelect?.addEventListener('change', applyFiltersNow);
+
+            filterVisibilityInputs.forEach(function (input) {
+                input.addEventListener('change', function () {
+                    const key = input.getAttribute('data-filter-visibility');
+                    visibleFilters[key] = input.checked;
+                    saveVisibleFilters();
+                    if (applyFilterVisibility({ clearHidden: true })) {
+                        applyFiltersNow();
+                    }
+                });
+            });
 
             searchInput?.addEventListener('keydown', function (ev) {
                 if (ev.key === 'Enter') {
@@ -1101,6 +1459,7 @@
                 runSync();
             });
 
+            applyFilterVisibility({ clearHidden: true });
             updateSortHeaders();
             loadPage(1);
         })();
