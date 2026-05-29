@@ -5409,6 +5409,100 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
 });
 
+
+
+// =============================================================================
+// eBay Push Microservice — LOCAL MOCK ENDPOINT (for testing only)
+// -----------------------------------------------------------------------------
+// Use this to test the full price-push flow before the real cPanel microservice
+// at businessnew.5coremanagement.com is deployed.
+//
+// HOW TO USE:
+//   1. In .env set:
+//        EBAY_PUSH_MICROSERVICE_URL=http://localhost/invent/public
+//   2. Push a price from the tabulator UI
+//   3. Check storage/logs/laravel.log for [MockMicroservice] entries
+//   4. Once the real microservice is live, revert the URL and remove this block
+// =============================================================================
+Route::post('/mock-push-ebay-price', function (\Illuminate\Http\Request $request) {
+    // 1. Verify Bearer token (must match EBAY_PUSH_MICROSERVICE_TOKEN in .env)
+    $expectedToken = config('services.ebay_push_microservice.token', '');
+    $providedToken = $request->bearerToken();
+
+    if (empty($expectedToken) || !$providedToken || !hash_equals($expectedToken, $providedToken)) {
+        \Illuminate\Support\Facades\Log::warning('[MockMicroservice] Unauthorized request', ['ip' => $request->ip()]);
+        return response()->json(['success' => false, 'message' => 'Unauthorized.'], 401);
+    }
+
+    // 2. Validate payload
+    $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+        'sku'          => 'required|string',
+        'price'        => 'required|numeric|min:0.01|max:10000',
+        'ebay_item_id' => 'required|string',
+        'quantity'     => 'nullable|integer|min:0',
+        'title'        => 'nullable|string',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json([
+            'success' => false,
+            'message' => $validator->errors()->first(),
+            'errors'  => [['code' => 'ValidationError', 'message' => $validator->errors()->first()]],
+        ], 422);
+    }
+
+    $data   = $validator->validated();
+    $itemId = (string) $data['ebay_item_id'];
+    $price  = round((float) $data['price'], 2);
+    $qty    = isset($data['quantity']) ? (int) $data['quantity'] : null;
+
+    \Illuminate\Support\Facades\Log::info('[MockMicroservice] Received push — forwarding to EbayApiService', [
+        'sku'     => $data['sku'],
+        'item_id' => $itemId,
+        'price'   => $price,
+    ]);
+
+    // 3. Call real eBay Trading API (same as the real microservice will do)
+    try {
+        $ebay   = new \App\Services\EbayApiService();
+        $result = $ebay->reviseFixedPriceItem($itemId, $price, $qty);
+    } catch (\Throwable $e) {
+        \Illuminate\Support\Facades\Log::error('[MockMicroservice] EbayApiService exception', ['error' => $e->getMessage()]);
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage(),
+            'errors'  => [['code' => 'Exception', 'message' => $e->getMessage()]],
+        ], 500);
+    }
+
+    // 4. Return normalized JSON (same shape the real microservice will return)
+    if (!empty($result['success'])) {
+        \Illuminate\Support\Facades\Log::info('[MockMicroservice] Push succeeded', ['sku' => $data['sku'], 'price' => $price]);
+        return response()->json(['success' => true, 'message' => 'Price updated successfully.', 'data' => $result]);
+    }
+
+    $rawErrors = (is_array($result['errors'] ?? null) && !empty($result['errors']))
+        ? $result['errors']
+        : [['code' => 'UnknownError', 'message' => $result['message'] ?? 'Failed to update price']];
+
+    $errors = array_map(fn($e) => !is_array($e)
+        ? ['code' => 'APIError', 'message' => (string) $e]
+        : [
+            'code'    => (string) ($e['ErrorCode'] ?? $e['code'] ?? 'APIError'),
+            'message' => $e['LongMessage'] ?? $e['ShortMessage'] ?? $e['message'] ?? 'Unknown error',
+        ], $rawErrors);
+
+    \Illuminate\Support\Facades\Log::error('[MockMicroservice] Push failed', ['sku' => $data['sku'], 'errors' => $errors]);
+
+    return response()->json([
+        'success'           => false,
+        'message'           => $errors[0]['message'] ?? 'Failed to update price',
+        'errors'            => $errors,
+        'accountRestricted' => (bool) ($result['accountRestricted'] ?? false),
+    ], 400);
+});
+
+
 // Shopify Meta Campaigns Routes (Facebook & Instagram)
 Route::prefix('shopify/meta-campaigns')->middleware(['auth'])->group(function () {
     Route::get('/summary', [\App\Http\Controllers\ShopifyMetaCampaignController::class, 'summary'])->name('shopify.meta.campaigns.summary');
