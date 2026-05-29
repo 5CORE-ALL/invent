@@ -267,6 +267,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | eBay Price Push Microservice (cPanel)
+    |--------------------------------------------------------------------------
+    |
+    | Instead of calling eBay's Trading API directly, this application
+    | delegates price pushes to an external cPanel Laravel microservice.
+    | The microservice handles eBay OAuth, ReviseFixedPriceItem, retries,
+    | and any account-specific restrictions.
+    |
+    | EBAY_PUSH_MICROSERVICE_URL          – full base URL (no trailing slash)
+    |                                        e.g. https://ebay-api.example.com
+    | EBAY_PUSH_MICROSERVICE_TOKEN        – shared Bearer token
+    | EBAY_PUSH_MICROSERVICE_TIMEOUT      – per-request timeout in seconds
+    | EBAY_PUSH_MICROSERVICE_RETRIES      – retry attempts on network/5xx failure
+    | EBAY_PUSH_MICROSERVICE_RETRY_DELAY_MS – ms to wait between retry attempts
+    |
+    */
+    'ebay_push_microservice' => [
+        'url'            => env('EBAY_PUSH_MICROSERVICE_URL', ''),
+        'token'          => env('EBAY_PUSH_MICROSERVICE_TOKEN', ''),
+        'timeout'        => (int) env('EBAY_PUSH_MICROSERVICE_TIMEOUT', 60),
+        'retries'        => (int) env('EBAY_PUSH_MICROSERVICE_RETRIES', 3),
+        'retry_delay_ms' => (int) env('EBAY_PUSH_MICROSERVICE_RETRY_DELAY_MS', 5000),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | eBay Account 1 (AmarjitK-Products) / Legacy
     |--------------------------------------------------------------------------
     */
