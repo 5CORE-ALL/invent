@@ -79,9 +79,7 @@ class EbayPushService
      */
     public function pushPrice(array $payload): array
     {
-        // LOCAL TESTING: points to /mock-push-ebay-price (web.php)
-        // PRODUCTION:    change back to /api/push-ebay-price once microservice is live
-        $endpoint = $this->baseUrl . '/mock-push-ebay-price';
+        $endpoint = $this->baseUrl . '/api/push-ebay-price';
 
         // Build a clean body — omit null / empty optional fields
         $body = $this->buildBody([
