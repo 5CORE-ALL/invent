@@ -5,6 +5,7 @@ use App\Http\Controllers\Crm\CrmDashboardController;
 use App\Http\Controllers\Crm\CustomerController;
 use App\Http\Controllers\Crm\FollowUpController;
 use App\Http\Controllers\Crm\ShopifyController;
+use App\Http\Controllers\Crm\ShopifyDashboardController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -34,8 +35,13 @@ Route::middleware(['auth'])
         Route::get('customers/{customer}/communications', [CommunicationController::class, 'index'])
             ->name('customers.communications.index');
 
+        Route::get('shopify/dashboard', [ShopifyDashboardController::class, 'index'])->name('shopify.dashboard');
+        Route::get('shopify/dashboard/data', [ShopifyDashboardController::class, 'data'])->name('shopify.dashboard.data');
         Route::get('shopify/customers', [ShopifyController::class, 'shopifyCustomersIndex'])->name('shopify.customers.index');
         Route::get('shopify/customers/data', [ShopifyController::class, 'shopifyCustomersData'])->name('shopify.customers.data');
+        Route::get('shopify/customers/tags', [ShopifyController::class, 'shopifyCustomerTags'])->name('shopify.customers.tags');
+        Route::post('shopify/customers', [ShopifyController::class, 'storeShopifyCustomer'])->name('shopify.customers.store');
+        Route::post('shopify/customers/import', [ShopifyController::class, 'importShopifyCustomers'])->name('shopify.customers.import');
         Route::post('shopify/customers/{shopify_customer}/follow-ups', [ShopifyController::class, 'storeCustomerFollowUp'])
             ->name('shopify.customers.follow-ups.store');
         Route::get('shopify/others', [ShopifyController::class, 'shopifyOthersIndex'])->name('shopify.others.index');
