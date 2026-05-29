@@ -90,9 +90,10 @@ class EbayPushService
             'title'        => $payload['title']        ?? null,
         ]);
 
-        Log::info('[EbayPushService] Dispatching single price push', [
-            'endpoint' => $endpoint,
-            'payload'  => $body,
+        // Detailed pre-request log (required format)
+        Log::info('Calling eBay microservice', [
+            'url'     => $endpoint,
+            'payload' => $body,
         ]);
 
         try {
@@ -143,10 +144,10 @@ class EbayPushService
 
         $body = ['items' => array_values($sanitizedItems)];
 
-        Log::info('[EbayPushService] Dispatching bulk price push', [
-            'endpoint' => $endpoint,
-            'count'    => count($items),
-            'skus'     => array_column($sanitizedItems, 'sku'),
+        // Detailed pre-request log (required format)
+        Log::info('Calling eBay microservice', [
+            'url'     => $endpoint,
+            'payload' => ['count' => count($items), 'skus' => array_column($sanitizedItems, 'sku')],
         ]);
 
         try {
@@ -198,10 +199,10 @@ class EbayPushService
         $status = $response->status();
         $json   = $response->json() ?? [];
 
-        Log::info('[EbayPushService] Received microservice response', [
-            'http_status' => $status,
-            'body'        => $response->body(),
-            'payload'     => $requestPayload,
+        // Detailed post-response log (required format)
+        Log::info('eBay microservice response', [
+            'status' => $status,
+            'body'   => $response->body(),
         ]);
 
         // 2xx – success
@@ -262,28 +263,46 @@ class EbayPushService
     /**
      * Execute a POST request to the microservice with auth, timeout, and retry.
      *
-     * Retries are attempted only for connection failures and 5xx server errors.
-     * 4xx client errors are considered definitive and are NOT retried, because
-     * repeating a bad request will always produce the same bad response.
+     * Headers sent on every request:
+     *   Authorization: Bearer {token}      – microservice inbound auth
+     *   Content-Type:  application/json    – explicit JSON body
+     *   Accept:        application/json    – expect JSON back
      *
-     * @throws RequestException  When all retries are exhausted
+     * Retries are attempted only for connection failures and 5xx server errors.
+     * 4xx client errors are NOT retried (definitive failures).
+     * All non-2xx responses after retries are exhausted throw a RequestException
+     * that includes the full response body for diagnosis.
+     *
+     * @throws RequestException  When all retries are exhausted or a non-retryable failure occurs
      */
     protected function makeRequest(string $endpoint, array $body): Response
     {
         return Http::withToken($this->token)
+            ->withHeaders([
+                'Content-Type' => 'application/json',
+                'Accept'       => 'application/json',
+            ])
             ->timeout($this->timeout)
             ->retry(
                 $this->retries,
                 $this->retryDelayMs,
                 function (\Exception $e, \Illuminate\Http\Client\PendingRequest $request): bool {
-                    // Do not retry 4xx client errors
+                    // Do not retry 4xx client errors — repeating a bad request always fails the same way
                     if ($e instanceof RequestException && $e->response?->clientError()) {
+                        Log::warning('[EbayPushService] Non-retryable 4xx client error — aborting retries', [
+                            'status'   => $e->response?->status(),
+                            'body'     => $e->response?->body(),
+                            'message'  => $e->getMessage(),
+                        ]);
                         return false;
                     }
-                    // Retry on connection errors, timeouts, and 5xx responses
+                    // Retry on connection errors, timeouts, and 5xx server errors
+                    Log::warning('[EbayPushService] Retryable error — will retry', [
+                        'error' => $e->getMessage(),
+                    ]);
                     return true;
                 },
-                throw: true
+                throw: true  // Throw RequestException after all retries are exhausted (includes response body)
             )
             ->post($endpoint, $body);
     }
