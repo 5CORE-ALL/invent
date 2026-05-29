@@ -48,7 +48,7 @@ class ShopifyService implements ShopifyServiceInterface
         $response = $this->sendWithRetries('GET', $this->absoluteAdminUrl($path));
         $decoded = $this->decodeJsonBody($response);
         $customers = $decoded['customers'] ?? [];
-
+        
         if (! is_array($customers)) {
             $customers = [];
         }
@@ -231,6 +231,49 @@ class ShopifyService implements ShopifyServiceInterface
     }
 
     /**
+     * @param  array<string, mixed>  $data
+     */
+    public function createCustomerFromCrm(array $data): ShopifyCustomer
+    {
+        $payload = $this->customerPayloadFromCrmData($data);
+        $response = $this->sendWithRetries('POST', $this->absoluteAdminUrl('customers.json'), [
+            'json' => ['customer' => $payload],
+        ]);
+        $decoded = $this->decodeJsonBody($response);
+        $row = $decoded['customer'] ?? null;
+        if (! is_array($row) || ! isset($row['id'])) {
+            throw new ShopifyApiException('Shopify did not return a customer after create.');
+        }
+
+        return $this->upsertReturnedCustomerRow($row, isset($data['customer_id']) ? (int) $data['customer_id'] : null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function updateShopifyCustomerFromCrm(ShopifyCustomer $record, array $data): ShopifyCustomer
+    {
+        $shopifyId = (int) $record->shopify_customer_id;
+        if ($shopifyId <= 0) {
+            return $this->createCustomerFromCrm($data);
+        }
+
+        $payload = $this->customerPayloadFromCrmData($data);
+        $payload['id'] = $shopifyId;
+
+        $response = $this->sendWithRetries('PUT', $this->absoluteAdminUrl('customers/'.$shopifyId.'.json'), [
+            'json' => ['customer' => $payload],
+        ]);
+        $decoded = $this->decodeJsonBody($response);
+        $row = $decoded['customer'] ?? null;
+        if (! is_array($row) || ! isset($row['id'])) {
+            throw new ShopifyApiException('Shopify did not return a customer after update.');
+        }
+
+        return $this->upsertReturnedCustomerRow($row, isset($data['customer_id']) ? (int) $data['customer_id'] : $record->customer_id);
+    }
+
+    /**
      * @throws \InvalidArgumentException When the row cannot be matched or auto-created in CRM
      */
     public function ensureCrmCustomerForShopifyRecord(ShopifyCustomer $shopifyCustomer): Customer
@@ -302,7 +345,10 @@ class ShopifyService implements ShopifyServiceInterface
         }
     }
 
-    protected function sendWithRetries(string $method, string $url): ResponseInterface
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    protected function sendWithRetries(string $method, string $url, array $options = []): ResponseInterface
     {
         $maxAttempts = max(1, (int) config('services.shopify.max_retries', 5));
         $attempt = 0;
@@ -311,7 +357,7 @@ class ShopifyService implements ShopifyServiceInterface
             $attempt++;
 
             try {
-                $response = $this->httpClient()->request($method, $url);
+                $response = $this->httpClient()->request($method, $url, $options);
             } catch (ConnectException $e) {
                 Log::warning('ShopifyService: connection error', [
                     'message' => $e->getMessage(),
@@ -457,6 +503,75 @@ class ShopifyService implements ShopifyServiceInterface
         }
 
         return min(2 * $attempt, 10);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    protected function customerPayloadFromCrmData(array $data): array
+    {
+        [$firstName, $lastName] = $this->splitName((string) ($data['name'] ?? ''));
+
+        $payload = array_filter([
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'email' => $this->nullableString($data['email'] ?? null),
+            'phone' => $this->nullableString($data['phone'] ?? null),
+            'tags' => $this->nullableString($data['tags'] ?? null),
+        ], static fn ($value) => $value !== null && $value !== '');
+
+        $address = array_filter([
+            'province' => $this->nullableString($data['province'] ?? null),
+            'zip' => $this->nullableString($data['zip'] ?? null),
+            'phone' => $this->nullableString($data['phone'] ?? null),
+            'default' => true,
+        ], static fn ($value) => $value !== null && $value !== '');
+
+        if (count($address) > 1) {
+            $payload['addresses'] = [$address];
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @return array{0: string|null, 1: string|null}
+     */
+    protected function splitName(string $name): array
+    {
+        $name = trim(preg_replace('/\s+/', ' ', $name) ?? $name);
+        if ($name === '') {
+            return [null, null];
+        }
+
+        $parts = explode(' ', $name, 2);
+
+        return [$parts[0] ?: null, $parts[1] ?? null];
+    }
+
+    protected function nullableString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        return $value !== '' ? $value : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    protected function upsertReturnedCustomerRow(array $row, ?int $crmCustomerId = null): ShopifyCustomer
+    {
+        $record = $this->upsertCustomerRow($row);
+        if ($crmCustomerId !== null && $crmCustomerId > 0) {
+            $record->forceFill(['customer_id' => $crmCustomerId])->save();
+        }
+
+        return $record->refresh();
     }
 
     protected function nextPageUrl(string $linkHeader): ?string

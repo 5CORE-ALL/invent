@@ -14,16 +14,27 @@
             <span class="sync-label">Sync from Shopify</span>
             <span class="sync-spinner spinner-border spinner-border-sm d-none ms-1" role="status" aria-hidden="true"></span>
         </button>
+        <button type="button" id="crm-shopify-create-btn" class="btn btn-success btn-sm">Create customer</button>
+        <button type="button" id="crm-shopify-import-btn" class="btn btn-outline-primary btn-sm">Import Excel</button>
         <span id="crm-shopify-sync-status" class="small text-muted" aria-live="polite"></span>
     </div>
 
     <div class="card mb-3">
         <div class="card-body py-2">
             <div class="row g-2 align-items-end">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label small mb-0" for="crm-shopify-search">Search</label>
                     <input type="search" id="crm-shopify-search" class="form-control form-control-sm"
                            placeholder="Email, phone, name, Shopify ID" autocomplete="off">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-0" for="crm-shopify-tag">Tags</label>
+                    <select id="crm-shopify-tag" class="form-select form-select-sm">
+                        <option value="">All tags</option>
+                        @foreach (($tagFilters ?? []) as $tag)
+                            <option value="{{ $tag }}">{{ $tag }}</option>
+                        @endforeach
+                    </select>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small mb-0" for="crm-shopify-per-page">Per page</label>
@@ -32,9 +43,6 @@
                             <option value="{{ $n }}" @selected($n === 25)>{{ $n }}</option>
                         @endforeach
                     </select>
-                </div>
-                <div class="col-md-2">
-                    <button type="button" id="crm-shopify-apply-filters" class="btn btn-sm btn-outline-primary w-100">Apply</button>
                 </div>
             </div>
         </div>
@@ -58,19 +66,43 @@
                 <table class="table table-sm align-middle mb-0">
                     <thead>
                         <tr>
-                            <th>Shopify ID</th>
-                            <th>Name</th>
-                            <th>Email</th>
-                            <th>Phone</th>
-                            <th>CRM customer</th>
-                            <th>Sync</th>
-                            <th>Last synced</th>
+                            <th class="d-none">
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="shopify_customer_id">Shopify ID</button>
+                            </th>
+                            <th>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="name">Name</button>
+                            </th>
+                            <th>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="email">Email</button>
+                            </th>
+                            <th>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="phone">Phone</button>
+                            </th>
+                            <th>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="province">Province</button>
+                            </th>
+                            <th>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="zip">Zip</button>
+                            </th>
+                            <th class="d-none">
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="channel">Channel</button>
+                            </th>
+                            <th>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="tags">Tags</button>
+                            </th>
+                            <th class="d-none">CRM customer</th>
+                            <th>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="sync_status">Sync</button>
+                            </th>
+                            <th>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="last_synced_at">Last synced</button>
+                            </th>
                             <th class="text-end">Follow-up</th>
                         </tr>
                     </thead>
                     <tbody id="crm-shopify-customers-tbody">
                         <tr>
-                            <td colspan="8" class="text-muted text-center py-4">Loading…</td>
+                            <td colspan="12" class="text-muted text-center py-4">Loading…</td>
                         </tr>
                     </tbody>
                 </table>
@@ -177,11 +209,88 @@
         </div>
     </div>
 
+    <div class="modal fade" id="crm-shopify-create-modal" tabindex="-1" aria-labelledby="crm-shopify-create-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <form id="crm-shopify-create-form">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="crm-shopify-create-modal-label">Create Shopify customer</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="crm-shopify-create-alert" class="alert alert-danger d-none small py-2 mb-3" role="alert"></div>
+                        <p class="small text-muted mb-3">This creates the customer in Shopify first, then stores Shopify's returned data locally.</p>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label small mb-0" for="crm-shopify-create-name">Name</label>
+                                <input type="text" class="form-control form-control-sm" id="crm-shopify-create-name" required maxlength="255">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-0" for="crm-shopify-create-email">Email</label>
+                                <input type="email" class="form-control form-control-sm" id="crm-shopify-create-email" maxlength="255">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-0" for="crm-shopify-create-phone">Phone</label>
+                                <input type="text" class="form-control form-control-sm" id="crm-shopify-create-phone" maxlength="64">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-0" for="crm-shopify-create-province">Province</label>
+                                <input type="text" class="form-control form-control-sm" id="crm-shopify-create-province" maxlength="128">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-0" for="crm-shopify-create-zip">Zip</label>
+                                <input type="text" class="form-control form-control-sm" id="crm-shopify-create-zip" maxlength="32">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small mb-0" for="crm-shopify-create-tags">Tags</label>
+                                <input type="text" class="form-control form-control-sm" id="crm-shopify-create-tags" maxlength="1000" placeholder="VIP, wholesale">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-success btn-sm" id="crm-shopify-create-submit">
+                            <span class="create-submit-label">Create in Shopify</span>
+                            <span class="create-submit-spinner spinner-border spinner-border-sm d-none ms-1" role="status" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="crm-shopify-import-modal" tabindex="-1" aria-labelledby="crm-shopify-import-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <form id="crm-shopify-import-form">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="crm-shopify-import-modal-label">Import Shopify customers</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="crm-shopify-import-alert" class="alert d-none small py-2 mb-3" role="alert"></div>
+                        <p class="small text-muted mb-2">Upload CSV/XLS/XLSX with headings: name, email, phone, province, zip, tags.</p>
+                        <input type="file" class="form-control form-control-sm" id="crm-shopify-import-file" accept=".csv,.txt,.xls,.xlsx" required>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary btn-sm" id="crm-shopify-import-submit">
+                            <span class="import-submit-label">Import</span>
+                            <span class="import-submit-spinner spinner-border spinner-border-sm d-none ms-1" role="status" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script>
         (function () {
             const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
             const dataUrl = @json(route('crm.shopify.customers.data'));
             const syncUrl = @json(route('crm.shopify.sync-customers'));
+            const storeUrl = @json(route('crm.shopify.customers.store'));
+            const importUrl = @json(route('crm.shopify.customers.import'));
             const crmCustomerBase = @json(url('/crm/customers'));
             const shopifyCustomersBase = @json(url('/crm/shopify/customers'));
 
@@ -192,11 +301,13 @@
             const tableRegion = document.getElementById('crm-shopify-table-region');
             const alertEl = document.getElementById('crm-shopify-list-alert');
             const syncBtn = document.getElementById('crm-shopify-sync-btn');
+            const createBtn = document.getElementById('crm-shopify-create-btn');
+            const importBtn = document.getElementById('crm-shopify-import-btn');
             const syncStatus = document.getElementById('crm-shopify-sync-status');
             const syncSpinner = syncBtn?.querySelector('.sync-spinner');
             const searchInput = document.getElementById('crm-shopify-search');
+            const tagSelect = document.getElementById('crm-shopify-tag');
             const perPageSelect = document.getElementById('crm-shopify-per-page');
-            const applyBtn = document.getElementById('crm-shopify-apply-filters');
             const paginationWrap = document.getElementById('crm-shopify-pagination-wrap');
             const prevBtn = document.getElementById('crm-shopify-prev');
             const nextBtn = document.getElementById('crm-shopify-next');
@@ -204,11 +315,15 @@
             const lastBtn = document.getElementById('crm-shopify-last');
             const pageNumbersEl = document.getElementById('crm-shopify-page-numbers');
             const pageSummary = document.getElementById('crm-shopify-page-summary');
+            const sortButtons = document.querySelectorAll('.crm-shopify-sort');
 
             let state = {
                 page: 1,
                 perPage: parseInt(perPageSelect.value, 10) || 25,
                 q: '',
+                tag: '',
+                sortBy: 'last_synced_at',
+                sortDir: 'desc',
                 lastPage: 1,
                 total: 0,
             };
@@ -216,6 +331,7 @@
             let loadSeq = 0;
             let listAbort = null;
             let successHideTimer = null;
+            let filterDebounceTimer = null;
 
             function setTableBusy(busy) {
                 if (tableRegion) {
@@ -232,9 +348,12 @@
                     loadingMessage.textContent = message;
                 }
                 setTableBusy(on);
-                if (applyBtn) applyBtn.disabled = on;
                 if (perPageSelect) perPageSelect.disabled = on;
                 if (searchInput) searchInput.disabled = on;
+                if (tagSelect) tagSelect.disabled = on;
+                sortButtons.forEach(function (button) {
+                    button.disabled = on;
+                });
                 if (on) {
                     [firstBtn, prevBtn, nextBtn, lastBtn].forEach(function (b) {
                         if (b) b.disabled = true;
@@ -340,13 +459,27 @@
                 return td;
             }
 
+            function updateSortHeaders(meta) {
+                meta = meta || {};
+                state.sortBy = meta.sort_by || state.sortBy;
+                state.sortDir = meta.sort_dir || state.sortDir;
+
+                sortButtons.forEach(function (button) {
+                    const sortBy = button.getAttribute('data-sort-by') || '';
+                    const baseLabel = button.getAttribute('data-sort-label') || button.textContent.replace(/[↑↓]\s*$/, '').trim();
+                    button.setAttribute('data-sort-label', baseLabel);
+                    button.setAttribute('aria-sort', sortBy === state.sortBy ? (state.sortDir === 'asc' ? 'ascending' : 'descending') : 'none');
+                    button.textContent = baseLabel + (sortBy === state.sortBy ? (state.sortDir === 'asc' ? ' ↑' : ' ↓') : '');
+                });
+            }
+
             function renderRows(rows) {
                 if (!tbody) return;
                 tbody.innerHTML = '';
                 if (!rows.length) {
                     const tr = document.createElement('tr');
                     const td = document.createElement('td');
-                    td.colSpan = 8;
+                    td.colSpan = 12;
                     td.className = 'text-muted text-center py-4';
                     td.textContent = 'No customers found. Try syncing from Shopify or adjust search.';
                     tr.appendChild(td);
@@ -357,16 +490,47 @@
                     const tr = document.createElement('tr');
 
                     const tdId = document.createElement('td');
-                    tdId.className = 'font-monospace small';
+                    tdId.className = 'font-monospace small d-none';
                     tdId.textContent = r.shopify_customer_id != null ? String(r.shopify_customer_id) : '';
 
                     const tdName = tdText(r.name || '');
 
                     const tdEmail = tdText(r.email);
                     const tdPhone = tdText(r.phone);
+                    const tdProvince = tdText(r.province);
+                    const tdZip = tdText(r.zip);
+
+                    const tdChannel = document.createElement('td');
+                    tdChannel.className = 'small d-none';
+                    if (r.channel) {
+                        const badge = document.createElement('span');
+                        badge.className = 'badge bg-info-subtle text-info border';
+                        badge.textContent = r.channel;
+                        if (r.channel_source) {
+                            badge.title = 'Order source: ' + r.channel_source;
+                        }
+                        tdChannel.appendChild(badge);
+                    } else {
+                        tdChannel.textContent = '—';
+                    }
+
+                    const tdTags = document.createElement('td');
+                    const tags = Array.isArray(r.tags) ? r.tags : [];
+                    if (tags.length) {
+                        tags.forEach(function (tag) {
+                            const span = document.createElement('span');
+                            span.className = 'badge bg-secondary-subtle text-secondary border me-1 mb-1';
+                            span.style.fontSize = '0.7rem';
+                            span.textContent = tag;
+                            tdTags.appendChild(span);
+                        });
+                    } else {
+                        tdTags.className = 'small';
+                        tdTags.textContent = '—';
+                    }
 
                     const tdCrm = document.createElement('td');
-                    tdCrm.className = 'small';
+                    tdCrm.className = 'small d-none';
                     if (r.customer_id) {
                         const a = document.createElement('a');
                         a.href = crmCustomerBase + '/' + r.customer_id;
@@ -401,6 +565,10 @@
                     tr.appendChild(tdName);
                     tr.appendChild(tdEmail);
                     tr.appendChild(tdPhone);
+                    tr.appendChild(tdProvince);
+                    tr.appendChild(tdZip);
+                    tr.appendChild(tdChannel);
+                    tr.appendChild(tdTags);
                     tr.appendChild(tdCrm);
                     tr.appendChild(tdSync);
                     tr.appendChild(tdLast);
@@ -507,9 +675,14 @@
                 const params = new URLSearchParams({
                     page: String(state.page),
                     per_page: String(state.perPage),
+                    sort_by: state.sortBy,
+                    sort_dir: state.sortDir,
                 });
                 if (state.q) {
                     params.set('q', state.q);
+                }
+                if (state.tag) {
+                    params.set('tag', state.tag);
                 }
 
                 setListLoading(true, opts.loadingMessage || 'Loading customers…');
@@ -544,6 +717,7 @@
 
                     renderRows(json.data || []);
                     updatePagination(json.meta || {});
+                    updateSortHeaders(json.meta || {});
                 } catch (e) {
                     if (e.name === 'AbortError') return;
                     const msg = e && e.message
@@ -556,7 +730,7 @@
                         tbody.innerHTML = '';
                         const tr = document.createElement('tr');
                         const td = document.createElement('td');
-                        td.colSpan = 8;
+                        td.colSpan = 12;
                         td.className = 'text-center py-4';
                         const wrap = document.createElement('div');
                         wrap.className = 'text-danger small mb-2';
@@ -619,6 +793,155 @@
                     window.bootstrap.Modal.getOrCreateInstance(followUpModalEl).show();
                 }
             }
+
+            const createModalEl = document.getElementById('crm-shopify-create-modal');
+            const createForm = document.getElementById('crm-shopify-create-form');
+            const createAlert = document.getElementById('crm-shopify-create-alert');
+            const createSubmitBtn = document.getElementById('crm-shopify-create-submit');
+            const createSubmitSpinner = createSubmitBtn ? createSubmitBtn.querySelector('.create-submit-spinner') : null;
+
+            function showCreateAlert(message) {
+                if (!createAlert) return;
+                createAlert.textContent = message;
+                createAlert.classList.remove('d-none');
+            }
+
+            function hideCreateAlert() {
+                if (!createAlert) return;
+                createAlert.classList.add('d-none');
+                createAlert.textContent = '';
+            }
+
+            createBtn?.addEventListener('click', function () {
+                hideCreateAlert();
+                createForm?.reset();
+                if (createModalEl && window.bootstrap && window.bootstrap.Modal) {
+                    window.bootstrap.Modal.getOrCreateInstance(createModalEl).show();
+                }
+            });
+
+            createForm?.addEventListener('submit', async function (ev) {
+                ev.preventDefault();
+                hideCreateAlert();
+                const payload = {
+                    name: document.getElementById('crm-shopify-create-name')?.value || '',
+                    email: document.getElementById('crm-shopify-create-email')?.value || '',
+                    phone: document.getElementById('crm-shopify-create-phone')?.value || '',
+                    province: document.getElementById('crm-shopify-create-province')?.value || '',
+                    zip: document.getElementById('crm-shopify-create-zip')?.value || '',
+                    tags: document.getElementById('crm-shopify-create-tags')?.value || '',
+                };
+                if (createSubmitBtn) createSubmitBtn.disabled = true;
+                if (createSubmitSpinner) createSubmitSpinner.classList.remove('d-none');
+                try {
+                    const res = await fetch(storeUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrf,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify(payload),
+                    });
+                    let json = {};
+                    try {
+                        const text = await res.text();
+                        if (text) json = JSON.parse(text);
+                    } catch (parseErr) {
+                        throw new Error('Invalid response from server.');
+                    }
+                    if (!res.ok) {
+                        throw new Error(messageFromJson(json, res) || 'Could not create customer.');
+                    }
+                    if (createModalEl && window.bootstrap && window.bootstrap.Modal) {
+                        window.bootstrap.Modal.getOrCreateInstance(createModalEl).hide();
+                    }
+                    showAlert('success', json.message || 'Customer synced to Shopify.', { autoHideMs: 6000, dismissible: false });
+                    await loadPage(1, { loadingMessage: 'Refreshing list…' });
+                } catch (e) {
+                    showCreateAlert(e && e.message ? e.message : 'Request failed.');
+                } finally {
+                    if (createSubmitBtn) createSubmitBtn.disabled = false;
+                    if (createSubmitSpinner) createSubmitSpinner.classList.add('d-none');
+                }
+            });
+
+            const importModalEl = document.getElementById('crm-shopify-import-modal');
+            const importForm = document.getElementById('crm-shopify-import-form');
+            const importAlert = document.getElementById('crm-shopify-import-alert');
+            const importSubmitBtn = document.getElementById('crm-shopify-import-submit');
+            const importSubmitSpinner = importSubmitBtn ? importSubmitBtn.querySelector('.import-submit-spinner') : null;
+
+            function showImportAlert(type, message) {
+                if (!importAlert) return;
+                importAlert.classList.remove('d-none', 'alert-danger', 'alert-success', 'alert-warning');
+                importAlert.classList.add(type === 'success' ? 'alert-success' : type === 'warning' ? 'alert-warning' : 'alert-danger');
+                importAlert.textContent = message;
+            }
+
+            function hideImportAlert() {
+                if (!importAlert) return;
+                importAlert.classList.add('d-none');
+                importAlert.textContent = '';
+            }
+
+            importBtn?.addEventListener('click', function () {
+                hideImportAlert();
+                importForm?.reset();
+                if (importModalEl && window.bootstrap && window.bootstrap.Modal) {
+                    window.bootstrap.Modal.getOrCreateInstance(importModalEl).show();
+                }
+            });
+
+            importForm?.addEventListener('submit', async function (ev) {
+                ev.preventDefault();
+                hideImportAlert();
+                const fileEl = document.getElementById('crm-shopify-import-file');
+                const file = fileEl && fileEl.files ? fileEl.files[0] : null;
+                if (!file) {
+                    showImportAlert('error', 'Choose a file to import.');
+                    return;
+                }
+                const formData = new FormData();
+                formData.append('file', file);
+                if (importSubmitBtn) importSubmitBtn.disabled = true;
+                if (importSubmitSpinner) importSubmitSpinner.classList.remove('d-none');
+                try {
+                    const res = await fetch(importUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrf,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'same-origin',
+                        body: formData,
+                    });
+                    let json = {};
+                    try {
+                        const text = await res.text();
+                        if (text) json = JSON.parse(text);
+                    } catch (parseErr) {
+                        throw new Error('Invalid response from server.');
+                    }
+                    if (!res.ok) {
+                        throw new Error(messageFromJson(json, res) || 'Import failed.');
+                    }
+                    const errors = json.summary && Array.isArray(json.summary.errors) && json.summary.errors.length
+                        ? ' Errors: ' + json.summary.errors.join(' | ')
+                        : '';
+                    showImportAlert(errors ? 'warning' : 'success', (json.message || 'Import finished.') + errors);
+                    showAlert(errors ? 'warning' : 'success', json.message || 'Import finished.', { autoHideMs: 7000, dismissible: false });
+                    await loadPage(1, { loadingMessage: 'Refreshing list…' });
+                } catch (e) {
+                    showImportAlert('error', e && e.message ? e.message : 'Request failed.');
+                } finally {
+                    if (importSubmitBtn) importSubmitBtn.disabled = false;
+                    if (importSubmitSpinner) importSubmitSpinner.classList.add('d-none');
+                }
+            });
 
             followUpForm?.addEventListener('submit', async function (ev) {
                 ev.preventDefault();
@@ -727,17 +1050,46 @@
                 }
             }
 
-            applyBtn?.addEventListener('click', function () {
+            function applyFiltersNow() {
+                if (filterDebounceTimer) {
+                    clearTimeout(filterDebounceTimer);
+                    filterDebounceTimer = null;
+                }
                 state.q = (searchInput?.value || '').trim();
+                state.tag = (tagSelect?.value || '').trim();
                 state.perPage = parseInt(perPageSelect?.value || '25', 10) || 25;
                 loadPage(1);
-            });
+            }
+
+            function applyFiltersDebounced() {
+                if (filterDebounceTimer) {
+                    clearTimeout(filterDebounceTimer);
+                }
+                filterDebounceTimer = setTimeout(applyFiltersNow, 350);
+            }
+
+            searchInput?.addEventListener('input', applyFiltersDebounced);
+            tagSelect?.addEventListener('change', applyFiltersNow);
+            perPageSelect?.addEventListener('change', applyFiltersNow);
 
             searchInput?.addEventListener('keydown', function (ev) {
                 if (ev.key === 'Enter') {
                     ev.preventDefault();
-                    applyBtn?.click();
+                    applyFiltersNow();
                 }
+            });
+
+            sortButtons.forEach(function (button) {
+                button.addEventListener('click', function () {
+                    const nextSort = button.getAttribute('data-sort-by') || 'last_synced_at';
+                    if (state.sortBy === nextSort) {
+                        state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        state.sortBy = nextSort;
+                        state.sortDir = nextSort === 'last_synced_at' ? 'desc' : 'asc';
+                    }
+                    loadPage(1);
+                });
             });
 
             firstBtn?.addEventListener('click', function () { loadPage(1); });
@@ -749,6 +1101,7 @@
                 runSync();
             });
 
+            updateSortHeaders();
             loadPage(1);
         })();
     </script>

@@ -3,7 +3,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Shopify',
-        'sub_title' => 'Others Customers',
+        'sub_title' => 'Marketplace Customers',
     ])
 
     @include('crm.shopify._nav', ['active' => 'others'])

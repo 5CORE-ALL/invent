@@ -11,7 +11,7 @@
         <a href="{{ route('crm.shopify.others.index') }}"
            class="nav-link @if ($active === 'others') active @endif"
            @if ($active === 'others') aria-current="page" @endif>
-            Others Customers
+            Marketplace Customers
         </a>
     </li>
     <li class="nav-item" role="presentation">

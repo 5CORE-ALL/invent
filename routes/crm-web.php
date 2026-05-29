@@ -36,6 +36,8 @@ Route::middleware(['auth'])
 
         Route::get('shopify/customers', [ShopifyController::class, 'shopifyCustomersIndex'])->name('shopify.customers.index');
         Route::get('shopify/customers/data', [ShopifyController::class, 'shopifyCustomersData'])->name('shopify.customers.data');
+        Route::post('shopify/customers', [ShopifyController::class, 'storeShopifyCustomer'])->name('shopify.customers.store');
+        Route::post('shopify/customers/import', [ShopifyController::class, 'importShopifyCustomers'])->name('shopify.customers.import');
         Route::post('shopify/customers/{shopify_customer}/follow-ups', [ShopifyController::class, 'storeCustomerFollowUp'])
             ->name('shopify.customers.follow-ups.store');
         Route::get('shopify/others', [ShopifyController::class, 'shopifyOthersIndex'])->name('shopify.others.index');
