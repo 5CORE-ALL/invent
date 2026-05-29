@@ -225,17 +225,20 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Weekly/monthly auto-tasks become missed 144h / 720h after their generated start time.
+        // Hourly so the per-type window is honoured promptly. Automated tasks only.
         $schedule->command('tasks:mark-missed-automated')
-            ->twiceDaily(9, 18)
+            ->hourly()
             ->timezone($taskTz)
             ->name('mark-missed-automated-tasks')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Auto-delete incomplete daily auto-tasks at 00:05 office time (end of prior business day).
+        // Daily auto-tasks become missed 24h after their generated start time → archive + delete.
+        // Hourly so the 24h-from-start_date window is honoured promptly. Automated tasks only.
         $schedule->command('tasks:expire-daily-automated')
-            ->dailyAt('00:05')
+            ->hourly()
             ->timezone($taskTz)
             ->name('expire-daily-automated-tasks')
             ->withoutOverlapping()

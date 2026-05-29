@@ -647,11 +647,14 @@ class TaskController extends Controller
             // Normalize datetime fields to local string format so frontend date parsing
             // doesn't shift dates because of UTC ISO serialization ("...Z").
             foreach (['start_date', 'due_date', 'completion_date', 'created_at', 'updated_at'] as $dtField) {
-                if (!empty($task->{$dtField})) {
+                // Use the raw DB value (already stored as office-time wall-clock) and reformat
+                // without any timezone conversion. Reading $task->{$dtField} would apply the
+                // 'datetime' cast (app TZ = Asia/Kolkata) and a later shift to PT, rolling
+                // 00:01 PT auto-tasks back to the previous day.
+                $raw = $task->getRawOriginal($dtField);
+                if (!empty($raw)) {
                     try {
-                        $task->{$dtField} = \Carbon\Carbon::parse($task->{$dtField}, TaskBusinessTime::tz())
-                            ->setTimezone(TaskBusinessTime::tz())
-                            ->format('Y-m-d H:i:s');
+                        $task->{$dtField} = \Carbon\Carbon::parse($raw)->format('Y-m-d H:i:s');
                     } catch (\Throwable $e) {
                         // keep original value if parsing fails
                     }

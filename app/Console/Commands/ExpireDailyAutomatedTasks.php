@@ -12,12 +12,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Auto-expire daily automated tasks that were not completed the same day.
+ * Auto-expire daily automated tasks that were not completed within their missed window.
  *
- * For every daily automate-task instance whose start_date day (office / business timezone) is BEFORE
- * today and whose status is not Done/Archived: mark missed, archive to deleted_tasks, soft-delete.
+ * A daily automate-task instance becomes missed 24 hours after its generated start time
+ * (start_date), in the business timezone (see config tasks.missed_after_hours.daily). When the
+ * window elapses and status is not Done/Archived: mark missed, archive to deleted_tasks, soft-delete.
  *
- * Scheduled daily at 00:05 in {@see config('tasks.business_timezone')} — see Kernel. Manual trigger:
+ * Scheduled hourly in {@see config('tasks.business_timezone')} — see Kernel. Manual trigger:
  * {@see \App\Http\Controllers\TaskController::expireDailyAutomatedTasks()}.
  */
 class ExpireDailyAutomatedTasks extends Command
@@ -35,7 +36,8 @@ class ExpireDailyAutomatedTasks extends Command
             TaskBusinessTime::applyDatabaseSession();
 
             $now = TaskBusinessTime::now();
-            $todayStart = TaskBusinessTime::todayStart();
+            // Daily auto-task is missed 24h (configurable) after its generated start time.
+            $cutoff = $now->copy()->subHours(TaskBusinessTime::missedAfterHours('daily'));
 
             $expired = 0;
             $archived = 0;
@@ -45,11 +47,12 @@ class ExpireDailyAutomatedTasks extends Command
             // and task_type='automate_task', so the LOWER(schedule_type)='daily' check is the ONLY
             // safe way to exclude them. See App\Console\Commands\ExecuteAutomatedTasks for how
             // weekly/monthly instances are created with their own schedule_type.
+            // Normal/manual tasks (is_automate_task = 0) are NEVER affected.
             Task::query()
                 ->where('is_automate_task', 1)
                 ->whereRaw('LOWER(schedule_type) = ?', ['daily'])
                 ->whereNotNull('start_date')
-                ->where('start_date', '<', $todayStart)
+                ->where('start_date', '<=', $cutoff)
                 ->whereNotIn('status', ['Done', 'Archived'])
                 ->orderBy('id')
                 ->chunkById(100, function ($tasks) use ($now, $dryRun, &$expired, &$archived, &$failed) {

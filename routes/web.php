@@ -803,10 +803,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ]);
     })->name('customer.care.orders.on.hold.sku.details');
     Route::get('/customer-care/orders-on-hold/issues', function () {
-        $rows = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')
+        $query = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')
             ->where(function ($q) {
                 $q->whereNull('is_archived')->orWhere('is_archived', false);
             })
+            ->where(function ($q) {
+                $q->where('department', 'Orders on Hold')
+                    ->orWhere('department', 'like', '%"Orders on Hold"%');
+            });
+        $rows = $query
             ->orderByDesc('id')
             ->limit(1000)
             ->get([
@@ -821,19 +826,123 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'issue',
                 'issue_remark',
                 'action_1',
+                'cc_action_history',
                 'action_1_remark',
                 'replacement_tracking',
                 'c_action_1',
                 'c_action_1_remark',
                 'close_note',
+                'order_number',
+                'department',
                 'created_by',
                 'created_at',
             ]);
 
         $tz = config('app.timezone');
-        $data = $rows->map(function ($row) use ($tz) {
+        $labelMap = \Illuminate\Support\Facades\DB::table('orders_on_hold_labels')
+            ->whereIn('issue_id', $rows->pluck('id')->all())
+            ->get()
+            ->keyBy('issue_id');
+        $optionsMap = \Illuminate\Support\Facades\DB::table('orders_on_hold_options')
+            ->whereIn('issue_id', $rows->pluck('id')->all())
+            ->get()
+            ->keyBy('issue_id');
+
+        $skus = $rows->pluck('sku')->map(fn ($s) => strtolower(trim((string) $s)))->unique()->values()->all();
+        if ($skus === []) {
+            $shopifyImages = collect();
+            $pmImages = collect();
+        } else {
+            $shopifyImages = \Illuminate\Support\Facades\DB::table('shopify_skus')
+                ->selectRaw('LOWER(TRIM(sku)) as sku_key, image_src')
+                ->whereRaw('LOWER(TRIM(sku)) IN ('.implode(',', array_fill(0, count($skus), '?')).')', $skus)
+                ->get()
+                ->keyBy('sku_key');
+            $pmImages = \Illuminate\Support\Facades\DB::table('product_master')
+                ->selectRaw('LOWER(TRIM(sku)) as sku_key, main_image, image1')
+                ->whereRaw('LOWER(TRIM(sku)) IN ('.implode(',', array_fill(0, count($skus), '?')).')', $skus)
+                ->get()
+                ->keyBy('sku_key');
+        }
+        $normalizeImage = static function ($path) {
+            $p = trim((string) ($path ?? ''));
+            if ($p === '') {
+                return null;
+            }
+            if (preg_match('/^(https?:)?\/\//i', $p) || str_starts_with($p, 'data:')) {
+                return $p;
+            }
+
+            return '/'.ltrim($p, '/');
+        };
+        $imageMap = [];
+        foreach ($skus as $key) {
+            $imageMap[$key] = $normalizeImage($shopifyImages[$key]->image_src ?? null)
+                ?? $normalizeImage($pmImages[$key]->main_image ?? null)
+                ?? $normalizeImage($pmImages[$key]->image1 ?? null);
+        }
+
+        // Per-marketplace "M link" (marketplace Customer Care message page) — same source as
+        // /customer-care/cc-messages-returns: Account Health metric definition m_link per channel scope.
+        $mLinkSlug = static function ($v): string {
+            $s = strtolower(trim((string) $v));
+
+            return str_replace([' ', '-', '_', '&', '/', '–', '—'], '', $s);
+        };
+        $mLinkBySlug = [];
+        try {
+            $ahmController = app(\App\Http\Controllers\Channels\AccountHealthMasterController::class);
+            $scopeToMLink = [];
+            foreach (\App\Models\ChannelMaster::where('status', 'Active')->get(['id', 'channel']) as $ch) {
+                $name = trim((string) $ch->channel);
+                if ($name === '') {
+                    continue;
+                }
+                $scope = $ahmController->definitionScopeForChannel($ch);
+                if (! array_key_exists($scope, $scopeToMLink)) {
+                    $scopeToMLink[$scope] = \App\Models\AccountHealthMetricFieldDefinition::query()
+                        ->where('definition_scope', $scope)
+                        ->whereNotNull('m_link')
+                        ->where('m_link', '!=', '')
+                        ->orderBy('sort_order')
+                        ->orderBy('id')
+                        ->value('m_link');
+                }
+                $mLinkBySlug[$mLinkSlug($name)] = $scopeToMLink[$scope] ?: null;
+            }
+        } catch (\Throwable $e) {
+            $mLinkBySlug = [];
+        }
+
+        $data = $rows->map(function ($row) use ($tz, $labelMap, $optionsMap, $imageMap, $mLinkBySlug, $mLinkSlug) {
+            $ccHistory = [];
+            if (! empty($row->cc_action_history)) {
+                $decoded = json_decode((string) $row->cc_action_history, true);
+                if (is_array($decoded)) {
+                    $ccHistory = $decoded;
+                }
+            }
+            $lbl = $labelMap[$row->id] ?? null;
+            $opt = $optionsMap[$row->id] ?? null;
+            $variantSkus = $opt && ! empty($opt->variant_skus) ? (json_decode((string) $opt->variant_skus, true) ?: []) : [];
+            $upgradeSkus = $opt && ! empty($opt->upgrade_skus) ? (json_decode((string) $opt->upgrade_skus, true) ?: []) : [];
+
             return [
                 'id' => (int) $row->id,
+                'label' => [
+                    'alternate_upgrade_done' => (bool) ($lbl->alternate_upgrade_done ?? false),
+                    'stock_adjustment_done' => (bool) ($lbl->stock_adjustment_done ?? false),
+                    'refunded' => (bool) ($lbl->refunded ?? false),
+                    'label_voided' => (bool) ($lbl->label_voided ?? false),
+                ],
+                'options' => [
+                    'variant_skus' => array_values($variantSkus),
+                    'upgrade_skus' => array_values($upgradeSkus),
+                    'no_options' => (bool) ($opt->no_options ?? false),
+                ],
+                'image_url' => $imageMap[strtolower(trim((string) $row->sku))] ?? null,
+                'm_link' => ($mLinkBySlug[$mLinkSlug($row->marketplace_1)] ?? null)
+                    ?: ($mLinkBySlug[$mLinkSlug($row->marketplace_2)] ?? null),
                 'sku' => $row->sku,
                 'qty' => (float) $row->qty,
                 'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
@@ -844,11 +953,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'issue' => $row->issue,
                 'issue_remark' => $row->issue_remark,
                 'action_1' => $row->action_1,
+                'cc_action_history' => $ccHistory,
                 'action_1_remark' => $row->action_1_remark,
                 'replacement_tracking' => $row->replacement_tracking,
                 'c_action_1' => $row->c_action_1,
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
+                'order_number' => $row->order_number,
+                'department' => \App\Support\CustomerCareDepartments::label($row->department ?? null),
+                'departments' => \App\Support\CustomerCareDepartments::decode($row->department ?? null),
                 'created_by' => $row->created_by,
                 'created_at' => $row->created_at,
                 'created_at_display' => $row->created_at
@@ -860,7 +973,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         return response()->json(['data' => $data]);
     })->name('customer.care.orders.on.hold.issues.index');
     Route::get('/customer-care/orders-on-hold/history', function () {
-        $rows = \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')
+        $historyQuery = \Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')
+            ->where(function ($q) {
+                $q->where('department', 'Orders on Hold')
+                    ->orWhere('department', 'like', '%"Orders on Hold"%');
+            });
+        $rows = $historyQuery
             ->orderByDesc('id')
             ->limit(1000)
             ->get([
@@ -883,6 +1001,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1',
                 'c_action_1_remark',
                 'close_note',
+                'department',
                 'created_by',
                 'logged_at',
             ]);
@@ -916,6 +1035,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => $row->c_action_1,
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
+                'department' => \App\Support\CustomerCareDepartments::label($row->department ?? null),
+                'departments' => \App\Support\CustomerCareDepartments::decode($row->department ?? null),
                 'created_by' => $row->created_by,
                 'logged_at' => $row->logged_at,
                 'logged_at_display' => $row->logged_at
@@ -937,12 +1058,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'what_happened' => 'nullable|string|max:100',
             'issue' => 'required|string|max:255',
             'issue_remark' => 'nullable|string|max:255',
-            'action_1' => 'nullable|string|in:Offer Customer Alterntive / Updgrade,Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Refund,RTS,NA,Other|max:255',
+            'action_1' => 'nullable|string|max:255',
             'action_1_remark' => 'nullable|string|max:255',
             'replacement_tracking' => 'nullable|string|max:50',
             'c_action_1' => 'nullable|string|max:255',
             'c_action_1_remark' => 'nullable|string|max:255',
             'close_note' => 'nullable|string|max:255',
+            'order_number' => 'nullable|string|max:255',
+            'department' => 'nullable|array',
+            'department.*' => 'string|max:100',
         ]);
         $allowedRootCauses = [
             'Mapping',
@@ -984,7 +1108,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             $createdBy = 'System';
         }
 
-        $id = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $createdBy, $user) {
+        $departments = \App\Support\CustomerCareDepartments::normalizeStringList(array_merge((array) ($validated['department'] ?? []), ['Orders on Hold']));
+        $departmentEncoded = \App\Support\CustomerCareDepartments::encode($departments);
+
+        $id = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $createdBy, $user, $departmentEncoded) {
             $now = now();
 
             $payload = [
@@ -998,20 +1125,27 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'issue' => trim($validated['issue']),
                 'issue_remark' => isset($validated['issue_remark']) ? trim((string) $validated['issue_remark']) : null,
                 'action_1' => isset($validated['action_1']) ? trim((string) $validated['action_1']) : null,
+                'cc_action_history' => json_encode([[
+                    'value' => (isset($validated['action_1']) && trim((string) $validated['action_1']) !== '') ? trim((string) $validated['action_1']) : 'Pending',
+                    'by' => $createdBy,
+                    'at' => $now->timezone(config('app.timezone'))->format('d-m-Y H:i'),
+                ]], JSON_UNESCAPED_UNICODE),
                 'action_1_remark' => isset($validated['action_1_remark']) ? trim((string) $validated['action_1_remark']) : null,
                 'replacement_tracking' => isset($validated['replacement_tracking']) ? trim((string) $validated['replacement_tracking']) : null,
                 'c_action_1' => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
                 'c_action_1_remark' => isset($validated['c_action_1_remark']) ? trim((string) $validated['c_action_1_remark']) : null,
                 'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
+                'order_number' => isset($validated['order_number']) && trim((string) $validated['order_number']) !== '' ? trim((string) $validated['order_number']) : null,
+                'department' => $departmentEncoded,
                 'created_by' => $createdBy,
                 'created_by_user_id' => $user?->id,
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
 
-            $issueId = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->insertGetId($payload);
+            $issueId = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->insertGetId($payload);
 
-            \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')->insert([
+            \Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')->insert([
                 'orders_on_hold_issue_id' => $issueId,
                 'event_type' => 'created',
                 'revision_no' => 0,
@@ -1030,6 +1164,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => $payload['c_action_1'],
                 'c_action_1_remark' => $payload['c_action_1_remark'],
                 'close_note' => $payload['close_note'],
+                'order_number' => $payload['order_number'],
+                'department' => $payload['department'],
                 'created_by' => $createdBy,
                 'created_by_user_id' => $user?->id,
                 'logged_at' => $now,
@@ -1040,7 +1176,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             return $issueId;
         });
 
-        $row = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')
+        $row = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')
             ->where('id', $id)
             ->first([
                 'id',
@@ -1054,16 +1190,26 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'issue',
                 'issue_remark',
                 'action_1',
+                'cc_action_history',
                 'action_1_remark',
                 'replacement_tracking',
                 'c_action_1',
                 'c_action_1_remark',
                 'close_note',
+                'order_number',
+                'department',
                 'created_by',
                 'created_at',
             ]);
 
         $tz = config('app.timezone');
+        $ccHistory = [];
+        if (! empty($row->cc_action_history)) {
+            $decoded = json_decode((string) $row->cc_action_history, true);
+            if (is_array($decoded)) {
+                $ccHistory = $decoded;
+            }
+        }
 
         return response()->json([
             'message' => 'Hold issue saved successfully.',
@@ -1079,11 +1225,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'issue' => $row->issue,
                 'issue_remark' => $row->issue_remark,
                 'action_1' => $row->action_1,
+                'cc_action_history' => $ccHistory,
                 'action_1_remark' => $row->action_1_remark,
                 'replacement_tracking' => $row->replacement_tracking,
                 'c_action_1' => $row->c_action_1,
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
+                'order_number' => $row->order_number,
+                'department' => \App\Support\CustomerCareDepartments::label($row->department ?? null),
+                'departments' => \App\Support\CustomerCareDepartments::decode($row->department ?? null),
                 'created_by' => $row->created_by,
                 'created_at' => $row->created_at,
                 'created_at_display' => $row->created_at
@@ -1103,12 +1253,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'what_happened' => 'nullable|string|max:100',
             'issue' => 'required|string|max:255',
             'issue_remark' => 'nullable|string|max:255',
-            'action_1' => 'nullable|string|in:Offer Customer Alterntive / Updgrade,Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Refund,RTS,NA,Other|max:255',
+            'action_1' => 'nullable|string|max:255',
             'action_1_remark' => 'nullable|string|max:255',
             'replacement_tracking' => 'nullable|string|max:50',
             'c_action_1' => 'nullable|string|max:255',
             'c_action_1_remark' => 'nullable|string|max:255',
             'close_note' => 'nullable|string|max:255',
+            'order_number' => 'nullable|string|max:255',
+            'department' => 'nullable|array',
+            'department.*' => 'string|max:100',
         ]);
         $allowedRootCauses = [
             'Mapping',
@@ -1144,7 +1297,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             ], 422);
         }
 
-        $existing = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->where('id', $id)->first();
+        $existing = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->where('id', $id)->first();
         if (! $existing) {
             return response()->json(['message' => 'Record not found.'], 404);
         }
@@ -1155,9 +1308,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             $actorName = 'System';
         }
 
-        \Illuminate\Support\Facades\DB::transaction(function () use ($id, $validated, $actorName, $user) {
+        $departments = \App\Support\CustomerCareDepartments::normalizeStringList(array_merge((array) ($validated['department'] ?? []), ['Orders on Hold']));
+        $departmentEncoded = \App\Support\CustomerCareDepartments::encode($departments);
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($id, $validated, $actorName, $user, $departmentEncoded) {
             $now = now();
-            $nextRevision = ((int) (\Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')
+            $nextRevision = ((int) (\Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')
                 ->where('orders_on_hold_issue_id', $id)
                 ->max('revision_no'))) + 1;
             $payload = [
@@ -1176,12 +1332,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
                 'c_action_1_remark' => isset($validated['c_action_1_remark']) ? trim((string) $validated['c_action_1_remark']) : null,
                 'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
+                'order_number' => isset($validated['order_number']) && trim((string) $validated['order_number']) !== '' ? trim((string) $validated['order_number']) : null,
+                'department' => $departmentEncoded,
                 'updated_at' => $now,
             ];
 
-            \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->where('id', $id)->update($payload);
+            \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->where('id', $id)->update($payload);
 
-            \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')->insert([
+            \Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')->insert([
                 'orders_on_hold_issue_id' => $id,
                 'event_type' => 'updated',
                 'revision_no' => $nextRevision,
@@ -1200,6 +1358,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => $payload['c_action_1'],
                 'c_action_1_remark' => $payload['c_action_1_remark'],
                 'close_note' => $payload['close_note'],
+                'order_number' => $payload['order_number'],
+                'department' => $payload['department'],
                 'created_by' => $actorName,
                 'created_by_user_id' => $user?->id,
                 'logged_at' => $now,
@@ -1211,7 +1371,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         return response()->json(['message' => 'Hold issue updated successfully.']);
     })->name('customer.care.orders.on.hold.issues.update');
     Route::post('/customer-care/orders-on-hold/issues/{id}/archive', function (int $id) {
-        $row = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->where('id', $id)->first();
+        $row = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->where('id', $id)->first();
         if (! $row) {
             return response()->json(['message' => 'Record not found.'], 404);
         }
@@ -1224,10 +1384,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         \Illuminate\Support\Facades\DB::transaction(function () use ($id, $row, $actorName, $user) {
             $now = now();
-            $nextRevision = ((int) (\Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')
+            $nextRevision = ((int) (\Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')
                 ->where('orders_on_hold_issue_id', $id)
                 ->max('revision_no'))) + 1;
-            \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')
+            \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')
                 ->where('id', $id)
                 ->update([
                     'is_archived' => true,
@@ -1236,7 +1396,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                     'updated_at' => $now,
                 ]);
 
-            \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')->insert([
+            \Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')->insert([
                 'orders_on_hold_issue_id' => $id,
                 'event_type' => 'archived',
                 'revision_no' => $nextRevision,
@@ -1255,6 +1415,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => $row->c_action_1 ?? null,
                 'c_action_1_remark' => $row->c_action_1_remark ?? null,
                 'close_note' => $row->close_note ?? null,
+                'department' => $row->department ?? null,
                 'created_by' => $actorName,
                 'created_by_user_id' => $user?->id,
                 'logged_at' => $now,
@@ -1265,6 +1426,235 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         return response()->json(['message' => 'Hold issue archived successfully.']);
     })->name('customer.care.orders.on.hold.issues.archive');
+    Route::delete('/customer-care/orders-on-hold/issues/{id}', function (int $id) {
+        $exists = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->where('id', $id)->exists();
+        if (! $exists) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($id) {
+            // Related rows first, then the issue itself. Hard delete (permanent).
+            \Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')
+                ->where('orders_on_hold_issue_id', $id)->delete();
+            \Illuminate\Support\Facades\DB::table('orders_on_hold_labels')
+                ->where('issue_id', $id)->delete();
+            \Illuminate\Support\Facades\DB::table('orders_on_hold_options')
+                ->where('issue_id', $id)->delete();
+            \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')
+                ->where('id', $id)->delete();
+        });
+
+        return response()->json(['message' => 'Record deleted permanently.']);
+    })->name('customer.care.orders.on.hold.issues.destroy');
+    Route::patch('/customer-care/orders-on-hold/issues/{id}/cc-action', function (\Illuminate\Http\Request $request, int $id) {
+        $validated = $request->validate(['cc_action' => 'nullable|string|max:50']);
+        $allowed = ['V/U Offer', 'Refunded', 'V/U Sent'];
+        $val = trim((string) ($validated['cc_action'] ?? ''));
+        if ($val === '' || strcasecmp($val, 'Pending') === 0) {
+            $val = null; // Pending is the default state (stored as empty)
+        } elseif (! in_array($val, $allowed, true)) {
+            return response()->json(['message' => 'Invalid status.'], 422);
+        }
+
+        $existing = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')
+            ->where('id', $id)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->first(['id', 'cc_action_history']);
+
+        if (! $existing) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        $history = [];
+        if (! empty($existing->cc_action_history)) {
+            $decoded = json_decode((string) $existing->cc_action_history, true);
+            if (is_array($decoded)) {
+                $history = $decoded;
+            }
+        }
+
+        $user = auth()->user();
+        $by = trim((string) ($user?->name ?? 'System')) ?: 'System';
+        $history[] = [
+            'value' => $val ?? 'Pending',
+            'by' => $by,
+            'at' => now()->timezone(config('app.timezone'))->format('d-m-Y H:i'),
+        ];
+
+        \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')
+            ->where('id', $id)
+            ->update([
+                'action_1' => $val,
+                'cc_action_history' => json_encode($history, JSON_UNESCAPED_UNICODE),
+                'updated_at' => now(),
+            ]);
+
+        return response()->json([
+            'message' => 'Updated.',
+            'cc_action' => $val,
+            'cc_action_history' => $history,
+        ]);
+    })->name('customer.care.orders.on.hold.issues.cc.action');
+    Route::post('/customer-care/orders-on-hold/issues/{id}/label', function (\Illuminate\Http\Request $request, int $id) {
+        $validated = $request->validate([
+            'alternate_upgrade_done' => 'required|boolean',
+            'stock_adjustment_done' => 'required|boolean',
+            'refunded' => 'required|boolean',
+            'label_voided' => 'required|boolean',
+        ]);
+
+        $exists = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->where('id', $id)->exists();
+        if (! $exists) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        $user = auth()->user();
+        $by = trim((string) ($user?->name ?? 'System')) ?: 'System';
+        $now = now();
+
+        $label = [
+            'alternate_upgrade_done' => (bool) $validated['alternate_upgrade_done'],
+            'stock_adjustment_done' => (bool) $validated['stock_adjustment_done'],
+            'refunded' => (bool) $validated['refunded'],
+            'label_voided' => (bool) $validated['label_voided'],
+        ];
+
+        \Illuminate\Support\Facades\DB::table('orders_on_hold_labels')->updateOrInsert(
+            ['issue_id' => $id],
+            array_merge($label, [
+                'updated_by' => $by,
+                'updated_by_user_id' => $user?->id,
+                'updated_at' => $now,
+                'created_at' => $now,
+            ])
+        );
+
+        return response()->json([
+            'message' => 'Label updated.',
+            'label' => $label,
+            'complete' => ($label['alternate_upgrade_done'] && $label['stock_adjustment_done']) || ($label['refunded'] && $label['label_voided']),
+        ]);
+    })->name('customer.care.orders.on.hold.issues.label');
+    Route::get('/customer-care/orders-on-hold/issues/{id}/options', function (int $id) {
+        $allowedEmails = ['president@5core.com', 'mgr-operations@5core.com'];
+        $canEdit = in_array(strtolower(trim((string) auth()->user()?->email)), $allowedEmails, true);
+
+        $opt = \Illuminate\Support\Facades\DB::table('orders_on_hold_options')->where('issue_id', $id)->first();
+        $variantSkus = $opt && ! empty($opt->variant_skus) ? (json_decode((string) $opt->variant_skus, true) ?: []) : [];
+        $upgradeSkus = $opt && ! empty($opt->upgrade_skus) ? (json_decode((string) $opt->upgrade_skus, true) ?: []) : [];
+
+        $enrich = function (array $skuList): array {
+            $skuList = array_values(array_filter(array_map(fn ($s) => trim((string) $s), $skuList), fn ($s) => $s !== ''));
+            if ($skuList === []) {
+                return [];
+            }
+            $keys = array_map(fn ($s) => strtolower($s), $skuList);
+            $placeholders = implode(',', array_fill(0, count($keys), '?'));
+            $shop = \Illuminate\Support\Facades\DB::table('shopify_skus')
+                ->selectRaw('LOWER(TRIM(sku)) as sku_key, COALESCE(inv, 0) as inv, image_src')
+                ->whereRaw('LOWER(TRIM(sku)) IN ('.$placeholders.')', $keys)
+                ->get()->keyBy('sku_key');
+            $pm = \Illuminate\Support\Facades\DB::table('product_master')
+                ->selectRaw('LOWER(TRIM(sku)) as sku_key, main_image, image1')
+                ->whereRaw('LOWER(TRIM(sku)) IN ('.$placeholders.')', $keys)
+                ->get()->keyBy('sku_key');
+            $normalize = static function ($path) {
+                $p = trim((string) ($path ?? ''));
+                if ($p === '') {
+                    return null;
+                }
+                if (preg_match('/^(https?:)?\/\//i', $p) || str_starts_with($p, 'data:')) {
+                    return $p;
+                }
+
+                return '/'.ltrim($p, '/');
+            };
+            $out = [];
+            foreach ($skuList as $s) {
+                $k = strtolower($s);
+                $out[] = [
+                    'sku' => $s,
+                    'inv' => isset($shop[$k]) ? (float) $shop[$k]->inv : null,
+                    'image_url' => $normalize($shop[$k]->image_src ?? null)
+                        ?? $normalize($pm[$k]->main_image ?? null)
+                        ?? $normalize($pm[$k]->image1 ?? null),
+                ];
+            }
+
+            return $out;
+        };
+
+        return response()->json([
+            'can_edit' => $canEdit,
+            'no_options' => (bool) ($opt->no_options ?? false),
+            'variants' => $enrich($variantSkus),
+            'upgrades' => $enrich($upgradeSkus),
+        ]);
+    })->name('customer.care.orders.on.hold.issues.options.show');
+    Route::post('/customer-care/orders-on-hold/issues/{id}/options', function (\Illuminate\Http\Request $request, int $id) {
+        $allowedEmails = ['president@5core.com', 'mgr-operations@5core.com'];
+        $user = auth()->user();
+        if (! in_array(strtolower(trim((string) $user?->email)), $allowedEmails, true)) {
+            return response()->json(['message' => 'You are not authorised to edit options.'], 403);
+        }
+
+        $validated = $request->validate([
+            'variant_skus' => 'nullable|array',
+            'variant_skus.*' => 'string|max:255',
+            'upgrade_skus' => 'nullable|array',
+            'upgrade_skus.*' => 'string|max:255',
+            'no_options' => 'nullable|boolean',
+        ]);
+
+        $exists = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->where('id', $id)->exists();
+        if (! $exists) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        $clean = function ($arr) {
+            $arr = is_array($arr) ? $arr : [];
+            $out = [];
+            foreach ($arr as $s) {
+                $s = trim((string) $s);
+                if ($s !== '' && ! in_array($s, $out, true)) {
+                    $out[] = $s;
+                }
+            }
+
+            return array_values($out);
+        };
+        $noOptions = (bool) ($validated['no_options'] ?? false);
+        // "No options" is mutually exclusive with adding variant/upgrade SKUs.
+        $variantSkus = $noOptions ? [] : $clean($validated['variant_skus'] ?? []);
+        $upgradeSkus = $noOptions ? [] : $clean($validated['upgrade_skus'] ?? []);
+
+        $by = trim((string) ($user?->name ?? 'System')) ?: 'System';
+        $now = now();
+
+        \Illuminate\Support\Facades\DB::table('orders_on_hold_options')->updateOrInsert(
+            ['issue_id' => $id],
+            [
+                'variant_skus' => json_encode($variantSkus, JSON_UNESCAPED_UNICODE),
+                'upgrade_skus' => json_encode($upgradeSkus, JSON_UNESCAPED_UNICODE),
+                'no_options' => $noOptions,
+                'updated_by' => $by,
+                'updated_by_user_id' => $user?->id,
+                'updated_at' => $now,
+                'created_at' => $now,
+            ]
+        );
+
+        return response()->json([
+            'message' => 'Options updated.',
+            'options' => [
+                'variant_skus' => $variantSkus,
+                'upgrade_skus' => $upgradeSkus,
+                'no_options' => $noOptions,
+            ],
+        ]);
+    })->name('customer.care.orders.on.hold.issues.options');
 
     Route::post('/customer-care/orders-on-hold/import-csv', function (\Illuminate\Http\Request $request) {
         $request->validate(['file' => 'required|file|mimes:csv,txt|max:2048']);
@@ -1319,10 +1709,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             }
             try {
                 $now = now();
-                $payload = ['sku' => $sku, 'qty' => (float) $qty, 'order_qty' => $get('order_qty') !== null ? (float) $get('order_qty') : null, 'parent' => $get('parent'), 'marketplace_1' => $get('marketplace_1'), 'marketplace_2' => $get('marketplace_2'), 'what_happened' => $get('what_happened'), 'issue' => $issue, 'issue_remark' => $get('issue_remark'), 'action_1' => $get('action_1'), 'action_1_remark' => $get('action_1_remark'), 'replacement_tracking' => $get('replacement_tracking'), 'c_action_1' => $get('c_action_1'), 'c_action_1_remark' => $get('c_action_1_remark'), 'created_by' => $createdBy, 'created_by_user_id' => $user?->id, 'created_at' => $now, 'updated_at' => $now];
+                $payload = ['sku' => $sku, 'qty' => (float) $qty, 'order_qty' => $get('order_qty') !== null ? (float) $get('order_qty') : null, 'parent' => $get('parent'), 'marketplace_1' => $get('marketplace_1'), 'marketplace_2' => $get('marketplace_2'), 'what_happened' => $get('what_happened'), 'issue' => $issue, 'issue_remark' => $get('issue_remark'), 'action_1' => $get('action_1'), 'action_1_remark' => $get('action_1_remark'), 'replacement_tracking' => $get('replacement_tracking'), 'c_action_1' => $get('c_action_1'), 'c_action_1_remark' => $get('c_action_1_remark'), 'department' => \App\Support\CustomerCareDepartments::encode(['Orders on Hold']), 'created_by' => $createdBy, 'created_by_user_id' => $user?->id, 'created_at' => $now, 'updated_at' => $now];
                 \Illuminate\Support\Facades\DB::transaction(function () use ($payload, $now) {
-                    $id = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->insertGetId($payload);
-                    \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')->insert(array_merge($payload, ['orders_on_hold_issue_id' => $id, 'event_type' => 'created', 'revision_no' => 0, 'logged_at' => $now]));
+                    $id = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->insertGetId($payload);
+                    \Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')->insert(array_merge($payload, ['orders_on_hold_issue_id' => $id, 'event_type' => 'created', 'revision_no' => 0, 'logged_at' => $now]));
                 });
                 $inserted++;
             } catch (\Throwable $e) {
