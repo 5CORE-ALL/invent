@@ -287,12 +287,13 @@ class EbayPushService
                 $this->retries,
                 $this->retryDelayMs,
                 function (\Exception $e, \Illuminate\Http\Client\PendingRequest $request): bool {
-                    // Do not retry 4xx client errors — repeating a bad request always fails the same way
+                    // 4xx client errors are definitive failures — the microservice understood the
+                    // request and returned a structured JSON error. Do NOT retry; return the
+                    // response to handleResponse() so the real eBay error is surfaced to the UI.
                     if ($e instanceof RequestException && $e->response?->clientError()) {
-                        Log::warning('[EbayPushService] Non-retryable 4xx client error — aborting retries', [
-                            'status'   => $e->response?->status(),
-                            'body'     => $e->response?->body(),
-                            'message'  => $e->getMessage(),
+                        Log::warning('[EbayPushService] 4xx from microservice — forwarding to handleResponse()', [
+                            'status' => $e->response?->status(),
+                            'body'   => $e->response?->body(),
                         ]);
                         return false;
                     }
@@ -302,7 +303,10 @@ class EbayPushService
                     ]);
                     return true;
                 },
-                throw: true  // Throw RequestException after all retries are exhausted (includes response body)
+                // throw: false — return the Response object for any HTTP error so
+                // handleResponse() can parse the structured JSON from the microservice.
+                // True network failures (connection refused, SSL error) still throw.
+                throw: false
             )
             ->post($endpoint, $body);
     }
