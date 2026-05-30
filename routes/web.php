@@ -4231,6 +4231,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/lqs/data', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsData'])->name('lqs.data');
     Route::get('/lqs/badge-chart-data', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'badgeChartData'])->name('lqs.badge.chart');
 
+    // LQS Amz
+    Route::get('/lqs-amz', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'lqsAmzView'])->name('lqs.amz.view');
+    Route::get('/lqs/amz/data', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsAmzData'])->name('lqs.amz.data');
+    Route::get('/lqs/amz/badge-chart-data', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'lqsAmzBadgeChartData'])->name('lqs.amz.badge.chart');
+    Route::post('/lqs/amz/refresh-jungle-scout', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'refreshJungleScoutData'])->name('lqs.amz.refresh.js');
+    Route::post('/lqs/amz/action', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'saveLqsAmzAction'])->name('lqs.amz.action.save');
+    Route::get('/lqs/amz/action-history/{sku}', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsAmzActionHistory'])->name('lqs.amz.action.history');
+    Route::get('/lqs/amz/cvr-history', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsAmzCvrHistory'])->name('lqs.amz.cvr.history');
+
     // ebay variation
     Route::get('/zero-ebayvariation', [EbayVariationZeroController::class, 'ebayVariationZeroview'])->name('zero.ebayvariation');
     Route::get('/zero_ebayvariation/view-data', [EbayVariationZeroController::class, 'getViewEbayVariationZeroData']);
