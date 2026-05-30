@@ -1744,6 +1744,9 @@
                                     SGPFT: response.sgpft_percent,
                                     SPRICE_STATUS: 'saved'
                                 });
+                                // Re-render the row so the Accept button's data-price
+                                // reflects the NEW SPRICE (otherwise push uses the old value).
+                                row.reformat();
                             }
                             resolve(response);
                         },
