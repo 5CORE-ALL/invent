@@ -5611,6 +5611,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->middleware('auth')
         ->name('users.toggleSalaryVisibility');
 
+    // Bank details: update only (blank fields are ignored so nothing is ever wiped)
+    Route::post('/users/{user}/bank', [UserController::class, 'updateBank'])
+        ->middleware('auth')
+        ->name('users.bank.update');
+
     // Resume file (view restricted to president/hr; edit restricted to hr — enforced in controller)
     Route::get('/users/{user}/resume', [UserController::class, 'showResume'])
         ->middleware('auth')

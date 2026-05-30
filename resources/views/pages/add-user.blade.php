@@ -564,21 +564,25 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <input type="hidden" id="bankUserId">
                     <div class="mb-3">
-                        <span class="fw-semibold text-muted small d-block mb-1">Bank 1</span>
-                        <div id="bankDetail1" class="p-2 bg-light rounded text-break"></div>
+                        <label class="form-label fw-semibold" for="bankInput1">Bank 1</label>
+                        <textarea class="form-control" id="bankInput1" rows="2" placeholder="Account name, bank, account number..."></textarea>
                     </div>
                     <div class="mb-3">
-                        <span class="fw-semibold text-muted small d-block mb-1">Bank 2</span>
-                        <div id="bankDetail2" class="p-2 bg-light rounded text-break"></div>
+                        <label class="form-label fw-semibold" for="bankInput2">Bank 2</label>
+                        <textarea class="form-control" id="bankInput2" rows="2" placeholder="Secondary bank details..."></textarea>
                     </div>
-                    <div>
-                        <span class="fw-semibold text-muted small d-block mb-1">UPI ID</span>
-                        <div id="bankDetailUpi" class="p-2 bg-light rounded text-break"></div>
+                    <div class="mb-2">
+                        <label class="form-label fw-semibold" for="bankInputUpi">UPI ID</label>
+                        <input type="text" class="form-control" id="bankInputUpi" placeholder="name@bank">
                     </div>
+                    <div class="text-muted small"><i class="ri-information-line me-1"></i>Leave a field blank to keep its current value — bank details are never deleted, only updated.</div>
+                    <div class="alert alert-danger mt-2 d-none" id="bankError"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="bankSaveBtn"><i class="ri-save-line me-1"></i>Save</button>
                 </div>
             </div>
         </div>
@@ -2328,12 +2332,12 @@
                         const d = c.getRow().getData();
                         const has = [d.bank_1, d.bank_2, d.upi_id].some((v) => v && String(v).trim() !== '');
                         return has
-                            ? '<button type="button" class="btn btn-sm btn-success bank-view-btn py-0" title="View bank details"><i class="ri-eye-line"></i></button>'
-                            : '<span class="text-muted">—</span>';
+                            ? '<button type="button" class="btn btn-sm btn-success bank-view-btn py-0" title="View / edit bank details"><i class="ri-eye-line"></i></button>'
+                            : '<button type="button" class="btn btn-sm btn-outline-secondary bank-view-btn py-0" title="Add bank details"><i class="ri-bank-line"></i></button>';
                     },
                     cellClick: function (e, cell) {
                         if (!e.target.closest('.bank-view-btn')) return;
-                        openBankModal(cell.getRow().getData());
+                        openBankModal(cell.getRow().getData(), cell.getRow());
                     }
                 });
             }
@@ -2681,18 +2685,67 @@
                 });
             }
 
-            // ---- Bank details modal ----
+            // ---- Bank details modal (editable; update-only, never deletes) ----
             const bankModalEl = document.getElementById('bankModal');
             const bsBankModal = (bankModalEl && window.bootstrap) ? new bootstrap.Modal(bankModalEl) : null;
+            let bankTargetRow = null;
 
-            function openBankModal(d) {
+            function openBankModal(d, row) {
                 if (!bsBankModal) return;
-                const empty = '<span class="text-muted">Not provided</span>';
+                bankTargetRow = row || null;
+                document.getElementById('bankUserId').value = d.id;
                 document.getElementById('bankUserName').textContent = d.name || '';
-                document.getElementById('bankDetail1').innerHTML = (d.bank_1 && d.bank_1.trim() !== '') ? esc(d.bank_1) : empty;
-                document.getElementById('bankDetail2').innerHTML = (d.bank_2 && d.bank_2.trim() !== '') ? esc(d.bank_2) : empty;
-                document.getElementById('bankDetailUpi').innerHTML = (d.upi_id && d.upi_id.trim() !== '') ? esc(d.upi_id) : empty;
+                document.getElementById('bankInput1').value = d.bank_1 || '';
+                document.getElementById('bankInput2').value = d.bank_2 || '';
+                document.getElementById('bankInputUpi').value = d.upi_id || '';
+                const err = document.getElementById('bankError');
+                if (err) { err.classList.add('d-none'); err.textContent = ''; }
                 bsBankModal.show();
+            }
+
+            const bankSaveBtn = document.getElementById('bankSaveBtn');
+            if (bankSaveBtn) {
+                bankSaveBtn.addEventListener('click', function () {
+                    const userId = document.getElementById('bankUserId').value;
+                    const err = document.getElementById('bankError');
+                    const orig = bankSaveBtn.innerHTML;
+                    bankSaveBtn.disabled = true;
+                    bankSaveBtn.innerHTML = '<i class="ri-loader-4-line"></i> Saving...';
+                    if (err) err.classList.add('d-none');
+
+                    const fd = new FormData();
+                    fd.append('bank_1', document.getElementById('bankInput1').value.trim());
+                    fd.append('bank_2', document.getElementById('bankInput2').value.trim());
+                    fd.append('upi_id', document.getElementById('bankInputUpi').value.trim());
+                    fd.append('_token', csrfToken);
+
+                    fetch('/users/' + userId + '/bank', {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                        body: fd
+                    })
+                    .then(r => r.json())
+                    .then(result => {
+                        bankSaveBtn.disabled = false;
+                        bankSaveBtn.innerHTML = orig;
+                        if (result.success) {
+                            if (bankTargetRow) {
+                                bankTargetRow.update({ bank_1: result.bank_1, bank_2: result.bank_2, upi_id: result.upi_id });
+                            }
+                            bsBankModal.hide();
+                            showToast(result.message || 'Bank details updated.', 'success');
+                        } else {
+                            let m = result.message || 'Failed to update';
+                            if (result.errors) m = Object.values(result.errors).flat().join(' ');
+                            if (err) { err.textContent = m; err.classList.remove('d-none'); }
+                        }
+                    })
+                    .catch(() => {
+                        bankSaveBtn.disabled = false;
+                        bankSaveBtn.innerHTML = orig;
+                        if (err) { err.textContent = 'An error occurred while saving.'; err.classList.remove('d-none'); }
+                    });
+                });
             }
 
             // ---- Docs modal ----

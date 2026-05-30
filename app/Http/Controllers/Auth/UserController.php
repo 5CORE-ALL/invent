@@ -124,6 +124,61 @@ class UserController extends Controller
     }
 
     /**
+     * Update a user's bank details. Update-only: blank fields are left untouched so
+     * existing values can never be deleted, only changed.
+     */
+    public function updateBank(Request $request, User $user)
+    {
+        if (! TeamManagementAccess::canViewSalary()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to edit bank details.',
+            ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'bank_1' => 'nullable|string|max:65535',
+            'bank_2' => 'nullable|string|max:65535',
+            'upi_id' => 'nullable|string|max:65535',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        // Only write fields that were sent with a non-empty value (never blank out existing data).
+        $bankData = [];
+        foreach (['bank_1', 'bank_2', 'upi_id'] as $field) {
+            $value = trim((string) $request->input($field, ''));
+            if ($value !== '') {
+                $bankData[$field] = $value;
+            }
+        }
+
+        if (empty($bankData)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nothing to update — enter at least one value.',
+            ], 422);
+        }
+
+        $user->userSalary()->updateOrCreate(['user_id' => $user->id], $bankData);
+        $user->load('userSalary');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Bank details updated.',
+            'bank_1' => $user->userSalary->bank_1 ?? '',
+            'bank_2' => $user->userSalary->bank_2 ?? '',
+            'upi_id' => $user->userSalary->upi_id ?? '',
+        ]);
+    }
+
+    /**
      * Stream a user's resume file (president/hr only).
      */
     public function showResume(User $user)
