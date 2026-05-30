@@ -1782,7 +1782,7 @@
                 if (isBackgroundRetry) {
                     try {
                         const response = await $.ajax({
-                            url: '/push-ebay-price-tabulator',
+                            url: '/push-ebay2-price',
                             method: 'POST',
                             headers: {
                                 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
@@ -1835,7 +1835,7 @@
 
                 try {
                     const response = await $.ajax({
-                        url: '/push-ebay-price-tabulator',
+                        url: '/push-ebay2-price',
                         method: 'POST',
                         headers: {
                             'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
@@ -1928,7 +1928,7 @@
                         attempt++;
                         
                         $.ajax({
-                            url: '/push-ebay-price-tabulator',
+                            url: '/push-ebay2-price',
                             method: 'POST',
                             headers: {
                                 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
