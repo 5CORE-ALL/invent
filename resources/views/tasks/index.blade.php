@@ -1658,6 +1658,20 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Pending ETC Badge -->
+            <div class="col">
+                <div class="stat-card stat-card-cyan task-stat-trigger" data-metric="pending_etc" data-value="0" title="Click to view history">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-clock-alert-outline"></i>
+                    </div>
+                    <div class="stat-content text-center">
+                        <div class="stat-label">PENDING ETC</div>
+                        <div class="stat-value">0h</div>
+                        <div class="stat-unit" title="Total ETC (estimated time) of pending tasks not yet Done or Archived">hours</div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Tabs Navigation - Prominent Location -->
@@ -3856,7 +3870,8 @@
                     etc_total: filteredData.reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0),
                     atc_total: filteredData.reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0),
                     done_etc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0),
-                    done_atc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0)
+                    done_atc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0),
+                    pending_etc: filteredData.filter(t => !['Done', 'Archived'].includes(t.status)).reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0)
                 };
                 
                 // Overdue calculation:
@@ -3995,6 +4010,11 @@
                             break;
                         case 'MISSED':
                             valueEl.text(stats.missed_count_30);
+                            break;
+                        case 'PENDING ETC':
+                            var pendingEtcHours = Math.round((stats.pending_etc || 0) / 60);
+                            valueEl.text(pendingEtcHours + 'h');
+                            $(this).attr('data-value', pendingEtcHours);
                             break;
                     }
                 });
@@ -6242,7 +6262,8 @@
                 'atc': 'ATC 30D History (Hours)',
                 'tat': 'TAT History (Days)',
                 'score': 'Average Score History',
-                'missed': 'Missed Tasks History'
+                'missed': 'Missed Tasks History',
+                'pending_etc': 'Pending ETC History (Hours)'
             };
             document.getElementById('taskHistoryChartTitle').textContent = titles[metric] || 'History Trend';
             
@@ -6267,7 +6288,8 @@
                 'atc': { border: '#0891b2', bg: 'rgba(8, 145, 178, 0.1)' },
                 'tat': { border: '#0dcaf0', bg: 'rgba(13, 202, 240, 0.1)' },
                 'score': { border: '#38ef7d', bg: 'rgba(56, 239, 125, 0.1)' },
-                'missed': { border: '#dc3545', bg: 'rgba(220, 53, 69, 0.1)' }
+                'missed': { border: '#dc3545', bg: 'rgba(220, 53, 69, 0.1)' },
+                'pending_etc': { border: '#0dcaf0', bg: 'rgba(13, 202, 240, 0.1)' }
             };
             
             taskHistoryChart = new Chart(ctx, {
