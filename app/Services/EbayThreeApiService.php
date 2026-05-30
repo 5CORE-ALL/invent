@@ -407,59 +407,56 @@ class EbayThreeApiService
         $item = $xml->addChild('Item');
         $item->addChild('ItemID', $itemId);
 
-        // Update price
-        $item->addChild('StartPrice', $price);
+        $existingItem = ($itemDetails && isset($itemDetails['Item'])) ? $itemDetails['Item'] : [];
 
-        // Optionally update quantity
-        if ($quantity !== null) {
-            $item->addChild('Quantity', $quantity);
-        }
-        
-        // If we have item details, include required fields to pass validation
-        if ($itemDetails && isset($itemDetails['Item'])) {
-            $existingItem = $itemDetails['Item'];
-            
-            // Include SKU if available (helps with validation)
-            if (isset($existingItem['SKU']) && !empty($existingItem['SKU'])) {
-                $item->addChild('SKU', $existingItem['SKU']);
-            }
-            
-            // Include ListingType if available
-            if (isset($existingItem['ListingType'])) {
-                $item->addChild('ListingType', $existingItem['ListingType']);
-            }
-        }
+        // Detect a multi-variation listing. eBay IGNORES the item-level StartPrice for
+        // variation listings — the price MUST be set on the specific <Variation> (matched
+        // by its variation SKU). Otherwise eBay returns Success but the price never changes.
+        $isVariationListing = isset($existingItem['Variations']['Variation']);
 
-        // If variation exists, use variation structure
-        if ($variationSpecifics && $variationSpecificsSet) {
+        if ($isVariationListing && $sku) {
+            // Update ONLY the target variation's price (do NOT set item-level StartPrice).
             $variations = $item->addChild('Variations');
-            $variation = $variations->addChild('Variation');
-
-            if ($sku) {
-                $variation->addChild('SKU', $sku);
-            }
-
+            $variation  = $variations->addChild('Variation');
+            $variation->addChild('SKU', $sku);
             $variation->addChild('StartPrice', $price);
             if ($quantity !== null) {
                 $variation->addChild('Quantity', $quantity);
             }
 
-            // VariationSpecifics
-            $vs = $variation->addChild('VariationSpecifics');
-            foreach ($variationSpecifics as $name => $value) {
-                $nvl = $vs->addChild('NameValueList');
-                $nvl->addChild('Name', $name);
-                $nvl->addChild('Value', $value);
+            // If explicit VariationSpecifics were supplied, include them (helps eBay match
+            // listings that key variations by specifics rather than SKU).
+            if ($variationSpecifics) {
+                $vs = $variation->addChild('VariationSpecifics');
+                foreach ($variationSpecifics as $name => $value) {
+                    $nvl = $vs->addChild('NameValueList');
+                    $nvl->addChild('Name', $name);
+                    $nvl->addChild('Value', $value);
+                }
+            }
+            if ($variationSpecificsSet) {
+                $vss = $item->addChild('VariationSpecificsSet');
+                foreach ($variationSpecificsSet as $name => $values) {
+                    $nvl = $vss->addChild('NameValueList');
+                    $nvl->addChild('Name', $name);
+                    foreach ($values as $val) {
+                        $nvl->addChild('Value', $val);
+                    }
+                }
+            }
+        } else {
+            // Single (non-variation) listing — set the item-level price.
+            $item->addChild('StartPrice', $price);
+            if ($quantity !== null) {
+                $item->addChild('Quantity', $quantity);
             }
 
-            // VariationSpecificsSet
-            $vss = $item->addChild('VariationSpecificsSet');
-            foreach ($variationSpecificsSet as $name => $values) {
-                $nvl = $vss->addChild('NameValueList');
-                $nvl->addChild('Name', $name);
-                foreach ($values as $val) {
-                    $nvl->addChild('Value', $val);
-                }
+            // Include SKU / ListingType to help pass validation.
+            if (isset($existingItem['SKU']) && !empty($existingItem['SKU'])) {
+                $item->addChild('SKU', $existingItem['SKU']);
+            }
+            if (isset($existingItem['ListingType'])) {
+                $item->addChild('ListingType', $existingItem['ListingType']);
             }
         }
 

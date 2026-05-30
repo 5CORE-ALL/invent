@@ -3400,9 +3400,12 @@
                             if ($target.hasClass('apply-price-btn') || $target.closest('.apply-price-btn').length) {
                                 e.stopPropagation();
                                 const $btn = $target.hasClass('apply-price-btn') ? $target : $target.closest('.apply-price-btn');
-                                const sku = $btn.attr('data-sku') || $btn.data('sku');
-                                const price = parseFloat($btn.attr('data-price') || $btn.data('price'));
-                                const currentStatus = $btn.attr('data-status') || '';
+                                // Read SKU/price from LIVE row data (not the stale data-* HTML attributes),
+                                // so a freshly-edited SPRICE is used instead of reverting to the old value.
+                                const liveRowData = cell.getRow().getData();
+                                const sku = liveRowData['(Child) sku'] || $btn.attr('data-sku');
+                                const price = parseFloat(liveRowData.SPRICE) || parseFloat($btn.attr('data-price'));
+                                const currentStatus = liveRowData.SPRICE_STATUS || $btn.attr('data-status') || '';
                                 
                                 if (!sku || !price || price <= 0 || isNaN(price)) {
                                     showToast('Invalid SKU or price', 'error');
