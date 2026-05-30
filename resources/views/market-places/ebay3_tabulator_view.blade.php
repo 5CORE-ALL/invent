@@ -3382,7 +3382,7 @@
                         const sprice = isNaN(spriceNum) ? 0 : spriceNum;
                         
                         if (value == null || value === '' || isNaN(spriceNum) || sprice <= 0) return '';
-                        if (currentPrice > 0 && sprice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) return '';
+                        // Always show SPRICE when it has a value — even if it equals the eBay price.
                         const formattedValue = `$${Number(sprice).toFixed(2)}`;
                         if (hasCustomSprice === false) {
                             return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
