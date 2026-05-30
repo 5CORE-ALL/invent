@@ -42,9 +42,10 @@ class EbayThreeApiService
      */
     public function generateBearerToken()
     {
-        $clientId     = env('EBAY_3_APP_ID');
-        $clientSecret = env('EBAY_3_CERT_ID');
-        $refreshToken = env('EBAY_3_REFRESH_TOKEN');
+        // Use config() with env() fallback so this works whether or not config is cached.
+        $clientId     = config('services.ebay3.app_id', env('EBAY_3_APP_ID'));
+        $clientSecret = config('services.ebay3.cert_id', env('EBAY_3_CERT_ID'));
+        $refreshToken = config('services.ebay3.refresh_token', env('EBAY_3_REFRESH_TOKEN'));
 
         if (empty($refreshToken)) {
             Log::error('eBay3 token: EBAY_3_REFRESH_TOKEN is not configured');

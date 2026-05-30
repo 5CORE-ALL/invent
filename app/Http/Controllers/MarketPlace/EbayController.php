@@ -2111,23 +2111,9 @@ class EbayController extends Controller
                 ], 404);
             }
 
-            // -------------------------------------------------------------------
-            // Delegate the actual eBay API call to the cPanel microservice.
-            //
-            // EbayPushService handles:
-            //   • Authorization header (Bearer token)
-            //   • HTTP timeout (60 s)
-            //   • Retry logic (up to 3 attempts, 5 s apart, 5xx / network only)
-            //   • Structured logging of request + response
-            //   • Error normalization so the rest of this method stays unchanged
-            // -------------------------------------------------------------------
-            $result = app(EbayPushService::class)->pushPrice([
-                'sku'          => $sku,
-                'price'        => $priceFloat,
-                'ebay_item_id' => $ebayMetric->item_id,
-                'title'        => $ebayMetric->ebay_title  ?? null,
-                'quantity'     => $ebayMetric->ebay_stock  ?? null,
-            ]);
+            // Push price DIRECTLY to eBay via the local EbayApiService (no microservice).
+            $ebayService = new EbayApiService();
+            $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat);
 
             // --- Success path ---
             if (isset($result['success']) && $result['success']) {

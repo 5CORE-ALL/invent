@@ -1599,14 +1599,10 @@ class EbayTwoController extends Controller
                 return response()->json(['success' => false, 'message' => 'Item ID not found for SKU: ' . $sku], 404);
             }
 
-            // Delegate to cPanel microservice via EbayPushService (account: ebay2)
-            $result = app(EbayPushService::class)->pushPrice([
-                'sku'          => $sku,
-                'price'        => $priceFloat,
-                'ebay_item_id' => $ebayMetric->item_id,
-                'title'        => $ebayMetric->ebay_title  ?? null,
-                'quantity'     => $ebayMetric->ebay_stock  ?? null,
-            ], 'ebay2');
+            // Push price DIRECTLY to eBay via the local Ebay2ApiService (no microservice).
+            // The service returns ['success' => bool, 'errors' => ..., 'message' => ...].
+            $service = new Ebay2ApiService();
+            $result  = $service->reviseFixedPriceItem(itemId: $ebayMetric->item_id, price: $priceFloat);
 
             if (isset($result['success']) && $result['success']) {
                 $ebayMetric->ebay_price = $priceFloat;

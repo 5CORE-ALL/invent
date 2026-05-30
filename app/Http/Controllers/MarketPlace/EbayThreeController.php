@@ -1475,14 +1475,9 @@ class EbayThreeController extends Controller
                 return response()->json(['errors' => [['code' => 'NotFound', 'message' => 'eBay3 listing not found for SKU: ' . $sku]]], 404);
             }
 
-            // Delegate to cPanel microservice via EbayPushService (account: ebay3)
-            $result = app(EbayPushService::class)->pushPrice([
-                'sku'          => $sku,
-                'price'        => $priceFloat,
-                'ebay_item_id' => $ebayMetric->item_id,
-                'title'        => $ebayMetric->ebay_title ?? null,
-                'quantity'     => $ebayMetric->ebay_stock ?? null,
-            ], 'ebay3');
+            // Push price DIRECTLY to eBay via the local EbayThreeApiService (no microservice).
+            $ebayService = new \App\Services\EbayThreeApiService();
+            $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat);
 
             if (isset($result['success']) && $result['success']) {
                 $this->saveSpriceStatus($sku, 'pushed');
