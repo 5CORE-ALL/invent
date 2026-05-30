@@ -3293,11 +3293,7 @@
                             
                             if (!value) return '';
                             
-                            // If SPRICE matches eBay2 Price, show blank
-                            if (sprice === ebay2Price) {
-                                return '<span style="color: #999; font-style: italic;">-</span>';
-                            }
-                            
+                            // Always show SPRICE when it has a value — even if it equals the eBay price.
                             const formattedValue = `$${parseFloat(value).toFixed(2)}`;
                             
                             // If using default eBay Price (not custom), show in blue
