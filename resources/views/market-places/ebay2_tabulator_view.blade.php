@@ -3389,7 +3389,10 @@
                                         data: { sku: sku, status: 'applied' },
                                         success: function(response) {
                                             if (response.success) {
-                                                refreshEbay2TableData();
+                                                // Update only this row (no full reload → no horizontal slide)
+                                                const row = cell.getRow();
+                                                row.update({ SPRICE_STATUS: 'applied' });
+                                                row.reformat();
                                                 showToast('Status updated to Applied', 'success');
                                             }
                                         }
@@ -5676,7 +5679,15 @@
 
         function refreshEbay2TableData() {
             if (typeof table !== 'undefined' && table) {
-                table.replaceData('/ebay2-data?_=' + Date.now());
+                // Preserve the horizontal scroll position so the table doesn't
+                // "slide" back to the left when data is reloaded (e.g. after a push).
+                const holder = table.element ? table.element.querySelector('.tabulator-tableHolder') : null;
+                const scrollLeft = holder ? holder.scrollLeft : 0;
+
+                table.replaceData('/ebay2-data?_=' + Date.now()).then(function() {
+                    const h = table.element ? table.element.querySelector('.tabulator-tableHolder') : null;
+                    if (h) h.scrollLeft = scrollLeft;
+                }).catch(function() {});
             }
         }
 
