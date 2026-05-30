@@ -10,20 +10,35 @@ use App\Models\LqsHistory;
 use App\Models\AmazonDatasheet;
 use App\Models\LqsAmzHistory;
 use App\Models\LqsAmzAction;
-use App\Jobs\RefreshJungleScoutDataJob;
-use Illuminate\Support\Facades\Bus;
 use Illuminate\Http\Request;
 
 class LqsMasterController extends Controller
 {
     /**
      * Trigger a background Jungle Scout data refresh.
-     * Uses dispatchAfterResponse so the HTTP response returns immediately.
+     *
+     * Launches the import command as a detached OS process so the HTTP response
+     * returns immediately. We can't rely on dispatchAfterResponse() here because
+     * under Apache/mod_php there is no fastcgi_finish_request(), so the job would
+     * run synchronously and block the request until PHP's max_execution_time is
+     * hit (producing a 500 "Failed to trigger refresh"). A detached process also
+     * avoids requiring a running queue worker.
      */
     public function refreshJungleScoutData()
     {
         try {
-            Bus::dispatchAfterResponse(new RefreshJungleScoutDataJob());
+            $php     = PHP_BINARY;
+            $artisan = base_path('artisan');
+            $cmd     = escapeshellarg($php) . ' ' . escapeshellarg($artisan) . ' app:process-jungle-scout-sheet-data';
+
+            if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+                pclose(popen('start /B ' . $cmd, 'r'));
+            } else {
+                exec($cmd . ' > /dev/null 2>&1 &');
+            }
+
+            \Log::info('JungleScout refresh: dispatched background import process');
+
             return response()->json([
                 'success' => true,
                 'message' => 'Jungle Scout refresh started in the background. LQS data will update shortly.',
