@@ -12,40 +12,56 @@
         /* ── design tokens ──────────────────────────────────── */
         :root {
             --sd-green:       #16a34a;
-            --sd-green-light: rgba(22,163,74,.12);
-            --sd-green-dim:   rgba(22,163,74,.18);
+            --sd-green-light: rgba(22,163,74,.1);
+            --sd-green-dim:   rgba(22,163,74,.16);
             --sd-ink:         #0f172a;
             --sd-muted:       #64748b;
-            --sd-border:      rgba(22,163,74,.15);
+            --sd-border:      rgba(15,23,42,.08);
             --sd-surface:     #ffffff;
-            --sd-bg:          #f8fafc;
-            --sd-radius-card: 16px;
-            --sd-shadow-card: 0 4px 24px rgba(15,23,42,.07);
+            --sd-surface-soft:#f8fafc;
+            --sd-bg:          #f1f5f9;
+            --sd-radius-card: 9px;
+            --sd-shadow-card: 0 10px 28px rgba(15,23,42,.055);
+            --sd-shadow-hover: 0 14px 34px rgba(15,23,42,.085);
         }
 
         /* ── compact filter bar ─────────────────────────────── */
         .sd-filter-bar {
-            background: var(--sd-surface);
+            background: linear-gradient(135deg, #ffffff 0%, #fbfefc 100%);
             border: 1px solid var(--sd-border);
             border-radius: var(--sd-radius-card);
             box-shadow: var(--sd-shadow-card);
-            padding: .55rem 1rem;
+            padding: .5rem .75rem;
         }
         .sd-filter-row {
             display: flex;
             align-items: center;
-            gap: .4rem;
+            gap: .35rem;
             flex-wrap: nowrap;
         }
-        .sd-filter-sep { width:1px; height:18px; background:rgba(22,163,74,.2); flex-shrink:0; margin:0 .1rem; }
+        .sd-filter-label {
+            color: var(--sd-muted);
+            font-size: .72rem;
+            font-weight: 700;
+            letter-spacing: .02em;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .sd-filter-sep { width:1px; height:18px; background:rgba(22,163,74,.18); flex-shrink:0; margin:0 .05rem; }
         .sd-filter-bar .form-control-sm,
         .sd-filter-bar .form-select-sm {
             height: 30px;
             font-size: .8rem;
             padding: .2rem .5rem;
             border-color: #e2e8f0;
-            border-radius: 7px;
-            background: #f8fafc;
+            border-radius: 6px;
+            background: var(--sd-surface-soft);
+        }
+        .sd-filter-bar .form-control-sm:focus,
+        .sd-filter-bar .form-select-sm:focus {
+            background: #fff;
+            border-color: rgba(22,163,74,.42);
+            box-shadow: 0 0 0 .16rem rgba(22,163,74,.12);
         }
         .sd-filter-bar .form-select-sm { padding-right: 1.6rem; }
         #sd-start, #sd-end { width: 130px; }
@@ -54,35 +70,47 @@
 
         /* ── KPI cards ──────────────────────────────────────── */
         .sd-kpi {
-            background: var(--sd-surface);
+            background:
+                radial-gradient(circle at top right, rgba(22,163,74,.08), transparent 34%),
+                var(--sd-surface);
             border: 1px solid var(--sd-border);
             border-radius: var(--sd-radius-card);
             box-shadow: var(--sd-shadow-card);
-            padding: .85rem 1rem;
+            padding: .7rem .85rem;
+            min-height: 92px;
+            transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+        }
+        .sd-kpi:hover {
+            border-color: rgba(22,163,74,.24);
+            box-shadow: var(--sd-shadow-hover);
+            transform: translateY(-1px);
         }
         .sd-kpi-icon {
-            width: 36px; height: 36px;
-            border-radius: 9px;
+            width: 34px; height: 34px;
+            border-radius: 6px;
             display: flex; align-items: center; justify-content: center;
             font-size: 1rem;
             flex-shrink: 0;
         }
         .sd-kpi-label {
             color: var(--sd-muted);
-            font-size: .67rem;
+            font-size: .64rem;
             font-weight: 700;
             letter-spacing: .07em;
             text-transform: uppercase;
         }
         .sd-kpi-value {
             color: var(--sd-ink);
-            font-size: 1.4rem;
+            font-size: clamp(1.15rem, 1.5vw, 1.34rem);
             font-weight: 800;
             line-height: 1.1;
+            margin-top: .12rem;
         }
         .sd-kpi-sub {
             color: var(--sd-muted);
-            font-size: .72rem;
+            font-size: .7rem;
+            line-height: 1.25;
+            margin-top: .15rem;
         }
 
         /* ── section cards ──────────────────────────────────── */
@@ -91,26 +119,33 @@
             border: 1px solid var(--sd-border);
             border-radius: var(--sd-radius-card);
             box-shadow: var(--sd-shadow-card);
+            overflow: hidden;
+            transition: box-shadow .15s ease, border-color .15s ease;
+        }
+        .sd-card:hover {
+            border-color: rgba(22,163,74,.18);
+            box-shadow: var(--sd-shadow-hover);
         }
         .sd-card-header {
             border-bottom: 1px solid rgba(15,23,42,.07);
-            padding: .9rem 1.25rem;
+            padding: .65rem .9rem;
+            background: linear-gradient(180deg, #fff 0%, #fbfdff 100%);
         }
         .sd-card-title {
-            font-size: .92rem;
+            font-size: .86rem;
             font-weight: 700;
             color: var(--sd-ink);
             margin: 0;
         }
         .sd-card-body {
-            padding: 1rem 1.25rem;
+            padding: .8rem .9rem;
         }
 
         /* ── chart wrappers ─────────────────────────────────── */
         .sd-chart-wrap {
             position: relative;
             width: 100%;
-            height: 260px;
+            height: 230px;
         }
         .sd-chart-wrap canvas {
             position: absolute;
@@ -120,26 +155,27 @@
         /* ── health grid ────────────────────────────────────── */
         .sd-health-grid {
             display: grid;
-            gap: .65rem;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: .5rem;
+            grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
         }
         .sd-health-item {
-            background: var(--sd-bg);
-            border: 1px solid rgba(148,163,184,.2);
-            border-radius: 12px;
-            padding: .75rem .9rem;
+            background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+            border: 1px solid rgba(148,163,184,.18);
+            border-radius: 7px;
+            padding: .58rem .68rem;
         }
         .sd-health-label {
-            font-size: .68rem;
+            font-size: .62rem;
             font-weight: 600;
             color: var(--sd-muted);
             text-transform: uppercase;
             letter-spacing: .06em;
         }
         .sd-health-value {
-            font-size: .95rem;
+            font-size: .86rem;
             font-weight: 700;
             color: var(--sd-ink);
+            margin-top: .08rem;
         }
         .sd-health-item.is-warn .sd-health-value { color: #b45309; }
         .sd-health-item.is-ok  .sd-health-value { color: var(--sd-green); }
@@ -156,14 +192,25 @@
         @keyframes sd-shimmer { to { background-position: -200% 0; } }
 
         /* ── table ──────────────────────────────────────────── */
-        .sd-table { font-size: .82rem; }
+        .sd-table { font-size: .8rem; }
+        .sd-table > :not(caption) > * > * {
+            padding-top: .55rem;
+            padding-bottom: .55rem;
+        }
         .sd-table th {
             color: var(--sd-muted);
-            font-size: .68rem;
+            font-size: .64rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: .06em;
             border-bottom-width: 1px;
+            background: #fbfdff;
+        }
+        .sd-table tbody tr {
+            transition: background .12s ease;
+        }
+        .sd-table tbody tr:hover {
+            background: rgba(22,163,74,.035);
         }
 
         /* ── status badges ──────────────────────────────────── */
@@ -184,7 +231,7 @@
         .sd-presets {
             display: flex;
             flex-wrap: nowrap;
-            gap: .25rem;
+            gap: .22rem;
             overflow-x: auto;
             -ms-overflow-style: none;
             scrollbar-width: none;
@@ -196,11 +243,11 @@
             border-radius: 999px;
             color: #15803d;
             cursor: pointer;
-            font-size: .7rem;
+            font-size: .68rem;
             font-weight: 600;
             line-height: 1;
-            padding: .22rem .6rem;
-            transition: background .12s, color .12s;
+            padding: .24rem .58rem;
+            transition: background .12s, color .12s, box-shadow .12s;
             white-space: nowrap;
             flex-shrink: 0;
         }
@@ -208,20 +255,25 @@
         .sd-preset.is-active {
             background: var(--sd-green);
             border-color: var(--sd-green);
+            box-shadow: 0 5px 12px rgba(22,163,74,.18);
             color: #fff;
+        }
+        @media (max-width: 1199px) {
+            .sd-chart-wrap { height: 220px; }
         }
         @media (max-width: 991px) {
             .sd-filter-row { flex-wrap: wrap; }
             .sd-presets { flex-wrap: wrap; overflow-x: visible; }
             #sd-start, #sd-end, #sd-type, #sd-channel { width: 100%; }
+            .sd-kpi { min-height: auto; }
         }
     </style>
 
     {{-- Error alert --}}
-    <div id="sd-alert" class="alert alert-danger d-none mb-3" role="alert"></div>
+    <div id="sd-alert" class="alert alert-danger d-none mb-2" role="alert"></div>
 
     {{-- No-orders info banner --}}
-    <div id="sd-noorders-info" class="alert alert-warning d-none mb-3" role="alert">
+    <div id="sd-noorders-info" class="alert alert-warning d-none mb-2" role="alert">
         <strong>No orders found for this filter in the selected date range.</strong>
         Customers matching this filter exist, but no orders are linked to them in the current range.
         Possible reasons:
@@ -233,7 +285,7 @@
     </div>
 
     {{-- Compact filter bar --}}
-    <div class="sd-filter-bar mb-3">
+    <div class="sd-filter-bar mb-2">
         {{-- Row 1: preset pills --}}
         <div class="sd-presets mb-2">
             <button type="button" class="sd-preset" data-preset="today">Today</button>
@@ -248,9 +300,9 @@
         </div>
         {{-- Row 2: date range + filters + apply --}}
         <div class="sd-filter-row">
-            <span class="small text-muted me-1" style="font-size:.72rem;white-space:nowrap;flex-shrink:0;">📅 Range</span>
+            <span class="sd-filter-label me-1">📅 Range</span>
             <input type="date" id="sd-start" class="form-control form-control-sm" title="From date">
-            <span class="small text-muted" style="flex-shrink:0;">→</span>
+            <span class="sd-filter-label">→</span>
             <input type="date" id="sd-end" class="form-control form-control-sm" title="To date">
             <div class="sd-filter-sep"></div>
             <select id="sd-type" class="form-select form-select-sm" title="Customer type">
@@ -267,7 +319,7 @@
                     <option value="{{ $value }}">{{ $label }}</option>
                 @endforeach
             </select>
-            <button type="button" id="sd-apply" class="btn btn-success btn-sm ms-1 flex-shrink-0" style="height:30px;font-size:.8rem;padding:.2rem .9rem;white-space:nowrap;">
+            <button type="button" id="sd-apply" class="btn btn-success btn-sm ms-1 flex-shrink-0" style="height:30px;font-size:.8rem;padding:.2rem .9rem;white-space:nowrap;border-radius:8px;">
                 <span id="sd-apply-label">Apply</span>
                 <span id="sd-apply-spin" class="spinner-border spinner-border-sm ms-1 d-none" role="status"></span>
             </button>
@@ -275,9 +327,9 @@
     </div>
 
     {{-- KPI row --}}
-    <div class="row g-3 mb-3">
+    <div class="row g-2 mb-2">
         <div class="col-sm-6 col-xl-3">
-            <div class="sd-kpi d-flex gap-3 align-items-start">
+            <div class="sd-kpi d-flex gap-2 align-items-start">
                 <div class="sd-kpi-icon" style="background:#f0fdf4; color:#16a34a;">💰</div>
                 <div>
                     <div class="sd-kpi-label">Revenue</div>
@@ -287,7 +339,7 @@
             </div>
         </div>
         <div class="col-sm-6 col-xl-3">
-            <div class="sd-kpi d-flex gap-3 align-items-start">
+            <div class="sd-kpi d-flex gap-2 align-items-start">
                 <div class="sd-kpi-icon" style="background:#eff6ff; color:#2563eb;">📦</div>
                 <div>
                     <div class="sd-kpi-label">Orders</div>
@@ -297,7 +349,7 @@
             </div>
         </div>
         <div class="col-sm-6 col-xl-3">
-            <div class="sd-kpi d-flex gap-3 align-items-start">
+            <div class="sd-kpi d-flex gap-2 align-items-start">
                 <div class="sd-kpi-icon" style="background:#fdf4ff; color:#7c3aed;">📊</div>
                 <div>
                     <div class="sd-kpi-label">Avg Order Value</div>
@@ -307,7 +359,7 @@
             </div>
         </div>
         <div class="col-sm-6 col-xl-3">
-            <div class="sd-kpi d-flex gap-3 align-items-start">
+            <div class="sd-kpi d-flex gap-2 align-items-start">
                 <div class="sd-kpi-icon" style="background:#fff7ed; color:#ea580c;">👥</div>
                 <div style="min-width:0">
                     <div class="sd-kpi-label">Customers (total)</div>
@@ -323,7 +375,7 @@
     </div>
 
     {{-- Trend + Customer mix --}}
-    <div class="row g-3 mb-3">
+    <div class="row g-2 mb-2">
         <div class="col-xl-8">
             <div class="sd-card h-100">
                 <div class="sd-card-header d-flex justify-content-between align-items-center">
@@ -352,7 +404,7 @@
     </div>
 
     {{-- Top customers + Data health --}}
-    <div class="row g-3">
+    <div class="row g-2">
         <div class="col-xl-7">
             <div class="sd-card h-100">
                 <div class="sd-card-header">
