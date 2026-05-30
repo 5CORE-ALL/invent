@@ -311,25 +311,6 @@
                 <h2 class="text-primary fw-bold mb-1">Team Management</h2>
                 <p class="text-muted">View and manage users & performance</p>
             </div>
-            @if($canEdit && $canViewSalary)
-            <div class="d-flex gap-2 flex-wrap">
-                <button type="button" class="btn btn-primary" id="copySalaryBtn">
-                    <i class="ri-file-copy-line me-2"></i>Copy Salary LM → PP
-                </button>
-                <div class="btn-group">
-                    <button type="button" class="btn btn-info" id="importBtn">
-                        <i class="ri-upload-2-line me-2"></i>Import Salary Data
-                    </button>
-                    <button type="button" class="btn btn-info btn-outline" id="downloadSalaryTemplateBtn" title="Download Salary Data Template">
-                        <i class="ri-file-download-line"></i>
-                    </button>
-                </div>
-                <input type="file" id="importFile" accept=".csv" style="display: none;">
-                <button type="button" class="btn btn-success" id="exportBtn">
-                    <i class="ri-download-2-line me-2"></i>Salary Sheet
-                </button>
-            </div>
-            @endif
         </div>
         
         @if($canEdit && $canViewSalary)
