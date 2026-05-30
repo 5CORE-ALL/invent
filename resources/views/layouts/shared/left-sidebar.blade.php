@@ -1057,6 +1057,9 @@
                                     <li>
                                         <a href="{{ route('ebaycvrLQS.master') }}">Ebay LQS - CVR</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('lqs.amz.view') }}">LQS Amz</a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>
