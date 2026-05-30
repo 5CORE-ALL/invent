@@ -1,8 +1,11 @@
 @extends('layouts.vertical', ['title' => 'Payroll'])
 
 @section('css')
+<link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+<link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
 <style>
     .payroll-card { border: 1px solid rgba(0,0,0,.08); border-radius: 12px; background: #fff; }
+    #employeesTable { font-size: .85rem; }
     .payroll-month-select { min-width: 220px; }
     .payroll-stat { border-radius: 10px; padding: .75rem 1rem; background: #f8f9fa; }
     .payroll-stat .val { font-size: 1.25rem; font-weight: 700; }
@@ -28,6 +31,10 @@
                         <p class="text-muted mb-0 small">Mini payroll system — months, salaries, payslips &amp; history</p>
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-2">
+                        <div class="input-group input-group-sm" style="max-width: 240px;">
+                            <span class="input-group-text bg-light border-0"><i class="ri-search-line"></i></span>
+                            <input type="text" id="payrollSearch" class="form-control border-0 bg-light" placeholder="Search employee...">
+                        </div>
                         <select class="form-select form-select-sm payroll-month-select" id="payrollMonthSelect">
                             @forelse($months as $m)
                                 <option value="{{ $m->id }}" {{ $activeMonth?->id === $m->id ? 'selected' : '' }}
@@ -82,14 +89,7 @@
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btnSyncEmployees"><i class="ri-refresh-line"></i> Sync from Team</button>
                     @endif
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover table-payroll" id="employeesTable">
-                        <thead><tr>
-                            <th>Name</th><th>Hours LM</th><th>Salary PP</th><th>Incr</th><th>Amt LM</th><th>Amt P</th><th></th>
-                        </tr></thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
+                <div id="employeesTable"></div>
             </div>
         </div>
 
@@ -111,7 +111,7 @@
                     <div class="col-md-2"><button type="submit" class="btn btn-sm btn-primary w-100">Add Component</button></div>
                 </form>
                 @endif
-                <div class="table-responsive"><table class="table table-sm table-payroll" id="componentsTable"><thead><tr><th>Employee</th><th>Type</th><th>Label</th><th>Amount</th><th></th></tr></thead><tbody></tbody></table></div>
+                <div id="componentsTable"></div>
             </div>
         </div>
 
@@ -133,14 +133,14 @@
                     <div class="col-md-2"><button type="submit" class="btn btn-sm btn-primary w-100">Add</button></div>
                 </form>
                 @endif
-                <div class="table-responsive"><table class="table table-sm table-payroll" id="paymentsTable"><thead><tr><th>Employee</th><th>Type</th><th>Label</th><th>Amount</th><th></th></tr></thead><tbody></tbody></table></div>
+                <div id="paymentsTable"></div>
             </div>
         </div>
 
         <div class="tab-pane fade" id="tab-payslips">
             <div class="payroll-card p-3">
                 <p class="small text-muted">Formats: Standard, Detailed (with line items), Compact summary.</p>
-                <div class="table-responsive"><table class="table table-sm table-payroll" id="payslipsTable"><thead><tr><th>Employee</th><th>Hours</th><th>Amt LM</th><th>Format</th><th>Amt P</th><th>Released</th><th></th></tr></thead><tbody></tbody></table></div>
+                <div id="payslipsTable"></div>
             </div>
         </div>
 
@@ -169,7 +169,7 @@
                 </form>
                 <p class="small text-muted mb-2">Paid in selected payroll month <strong id="arrearPayrollMonth">—</strong>. Use <strong>Arrear month</strong> for the period the money is owed for (e.g. March 2026).</p>
                 @endif
-                <div class="table-responsive"><table class="table table-sm table-payroll" id="arrearsTable"><thead><tr><th>Employee</th><th>Type</th><th>Amount</th><th>Arrear month</th><th>Payroll month</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div>
+                <div id="arrearsTable"></div>
             </div>
         </div>
 
@@ -188,7 +188,7 @@
                     <div class="col-md-2"><button type="submit" class="btn btn-sm btn-danger w-100">Create Settlement</button></div>
                 </form>
                 @endif
-                <div class="table-responsive"><table class="table table-sm table-payroll" id="settlementsTable"><thead><tr><th>Employee</th><th>LWD</th><th>Net</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div>
+                <div id="settlementsTable"></div>
             </div>
         </div>
 
@@ -220,7 +220,7 @@
                     </div>
                 </div>
                 @endif
-                <div class="table-responsive"><table class="table table-sm table-payroll" id="previousTable"><thead><tr><th>Employee</th><th>Month</th><th>Gross</th><th>Deductions</th><th>Net</th><th>Imported</th></tr></thead><tbody></tbody></table></div>
+                <div id="previousTable"></div>
             </div>
         </div>
 
@@ -318,6 +318,7 @@
 @endsection
 
 @section('script')
+<script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
 (function() {
     const app = document.getElementById('payrollApp');
@@ -346,6 +347,76 @@
 
     function fmt(n) { return '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 }); }
 
+    let employeesTable = null;
+    let employeesTableBuilt = false;
+    let pendingEmployeesData = [];
+    function renderEmployeesTable(emps, locked) {
+        const data = (emps || []).map(e => Object.assign({}, e, { _locked: locked }));
+        pendingEmployeesData = data;
+        const columns = [
+            { title: 'Name', field: 'name', minWidth: 180, formatter: (c) => {
+                const d = c.getRow().getData();
+                return (d.name || '—') + (d.is_new_hire ? ' <span class="badge bg-info">New</span>' : '');
+            } },
+            { title: 'Hours LM', field: 'hours_worked', hozAlign: 'center', width: 100, formatter: (c) => { const v = parseFloat(c.getValue()); return (isNaN(v)) ? '—' : (Math.round(v) + 'h'); } },
+            { title: 'Salary PP', field: 'salary_pp', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
+            { title: 'Incr', field: 'increment', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
+            { title: 'Amt LM', field: 'gross_amount', hozAlign: 'right', formatter: (c) => fmt(c.getRow().getData().gross_amount ?? c.getRow().getData().amount_lm) },
+            { title: 'Amt P', field: 'net_amount', hozAlign: 'right', formatter: (c) => '<strong>' + fmt(c.getRow().getData().net_amount ?? c.getRow().getData().amount_p) + '</strong>' },
+        ];
+        if (canManage) {
+            columns.push({
+                title: 'Action', field: 'id', hozAlign: 'center', headerSort: false, width: 90,
+                formatter: (c) => {
+                    const d = c.getRow().getData();
+                    return d._locked ? '<span class="text-muted">Locked</span>' : '<button type="button" class="btn btn-sm btn-link btn-edit-salary p-0" data-id="' + d.id + '">Edit</button>';
+                }
+            });
+        }
+
+        if (!employeesTable) {
+            employeesTable = new Tabulator('#employeesTable', {
+                layout: 'fitColumns',
+                height: '500px',
+                placeholder: 'No employees — sync from Team Management.',
+                pagination: true,
+                paginationSize: 50,
+                paginationSizeSelector: [25, 50, 100, 200],
+                columns: columns,
+            });
+            employeesTable.on('tableBuilt', () => {
+                employeesTableBuilt = true;
+                employeesTable.setData(pendingEmployeesData);
+            });
+        } else if (employeesTableBuilt) {
+            // Columns already handle the locked state per-row (d._locked), so just swap the data.
+            employeesTable.setData(pendingEmployeesData);
+        }
+        // If not yet built, the tableBuilt handler will load the latest pendingEmployeesData.
+    }
+
+    function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+    const tableInstances = {};
+    function renderTable(id, columns, data, placeholder) {
+        const rows = data || [];
+        if (!tableInstances[id]) {
+            tableInstances[id] = new Tabulator('#' + id, {
+                data: rows,
+                layout: 'fitColumns',
+                maxHeight: '500px',
+                pagination: true,
+                paginationSize: 50,
+                paginationSizeSelector: [25, 50, 100, 200],
+                placeholder: placeholder || 'None',
+                columns: columns,
+            });
+        } else {
+            tableInstances[id].setColumns(columns);
+            tableInstances[id].replaceData(rows);
+        }
+    }
+
     function currentMonthId() {
         return document.getElementById('payrollMonthSelect')?.value || monthId;
     }
@@ -372,69 +443,77 @@
         Object.keys(employeeRowsById).forEach(k => delete employeeRowsById[k]);
         emps.forEach(e => { employeeRowsById[e.id] = e; });
 
-        const tbody = document.querySelector('#employeesTable tbody');
-        if (tbody) {
-        tbody.innerHTML = emps.map(e => `<tr>
-            <td>${e.name || '—'}${e.is_new_hire ? ' <span class="badge bg-info">New</span>' : ''}</td>
-            <td>${e.hours_worked != null ? e.hours_worked + 'h' : '—'}</td>
-            <td>${fmt(e.salary_pp)}</td>
-            <td>${fmt(e.increment)}</td>
-            <td>${fmt(e.gross_amount ?? e.amount_lm)}</td>
-            <td><strong>${fmt(e.net_amount ?? e.amount_p)}</strong></td>
-            <td>${canManage && !m.is_locked ? `<button type="button" class="btn btn-xs btn-link btn-edit-salary" data-id="${e.id}">Edit</button>` : ''}</td>
-        </tr>`).join('') || '<tr><td colspan="7" class="text-muted">No employees — sync from Team Management.</td></tr>';
-        }
+        renderEmployeesTable(emps, !!m.is_locked);
 
-        document.querySelector('#componentsTable tbody').innerHTML = (data.components || []).map(c =>
-            `<tr><td>${c.user?.name}</td><td>${c.type}</td><td>${c.label}</td><td>${fmt(c.amount)}</td>
-            <td>${canManage && !m.is_locked ? `<button class="btn btn-link btn-sm text-danger btn-del-component" data-id="${c.id}">×</button>` : ''}</td></tr>`
-        ).join('') || '<tr><td colspan="5" class="text-muted">None</td></tr>';
+        const compCols = [
+            { title: 'Employee', minWidth: 160, formatter: (c) => esc(c.getRow().getData().user?.name || '') },
+            { title: 'Type', field: 'type', width: 120 },
+            { title: 'Label', field: 'label', minWidth: 160, formatter: (c) => esc(c.getValue()) },
+            { title: 'Amount', field: 'amount', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
+        ];
+        if (canManage && !m.is_locked) compCols.push({ title: '', headerSort: false, width: 60, hozAlign: 'center', formatter: (c) => '<button class="btn btn-link btn-sm text-danger btn-del-component p-0" data-id="' + c.getRow().getData().id + '">×</button>' });
+        renderTable('componentsTable', compCols, data.components);
 
-        document.querySelector('#paymentsTable tbody').innerHTML = (data.payments || []).map(p =>
-            `<tr><td>${p.user?.name}</td><td>${p.entry_type}</td><td>${p.label}</td><td>${fmt(p.amount)}</td>
-            <td>${canManage && !m.is_locked ? `<button class="btn btn-link btn-sm text-danger btn-del-payment" data-id="${p.id}">×</button>` : ''}</td></tr>`
-        ).join('') || '<tr><td colspan="5" class="text-muted">None</td></tr>';
+        const payCols = [
+            { title: 'Employee', minWidth: 160, formatter: (c) => esc(c.getRow().getData().user?.name || '') },
+            { title: 'Type', field: 'entry_type', width: 120 },
+            { title: 'Label', field: 'label', minWidth: 160, formatter: (c) => esc(c.getValue()) },
+            { title: 'Amount', field: 'amount', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
+        ];
+        if (canManage && !m.is_locked) payCols.push({ title: '', headerSort: false, width: 60, hozAlign: 'center', formatter: (c) => '<button class="btn btn-link btn-sm text-danger btn-del-payment p-0" data-id="' + c.getRow().getData().id + '">×</button>' });
+        renderTable('paymentsTable', payCols, data.payments);
 
-        document.querySelector('#payslipsTable tbody').innerHTML = (data.payslips || []).map(p => {
-            const net = p.net ?? p.data?.net ?? 0;
-            const hours = p.hours_worked != null ? p.hours_worked + 'h' : '—';
-            const amtLm = p.amount_lm != null ? fmt(p.amount_lm) : '—';
-            return `<tr><td>${p.user?.name}</td><td>${hours}</td><td>${amtLm}</td><td>${p.format}</td><td><strong>${fmt(net)}</strong></td><td>${p.released_at ? 'Yes' : 'No'}</td>
-            <td><a href="${base}/payslip/${p.id}" target="_blank" class="btn btn-sm btn-outline-primary">View</a></td></tr>`;
-        }).join('') || '<tr><td colspan="7" class="text-muted">Generate payslips from Actions tab</td></tr>';
+        const psCols = [
+            { title: 'Employee', minWidth: 160, formatter: (c) => esc(c.getRow().getData().user?.name || '') },
+            { title: 'Hours', hozAlign: 'center', width: 90, formatter: (c) => { const d = c.getRow().getData(); return d.hours_worked != null ? d.hours_worked + 'h' : '—'; } },
+            { title: 'Amt LM', hozAlign: 'right', formatter: (c) => { const d = c.getRow().getData(); return d.amount_lm != null ? fmt(d.amount_lm) : '—'; } },
+            { title: 'Format', field: 'format', width: 120 },
+            { title: 'Amt P', hozAlign: 'right', formatter: (c) => { const d = c.getRow().getData(); return '<strong>' + fmt(d.net ?? d.data?.net ?? 0) + '</strong>'; } },
+            { title: 'Released', hozAlign: 'center', width: 90, formatter: (c) => c.getRow().getData().released_at ? 'Yes' : 'No' },
+            { title: '', headerSort: false, width: 80, hozAlign: 'center', formatter: (c) => '<a href="' + base + '/payslip/' + c.getRow().getData().id + '" target="_blank" class="btn btn-sm btn-outline-primary py-0">View</a>' },
+        ];
+        renderTable('payslipsTable', psCols, data.payslips, 'Generate payslips from Actions tab');
 
         const arrearMonthHint = document.getElementById('arrearPayrollMonth');
         if (arrearMonthHint) arrearMonthHint.textContent = m.month_label || '—';
 
-        document.querySelector('#arrearsTable tbody').innerHTML = (data.arrears || []).map(a => {
-            const typeLabel = (a.adjustment_type === 'deduct') ? '<span class="text-danger">Deduct</span>' : '<span class="text-success">Add</span>';
-            const amt = (a.adjustment_type === 'deduct') ? '−' + fmt(a.amount) : fmt(a.amount);
-            const arrearMonth = a.arrear_for || a.month_label || '—';
-            const payMonth = a.month_label || a.payroll_month?.month_label || m.month_label || '—';
-            const actions = canManage && !m.is_locked
-                ? (a.status === 'pending'
-                    ? `<button class="btn btn-sm btn-outline-success btn-apply-arrear" data-id="${a.id}">Apply</button>`
-                    : `<button class="btn btn-sm btn-outline-warning btn-revoke-arrear" data-id="${a.id}">Remove</button>`)
-                : '';
-            return `<tr><td>${a.user?.name}</td><td>${typeLabel}</td><td>${amt}</td><td><strong>${arrearMonth}</strong></td><td>${payMonth}</td><td>${a.status}</td><td>${actions}</td></tr>`;
-        }).join('') || '<tr><td colspan="7" class="text-muted">None for this month</td></tr>';
+        const arrCols = [
+            { title: 'Employee', minWidth: 140, formatter: (c) => esc(c.getRow().getData().user?.name || '') },
+            { title: 'Type', hozAlign: 'center', width: 90, formatter: (c) => c.getRow().getData().adjustment_type === 'deduct' ? '<span class="text-danger">Deduct</span>' : '<span class="text-success">Add</span>' },
+            { title: 'Amount', hozAlign: 'right', formatter: (c) => { const a = c.getRow().getData(); return a.adjustment_type === 'deduct' ? '−' + fmt(a.amount) : fmt(a.amount); } },
+            { title: 'Arrear month', formatter: (c) => { const a = c.getRow().getData(); return '<strong>' + esc(a.arrear_for || a.month_label || '—') + '</strong>'; } },
+            { title: 'Payroll month', formatter: (c) => { const a = c.getRow().getData(); return esc(a.month_label || a.payroll_month?.month_label || m.month_label || '—'); } },
+            { title: 'Status', field: 'status', width: 100 },
+        ];
+        if (canManage && !m.is_locked) arrCols.push({ title: '', headerSort: false, width: 90, hozAlign: 'center', formatter: (c) => { const a = c.getRow().getData(); return a.status === 'pending' ? '<button class="btn btn-sm btn-outline-success btn-apply-arrear py-0" data-id="' + a.id + '">Apply</button>' : '<button class="btn btn-sm btn-outline-warning btn-revoke-arrear py-0" data-id="' + a.id + '">Remove</button>'; } });
+        renderTable('arrearsTable', arrCols, data.arrears, 'None for this month');
 
         document.getElementById('btnExportCsv')?.setAttribute('href', `${base}/month/${id}/export`);
     }
 
     async function loadPrevious() {
         const data = await api(`${base}/previous-records`);
-        document.querySelector('#previousTable tbody').innerHTML = (data.records || []).map(r =>
-            `<tr><td>${r.user?.name}</td><td>${r.month_label}</td><td>${fmt(r.gross_amount)}</td><td>${fmt(r.deductions_total)}</td><td>${fmt(r.net_amount)}</td><td>${r.imported_at ? new Date(r.imported_at).toLocaleDateString() : '—'}</td></tr>`
-        ).join('') || '<tr><td colspan="6" class="text-muted">No previous payroll records</td></tr>';
+        const prevCols = [
+            { title: 'Employee', minWidth: 160, formatter: (c) => esc(c.getRow().getData().user?.name || '') },
+            { title: 'Month', field: 'month_label', width: 140 },
+            { title: 'Gross', hozAlign: 'right', formatter: (c) => fmt(c.getRow().getData().gross_amount) },
+            { title: 'Deductions', hozAlign: 'right', formatter: (c) => fmt(c.getRow().getData().deductions_total) },
+            { title: 'Net', hozAlign: 'right', formatter: (c) => fmt(c.getRow().getData().net_amount) },
+            { title: 'Imported', width: 120, formatter: (c) => { const r = c.getRow().getData(); return r.imported_at ? new Date(r.imported_at).toLocaleDateString() : '—'; } },
+        ];
+        renderTable('previousTable', prevCols, data.records, 'No previous payroll records');
     }
 
     async function loadSettlements() {
         const data = await api(`${base}/settlements`);
-        document.querySelector('#settlementsTable tbody').innerHTML = (data.settlements || []).map(s =>
-            `<tr><td>${s.user?.name}</td><td>${s.last_working_date || '—'}</td><td>${fmt(s.net_settlement)}</td><td>${s.status}</td>
-            <td>${canManage && s.status === 'draft' ? `<button class="btn btn-sm btn-success btn-process-settlement" data-id="${s.id}">Process</button>` : ''}</td></tr>`
-        ).join('') || '<tr><td colspan="5" class="text-muted">None</td></tr>';
+        const setCols = [
+            { title: 'Employee', minWidth: 160, formatter: (c) => esc(c.getRow().getData().user?.name || '') },
+            { title: 'LWD', field: 'last_working_date', width: 120, formatter: (c) => c.getValue() || '—' },
+            { title: 'Net', hozAlign: 'right', formatter: (c) => fmt(c.getRow().getData().net_settlement) },
+            { title: 'Status', field: 'status', width: 100 },
+        ];
+        if (canManage) setCols.push({ title: '', headerSort: false, width: 90, hozAlign: 'center', formatter: (c) => { const s = c.getRow().getData(); return s.status === 'draft' ? '<button class="btn btn-sm btn-success btn-process-settlement py-0" data-id="' + s.id + '">Process</button>' : ''; } });
+        renderTable('settlementsTable', setCols, data.settlements);
     }
 
     document.getElementById('payrollMonthSelect')?.addEventListener('change', () => { loadMonth(); });
@@ -581,6 +660,28 @@
         await api(`${base}/employee-salary/${id}`, 'PUT', body);
         bootstrap.Modal.getInstance(document.getElementById('editSalaryModal'))?.hide();
         loadMonth();
+    });
+
+    // Top search: filter every payroll table by employee name.
+    function applyPayrollSearch() {
+        const term = (document.getElementById('payrollSearch')?.value || '').toLowerCase().trim();
+        const empFilter = (d) => !term || ['name', 'email'].some((f) => String(d[f] || '').toLowerCase().includes(term));
+        const userFilter = (d) => !term || String(d.user?.name || '').toLowerCase().includes(term);
+        if (employeesTable && employeesTableBuilt) {
+            try { term ? employeesTable.setFilter(empFilter) : employeesTable.clearFilter(); } catch (e) {}
+        }
+        Object.values(tableInstances).forEach((t) => {
+            try { term ? t.setFilter(userFilter) : t.clearFilter(); } catch (e) {}
+        });
+    }
+    document.getElementById('payrollSearch')?.addEventListener('keyup', applyPayrollSearch);
+
+    // Tables built inside hidden tabs need a redraw once their tab becomes visible.
+    document.querySelectorAll('[data-bs-toggle="tab"]').forEach((btn) => {
+        btn.addEventListener('shown.bs.tab', () => {
+            if (employeesTable) employeesTable.redraw(true);
+            Object.values(tableInstances).forEach((t) => { try { t.redraw(true); } catch (e) {} });
+        });
     });
 
     if (currentMonthId()) loadMonth();

@@ -163,6 +163,40 @@ class PayrollService
     }
 
     /**
+     * Refresh stored working hours from live TeamLogger for an unlocked month, then
+     * recompute amounts. Salary inputs (PP, increment, other, adv) are kept as stored,
+     * and users with no live TeamLogger entry keep their existing hours.
+     */
+    public function refreshLiveHours(PayrollMonth $month): void
+    {
+        if ($month->is_locked) {
+            return;
+        }
+
+        $teamLogger = $this->teamLoggerDataForMonth($month->month_label);
+        $changed = false;
+
+        foreach (PayrollEmployeeSalary::with('user')->where('payroll_month_id', $month->id)->get() as $row) {
+            if (! $row->user) {
+                continue;
+            }
+            $email = $this->resolveTeamLoggerEmail($row->user->email);
+            if (! array_key_exists($email, $teamLogger)) {
+                continue; // no live data for this user — keep the stored snapshot
+            }
+            $hours = (float) ($teamLogger[$email]['hours'] ?? 0);
+            if ((float) $row->hours_worked !== $hours) {
+                $row->update(['hours_worked' => $hours]);
+                $changed = true;
+            }
+        }
+
+        if ($changed) {
+            $this->recalculateMonth($month);
+        }
+    }
+
+    /**
      * @return array<int, array{0: string, 1: float}>
      */
     public function buildPayslipEarnings(array $data): array

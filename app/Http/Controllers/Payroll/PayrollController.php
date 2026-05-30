@@ -75,6 +75,11 @@ class PayrollController extends Controller
 
     public function monthData(PayrollMonth $payrollMonth): JsonResponse
     {
+        // Draft / unlocked months reflect the latest TeamLogger hours; locked months keep their snapshot.
+        if (! $payrollMonth->is_locked) {
+            $this->payroll->refreshLiveHours($payrollMonth);
+        }
+
         $payrollMonth->loadCount([
             'employeeSalaries',
             'salaryComponents',
