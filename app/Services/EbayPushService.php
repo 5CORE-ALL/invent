@@ -77,9 +77,26 @@ class EbayPushService
      *     errors?:            array,
      * }
      */
-    public function pushPrice(array $payload): array
+    /**
+     * Account → microservice endpoint path map.
+     * Add new eBay accounts here as the microservice expands.
+     */
+    private const ACCOUNT_PATHS = [
+        'ebay1' => '/api/push-ebay-price',
+        'ebay2' => '/api/push-ebay2-price',
+        'ebay3' => '/api/push-ebay3-price',
+    ];
+
+    /**
+     * Push a single SKU price to the eBay cPanel microservice.
+     *
+     * @param  array   $payload  {sku, price, ebay_item_id, quantity?, title?}
+     * @param  string  $account  Which eBay account: 'ebay1' | 'ebay2' | 'ebay3'
+     */
+    public function pushPrice(array $payload, string $account = 'ebay1'): array
     {
-        $endpoint = $this->baseUrl . '/api/push-ebay-price';
+        $path     = self::ACCOUNT_PATHS[$account] ?? self::ACCOUNT_PATHS['ebay1'];
+        $endpoint = $this->baseUrl . $path;
 
         // Build a clean body — omit null / empty optional fields
         $body = $this->buildBody([
@@ -93,6 +110,7 @@ class EbayPushService
         // Detailed pre-request log (required format)
         Log::info('Calling eBay microservice', [
             'url'     => $endpoint,
+            'account' => $account,
             'payload' => $body,
         ]);
 
