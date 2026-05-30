@@ -71,6 +71,25 @@ class UserController extends Controller
             }
         }
 
+        // Fetch TeamLogger data for the CURRENT month (used by the Hours column on the page)
+        $currentMonth = Carbon::now()->format('F Y');
+        $currentMonthData = $teamLoggerService->fetchByMonth($currentMonth, true);
+
+        $currentMonthHours = \App\Models\TeamLoggerHours::where('month', $currentMonth)->get();
+        foreach ($currentMonthHours as $record) {
+            $email = strtolower($record->employee_email);
+            if (isset($currentMonthData[$email])) {
+                $currentMonthData[$email]['hours'] = $record->productive_hours;
+            } else {
+                $currentMonthData[$email] = [
+                    'hours' => $record->productive_hours,
+                    'total_hours' => $record->total_hours ?? 0,
+                    'idle_hours' => $record->idle_hours ?? 0,
+                    'active_hours' => $record->active_hours ?? 0,
+                ];
+            }
+        }
+
         // Email mapping: Map user email to TeamLogger email if different
         $emailMapping = [
             'adexec1@5core.com' => 'support@prolightsounds.com',
@@ -97,6 +116,8 @@ class UserController extends Controller
             'totalSalaryPP',
             'totalIncrement',
             'teamLoggerData',
+            'currentMonthData',
+            'currentMonth',
             'previousMonth',
             'emailMapping'
         ));

@@ -2202,7 +2202,9 @@
 
         // ============ Active Users Tabulator + Edit Modal ============
         @php
-            $usersTableData = $allUsers->values()->map(function ($u) {
+            $usersTableData = $allUsers->values()->map(function ($u) use ($currentMonthData, $emailMapping) {
+                $tlEmail = getTeamLoggerEmail($u->email ?? '', $emailMapping);
+                $workingHours = $currentMonthData[$tlEmail]['hours'] ?? 0;
                 return [
                     'id' => $u->id,
                     'name' => $u->name,
@@ -2212,6 +2214,7 @@
                     'phone' => $u->phone ?? '',
                     'email' => $u->email ?? '',
                     'designation' => $u->designation ?? '',
+                    'working_hours' => $workingHours,
                     'resources' => $u->userRR?->resources ?? '',
                     'training' => $u->userRR?->training ?? '',
                     'checklist_url' => ! empty($u->designation)
@@ -2270,6 +2273,15 @@
                 { title: 'Phone', field: 'phone', width: 80, hozAlign: 'center', headerSort: false, formatter: (c) => dotFmt(c.getValue(), 'phone number') },
                 { title: 'Email', field: 'email', width: 80, hozAlign: 'center', headerSort: false, formatter: (c) => dotFmt(c.getValue(), 'email') },
                 { title: 'Designation', field: 'designation', minWidth: 150, formatter: (c) => c.getValue() ? '<span class="designation-badge">' + esc(c.getValue()) + '</span>' : '<span class="text-muted">-</span>' },
+                {
+                    title: 'Hours', field: 'working_hours', width: 90, hozAlign: 'center', headerSort: true,
+                    titleFormatter: () => '<span title="Productive working hours ({{ $currentMonth }})">Hours</span>',
+                    formatter: (c) => {
+                        const v = parseFloat(c.getValue());
+                        if (!v || isNaN(v)) return '<span class="text-muted">—</span>';
+                        return '<span class="badge bg-info" title="{{ $currentMonth }}">' + v + 'h</span>';
+                    }
+                },
                 {
                     title: 'Active', field: 'is_active', width: 80, hozAlign: 'center', headerSort: false,
                     formatter: (c) => {
