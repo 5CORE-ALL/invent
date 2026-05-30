@@ -49,6 +49,23 @@
     .res-empty { border: 2px dashed rgba(0,0,0,.08); border-radius: 12px; padding: 3rem 1rem; text-align: center; color: #6c757d; }
     .res-actions .btn { padding: .2rem .45rem; }
 
+    .res-table-wrap { background: #fff; border: 1px solid rgba(0,0,0,.08); border-radius: 12px; overflow: hidden; }
+    .res-table { font-size: .875rem; }
+    .res-table thead th {
+        font-size: .72rem;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: #6c757d;
+        background: #f8f9fa;
+        border-bottom: 1px solid rgba(0,0,0,.08);
+        white-space: nowrap;
+    }
+    .res-table tbody td { vertical-align: middle; }
+    .res-table .res-row-name { cursor: pointer; }
+    .res-table .res-icon-wrap { width: 38px; height: 38px; font-size: 1.15rem; border-radius: 9px; }
+    .res-table .res-row-title { font-weight: 600; color: #212529; word-break: break-word; }
+    .res-view-toggle .btn.active { background: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }
+
     .res-layout { align-items: flex-start; }
     .res-sidebar {
         background: #fff;
@@ -205,38 +222,88 @@
         </div>
 
         <div class="row g-2 align-items-end">
-            <div class="col-md-5">
+            <div class="col-md-3">
                 <label class="form-label small text-muted mb-1">Search</label>
                 <input type="search" id="resSearch" class="form-control form-control-sm" placeholder="Search title, file name, or URL">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label small text-muted mb-1">Type</label>
                 <select id="resTypeFilter" class="form-select form-select-sm">
                     <option value="all">All types</option>
                     <option value="link">Links</option>
-                    <option value="spreadsheet">Spreadsheets</option>
+                    <option value="gsheet">G Sheet</option>
+                    <option value="spreadsheet">Excel</option>
                     <option value="image">Images</option>
                     <option value="pdf">PDFs</option>
-                    <option value="document">Documents</option>
+                    <option value="document">Docs</option>
                     <option value="video">Videos</option>
                 </select>
             </div>
             <div class="col-md-2">
-                <button type="button" class="btn btn-primary btn-sm w-100" id="resApplyFilters">Apply</button>
+                <label class="form-label small text-muted mb-1">Department</label>
+                <select id="resDeptFilter" class="form-select form-select-sm" title="Department">
+                    <option value="all">All</option>
+                    @foreach($departments as $dept)
+                        <option value="{{ $dept->id }}">{{ $dept->name }}</option>
+                    @endforeach
+                </select>
             </div>
             <div class="col-md-2">
-                <button type="button" class="btn btn-light btn-sm w-100" id="resClearFilters">Clear</button>
+                <label class="form-label small text-muted mb-1">Tag</label>
+                <select id="resTagFilter" class="form-select form-select-sm" title="Tag">
+                    <option value="all">All</option>
+                    @foreach($tags as $tag)
+                        <option value="{{ $tag }}">{{ $tag }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted mb-1">Resources</label>
+                <select id="resResourceFilter" class="form-select form-select-sm" title="Resources">
+                    <option value="all">All</option>
+                    @foreach($resourceOptions as $resourceOption)
+                        <option value="{{ $resourceOption }}">{{ $resourceOption }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="button" class="btn btn-primary btn-sm flex-fill" id="resApplyFilters">Apply</button>
+                <button type="button" class="btn btn-light btn-sm flex-fill" id="resClearFilters">Clear</button>
             </div>
         </div>
     </div>
 
 
     <div id="resItemsWrap">
-        <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
             <h6 class="text-muted text-uppercase small mb-0">Items</h6>
-            <span class="small text-muted" id="resCount"></span>
+            <div class="d-flex align-items-center gap-2">
+                <span class="small text-muted" id="resCount"></span>
+                <div class="btn-group btn-group-sm res-view-toggle" role="group" aria-label="View mode">
+                    <button type="button" class="btn btn-light active" id="resViewGrid" title="Grid view"><i class="ri-grid-fill"></i></button>
+                    <button type="button" class="btn btn-light" id="resViewTable" title="Table view"><i class="ri-table-line"></i></button>
+                </div>
+            </div>
         </div>
         <div id="resItemsGrid" class="row g-3"></div>
+        <div id="resItemsTable" class="res-table-wrap d-none">
+            <table class="table table-hover align-middle mb-0 res-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th title="Department">Dept</th>
+                        <th title="Tag">Tag</th>
+                        <th title="Resources">Resources</th>
+                        <th>Size</th>
+                        <th>Modified</th>
+                        <th>Added by</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="resTableBody"></tbody>
+            </table>
+        </div>
         <div id="resEmpty" class="res-empty d-none">
             <i class="ri-folder-open-line fs-1 d-block mb-2"></i>
             <div>No resources in this folder yet.</div>
@@ -282,9 +349,38 @@
                             <label class="form-label">Title</label>
                             <input type="text" name="title" class="form-control" required maxlength="255">
                         </div>
-                        <div class="mb-0">
+                        <div class="mb-3">
                             <label class="form-label">URL</label>
                             <input type="url" name="location_url" class="form-control" required placeholder="https://docs.google.com/...">
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label">Department</label>
+                                <select name="department_id" class="form-select">
+                                    <option value="">No department</option>
+                                    @foreach($departments as $dept)
+                                        <option value="{{ $dept->id }}">{{ $dept->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Tag</label>
+                                <select name="tag" class="form-select">
+                                    <option value="">No tag</option>
+                                    @foreach($tags as $tag)
+                                        <option value="{{ $tag }}">{{ $tag }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Resources</label>
+                                <select name="resource" class="form-select">
+                                    <option value="">No resource</option>
+                                    @foreach($resourceOptions as $resourceOption)
+                                        <option value="{{ $resourceOption }}">{{ $resourceOption }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
                         </div>
                         <input type="hidden" name="folder_id" value="{{ $folderId }}">
                     </div>
@@ -311,9 +407,38 @@
                             <label class="form-label">Title</label>
                             <input type="text" name="title" class="form-control" required maxlength="255">
                         </div>
-                        <div class="mb-0">
+                        <div class="mb-3">
                             <label class="form-label">File</label>
                             <input type="file" name="file" class="form-control" required>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label">Department</label>
+                                <select name="department_id" class="form-select">
+                                    <option value="">No department</option>
+                                    @foreach($departments as $dept)
+                                        <option value="{{ $dept->id }}">{{ $dept->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Tag</label>
+                                <select name="tag" class="form-select">
+                                    <option value="">No tag</option>
+                                    @foreach($tags as $tag)
+                                        <option value="{{ $tag }}">{{ $tag }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Resources</label>
+                                <select name="resource" class="form-select">
+                                    <option value="">No resource</option>
+                                    @foreach($resourceOptions as $resourceOption)
+                                        <option value="{{ $resourceOption }}">{{ $resourceOption }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
                         </div>
                         <input type="hidden" name="folder_id" value="{{ $folderId }}">
                     </div>
@@ -341,9 +466,38 @@
                             <label class="form-label">Title</label>
                             <input type="text" name="title" id="resEditTitle" class="form-control" required maxlength="255">
                         </div>
-                        <div class="mb-0" id="resEditUrlWrap">
+                        <div class="mb-3" id="resEditUrlWrap">
                             <label class="form-label">URL</label>
                             <input type="url" name="location_url" id="resEditUrl" class="form-control">
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label">Department</label>
+                                <select name="department_id" id="resEditDepartment" class="form-select">
+                                    <option value="">No department</option>
+                                    @foreach($departments as $dept)
+                                        <option value="{{ $dept->id }}">{{ $dept->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Tag</label>
+                                <select name="tag" id="resEditTag" class="form-select">
+                                    <option value="">No tag</option>
+                                    @foreach($tags as $tag)
+                                        <option value="{{ $tag }}">{{ $tag }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Resources</label>
+                                <select name="resource" id="resEditResource" class="form-select">
+                                    <option value="">No resource</option>
+                                    @foreach($resourceOptions as $resourceOption)
+                                        <option value="{{ $resourceOption }}">{{ $resourceOption }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -363,17 +517,25 @@
 <script>
 (function () {
     const folderId = {{ (int) $folderId }};
+    const canDelete = {{ auth()->user() && auth()->user()->email === 'president@5core.com' ? 'true' : 'false' }};
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
     let currentPage = 1;
+    let currentItems = [];
+    let viewMode = localStorage.getItem('resViewMode') === 'table' ? 'table' : 'grid';
 
     const grid = document.getElementById('resItemsGrid');
+    const tableWrap = document.getElementById('resItemsTable');
+    const tableBody = document.getElementById('resTableBody');
     const empty = document.getElementById('resEmpty');
     const countEl = document.getElementById('resCount');
     const pagination = document.getElementById('resPagination');
+    const viewGridBtn = document.getElementById('resViewGrid');
+    const viewTableBtn = document.getElementById('resViewTable');
 
     function iconClass(type) {
         return {
             link: 'res-icon-link',
+            gsheet: 'res-icon-spreadsheet',
             spreadsheet: 'res-icon-spreadsheet',
             image: 'res-icon-image',
             pdf: 'res-icon-pdf',
@@ -383,12 +545,22 @@
     }
 
     function typeLabel(type) {
+        if (type === 'gsheet') return 'G Sheet';
         return (type || 'file').replace('_', ' ');
     }
 
     function formatDate(value) {
         if (!value) return '';
         return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    function formatSize(bytes) {
+        const n = parseInt(bytes, 10);
+        if (!n || isNaN(n)) return '';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let i = 0, size = n;
+        while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+        return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
     }
 
     function escapeHtml(str) {
@@ -399,9 +571,15 @@
         currentPage = page;
         const search = document.getElementById('resSearch').value.trim();
         const type = document.getElementById('resTypeFilter').value;
+        const dept = document.getElementById('resDeptFilter').value;
+        const tag = document.getElementById('resTagFilter').value;
+        const resource = document.getElementById('resResourceFilter').value;
         const params = new URLSearchParams({ folder: folderId, page, per_page: 24 });
         if (search) params.set('search', search);
         if (type && type !== 'all') params.set('type', type);
+        if (dept && dept !== 'all') params.set('department', dept);
+        if (tag && tag !== 'all') params.set('tag', tag);
+        if (resource && resource !== 'all') params.set('resource', resource);
 
         const res = await fetch(`{{ route('resources.data') }}?${params}`, { headers: { 'Accept': 'application/json' } });
         const json = await res.json();
@@ -410,14 +588,39 @@
         countEl.textContent = `${json.meta?.total ?? 0} item(s)`;
     }
 
+    function openItem(url, isLink) {
+        if (isLink === '1' || isLink === true) {
+            window.open(url, '_blank');
+        } else if (url && url !== '#') {
+            window.location = url;
+        }
+    }
+
     function renderItems(items) {
+        currentItems = items;
         grid.innerHTML = '';
+        tableBody.innerHTML = '';
+
         if (!items.length) {
             empty.classList.remove('d-none');
+            grid.classList.add('d-none');
+            tableWrap.classList.add('d-none');
             return;
         }
         empty.classList.add('d-none');
 
+        if (viewMode === 'table') {
+            grid.classList.add('d-none');
+            tableWrap.classList.remove('d-none');
+            renderTable(items);
+        } else {
+            tableWrap.classList.add('d-none');
+            grid.classList.remove('d-none');
+            renderGrid(items);
+        }
+    }
+
+    function renderGrid(items) {
         items.forEach(item => {
             const col = document.createElement('div');
             col.className = 'col-6 col-md-4 col-lg-3 col-xl-2';
@@ -435,35 +638,71 @@
                     </div>
                     <div class="res-actions d-flex gap-1 justify-content-end mt-2 pt-2 border-top">
                         <button type="button" class="btn btn-light btn-sm res-edit" data-item='${JSON.stringify(item).replace(/'/g, '&#39;')}' title="Edit"><i class="ri-edit-line"></i></button>
-                        <button type="button" class="btn btn-light btn-sm text-danger res-delete" data-id="${item.id}" title="Delete"><i class="ri-delete-bin-line"></i></button>
+                        ${canDelete ? `<button type="button" class="btn btn-light btn-sm text-danger res-delete" data-id="${item.id}" title="Delete"><i class="ri-delete-bin-line"></i></button>` : ''}
                     </div>
                 </div>`;
 
             col.querySelector('[data-open]').addEventListener('click', function (e) {
                 if (e.target.closest('.res-actions')) return;
-                const url = this.dataset.open;
-                if (this.dataset.link === '1') {
-                    window.open(url, '_blank');
-                } else if (url && url !== '#') {
-                    window.location = url;
-                }
+                openItem(this.dataset.open, this.dataset.link);
             });
 
             grid.appendChild(col);
         });
 
-        grid.querySelectorAll('.res-edit').forEach(btn => {
+        bindItemActions(grid);
+    }
+
+    function renderTable(items) {
+        items.forEach(item => {
+            const tr = document.createElement('tr');
+            const openUrl = item.open_url || '#';
+            const isLink = item.is_link;
+            tr.innerHTML = `
+                <td>
+                    <div class="d-flex align-items-center gap-2 res-row-name" data-open="${escapeHtml(openUrl)}" data-link="${isLink ? '1' : '0'}">
+                        <div class="res-icon-wrap ${iconClass(item.file_type)}"><i class="${item.icon || 'ri-file-line'}"></i></div>
+                        <span class="res-row-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
+                    </div>
+                </td>
+                <td class="text-capitalize">${escapeHtml(typeLabel(item.file_type))}</td>
+                <td>${item.department_name ? `<span class="badge bg-light text-dark border" title="Department">${escapeHtml(item.department_name)}</span>` : '<span class="text-muted">&mdash;</span>'}</td>
+                <td>${item.tag ? `<span class="badge bg-soft-primary text-primary" title="Tag">${escapeHtml(item.tag)}</span>` : '<span class="text-muted">&mdash;</span>'}</td>
+                <td>${item.resource ? `<span class="badge bg-soft-info text-info" title="Resources">${escapeHtml(item.resource)}</span>` : '<span class="text-muted">&mdash;</span>'}</td>
+                <td>${item.is_link ? '<span class="text-muted">&mdash;</span>' : (formatSize(item.file_size) || '<span class="text-muted">&mdash;</span>')}</td>
+                <td class="text-nowrap">${formatDate(item.updated_at) || '<span class="text-muted">&mdash;</span>'}</td>
+                <td>${escapeHtml(item.creator?.name || '') || '<span class="text-muted">&mdash;</span>'}</td>
+                <td class="text-end res-actions">
+                    <button type="button" class="btn btn-light btn-sm res-edit" data-item='${JSON.stringify(item).replace(/'/g, '&#39;')}' title="Edit"><i class="ri-edit-line"></i></button>
+                    ${canDelete ? `<button type="button" class="btn btn-light btn-sm text-danger res-delete" data-id="${item.id}" title="Delete"><i class="ri-delete-bin-line"></i></button>` : ''}
+                </td>`;
+
+            tr.querySelector('.res-row-name').addEventListener('click', function () {
+                openItem(this.dataset.open, this.dataset.link);
+            });
+
+            tableBody.appendChild(tr);
+        });
+
+        bindItemActions(tableBody);
+    }
+
+    function bindItemActions(container) {
+        container.querySelectorAll('.res-edit').forEach(btn => {
             btn.addEventListener('click', () => {
                 const item = JSON.parse(btn.dataset.item);
                 document.getElementById('resEditId').value = item.id;
                 document.getElementById('resEditTitle').value = item.title || '';
                 document.getElementById('resEditUrl').value = item.location_url || '';
+                document.getElementById('resEditDepartment').value = item.department_id || '';
+                document.getElementById('resEditTag').value = item.tag || '';
+                document.getElementById('resEditResource').value = item.resource || '';
                 document.getElementById('resEditUrlWrap').classList.toggle('d-none', !item.is_link);
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('resEditModal')).show();
             });
         });
 
-        grid.querySelectorAll('.res-delete').forEach(btn => {
+        container.querySelectorAll('.res-delete').forEach(btn => {
             btn.addEventListener('click', async () => {
                 if (!confirm('Delete this resource?')) return;
                 await fetch(`{{ url('/resources/item') }}/${btn.dataset.id}`, {
@@ -473,6 +712,14 @@
                 loadItems(currentPage);
             });
         });
+    }
+
+    function setViewMode(mode) {
+        viewMode = mode === 'table' ? 'table' : 'grid';
+        localStorage.setItem('resViewMode', viewMode);
+        viewGridBtn.classList.toggle('active', viewMode === 'grid');
+        viewTableBtn.classList.toggle('active', viewMode === 'table');
+        renderItems(currentItems);
     }
 
     function renderPagination(meta) {
@@ -513,8 +760,14 @@
     document.getElementById('resClearFilters').addEventListener('click', () => {
         document.getElementById('resSearch').value = '';
         document.getElementById('resTypeFilter').value = 'all';
+        document.getElementById('resDeptFilter').value = 'all';
+        document.getElementById('resTagFilter').value = 'all';
+        document.getElementById('resResourceFilter').value = 'all';
         loadItems(1);
     });
+    document.getElementById('resDeptFilter').addEventListener('change', () => loadItems(1));
+    document.getElementById('resTagFilter').addEventListener('change', () => loadItems(1));
+    document.getElementById('resResourceFilter').addEventListener('change', () => loadItems(1));
     document.getElementById('resSearch').addEventListener('keydown', e => {
         if (e.key === 'Enter') loadItems(1);
     });
@@ -559,6 +812,11 @@
         bootstrap.Modal.getInstance(document.getElementById('resEditModal')).hide();
         loadItems(currentPage);
     });
+
+    viewGridBtn.addEventListener('click', () => setViewMode('grid'));
+    viewTableBtn.addEventListener('click', () => setViewMode('table'));
+    viewGridBtn.classList.toggle('active', viewMode === 'grid');
+    viewTableBtn.classList.toggle('active', viewMode === 'table');
 
     loadItems(1);
 

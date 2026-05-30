@@ -23,6 +23,12 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return view('customer-care.dispatch', $this->issueBoardIndexData());
     }
 
+    /** Same datatable and APIs as All Issues, filtered to the "Dispatch" department only. */
+    public function dispatchOnlyBoard()
+    {
+        return view('customer-care.dispatch_issues_only', $this->issueBoardIndexData());
+    }
+
     /** Same data and APIs as All Issues (`dispatch_issue_issues`), alternate titles. */
     public function carrierAndClaimBoard()
     {

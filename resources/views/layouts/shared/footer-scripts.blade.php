@@ -132,3 +132,52 @@
         });
     }
 </script>
+
+{{-- Global: any badge with a light background gets black text for readability --}}
+<script>
+    (function () {
+        function brightness(rgb) {
+            return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
+        }
+        function parseRgb(str) {
+            const m = (str || '').match(/rgba?\(([^)]+)\)/);
+            if (!m) return null;
+            const p = m[1].split(',').map((s) => parseFloat(s.trim()));
+            if (p.length < 3) return null;
+            if (p.length >= 4 && p[3] === 0) return null; // transparent
+            return [p[0], p[1], p[2]];
+        }
+        function fixBadge(el) {
+            if (!el || el.dataset.badgeTextFixed === '1') return;
+            const rgb = parseRgb(getComputedStyle(el).backgroundColor);
+            if (!rgb) return;
+            if (brightness(rgb) > 0.6) {
+                el.style.setProperty('color', '#000', 'important');
+                el.querySelectorAll('*').forEach((c) => c.style.setProperty('color', '#000', 'important'));
+            }
+            el.dataset.badgeTextFixed = '1';
+        }
+        function fixAll(root) {
+            (root || document).querySelectorAll('.badge').forEach(fixBadge);
+        }
+        function init() {
+            fixAll();
+            if (!document.body) return;
+            const obs = new MutationObserver(function (muts) {
+                muts.forEach(function (m) {
+                    (m.addedNodes || []).forEach(function (n) {
+                        if (n.nodeType !== 1) return;
+                        if (n.classList && n.classList.contains('badge')) fixBadge(n);
+                        if (n.querySelectorAll) n.querySelectorAll('.badge').forEach(fixBadge);
+                    });
+                });
+            });
+            obs.observe(document.body, { childList: true, subtree: true });
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    })();
+</script>

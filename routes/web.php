@@ -1749,6 +1749,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.issues');
     Route::get('/customer-care/dispatch', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dispatchIssueBoard'])
         ->name('customer.care.dispatch.board');
+    Route::get('/customer-care/dispatch-issues-only', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dispatchOnlyBoard'])
+        ->name('customer.care.dispatch.issues.only');
     Route::get('/customer-care/carrier-and-claim', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'carrierAndClaimBoard'])
         ->name('customer.care.dispatch.carrier.and.claim');
     Route::get('/customer-care/carrier-issue', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'carrierIssueBoard'])
@@ -5583,8 +5585,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
 
     // User management routes
+    // Access (HR / President only) is enforced in the controller so we can show a custom message.
     Route::get('/users/add', [UserController::class, 'index'])
-        ->middleware(['auth', 'can:team.management.view'])
+        ->middleware('auth')
         ->name('users.add');
 
     Route::put('/users/{user}', [UserController::class, 'update'])
@@ -5607,6 +5610,38 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/users/{user}/toggle-salary-visibility', [UserController::class, 'toggleSalaryVisibility'])
         ->middleware('auth')
         ->name('users.toggleSalaryVisibility');
+
+    // Resume file (view restricted to president/hr; edit restricted to hr — enforced in controller)
+    Route::get('/users/{user}/resume', [UserController::class, 'showResume'])
+        ->middleware('auth')
+        ->name('users.resume.show');
+
+    Route::post('/users/{user}/resume', [UserController::class, 'uploadResume'])
+        ->middleware('auth')
+        ->name('users.resume.upload');
+
+    Route::delete('/users/{user}/resume', [UserController::class, 'deleteResume'])
+        ->middleware('auth')
+        ->name('users.resume.delete');
+
+    // Docs: multiple links/files per user (view restricted to president/hr; edit to hr — enforced in controller)
+    Route::get('/users/{user}/docs', [UserController::class, 'listDocs'])
+        ->middleware('auth')
+        ->name('users.docs.index');
+
+    Route::post('/users/{user}/docs', [UserController::class, 'storeDoc'])
+        ->middleware('auth')
+        ->name('users.docs.store');
+
+    Route::get('/users/{user}/docs/{doc}/download', [UserController::class, 'downloadDoc'])
+        ->middleware('auth')
+        ->whereNumber('doc')
+        ->name('users.docs.download');
+
+    Route::delete('/users/{user}/docs/{doc}', [UserController::class, 'deleteDoc'])
+        ->middleware('auth')
+        ->whereNumber('doc')
+        ->name('users.docs.delete');
 
     Route::get('/users/export', [UserController::class, 'exportData'])
         ->middleware('auth')

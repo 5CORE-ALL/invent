@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class TeamLoggerService
@@ -40,35 +41,55 @@ class TeamLoggerService
      * @param bool $useCache Whether to use caching
      * @return array Employee data indexed by email
      */
+    /**
+     * Minutes to keep the (relatively static) summary report cached across requests.
+     */
+    private const CACHE_TTL_MINUTES = 30;
+
     public function fetchByDateRange($startDate, $endDate, $useCache = true)
     {
         try {
             $cacheKey = "teamlogger_{$startDate}_{$endDate}";
-            
-            // Check cache
+
+            // Layer 1: in-request static cache (avoids repeat work within a single request).
             if ($useCache && isset(self::$cache[$cacheKey])) {
-                Log::info("TeamLogger: Using cached data for {$startDate} to {$endDate}");
                 return self::$cache[$cacheKey];
             }
 
-            // Convert dates to timestamps (milliseconds)
-            $startTime = Carbon::parse($startDate)->setTime(12, 0, 0)->utc()->getTimestamp() * 1000;
-            $endTime = Carbon::parse($endDate)->addDay()->setTime(11, 59, 59)->utc()->getTimestamp() * 1000;
+            // Layer 2: persistent cross-request cache. The external API call can take several
+            // seconds (up to a 30s timeout), so caching the processed result keeps page loads fast.
+            $loader = function () use ($startDate, $endDate) {
+                $startTime = Carbon::parse($startDate)->setTime(12, 0, 0)->utc()->getTimestamp() * 1000;
+                $endTime = Carbon::parse($endDate)->addDay()->setTime(11, 59, 59)->utc()->getTimestamp() * 1000;
 
-            // Fetch from API
-            $response = $this->callApi($startTime, $endTime);
-            
-            if (!$response['success']) {
-                Log::error('TeamLogger API failed', ['error' => $response['error']]);
-                return [];
+                $response = $this->callApi($startTime, $endTime);
+
+                if (!$response['success']) {
+                    Log::error('TeamLogger API failed', ['error' => $response['error']]);
+                    return null; // null => failure; don't cache so we retry next time
+                }
+
+                return $this->processApiResponse($response['data']);
+            };
+
+            if ($useCache) {
+                $employeeDataMap = Cache::get($cacheKey);
+
+                if (!is_array($employeeDataMap)) {
+                    $employeeDataMap = $loader();
+
+                    if (is_array($employeeDataMap)) {
+                        Cache::put($cacheKey, $employeeDataMap, now()->addMinutes(self::CACHE_TTL_MINUTES));
+                        Log::info("TeamLogger: Cached " . count($employeeDataMap) . " employee records for {$startDate} to {$endDate}");
+                    } else {
+                        $employeeDataMap = [];
+                    }
+                }
+            } else {
+                $employeeDataMap = $loader() ?? [];
             }
 
-            // Process response
-            $employeeDataMap = $this->processApiResponse($response['data']);
-            
-            // Cache the result
             self::$cache[$cacheKey] = $employeeDataMap;
-            Log::info("TeamLogger: Cached " . count($employeeDataMap) . " employee records");
 
             return $employeeDataMap;
 

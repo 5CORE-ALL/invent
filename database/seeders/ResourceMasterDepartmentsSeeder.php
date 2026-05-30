@@ -20,6 +20,10 @@ class ResourceMasterDepartmentsSeeder extends Seeder
             ['slug' => 'marketing', 'name' => 'Marketing', 'sort_order' => 60],
             ['slug' => 'software', 'name' => 'Software', 'sort_order' => 70],
             ['slug' => 'management', 'name' => 'Management', 'sort_order' => 80],
+            ['slug' => 'customer-care', 'name' => 'Customer Care', 'sort_order' => 90],
+            ['slug' => 'shipping', 'name' => 'Shipping', 'sort_order' => 100],
+            ['slug' => 'dispatch', 'name' => 'Dispatch', 'sort_order' => 110],
+            ['slug' => 'operations', 'name' => 'Operations', 'sort_order' => 120],
         ];
 
         foreach ($defs as $d) {

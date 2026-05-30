@@ -32,6 +32,8 @@ class User extends Authenticatable
         'designation',
         'is_active',
         'show_in_salary',
+        'resume_path',
+        'resume_original_name',
         'deactivated_at',
         'logined',
         'resource_department_id',
@@ -72,6 +74,14 @@ class User extends Authenticatable
     public function userRR()
     {
         return $this->hasOne(UserRR::class);
+    }
+
+    /**
+     * Documents (links and files) attached to the user.
+     */
+    public function docs()
+    {
+        return $this->hasMany(UserDoc::class)->latest();
     }
 
     /**

@@ -4,13 +4,11 @@ return [
 
     /*
     | Emails allowed to open Team Management (/users/add).
+    | Restricted to HR and the President only.
     */
     'viewer_emails' => [
         'president@5core.com',
         'hr@5core.com',
-        'software@5core.com',
-        'software5@5core.com',
-        'tech-support@5core.com', // users table: Titas D
     ],
 
     /*
@@ -31,6 +29,22 @@ return [
         'hr@5core.com',
         'software5@5core.com',
         'tech-support@5core.com',
+    ],
+
+    /*
+    | Emails that can SEE the Resume column on the Users table.
+    */
+    'resume_viewer_emails' => [
+        'president@5core.com',
+        'hr@5core.com',
+    ],
+
+    /*
+    | Emails that can ADD/EDIT (upload, replace, delete) a user's resume file and docs.
+    */
+    'resume_editor_emails' => [
+        'president@5core.com',
+        'hr@5core.com',
     ],
 
 ];

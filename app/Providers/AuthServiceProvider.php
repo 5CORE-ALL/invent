@@ -44,8 +44,10 @@ class AuthServiceProvider extends ServiceProvider
             return in_array(strtolower((string) $user->email), $emails, true);
         });
 
-        Gate::define('team.management.view', function (User $user): bool {
-            return TeamManagementAccess::canView($user);
+        Gate::define('team.management.view', function (User $user) {
+            return TeamManagementAccess::canView($user)
+                ? true
+                : \Illuminate\Auth\Access\Response::deny('Not Authorised');
         });
 
         Gate::define('team.management.view-salary', function (User $user): bool {
