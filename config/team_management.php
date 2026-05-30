@@ -4,11 +4,12 @@ return [
 
     /*
     | Emails allowed to open Team Management (/users/add).
-    | Restricted to HR and the President only.
     */
     'viewer_emails' => [
         'president@5core.com',
         'hr@5core.com',
+        'software@5core.com',
+        'software5@5core.com',
     ],
 
     /*
@@ -28,7 +29,6 @@ return [
         'president@5core.com',
         'hr@5core.com',
         'software5@5core.com',
-        'tech-support@5core.com',
     ],
 
     /*
