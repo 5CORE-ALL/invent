@@ -249,6 +249,12 @@ class PayrollController extends Controller
             }
         }
 
+        // A manually edited Salary PP is locked in: flag it so the month-over-month
+        // carry-forward stops overwriting it and the edited value always shows.
+        if (array_key_exists('salary_pp', $validated)) {
+            $validated['salary_pp_overridden'] = true;
+        }
+
         $payrollEmployeeSalary->update($validated);
         $this->payroll->recalculateMonth($month);
 

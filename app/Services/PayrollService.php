@@ -336,6 +336,12 @@ class PayrollService
 
         $changed = false;
         foreach (PayrollEmployeeSalary::where('payroll_month_id', $month->id)->get() as $row) {
+            // A manually edited Salary PP wins — never overwrite it with the
+            // carried-forward value.
+            if ($row->salary_pp_overridden) {
+                continue;
+            }
+
             $prev = $previousByUser->get($row->user_id);
             if (! $prev) {
                 continue;

@@ -11,6 +11,7 @@ class PayrollEmployeeSalary extends Model
         'payroll_month_id',
         'user_id',
         'salary_pp',
+        'salary_pp_overridden',
         'increment',
         'other',
         'adv_inc_other',
@@ -40,6 +41,7 @@ class PayrollEmployeeSalary extends Model
         'deductions_total' => 'decimal:2',
         'net_amount' => 'decimal:2',
         'is_new_hire' => 'boolean',
+        'salary_pp_overridden' => 'boolean',
     ];
 
     public function payrollMonth(): BelongsTo
