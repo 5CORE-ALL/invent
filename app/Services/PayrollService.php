@@ -201,7 +201,7 @@ class PayrollService
             'other' => $calc['other'],
             'adv_inc_other' => $calc['adv_inc_other'],
             'hours_worked' => $calc['hours_lm'],
-            'gross_amount' => $calc['amount_lm'],
+            'gross_amount' => $calc['amount_p'],
             'net_amount' => $calc['amount_p_rounded'],
             'bank_1' => $salary?->bank_1,
             'bank_2' => $salary?->bank_2,
@@ -262,7 +262,7 @@ class PayrollService
             'other' => $calc['other'],
             'adv_inc_other' => $calc['adv_inc_other'],
             'hours_worked' => $calc['hours_lm'],
-            'gross_amount' => $calc['amount_lm'],
+            'gross_amount' => $calc['amount_p'],
             'net_amount' => $calc['amount_p_rounded'],
             'bank_1' => $salary?->bank_1,
             'bank_2' => $salary?->bank_2,
@@ -372,7 +372,8 @@ class PayrollService
                 (float) $row->salary_pp,
                 (float) $row->increment,
                 (float) $row->other,
-                (float) $row->adv_inc_other
+                (float) $row->adv_inc_other,
+                (float) $row->incentive
             );
 
             $userId = $row->user_id;
@@ -386,13 +387,16 @@ class PayrollService
                 ->where('user_id', $userId)->where('entry_type', 'deduction')->sum('amount');
             $arrears = $this->appliedArrearsTotal($month->id, $userId);
 
+            // "Amount" = ((PP + Increment) * Hours / 200) - Advance + Other + Incentive.
+            // "Payable" (net) layers the month's components, payments and arrears on top.
+            $amount = $calc['amount_p'];
             $hasExtras = $componentsEarning > 0 || $componentsDeduction > 0 || $payments > 0 || $deductions > 0 || abs($arrears) > 0.001;
             $net = $hasExtras
-                ? $this->roundNet($calc['amount_p'] + $componentsEarning - $componentsDeduction + $payments - $deductions + $arrears)
+                ? $this->roundNet($amount + $componentsEarning - $componentsDeduction + $payments - $deductions + $arrears)
                 : $calc['amount_p_rounded'];
 
             $row->update([
-                'gross_amount' => $calc['amount_lm'],
+                'gross_amount' => $amount,
                 'lop_amount' => 0,
                 'arrears_amount' => $arrears,
                 'payments_total' => $payments,
@@ -459,14 +463,17 @@ class PayrollService
                 (float) round(($hours * $salaryPp) / $divisor),
             ];
         }
-        if ($hours > 0 && $increment > 0) {
+        if ($increment > 0) {
             $lines[] = [
                 $this->monthIncrementLabel($monthLabel),
-                (float) round(($hours * $increment) / $divisor),
+                (float) $increment,
             ];
         }
         if (($data['other'] ?? 0) > 0) {
             $lines[] = ['Other Allowance', (float) $data['other']];
+        }
+        if (($data['incentive'] ?? 0) > 0) {
+            $lines[] = ['Incentive', (float) $data['incentive']];
         }
         foreach ($data['components'] ?? [] as $c) {
             if (($c['type'] ?? '') !== 'earning' || ($c['amount'] ?? 0) <= 0) {
@@ -525,7 +532,8 @@ class PayrollService
             (float) $row->salary_pp,
             (float) $row->increment,
             (float) $row->other,
-            (float) $row->adv_inc_other
+            (float) $row->adv_inc_other,
+            (float) $row->incentive
         );
 
         $components = PayrollSalaryComponent::where('payroll_month_id', $month->id)
@@ -552,6 +560,7 @@ class PayrollService
             'salary_lm' => $calc['salary_lm'],
             'other' => $calc['other'],
             'adv_inc_other' => $calc['adv_inc_other'],
+            'incentive' => $calc['incentive'],
             'hours_worked' => $calc['hours_lm'],
             'amount_lm' => $calc['amount_lm'],
             'amount_lm_display' => $calc['amount_lm_display'],

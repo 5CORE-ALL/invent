@@ -44,6 +44,12 @@ class AuthServiceProvider extends ServiceProvider
             return in_array(strtolower((string) $user->email), $emails, true);
         });
 
+        Gate::define('payroll.sheet-admin', function (User $user): bool {
+            $emails = array_map('strtolower', config('payroll.sheet_admin_emails', []));
+
+            return in_array(strtolower((string) $user->email), $emails, true);
+        });
+
         Gate::define('team.management.view', function (User $user) {
             return TeamManagementAccess::canView($user)
                 ? true

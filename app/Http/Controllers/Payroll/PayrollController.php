@@ -30,6 +30,11 @@ class PayrollController extends Controller
         abort_unless(Gate::allows('payroll.manage'), 403, 'You do not have permission to manage payroll.');
     }
 
+    protected function authorizeSheetAdmin(): void
+    {
+        abort_unless(Gate::allows('payroll.sheet-admin'), 403, 'Only HR and the President can use this function.');
+    }
+
     protected function ensureUnlocked(?PayrollMonth $month): void
     {
         if ($month && $month->is_locked) {
@@ -103,6 +108,9 @@ class PayrollController extends Controller
                 'email' => $r->user?->email,
                 'salary_pp' => $r->salary_pp,
                 'increment' => $r->increment,
+                'other' => $r->other,
+                'adv_inc_other' => $r->adv_inc_other,
+                'incentive' => $r->incentive,
                 'salary_lm' => (float) $r->salary_pp + (float) $r->increment,
                 'hours_worked' => $r->hours_worked,
                 'amount_lm' => $r->gross_amount,
@@ -113,6 +121,8 @@ class PayrollController extends Controller
                 'bank_1' => $r->bank_1,
                 'bank_2' => $r->bank_2,
                 'upi_id' => $r->upi_id,
+                'edited_by' => $r->edited_by,
+                'edited_at' => $r->edited_at?->toIso8601String(),
             ]);
 
         $salaryByUser = PayrollEmployeeSalary::where('payroll_month_id', $payrollMonth->id)
@@ -199,7 +209,7 @@ class PayrollController extends Controller
 
     public function syncEmployees(Request $request, PayrollMonth $payrollMonth): JsonResponse
     {
-        $this->authorizeManage();
+        $this->authorizeSheetAdmin();
         $this->ensureUnlocked($payrollMonth);
 
         $userIds = $request->input('user_ids', []);
@@ -229,6 +239,7 @@ class PayrollController extends Controller
             'increment' => 'nullable|numeric|min:0',
             'other' => 'nullable|numeric|min:0',
             'adv_inc_other' => 'nullable|numeric|min:0',
+            'incentive' => 'nullable|numeric|min:0',
             'hours_worked' => 'nullable|numeric|min:0',
             'bank_1' => 'nullable|string|max:255',
             'bank_2' => 'nullable|string|max:255',
@@ -238,7 +249,7 @@ class PayrollController extends Controller
 
         // Empty numeric inputs come through as null; treat a blank as 0 so the
         // sheet never stores nulls and recalculation has real numbers to work with.
-        foreach (['salary_pp', 'increment', 'other', 'adv_inc_other', 'hours_worked'] as $numericField) {
+        foreach (['salary_pp', 'increment', 'other', 'adv_inc_other', 'incentive', 'hours_worked'] as $numericField) {
             if (array_key_exists($numericField, $validated)) {
                 $validated[$numericField] = $validated[$numericField] ?? 0;
             }
@@ -255,6 +266,9 @@ class PayrollController extends Controller
         if (array_key_exists('hours_worked', $validated)) {
             $validated['hours_overridden'] = true;
         }
+
+        $validated['edited_by'] = $request->user()?->name;
+        $validated['edited_at'] = now();
 
         $payrollEmployeeSalary->update($validated);
         $this->payroll->recalculateMonth($month);
@@ -763,7 +777,7 @@ class PayrollController extends Controller
      */
     public function exportPayoutSheet(PayrollMonth $payrollMonth)
     {
-        $this->authorizeManage();
+        $this->authorizeSheetAdmin();
 
         if (! $payrollMonth->is_locked) {
             $this->payroll->removeIneligibleEmployees($payrollMonth);
