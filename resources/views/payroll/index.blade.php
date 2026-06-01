@@ -72,6 +72,7 @@
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-components">Salary Components</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-payments">Payments &amp; Deductions</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-payslips">Payslips &amp; IT</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-salary-slip">Salary Slip</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-arrears">Arrears</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-settlement">Full &amp; Final</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-previous">Previous Payroll</button></li>
@@ -141,6 +142,17 @@
             <div class="payroll-card p-3">
                 <p class="small text-muted">Formats: Standard, Detailed (with line items), Compact summary.</p>
                 <div id="payslipsTable"></div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="tab-salary-slip">
+            <div class="payroll-card p-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Salary Slips</h6>
+                    <span class="small text-muted">Download any employee's salary slip for <strong id="salarySlipMonth">—</strong></span>
+                </div>
+                <p class="small text-muted">Each employee on this month's sheet has a downloadable salary slip. The slip is built from their current salary row.</p>
+                <div id="salarySlipTable"></div>
             </div>
         </div>
 
@@ -347,6 +359,33 @@
 
     function fmt(n) { return '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 }); }
 
+    async function onHoursEdited(cell) {
+        const row = cell.getRow();
+        const d = row.getData();
+        const oldValue = cell.getOldValue();
+        const value = parseFloat(cell.getValue());
+        if (isNaN(value) || value < 0) {
+            cell.restoreOldValue();
+            return;
+        }
+        try {
+            const res = await api(`${base}/employee-salary/${d.id}`, 'PUT', { hours_worked: value });
+            const fresh = res.row || {};
+            // Reflect recalculated amounts immediately, without a full reload.
+            row.update({
+                hours_worked: fresh.hours_worked ?? value,
+                gross_amount: fresh.gross_amount ?? d.gross_amount,
+                amount_lm: fresh.gross_amount ?? d.amount_lm,
+                net_amount: fresh.net_amount ?? d.net_amount,
+                amount_p: fresh.net_amount ?? d.amount_p,
+            });
+            if (employeeRowsById[d.id]) Object.assign(employeeRowsById[d.id], row.getData());
+        } catch (err) {
+            cell.restoreOldValue();
+            alert((err && err.message) ? err.message : 'Failed to save hours.');
+        }
+    }
+
     let employeesTable = null;
     let employeesTableBuilt = false;
     let pendingEmployeesData = [];
@@ -358,7 +397,17 @@
                 const d = c.getRow().getData();
                 return (d.name || '—') + (d.is_new_hire ? ' <span class="badge bg-info">New</span>' : '');
             } },
-            { title: 'Hours LM', field: 'hours_worked', hozAlign: 'center', width: 100, formatter: (c) => { const v = parseFloat(c.getValue()); return (isNaN(v)) ? '—' : (Math.round(v) + 'h'); } },
+            { title: 'Hours LM', field: 'hours_worked', hozAlign: 'center', width: 110,
+                editor: canManage ? 'number' : false,
+                editorParams: { min: 0, step: 1, selectContents: true },
+                editable: (cell) => canManage && !cell.getRow().getData()._locked,
+                cellEdited: onHoursEdited,
+                formatter: (c) => {
+                    const v = parseFloat(c.getValue());
+                    const txt = isNaN(v) ? '—' : (Math.round(v) + 'h');
+                    const editable = canManage && !c.getRow().getData()._locked;
+                    return editable ? (txt + ' <i class="ri-pencil-line text-muted small"></i>') : txt;
+                } },
             { title: 'Salary PP', field: 'salary_pp', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
             { title: 'Incr', field: 'increment', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
             { title: 'Amt LM', field: 'gross_amount', hozAlign: 'right', formatter: (c) => fmt(c.getRow().getData().gross_amount ?? c.getRow().getData().amount_lm) },
@@ -473,6 +522,23 @@
             { title: '', headerSort: false, width: 80, hozAlign: 'center', formatter: (c) => '<a href="' + base + '/payslip/' + c.getRow().getData().id + '" target="_blank" class="btn btn-sm btn-outline-primary py-0">View</a>' },
         ];
         renderTable('payslipsTable', psCols, data.payslips, 'Generate payslips from Actions tab');
+
+        const salarySlipMonth = document.getElementById('salarySlipMonth');
+        if (salarySlipMonth) salarySlipMonth.textContent = m.month_label || '—';
+
+        const slipCols = [
+            { title: 'Employee', field: 'name', minWidth: 180, formatter: (c) => esc(c.getRow().getData().name || '—') },
+            { title: 'Email', field: 'email', minWidth: 180, formatter: (c) => esc(c.getRow().getData().email || '—') },
+            { title: 'Hours', hozAlign: 'center', width: 90, formatter: (c) => { const v = parseFloat(c.getRow().getData().hours_worked); return isNaN(v) ? '—' : (Math.round(v) + 'h'); } },
+            { title: 'Net', hozAlign: 'right', formatter: (c) => '<strong>' + fmt(c.getRow().getData().net_amount ?? c.getRow().getData().amount_p) + '</strong>' },
+            { title: 'Salary Slip', headerSort: false, hozAlign: 'center', width: 180, formatter: (c) => {
+                const d = c.getRow().getData();
+                const url = `${base}/month/${id}/salary-slip/${d.user_id}`;
+                return '<a href="' + url + '?print=1" target="_blank" class="btn btn-sm btn-success py-0 me-1"><i class="ri-download-line"></i> Download</a>'
+                     + '<a href="' + url + '?print=0" target="_blank" class="btn btn-sm btn-outline-secondary py-0"><i class="ri-eye-line"></i></a>';
+            } },
+        ];
+        renderTable('salarySlipTable', slipCols, emps, 'No employees on this month\'s sheet');
 
         const arrearMonthHint = document.getElementById('arrearPayrollMonth');
         if (arrearMonthHint) arrearMonthHint.textContent = m.month_label || '—';

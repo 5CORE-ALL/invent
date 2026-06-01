@@ -431,6 +431,11 @@
                                 <label class="form-label fw-semibold">Designation</label>
                                 <input type="text" class="form-control" id="editDesignation" name="designation">
                             </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Date of Joining</label>
+                                <input type="date" class="form-control" id="editDateOfJoining" name="date_of_joining">
+                                <div class="form-text">Employee's joining date (for records).</div>
+                            </div>
                         </div>
                         <div class="alert alert-danger mt-3 d-none" id="editUserError"></div>
                     </div>
@@ -2200,6 +2205,7 @@
                     'phone' => $u->phone ?? '',
                     'email' => $u->email ?? '',
                     'designation' => $u->designation ?? '',
+                    'date_of_joining' => $u->date_of_joining?->format('Y-m-d') ?? '',
                     'working_hours' => $workingHours,
                     'resources' => $u->userRR?->resources ?? '',
                     'training' => $u->userRR?->training ?? '',
@@ -2259,6 +2265,7 @@
                 { title: 'Phone', field: 'phone', width: 80, hozAlign: 'center', headerSort: false, formatter: (c) => dotFmt(c.getValue(), 'phone number') },
                 { title: 'Email', field: 'email', width: 80, hozAlign: 'center', headerSort: false, formatter: (c) => dotFmt(c.getValue(), 'email') },
                 { title: 'Designation', field: 'designation', minWidth: 150, formatter: (c) => c.getValue() ? '<span class="designation-badge">' + esc(c.getValue()) + '</span>' : '<span class="text-muted">-</span>' },
+                { title: 'Joined', field: 'date_of_joining', width: 110, hozAlign: 'center', formatter: (c) => c.getValue() ? esc(c.getValue()) : '<span class="text-muted">-</span>' },
                 {
                     title: 'Hours', field: 'working_hours', width: 90, hozAlign: 'center', headerSort: true,
                     titleFormatter: () => '<span title="Productive working hours ({{ $currentMonth }})">Hours</span>',
@@ -2474,6 +2481,7 @@
                 document.getElementById('editEmail').value = d.email || '';
                 document.getElementById('editPhone').value = d.phone || '';
                 document.getElementById('editDesignation').value = d.designation || '';
+                document.getElementById('editDateOfJoining').value = d.date_of_joining || '';
                 bsModal.show();
             }
 
@@ -2492,6 +2500,7 @@
                     fd.append('email', document.getElementById('editEmail').value.trim());
                     fd.append('phone', document.getElementById('editPhone').value.trim());
                     fd.append('designation', document.getElementById('editDesignation').value.trim());
+                    fd.append('date_of_joining', document.getElementById('editDateOfJoining').value);
                     fd.append('_token', csrfToken);
                     fd.append('_method', 'PUT');
 
@@ -2512,6 +2521,7 @@
                                     email: result.user.email,
                                     phone: result.user.phone || '',
                                     designation: result.user.designation || '',
+                                    date_of_joining: result.user.date_of_joining || '',
                                     rr_role: result.user.rr_role || '',
                                     rr_has_portfolio: result.user.has_rr_portfolio === true,
                                     resources: result.user.resources || '',
