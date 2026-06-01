@@ -75,10 +75,10 @@ class PayrollService
     }
 
     /**
-     * Base query for employees eligible for payroll: every active user that has
-     * not been deleted. SoftDeletes already excludes `deleted_at` rows by default,
-     * and deactivated users (is_active = false, what "delete user" does) are
-     * excluded here too.
+     * Base query for employees eligible for payroll: every active user that is
+     * marked to show in salary and has not been deleted. SoftDeletes excludes
+     * `deleted_at` rows, deactivated users (is_active = false) are excluded, and
+     * anyone with show_in_salary = false is left off payroll entirely.
      *
      * When a $month is supplied, the joining date is respected as well: a user
      * only belongs on a month's sheet once they have joined on or before that
@@ -90,6 +90,7 @@ class PayrollService
     {
         $query = User::query()
             ->where('is_active', true)
+            ->where('show_in_salary', true)
             ->with('userSalary');
 
         if ($month && $month->period_end) {

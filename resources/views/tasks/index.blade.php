@@ -3368,7 +3368,7 @@
                         // Keep default styling for non-automated rows
                     }
                 },
-                layout: "fitDataTable",
+                layout: "fitColumns",
                 pagination: true,
                 paginationSize: 100,
                 paginationSizeSelector: [25, 50, 100, 200, 500],
