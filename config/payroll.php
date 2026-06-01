@@ -16,6 +16,8 @@ return [
     */
     'email_mapping' => [
         'adexec1@5core.com' => 'support@prolightsounds.com',
+        // Hritiksha Deb (Manager Operation): app email differs from TeamLogger.
+        'mgr-operations@5core.com' => 'mrg-operations@5core.com',
     ],
 
     /*
