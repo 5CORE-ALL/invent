@@ -30,6 +30,7 @@ class User extends Authenticatable
         'google_id',
         'role',
         'designation',
+        'date_of_joining',
         'is_active',
         'show_in_salary',
         'resume_path',
@@ -59,6 +60,7 @@ class User extends Authenticatable
         'password' => 'hashed',
         'is_active' => 'boolean',
         'show_in_salary' => 'boolean',
+        'date_of_joining' => 'date',
         'deactivated_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];

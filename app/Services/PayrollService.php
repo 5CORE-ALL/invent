@@ -74,14 +74,145 @@ class PayrollService
         return $this->amountLm($hours, $salaryLm) + $other - $advIncOther;
     }
 
+    /**
+     * Base query for employees eligible for payroll: every active user that has
+     * not been deleted. SoftDeletes already excludes `deleted_at` rows by default,
+     * and deactivated users (is_active = false, what "delete user" does) are
+     * excluded here too.
+     *
+     * When a $month is supplied, the joining date is respected as well: a user
+     * only belongs on a month's sheet once they have joined on or before that
+     * month ends. Users joining later (e.g. a May hire relative to April) are
+     * therefore excluded. Users without a recorded joining date are treated as
+     * existing staff and stay eligible for every month.
+     */
+    protected function eligibleUsersQuery(?PayrollMonth $month = null)
+    {
+        $query = User::query()
+            ->where('is_active', true)
+            ->with('userSalary');
+
+        if ($month && $month->period_end) {
+            $joinedBy = $month->period_end->copy()->endOfDay();
+
+            $query->where(function ($q) use ($joinedBy) {
+                $q->whereNull('date_of_joining')
+                    ->orWhere('date_of_joining', '<=', $joinedBy);
+            });
+        }
+
+        return $query;
+    }
+
+    /**
+     * Drop rows on an unlocked month's sheet for anyone no longer eligible
+     * (deactivated/deleted users, or hires who joined after the month ended), so
+     * they stop showing automatically.
+     */
+    public function removeIneligibleEmployees(PayrollMonth $month): int
+    {
+        if ($month->is_locked) {
+            return 0;
+        }
+
+        $eligibleIds = $this->eligibleUsersQuery($month)->pluck('id')->all();
+
+        return PayrollEmployeeSalary::where('payroll_month_id', $month->id)
+            ->when(
+                $eligibleIds !== [],
+                fn ($q) => $q->whereNotIn('user_id', $eligibleIds)
+            )
+            ->delete();
+    }
+
+    /**
+     * The payroll month immediately before the given one (by period, falling back
+     * to id when periods are missing). Used to carry a salary forward month over
+     * month.
+     */
+    protected function previousMonth(PayrollMonth $month): ?PayrollMonth
+    {
+        $query = PayrollMonth::where('id', '!=', $month->id);
+
+        if ($month->period_start) {
+            return $query->where('period_start', '<', $month->period_start)
+                ->orderByDesc('period_start')
+                ->first();
+        }
+
+        return $query->where('id', '<', $month->id)
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
+     * Carry-forward base for a user's Salary PP on a given month: the previous
+     * month's (Salary PP + Increment). Returns null when there is no prior month
+     * row for the user (e.g. the very first payroll month, or a brand-new hire),
+     * so callers fall back to the user's stored salary.
+     */
+    protected function carryForwardSalaryPp(PayrollMonth $month, int $userId): ?float
+    {
+        $previous = $this->previousMonth($month);
+
+        if (! $previous) {
+            return null;
+        }
+
+        $previousRow = PayrollEmployeeSalary::where('payroll_month_id', $previous->id)
+            ->where('user_id', $userId)
+            ->first();
+
+        if (! $previousRow) {
+            return null;
+        }
+
+        return (float) $previousRow->salary_pp + (float) $previousRow->increment;
+    }
+
+    /**
+     * Build the stored attributes for a freshly created month row. When a prior
+     * month row exists, the Salary PP is carried forward as previous (PP +
+     * Increment) and the new month starts with a 0 increment — i.e. last month's
+     * raise is absorbed into this month's base pay. Hours / other / advance still
+     * come from the live calculation.
+     */
+    protected function newRowAttributes(PayrollMonth $month, User $user, array $teamLogger): array
+    {
+        $calc = $this->teamSalary->calculateForUser($user, $teamLogger);
+
+        $carry = $this->carryForwardSalaryPp($month, $user->id);
+        if ($carry !== null) {
+            $calc = $this->teamSalary->calculateFromValues(
+                (float) $calc['hours_lm'],
+                $carry,
+                0.0,
+                (float) $calc['other'],
+                (float) $calc['adv_inc_other'],
+            );
+        }
+
+        $salary = $user->userSalary;
+
+        return [
+            'salary_pp' => $calc['salary_pp'],
+            'increment' => $calc['increment'],
+            'other' => $calc['other'],
+            'adv_inc_other' => $calc['adv_inc_other'],
+            'hours_worked' => $calc['hours_lm'],
+            'gross_amount' => $calc['amount_lm'],
+            'net_amount' => $calc['amount_p_rounded'],
+            'bank_1' => $salary?->bank_1,
+            'bank_2' => $salary?->bank_2,
+            'upi_id' => $salary?->upi_id,
+        ];
+    }
+
     public function syncEmployeesFromUsers(PayrollMonth $month, array $userIds = [], bool $newHiresOnly = false): int
     {
         $teamLogger = $this->teamLoggerDataForMonth($month->month_label);
 
-        $query = User::query()
-            ->where('is_active', true)
-            ->where('show_in_salary', true)
-            ->with('userSalary');
+        $query = $this->eligibleUsersQuery($month);
 
         if ($userIds !== []) {
             $query->whereIn('id', $userIds);
@@ -97,29 +228,131 @@ class PayrollService
                 continue;
             }
 
-            $calc = $this->teamSalary->calculateForUser($user, $teamLogger);
-            $salary = $user->userSalary;
+            // Carry the salary forward only for rows we are creating; existing
+            // rows keep whatever salary is already on the sheet (manual edits or a
+            // previously carried-forward value) so re-syncing never clobbers them.
+            $attributes = $exists
+                ? $this->liveCalcAttributes($user, $teamLogger)
+                : $this->newRowAttributes($month, $user, $teamLogger);
+            $attributes['is_new_hire'] = $newHiresOnly || ! $exists;
 
             PayrollEmployeeSalary::updateOrCreate(
                 ['payroll_month_id' => $month->id, 'user_id' => $user->id],
-                [
-                    'salary_pp' => $calc['salary_pp'],
-                    'increment' => $calc['increment'],
-                    'other' => $calc['other'],
-                    'adv_inc_other' => $calc['adv_inc_other'],
-                    'hours_worked' => $calc['hours_lm'],
-                    'gross_amount' => $calc['amount_lm'],
-                    'net_amount' => $calc['amount_p_rounded'],
-                    'bank_1' => $salary?->bank_1,
-                    'bank_2' => $salary?->bank_2,
-                    'upi_id' => $salary?->upi_id,
-                    'is_new_hire' => $newHiresOnly || ! $exists,
-                ]
+                $attributes
             );
             $count++;
         }
 
         return $count;
+    }
+
+    /**
+     * Attributes computed straight from the user's stored salary + live hours,
+     * without carry-forward. Used when refreshing an existing row.
+     */
+    protected function liveCalcAttributes(User $user, array $teamLogger): array
+    {
+        $calc = $this->teamSalary->calculateForUser($user, $teamLogger);
+        $salary = $user->userSalary;
+
+        return [
+            'salary_pp' => $calc['salary_pp'],
+            'increment' => $calc['increment'],
+            'other' => $calc['other'],
+            'adv_inc_other' => $calc['adv_inc_other'],
+            'hours_worked' => $calc['hours_lm'],
+            'gross_amount' => $calc['amount_lm'],
+            'net_amount' => $calc['amount_p_rounded'],
+            'bank_1' => $salary?->bank_1,
+            'bank_2' => $salary?->bank_2,
+            'upi_id' => $salary?->upi_id,
+        ];
+    }
+
+    /**
+     * Make sure every (non-deleted) user has a row on this month's sheet without
+     * touching rows that already exist. This lets the payroll screen show all
+     * users automatically on open, so a manual "Sync from Team" is never required.
+     * Existing rows (and any manual salary edits on them) are left untouched.
+     */
+    public function ensureSheetPopulated(PayrollMonth $month): int
+    {
+        if ($month->is_locked) {
+            return 0;
+        }
+
+        $existingUserIds = PayrollEmployeeSalary::where('payroll_month_id', $month->id)
+            ->pluck('user_id')
+            ->all();
+
+        $missing = $this->eligibleUsersQuery($month)
+            ->when($existingUserIds !== [], fn ($q) => $q->whereNotIn('id', $existingUserIds))
+            ->get();
+
+        if ($missing->isEmpty()) {
+            return 0;
+        }
+
+        $teamLogger = $this->teamLoggerDataForMonth($month->month_label);
+        $count = 0;
+
+        foreach ($missing as $user) {
+            PayrollEmployeeSalary::create(array_merge(
+                $this->newRowAttributes($month, $user, $teamLogger),
+                [
+                    'payroll_month_id' => $month->id,
+                    'user_id' => $user->id,
+                    'is_new_hire' => false,
+                ]
+            ));
+            $count++;
+        }
+
+        return $count;
+    }
+
+    /**
+     * Keep each row's Salary PP in sync with the previous month's (Salary PP +
+     * Increment), so a month's base pay always reflects last month's total. The
+     * per-month Increment is left untouched (it is that month's fresh raise).
+     * Rows with no previous-month counterpart (first month / new hires) keep their
+     * own salary. Runs only on unlocked months and recalculates when anything
+     * changed.
+     */
+    public function syncCarryForwardSalaries(PayrollMonth $month): bool
+    {
+        if ($month->is_locked) {
+            return false;
+        }
+
+        $previous = $this->previousMonth($month);
+        if (! $previous) {
+            return false;
+        }
+
+        $previousByUser = PayrollEmployeeSalary::where('payroll_month_id', $previous->id)
+            ->get()
+            ->keyBy('user_id');
+
+        $changed = false;
+        foreach (PayrollEmployeeSalary::where('payroll_month_id', $month->id)->get() as $row) {
+            $prev = $previousByUser->get($row->user_id);
+            if (! $prev) {
+                continue;
+            }
+
+            $carry = (float) $prev->salary_pp + (float) $prev->increment;
+            if ((float) $row->salary_pp !== $carry) {
+                $row->update(['salary_pp' => $carry]);
+                $changed = true;
+            }
+        }
+
+        if ($changed) {
+            $this->recalculateMonth($month);
+        }
+
+        return $changed;
     }
 
     public function recalculateMonth(PayrollMonth $month): void

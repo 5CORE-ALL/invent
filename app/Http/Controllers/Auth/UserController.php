@@ -25,7 +25,7 @@ class UserController extends Controller
         // toggle filters them client-side so there's no separate inactive page.
         // select() must run before withCount(): a later select() replaces columns and drops the count subquery.
         $allUsers = User::query()
-            ->select('id', 'name', 'phone', 'email', 'designation', 'avatar', 'is_active', 'deactivated_at', 'show_in_salary', 'resume_path', 'resume_original_name')
+            ->select('id', 'name', 'phone', 'email', 'designation', 'date_of_joining', 'avatar', 'is_active', 'deactivated_at', 'show_in_salary', 'resume_path', 'resume_original_name')
             ->with(['userRR', 'userSalary', 'docs'])
             ->withCount('rrPortfolioAssignments')
             ->orderBy('name')
@@ -498,6 +498,7 @@ class UserController extends Controller
             'phone' => 'nullable|string|max:20',
             'email' => 'required|email|max:255|unique:users,email,' . $user->id,
             'designation' => 'nullable|string|max:255',
+            'date_of_joining' => 'nullable|date',
             'rr_role' => 'nullable|string|max:65535',
             'training' => 'nullable|string|max:65535',
             'resources' => 'nullable|string|max:65535',
@@ -523,6 +524,11 @@ class UserController extends Controller
         $user->phone = $request->phone;
         $user->email = $request->email;
         $user->designation = $request->designation;
+        // Only update the joining date when the field is part of the submission so
+        // modals that omit it (e.g. the Users-tab quick edit) never clear it.
+        if ($request->has('date_of_joining')) {
+            $user->date_of_joining = $request->input('date_of_joining') ?: null;
+        }
         $user->save();
 
         // Only touch R&R fields that were actually submitted, so editing core user
@@ -595,6 +601,7 @@ class UserController extends Controller
                 'phone' => $user->phone,
                 'email' => $user->email,
                 'designation' => $user->designation,
+                'date_of_joining' => $user->date_of_joining?->format('Y-m-d'),
                 'rr_role' => $user->userRR->role ?? '',
                 'training' => $user->userRR->training ?? '',
                 'resources' => $user->userRR->resources ?? '',

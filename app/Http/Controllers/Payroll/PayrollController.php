@@ -55,7 +55,11 @@ class PayrollController extends Controller
     {
         $canManage = Gate::allows('payroll.manage');
         $months = PayrollMonth::orderByDesc('id')->get();
-        $activeMonth = $months->first();
+
+        // Default to the previous calendar month (the month payroll is usually run
+        // for), falling back to the most recent month when that one doesn't exist.
+        $defaultLabel = $this->payroll->defaultMonthLabel();
+        $activeMonth = $months->firstWhere('month_label', $defaultLabel) ?? $months->first();
         $users = User::query()
             ->where('is_active', true)
             ->where('show_in_salary', true)
@@ -75,8 +79,14 @@ class PayrollController extends Controller
 
     public function monthData(PayrollMonth $payrollMonth): JsonResponse
     {
-        // Draft / unlocked months reflect the latest TeamLogger hours; locked months keep their snapshot.
+        // Draft / unlocked months auto-include every active (non-deleted) user and
+        // reflect the latest TeamLogger hours, so no manual "Sync from Team" is
+        // needed. Deactivated/deleted users are pruned. Locked months keep their
+        // frozen snapshot untouched.
         if (! $payrollMonth->is_locked) {
+            $this->payroll->removeIneligibleEmployees($payrollMonth);
+            $this->payroll->ensureSheetPopulated($payrollMonth);
+            $this->payroll->syncCarryForwardSalaries($payrollMonth);
             $this->payroll->refreshLiveHours($payrollMonth);
         }
 
@@ -230,6 +240,14 @@ class PayrollController extends Controller
             'upi_id' => 'nullable|string|max:255',
             'is_new_hire' => 'nullable|boolean',
         ]);
+
+        // Empty numeric inputs come through as null; treat a blank as 0 so the
+        // sheet never stores nulls and recalculation has real numbers to work with.
+        foreach (['salary_pp', 'increment', 'other', 'adv_inc_other', 'hours_worked'] as $numericField) {
+            if (array_key_exists($numericField, $validated)) {
+                $validated[$numericField] = $validated[$numericField] ?? 0;
+            }
+        }
 
         $payrollEmployeeSalary->update($validated);
         $this->payroll->recalculateMonth($month);
@@ -450,6 +468,42 @@ class PayrollController extends Controller
             $this->payslipViewPayload($payrollPayslip),
             ['autoPrint' => $request->boolean('print', true)]
         ));
+    }
+
+    /**
+     * Download (print-to-PDF) a single employee's salary slip for a month, built
+     * live from their current salary row. Works even when payslips have not been
+     * formally generated/released yet, so the Salary Slip tab can offer a download
+     * for every employee on the sheet.
+     */
+    public function downloadSalarySlip(Request $request, PayrollMonth $payrollMonth, User $user): View
+    {
+        $this->authorizeManage();
+
+        $row = PayrollEmployeeSalary::with('user')
+            ->where('payroll_month_id', $payrollMonth->id)
+            ->where('user_id', $user->id)
+            ->firstOrFail();
+
+        $format = $payrollMonth->payslip_format ?: 'standard';
+        $data = $this->payroll->buildPayslipData($payrollMonth, $row, $format);
+
+        // Give the print partial a payslip stub so its property fallbacks resolve
+        // without a stored payslip record.
+        $payslipStub = new PayrollPayslip([
+            'payroll_month_id' => $payrollMonth->id,
+            'user_id' => $user->id,
+            'format' => $format,
+        ]);
+        $payslipStub->setRelation('user', $row->user);
+        $payslipStub->setRelation('payrollMonth', $payrollMonth);
+
+        return view('payroll.payslip-print', [
+            'payslip' => $payslipStub,
+            'data' => $data,
+            'company' => config('payroll.company', []),
+            'autoPrint' => $request->boolean('print', true),
+        ]);
     }
 
     public function storeArrear(Request $request): JsonResponse
