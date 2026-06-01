@@ -144,11 +144,6 @@ class TeamLoggerService
     {
         $allData = $this->fetchByDateRange($startDate, $endDate);
         $emailKey = strtolower(trim($email));
-        
-        // Handle special case mapping
-        if ($emailKey === 'customercare@5core.com') {
-            $emailKey = 'debhritiksha@gmail.com';
-        }
 
         return $allData[$emailKey] ?? ['hours' => 0, 'total_hours' => 0, 'idle_hours' => 0];
     }
@@ -231,11 +226,6 @@ class TeamLoggerService
 
             $emailKey = strtolower(trim($email));
 
-            // Handle special case email mapping
-            if ($emailKey === 'customercare@5core.com') {
-                $emailKey = 'debhritiksha@gmail.com';
-            }
-
             // Extract hours data from various possible fields
             $totalHours = 0;
             $rawTotalHours = 0;
@@ -253,7 +243,9 @@ class TeamLoggerService
                 $totalHours = floatval($rec['hours']);
             }
 
-            // Store processed data
+            // Store processed data. Productive hours are rounded to the nearest whole
+            // hour: half an hour or more rounds up (e.g. 36.5h => 37h), under half
+            // rounds down (e.g. 36.2h => 36h).
             $employeeDataMap[$emailKey] = [
                 'hours' => (int) round($totalHours),
                 'total_hours' => round($rawTotalHours, 2),
