@@ -274,8 +274,8 @@
 
                     <select id="view-mode-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="sku">SKU Only</option>
-                        <option value="parent" selected>Parent Only</option>
+                        <option value="sku" selected>SKU Only</option>
+                        <option value="parent">Parent Only</option>
                         <option value="both">Both (Parent + SKU)</option>
                     </select>
 

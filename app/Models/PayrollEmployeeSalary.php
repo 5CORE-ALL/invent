@@ -16,6 +16,7 @@ class PayrollEmployeeSalary extends Model
         'other',
         'adv_inc_other',
         'hours_worked',
+        'hours_overridden',
         'gross_amount',
         'lop_amount',
         'arrears_amount',
@@ -42,6 +43,7 @@ class PayrollEmployeeSalary extends Model
         'net_amount' => 'decimal:2',
         'is_new_hire' => 'boolean',
         'salary_pp_overridden' => 'boolean',
+        'hours_overridden' => 'boolean',
     ];
 
     public function payrollMonth(): BelongsTo

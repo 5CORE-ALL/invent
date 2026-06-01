@@ -56,8 +56,6 @@ class PayrollController extends Controller
         $canManage = Gate::allows('payroll.manage');
         $months = PayrollMonth::orderByDesc('id')->get();
 
-        // Default to the previous calendar month (the month payroll is usually run
-        // for), falling back to the most recent month when that one doesn't exist.
         $defaultLabel = $this->payroll->defaultMonthLabel();
         $activeMonth = $months->firstWhere('month_label', $defaultLabel) ?? $months->first();
         $users = User::query()
@@ -79,10 +77,7 @@ class PayrollController extends Controller
 
     public function monthData(PayrollMonth $payrollMonth): JsonResponse
     {
-        // Draft / unlocked months auto-include every active (non-deleted) user and
-        // reflect the latest TeamLogger hours, so no manual "Sync from Team" is
-        // needed. Deactivated/deleted users are pruned. Locked months keep their
-        // frozen snapshot untouched.
+  
         if (! $payrollMonth->is_locked) {
             $this->payroll->removeIneligibleEmployees($payrollMonth);
             $this->payroll->ensureSheetPopulated($payrollMonth);
@@ -253,6 +248,12 @@ class PayrollController extends Controller
         // carry-forward stops overwriting it and the edited value always shows.
         if (array_key_exists('salary_pp', $validated)) {
             $validated['salary_pp_overridden'] = true;
+        }
+
+        // A manually edited Hours value is locked in too: flag it so the live
+        // TeamLogger refresh stops overwriting it and the edited value persists.
+        if (array_key_exists('hours_worked', $validated)) {
+            $validated['hours_overridden'] = true;
         }
 
         $payrollEmployeeSalary->update($validated);

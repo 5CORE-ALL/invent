@@ -419,6 +419,10 @@ class PayrollService
             if (! $row->user) {
                 continue;
             }
+            // Manually edited hours win — don't overwrite them with live data.
+            if ($row->hours_overridden) {
+                continue;
+            }
             $email = $this->resolveTeamLoggerEmail($row->user->email);
             if (! array_key_exists($email, $teamLogger)) {
                 continue; // no live data for this user — keep the stored snapshot
