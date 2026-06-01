@@ -5680,6 +5680,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/month/{payrollMonth}/release-payslips', [PayrollController::class, 'releasePayslips'])->name('month.release-payslips');
         Route::post('/month/{payrollMonth}/release-it', [PayrollController::class, 'releaseItStatements'])->name('month.release-it');
         Route::get('/month/{payrollMonth}/export', [PayrollController::class, 'exportMonth'])->name('month.export');
+        Route::get('/month/{payrollMonth}/payout-sheet', [PayrollController::class, 'exportPayoutSheet'])->name('month.payout-sheet');
         Route::put('/employee-salary/{payrollEmployeeSalary}', [PayrollController::class, 'updateEmployeeSalary'])->name('employee-salary.update');
         Route::put('/components/{payrollSalaryComponent}', [PayrollController::class, 'updateComponent'])->name('components.update');
         Route::delete('/components/{payrollSalaryComponent}', [PayrollController::class, 'destroyComponent'])->name('components.destroy');

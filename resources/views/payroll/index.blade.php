@@ -149,7 +149,10 @@
             <div class="payroll-card p-3">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <h6 class="mb-0">Salary Slips</h6>
-                    <span class="small text-muted">Download any employee's salary slip for <strong id="salarySlipMonth">—</strong></span>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="small text-muted">For <strong id="salarySlipMonth">—</strong></span>
+                        <a href="#" id="btnDownloadPayoutSheet" class="btn btn-sm btn-success py-0"><i class="ri-file-excel-2-line me-1"></i>Download Month Sheet</a>
+                    </div>
                 </div>
                 <p class="small text-muted">Each employee on this month's sheet has a downloadable salary slip. The slip is built from their current salary row.</p>
                 <div id="salarySlipTable"></div>
@@ -525,6 +528,7 @@
 
         const salarySlipMonth = document.getElementById('salarySlipMonth');
         if (salarySlipMonth) salarySlipMonth.textContent = m.month_label || '—';
+        document.getElementById('btnDownloadPayoutSheet')?.setAttribute('href', `${base}/month/${id}/payout-sheet`);
 
         const slipCols = [
             { title: 'Employee', field: 'name', minWidth: 180, formatter: (c) => esc(c.getRow().getData().name || '—') },

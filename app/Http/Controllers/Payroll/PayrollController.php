@@ -754,4 +754,80 @@ class PayrollController extends Controller
             ->header('Content-Type', 'text/csv')
             ->header('Content-Disposition', 'attachment; filename="'.$filename.'"');
     }
+
+    /**
+     * Bank payout sheet for a month as a styled Excel workbook, in the columns the
+     * accounts team uses: Name, Amount P (net pay), B1 (bank account 1), B2 (bank
+     * account 2), UPI — with a yellow header row and a green Amount P column.
+     */
+    public function exportPayoutSheet(PayrollMonth $payrollMonth)
+    {
+        $this->authorizeManage();
+
+        if (! $payrollMonth->is_locked) {
+            $this->payroll->removeIneligibleEmployees($payrollMonth);
+            $this->payroll->ensureSheetPopulated($payrollMonth);
+            $this->payroll->syncCarryForwardSalaries($payrollMonth);
+            $this->payroll->refreshLiveHours($payrollMonth);
+        }
+
+        $rows = PayrollEmployeeSalary::with('user')
+            ->where('payroll_month_id', $payrollMonth->id)
+            ->get()
+            ->sortBy(fn ($r) => $r->user?->name)
+            ->values();
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle(substr($payrollMonth->month_label, 0, 31));
+
+        $headers = ['Name', 'Amount P', 'B1', 'B2', 'UPI'];
+        $sheet->fromArray($headers, null, 'A1');
+
+        $r = 2;
+        foreach ($rows as $row) {
+            $sheet->setCellValue('A'.$r, $row->user?->name ?? '');
+            $sheet->setCellValue('B'.$r, (float) $row->net_amount);
+            $sheet->setCellValueExplicit('C'.$r, (string) ($row->bank_1 ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('D'.$r, (string) ($row->bank_2 ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('E'.$r, (string) ($row->upi_id ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $r++;
+        }
+        $lastRow = $r - 1;
+
+        // Header row: bold black text on yellow, centered.
+        $sheet->getStyle('A1:E1')->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => '000000']],
+            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFF00']],
+        ]);
+
+        // Amount P column (B): green fill, centered, formatted as number.
+        $sheet->getStyle('B2:B'.$lastRow)->applyFromArray([
+            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => '00E000']],
+            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+        ]);
+        $sheet->getStyle('B2:B'.$lastRow)->getNumberFormat()->setFormatCode('#,##0');
+
+        // Borders + wrap for bank detail columns on the whole table.
+        $sheet->getStyle('A1:E'.$lastRow)->getBorders()->getAllBorders()
+            ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+        $sheet->getStyle('A1:A'.$lastRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+        $sheet->getStyle('C2:E'.$lastRow)->getAlignment()->setWrapText(true);
+
+        $sheet->getColumnDimension('A')->setWidth(20);
+        $sheet->getColumnDimension('B')->setWidth(14);
+        $sheet->getColumnDimension('C')->setWidth(45);
+        $sheet->getColumnDimension('D')->setWidth(45);
+        $sheet->getColumnDimension('E')->setWidth(28);
+
+        $filename = 'payout_'.str_replace(' ', '_', $payrollMonth->month_label).'.xlsx';
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
 }
