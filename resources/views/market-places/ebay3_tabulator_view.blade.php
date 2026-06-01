@@ -4537,6 +4537,34 @@
             return Math.abs(inv - st) <= 3 + 1e-9;
         }
 
+        /** Map row — same rule as Ebay 2 badge: listed (has item id), REQ, INV>0, eBay stock>0, |INV − eBay| ≤ 3. */
+        function ebay3RowMap(data) {
+            if (!data) return false;
+            if (String(data['(Child) sku'] || '').toUpperCase().includes('PARENT')) return false;
+            const itemId = data['eBay_item_id'];
+            if (!itemId || String(itemId).trim() === '') return false;
+            const inv = typeof ebay3Qty === 'function' ? ebay3Qty(data['INV']) : (parseFloat(data['INV'] || 0) || 0);
+            if (inv <= 0) return false;
+            if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
+            const est = typeof ebay3EbayStockQty === 'function' ? ebay3EbayStockQty(data) : (parseFloat(data['eBay Stock'] || data['E Stock'] || 0) || 0);
+            if (est <= 0) return false;
+            return Math.abs(inv - est) <= 3 + 1e-9;
+        }
+
+        /** N Map row — same rule as Ebay 2 badge: listed, REQ, INV>0, and (eBay stock===0 ? INV>3 : |INV − eBay| > 3). */
+        function ebay3RowNMap(data) {
+            if (!data) return false;
+            if (String(data['(Child) sku'] || '').toUpperCase().includes('PARENT')) return false;
+            const itemId = data['eBay_item_id'];
+            if (!itemId || String(itemId).trim() === '') return false;
+            const inv = typeof ebay3Qty === 'function' ? ebay3Qty(data['INV']) : (parseFloat(data['INV'] || 0) || 0);
+            if (inv <= 0) return false;
+            if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
+            const est = typeof ebay3EbayStockQty === 'function' ? ebay3EbayStockQty(data) : (parseFloat(data['eBay Stock'] || data['E Stock'] || 0) || 0);
+            if (est <= 0) return inv > 3;
+            return Math.abs(inv - est) > 3 + 1e-9;
+        }
+
         // Apply filters
         function applyFilters() {
             if (isPlayNavigationActive) {
@@ -5004,8 +5032,10 @@
                     if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
                     
                     const itemId = data['eBay_item_id'];
-                    // Missing: no eBay3 item_id; exclude NR
-                    return (!itemId || itemId === null || itemId === '')
+                    const invQty = (typeof ebay3Qty === 'function') ? ebay3Qty(data['INV']) : (parseFloat(data['INV'] || 0) || 0);
+                    // Missing L: in stock (INV>0) but not listed on eBay (no item id); exclude NR — Amazon parity
+                    return invQty > 0
+                        && (!itemId || itemId === null || itemId === '')
                         && !ebay3RowNrReqIsNr(data);
                 });
             }
@@ -5025,30 +5055,25 @@
                 });
             }
 
-            // Map filter — |INV − eBay stock| ≤ 3, REQ only
+            // Map filter — same rule as Ebay 2 badge
             if (mapFilterActive) {
                 table.addFilter(function(data) {
                     // Skip filter for parent rows in tree mode
                     const sku = data['(Child) sku'] || '';
                     if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
-                    
-                    const nrReq = String(data.nr_req || '').trim();
-                    return nrReq === 'REQ' && ebay3RowMapStockMatch(data);
+
+                    return ebay3RowMap(data);
                 });
             }
 
-            // N Map filter — beyond ±3 or REQ mismatch path; exclude missing listings (no eBay item id)
+            // N Map filter — same rule as Ebay 2 badge
             if (invStockFilterActive) {
                 table.addFilter(function(data) {
                     // Skip filter for parent rows in tree mode
                     const sku = data['(Child) sku'] || '';
                     if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
 
-                    const itemId = data['eBay_item_id'];
-                    if (!itemId || itemId === null || itemId === '') return false;
-
-                    const nrReq = String(data.nr_req || '').trim();
-                    return nrReq === 'REQ' && !ebay3RowMapStockMatch(data);
+                    return ebay3RowNMap(data);
                 });
             }
 
@@ -5857,20 +5882,20 @@
                 const itemId = row['eBay_item_id'];
                 const sku = String(row['(Child) sku'] || '').toUpperCase();
                 const isParentRow = sku.includes('PARENT');
+                const invQty = (typeof ebay3Qty === 'function') ? ebay3Qty(row['INV']) : (parseFloat(row['INV'] || 0) || 0);
+                // Missing L: in stock (INV>0) but not listed on eBay (no item id); exclude NR — Amazon parity
                 if (!isParentRow
+                    && invQty > 0
                     && (!itemId || itemId === null || itemId === '')
                     && !ebay3RowNrReqIsNr(row)) {
                     missingCount++;
                 }
 
-                const nrReq = String(row.nr_req || '').trim();
-                if (!isParentRow && nrReq === 'REQ' && ebay3RowMapStockMatch(row)) {
+                // Map / N Map — same rule as Ebay 2 badges
+                if (ebay3RowMap(row)) {
                     mapCount++;
-                } else if (!isParentRow && nrReq === 'REQ' && (itemId && itemId !== null && itemId !== '') && !ebay3RowMapStockMatch(row)) {
-                    const invN = typeof ebay3Qty === 'function' ? ebay3Qty(row['INV']) : (parseFloat(row['INV'] || 0) || 0);
-                    if (invN > 0 && ebay3EbayStockQty(row) > 0) {
-                        invStockCount++;
-                    }
+                } else if (ebay3RowNMap(row)) {
+                    invStockCount++;
                 }
             });
 

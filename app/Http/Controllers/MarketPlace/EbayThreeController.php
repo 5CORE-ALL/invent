@@ -160,25 +160,30 @@ class EbayThreeController extends Controller
                 continue;
             }
             $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
-            $isNr = $nrReq === 'NR';
             $rawId = $row['eBay_item_id'] ?? null;
             $hasItem = $rawId !== null && $rawId !== '' && trim((string) $rawId) !== '';
-            if (! $isNr && ! $hasItem) {
-                $missing++;
-            }
             $inv = $this->parseEbay3InvForSummary($row['INV'] ?? 0);
             $eStock = (float) ($row['eBay Stock'] ?? $row['E Stock'] ?? 0);
             if (abs($eStock) < $eps) {
                 $eStock = 0.0;
             }
-            if ($nrReq !== 'REQ' || $inv <= 0 || $eStock <= 0) {
-                continue;
+
+            // Missing L: in stock (INV>0) but not listed on eBay (no item id); exclude NR — same rule as Amazon "Missing L" badge
+            if ($inv > 0 && ! $hasItem && $nrReq !== 'NR') {
+                $missing++;
             }
-            $inMap = abs($inv - $eStock) <= 3.0 + $eps;
-            if ($inMap) {
-                $map++;
-            } elseif ($hasItem) {
-                $nMap++;
+
+            // Map / N Map — same rule as Ebay 2 badges (listed item, REQ, INV>0)
+            if ($nrReq === 'REQ' && $hasItem && $inv > 0) {
+                if ($eStock > 0) {
+                    if (abs($inv - $eStock) <= 3.0 + $eps) {
+                        $map++;
+                    } else {
+                        $nMap++;
+                    }
+                } elseif ($inv > 3) {
+                    $nMap++;
+                }
             }
         }
 
@@ -2574,19 +2579,13 @@ class EbayThreeController extends Controller
                     }
                 }
                 
-                // Count Missing — no item_id; exclude FBA (NR already filtered to REQ above; Amazon Missing L parity)
+                // Count Missing — no item_id (NR already filtered to REQ above)
                 $itemId = $row['eBay_item_id'] ?? '';
-                $childSkuU = strtoupper((string) ($row['(Child) sku'] ?? ''));
-                $parentSkuU = strtoupper((string) ($row['Parent'] ?? ''));
-                $fbaFlag = $row['fba'] ?? null;
-                $isFbaRow = ($fbaFlag === 1 || $fbaFlag === '1' || $fbaFlag === true)
-                    || str_contains($childSkuU, 'FBA')
-                    || str_contains($parentSkuU, 'FBA');
-                if ((! $itemId || $itemId === null || $itemId === '') && ! $isFbaRow) {
+                if (! $itemId || $itemId === null || $itemId === '') {
                     $missingCount++;
                 }
 
-                // Stock comparison — |INV − eBay qty| <= 3 = Map; N Map excludes FBA (Amazon tabulator parity)
+                // Stock comparison — |INV − eBay qty| <= 3 = Map; otherwise N Map
                 $ebayStock = floatval($row['eBay Stock'] ?? 0);
                 if ($ebayStock == 0.0) {
                     $ebayStock = floatval($row['E Stock'] ?? 0);
@@ -2597,7 +2596,7 @@ class EbayThreeController extends Controller
                 if ($inv > 0 && $ebayStock > 0) {
                     if ($invDiff <= 3 + 1e-9) {
                         $mapCount++;
-                    } elseif (! $isFbaRow) {
+                    } else {
                         $invStockCount++;
                     }
                 }

@@ -5886,25 +5886,31 @@ class ChannelMasterController extends Controller
                 $itemId = $row['eBay_item_id'] ?? null;
                 $hasItem = !($itemId === null || trim((string)$itemId) === '');
                 $nrReq = strtoupper(trim((string)($row['nr_req'] ?? 'REQ')));
-                $isNr = $nrReq === 'NR';
-                if (!$isNr && !$hasItem) {
-                    $missing++;
-                }
 
                 $views += (float)($row['views'] ?? 0);
 
                 $inv = $this->parseEbay3InvForMapMiss((string)($row['INV'] ?? '0'));
                 $eStock = (float)($row['eBay Stock'] ?? ($row['E Stock'] ?? 0));
-                if ($nrReq !== 'REQ' || $inv <= 0 || $eStock <= 0) {
-                    continue;
+                if (abs($eStock) < $eps) {
+                    $eStock = 0.0;
                 }
 
-                $isMap = abs($inv - $eStock) <= 3.0 + $eps;
-                if ($isMap) {
-                    $map++;
-                } elseif ($hasItem) {
-                    // Missing listing rows should not inflate NMap.
-                    $nmap++;
+                // Missing L: in stock (INV>0) but not listed (no item id); exclude NR — same as ebay3 tabulator badge
+                if ($inv > 0 && !$hasItem && $nrReq !== 'NR') {
+                    $missing++;
+                }
+
+                // Map / N Map — same rule as ebay2/ebay3 tabulator badges (listed item, REQ, INV>0)
+                if ($nrReq === 'REQ' && $hasItem && $inv > 0) {
+                    if ($eStock > 0) {
+                        if (abs($inv - $eStock) <= 3.0 + $eps) {
+                            $map++;
+                        } else {
+                            $nmap++;
+                        }
+                    } elseif ($inv > 3) {
+                        $nmap++;
+                    }
                 }
             }
 
