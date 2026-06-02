@@ -9,8 +9,11 @@ class HelpDeskFaq extends Model
     protected $table = 'help_desk_faqs';
 
     protected $fillable = [
+        'group_name',
         'faq',
         'dept',
+        'type_variant',
+        'what',
         'answers',
         'link',
         'link2',

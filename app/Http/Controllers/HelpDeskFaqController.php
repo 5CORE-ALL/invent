@@ -72,6 +72,9 @@ class HelpDeskFaqController extends Controller
             'ids.*' => ['integer'],
             'apply' => ['nullable', 'array'],
             'apply.*' => ['string'],
+            'group_name' => ['nullable', 'string', 'max:255'],
+            'type_variant' => ['nullable', 'string'],
+            'what' => ['nullable', 'string'],
             'answers' => ['nullable', 'string'],
             'dept' => ['nullable', 'array'],
             'dept.*' => ['string'],
@@ -79,8 +82,10 @@ class HelpDeskFaqController extends Controller
             'link2' => ['nullable', 'string', 'max:255'],
             'sop' => ['nullable', 'string', 'max:255'],
             'video' => ['nullable', 'string', 'max:255'],
+            'action' => ['nullable', 'string'],
             'ca' => ['nullable', 'string'],
             'plus_action' => ['nullable', 'string'],
+            'messages' => ['nullable', 'string', 'max:200'],
         ]);
 
         $apply = $validated['apply'] ?? [];
@@ -90,7 +95,7 @@ class HelpDeskFaqController extends Controller
         }
 
         $update = [];
-        foreach (['answers', 'link', 'link2', 'sop', 'video', 'ca', 'plus_action'] as $f) {
+        foreach (['group_name', 'type_variant', 'what', 'answers', 'link', 'link2', 'sop', 'video', 'action', 'ca', 'plus_action', 'messages'] as $f) {
             if (in_array($f, $apply, true)) {
                 $update[$f] = $request->input($f);
             }
@@ -156,7 +161,7 @@ class HelpDeskFaqController extends Controller
 
             if ($header === null) {
                 $header = array_map(fn($h) => strtolower(trim($h)), $row);
-                foreach (['faq', 'dept', 'answers', 'link', 'link2', 'sop', 'video', 'action', 'ca', 'plus_action', 'messages'] as $col) {
+                foreach (['group', 'faq', 'dept', 'type_variant', 'what', 'answers', 'link', 'link2', 'sop', 'video', 'action', 'ca', 'plus_action', 'messages'] as $col) {
                     $idx = array_search($col, $header, true);
                     if ($idx !== false) {
                         $map[$col] = $idx;
@@ -199,8 +204,11 @@ class HelpDeskFaqController extends Controller
             }
 
             HelpDeskFaq::create([
+                'group_name' => $get('group') ?: null,
                 'faq' => $faq,
                 'dept' => $dept,
+                'type_variant' => $get('type_variant') ?: null,
+                'what' => $get('what') ?: null,
                 'answers' => $get('answers') ?: null,
                 'link' => $get('link') ?: null,
                 'link2' => $get('link2') ?: null,
@@ -237,7 +245,7 @@ class HelpDeskFaqController extends Controller
         $callback = function () {
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); // UTF-8 BOM for Excel
-            fputcsv($out, ['faq', 'dept', 'answers', 'link', 'link2', 'sop', 'video', 'action', 'ca', 'plus_action', 'messages']);
+            fputcsv($out, ['group', 'faq', 'dept', 'type_variant', 'what', 'answers', 'link', 'link2', 'sop', 'video', 'action', 'ca', 'plus_action', 'messages']);
             fclose($out);
         };
 
@@ -247,8 +255,11 @@ class HelpDeskFaqController extends Controller
     private function validateData(Request $request): array
     {
         $validated = $request->validate([
+            'group_name' => ['nullable', 'string', 'max:255'],
             'faq' => ['required', 'string'],
             'answers' => ['nullable', 'string'],
+            'type_variant' => ['nullable', 'string'],
+            'what' => ['nullable', 'string'],
             'dept' => ['nullable', 'array'],
             'dept.*' => ['string'],
             'link' => ['nullable', 'string', 'max:255'],

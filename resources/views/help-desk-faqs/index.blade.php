@@ -15,6 +15,65 @@
         #faqTable thead th {
             background-color: #cfe2ff !important;
         }
+
+        /* Compact layout so all columns fit on screen */
+        #faqTable {
+            width: 100%;
+            font-size: 0.75rem;
+        }
+
+        #faqTable th,
+        #faqTable td {
+            padding: 0.3rem 0.35rem !important;
+        }
+
+        /* Cap image sizes inside the table so columns stay narrow */
+        #faqTable td img,
+        #faqTable th img {
+            max-height: 26px !important;
+            height: auto !important;
+            width: auto !important;
+        }
+
+        /* Allow the hover-zoom images to still enlarge */
+        #faqTable .faq-hover-zoom:hover {
+            max-height: 80px !important;
+            transform: scale(1);
+        }
+
+        .faq-top-btn {
+            min-width: 36px;
+            height: 31px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            padding: 0 8px;
+            font-size: 1rem;
+        }
+
+        #faqTable thead th.faq-sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        #faqTable thead th.faq-sortable:hover {
+            background-color: #b9d4ff !important;
+        }
+
+        .faq-sort-ind {
+            font-size: 0.7rem;
+            color: #405189;
+        }
+
+        .faq-hover-zoom {
+            transition: transform 0.2s ease;
+            cursor: pointer;
+        }
+
+        .faq-hover-zoom:hover {
+            transform: scale(2);
+        }
     </style>
 @endsection
 
@@ -40,15 +99,18 @@
 
     <div class="card">
         <div class="card-header d-flex justify-content-end align-items-center">
-            <div class="d-flex gap-2">
-                <button type="button" id="faqBulkEditBtn" class="btn btn-soft-warning btn-sm text-dark" disabled>
-                    <i class="bx bx-edit-alt"></i> Bulk Edit <span id="faqBulkEditCount"></span>
+            <div class="d-flex gap-2 flex-nowrap">
+                <button type="button" class="btn btn-success btn-sm faq-top-btn" data-bs-toggle="modal" data-bs-target="#faqSubmitModal" title="Submit a new FAQ/FFP/Issue">
+                    <i class="ri-send-plane-line"></i>
                 </button>
-                <button type="button" class="btn btn-soft-primary btn-sm" data-bs-toggle="modal" data-bs-target="#faqBulkModal">
-                    <i class="bx bx-upload"></i> Bulk Import
+                <button type="button" id="faqBulkEditBtn" class="btn btn-soft-warning btn-sm text-dark faq-top-btn" disabled title="Bulk Edit">
+                    <i class="ri-quill-pen-line"></i><span id="faqBulkEditCount"></span>
                 </button>
-                <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#faqCreateModal">
-                    <i class="bx bx-plus"></i> Add FAQ
+                <button type="button" class="btn btn-soft-primary btn-sm faq-top-btn" data-bs-toggle="modal" data-bs-target="#faqBulkModal" title="Bulk Import">
+                    <i class="ri-upload-2-line"></i>
+                </button>
+                <button type="button" class="btn btn-primary btn-sm faq-top-btn" data-bs-toggle="modal" data-bs-target="#faqCreateModal" title="Add FAQ">
+                    <i class="ri-add-line"></i>
                 </button>
             </div>
         </div>
@@ -95,21 +157,24 @@
                             <th style="width: 40px;" class="text-center">
                                 <input type="checkbox" id="faqSelectAll" class="form-check-input" title="Select all">
                             </th>
-                            <th style="min-width: 220px; cursor: help;" title="Frequently Asked Questions / Frequently Faced Problems">FAQ/FFP</th>
-                            <th style="min-width: 220px;">Answer/Solutions!!!</th>
+                            <th style="min-width: 90px;" class="faq-sortable" data-sort-key="group">Group <span class="faq-sort-ind"></span></th>
+                            <th style="min-width: 150px;" class="faq-sortable" data-sort-key="faq" title="Frequently Asked Questions / Frequently Faced Problems / Issues">FAQ/FFP/Issues <span class="faq-sort-ind"></span></th>
+                            <th style="min-width: 150px;" class="faq-sortable" data-sort-key="answers">Answer/Solutions!!! <span class="faq-sort-ind"></span></th>
                             <th class="text-center" title="Overview"><img src="{{ asset('images/magnifier-icon.png') }}" alt="Overview" style="height: 32px; width: auto; object-fit: contain;"></th>
-                            <th style="min-width: 160px;">Dept</th>
-                            <th class="text-center" title="Link 1"><img src="{{ asset('images/link-icon.png') }}" alt="Link 1" style="height: 22px; width: 22px; object-fit: contain;"></th>
-                            <th class="text-center" title="Link 2"><img src="{{ asset('images/link-icon.png') }}" alt="Link 2" style="height: 22px; width: 22px; object-fit: contain;"></th>
-                            <th class="text-center">
+                            <th style="min-width: 110px;" class="faq-sortable" data-sort-key="dept-label">Dept <span class="faq-sort-ind"></span></th>
+                            <th class="text-center faq-sortable" data-sort-key="type-variant" title="Varient/Types"><img src="{{ asset('images/variant-icon.png') }}" alt="Varient/Types" style="height: 30px; width: auto; object-fit: contain;"></th>
+                            <th class="text-center faq-sortable" data-sort-key="what" title="What"><img src="{{ asset('images/what-icon.png') }}" alt="What" class="faq-hover-zoom" style="height: 28px; width: auto; object-fit: contain;"></th>
+                            <th class="text-center faq-sortable" data-sort-key="link" title="Link 1"><img src="{{ asset('images/link-icon.png') }}" alt="Link 1" style="height: 22px; width: 22px; object-fit: contain;"></th>
+                            <th class="text-center faq-sortable" data-sort-key="link2" title="Link 2"><img src="{{ asset('images/link-icon.png') }}" alt="Link 2" style="height: 22px; width: 22px; object-fit: contain;"></th>
+                            <th class="text-center faq-sortable" data-sort-key="sop">
                                 <img src="{{ asset('assets/images/task-sop-icon.png') }}" alt="SOP" title="SOP" style="height: 24px; width: 24px; object-fit: contain;">
                             </th>
-                            <th class="text-center" title="Video"><img src="{{ asset('assets/images/task-video-icon.png') }}" alt="Video" style="height: 24px; width: 24px; object-fit: contain;"></th>
-                            <th class="text-center" title="Action"><img src="{{ asset('images/action-comic.png') }}" alt="Action" style="height: 28px; width: auto; object-fit: contain;"></th>
-                            <th class="text-center" title="+ Action"><img src="{{ asset('images/action-comic.png') }}" alt="+ Action" style="height: 28px; width: auto; object-fit: contain;"></th>
-                            <th class="text-center" title="Corrective Action"><img src="{{ asset('images/action-icon.png') }}" alt="Corrective Action" style="height: 26px; width: 26px; object-fit: contain;"></th>
-                            <th class="text-end" style="min-width: 120px;">Control</th>
-                            <th class="text-center" title="Messages"><img src="{{ asset('images/message-icon.png') }}" alt="Messages" style="height: 104px; width: 104px; object-fit: contain;"></th>
+                            <th class="text-center faq-sortable" data-sort-key="video" title="Video"><img src="{{ asset('assets/images/task-video-icon.png') }}" alt="Video" style="height: 24px; width: 24px; object-fit: contain;"></th>
+                            <th class="text-center faq-sortable" data-sort-key="actiontext" title="Action"><img src="{{ asset('images/action-comic.png') }}" alt="Action" style="height: 28px; width: auto; object-fit: contain;"></th>
+                            <th class="text-center faq-sortable" data-sort-key="plus-action" title="+ Action"><img src="{{ asset('images/action-comic.png') }}" alt="+ Action" style="height: 28px; width: auto; object-fit: contain;"></th>
+                            <th class="text-center faq-sortable" data-sort-key="ca" title="Corrective Action"><img src="{{ asset('images/action-icon.png') }}" alt="Corrective Action" style="height: 26px; width: 26px; object-fit: contain;"></th>
+                            <th class="text-center faq-sortable" data-sort-key="messages" title="Messages"><img src="{{ asset('images/message-icon.png') }}" alt="Messages" style="height: 104px; width: 104px; object-fit: contain;"></th>
+                            <th class="text-end" style="min-width: 90px;">CTRL</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -124,18 +189,22 @@
                                     $deptLabel = implode(', ', array_map(fn($d) => $deptNames[$d] ?? $d, $faqDept));
                                 }
                             @endphp
-                            <tr class="faq-row" data-search="{{ \Illuminate\Support\Str::lower($faq->faq . ' ' . $faq->answers . ' ' . $faq->action . ' ' . $faq->ca . ' ' . $faq->plus_action . ' ' . $faq->messages) }}" data-dept='@json(array_map("strval", $faqDept))'>
+                            <tr class="faq-row" data-search="{{ \Illuminate\Support\Str::lower($faq->group_name . ' ' . $faq->faq . ' ' . $faq->answers . ' ' . $faq->type_variant . ' ' . $faq->what . ' ' . $faq->action . ' ' . $faq->ca . ' ' . $faq->plus_action . ' ' . $faq->messages) }}" data-dept='@json(array_map("strval", $faqDept))'>
                                 <td class="text-center">
                                     <input type="checkbox" class="form-check-input faq-select" value="{{ $faq->id }}">
                                 </td>
+                                <td>@if (trim((string) $faq->group_name) !== ''){{ $faq->group_name }}@else<span class="text-muted">&mdash;</span>@endif</td>
                                 <td>{{ $faq->faq }}</td>
                                 <td>{{ \Illuminate\Support\Str::limit($faq->answers, 80) }}</td>
                                 <td class="text-center">
                                     <button type="button" class="btn btn-sm btn-link p-0 text-dark faq-view-btn"
                                         title="View"
+                                        data-group="{{ e($faq->group_name) }}"
                                         data-faq="{{ e($faq->faq) }}"
                                         data-answers="{{ e($faq->answers) }}"
                                         data-dept-label="{{ e($deptLabel) }}"
+                                        data-type-variant="{{ e($faq->type_variant) }}"
+                                        data-what="{{ e($faq->what) }}"
                                         data-link="{{ e($faq->link) }}"
                                         data-link2="{{ e($faq->link2) }}"
                                         data-sop="{{ e($faq->sop) }}"
@@ -158,6 +227,8 @@
                                         @endforeach
                                     @endif
                                 </td>
+                                <td class="text-center">@if (trim((string) $faq->type_variant) !== '')<span title="{{ $faq->type_variant }}"><img src="{{ asset('images/variant-icon.png') }}" alt="Variant/Type" style="height: 34px; width: auto; object-fit: contain;"></span>@else<span class="text-muted">&mdash;</span>@endif</td>
+                                <td class="text-center">@if (trim((string) $faq->what) !== '')<img src="{{ asset('images/what-icon.png') }}" alt="What" class="faq-hover-zoom" title="{{ $faq->what }}" style="height: 32px; width: auto; object-fit: contain;">@else<span class="text-muted">&mdash;</span>@endif</td>
                                 <td class="text-center">@if ($faq->link)<a href="{{ $faq->link }}" target="_blank" rel="noopener" title="Open link 1"><img src="{{ asset('images/link-icon.png') }}" alt="Link 1" style="height: 26px; width: 26px; object-fit: contain;"></a>@else<span class="text-muted">&mdash;</span>@endif</td>
                                 <td class="text-center">@if ($faq->link2)<a href="{{ $faq->link2 }}" target="_blank" rel="noopener" title="Open link 2"><img src="{{ asset('images/link-icon.png') }}" alt="Link 2" style="height: 26px; width: 26px; object-fit: contain;"></a>@else<span class="text-muted">&mdash;</span>@endif</td>
                                 <td class="text-center">@if ($faq->sop)<a href="{{ $faq->sop }}" target="_blank" rel="noopener" title="Open SOP"><img src="{{ asset('assets/images/task-sop-icon.png') }}" alt="SOP" style="height: 32px; width: 32px; object-fit: contain;"></a>@else<span class="text-muted">&mdash;</span>@endif</td>
@@ -165,13 +236,17 @@
                                 <td class="text-center">@if ($faq->action)<button type="button" class="btn btn-link p-0 faq-actiontext-btn" data-actiontext="{{ e($faq->action) }}" title="{{ $faq->action }}"><img src="{{ asset('images/action-comic.png') }}" alt="Action" style="height: 34px; width: auto; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
                                 <td class="text-center">@if ($faq->plus_action)<button type="button" class="btn btn-link p-0 faq-action-btn" data-action="{{ e($faq->plus_action) }}" title="{{ $faq->plus_action }}"><img src="{{ asset('images/action-comic.png') }}" alt="+ Action" style="height: 34px; width: auto; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
                                 <td class="text-center">@if ($faq->ca)<button type="button" class="btn btn-link p-0 faq-ca-btn" data-ca="{{ e($faq->ca) }}" title="Corrective Action"><img src="{{ asset('images/action-icon.png') }}" alt="Corrective Action" style="height: 30px; width: 30px; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
+                                <td class="text-center">@if ($faq->messages)<button type="button" class="btn btn-link p-0 faq-msg-btn" data-message="{{ e($faq->messages) }}" title="View message"><img src="{{ asset('images/message-icon.png') }}" alt="Message" style="height: 104px; width: 104px; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
                                 <td>
                                     <div class="d-flex justify-content-center align-items-center gap-2 flex-nowrap">
                                     @if ($canEditFaq)
                                     <button type="button" class="btn btn-sm btn-link p-0 text-secondary faq-edit-btn"
                                         data-id="{{ $faq->id }}"
+                                        data-group="{{ e($faq->group_name) }}"
                                         data-faq="{{ e($faq->faq) }}"
                                         data-answers="{{ e($faq->answers) }}"
+                                        data-type-variant="{{ e($faq->type_variant) }}"
+                                        data-what="{{ e($faq->what) }}"
                                         data-dept='@json($faqDept)'
                                         data-link="{{ e($faq->link) }}"
                                         data-link2="{{ e($faq->link2) }}"
@@ -192,15 +267,14 @@
                                     </form>
                                     </div>
                                 </td>
-                                <td class="text-center">@if ($faq->messages)<button type="button" class="btn btn-link p-0 faq-msg-btn" data-message="{{ e($faq->messages) }}" title="View message"><img src="{{ asset('images/message-icon.png') }}" alt="Message" style="height: 104px; width: 104px; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="14" class="text-center text-muted py-4">No FAQs yet. Click "Add FAQ" to create one.</td>
+                                <td colspan="17" class="text-center text-muted py-4">No FAQs yet. Click "Add FAQ" to create one.</td>
                             </tr>
                         @endforelse
                         <tr id="faqNoResults" style="display: none;">
-                            <td colspan="14" class="text-center text-muted py-4">No FAQs match your search.</td>
+                            <td colspan="17" class="text-center text-muted py-4">No FAQs match your search.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -223,6 +297,56 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary">Save FAQ</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {{-- Submit (simple) Modal --}}
+    <div class="modal fade" id="faqSubmitModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <form action="{{ route('help-desk-faqs.store') }}" method="POST" class="modal-content">
+                @csrf
+                <div class="modal-header">
+                    <h5 class="modal-title">Submit New FAQ/FFP/Issue</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Group</label>
+                            <input type="text" name="group_name" class="form-control" placeholder="Enter the group">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">FAQ/FFP/Issues <span class="text-danger">*</span></label>
+                            <textarea name="faq" class="form-control" rows="3" placeholder="Enter the question / problem / issue" required></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label d-block">Department</label>
+                            <div class="border rounded p-2 dept-checkboxes">
+                                <div class="form-check mb-1">
+                                    <input class="form-check-input dept-all" type="checkbox" name="dept[]" value="all" id="dept_submit_all">
+                                    <label class="form-check-label fw-semibold" for="dept_submit_all">All</label>
+                                </div>
+                                <hr class="my-2">
+                                <div class="row g-1">
+                                    @foreach ($departments as $dept)
+                                        <div class="col-6 col-md-4">
+                                            <div class="form-check">
+                                                <input class="form-check-input dept-one" type="checkbox" name="dept[]" value="{{ $dept->id }}" id="dept_submit_{{ $dept->id }}">
+                                                <label class="form-check-label" for="dept_submit_{{ $dept->id }}">{{ $dept->name }}</label>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                            <small class="text-muted">Tick one or more departments. Choose "All" to show to everyone.</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">Submit</button>
                 </div>
             </form>
         </div>
@@ -299,6 +423,14 @@
 
                     <div class="border rounded p-2 mb-3">
                         <div class="form-check mb-2">
+                            <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="group_name" id="bulk_apply_group_name">
+                            <label class="form-check-label fw-semibold" for="bulk_apply_group_name">Group</label>
+                        </div>
+                        <input type="text" name="group_name" class="form-control bulk-field" data-field="group_name" placeholder="New group" disabled>
+                    </div>
+
+                    <div class="border rounded p-2 mb-3">
+                        <div class="form-check mb-2">
                             <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="answers" id="bulk_apply_answers">
                             <label class="form-check-label fw-semibold" for="bulk_apply_answers">Answers</label>
                         </div>
@@ -332,6 +464,20 @@
                     <div class="row g-3">
                         <div class="col-md-6">
                             <div class="form-check mb-1">
+                                <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="type_variant" id="bulk_apply_type_variant">
+                                <label class="form-check-label fw-semibold" for="bulk_apply_type_variant">Type/Variant</label>
+                            </div>
+                            <textarea name="type_variant" class="form-control bulk-field" data-field="type_variant" rows="2" placeholder="New type / variant" disabled></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check mb-1">
+                                <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="what" id="bulk_apply_what">
+                                <label class="form-check-label fw-semibold" for="bulk_apply_what">What</label>
+                            </div>
+                            <textarea name="what" class="form-control bulk-field" data-field="what" rows="2" placeholder="New what" disabled></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check mb-1">
                                 <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="link" id="bulk_apply_link">
                                 <label class="form-check-label fw-semibold" for="bulk_apply_link">Link</label>
                             </div>
@@ -360,6 +506,13 @@
                         </div>
                         <div class="col-12">
                             <div class="form-check mb-1">
+                                <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="action" id="bulk_apply_action">
+                                <label class="form-check-label fw-semibold" for="bulk_apply_action">Action</label>
+                            </div>
+                            <textarea name="action" class="form-control bulk-field" data-field="action" rows="2" placeholder="New action" disabled></textarea>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check mb-1">
                                 <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="ca" id="bulk_apply_ca">
                                 <label class="form-check-label fw-semibold" for="bulk_apply_ca">CA (Corrective Action)</label>
                             </div>
@@ -371,6 +524,13 @@
                                 <label class="form-check-label fw-semibold" for="bulk_apply_plus_action">+ Action</label>
                             </div>
                             <textarea name="plus_action" class="form-control bulk-field" data-field="plus_action" rows="2" placeholder="New additional action" disabled></textarea>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check mb-1">
+                                <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="messages" id="bulk_apply_messages">
+                                <label class="form-check-label fw-semibold" for="bulk_apply_messages">Messages</label>
+                            </div>
+                            <textarea name="messages" class="form-control bulk-field" data-field="messages" rows="2" maxlength="200" placeholder="New message (max 200 chars)" disabled></textarea>
                         </div>
                     </div>
                 </div>
@@ -391,6 +551,10 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <div class="mb-3">
+                        <span class="fw-bold text-uppercase small text-muted">Group:</span>
+                        <span id="view_group"></span>
+                    </div>
                     <div class="p-3 mb-3 rounded border" style="background-color: #fff3cd; width: 100%;">
                         <div class="fw-bold text-uppercase small text-muted mb-1">FAQ</div>
                         <div id="view_faq" class="fw-semibold"></div>
@@ -403,6 +567,12 @@
                     <dl class="row mb-0">
                         <dt class="col-sm-3"><i class="ri-building-line me-2"></i>Dept</dt>
                         <dd class="col-sm-9" id="view_dept"></dd>
+
+                        <dt class="col-sm-3">Type/Variant</dt>
+                        <dd class="col-sm-9" id="view_type_variant"></dd>
+
+                        <dt class="col-sm-3">What</dt>
+                        <dd class="col-sm-9" id="view_what"></dd>
 
                         <dt class="col-sm-3">{!! $viewIcon('images/link-icon.png') !!}Link</dt>
                         <dd class="col-sm-9" id="view_link"></dd>
@@ -526,8 +696,11 @@
                     var id = this.getAttribute('data-id');
                     editForm.setAttribute('action', baseUpdateUrl + '/' + id);
 
+                    editForm.querySelector('[name="group_name"]').value = this.getAttribute('data-group') || '';
                     editForm.querySelector('[name="faq"]').value = this.getAttribute('data-faq') || '';
                     editForm.querySelector('[name="answers"]').value = this.getAttribute('data-answers') || '';
+                    editForm.querySelector('[name="type_variant"]').value = this.getAttribute('data-type-variant') || '';
+                    editForm.querySelector('[name="what"]').value = this.getAttribute('data-what') || '';
                     editForm.querySelector('[name="link"]').value = this.getAttribute('data-link') || '';
                     editForm.querySelector('[name="link2"]').value = this.getAttribute('data-link2') || '';
                     editForm.querySelector('[name="sop"]').value = this.getAttribute('data-sop') || '';
@@ -661,6 +834,57 @@
 
             applyFilters();
 
+            // ---- Column sorting (click header), blanks always on top ----
+            var faqTbody = document.querySelector('#faqTable tbody');
+            var faqNoResultsRow = document.getElementById('faqNoResults');
+            var sortState = { key: null, dir: 'asc' };
+
+            function rowSortValue(row, key) {
+                var btn = row.querySelector('.faq-view-btn');
+                var val = btn ? (btn.getAttribute('data-' + key) || '') : '';
+                return val.trim().toLowerCase();
+            }
+
+            function sortRowsBy(key, dir) {
+                var sorted = rows.slice().sort(function(a, b) {
+                    var av = rowSortValue(a, key);
+                    var bv = rowSortValue(b, key);
+                    var ae = av === '';
+                    var be = bv === '';
+                    if (ae && !be) return -1; // blanks on top
+                    if (!ae && be) return 1;
+                    if (ae && be) return 0;
+                    var cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
+                    return dir === 'asc' ? cmp : -cmp;
+                });
+                sorted.forEach(function(r) {
+                    if (faqNoResultsRow) {
+                        faqTbody.insertBefore(r, faqNoResultsRow);
+                    } else {
+                        faqTbody.appendChild(r);
+                    }
+                });
+            }
+
+            document.querySelectorAll('#faqTable thead th.faq-sortable').forEach(function(th) {
+                th.addEventListener('click', function() {
+                    var key = this.getAttribute('data-sort-key');
+                    if (!key) return;
+                    if (sortState.key === key) {
+                        sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        sortState.key = key;
+                        sortState.dir = 'asc';
+                    }
+                    document.querySelectorAll('#faqTable thead th.faq-sortable .faq-sort-ind').forEach(function(s) {
+                        s.textContent = '';
+                    });
+                    var ind = this.querySelector('.faq-sort-ind');
+                    if (ind) ind.textContent = sortState.dir === 'asc' ? '\u25B2' : '\u25BC';
+                    sortRowsBy(key, sortState.dir);
+                });
+            });
+
             // ---- View (magnifying glass): show read-only FAQ details ----
             var viewModalEl = document.getElementById('faqViewModal');
             function setViewText(id, value) {
@@ -693,9 +917,12 @@
             }
             document.querySelectorAll('.faq-view-btn').forEach(function(btn) {
                 btn.addEventListener('click', function() {
+                    setViewText('view_group', this.getAttribute('data-group'));
                     setViewText('view_faq', this.getAttribute('data-faq'));
                     setViewText('view_answers', this.getAttribute('data-answers'));
                     setViewText('view_dept', this.getAttribute('data-dept-label'));
+                    setViewText('view_type_variant', this.getAttribute('data-type-variant'));
+                    setViewText('view_what', this.getAttribute('data-what'));
                     setViewLink('view_link', this.getAttribute('data-link'), 'Open link 1');
                     setViewLink('view_link2', this.getAttribute('data-link2'), 'Open link 2');
                     setViewLink('view_sop', this.getAttribute('data-sop'), 'Open SOP');

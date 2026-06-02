@@ -1,6 +1,11 @@
 @php($edit = $edit ?? false)
 <div class="row g-3">
     <div class="col-12">
+        <label class="form-label">Group</label>
+        <input type="text" name="group_name" class="form-control" placeholder="Enter the group">
+    </div>
+
+    <div class="col-12">
         <label class="form-label">FAQ <span class="text-danger">*</span></label>
         <textarea name="faq" class="form-control" rows="2" placeholder="Enter the question" required></textarea>
     </div>
@@ -31,6 +36,15 @@
             </div>
         </div>
         <small class="text-muted">Tick one or more departments. Choose "All" to show this FAQ to everyone.</small>
+    </div>
+
+    <div class="col-md-6">
+        <label class="form-label">Type/Variant</label>
+        <textarea name="type_variant" class="form-control" rows="2" placeholder="Enter type / variant"></textarea>
+    </div>
+    <div class="col-md-6">
+        <label class="form-label">What</label>
+        <textarea name="what" class="form-control" rows="2" placeholder="Enter what"></textarea>
     </div>
 
     <div class="col-md-6">
