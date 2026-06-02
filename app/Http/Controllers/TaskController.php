@@ -269,6 +269,10 @@ class TaskController extends Controller
             }
         }
 
+        // Training video (header icon): link + whether this user may edit it.
+        $trainingVideoLink = $this->getTrainingVideoLink();
+        $canEditTrainingVideo = $this->userCanEditTrainingVideo($user);
+
         return view('tasks.index', compact(
             'stats',
             'isAdmin',
@@ -281,13 +285,74 @@ class TaskController extends Controller
             'assignorOnTasksUsers',
             'assignorOtherUsers',
             'assigneeOnTasksUsers',
-            'assigneeOtherUsers'
+            'assigneeOtherUsers',
+            'trainingVideoLink',
+            'canEditTrainingVideo'
         ) + [
             'taskBusinessTz' => TaskBusinessTime::tz(),
             'taskBusinessTzShort' => TaskBusinessTime::shortLabel(),
             'taskBusinessTzLabel' => TaskBusinessTime::label(),
             'taskBusinessToday' => TaskBusinessTime::today()->toDateString(),
         ]);
+    }
+
+    /** Email allowed to add/edit the Task Manager training video link. */
+    private const TRAINING_VIDEO_EDITOR_EMAIL = 'mgr-content@5core.com';
+
+    /** Storage path (relative to storage/app) for the persisted training video link. */
+    private const TRAINING_VIDEO_FILE = 'task_training_video.json';
+
+    private function userCanEditTrainingVideo($user): bool
+    {
+        return $user && strtolower(trim($user->email ?? '')) === self::TRAINING_VIDEO_EDITOR_EMAIL;
+    }
+
+    private function getTrainingVideoLink(): string
+    {
+        try {
+            if (\Illuminate\Support\Facades\Storage::exists(self::TRAINING_VIDEO_FILE)) {
+                $data = json_decode(\Illuminate\Support\Facades\Storage::get(self::TRAINING_VIDEO_FILE), true);
+                return is_array($data) ? (string) ($data['link'] ?? '') : '';
+            }
+        } catch (\Throwable $e) {
+            // ignore and fall through to empty
+        }
+        return '';
+    }
+
+    /** Return the current training video link as JSON. */
+    public function getTrainingVideo(): JsonResponse
+    {
+        return response()->json([
+            'link' => $this->getTrainingVideoLink(),
+            'can_edit' => $this->userCanEditTrainingVideo(Auth::user()),
+        ]);
+    }
+
+    /** Save the training video link. Restricted to the designated editor email. */
+    public function saveTrainingVideo(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        if (!$this->userCanEditTrainingVideo($user)) {
+            return response()->json(['message' => 'You are not allowed to edit the training video link.'], 403);
+        }
+
+        $validated = $request->validate([
+            'link' => 'nullable|url|max:2048',
+        ]);
+
+        $link = trim((string) ($validated['link'] ?? ''));
+
+        try {
+            \Illuminate\Support\Facades\Storage::put(
+                self::TRAINING_VIDEO_FILE,
+                json_encode(['link' => $link, 'updated_by' => $user->email, 'updated_at' => now()->toIso8601String()])
+            );
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Failed to save the link.'], 500);
+        }
+
+        return response()->json(['link' => $link, 'message' => 'Training video link saved.']);
     }
 
     /**

@@ -235,15 +235,9 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Daily auto-tasks become missed 24h after their generated start time → archive + delete.
-        // Hourly so the 24h-from-start_date window is honoured promptly. Automated tasks only.
-        $schedule->command('tasks:expire-daily-automated')
-            ->hourly()
-            ->timezone($taskTz)
-            ->name('expire-daily-automated-tasks')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
+        // NOTE: Auto-delete of missed daily automated tasks (tasks:expire-daily-automated)
+        // has been removed from the schedule. It can still be run on demand via the
+        // "Missed" button (TaskController::expireDailyAutomatedTasks) or artisan.
 
         $schedule->command('tasks:automated-health-alert')
             ->everyThirtyMinutes()

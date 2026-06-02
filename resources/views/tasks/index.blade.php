@@ -700,6 +700,23 @@
             background: linear-gradient(135deg, #0dcaf0 0%, #0891b2 100%);
         }
 
+        /* Info - Page ETC total */
+        .stat-card-info {
+            border-left-color: #3bc9e8;
+        }
+        .stat-card-info .stat-icon {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        /* Hide the year (YYYY) portion of the start-date filter (WebKit/Chromium). */
+        #filter-date::-webkit-datetime-edit-year-field {
+            display: none;
+        }
+        /* Hide the "/" separator that precedes the year field. */
+        #filter-date::-webkit-datetime-edit-text:last-of-type {
+            display: none;
+        }
+
         /* Red - Overdue */
         .stat-card-red {
             border-left-color: #dc3545;
@@ -1549,6 +1566,15 @@
                 <div class="page-title-box d-flex align-items-center justify-content-between py-1">
                     <div class="d-flex align-items-center gap-3">
                         <h4 class="page-title mb-0">Task Manager</h4>
+                        <img src="{{ asset('assets/images/task-training-video-icon.png') }}"
+                            alt="Training Video"
+                            id="training-video-icon"
+                            data-link="{{ $trainingVideoLink ?? '' }}"
+                            data-can-edit="{{ !empty($canEditTrainingVideo) ? '1' : '0' }}"
+                            title="Training Video"
+                            style="width:38px;height:38px;object-fit:contain;cursor:pointer;border-radius:8px;transition:transform 0.15s ease;"
+                            onmouseover="this.style.transform='scale(1.1)'"
+                            onmouseout="this.style.transform='scale(1)'">
                     </div>
                     <div class="page-title-right">
                         <ol class="breadcrumb m-0">
@@ -1672,6 +1698,20 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Page ETC total (sum of ETC for tasks shown on this page) -->
+            <div class="col">
+                <div class="stat-card stat-card-info" title="Total ETC of tasks shown on this page">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-clock-outline"></i>
+                    </div>
+                    <div class="stat-content text-center">
+                        <div class="stat-label">ETC</div>
+                        <div class="stat-value" id="etc-page-total">0m</div>
+                        <div class="stat-unit">this page</div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Tabs Navigation - Prominent Location -->
@@ -1696,11 +1736,6 @@
 
         <div class="row">
             <div class="col-12">
-                <div class="alert alert-info py-2 px-3 mb-2 small mb-md-3" role="status">
-                    <i class="mdi mdi-clock-outline me-1"></i>
-                    <strong>Task calendar:</strong> TID, overdue, auto-delete, and Today Deleted use
-                    <strong>{{ $taskBusinessTzLabel ?? 'California (PT)' }}</strong> (office time), not your browser or India time.
-                </div>
                 <div class="card task-card">
                     <div class="card-body">
                         <div class="row mb-2">
@@ -1709,11 +1744,11 @@
                                 <div class="d-none d-md-flex justify-content-between align-items-center">
                                     <div>
                                         <button type="button" class="btn btn-success" id="upload-csv-btn">
-                                            <i class="mdi mdi-file-upload me-2"></i> CSV
+                                            <i class="mdi mdi-upload me-2"></i> CSV
                                         </button>
 
                                         <button type="button" class="btn btn-primary ms-2" id="bulk-task-btn">
-                                            <i class="mdi mdi-plus-box-multiple me-2"></i> Multiple Task
+                                            <i class="mdi mdi-plus-box-multiple me-2"></i> Create Multi Task
                                         </button>
                                         
                                         <button type="button" class="btn btn-info ms-2" id="bulk-actions-btn">
@@ -1725,21 +1760,15 @@
                                         </button>
 
                                         <button type="button" class="btn btn-warning text-dark ms-2" id="tasks-refresh-table-btn" title="Reload tasks from server (keeps your filters)">
-                                            <i class="mdi mdi-refresh me-2"></i> Refresh
+                                            <i class="mdi mdi-refresh"></i>
                                         </button>
 
                                         @if(!empty($canShowTaskMaintenanceButtons))
                                         <button type="button" class="btn btn-outline-danger ms-2" id="expire-daily-auto-btn"
                                             title="Auto-delete DAILY automated tasks not completed before the California business day ends. Runs at 12:05 AM {{ $taskBusinessTzShort ?? 'PT' }} each night. Weekly/monthly not affected.">
-                                            <i class="mdi mdi-broom me-2"></i> Cleanup Missed Daily
+                                            <i class="mdi mdi-magnify me-2"></i> Missed
                                         </button>
 
-                                        <button type="button" class="btn btn-outline-secondary ms-2 position-relative" id="today-deleted-btn"
-                                            data-bs-toggle="modal" data-bs-target="#todayDeletedModal"
-                                            title="See tasks deleted today and revert any wrongly-deleted ones.">
-                                            <i class="mdi mdi-undo-variant me-2"></i> Today Deleted
-                                            <span class="badge bg-danger rounded-pill ms-1" id="today-deleted-badge" style="display:none;">0</span>
-                                        </button>
                                         @endif
 
 
@@ -2142,6 +2171,53 @@
 </div>
 
 <!-- Today Deleted Modal — recover tasks deleted today (incl. auto-expired daily auto-tasks) -->
+<!-- Training Video View Modal (80% of screen) -->
+<div class="modal fade" id="trainingVideoModal" tabindex="-1" aria-labelledby="trainingVideoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:80vw;width:80vw;">
+        <div class="modal-content" style="height:80vh;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%); color: white;">
+                <h5 class="modal-title" id="trainingVideoModalLabel">
+                    <i class="mdi mdi-school me-2"></i>Training Video
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0" style="background:#000;">
+                <div id="training-video-frame-wrap" style="width:100%;height:100%;"></div>
+                <div id="training-video-empty" class="d-none d-flex flex-column align-items-center justify-content-center text-center text-white h-100 p-4">
+                    <i class="mdi mdi-video-off-outline" style="font-size:48px;opacity:0.6;"></i>
+                    <p class="mt-3 mb-0">No training video link has been set yet.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Training Video Edit Link Modal (editor only) -->
+<div class="modal fade" id="trainingVideoEditModal" tabindex="-1" aria-labelledby="trainingVideoEditModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%); color: white;">
+                <h5 class="modal-title" id="trainingVideoEditModalLabel">
+                    <i class="mdi mdi-pencil me-2"></i>Edit Training Video Link
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <label for="training-video-link-input" class="form-label">Video URL</label>
+                <input type="url" class="form-control" id="training-video-link-input" placeholder="https://www.youtube.com/watch?v=...">
+                <div class="form-text">Paste a YouTube, Vimeo, or direct video URL. Leave empty to remove.</div>
+                <div class="invalid-feedback" id="training-video-link-feedback">Please enter a valid URL.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="training-video-save-btn">
+                    <i class="mdi mdi-content-save me-1"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="todayDeletedModal" tabindex="-1" aria-labelledby="todayDeletedModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
@@ -3479,10 +3555,10 @@
                                 var imgSrc = (row.assignor_avatar || "{{ asset('images/users/avatar-2.jpg') }}").replace(/&/g, '&amp;');
                                 var nameEsc = String(firstName).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                                 var designation = row.assignor_designation || '';
-                                var designationHtml = designation ? '<div style="font-size: 9px; color: #6c757d; margin-top: 2px;">' + String(designation).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>' : '';
-                                return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap">' +
+                                var designationAttr = designation ? ' title="' + String(designation).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '"' : '';
+                                return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap"' + designationAttr + '>' +
                                     '<img src="' + imgSrc + '" alt="" class="rounded-circle task-avatar-hover" style="width:24px;height:24px;object-fit:cover;flex-shrink:0;transition:all 0.2s ease;cursor:pointer;">' +
-                                    '<div style="text-align: left;"><strong style="font-size: 11px;">' + nameEsc + '</strong>' + designationHtml + '</div>' +
+                                    '<div style="text-align: left;"><strong style="font-size: 11px;">' + nameEsc + '</strong></div>' +
                                     '</div>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
@@ -3503,20 +3579,17 @@
                                 var imgSrc = (row.assignee_avatar || "{{ asset('images/users/avatar-2.jpg') }}").replace(/&/g, '&amp;');
                                 var nameEsc = String(displayValue).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                                 var designation = row.assignee_designation || '';
-                                var designationHtml = designation ? '<div style="font-size: 9px; color: #6c757d; margin-top: 2px;">' + String(designation).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>' : '';
-                                return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap">' +
+                                var designationAttr = designation ? ' title="' + String(designation).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '"' : '';
+                                return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap"' + designationAttr + '>' +
                                     '<img src="' + imgSrc + '" alt="" class="rounded-circle task-avatar-hover" style="width:24px;height:24px;object-fit:cover;flex-shrink:0;transition:all 0.2s ease;cursor:pointer;">' +
-                                    '<div style="text-align: left;"><strong style="font-size: 11px; line-height: 1.4;">' + nameEsc + '</strong>' + designationHtml + '</div>' +
+                                    '<div style="text-align: left;"><strong style="font-size: 11px; line-height: 1.4;">' + nameEsc + '</strong></div>' +
                                     '</div>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         },
                         tooltip: function(cell) {
-                            var value = cell.getValue();
-                            if (value && value !== '-') {
-                                return "Assigned to: " + value;
-                            }
-                            return "No assignee";
+                            var row = cell.getRow().getData();
+                            return row.assignee_designation || '';
                         }
                     });
                     
@@ -3600,6 +3673,7 @@
                     cols.push({
                         title: "ATC",
                         field: "etc_done", 
+                        visible: false,
                         width: 52,
                         minWidth: 46,
                         widthGrow: 0,
@@ -3647,7 +3721,7 @@
                     
                     // SOP - Custom icon
                     cols.push({
-                        title: "SOP",
+                        title: '<img src="{{ asset("assets/images/task-sop-icon.png") }}" alt="SOP" style="width:22px;height:22px;display:inline-block;vertical-align:middle;" />',
                         field: "link3",
                         width: 48,
                         minWidth: 40,
@@ -3655,7 +3729,7 @@
                         cssClass: "tasks-col-link-icon",
                         headerClass: "tasks-col-link-icon",
                         hozAlign: "center",
-                        headerTooltip: "Training",
+                        headerTooltip: "Standard Operating Procedure",
                         formatter: function(cell) {
                             return formatSopLinkSlot(cell.getRow().getData(), function(d) { return d.link3 || d.training_link; });
                         }
@@ -3663,7 +3737,7 @@
                     
                     // Video - Custom icon
                     cols.push({
-                        title: "Video",
+                        title: '<img src="{{ asset("assets/images/task-video-icon.png") }}" alt="Video" style="width:22px;height:22px;display:inline-block;vertical-align:middle;" />',
                         field: "link4",
                         width: 44,
                         minWidth: 34,
@@ -3671,12 +3745,12 @@
                         cssClass: "tasks-col-link-icon",
                         headerClass: "tasks-col-link-icon",
                         hozAlign: "center",
+                        headerTooltip: "Video",
                         formatter: function(cell) {
                             return formatVideoLinkSlot(cell.getRow().getData(), function(d) { return d.link4 || d.video_link; });
                         }
                     });
                     
-                    linkCol("Form", "link5", function(d) { return d.link5 || d.form_link; }, 44);
                     linkCol("Form", "link5", function(d) { return d.link5 || d.form_link; }, 44);
                     linkCol("Report", "link6", function(d) { return d.link6 || d.form_report_link; }, 50, { minWidth: 44, headerTooltip: "Form report" });
                     linkCol("CL", "link7", function(d) { return d.link7 || d.checklist_link; }, 38, {
@@ -3810,22 +3884,6 @@
                             
                             var buttons = '';
                             
-                            if (canView) {
-                                buttons += `
-                                    <button class="action-btn-icon action-btn-view view-task" data-id="${id}" title="View">
-                                        <i class="mdi mdi-eye"></i>
-                                    </button>
-                                `;
-                            }
-
-                            if (canReworkQuick) {
-                                buttons += `
-                                    <button type="button" class="action-btn-icon open-rework-from-actions" data-id="${id}" title="Send for rework" style="background:#f5576c;color:#fff;border:none;padding:8px 10px;border-radius:6px;cursor:pointer;margin:0 2px;">
-                                        <i class="mdi mdi-undo-variant"></i>
-                                    </button>
-                                `;
-                            }
-                            
                             if (canEdit) {
                                 buttons += `
                                     <button class="action-btn-icon action-btn-edit edit-task" data-id="${id}" title="Edit">
@@ -3858,6 +3916,17 @@
                     return cols;
                 })(),
             });
+
+            // Format a minute total as "Xh Ym" (e.g. 5392 -> "89h 52m"). Under an hour -> "Ym".
+            function formatMinutesAsHm(totalMinutes) {
+                var mins = Math.round(Number(totalMinutes) || 0);
+                var hours = Math.floor(mins / 60);
+                var rem = mins % 60;
+                if (hours > 0) {
+                    return hours.toLocaleString() + 'h ' + rem + 'm';
+                }
+                return rem + 'm';
+            }
 
             // Update statistics based on filtered data
             function updateStatistics() {
@@ -3974,15 +4043,19 @@
                     switch(label) {
                         case 'TOTAL':
                             valueEl.text(stats.total);
+                            $(this).attr('data-value', stats.total);
                             break;
                         case 'PENDING':
                             valueEl.text(stats.pending);
+                            $(this).attr('data-value', stats.pending);
                             break;
                         case 'OVERDUE':
                             valueEl.text(stats.overdue);
+                            $(this).attr('data-value', stats.overdue);
                             break;
                         case 'DONE':
                             valueEl.text(stats.done);
+                            $(this).attr('data-value', stats.done);
                             break;
                         case 'ETC 30D':
                             break;
@@ -3999,6 +4072,7 @@
                             break;
                         case 'TAT':
                             valueEl.text(stats.tat_avg_30 !== null ? String(Math.round(stats.tat_avg_30)) : '-');
+                            $(this).attr('data-value', stats.tat_avg_30 !== null ? Math.round(stats.tat_avg_30) : 0);
                             break;
                         case 'AVG SCORE':
                             if (performanceAverageScore !== null && performanceAverageScore !== undefined && performanceAverageScore !== '') {
@@ -4010,6 +4084,10 @@
                             break;
                         case 'MISSED':
                             valueEl.text(stats.missed_count_30);
+                            $(this).attr('data-value', stats.missed_count_30);
+                            break;
+                        case 'ETC':
+                            valueEl.text(formatMinutesAsHm(stats.etc_total || 0));
                             break;
                         case 'PENDING ETC':
                             var pendingEtcHours = Math.round((stats.pending_etc || 0) / 60);
@@ -6436,5 +6514,102 @@
             
             return { labels, values };
         }
+
+        // ===== Training Video header icon: view (click) / edit link (double-click) =====
+        $(function () {
+            var $icon = $('#training-video-icon');
+            if (!$icon.length) return;
+
+            var saveUrl = '{{ route("tasks.trainingVideo.save") }}';
+            var csrfToken = '{{ csrf_token() }}';
+            var clickTimer = null;
+
+            function getLink() { return ($icon.attr('data-link') || '').trim(); }
+            function canEdit() { return $icon.attr('data-can-edit') === '1'; }
+
+            // Build an embeddable player from a URL (YouTube / Vimeo / direct file).
+            function buildPlayerHtml(url) {
+                var common = 'width:100%;height:100%;border:0;display:block;';
+                var yt = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+                if (yt) {
+                    return '<iframe src="https://www.youtube.com/embed/' + yt[1] + '?rel=0&autoplay=1" style="' + common + '" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>';
+                }
+                var vimeo = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+                if (vimeo) {
+                    return '<iframe src="https://player.vimeo.com/video/' + vimeo[1] + '?autoplay=1" style="' + common + '" allow="autoplay; fullscreen" allowfullscreen></iframe>';
+                }
+                if (/\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(url)) {
+                    return '<video src="' + url.replace(/"/g, '&quot;') + '" style="' + common + 'object-fit:contain;background:#000;" controls autoplay></video>';
+                }
+                // Fallback: try to embed the URL directly in an iframe.
+                return '<iframe src="' + url.replace(/"/g, '&quot;') + '" style="' + common + '" allow="autoplay; fullscreen" allowfullscreen></iframe>';
+            }
+
+            function openViewModal() {
+                var link = getLink();
+                var $wrap = $('#training-video-frame-wrap');
+                var $empty = $('#training-video-empty');
+                if (link) {
+                    $wrap.html(buildPlayerHtml(link)).removeClass('d-none');
+                    $empty.addClass('d-none');
+                } else {
+                    $wrap.empty().addClass('d-none');
+                    $empty.removeClass('d-none');
+                }
+                $('#trainingVideoModal').modal('show');
+            }
+
+            function openEditModal() {
+                $('#training-video-link-input').val(getLink()).removeClass('is-invalid');
+                $('#trainingVideoEditModal').modal('show');
+            }
+
+            $icon.on('click', function () {
+                if (clickTimer) return; // a dblclick is in progress
+                clickTimer = setTimeout(function () {
+                    clickTimer = null;
+                    openViewModal();
+                }, 250);
+            });
+
+            $icon.on('dblclick', function () {
+                if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+                if (canEdit()) {
+                    openEditModal();
+                }
+            });
+
+            // Stop the video when the view modal closes.
+            $('#trainingVideoModal').on('hidden.bs.modal', function () {
+                $('#training-video-frame-wrap').empty();
+            });
+
+            $('#training-video-save-btn').on('click', function () {
+                var $input = $('#training-video-link-input');
+                var val = ($input.val() || '').trim();
+                if (val && !/^https?:\/\//i.test(val)) {
+                    $input.addClass('is-invalid');
+                    return;
+                }
+                $input.removeClass('is-invalid');
+                var $btn = $(this).prop('disabled', true);
+                $.ajax({
+                    url: saveUrl,
+                    method: 'POST',
+                    data: { link: val, _token: csrfToken },
+                    success: function (res) {
+                        $icon.attr('data-link', (res && res.link) ? res.link : '');
+                        $('#trainingVideoEditModal').modal('hide');
+                    },
+                    error: function (xhr) {
+                        var msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Failed to save the link.';
+                        alert(msg);
+                    },
+                    complete: function () {
+                        $btn.prop('disabled', false);
+                    }
+                });
+            });
+        });
     </script>
 @endsection

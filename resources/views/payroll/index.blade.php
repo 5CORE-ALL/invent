@@ -70,26 +70,16 @@
         </div>
     </div>
 
-    <ul class="nav nav-tabs nav-bordered mb-3" role="tablist">
-        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-employees">Salary Slip</button></li>
-    </ul>
-
-    <div class="tab-content">
-        <div class="tab-pane fade show active" id="tab-employees">
-            <div class="payroll-card p-3">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h6 class="mb-0">Employee Salaries</h6>
-                    <div class="d-flex align-items-center gap-2">
-                        @can('payroll.sheet-admin')
-                        <a href="#" id="btnDownloadPayoutSheet" class="btn btn-sm btn-success py-0"><i class="ri-file-excel-2-line me-1"></i>Download Month Sheet</a>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnSyncEmployees"><i class="ri-refresh-line"></i> Sync from Team</button>
-                        @endcan
-                    </div>
-                </div>
-                <div id="employeesTable"></div>
+    <div class="payroll-card p-3">
+        <div class="d-flex justify-content-end align-items-center mb-2">
+            <div class="d-flex align-items-center gap-2">
+                @can('payroll.sheet-admin')
+                <a href="#" id="btnDownloadPayoutSheet" class="btn btn-sm btn-success py-0"><i class="ri-file-excel-2-line me-1"></i>Download Month Sheet</a>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="btnSyncEmployees"><i class="ri-refresh-line"></i> Sync from Team</button>
+                @endcan
             </div>
         </div>
-
+        <div id="employeesTable"></div>
     </div>
 </div>
 

@@ -3246,6 +3246,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/facebook-all-ads-sheet/batches',          [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'batches'])->name('facebook.all.ads.sheet.batches');
     Route::post('/facebook-all-ads-sheet/upload',          [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'upload'])->name('facebook.all.ads.sheet.upload');
     Route::post('/facebook-all-ads-sheet/{id}/ad-type',    [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'updateAdType'])->whereNumber('id')->name('facebook.all.ads.sheet.ad.type');
+    Route::post('/facebook-all-ads-sheet/{id}/ch',         [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'updateCh'])->whereNumber('id')->name('facebook.all.ads.sheet.ch');
+    Route::post('/facebook-all-ads-sheet/bulk-ch',         [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'bulkCh'])->name('facebook.all.ads.sheet.bulk.ch');
 
     // ACOS → Sbgt rule (editable bands). Same shape as the eBay
     // SBID rule on /ebay/campaign-ads — see EbayCampaignAdsController.
@@ -3263,6 +3265,40 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // and view; only `pageType` and the ad_type filter differ.
     Route::get('/facebook-video-ads-sheet',                [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'videoIndex'])->name('facebook.video.ads.sheet');
     Route::get('/facebook-carousal-ads-sheet',             [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'carousalIndex'])->name('facebook.carousal.ads.sheet');
+
+    // Channel lenses over the same Meta Ads dataset — Facebook (CH=FB) and
+    // Instagram (CH=Insta). Both reuse the /facebook-all-ads-sheet/* data
+    // + action endpoints; only the CH filter differs.
+    Route::get('/facebook-ads',                            [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'facebookIndex'])->name('facebook.ads.channel');
+    Route::get('/instagram-ads',                           [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramIndex'])->name('instagram.ads.channel');
+
+    // ── TikTok Video Ads — fully independent module (own tables, own
+    // controller). Same page layout / filters as the Meta sheet but a
+    // separate dataset sourced from TikTok uploads.
+    Route::get('/tiktok-video-ads',                        [\App\Http\Controllers\TiktokVideoAdsController::class, 'index'])->name('tiktok.video.ads');
+    Route::get('/tiktok-video-ads/data',                   [\App\Http\Controllers\TiktokVideoAdsController::class, 'getData'])->name('tiktok.video.ads.data');
+    Route::get('/tiktok-video-ads/batches',                [\App\Http\Controllers\TiktokVideoAdsController::class, 'batches'])->name('tiktok.video.ads.batches');
+    Route::post('/tiktok-video-ads/upload',                [\App\Http\Controllers\TiktokVideoAdsController::class, 'upload'])->name('tiktok.video.ads.upload');
+    Route::post('/tiktok-video-ads/{id}/ad-type',          [\App\Http\Controllers\TiktokVideoAdsController::class, 'updateAdType'])->whereNumber('id')->name('tiktok.video.ads.ad.type');
+    Route::get('/tiktok-video-ads/rule',                   [\App\Http\Controllers\TiktokVideoAdsController::class, 'getRule'])->name('tiktok.video.ads.rule.get');
+    Route::post('/tiktok-video-ads/rule',                  [\App\Http\Controllers\TiktokVideoAdsController::class, 'saveRule'])->name('tiktok.video.ads.rule.save');
+    Route::get('/tiktok-video-ads/badge-history',          [\App\Http\Controllers\TiktokVideoAdsController::class, 'badgeHistory'])->name('tiktok.video.ads.badge.history');
+    Route::get('/tiktok-video-ads/audit',                  [\App\Http\Controllers\TiktokVideoAdsController::class, 'getAudit'])->name('tiktok.video.ads.audit.get');
+    Route::post('/tiktok-video-ads/audit',                 [\App\Http\Controllers\TiktokVideoAdsController::class, 'saveAudit'])->name('tiktok.video.ads.audit.save');
+
+    // ── YouTube Video Ads — fully independent module (own tables, own
+    // controller). Same page layout / filters as the TikTok sheet but a
+    // separate dataset sourced from YouTube uploads.
+    Route::get('/youtube-video-ads-sheet',                 [\App\Http\Controllers\YoutubeVideoAdsController::class, 'index'])->name('youtube.video.ads');
+    Route::get('/youtube-video-ads-sheet/data',            [\App\Http\Controllers\YoutubeVideoAdsController::class, 'getData'])->name('youtube.video.ads.data');
+    Route::get('/youtube-video-ads-sheet/batches',         [\App\Http\Controllers\YoutubeVideoAdsController::class, 'batches'])->name('youtube.video.ads.batches');
+    Route::post('/youtube-video-ads-sheet/upload',         [\App\Http\Controllers\YoutubeVideoAdsController::class, 'upload'])->name('youtube.video.ads.upload');
+    Route::post('/youtube-video-ads-sheet/{id}/ad-type',   [\App\Http\Controllers\YoutubeVideoAdsController::class, 'updateAdType'])->whereNumber('id')->name('youtube.video.ads.ad.type');
+    Route::get('/youtube-video-ads-sheet/rule',            [\App\Http\Controllers\YoutubeVideoAdsController::class, 'getRule'])->name('youtube.video.ads.rule.get');
+    Route::post('/youtube-video-ads-sheet/rule',           [\App\Http\Controllers\YoutubeVideoAdsController::class, 'saveRule'])->name('youtube.video.ads.rule.save');
+    Route::get('/youtube-video-ads-sheet/badge-history',   [\App\Http\Controllers\YoutubeVideoAdsController::class, 'badgeHistory'])->name('youtube.video.ads.badge.history');
+    Route::get('/youtube-video-ads-sheet/audit',           [\App\Http\Controllers\YoutubeVideoAdsController::class, 'getAudit'])->name('youtube.video.ads.audit.get');
+    Route::post('/youtube-video-ads-sheet/audit',          [\App\Http\Controllers\YoutubeVideoAdsController::class, 'saveAudit'])->name('youtube.video.ads.audit.save');
     Route::get('/bullet-points', [BulletPointMasterController::class, 'index'])->name('bullet.points');
     Route::get('/bullet-points-data', [BulletPointMasterController::class, 'getData'])->name('bullet.points.data');
     Route::post('/bullet-points/update', [BulletPointMasterController::class, 'update'])->name('bullet.points.update');
@@ -5545,6 +5581,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tasks/store-user-rr', [\App\Http\Controllers\TaskController::class, 'storeUserRR'])->name('tasks.storeUserRR');
     Route::get('/tasks/get-user-rr-data', [\App\Http\Controllers\TaskController::class, 'getUserRRData'])->name('tasks.getUserRRData');
     Route::post('/tasks/upload-image', [\App\Http\Controllers\TaskController::class, 'uploadImage'])->name('tasks.uploadImage');
+    Route::get('/tasks/training-video', [\App\Http\Controllers\TaskController::class, 'getTrainingVideo'])->name('tasks.trainingVideo.get');
+    Route::post('/tasks/training-video', [\App\Http\Controllers\TaskController::class, 'saveTrainingVideo'])->name('tasks.trainingVideo.save');
     Route::get('/tasks/users-list', [\App\Http\Controllers\TaskController::class, 'getUsersList'])->name('tasks.usersList');
     Route::get('/tasks/download-template', [\App\Http\Controllers\TaskController::class, 'downloadTemplate'])->name('tasks.downloadTemplate');
     Route::post('/tasks/import-csv', [\App\Http\Controllers\TaskController::class, 'importCsv'])->name('tasks.importCsv');

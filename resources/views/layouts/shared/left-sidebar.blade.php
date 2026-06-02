@@ -631,7 +631,13 @@
                 <div class="collapse" id="sidebarFacebookSheets">
                     <ul class="side-nav-second-level">
                         <li>
-                            <a href="{{ route('facebook.all.ads.sheet') }}">Facebook All Ads Sheet</a>
+                            <a href="{{ route('facebook.all.ads.sheet') }}">Meta Ads All</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('facebook.ads.channel') }}">Facebook</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('instagram.ads.channel') }}">Instagram</a>
                         </li>
                         <li>
                             <a href="{{ route('facebook.video.ads.sheet') }}">Facebook Video Ads Sheet</a>
@@ -641,6 +647,22 @@
                         </li>
                     </ul>
                 </div>
+            </li>
+
+            {{-- ── TikTok ───────────────────────────────────────── --}}
+            <li class="side-nav-item">
+                <a href="{{ route('tiktok.video.ads') }}" class="side-nav-link">
+                    <i class="ri-music-2-line"></i>
+                    <span>TikTok Video Ads</span>
+                </a>
+            </li>
+
+            {{-- ── YouTube ──────────────────────────────────────── --}}
+            <li class="side-nav-item">
+                <a href="{{ route('youtube.video.ads') }}" class="side-nav-link">
+                    <i class="ri-youtube-line"></i>
+                    <span>YouTube Video Ads</span>
+                </a>
             </li>
 
             <li class="side-nav-item">

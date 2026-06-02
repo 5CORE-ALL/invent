@@ -1,18 +1,13 @@
 @php
     /**
-     * This blade powers three pages — All / Video / Carousal — distinguished
-     * by the controller-supplied `$pageType` ('all' | 'video' | 'carousal').
-     * The Video and Carousal pages restrict the Ad Type dropdown and pass
-     * `?type=…` to the data endpoint so the server filters server-side.
+     * TikTok Video Ads — independent sheet importer. Mirrors the layout of
+     * the Meta Ads page but reads its own `tiktok_video_ads` data and posts
+     * to the /tiktok-video-ads/* endpoints.
      */
     $pageType        = $pageType        ?? 'all';
-    // Optional channel lens — when set ('FB' | 'Insta') the page only
-    // shows rows tagged with that CH value (powers the Facebook /
-    // Instagram channel pages). Null on the generic "all" page.
-    $chFilter        = $chFilter        ?? null;
-    $pageTitle       = $pageTitle       ?? 'Facebook All Ads Sheet';
-    $pageSubtitle    = $pageSubtitle    ?? 'Generic CSV / Excel / TSV importer — upload any sheet and view it as a table';
-    $allowedAdTypes  = $allowedAdTypes  ?? ['GROUP VIDEO', 'GROUP CAROUSAL', 'PARENT VIDEO', 'PARENT CAROUSAL'];
+    $pageTitle       = $pageTitle       ?? 'TikTok Video Ads';
+    $pageSubtitle    = $pageSubtitle    ?? 'Generic CSV / Excel / TSV importer — upload TikTok ad sheets and view them as a table';
+    $allowedAdTypes  = $allowedAdTypes  ?? ['SPARK AD', 'NON-SPARK AD', 'CAROUSEL', 'VIDEO SHOPPING'];
 @endphp
 
 @extends('layouts.vertical', ['title' => $pageTitle, 'sidenav' => 'condensed'])
@@ -35,19 +30,19 @@
             font-size: 0.75rem;
             font-weight: 600;
         }
-        #facebook-all-ads-table .tabulator-header { background: #f9fafb; }
-        #facebook-all-ads-table .tabulator-col-title { font-weight: 600; color: #1f2937; }
+        #tiktok-video-ads-table .tabulator-header { background: #f9fafb; }
+        #tiktok-video-ads-table .tabulator-col-title { font-weight: 600; color: #1f2937; }
         .tabulator-paginator label { margin-right: 5px; }
 
         /* Hide the sort triangle in column headers — clicking the header
            still sorts, the indicator just isn't drawn. Targets all
            Tabulator versions: 6.x uses .tabulator-col-sorter, older
            builds emit .tabulator-arrow. */
-        #facebook-all-ads-table .tabulator-col-sorter,
-        #facebook-all-ads-table .tabulator-arrow { display: none !important; }
+        #tiktok-video-ads-table .tabulator-col-sorter,
+        #tiktok-video-ads-table .tabulator-arrow { display: none !important; }
         /* Reclaim the space the indicator used so titles don't look
            awkwardly off-centre. */
-        #facebook-all-ads-table .tabulator-col-content { padding-right: 8px; }
+        #tiktok-video-ads-table .tabulator-col-content { padding-right: 8px; }
 
         /* ── Sum badges (Impressions / Clicks / …) ────────────────────
            Solid-pill style. Each metric gets its own colour so users
@@ -190,16 +185,6 @@
                             <i class="fas fa-sliders-h me-1"></i>Rule
                         </button>
 
-                        {{-- Pushes each visible row's Sbgt as the new
-                             daily_budget on the matching Meta campaign.
-                             Mirrors the eBay "Push SBID" button. --}}
-                        <button type="button"
-                                id="faasPushSbgtBtn"
-                                class="btn btn-sm btn-warning text-dark"
-                                title="Update each campaign's daily budget on Meta to its Sbgt value">
-                            <i class="fas fa-cloud-upload-alt me-1"></i>Push
-                        </button>
-
                         {{-- Export filtered rows + visible columns (respects
                              Type / Search / Sbgt / Stat filters). --}}
                         <div class="dropdown">
@@ -247,17 +232,6 @@
             <div class="card-body py-2 border-top">
                 {{-- Order: Type · Search · Sbgt (2nd-last) · Stat (last) --}}
                 <div class="d-flex align-items-center flex-nowrap gap-2">
-                    {{-- Bulk-set the CH (channel) on the selected rows, or
-                         every visible row when none are checked. --}}
-                    <button type="button"
-                            class="btn btn-sm btn-outline-info"
-                            style="flex-shrink:0;"
-                            data-bs-toggle="modal"
-                            data-bs-target="#bulkChModal"
-                            title="Set CH (FB / Insta) on the selected or visible rows">
-                        <i class="fas fa-layer-group me-1"></i>Bulk CH
-                    </button>
-
                     {{-- Type multi-select. Uses the AD_TYPE_COLORS
                          palette for the leading dot and shortAdType()
                          for compact labels. --}}
@@ -342,7 +316,7 @@
 
             <div class="card-body" style="padding: 0;">
                 <div id="faas-table-wrapper" style="height: calc(100vh - 230px); display: flex; flex-direction: column;">
-                    <div id="facebook-all-ads-table" style="flex: 1;"></div>
+                    <div id="tiktok-video-ads-table" style="flex: 1;"></div>
                 </div>
             </div>
         </div>
@@ -465,94 +439,6 @@
     </div>
 </div>
 
-{{-- ── Push SBGT result modal ──────────────────────────────────────
-     Opens after the Push SBGT call completes. Lists every campaign
-     attempted and whether the Meta API accepted the new daily_budget. --}}
-<div class="modal fade"
-     id="sbgtResultModal"
-     tabindex="-1"
-     aria-labelledby="sbgtResultModalLabel"
-     aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header" style="background:linear-gradient(135deg,#1877f2,#0d5cb6);color:#fff;">
-                <h5 class="modal-title" id="sbgtResultModalLabel">
-                    <i class="fas fa-cloud-upload-alt me-2"></i>Push SBGT — Results
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="d-flex flex-wrap gap-2 mb-3" id="sbgt-result-summary">
-                    {{-- filled by JS: pushed / failed / skipped pills --}}
-                </div>
-                <table class="table table-sm table-bordered align-middle" id="sbgt-result-table">
-                    <thead class="table-light">
-                        <tr>
-                            <th style="width:40px;">#</th>
-                            <th>Campaign ID</th>
-                            <th style="width:90px;">Sbgt</th>
-                            <th style="width:110px;">Status</th>
-                            <th>Reason</th>
-                        </tr>
-                    </thead>
-                    <tbody id="sbgt-result-body"></tbody>
-                </table>
-            </div>
-            <div class="modal-footer py-2">
-                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-{{-- ── Bulk CH modal ───────────────────────────────────────────────
-     Sets the CH (channel) column on every row currently visible in the
-     table (after Type / Search / Sbgt / Stat filters) in one go. The
-     same per-campaign propagation as the inline dropdown applies. --}}
-<div class="modal fade"
-     id="bulkChModal"
-     tabindex="-1"
-     aria-labelledby="bulkChModalLabel"
-     aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header" style="background:linear-gradient(135deg,#1877f2,#0d5cb6);color:#fff;">
-                <h5 class="modal-title" id="bulkChModalLabel">
-                    <i class="fas fa-layer-group me-2"></i>Bulk update CH
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p class="text-muted small mb-3">
-                    Applies the chosen channel to
-                    <span id="bulkChScope" class="fw-semibold text-dark">all visible rows</span>.
-                    Tick the row checkboxes to target only those; otherwise every
-                    row currently visible (after the Type / Search / Sbgt / Stat
-                    filters) is used.
-                    <span id="bulkChCount" class="fw-semibold text-dark">0</span>
-                    campaign(s) will be updated.
-                </p>
-                <div class="mb-3">
-                    <label for="bulkChValue" class="form-label fw-semibold">Channel (CH)</label>
-                    <select id="bulkChValue" class="form-select">
-                        <option value="">— Clear (remove CH) —</option>
-                        @foreach (($chOptions ?? ['FB', 'Insta']) as $opt)
-                            <option value="{{ $opt }}">{{ $opt }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div id="bulkChError" class="alert alert-danger py-2 small d-none mb-0"></div>
-            </div>
-            <div class="modal-footer py-2">
-                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" id="bulkChApplyBtn" class="btn btn-sm btn-info text-white">
-                    <i class="fas fa-check me-1"></i>Apply to visible rows
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
 {{-- ── Campaign Audit modal ────────────────────────────────────────
      Opens when the Audit cell is clicked. Renders the AUDIT_CHECKLIST
      items as point-weighted checkboxes with a live total, plus a
@@ -631,7 +517,7 @@
 
 {{-- ── Badge history chart modal ───────────────────────────────────
      Same line-chart idea as /all-marketplace-master: clickable badge
-     opens this modal, /facebook-all-ads-sheet/badge-history feeds it,
+     opens this modal, /tiktok-video-ads/badge-history feeds it,
      and Chart.js draws a 32-day rolling line with dots (green = up,
      red = down, grey = flat), a dashed median line, and a side panel
      showing HIGHEST / MEDIAN / LOWEST. --}}
@@ -695,38 +581,24 @@
 
         // Page-specific config (set by the controller).
         const PAGE_TYPE = @json($pageType);
-        // Channel lens ('FB' | 'Insta' | null) — sent to the data feed as
-        // ?ch=… so the server filters rows by the CH column.
-        const CH_FILTER = @json($chFilter);
-        // Dropdown choices on this page. On Video/Carousal pages this is a
-        // restricted subset so users can't pick a value that would make the
-        // row disappear from the page they're currently looking at.
+        // Ad-Type dropdown choices for the TikTok Video Ads page.
         const AD_TYPES  = @json($allowedAdTypes);
         const AD_TYPE_COLORS = {
-            'GROUP VIDEO':     { bg: '#dbeafe', fg: '#1e40af' },
-            'GROUP CAROUSAL':  { bg: '#dcfce7', fg: '#166534' },
-            'PARENT VIDEO':    { bg: '#fef3c7', fg: '#92400e' },
-            'PARENT CAROUSAL': { bg: '#fce7f3', fg: '#9d174d' },
+            'SPARK AD':       { bg: '#dbeafe', fg: '#1e40af' },
+            'NON-SPARK AD':   { bg: '#fef3c7', fg: '#92400e' },
+            'CAROUSEL':       { bg: '#dcfce7', fg: '#166534' },
+            'VIDEO SHOPPING': { bg: '#fce7f3', fg: '#9d174d' },
         };
-        // CH (channel) dropdown — which platform the campaign runs on.
-        const CH_OPTIONS = @json($chOptions ?? ['FB', 'Insta']);
-        const CH_COLORS = {
-            'FB':    { bg: '#e0e7ff', fg: '#3730a3' },  // indigo  → Facebook
-            'Insta': { bg: '#fce7f3', fg: '#9d174d' },  // pink    → Instagram
-        };
-        // Frontend-only short labels for the Ad-Type column. The DB
-        // and the rest of the code keep using the full strings — only
-        // what the user sees is shortened.
+        // No short-label rewriting needed for TikTok ad types — show
+        // the value verbatim.
         function shortAdType(v) {
-            if (!v) return v;
-            return v.replace(/^GROUP\b/,  'G')
-                    .replace(/^PARENT\b/, 'P');
+            return v || v;
         }
 
         // Tabulator column visibility is shared across users via the
         // channel_tabulator_column_settings table (channel_name +
         // visibility JSON). Same endpoints as /ebay3-tabulator.
-        const FAAS_COLUMN_CHANNEL    = 'facebook_all_ads_sheet';
+        const FAAS_COLUMN_CHANNEL    = 'tiktok_video_ads';
         const COLUMN_VISIBILITY_URL  = '/tabulator-column-visibility';
         // In-memory copy of the saved map so every table rebuild can
         // re-apply it without an extra round trip.
@@ -746,17 +618,6 @@
             const label = shortAdType(v);
             return `<span style="display:inline-block;padding:2px 10px;border-radius:999px;`
                  + `background:${c.bg};color:${c.fg};font-size:0.75rem;font-weight:600;">${label}</span>`;
-        }
-
-        // Render the CH (channel) cell as a coloured pill — FB / Insta.
-        function formatChCell(cell) {
-            const v = cell.getValue();
-            if (!v) {
-                return '<span class="text-muted small">— Select —</span>';
-            }
-            const c = CH_COLORS[v] || { bg: '#e5e7eb', fg: '#374151' };
-            return `<span style="display:inline-block;padding:2px 10px;border-radius:999px;`
-                 + `background:${c.bg};color:${c.fg};font-size:0.75rem;font-weight:600;">${v}</span>`;
         }
 
         // Renders the Status column (sourced from Meta's "Campaign
@@ -817,7 +678,7 @@
             fd.append('ad_type', value);
             fd.append('_token',  csrfToken);
 
-            fetch(`/facebook-all-ads-sheet/${id}/ad-type`, {
+            fetch(`/tiktok-video-ads/${id}/ad-type`, {
                 method:      'POST',
                 credentials: 'same-origin',
                 headers:     { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
@@ -832,35 +693,6 @@
                 // Revert the cell on save failure.
                 row.update({ ad_type: oldVal });
                 alert('Failed to save Ad Type: ' + err.message);
-            });
-        }
-
-        // Persist a row's chosen CH (channel) to the backend on edit.
-        function onChEdited(cell) {
-            const row    = cell.getRow();
-            const id     = row.getData()._id;
-            const value  = cell.getValue() || '';
-            const oldVal = cell.getOldValue() || '';
-            if (!id) return;
-
-            const fd = new FormData();
-            fd.append('ch',     value);
-            fd.append('_token', csrfToken);
-
-            fetch(`/facebook-all-ads-sheet/${id}/ch`, {
-                method:      'POST',
-                credentials: 'same-origin',
-                headers:     { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                body:        fd,
-            })
-            .then(async r => {
-                const data = await r.json().catch(() => ({}));
-                if (!r.ok || !data.success) throw new Error(data.message || `HTTP ${r.status}`);
-                return data;
-            })
-            .catch(err => {
-                row.update({ ch: oldVal });
-                alert('Failed to save CH: ' + err.message);
             });
         }
 
@@ -896,7 +728,7 @@
         // logic and post-upload refresh stay correct, but we no longer
         // render the dropdown options anywhere.
         function loadBatches(selectedId = '__merged__') {
-            return fetch('/facebook-all-ads-sheet/batches', { credentials: 'same-origin' })
+            return fetch('/tiktok-video-ads/batches', { credentials: 'same-origin' })
                 .then(r => r.json())
                 .catch(() => ({}));
         }
@@ -911,8 +743,7 @@
                 params.set('batch_id', batchId);
             }
             if (PAGE_TYPE !== 'all') params.set('type', PAGE_TYPE);
-            if (CH_FILTER) params.set('ch', CH_FILTER);
-            const url = '/facebook-all-ads-sheet/data?' + params.toString();
+            const url = '/tiktok-video-ads/data?' + params.toString();
 
             return fetch(url, { credentials: 'same-origin' })
                 .then(r => r.json())
@@ -1148,40 +979,6 @@
                     // payload as `_row_index` for any future use.)
                     cols.unshift(
                         {
-                            // Row-selection checkbox. Used by Bulk CH —
-                            // when any rows are checked the bulk action
-                            // targets only those, otherwise all visible.
-                            formatter:       'rowSelection',
-                            titleFormatter:  'rowSelection',
-                            titleFormatterParams: { rowRange: 'active' },
-                            hozAlign:        'center',
-                            headerHozAlign:  'center',
-                            headerSort:      false,
-                            width:           42,
-                            frozen:          true,
-                            cellClick:       function (e, cell) { cell.getRow().toggleSelect(); },
-                        },
-                        {
-                            // CH = channel the campaign runs on (FB / Insta).
-                            title:        'CH',
-                            field:        'ch',
-                            width:        90,
-                            headerFilter: false,
-                            editor:       'list',
-                            editorParams: {
-                                values: {
-                                    '': '— Select —',
-                                    ...Object.fromEntries(CH_OPTIONS.map(v => [v, v])),
-                                },
-                                clearable:        true,
-                                autocomplete:     true,
-                                listOnEmpty:      true,
-                                placeholderEmpty: '— Select —',
-                            },
-                            cellEdited:   onChEdited,
-                            formatter:    formatChCell,
-                        },
-                        {
                             // Header is "Type" but the field stays
                             // ad_type so all backend code is unchanged.
                             title:        'Type',
@@ -1207,7 +1004,7 @@
                     if (tabulator) {
                         tabulator.destroy();
                     }
-                    tabulator = new Tabulator('#facebook-all-ads-table', {
+                    tabulator = new Tabulator('#tiktok-video-ads-table', {
                         data:                   resp.data || [],
                         columns:                cols,
                         layout:                 'fitDataStretch',
@@ -1222,9 +1019,6 @@
                         movableColumns:         true,
                         resizableColumns:       true,
                         clipboard:              true,
-                        // Row checkboxes feed the Bulk CH action.
-                        selectableRows:         true,
-                        selectableRowsRangeMode:'click',
                         // Centre every column unless a column overrides
                         // hozAlign explicitly (e.g. the # row-index column).
                         columnDefaults: {
@@ -1439,7 +1233,7 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Uploading…';
             showStatus(`Parsing and importing as <strong>${uploadType}</strong> — this may take a moment for large files…`, 'info');
 
-            fetch('/facebook-all-ads-sheet/upload', {
+            fetch('/tiktok-video-ads/upload', {
                 method:      'POST',
                 credentials: 'same-origin',
                 headers:     { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
@@ -1492,8 +1286,8 @@
         // ── SBGT Rule editor ──────────────────────────────────────────
         // Same shape as the eBay SBID rule: an array of { acos_max,
         // sbgt, label, color } bands persisted server-side.
-        const SBGT_RULE_GET_URL  = '/facebook-all-ads-sheet/rule';
-        const SBGT_RULE_SAVE_URL = '/facebook-all-ads-sheet/rule';
+        const SBGT_RULE_GET_URL  = '/tiktok-video-ads/rule';
+        const SBGT_RULE_SAVE_URL = '/tiktok-video-ads/rule';
         let currentSbgtRule = { bands: [] };
 
         // Selected values for each multi-select filter. Empty set →
@@ -1956,239 +1750,11 @@
                 });
         });
 
-        // ── Push SBGT to Meta ─────────────────────────────────────────
-        // Collects every visible row that has a campaign id AND a non-
-        // empty Sbgt value, then POSTs in chunks. The backend calls Meta
-        // once per campaign to update `daily_budget`.
-        const SBGT_PUSH_URL = '/facebook-all-ads-sheet/push-sbgt';
-        const SBGT_PUSH_CHUNK_SIZE = 20;
-
-        function collectSbgtRowsToPush() {
-            if (!tabulator) return [];
-            const rows = tabulator.getData('active') || [];
-            const out = [];
-            rows.forEach(r => {
-                const cid  = (r['CAMPAIGN ID'] ?? '').toString().trim();
-                const sbgt = toNumber(r['Sbgt']);
-                // Meta campaign IDs are large numeric strings — guard
-                // against placeholders ("—", "N/A") that snuck in.
-                if (cid && /^\d{6,}$/.test(cid) && sbgt > 0) {
-                    out.push({ campaign_id: cid, sbgt: sbgt });
-                }
-            });
-            return out;
-        }
-
-        function sbgtPushErrorMessage(body, status) {
-            if (!body || typeof body !== 'object') {
-                return status ? ('HTTP ' + status) : 'unknown error';
-            }
-            return body.error || body.message || 'unknown error';
-        }
-
-        async function pushSbgtInChunks(allRows, btn) {
-            const chunks = [];
-            for (let i = 0; i < allRows.length; i += SBGT_PUSH_CHUNK_SIZE) {
-                chunks.push(allRows.slice(i, i + SBGT_PUSH_CHUNK_SIZE));
-            }
-
-            const aggregated = { pushed: 0, failed: 0, skipped: 0, results: [] };
-            let done = 0;
-
-            for (const chunk of chunks) {
-                done += chunk.length;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Pushing '
-                    + done + '/' + allRows.length + '…';
-
-                const resp = await fetch(SBGT_PUSH_URL, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken,
-                        'Accept':       'application/json',
-                    },
-                    body: JSON.stringify({ campaigns: chunk }),
-                });
-
-                let body = {};
-                try {
-                    body = await resp.json();
-                } catch (_) {
-                    throw new Error('Server returned a non-JSON response (HTTP '
-                        + resp.status + '). The request may have timed out — try fewer rows.');
-                }
-
-                if (!resp.ok || body.success === false) {
-                    throw new Error(sbgtPushErrorMessage(body, resp.status));
-                }
-
-                aggregated.pushed  += body.pushed  ?? 0;
-                aggregated.failed  += body.failed  ?? 0;
-                aggregated.skipped += body.skipped ?? 0;
-                aggregated.results.push(...(body.results || []));
-            }
-
-            return aggregated;
-        }
-
-        function renderSbgtResult(payload) {
-            const summary = document.getElementById('sbgt-result-summary');
-            const body    = document.getElementById('sbgt-result-body');
-            if (summary) {
-                summary.innerHTML =
-                    `<span class="badge bg-success">Pushed: ${payload.pushed ?? 0}</span>` +
-                    `<span class="badge bg-danger">Failed: ${payload.failed ?? 0}</span>` +
-                    `<span class="badge bg-secondary">Skipped: ${payload.skipped ?? 0}</span>`;
-            }
-            if (body) {
-                body.innerHTML = '';
-                (payload.results || []).forEach((r, i) => {
-                    const tr = document.createElement('tr');
-                    const cls = r.status === 'pushed'
-                        ? 'badge bg-success'
-                        : (r.status === 'failed' ? 'badge bg-danger' : 'badge bg-secondary');
-                    tr.innerHTML = `
-                        <td class="text-muted small">${i + 1}</td>
-                        <td><code>${r.campaign_id || ''}</code></td>
-                        <td>${r.sbgt != null ? '$' + r.sbgt : '—'}</td>
-                        <td><span class="${cls}">${r.status}</span></td>
-                        <td class="small">${(r.reason || '').toString().replace(/</g, '&lt;')}</td>`;
-                    body.appendChild(tr);
-                });
-            }
-            const modalEl = document.getElementById('sbgtResultModal');
-            if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
-        }
-
-        document.getElementById('faasPushSbgtBtn')?.addEventListener('click', function () {
-            const rows = collectSbgtRowsToPush();
-            if (rows.length === 0) {
-                alert('No campaigns with both a Campaign ID and an Sbgt value are currently visible.\n\n'
-                    + 'Tip: upload Spend + Sales sheets, then come back and try again.');
-                return;
-            }
-            if (!confirm(`Push suggested daily budget to ${rows.length} Meta campaign(s)?\n\n`
-                + 'This updates live ad budgets on Meta — make sure the Sbgt rule is what you want.')) {
-                return;
-            }
-
-            const btn = this;
-            const original = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Pushing…';
-
-            pushSbgtInChunks(rows, btn)
-                .then(payload => renderSbgtResult(payload))
-                .catch(err => alert('Push SBGT failed: ' + err.message))
-                .finally(() => {
-                    btn.disabled = false;
-                    btn.innerHTML = original;
-                });
-        });
-
-        // ── Bulk CH update ───────────────────────────────────────────
-        // Sets the CH column on every currently-visible (filtered) row.
-        // Collects the distinct campaign ids on screen and POSTs them
-        // with the chosen channel; the backend propagates per campaign.
-        const BULK_CH_URL = '/facebook-all-ads-sheet/bulk-ch';
-
-        // Distinct, valid campaign ids out of a list of row-data objects.
-        function campaignIdsFromRows(rows) {
-            const seen = new Set();
-            (rows || []).forEach(r => {
-                const cid = (r['CAMPAIGN ID'] ?? '').toString().trim();
-                if (cid && /^\d{6,}$/.test(cid)) seen.add(cid);
-            });
-            return [...seen];
-        }
-
-        // Bulk CH targets the checked rows when any are selected, and
-        // falls back to every visible (filtered) row otherwise.
-        function collectBulkChTarget() {
-            if (!tabulator) return { cids: [], scope: 'visible' };
-            const selected = tabulator.getSelectedData() || [];
-            if (selected.length > 0) {
-                return { cids: campaignIdsFromRows(selected), scope: 'selected' };
-            }
-            return { cids: campaignIdsFromRows(tabulator.getData('active')), scope: 'visible' };
-        }
-
-        // Refresh the "N row(s) will be updated" hint + scope wording
-        // whenever the modal opens, so it reflects the current selection
-        // / filters.
-        document.getElementById('bulkChModal')?.addEventListener('show.bs.modal', function () {
-            const countEl = document.getElementById('bulkChCount');
-            const scopeEl = document.getElementById('bulkChScope');
-            const errEl   = document.getElementById('bulkChError');
-            if (errEl) errEl.classList.add('d-none');
-            const target = collectBulkChTarget();
-            if (countEl) countEl.textContent = target.cids.length.toString();
-            if (scopeEl) scopeEl.textContent = target.scope === 'selected'
-                ? 'selected (checked) rows'
-                : 'all visible rows';
-        });
-
-        document.getElementById('bulkChApplyBtn')?.addEventListener('click', function () {
-            const errEl = document.getElementById('bulkChError');
-            const ch    = document.getElementById('bulkChValue').value;
-            const target = collectBulkChTarget();
-            const cids   = target.cids;
-
-            errEl.classList.add('d-none');
-            if (cids.length === 0) {
-                errEl.textContent = target.scope === 'selected'
-                    ? 'None of the checked rows have a valid Campaign ID.'
-                    : 'No campaigns with a valid Campaign ID are currently visible.';
-                errEl.classList.remove('d-none');
-                return;
-            }
-
-            const label = ch === '' ? 'clear CH on' : `set CH = "${ch}" for`;
-            const scopeWord = target.scope === 'selected' ? 'selected' : 'visible';
-            if (!confirm(`This will ${label} ${cids.length} ${scopeWord} campaign(s). Continue?`)) {
-                return;
-            }
-
-            const btn = this;
-            const original = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Applying…';
-
-            fetch(BULK_CH_URL, {
-                method:      'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                    'Accept':       'application/json',
-                },
-                body: JSON.stringify({ ch: ch, campaign_ids: cids }),
-            })
-            .then(async r => {
-                const data = await r.json().catch(() => ({}));
-                if (!r.ok || !data.success) throw new Error(data.message || `HTTP ${r.status}`);
-                return data;
-            })
-            .then(data => {
-                bootstrap.Modal.getInstance(document.getElementById('bulkChModal')).hide();
-                loadTable();
-            })
-            .catch(err => {
-                errEl.textContent = 'Failed to update CH: ' + err.message;
-                errEl.classList.remove('d-none');
-            })
-            .finally(() => {
-                btn.disabled = false;
-                btn.innerHTML = original;
-            });
-        });
-
         // ── Badge trend chart ────────────────────────────────────────
         // Each toolbar badge has data-metric/data-label; clicking opens
         // the chart modal and asks the backend for the daily series.
         // Same look & feel as the chart on /all-marketplace-master.
-        const BADGE_HISTORY_URL = '/facebook-all-ads-sheet/badge-history';
+        const BADGE_HISTORY_URL = '/tiktok-video-ads/badge-history';
         let badgeChartInstance = null;
         let activeBadgeMetric  = null;
         let activeBadgeLabel   = '';
@@ -2410,8 +1976,8 @@
         // the modal seeded with the latest audit + history. Save
         // POSTs to /audit and refreshes just the row in-place so the
         // table doesn't have to be reloaded.
-        const AUDIT_GET_URL  = '/facebook-all-ads-sheet/audit';
-        const AUDIT_SAVE_URL = '/facebook-all-ads-sheet/audit';
+        const AUDIT_GET_URL  = '/tiktok-video-ads/audit';
+        const AUDIT_SAVE_URL = '/tiktok-video-ads/audit';
         let auditCurrentCid  = '';
         let auditChecklistCache = [];   // mirrors AUDIT_CHECKLIST from server
 
@@ -2637,11 +2203,8 @@
         }
 
         function faasExportFilename(ext) {
-            const pageSlug = CH_FILTER
-                ? `${CH_FILTER.toLowerCase()}_ads`
-                : (PAGE_TYPE === 'all' ? 'all_ads' : `${PAGE_TYPE}_ads`);
             const dateStr  = new Date().toISOString().slice(0, 10);
-            return `facebook_${pageSlug}_${dateStr}.${ext}`;
+            return `tiktok_video_ads_${dateStr}.${ext}`;
         }
 
         function exportFaasData(format) {

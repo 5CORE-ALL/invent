@@ -2134,7 +2134,9 @@
 
                     const qty = parseFloat(row["approved_qty"]) || 0;
                     totalApproved += qty;
-                    if(qty > 0) pendingItems++;
+                    // Every visible row on this page is an item still pending to be ordered,
+                    // regardless of whether an MOQ has been set yet.
+                    pendingItems++;
 
                     const cbm = parseFloat(row["total_cbm"]) || 0;
                     totalCBM += cbm;

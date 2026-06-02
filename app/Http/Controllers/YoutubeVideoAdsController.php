@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\FacebookAllAdsSheet;
+use App\Models\YoutubeVideoAd;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -11,80 +11,27 @@ use PhpOffice\PhpSpreadsheet\Reader\Csv as CsvReader;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 
 /**
- * Backs the "Facebook All Ads Sheet" page (/facebook-all-ads-sheet).
+ * Backs the "YouTube Video Ads" page (/youtube-video-ads).
  *
- * The page is a generic sheet importer: users upload any CSV / Excel / TSV
- * file and the rows are stored verbatim as JSON in `facebook_all_ads_sheet`.
- * The Tabulator on the front-end then renders whichever columns the upload
- * carried, without any schema change.
+ * Independent module — its own `youtube_video_ads_sheet` table and its own
+ * Sbgt-rule / audit / snapshot tables. The page is a generic sheet importer:
+ * users upload any CSV / Excel / TSV file sourced from YouTube and the rows
+ * are stored verbatim as JSON in `youtube_video_ads_sheet`. The Tabulator on
+ * the front-end then renders whichever columns the upload carried.
  */
-class FacebookAllAdsSheetController extends Controller
+class YoutubeVideoAdsController extends Controller
 {
-    /** Allowed ad-type values for each page-type filter. */
-    private const TYPE_FILTERS = [
-        'video'    => ['GROUP VIDEO',    'PARENT VIDEO'],
-        'carousal' => ['GROUP CAROUSAL', 'PARENT CAROUSAL'],
-    ];
+    /** Allowed ad-type values for each page-type filter (unused — single page). */
+    private const TYPE_FILTERS = [];
 
-    /** All-ads page (no ad_type filter, full dropdown). */
+    /** YouTube Video Ads page (no ad_type filter, full dropdown). */
     public function index()
     {
-        return view('facebook-all-ads-sheet', [
+        return view('youtube-video-ads', [
             'pageType'       => 'all',
-            'pageTitle'      => 'Meta Ads All',
-            'pageSubtitle'   => 'Generic CSV / Excel / TSV importer — upload any sheet and view it as a table',
-            'allowedAdTypes' => FacebookAllAdsSheet::AD_TYPES,
-            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
-        ]);
-    }
-
-    /** Video-only page — shows GROUP VIDEO + PARENT VIDEO rows. */
-    public function videoIndex()
-    {
-        return view('facebook-all-ads-sheet', [
-            'pageType'       => 'video',
-            'pageTitle'      => 'Facebook Video Ads Sheet',
-            'pageSubtitle'   => 'Rows tagged GROUP VIDEO or PARENT VIDEO',
-            'allowedAdTypes' => self::TYPE_FILTERS['video'],
-            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
-        ]);
-    }
-
-    /** Facebook channel page — same sheet, lensed to CH = "FB" rows. */
-    public function facebookIndex()
-    {
-        return view('facebook-all-ads-sheet', [
-            'pageType'       => 'all',
-            'pageTitle'      => 'Facebook',
-            'pageSubtitle'   => 'Campaigns tagged CH = FB',
-            'allowedAdTypes' => FacebookAllAdsSheet::AD_TYPES,
-            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
-            'chFilter'       => 'FB',
-        ]);
-    }
-
-    /** Instagram channel page — same sheet, lensed to CH = "Insta" rows. */
-    public function instagramIndex()
-    {
-        return view('facebook-all-ads-sheet', [
-            'pageType'       => 'all',
-            'pageTitle'      => 'Instagram',
-            'pageSubtitle'   => 'Campaigns tagged CH = Insta',
-            'allowedAdTypes' => FacebookAllAdsSheet::AD_TYPES,
-            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
-            'chFilter'       => 'Insta',
-        ]);
-    }
-
-    /** Carousal-only page — shows GROUP CAROUSAL + PARENT CAROUSAL rows. */
-    public function carousalIndex()
-    {
-        return view('facebook-all-ads-sheet', [
-            'pageType'       => 'carousal',
-            'pageTitle'      => 'Facebook Carousal Ads Sheet',
-            'pageSubtitle'   => 'Rows tagged GROUP CAROUSAL or PARENT CAROUSAL',
-            'allowedAdTypes' => self::TYPE_FILTERS['carousal'],
-            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
+            'pageTitle'      => 'YouTube Video Ads',
+            'pageSubtitle'   => 'Generic CSV / Excel / TSV importer — upload YouTube ad sheets and view them as a table',
+            'allowedAdTypes' => YoutubeVideoAd::AD_TYPES,
         ]);
     }
 
@@ -99,31 +46,22 @@ class FacebookAllAdsSheetController extends Controller
         $view     = $request->query('view');     // 'merged' | null
         $typeKey  = $request->query('type');     // 'video' | 'carousal' | null
         $typeList = self::TYPE_FILTERS[$typeKey] ?? null;
-        // Channel lens — 'FB' | 'Insta' (Facebook / Instagram pages).
-        $chFilter = $request->query('ch');
-        if (! in_array($chFilter, FacebookAllAdsSheet::CH_OPTIONS, true)) {
-            $chFilter = null;
-        }
 
         // Merged view: join the most recent Campaign batch with the most
         // recent Spend batch by `Campaign ID`. Default when no specific batch
         // is asked for, so the user sees one unified table out of the box.
         if ($batchId === null && ($view === 'merged' || $view === null)) {
-            $merged = $this->getMergedView($typeList, $chFilter);
+            $merged = $this->getMergedView($typeList);
             if ($merged !== null) {
                 return response()->json($merged);
             }
             // No data yet — fall through to the empty-payload below.
         }
 
-        $query = FacebookAllAdsSheet::query()->orderBy('row_index');
+        $query = YoutubeVideoAd::query()->orderBy('row_index');
 
         if ($typeList) {
             $query->whereIn('ad_type', $typeList);
-        }
-
-        if ($chFilter) {
-            $query->where('ch', $chFilter);
         }
 
         if ($batchId) {
@@ -138,7 +76,7 @@ class FacebookAllAdsSheetController extends Controller
             ]);
         }
 
-        $rows = $query->get(['id', 'row_index', 'row_data', 'ad_type', 'ch', 'source_filename', 'created_at']);
+        $rows = $query->get(['id', 'row_index', 'row_data', 'ad_type', 'source_filename', 'created_at']);
 
         // Build column list from the union of keys observed in this batch.
         // Skip any `__*` meta keys (e.g. `__upload_type`) — those are
@@ -174,13 +112,12 @@ class FacebookAllAdsSheetController extends Controller
                     '_row_index'   => $r->row_index,
                     '_upload_type' => $uploadType,
                     'ad_type'      => $r->ad_type,
-                    'ch'           => $r->ch,
                 ],
                 $cleanedData
             );
         });
 
-        $meta = FacebookAllAdsSheet::query()
+        $meta = YoutubeVideoAd::query()
             ->where('import_batch_id', $batchId)
             ->select('source_filename', DB::raw('MIN(created_at) as uploaded_at'), DB::raw('COUNT(*) as row_count'))
             ->groupBy('source_filename')
@@ -212,7 +149,7 @@ class FacebookAllAdsSheetController extends Controller
      * Type filtering (`$typeList` from /facebook-{video|carousal}-… pages)
      * is applied to the merged set just like it is to individual batches.
      */
-    private function getMergedView(?array $typeList, ?string $chFilter = null): ?array
+    private function getMergedView(?array $typeList): ?array
     {
         $latestByType = $this->latestBatchPerType();
         if (empty($latestByType)) {
@@ -220,13 +157,13 @@ class FacebookAllAdsSheetController extends Controller
         }
 
         $batchIds = array_values($latestByType);
-        $rowsQ = FacebookAllAdsSheet::query()
+        $rowsQ = YoutubeVideoAd::query()
             ->whereIn('import_batch_id', $batchIds)
             ->orderBy('id');
         if ($typeList) {
             $rowsQ->whereIn('ad_type', $typeList);
         }
-        $rows = $rowsQ->get(['id', 'row_index', 'row_data', 'ad_type', 'ch', 'import_batch_id']);
+        $rows = $rowsQ->get(['id', 'row_index', 'row_data', 'ad_type', 'import_batch_id']);
 
         // Build a `lowercase Campaign name → Campaign ID` lookup from the
         // Campaign batch. Used as a fallback for Spend / Sales rows whose
@@ -276,7 +213,6 @@ class FacebookAllAdsSheetController extends Controller
                     '_upload_type' => $uploadType,
                     '_campaign_id' => $cid,
                     'ad_type'      => $r->ad_type,
-                    'ch'           => $r->ch,
                 ];
             }
 
@@ -296,7 +232,6 @@ class FacebookAllAdsSheetController extends Controller
             if ($uploadType === 'campaign') {
                 $merged[$cid]['_id']     = $r->id;
                 $merged[$cid]['ad_type'] = $r->ad_type;
-                $merged[$cid]['ch']      = $r->ch;
             }
         }
 
@@ -335,7 +270,6 @@ class FacebookAllAdsSheetController extends Controller
                 '_upload_type' => $row['_upload_type'],
                 '_campaign_id' => $row['_campaign_id'],
                 'ad_type'      => $row['ad_type'],
-                'ch'           => $row['ch'] ?? null,
             ];
             // Pass 1 — sources
             foreach (self::MERGED_COLUMNS as $col) {
@@ -425,17 +359,7 @@ class FacebookAllAdsSheetController extends Controller
         } catch (\Throwable $e) {
             // Snapshot writes must never break the page render —
             // log and continue.
-            \Log::warning('FAAS snapshot failed: ' . $e->getMessage());
-        }
-
-        // Channel lens — keep only campaigns tagged with the requested CH
-        // (FB / Insta). Applied after the snapshot pass so the daily
-        // history still records every campaign regardless of the lens.
-        if ($chFilter) {
-            $projected = array_values(array_filter(
-                $projected,
-                fn($r) => ($r['ch'] ?? null) === $chFilter
-            ));
+            \Log::warning('YouTube snapshot failed: ' . $e->getMessage());
         }
 
         $columnList = array_map(
@@ -481,7 +405,7 @@ class FacebookAllAdsSheetController extends Controller
      */
     private function buildAdTypeCarryMap(): array
     {
-        $rows = FacebookAllAdsSheet::query()
+        $rows = YoutubeVideoAd::query()
             ->whereNotNull('ad_type')
             ->where('ad_type', '!=', '')
             ->orderByDesc('id')   // newest tag wins if any cid still has multiple
@@ -497,36 +421,6 @@ class FacebookAllAdsSheetController extends Controller
             ));
             if ($cid !== null && $cid !== '' && ! isset($map[$cid])) {
                 $map[$cid] = $r->ad_type;
-            }
-        }
-        return $map;
-    }
-
-    /**
-     * Build a `Campaign ID → ch` map so new uploads inherit the channel
-     * (FB / Insta) a campaign was previously tagged with. Mirrors
-     * {@see buildAdTypeCarryMap()} — CH is a campaign-level attribute too.
-     *
-     * @return array<string, string>
-     */
-    private function buildChCarryMap(): array
-    {
-        $rows = FacebookAllAdsSheet::query()
-            ->whereNotNull('ch')
-            ->where('ch', '!=', '')
-            ->orderByDesc('id')
-            ->get(['ch', 'row_data']);
-
-        $map = [];
-        foreach ($rows as $r) {
-            $rd  = $r->row_data ?? [];
-            $cid = $this->findCampaignId(array_filter(
-                $rd,
-                fn($_, $k) => ! str_starts_with($k, '__'),
-                ARRAY_FILTER_USE_BOTH
-            ));
-            if ($cid !== null && $cid !== '' && ! isset($map[$cid])) {
-                $map[$cid] = $r->ch;
             }
         }
         return $map;
@@ -665,7 +559,7 @@ class FacebookAllAdsSheetController extends Controller
      */
     private function loadSbgtBands(): array
     {
-        $row = DB::table('facebook_sbgt_rules')->where('key', 'facebook_all')->first();
+        $row = DB::table('youtube_sbgt_rules')->where('key', 'youtube_all')->first();
         $rule = $row
             ? (json_decode($row->rule, true) ?: [])
             : $this->defaultSbgtRule();
@@ -726,7 +620,7 @@ class FacebookAllAdsSheetController extends Controller
 
         $now = now();
         foreach ($payloads as $p) {
-            DB::table('facebook_campaign_metric_snapshots')->updateOrInsert(
+            DB::table('youtube_campaign_metric_snapshots')->updateOrInsert(
                 ['campaign_id' => $p['campaign_id'], 'snapshot_date' => $p['snapshot_date']],
                 array_merge($p, ['updated_at' => $now, 'created_at' => $now])
             );
@@ -748,12 +642,12 @@ class FacebookAllAdsSheetController extends Controller
         // Using id (auto-increment) is monotonic with audited_at and
         // dodges any tie-breaker ambiguity if two audits land in the
         // same second.
-        $sub = DB::table('facebook_campaign_audits')
+        $sub = DB::table('youtube_campaign_audits')
             ->select('campaign_id', DB::raw('MAX(id) AS max_id'))
             ->whereIn('campaign_id', $cids)
             ->groupBy('campaign_id');
 
-        $rows = DB::table('facebook_campaign_audits AS a')
+        $rows = DB::table('youtube_campaign_audits AS a')
             ->joinSub($sub, 'l', function ($j) {
                 $j->on('a.id', '=', 'l.max_id');
             })
@@ -789,12 +683,12 @@ class FacebookAllAdsSheetController extends Controller
             ], 422);
         }
 
-        $latest = DB::table('facebook_campaign_audits')
+        $latest = DB::table('youtube_campaign_audits')
             ->where('campaign_id', $cid)
             ->orderByDesc('id')
             ->first();
 
-        $history = DB::table('facebook_campaign_audits')
+        $history = DB::table('youtube_campaign_audits')
             ->where('campaign_id', $cid)
             ->orderByDesc('id')
             ->limit(50)
@@ -847,7 +741,7 @@ class FacebookAllAdsSheetController extends Controller
             : 0;
 
         $user = $request->user();
-        $id   = DB::table('facebook_campaign_audits')->insertGetId([
+        $id   = DB::table('youtube_campaign_audits')->insertGetId([
             'campaign_id'      => $cid,
             'campaign_name'    => $campaignName !== '' ? $campaignName : null,
             'checks'           => json_encode($checks),
@@ -872,7 +766,7 @@ class FacebookAllAdsSheetController extends Controller
     /** GET endpoint — returns the current rule (with defaults if absent). */
     public function getRule()
     {
-        $row = DB::table('facebook_sbgt_rules')->where('key', 'facebook_all')->first();
+        $row = DB::table('youtube_sbgt_rules')->where('key', 'youtube_all')->first();
         return response()->json($row
             ? (json_decode($row->rule, true) ?: $this->defaultSbgtRule())
             : $this->defaultSbgtRule());
@@ -901,174 +795,12 @@ class FacebookAllAdsSheetController extends Controller
         }
         usort($clean, fn($a, $b) => $a['acos_max'] <=> $b['acos_max']);
 
-        DB::table('facebook_sbgt_rules')->updateOrInsert(
-            ['key' => 'facebook_all'],
+        DB::table('youtube_sbgt_rules')->updateOrInsert(
+            ['key' => 'youtube_all'],
             ['rule' => json_encode(['bands' => $clean]), 'updated_at' => now(), 'created_at' => now()]
         );
 
         return response()->json(['success' => true, 'rule' => ['bands' => $clean]]);
-    }
-
-    /**
-     * Push per-campaign Sbgt values as the new `daily_budget` on Meta.
-     *
-     * Frontend sends `{ campaigns: [{ campaign_id, sbgt }, ...] }`.
-     * For each entry we POST to:
-     *
-     *     https://graph.facebook.com/{v}/{campaign_id}
-     *     ?access_token=…
-     *     &daily_budget=<sbgt-in-account-currency-minor-units>
-     *
-     * Meta expects the budget in the account currency's minor unit
-     * (cents for USD), so we multiply by 100. Each call is logged to
-     * `meta_action_logs` for an audit trail. Campaigns whose budget
-     * lives at the ad-set level will be reported as "failed" with the
-     * Meta error message — the user can then either move CBO to the
-     * campaign level or push to ad sets directly.
-     *
-     * Same intent as EbayCampaignAdsController::pushSbid() but inline
-     * (no artisan command), because the source-of-truth Sbgt comes
-     * from the user's uploaded sheets, not a stored value.
-     */
-    public function pushSbgt(Request $request)
-    {
-        $campaigns = $request->input('campaigns', []);
-        if (! is_array($campaigns) || count($campaigns) === 0) {
-            return response()->json([
-                'success' => false,
-                'error'   => 'Nothing to push — supply campaigns: [{campaign_id, sbgt}].',
-            ], 422);
-        }
-
-        // Each campaign is one Meta API call plus a short backoff — a batch
-        // of ~95 GROUP VIDEO rows can exceed the default 30–60 s PHP limit.
-        $count = count($campaigns);
-        set_time_limit(max(120, $count * 4));
-        ignore_user_abort(true);
-
-        $accessToken = config('services.meta.access_token');
-        $apiVersion  = config('services.meta.api_version', 'v21.0');
-        if (! $accessToken) {
-            return response()->json([
-                'success' => false,
-                'error'   => 'META_ACCESS_TOKEN not configured.',
-            ], 500);
-        }
-
-        $userId  = optional($request->user())->id;
-        $base    = "https://graph.facebook.com/{$apiVersion}";
-        $pushed  = 0;
-        $failed  = 0;
-        $skipped = 0;
-        $results = [];
-
-        foreach ($campaigns as $row) {
-            $cid  = isset($row['campaign_id']) ? trim((string) $row['campaign_id']) : '';
-            $sbgt = isset($row['sbgt']) ? $row['sbgt'] : null;
-            $sbgtNum = $this->parseNumeric($sbgt);
-
-            // Skip rows with no campaign id or no recommendation — these
-            // are the "blank Sbgt" rows the user could see in the table.
-            if ($cid === '' || ! preg_match('/^\d{6,}$/', $cid)) {
-                $skipped++;
-                $results[] = [
-                    'campaign_id' => $cid,
-                    'status'      => 'skipped',
-                    'reason'      => 'Missing or invalid campaign id',
-                ];
-                continue;
-            }
-            if ($sbgtNum === null || $sbgtNum <= 0) {
-                $skipped++;
-                $results[] = [
-                    'campaign_id' => $cid,
-                    'status'      => 'skipped',
-                    'reason'      => 'No Sbgt value to push',
-                ];
-                continue;
-            }
-
-            // Meta expects minor-unit integers (cents for USD).
-            $minorUnits = (int) round($sbgtNum * 100);
-
-            try {
-                $resp = \Illuminate\Support\Facades\Http::asForm()
-                    ->timeout(20)
-                    ->post("{$base}/{$cid}", [
-                        'access_token' => $accessToken,
-                        'daily_budget' => $minorUnits,
-                    ]);
-
-                $body = $resp->json() ?? [];
-                $ok   = $resp->successful() && (($body['success'] ?? false) === true || isset($body['id']));
-
-                DB::table('meta_action_logs')->insert([
-                    'user_id'            => $userId ?? 0,
-                    'action_type'        => 'update_budget',
-                    'entity_type'        => 'campaign',
-                    'entity_meta_id'     => $cid,
-                    'status'             => $ok ? 'success' : 'failed',
-                    'request_payload'    => json_encode(['daily_budget' => $minorUnits, 'sbgt' => $sbgtNum]),
-                    'response_payload'   => json_encode($body),
-                    'error_message'      => $ok ? null : ($body['error']['message'] ?? null),
-                    'meta_error_code'    => $ok ? null : (string) ($body['error']['code'] ?? ''),
-                    'meta_error_message' => $ok ? null : ($body['error']['error_user_msg'] ?? $body['error']['message'] ?? null),
-                    'created_at'         => now(),
-                    'updated_at'         => now(),
-                ]);
-
-                if ($ok) {
-                    $pushed++;
-                    $results[] = [
-                        'campaign_id' => $cid,
-                        'status'      => 'pushed',
-                        'sbgt'        => $sbgtNum,
-                    ];
-                    // Mirror the new budget locally so subsequent reads
-                    // of meta_campaigns reflect what we just wrote.
-                    DB::table('meta_campaigns')
-                        ->where('meta_id', $cid)
-                        ->update(['daily_budget' => $sbgtNum, 'updated_at' => now()]);
-                } else {
-                    $failed++;
-                    $results[] = [
-                        'campaign_id' => $cid,
-                        'status'      => 'failed',
-                        'reason'      => $body['error']['message'] ?? ('HTTP ' . $resp->status()),
-                    ];
-                }
-            } catch (\Throwable $e) {
-                $failed++;
-                $results[] = [
-                    'campaign_id' => $cid,
-                    'status'      => 'failed',
-                    'reason'      => $e->getMessage(),
-                ];
-                DB::table('meta_action_logs')->insert([
-                    'user_id'        => $userId ?? 0,
-                    'action_type'    => 'update_budget',
-                    'entity_type'    => 'campaign',
-                    'entity_meta_id' => $cid,
-                    'status'         => 'failed',
-                    'request_payload' => json_encode(['daily_budget' => $minorUnits, 'sbgt' => $sbgtNum]),
-                    'error_message'  => $e->getMessage(),
-                    'created_at'     => now(),
-                    'updated_at'     => now(),
-                ]);
-            }
-
-            // Small breather between calls so a long batch doesn't trip
-            // Meta's rate limiter.
-            usleep(150000); // 0.15 s
-        }
-
-        return response()->json([
-            'success' => true,
-            'pushed'  => $pushed,
-            'failed'  => $failed,
-            'skipped' => $skipped,
-            'results' => $results,
-        ]);
     }
 
     /**
@@ -1106,7 +838,7 @@ class FacebookAllAdsSheetController extends Controller
         // Aggregate the per-campaign daily snapshot table by date so
         // the chart's daily values exactly match the rollup the user
         // sees on the badges.
-        $base = DB::table('facebook_campaign_metric_snapshots')
+        $base = DB::table('youtube_campaign_metric_snapshots')
             ->where('snapshot_date', '>=', now()->subDays($days)->toDateString());
         if (! empty($cids)) {
             $base->whereIn('campaign_id', $cids);
@@ -1221,7 +953,7 @@ class FacebookAllAdsSheetController extends Controller
     {
         if (! $batchId) return [];
 
-        $rows = FacebookAllAdsSheet::query()
+        $rows = YoutubeVideoAd::query()
             ->where('import_batch_id', $batchId)
             ->get(['row_data']);
 
@@ -1285,7 +1017,7 @@ class FacebookAllAdsSheetController extends Controller
      */
     private function latestBatchPerType(): array
     {
-        $batches = FacebookAllAdsSheet::query()
+        $batches = YoutubeVideoAd::query()
             ->select('import_batch_id', DB::raw('MIN(id) as first_id'))
             ->groupBy('import_batch_id')
             ->orderByDesc(DB::raw('MIN(id)'))
@@ -1295,7 +1027,7 @@ class FacebookAllAdsSheetController extends Controller
         if ($batches->isEmpty()) return [];
 
         $firstIds  = $batches->pluck('first_id')->all();
-        $firstRows = FacebookAllAdsSheet::whereIn('id', $firstIds)
+        $firstRows = YoutubeVideoAd::whereIn('id', $firstIds)
             ->pluck('row_data', 'id');
 
         $latestByType = [];
@@ -1337,10 +1069,10 @@ class FacebookAllAdsSheetController extends Controller
     public function updateAdType(Request $request, int $id)
     {
         $request->validate([
-            'ad_type' => ['nullable', 'string', 'in:' . implode(',', FacebookAllAdsSheet::AD_TYPES)],
+            'ad_type' => ['nullable', 'string', 'in:' . implode(',', YoutubeVideoAd::AD_TYPES)],
         ]);
 
-        $row = FacebookAllAdsSheet::findOrFail($id);
+        $row = YoutubeVideoAd::findOrFail($id);
         $newAdType = $request->input('ad_type') ?: null;
 
         // Propagate to every row that shares this row's Campaign ID. We
@@ -1358,7 +1090,7 @@ class FacebookAllAdsSheetController extends Controller
             // a `Campaign ID`-flavoured key or `Campaign activities`.
             $like1 = '%"' . str_replace('%', '\\%', $cid) . '"%';
 
-            $propagated = FacebookAllAdsSheet::query()
+            $propagated = YoutubeVideoAd::query()
                 ->where(function ($q) use ($cid, $like1) {
                     // JSON contains-style lookup that works on MySQL >= 5.7
                     // without needing JSON functions (cid values are always
@@ -1396,140 +1128,6 @@ class FacebookAllAdsSheetController extends Controller
     }
 
     /**
-     * Persist the CH (channel) chosen from the dropdown. Propagates the
-     * value (or NULL when cleared) to every row that shares the same
-     * Campaign ID, so CH behaves as a campaign-level attribute — exactly
-     * like {@see updateAdType()}. Accepts an empty string to clear.
-     */
-    public function updateCh(Request $request, int $id)
-    {
-        $request->validate([
-            'ch' => ['nullable', 'string', 'in:' . implode(',', FacebookAllAdsSheet::CH_OPTIONS)],
-        ]);
-
-        $row   = FacebookAllAdsSheet::findOrFail($id);
-        $newCh = $request->input('ch') ?: null;
-
-        $cid = $this->findCampaignId(array_filter(
-            (array) ($row->row_data ?? []),
-            fn($_, $k) => ! str_starts_with($k, '__'),
-            ARRAY_FILTER_USE_BOTH
-        ));
-
-        $propagated = 1;
-        if ($cid !== null && $cid !== '') {
-            $like1 = '%"' . str_replace('%', '\\%', $cid) . '"%';
-
-            $propagated = FacebookAllAdsSheet::query()
-                ->where('row_data', 'like', $like1)
-                ->get(['id', 'row_data'])
-                ->filter(function ($r) use ($cid) {
-                    $rd = (array) ($r->row_data ?? []);
-                    $rowCid = $this->findCampaignId(array_filter(
-                        $rd,
-                        fn($_, $k) => ! str_starts_with($k, '__'),
-                        ARRAY_FILTER_USE_BOTH
-                    ));
-                    return $rowCid === $cid;
-                })
-                ->each(function ($r) use ($newCh) {
-                    $r->ch = $newCh;
-                    $r->save();
-                })
-                ->count();
-        } else {
-            $row->ch = $newCh;
-            $row->save();
-        }
-
-        return response()->json([
-            'success'    => true,
-            'id'         => $row->id,
-            'ch'         => $newCh,
-            'campaign_id'=> $cid,
-            'propagated' => $propagated,
-        ]);
-    }
-
-    /**
-     * Bulk-set the CH (channel) column for a list of campaign ids.
-     *
-     * Frontend sends `{ ch: 'FB'|'Insta'|'', campaign_ids: [...] }`.
-     * For every supplied campaign id we update every row that shares it
-     * (same per-campaign propagation as {@see updateCh()}). An empty `ch`
-     * clears the value. Returns how many campaigns and rows were touched.
-     */
-    public function bulkCh(Request $request)
-    {
-        $request->validate([
-            'ch'             => ['nullable', 'string', 'in:' . implode(',', FacebookAllAdsSheet::CH_OPTIONS)],
-            'campaign_ids'   => ['required', 'array', 'min:1'],
-            'campaign_ids.*' => ['string'],
-        ]);
-
-        $newCh = $request->input('ch') ?: null;
-        $cids  = collect($request->input('campaign_ids', []))
-            ->map(fn($c) => trim((string) $c))
-            ->filter(fn($c) => $c !== '')
-            ->unique()
-            ->values()
-            ->all();
-
-        if (empty($cids)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No valid campaign ids supplied.',
-            ], 422);
-        }
-
-        $campaignsUpdated = 0;
-        $rowsUpdated      = 0;
-
-        DB::beginTransaction();
-        try {
-            foreach ($cids as $cid) {
-                $like = '%"' . str_replace('%', '\\%', $cid) . '"%';
-
-                $touched = FacebookAllAdsSheet::query()
-                    ->where('row_data', 'like', $like)
-                    ->get(['id', 'row_data'])
-                    ->filter(function ($r) use ($cid) {
-                        $rowCid = $this->findCampaignId(array_filter(
-                            (array) ($r->row_data ?? []),
-                            fn($_, $k) => ! str_starts_with($k, '__'),
-                            ARRAY_FILTER_USE_BOTH
-                        ));
-                        return $rowCid === $cid;
-                    })
-                    ->each(function ($r) use ($newCh) {
-                        $r->ch = $newCh;
-                        $r->save();
-                    })
-                    ->count();
-
-                if ($touched > 0) {
-                    $campaignsUpdated++;
-                    $rowsUpdated += $touched;
-                }
-            }
-            DB::commit();
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Bulk CH update failed: ' . $e->getMessage(),
-            ], 500);
-        }
-
-        return response()->json([
-            'success'           => true,
-            'ch'                => $newCh,
-            'campaigns_updated' => $campaignsUpdated,
-            'rows_updated'      => $rowsUpdated,
-        ]);
-    }
-
-    /**
      * List every distinct upload batch so the page can offer a switcher.
      */
     public function batches()
@@ -1537,7 +1135,7 @@ class FacebookAllAdsSheetController extends Controller
         // Pull the aggregate row + a representative `row_data` (from the
         // batch's lowest-id row) so we can extract `__upload_type` without
         // adding a JSON_EXTRACT clause that wouldn't work on older MySQL.
-        $batches = FacebookAllAdsSheet::query()
+        $batches = YoutubeVideoAd::query()
             ->select(
                 'import_batch_id',
                 DB::raw('MIN(source_filename) as source_filename'),
@@ -1552,7 +1150,7 @@ class FacebookAllAdsSheetController extends Controller
 
         // Resolve the upload_type for each batch from the first row's row_data.
         $firstIds   = $batches->pluck('first_id')->all();
-        $firstRows  = FacebookAllAdsSheet::whereIn('id', $firstIds)->pluck('row_data', 'id');
+        $firstRows  = YoutubeVideoAd::whereIn('id', $firstIds)->pluck('row_data', 'id');
 
         $batches = $batches->map(function ($b) use ($firstRows) {
             $rd = $firstRows[$b->first_id] ?? null;
@@ -1781,7 +1379,6 @@ class FacebookAllAdsSheetController extends Controller
         // user previously set on rows with the same Campaign ID. Without
         // this, every new Campaign upload silently wipes those tags.
         $prevAdTypeByCid = $this->buildAdTypeCarryMap();
-        $prevChByCid     = $this->buildChCarryMap();
 
         DB::beginTransaction();
         try {
@@ -1804,20 +1401,18 @@ class FacebookAllAdsSheetController extends Controller
                 // detection works the same as on previously-stored rows.)
                 $rowCid     = $this->findCampaignId($assoc);
                 $carriedAdType = $rowCid !== null ? ($prevAdTypeByCid[$rowCid] ?? null) : null;
-                $carriedCh     = $rowCid !== null ? ($prevChByCid[$rowCid] ?? null) : null;
 
                 // Tuck the upload type inside the existing `row_data` JSON
                 // (under a double-underscore meta key) so we don't need a new
                 // DB column. The display layer hides keys starting with `__`.
                 $assoc = ['__upload_type' => $uploadType] + $assoc;
 
-                FacebookAllAdsSheet::create([
+                YoutubeVideoAd::create([
                     'import_batch_id' => $batchId,
                     'source_filename' => $name,
                     'row_index'       => $headerRowIdx + 2 + $i,
                     'row_data'        => $assoc,
                     'ad_type'         => $carriedAdType,
-                    'ch'              => $carriedCh,
                     'uploaded_by'     => $userId,
                 ]);
                 $imported++;
