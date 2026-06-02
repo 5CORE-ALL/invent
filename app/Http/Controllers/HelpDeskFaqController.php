@@ -238,32 +238,6 @@ class HelpDeskFaqController extends Controller
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); // UTF-8 BOM for Excel
             fputcsv($out, ['faq', 'dept', 'answers', 'link', 'link2', 'sop', 'video', 'action', 'ca', 'plus_action', 'messages']);
-            fputcsv($out, [
-                'How do I reset my password?',
-                'all',
-                'Go to Settings > Security > Reset Password and follow the email link.',
-                'https://example.com/reset',
-                '',
-                '',
-                '',
-                'Verify the user identity before resetting.',
-                '',
-                '',
-                'Contact IT if you do not receive the reset email within 5 minutes.',
-            ]);
-            fputcsv($out, [
-                'How do I apply for leave?',
-                'HR|Management',
-                'Open HR module > Apply Leave > select dates > submit.',
-                '',
-                '',
-                'https://example.com/leave-sop',
-                'https://example.com/leave-video',
-                'Submit the leave form to your manager.',
-                'Notify your manager and update the leave tracker.',
-                'Set up an auto-responder before your leave starts.',
-                'Leave requests must be submitted at least 3 days in advance.',
-            ]);
             fclose($out);
         };
 

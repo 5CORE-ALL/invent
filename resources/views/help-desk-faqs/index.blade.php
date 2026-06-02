@@ -264,15 +264,6 @@
                         <input type="file" name="file" class="form-control" accept=".csv,text/csv" required>
                     </div>
                     <div class="alert alert-info mb-3">
-                        <p class="mb-1"><strong>Expected columns:</strong></p>
-                        <code>faq, dept, answers, link, link2, sop, video</code>
-                        <hr class="my-2">
-                        <ul class="mb-0 ps-3">
-                            <li><strong>faq</strong> is required; rows with an empty faq are skipped.</li>
-                            <li><strong>dept</strong> accepts department names separated by <code>,</code> or <code>|</code> (e.g. <code>HR|MGMT</code>), or the word <code>all</code> for everyone. Leave blank to show to everyone.</li>
-                            <li>Other columns are optional.</li>
-                        </ul>
-                        <hr class="my-2">
                         <p class="mb-1"><strong>Available department options:</strong></p>
                         <div class="d-flex flex-wrap gap-1">
                             <span class="badge bg-success">all</span>
