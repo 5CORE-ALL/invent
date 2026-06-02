@@ -48,7 +48,6 @@ class HelpDeskFaqController extends Controller
 
     public function update(Request $request, HelpDeskFaq $help_desk_faq)
     {
-        $this->ensureCanEditFaq($request);
         $data = $this->validateData($request);
         $help_desk_faq->update($data);
 

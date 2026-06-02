@@ -22,17 +22,7 @@
     @include('layouts.shared.page-title', ['page_title' => 'Help Desk FAQs, FFP', 'sub_title' => 'Manage FAQs shown in the 5Core Help Desk'])
 
     @php
-        $faqEditorTokens = ['president', 'innet', 'jasmine', 'hritikhsha'];
-        $authUser = auth()->user();
-        $authName = strtolower($authUser->name ?? '');
-        $authEmail = strtolower($authUser->email ?? '');
-        $canEditFaq = false;
-        foreach ($faqEditorTokens as $token) {
-            if (($authName !== '' && str_contains($authName, $token)) || ($authEmail !== '' && str_contains($authEmail, $token))) {
-                $canEditFaq = true;
-                break;
-            }
-        }
+        $canEditFaq = true;
     @endphp
 
     @if (session('success'))
@@ -279,9 +269,17 @@
                         <hr class="my-2">
                         <ul class="mb-0 ps-3">
                             <li><strong>faq</strong> is required; rows with an empty faq are skipped.</li>
-                            <li><strong>dept</strong> accepts department names or slugs separated by <code>,</code> or <code>|</code> (e.g. <code>HR|Management</code>), or the word <code>all</code> for everyone. Leave blank to show to everyone.</li>
+                            <li><strong>dept</strong> accepts department names separated by <code>,</code> or <code>|</code> (e.g. <code>HR|MGMT</code>), or the word <code>all</code> for everyone. Leave blank to show to everyone.</li>
                             <li>Other columns are optional.</li>
                         </ul>
+                        <hr class="my-2">
+                        <p class="mb-1"><strong>Available department options:</strong></p>
+                        <div class="d-flex flex-wrap gap-1">
+                            <span class="badge bg-success">all</span>
+                            @foreach ($departments as $dept)
+                                <span class="badge bg-soft-primary text-primary">{{ $dept->name }}</span>
+                            @endforeach
+                        </div>
                     </div>
                     <a href="{{ route('help-desk-faqs.sample') }}" class="btn btn-sm btn-soft-secondary">
                         <i class="bx bx-download"></i> Download sample CSV
