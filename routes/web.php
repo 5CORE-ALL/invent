@@ -310,7 +310,19 @@ Route::prefix('ai')->middleware(['auth'])->group(function () {
     Route::post('/upload-knowledge', [\App\Http\Controllers\Api\AiChatController::class, 'uploadKnowledge'])->name('ai.upload');
     Route::get('/check-notifications', [\App\Http\Controllers\Api\AiChatController::class, 'checkNotifications'])->name('ai.check');
     Route::get('/pending-replies', [\App\Http\Controllers\Api\AiChatController::class, 'getPendingReplies'])->name('ai.pending');
+    Route::get('/faqs', [\App\Http\Controllers\Api\AiChatController::class, 'getFaqs'])->name('ai.faqs');
     Route::post('/mark-replies-read', [\App\Http\Controllers\Api\AiChatController::class, 'markRepliesRead'])->name('ai.mark-read');
+});
+
+// Help Desk FAQ management (admin UI)
+Route::middleware(['auth'])->group(function () {
+    Route::get('/help-desk-faqs', [\App\Http\Controllers\HelpDeskFaqController::class, 'index'])->name('help-desk-faqs.index');
+    Route::get('/help-desk-faqs/sample-csv', [\App\Http\Controllers\HelpDeskFaqController::class, 'sampleCsv'])->name('help-desk-faqs.sample');
+    Route::post('/help-desk-faqs/bulk-import', [\App\Http\Controllers\HelpDeskFaqController::class, 'bulkImport'])->name('help-desk-faqs.bulk');
+    Route::post('/help-desk-faqs/bulk-update', [\App\Http\Controllers\HelpDeskFaqController::class, 'bulkUpdate'])->name('help-desk-faqs.bulk-update');
+    Route::post('/help-desk-faqs', [\App\Http\Controllers\HelpDeskFaqController::class, 'store'])->name('help-desk-faqs.store');
+    Route::put('/help-desk-faqs/{help_desk_faq}', [\App\Http\Controllers\HelpDeskFaqController::class, 'update'])->name('help-desk-faqs.update');
+    Route::delete('/help-desk-faqs/{help_desk_faq}', [\App\Http\Controllers\HelpDeskFaqController::class, 'destroy'])->name('help-desk-faqs.destroy');
 });
 
 // STEP 2: PUBLIC AI ROUTES (no auth)

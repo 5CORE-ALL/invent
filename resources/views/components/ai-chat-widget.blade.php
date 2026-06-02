@@ -7,7 +7,7 @@
             </button>
             <div id="ai-chat-panel" class="ai-chat-panel" aria-hidden="true">
                 <div class="ai-chat-header">
-                    <span class="ai-chat-title">5Core AI Assistant</span>
+                    <span class="ai-chat-title">5Core Help Desk</span>
                     <div class="ai-chat-header-actions">
                         {{-- <a href="{{ route('ai.download.sample') }}" id="ai-sample-csv-btn" class="ai-header-link"
                             title="Download sample CSV format">📥 Sample CSV</a> --}}
@@ -16,7 +16,6 @@
                             aria-label="Close chat">&times;</button>
                     </div>
                 </div>
-                <div id="ai-chat-messages" class="ai-chat-messages"></div>
                 <div class="ai-chat-input-wrap">
                     <textarea id="ai-chat-input" class="ai-chat-input" rows="2" placeholder="Ask a question..." maxlength="8000"></textarea>
                     <div class="ai-chat-attach">
@@ -26,6 +25,8 @@
                     </div>
                     <button type="button" id="ai-chat-send" class="ai-chat-send">Send</button>
                 </div>
+                <div id="ai-chat-faqs" class="ai-chat-faqs" style="display:none;"></div>
+                <div id="ai-chat-messages" class="ai-chat-messages"></div>
             </div>
         </div>
 
@@ -137,13 +138,16 @@
 
             .ai-chat-panel {
                 display: none;
-                position: absolute;
-                bottom: 144px;
-                right: 0;
-                width: 380px;
-                max-width: calc(100vw - 48px);
-                height: 480px;
-                max-height: 70vh;
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                bottom: auto;
+                right: auto;
+                width: 80vw;
+                max-width: 80vw;
+                height: 80vh;
+                max-height: 80vh;
                 background: #fff;
                 border-radius: 12px;
                 box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
@@ -231,6 +235,113 @@
                 background: #f8f9fa;
             }
 
+            .ai-chat-faqs {
+                padding: 12px 16px;
+                border-bottom: 1px solid #e9ecef;
+                background: #fff;
+                max-height: 45%;
+                overflow-y: auto;
+            }
+
+            .ai-chat-faqs-title {
+                font-size: 0.75rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                color: #6c757d;
+                margin-bottom: 8px;
+            }
+
+            .ai-chat-faq-item {
+                border: 1px solid #e9ecef;
+                border-radius: 8px;
+                margin-bottom: 8px;
+                overflow: hidden;
+            }
+
+            .ai-chat-faq-q {
+                width: 100%;
+                text-align: left;
+                background: #f8f9fa;
+                border: none;
+                padding: 10px 12px;
+                font-size: 0.88rem;
+                font-weight: 600;
+                color: #2c3e72;
+                cursor: pointer;
+                display: flex;
+                justify-content: space-between;
+                gap: 8px;
+            }
+
+            .ai-chat-faq-q:hover {
+                background: #eef1f8;
+            }
+
+            .ai-chat-faq-q .ai-chat-faq-caret {
+                transition: transform 0.2s ease;
+                color: #adb5bd;
+            }
+
+            .ai-chat-faq-item.is-open .ai-chat-faq-caret {
+                transform: rotate(180deg);
+            }
+
+            .ai-chat-faq-a {
+                display: none;
+                padding: 10px 12px;
+                font-size: 0.85rem;
+                line-height: 1.5;
+                color: #343a40;
+                border-top: 1px solid #e9ecef;
+                white-space: pre-wrap;
+                word-break: break-word;
+            }
+
+            .ai-chat-faq-item.is-open .ai-chat-faq-a {
+                display: block;
+            }
+
+            .ai-chat-faq-links {
+                margin-top: 8px;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .ai-chat-faq-links a {
+                font-size: 0.78rem;
+                padding: 4px 10px;
+                border-radius: 6px;
+                background: #eef1f8;
+                color: #405189;
+                text-decoration: none;
+                border: 1px solid #d8def0;
+            }
+
+            .ai-chat-faq-links a:hover {
+                background: #405189;
+                color: #fff;
+            }
+
+            .ai-chat-faq-links a.ai-chat-faq-sop {
+                padding: 2px 8px;
+                display: inline-flex;
+                align-items: center;
+            }
+
+            .ai-chat-faq-links a.ai-chat-faq-sop img {
+                height: 24px;
+                width: 24px;
+                object-fit: contain;
+                display: block;
+            }
+
+            .ai-chat-faqs-empty {
+                font-size: 0.82rem;
+                color: #adb5bd;
+            }
+
             .ai-chat-msg {
                 max-width: 90%;
                 padding: 10px 14px;
@@ -286,7 +397,7 @@
 
             .ai-chat-input-wrap {
                 padding: 12px;
-                border-top: 1px solid #e9ecef;
+                border-bottom: 1px solid #e9ecef;
                 background: #fff;
                 display: flex;
                 gap: 8px;
@@ -394,8 +505,11 @@
                     upload: '{{ route('ai.upload') }}',
                     check: '{{ route('ai.check') }}',
                     pending: '{{ route('ai.pending') }}',
-                    markRead: '{{ route('ai.mark-read') }}'
+                    markRead: '{{ route('ai.mark-read') }}',
+                    faqs: '{{ route('ai.faqs') }}'
                 };
+                const faqsEl = document.getElementById('ai-chat-faqs');
+                let faqsLoaded = false;
 
                 if (!toggle || !panel) return;
 
@@ -509,11 +623,55 @@ if (pusherKey && userId && typeof Pusher !== 'undefined') {
                     });
                 }
 
+                function loadFaqs() {
+                    if (!faqsEl || faqsLoaded) return;
+                    faqsLoaded = true;
+                    fetch(routes.faqs, {
+                            headers: { 'Accept': 'application/json' },
+                            credentials: 'same-origin'
+                        })
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            renderFaqs(data.faqs || []);
+                        })
+                        .catch(function() { faqsLoaded = false; });
+                }
+
+                function renderFaqs(faqs) {
+                    if (!faqsEl) return;
+                    if (!faqs.length) {
+                        faqsEl.style.display = 'none';
+                        return;
+                    }
+                    var html = '<div class="ai-chat-faqs-title">Frequently Asked Questions</div>';
+                    faqs.forEach(function(f) {
+                        var links = '';
+                        if (f.link) links += '<a href="' + escapeHtml(f.link) + '" target="_blank" rel="noopener">Link</a>';
+                        if (f.link2) links += '<a href="' + escapeHtml(f.link2) + '" target="_blank" rel="noopener">Link 2</a>';
+                        if (f.sop) links += '<a href="' + escapeHtml(f.sop) + '" target="_blank" rel="noopener" class="ai-chat-faq-sop" title="SOP"><img src="{{ asset('assets/images/task-sop-icon.png') }}" alt="SOP"></a>';
+                        if (f.video) links += '<a href="' + escapeHtml(f.video) + '" target="_blank" rel="noopener">Video</a>';
+                        var answer = f.answers ? escapeHtml(f.answers) : '';
+                        html += '<div class="ai-chat-faq-item">' +
+                            '<button type="button" class="ai-chat-faq-q"><span>' + escapeHtml(f.faq) + '</span><span class="ai-chat-faq-caret">&#9662;</span></button>' +
+                            '<div class="ai-chat-faq-a">' + answer +
+                            (links ? '<div class="ai-chat-faq-links">' + links + '</div>' : '') +
+                            '</div></div>';
+                    });
+                    faqsEl.innerHTML = html;
+                    faqsEl.style.display = 'block';
+                    faqsEl.querySelectorAll('.ai-chat-faq-q').forEach(function(btn) {
+                        btn.addEventListener('click', function() {
+                            this.closest('.ai-chat-faq-item').classList.toggle('is-open');
+                        });
+                    });
+                }
+
                 function openPanel() {
                     panel.classList.add('is-open');
                     panel.setAttribute('aria-hidden', 'false');
                     inputEl.focus();
                     fetchPendingReplies();
+                    loadFaqs();
                 }
 
                 function closePanel() {

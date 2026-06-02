@@ -3001,6 +3001,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ route('help-desk-faqs.index') }}" class="side-nav-link {{ request()->routeIs('help-desk-faqs.*') ? 'active' : '' }}">
+                    <i class="ri-question-answer-line"></i>
+                    <span> Help Desk FAQs, FFP </span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarResourcesMaster" aria-expanded="{{ request()->routeIs('resources-master.*') ? 'true' : 'false' }}" aria-controls="sidebarResourcesMaster"
                     class="side-nav-link {{ request()->routeIs('resources-master.*') ? 'active' : '' }}">
                     <i class="ri-folder-shield-2-line"></i>
