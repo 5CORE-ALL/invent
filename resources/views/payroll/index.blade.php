@@ -339,8 +339,9 @@
     });
 
     document.addEventListener('click', async (e) => {
-        if (e.target.classList.contains('btn-edit-salary')) {
-            const row = employeeRowsById[e.target.dataset.id];
+        const editBtn = e.target.closest('.btn-edit-salary');
+        if (editBtn) {
+            const row = employeeRowsById[editBtn.dataset.id];
             if (!row) return;
             document.getElementById('editRowId').value = row.id;
             const f = document.getElementById('formEditSalary');
