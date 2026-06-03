@@ -3131,7 +3131,7 @@
                         headerSort: false,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const channel = rowData['Channel '] || '';
+                            const channel = rowData['Channel '] || rowData['Channel'] || '';
                             return `
                                 <div class="d-flex justify-content-center gap-1">
                                     <button class="btn btn-sm btn-outline-primary edit-channel-btn" 
@@ -4527,41 +4527,6 @@
                 } catch (error) {
                     console.error('Error opening edit modal:', error);
                     showToast('error', 'Error opening edit form: ' + error.message);
-                }
-            });
-
-            // Delete channel button handler
-            $(document).on('click', '.delete-channel-btn', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const channel = $(this).data('channel');
-
-                if (confirm(
-                        `Are you sure you want to archive channel: ${channel}?\n\nThis will set the channel status to "Inactive" and it will no longer appear in the list.`
-                        )) {
-                    $.ajax({
-                        url: '/channel-archive',
-                        method: 'POST',
-                        data: {
-                            channel: channel,
-                            _token: '{{ csrf_token() }}'
-                        },
-                        success: function(response) {
-                            if (response.success) {
-                                showToast('success', 'Channel archived successfully');
-                                // Reload the table
-                                table.replaceData();
-                            } else {
-                                showToast('error', response.message ||
-                                    'Failed to archive channel');
-                            }
-                        },
-                        error: function(xhr) {
-                            showToast('error', 'Error archiving channel: ' + (xhr.responseJSON
-                                ?.message || 'Unknown error'));
-                        }
-                    });
                 }
             });
 
