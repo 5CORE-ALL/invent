@@ -35,6 +35,11 @@
             width: auto !important;
         }
 
+        #faqTable td img.faq-msg-icon,
+        #faqTable th img.faq-msg-icon {
+            max-height: 39px !important;
+        }
+
         /* Allow the hover-zoom images to still enlarge */
         #faqTable .faq-hover-zoom:hover {
             max-height: 80px !important;
@@ -80,9 +85,6 @@
 @section('content')
     @include('layouts.shared.page-title', ['page_title' => 'Help Desk FAQs, FFP', 'sub_title' => 'Manage FAQs shown in the 5Core Help Desk'])
 
-    @php
-        $canEditFaq = true;
-    @endphp
 
     @if (session('success'))
         <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -98,57 +100,59 @@
     @endif
 
     <div class="card">
-        <div class="card-header d-flex justify-content-end align-items-center">
-            <div class="d-flex gap-2 flex-nowrap">
-                <button type="button" class="btn btn-success btn-sm faq-top-btn" data-bs-toggle="modal" data-bs-target="#faqSubmitModal" title="Submit a new FAQ/FFP/Issue">
+        <div class="card-body">
+            <div class="d-flex flex-nowrap align-items-center gap-2 mb-3 w-100">
+                {{-- Search --}}
+                <div class="input-group flex-grow-1" style="min-width: 120px;">
+                    <span class="input-group-text"><i class="bx bx-search"></i></span>
+                    <input type="text" id="faqQuickSearch" class="form-control" placeholder="Search...">
+                    <button type="button" id="faqSearchClear" class="btn btn-light border" title="Clear">&times;</button>
+                </div>
+                {{-- Dept dropdown --}}
+                <div class="dropdown" style="width: 100px; flex-shrink: 0;">
+                    <button class="btn btn-light border dropdown-toggle w-100 text-start d-flex justify-content-between align-items-center faq-top-btn"
+                        type="button" id="faqDeptFilterBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                        <span><span id="faqDeptFilterLabel">All</span></span>
+                    </button>
+                    <div class="dropdown-menu p-2" style="max-height: 320px; overflow-y: auto; min-width: 240px;">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="faqDeptFilterAll" checked>
+                            <label class="form-check-label fw-semibold" for="faqDeptFilterAll">All</label>
+                        </div>
+                        <hr class="my-1">
+                        @foreach ($departments as $dept)
+                            <div class="form-check">
+                                <input class="form-check-input faq-dept-filter" type="checkbox" value="{{ $dept->id }}" id="faqDeptFilter_{{ $dept->id }}">
+                                <label class="form-check-label" for="faqDeptFilter_{{ $dept->id }}">{{ $dept->name }}</label>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+                {{-- Count badge --}}
+                <span id="faqCountBadge" class="btn btn-soft-primary btn-sm faq-top-btn" style="cursor:default; flex-shrink:0;"></span>
+                <span id="faqSelectedBadge" class="btn btn-primary btn-sm faq-top-btn" style="display:none; cursor:default; flex-shrink:0;">0 selected</span>
+                <small class="text-muted d-none" id="faqSearchCount"></small>
+                {{-- Action buttons --}}
+                <button type="button" class="btn btn-success btn-sm faq-top-btn flex-fill" data-bs-toggle="modal" data-bs-target="#faqSubmitModal" title="Submit a new FAQ/FFP/Issue">
                     <i class="ri-send-plane-line"></i>
                 </button>
-                <button type="button" id="faqBulkEditBtn" class="btn btn-soft-warning btn-sm text-dark faq-top-btn" disabled title="Bulk Edit">
-                    <i class="ri-quill-pen-line"></i><span id="faqBulkEditCount"></span>
+                @if ($canEditFaq)
+                    <button type="button" id="faqBulkEditBtn" class="btn btn-soft-warning btn-sm text-dark faq-top-btn flex-fill" disabled title="Bulk Edit">
+                        <i class="ri-quill-pen-line"></i><span id="faqBulkEditCount"></span>
+                    </button>
+                    <button type="button" class="btn btn-soft-primary btn-sm faq-top-btn flex-fill" data-bs-toggle="modal" data-bs-target="#faqBulkModal" title="Bulk Import">
+                        <i class="ri-upload-2-line"></i>
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm faq-top-btn flex-fill" data-bs-toggle="modal" data-bs-target="#faqCreateModal" title="Add FAQ">
+                        <i class="ri-add-line"></i>
+                    </button>
+                @endif
+                <button type="button" class="btn btn-soft-dark btn-sm faq-top-btn flex-fill" data-bs-toggle="modal" data-bs-target="#faqGuruModal" title="Guru" data-bs-toggle="tooltip">
+                    <i class="ri-user-star-line"></i>
                 </button>
-                <button type="button" class="btn btn-soft-primary btn-sm faq-top-btn" data-bs-toggle="modal" data-bs-target="#faqBulkModal" title="Bulk Import">
-                    <i class="ri-upload-2-line"></i>
-                </button>
-                <button type="button" class="btn btn-primary btn-sm faq-top-btn" data-bs-toggle="modal" data-bs-target="#faqCreateModal" title="Add FAQ">
-                    <i class="ri-add-line"></i>
-                </button>
-            </div>
-        </div>
-        <div class="card-body">
-            <div class="row mb-3 g-2">
-                <div class="col-md-5 col-lg-4">
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="bx bx-search"></i></span>
-                        <input type="text" id="faqQuickSearch" class="form-control" placeholder="Quick search FAQ or answer...">
-                        <button type="button" id="faqSearchClear" class="btn btn-light border" title="Clear">&times;</button>
-                    </div>
-                </div>
-                <div class="col-md-4 col-lg-3">
-                    <div class="dropdown">
-                        <button class="btn btn-light border dropdown-toggle w-100 text-start d-flex justify-content-between align-items-center"
-                            type="button" id="faqDeptFilterBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
-                            <span><i class="bx bx-filter-alt"></i> <span id="faqDeptFilterLabel">All</span></span>
-                        </button>
-                        <div class="dropdown-menu p-2" style="max-height: 320px; overflow-y: auto; min-width: 240px;">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="faqDeptFilterAll" checked>
-                                <label class="form-check-label fw-semibold" for="faqDeptFilterAll">All</label>
-                            </div>
-                            <hr class="my-1">
-                            @foreach ($departments as $dept)
-                                <div class="form-check">
-                                    <input class="form-check-input faq-dept-filter" type="checkbox" value="{{ $dept->id }}" id="faqDeptFilter_{{ $dept->id }}">
-                                    <label class="form-check-label" for="faqDeptFilter_{{ $dept->id }}">{{ $dept->name }}</label>
-                                </div>
-                            @endforeach
-                        </div>
-                    </div>
-                </div>
-                <div class="col-12 d-flex align-items-center gap-2">
-                    <span id="faqCountBadge" class="badge bg-info text-dark"></span>
-                    <span id="faqSelectedBadge" class="badge bg-primary" style="display: none;">0 selected</span>
-                    <small class="text-muted" id="faqSearchCount"></small>
-                </div>
+                <a href="{{ route('help-desk-faqs.archived') }}" class="btn btn-soft-secondary btn-sm faq-top-btn d-flex align-items-center justify-content-center" title="Archived FAQs" style="flex-shrink:0;">
+                    <i class="ri-archive-line"></i>
+                </a>
             </div>
             <div class="table-responsive">
                 <table id="faqTable" class="table table-bordered table-hover align-middle mb-0">
@@ -173,8 +177,9 @@
                             <th class="text-center faq-sortable" data-sort-key="actiontext" title="Action"><img src="{{ asset('images/action-comic.png') }}" alt="Action" style="height: 28px; width: auto; object-fit: contain;"></th>
                             <th class="text-center faq-sortable" data-sort-key="plus-action" title="+ Action"><img src="{{ asset('images/action-comic.png') }}" alt="+ Action" style="height: 28px; width: auto; object-fit: contain;"></th>
                             <th class="text-center faq-sortable" data-sort-key="ca" title="Corrective Action"><img src="{{ asset('images/action-icon.png') }}" alt="Corrective Action" style="height: 26px; width: 26px; object-fit: contain;"></th>
-                            <th class="text-center faq-sortable" data-sort-key="messages" title="Messages"><img src="{{ asset('images/message-icon.png') }}" alt="Messages" style="height: 104px; width: 104px; object-fit: contain;"></th>
+                            <th class="text-center faq-sortable" data-sort-key="messages" title="Messages"><img src="{{ asset('images/message-icon.png') }}" alt="Messages" class="faq-msg-icon" style="height: 104px; width: 104px; object-fit: contain;"></th>
                             <th class="text-end" style="min-width: 90px;">CTRL</th>
+                            <th class="text-center" title="Add/Edit history">Guru</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -227,8 +232,8 @@
                                         @endforeach
                                     @endif
                                 </td>
-                                <td class="text-center">@if (trim((string) $faq->type_variant) !== '')<span title="{{ $faq->type_variant }}"><img src="{{ asset('images/variant-icon.png') }}" alt="Variant/Type" style="height: 34px; width: auto; object-fit: contain;"></span>@else<span class="text-muted">&mdash;</span>@endif</td>
-                                <td class="text-center">@if (trim((string) $faq->what) !== '')<img src="{{ asset('images/what-icon.png') }}" alt="What" class="faq-hover-zoom" title="{{ $faq->what }}" style="height: 32px; width: auto; object-fit: contain;">@else<span class="text-muted">&mdash;</span>@endif</td>
+                                <td class="text-center">@if (trim((string) $faq->type_variant) !== '')<span title="{{ $faq->type_variant }}"><img src="{{ asset('images/variant-icon.png') }}" alt="Variant/Type" style="height: 34px; width: auto; object-fit: contain;"></span>@endif</td>
+                                <td class="text-center">@if (trim((string) $faq->what) !== '')<img src="{{ asset('images/what-icon.png') }}" alt="What" class="faq-hover-zoom" title="{{ $faq->what }}" style="height: 32px; width: auto; object-fit: contain;">@endif</td>
                                 <td class="text-center">@if ($faq->link)<a href="{{ $faq->link }}" target="_blank" rel="noopener" title="Open link 1"><img src="{{ asset('images/link-icon.png') }}" alt="Link 1" style="height: 26px; width: 26px; object-fit: contain;"></a>@else<span class="text-muted">&mdash;</span>@endif</td>
                                 <td class="text-center">@if ($faq->link2)<a href="{{ $faq->link2 }}" target="_blank" rel="noopener" title="Open link 2"><img src="{{ asset('images/link-icon.png') }}" alt="Link 2" style="height: 26px; width: 26px; object-fit: contain;"></a>@else<span class="text-muted">&mdash;</span>@endif</td>
                                 <td class="text-center">@if ($faq->sop)<a href="{{ $faq->sop }}" target="_blank" rel="noopener" title="Open SOP"><img src="{{ asset('assets/images/task-sop-icon.png') }}" alt="SOP" style="height: 32px; width: 32px; object-fit: contain;"></a>@else<span class="text-muted">&mdash;</span>@endif</td>
@@ -236,7 +241,7 @@
                                 <td class="text-center">@if ($faq->action)<button type="button" class="btn btn-link p-0 faq-actiontext-btn" data-actiontext="{{ e($faq->action) }}" title="{{ $faq->action }}"><img src="{{ asset('images/action-comic.png') }}" alt="Action" style="height: 34px; width: auto; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
                                 <td class="text-center">@if ($faq->plus_action)<button type="button" class="btn btn-link p-0 faq-action-btn" data-action="{{ e($faq->plus_action) }}" title="{{ $faq->plus_action }}"><img src="{{ asset('images/action-comic.png') }}" alt="+ Action" style="height: 34px; width: auto; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
                                 <td class="text-center">@if ($faq->ca)<button type="button" class="btn btn-link p-0 faq-ca-btn" data-ca="{{ e($faq->ca) }}" title="Corrective Action"><img src="{{ asset('images/action-icon.png') }}" alt="Corrective Action" style="height: 30px; width: 30px; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
-                                <td class="text-center">@if ($faq->messages)<button type="button" class="btn btn-link p-0 faq-msg-btn" data-message="{{ e($faq->messages) }}" title="View message"><img src="{{ asset('images/message-icon.png') }}" alt="Message" style="height: 104px; width: 104px; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
+                                <td class="text-center">@if ($faq->messages)<button type="button" class="btn btn-link p-0 faq-msg-btn" data-message="{{ e($faq->messages) }}" title="View message"><img src="{{ asset('images/message-icon.png') }}" alt="Message" class="faq-msg-icon" style="height: 104px; width: 104px; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
                                 <td>
                                     <div class="d-flex justify-content-center align-items-center gap-2 flex-nowrap">
                                     @if ($canEditFaq)
@@ -259,22 +264,38 @@
                                         <i class="ri-edit-line fs-5"></i>
                                     </button>
                                     @endif
+                                    @if ($canDeleteFaq)
                                     <form action="{{ route('help-desk-faqs.destroy', $faq->id) }}" method="POST" class="d-inline m-0"
-                                        onsubmit="return confirm('Delete this FAQ?');">
+                                        onsubmit="return confirm('Archive this FAQ? You can restore it later from Archived.');">
                                         @csrf
                                         @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-link p-0 text-danger" title="Delete"><i class="ri-delete-bin-line fs-5"></i></button>
+                                        <button type="submit" class="btn btn-sm btn-link p-0 text-danger" title="Archive"><i class="ri-delete-bin-line fs-5"></i></button>
                                     </form>
+                                    @endif
                                     </div>
+                                </td>
+                                <td class="text-center">
+                                    @php($hist = is_array($faq->edit_history) ? $faq->edit_history : [])
+                                    @if (!empty($hist) || $faq->created_by_email)
+                                        <button type="button" class="btn btn-sm btn-link p-0 faq-guru-btn"
+                                            title="View history"
+                                            data-history='@json($hist)'
+                                            data-created="{{ e($faq->created_by_email) }}"
+                                            data-updated="{{ e($faq->updated_by_email) }}">
+                                            <i class="ri-history-line fs-5"></i>
+                                        </button>
+                                    @else
+                                        <span class="text-muted">&mdash;</span>
+                                    @endif
                                 </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="17" class="text-center text-muted py-4">No FAQs yet. Click "Add FAQ" to create one.</td>
+                                <td colspan="18" class="text-center text-muted py-4">No FAQs yet. Click "Add FAQ" to create one.</td>
                             </tr>
                         @endforelse
                         <tr id="faqNoResults" style="display: none;">
-                            <td colspan="17" class="text-center text-muted py-4">No FAQs match your search.</td>
+                            <td colspan="18" class="text-center text-muted py-4">No FAQs match your search.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -284,7 +305,7 @@
 
     {{-- Create Modal --}}
     <div class="modal fade" id="faqCreateModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
             <form action="{{ route('help-desk-faqs.store') }}" method="POST" class="modal-content">
                 @csrf
                 <div class="modal-header">
@@ -304,7 +325,7 @@
 
     {{-- Submit (simple) Modal --}}
     <div class="modal fade" id="faqSubmitModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
             <form action="{{ route('help-desk-faqs.store') }}" method="POST" class="modal-content">
                 @csrf
                 <div class="modal-header">
@@ -354,7 +375,7 @@
 
     {{-- Edit Modal --}}
     <div class="modal fade" id="faqEditModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
             <form action="{{ route('help-desk-faqs.index') }}" method="POST" class="modal-content" id="faqEditForm">
                 @csrf
                 @method('PUT')
@@ -385,7 +406,7 @@
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label">CSV File <span class="text-danger">*</span></label>
-                        <input type="file" name="file" class="form-control" accept=".csv,text/csv" required>
+                        <input type="file" name="file" class="form-control" accept=".csv,.xlsx,.xls,text/csv" required>
                     </div>
                     <div class="alert alert-info mb-3">
                         <p class="mb-1"><strong>Available department options:</strong></p>
@@ -397,7 +418,7 @@
                         </div>
                     </div>
                     <a href="{{ route('help-desk-faqs.sample') }}" class="btn btn-sm btn-soft-secondary">
-                        <i class="bx bx-download"></i> Download sample CSV
+                        <i class="ri-download-2-line"></i> Download template (Excel, with dropdowns)
                     </a>
                 </div>
                 <div class="modal-footer">
@@ -408,9 +429,80 @@
         </div>
     </div>
 
+    {{-- Guru Users Modal --}}
+    <div class="modal fade" id="faqGuruModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="ri-user-star-line"></i> Guru Users</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted">Guru users can <strong>add and edit</strong> all data in this sheet (no delete). Managed by <code>president@5core.com</code> and <code>software5@5core.com</code>.</p>
+
+                    @if ($isGuruManager)
+                        <form action="{{ route('help-desk-faqs.gurus.store') }}" method="POST" class="row g-2 align-items-end mb-3">
+                            @csrf
+                            <div class="col-md-5">
+                                <label class="form-label">Name</label>
+                                <input type="text" name="name" class="form-control" placeholder="User name">
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label">Email <span class="text-danger">*</span></label>
+                                <input type="email" name="email" class="form-control" placeholder="user@5core.com" required>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="submit" class="btn btn-primary w-100">Add</button>
+                            </div>
+                        </form>
+                    @else
+                        <div class="alert alert-info">You can view the Guru list. Only managers can add or remove Guru users.</div>
+                    @endif
+
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    @if ($isGuruManager)<th class="text-end" style="width: 90px;">Action</th>@endif
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($gurus as $guru)
+                                    <tr>
+                                        <td>{{ $guru->name ?: '—' }}</td>
+                                        <td>{{ $guru->email }}</td>
+                                        @if ($isGuruManager)
+                                            <td class="text-end">
+                                                <form action="{{ route('help-desk-faqs.gurus.destroy', $guru->id) }}" method="POST"
+                                                    onsubmit="return confirm('Remove this Guru user?');">
+                                                    @csrf
+                                                    @method('DELETE')
+                                                    <button type="submit" class="btn btn-sm btn-soft-danger"><i class="ri-delete-bin-line"></i></button>
+                                                </form>
+                                            </td>
+                                        @endif
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="{{ $isGuruManager ? 3 : 2 }}" class="text-center text-muted py-3">No Guru users yet.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Bulk Edit Modal --}}
     <div class="modal fade" id="faqBulkEditModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
             <form action="{{ route('help-desk-faqs.bulk-update') }}" method="POST" class="modal-content" id="faqBulkEditForm">
                 @csrf
                 <div class="modal-header">
@@ -426,7 +518,7 @@
                             <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="group_name" id="bulk_apply_group_name">
                             <label class="form-check-label fw-semibold" for="bulk_apply_group_name">Group</label>
                         </div>
-                        <input type="text" name="group_name" class="form-control bulk-field" data-field="group_name" placeholder="New group" disabled>
+                        <input type="text" name="group_name" class="form-control bulk-field" data-field="group_name" placeholder="New group">
                     </div>
 
                     <div class="border rounded p-2 mb-3">
@@ -434,7 +526,7 @@
                             <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="answers" id="bulk_apply_answers">
                             <label class="form-check-label fw-semibold" for="bulk_apply_answers">Answers</label>
                         </div>
-                        <textarea name="answers" class="form-control bulk-field" data-field="answers" rows="2" placeholder="New answer" disabled></textarea>
+                        <textarea name="answers" class="form-control bulk-field" data-field="answers" rows="2" placeholder="New answer"></textarea>
                     </div>
 
                     <div class="border rounded p-2 mb-3">
@@ -444,7 +536,7 @@
                         </div>
                         <div class="bulk-field-wrap" data-field="dept">
                             <div class="form-check">
-                                <input class="form-check-input dept-all" type="checkbox" name="dept[]" value="all" id="dept_bulk_all" disabled>
+                                <input class="form-check-input dept-all" type="checkbox" name="dept[]" value="all" id="dept_bulk_all">
                                 <label class="form-check-label fw-semibold" for="dept_bulk_all">All</label>
                             </div>
                             <hr class="my-2">
@@ -452,7 +544,7 @@
                                 @foreach ($departments as $dept)
                                     <div class="col-6 col-md-4">
                                         <div class="form-check">
-                                            <input class="form-check-input dept-one" type="checkbox" name="dept[]" value="{{ $dept->id }}" id="dept_bulk_{{ $dept->id }}" disabled>
+                                            <input class="form-check-input dept-one" type="checkbox" name="dept[]" value="{{ $dept->id }}" id="dept_bulk_{{ $dept->id }}">
                                             <label class="form-check-label" for="dept_bulk_{{ $dept->id }}">{{ $dept->name }}</label>
                                         </div>
                                     </div>
@@ -467,70 +559,70 @@
                                 <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="type_variant" id="bulk_apply_type_variant">
                                 <label class="form-check-label fw-semibold" for="bulk_apply_type_variant">Type/Variant</label>
                             </div>
-                            <textarea name="type_variant" class="form-control bulk-field" data-field="type_variant" rows="2" placeholder="New type / variant" disabled></textarea>
+                            <textarea name="type_variant" class="form-control bulk-field" data-field="type_variant" rows="2" placeholder="New type / variant"></textarea>
                         </div>
                         <div class="col-md-6">
                             <div class="form-check mb-1">
                                 <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="what" id="bulk_apply_what">
                                 <label class="form-check-label fw-semibold" for="bulk_apply_what">What</label>
                             </div>
-                            <textarea name="what" class="form-control bulk-field" data-field="what" rows="2" placeholder="New what" disabled></textarea>
+                            <textarea name="what" class="form-control bulk-field" data-field="what" rows="2" placeholder="New what"></textarea>
                         </div>
                         <div class="col-md-6">
                             <div class="form-check mb-1">
                                 <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="link" id="bulk_apply_link">
                                 <label class="form-check-label fw-semibold" for="bulk_apply_link">Link</label>
                             </div>
-                            <input type="text" name="link" class="form-control bulk-field" data-field="link" placeholder="https://..." disabled>
+                            <input type="text" name="link" class="form-control bulk-field" data-field="link" placeholder="https://...">
                         </div>
                         <div class="col-md-6">
                             <div class="form-check mb-1">
                                 <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="link2" id="bulk_apply_link2">
                                 <label class="form-check-label fw-semibold" for="bulk_apply_link2">Link 2</label>
                             </div>
-                            <input type="text" name="link2" class="form-control bulk-field" data-field="link2" placeholder="https://..." disabled>
+                            <input type="text" name="link2" class="form-control bulk-field" data-field="link2" placeholder="https://...">
                         </div>
                         <div class="col-md-6">
                             <div class="form-check mb-1">
                                 <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="sop" id="bulk_apply_sop">
                                 <label class="form-check-label fw-semibold" for="bulk_apply_sop">SOP</label>
                             </div>
-                            <input type="text" name="sop" class="form-control bulk-field" data-field="sop" placeholder="https://..." disabled>
+                            <input type="text" name="sop" class="form-control bulk-field" data-field="sop" placeholder="https://...">
                         </div>
                         <div class="col-md-6">
                             <div class="form-check mb-1">
                                 <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="video" id="bulk_apply_video">
                                 <label class="form-check-label fw-semibold" for="bulk_apply_video">Video</label>
                             </div>
-                            <input type="text" name="video" class="form-control bulk-field" data-field="video" placeholder="https://..." disabled>
+                            <input type="text" name="video" class="form-control bulk-field" data-field="video" placeholder="https://...">
                         </div>
                         <div class="col-12">
                             <div class="form-check mb-1">
                                 <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="action" id="bulk_apply_action">
                                 <label class="form-check-label fw-semibold" for="bulk_apply_action">Action</label>
                             </div>
-                            <textarea name="action" class="form-control bulk-field" data-field="action" rows="2" placeholder="New action" disabled></textarea>
+                            <textarea name="action" class="form-control bulk-field" data-field="action" rows="2" placeholder="New action"></textarea>
                         </div>
                         <div class="col-12">
                             <div class="form-check mb-1">
                                 <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="ca" id="bulk_apply_ca">
                                 <label class="form-check-label fw-semibold" for="bulk_apply_ca">CA (Corrective Action)</label>
                             </div>
-                            <textarea name="ca" class="form-control bulk-field" data-field="ca" rows="2" placeholder="New corrective action" disabled></textarea>
+                            <textarea name="ca" class="form-control bulk-field" data-field="ca" rows="2" placeholder="New corrective action"></textarea>
                         </div>
                         <div class="col-12">
                             <div class="form-check mb-1">
                                 <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="plus_action" id="bulk_apply_plus_action">
                                 <label class="form-check-label fw-semibold" for="bulk_apply_plus_action">+ Action</label>
                             </div>
-                            <textarea name="plus_action" class="form-control bulk-field" data-field="plus_action" rows="2" placeholder="New additional action" disabled></textarea>
+                            <textarea name="plus_action" class="form-control bulk-field" data-field="plus_action" rows="2" placeholder="New additional action"></textarea>
                         </div>
                         <div class="col-12">
                             <div class="form-check mb-1">
                                 <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="messages" id="bulk_apply_messages">
                                 <label class="form-check-label fw-semibold" for="bulk_apply_messages">Messages</label>
                             </div>
-                            <textarea name="messages" class="form-control bulk-field" data-field="messages" rows="2" maxlength="200" placeholder="New message (max 200 chars)" disabled></textarea>
+                            <textarea name="messages" class="form-control bulk-field" data-field="messages" rows="2" maxlength="200" placeholder="New message (max 200 chars)"></textarea>
                         </div>
                     </div>
                 </div>
@@ -657,6 +749,33 @@
                 </div>
                 <div class="modal-body">
                     <p id="faqActionText" class="mb-0" style="white-space: pre-wrap; word-break: break-word;"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Guru History Modal --}}
+    <div class="modal fade" id="faqGuruHistoryModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="ri-history-line"></i> Add / Edit History</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-sm table-bordered mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>User</th>
+                                <th>Action</th>
+                                <th>Date &amp; Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="faqGuruHistoryBody"></tbody>
+                    </table>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
@@ -885,6 +1004,18 @@
                 });
             });
 
+            // Default sort: rows with a blank Answer column show on top.
+            (function() {
+                var ansTh = document.querySelector('#faqTable thead th.faq-sortable[data-sort-key="answers"]');
+                sortState.key = 'answers';
+                sortState.dir = 'asc';
+                if (ansTh) {
+                    var ind = ansTh.querySelector('.faq-sort-ind');
+                    if (ind) ind.textContent = '\u25B2';
+                }
+                sortRowsBy('answers', 'asc');
+            })();
+
             // ---- View (magnifying glass): show read-only FAQ details ----
             var viewModalEl = document.getElementById('faqViewModal');
             function setViewText(id, value) {
@@ -973,6 +1104,30 @@
                     }
                 });
             }
+
+            // ---- Guru history icon: show add/edit history ----
+            var guruHistoryModalEl = document.getElementById('faqGuruHistoryModal');
+            var guruHistoryBody = document.getElementById('faqGuruHistoryBody');
+            function escapeHtmlText(s) {
+                var d = document.createElement('div');
+                d.textContent = s == null ? '' : String(s);
+                return d.innerHTML;
+            }
+            document.querySelectorAll('.faq-guru-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var hist = [];
+                    try { hist = JSON.parse(this.getAttribute('data-history') || '[]'); } catch (e) {}
+                    if (!guruHistoryBody) return;
+                    if (!hist.length) {
+                        guruHistoryBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No history recorded.</td></tr>';
+                    } else {
+                        guruHistoryBody.innerHTML = hist.map(function(h) {
+                            return '<tr><td>' + escapeHtmlText(h.email || '\u2014') + '</td><td>' + escapeHtmlText(h.action || '') + '</td><td>' + escapeHtmlText(h.at || '') + '</td></tr>';
+                        }).join('');
+                    }
+                    if (guruHistoryModalEl) new bootstrap.Modal(guruHistoryModalEl).show();
+                });
+            });
 
             // ---- Message icon: show message text in a modal ----
             var messageModalEl = document.getElementById('faqMessageModal');
@@ -1079,17 +1234,34 @@
                 }
             }
 
-            bulkEditForm.querySelectorAll('.bulk-apply').forEach(function(cb) {
-                cb.addEventListener('change', function() {
-                    setBulkFieldEnabled(this.value, this.checked);
+            function bulkApplyCheckboxFor(field) {
+                return bulkEditForm.querySelector('.bulk-apply[value="' + field + '"]');
+            }
+
+            // Fields are always editable. Typing/changing a field auto-ticks its
+            // "apply" box. You can also tick a box with an empty field to clear it.
+            bulkEditForm.querySelectorAll('.bulk-field').forEach(function(el) {
+                el.disabled = false;
+                var field = el.getAttribute('data-field');
+                var evt = (el.tagName === 'SELECT') ? 'change' : 'input';
+                el.addEventListener(evt, function() {
+                    var ap = bulkApplyCheckboxFor(field);
+                    if (ap) ap.checked = true;
                 });
             });
 
-            // "All Departments" in bulk dept clears the individual ones.
+            // Dept block: keep editable, auto-tick dept apply, "All" clears the others.
             var bulkDeptWrap = bulkEditForm.querySelector('.bulk-field-wrap[data-field="dept"]');
             if (bulkDeptWrap) {
+                var bulkDeptApply = bulkApplyCheckboxFor('dept');
                 var bulkAllCb = bulkDeptWrap.querySelector('.dept-all');
                 var bulkOnes = bulkDeptWrap.querySelectorAll('.dept-one');
+                bulkDeptWrap.querySelectorAll('input').forEach(function(el) {
+                    el.disabled = false;
+                    el.addEventListener('change', function() {
+                        if (bulkDeptApply) bulkDeptApply.checked = true;
+                    });
+                });
                 if (bulkAllCb) {
                     bulkAllCb.addEventListener('change', function() {
                         if (this.checked) {
@@ -1118,11 +1290,31 @@
 
             if (bulkEditForm) {
                 bulkEditForm.addEventListener('submit', function(e) {
-                    var anyApply = bulkEditForm.querySelectorAll('.bulk-apply:checked').length > 0;
-                    if (!anyApply) {
+                    var ids = selectedIds();
+                    if (ids.length === 0) {
                         e.preventDefault();
-                        alert('Tick at least one field to update.');
+                        alert('Please select at least one row first.');
+                        return;
                     }
+                    // (Re)populate the selected ids so the server knows which rows to update.
+                    bulkIdsWrap.innerHTML = '';
+                    ids.forEach(function(id) {
+                        var input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'ids[]';
+                        input.value = id;
+                        bulkIdsWrap.appendChild(input);
+                    });
+                    var checkedApply = bulkEditForm.querySelectorAll('.bulk-apply:checked');
+                    if (checkedApply.length === 0) {
+                        e.preventDefault();
+                        alert('Edit at least one field to update.');
+                        return;
+                    }
+                    // Ensure applied fields submit even if they were left disabled.
+                    bulkEditForm.querySelectorAll('.bulk-field, .bulk-field-wrap input').forEach(function(el) {
+                        el.disabled = false;
+                    });
                 });
             }
         })();

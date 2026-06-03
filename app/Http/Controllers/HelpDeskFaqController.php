@@ -3,12 +3,48 @@
 namespace App\Http\Controllers;
 
 use App\Models\HelpDeskFaq;
+use App\Models\HelpDeskGuru;
 use App\Models\ResourceDepartment;
 use Illuminate\Http\Request;
 
 class HelpDeskFaqController extends Controller
 {
-    public function index()
+    /** Emails that can manage the Guru list and delete FAQs. */
+    private const GURU_MANAGERS = ['president@5core.com', 'software5@5core.com'];
+
+    private function userEmail(Request $request): string
+    {
+        return strtolower(trim((string) ($request->user()->email ?? '')));
+    }
+
+    /** Managers (president / software5) can manage gurus and delete FAQs. */
+    private function isGuruManager(Request $request): bool
+    {
+        return in_array($this->userEmail($request), self::GURU_MANAGERS, true);
+    }
+
+    /** Gurus + managers can add/edit FAQ data (no delete power for gurus). */
+    private function canEditFaq(Request $request): bool
+    {
+        if ($this->isGuruManager($request)) {
+            return true;
+        }
+        $email = $this->userEmail($request);
+        return $email !== '' && HelpDeskGuru::whereRaw('LOWER(email) = ?', [$email])->exists();
+    }
+
+    private function appendHistory(?array $history, string $email, string $action): array
+    {
+        $history = is_array($history) ? $history : [];
+        $history[] = [
+            'email' => $email,
+            'action' => $action,
+            'at' => now()->toDateTimeString(),
+        ];
+        return $history;
+    }
+
+    public function index(Request $request)
     {
         $departments = ResourceDepartment::orderBy('name')->get();
         $faqs = HelpDeskFaq::orderByDesc('id')->get();
@@ -19,46 +55,126 @@ class HelpDeskFaqController extends Controller
             'faqs' => $faqs,
             'departments' => $departments,
             'deptNames' => $deptNames,
+            'gurus' => HelpDeskGuru::orderBy('name')->orderBy('email')->get(),
+            'canEditFaq' => $this->canEditFaq($request),
+            'canDeleteFaq' => $this->isGuruManager($request),
+            'isGuruManager' => $this->isGuruManager($request),
         ]);
     }
 
     public function store(Request $request)
     {
         $data = $this->validateData($request);
+        $email = $this->userEmail($request);
+        $data['created_by_email'] = $email;
+        $data['updated_by_email'] = $email;
+        $data['edit_history'] = $this->appendHistory([], $email, 'added');
         HelpDeskFaq::create($data);
 
         return redirect()->route('help-desk-faqs.index')->with('success', 'FAQ added successfully.');
     }
 
-    /** Users allowed to edit FAQs (matched against name or email, case-insensitive). */
-    private const FAQ_EDITOR_TOKENS = ['president', 'innet', 'jasmine', 'hritikhsha'];
-
-    private function ensureCanEditFaq(Request $request): void
-    {
-        $user = $request->user();
-        $name = strtolower($user->name ?? '');
-        $email = strtolower($user->email ?? '');
-        foreach (self::FAQ_EDITOR_TOKENS as $token) {
-            if (($name !== '' && str_contains($name, $token)) || ($email !== '' && str_contains($email, $token))) {
-                return;
-            }
-        }
-        abort(403, 'You are not allowed to edit FAQs.');
-    }
-
     public function update(Request $request, HelpDeskFaq $help_desk_faq)
     {
+        if (!$this->canEditFaq($request)) {
+            abort(403, 'Only Guru users can edit FAQs.');
+        }
         $data = $this->validateData($request);
+        $email = $this->userEmail($request);
+        $data['updated_by_email'] = $email;
+        $data['edit_history'] = $this->appendHistory($help_desk_faq->edit_history, $email, 'edited');
         $help_desk_faq->update($data);
 
         return redirect()->route('help-desk-faqs.index')->with('success', 'FAQ updated successfully.');
     }
 
-    public function destroy(HelpDeskFaq $help_desk_faq)
+    public function destroy(Request $request, HelpDeskFaq $help_desk_faq)
     {
-        $help_desk_faq->delete();
+        if (!$this->isGuruManager($request)) {
+            abort(403, 'You are not allowed to delete FAQs.');
+        }
+        $help_desk_faq->delete(); // soft delete (archive)
 
-        return redirect()->route('help-desk-faqs.index')->with('success', 'FAQ deleted successfully.');
+        return redirect()->route('help-desk-faqs.index')->with('success', 'FAQ archived. You can restore it from Archived.');
+    }
+
+    /**
+     * Add a Guru user (managers only).
+     */
+    public function storeGuru(Request $request)
+    {
+        if (!$this->isGuruManager($request)) {
+            abort(403, 'Only president@5core.com and software5@5core.com can manage Guru users.');
+        }
+
+        $validated = $request->validate([
+            'name' => ['nullable', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255'],
+        ]);
+
+        HelpDeskGuru::updateOrCreate(
+            ['email' => strtolower(trim($validated['email']))],
+            ['name' => $validated['name'] ?? null, 'created_by_email' => $this->userEmail($request)]
+        );
+
+        return redirect()->route('help-desk-faqs.index')->with('success', 'Guru user saved.');
+    }
+
+    /**
+     * Remove a Guru user (managers only).
+     */
+    public function destroyGuru(Request $request, $id)
+    {
+        if (!$this->isGuruManager($request)) {
+            abort(403, 'Only president@5core.com and software5@5core.com can manage Guru users.');
+        }
+
+        HelpDeskGuru::where('id', $id)->delete();
+
+        return redirect()->route('help-desk-faqs.index')->with('success', 'Guru user removed.');
+    }
+
+    /**
+     * List archived (soft-deleted) FAQs.
+     */
+    public function archived()
+    {
+        $departments = ResourceDepartment::orderBy('name')->get();
+        $deptNames = $departments->pluck('name', 'id');
+        $faqs = HelpDeskFaq::onlyTrashed()->orderByDesc('deleted_at')->get();
+
+        return view('help-desk-faqs.archived', [
+            'faqs' => $faqs,
+            'deptNames' => $deptNames,
+        ]);
+    }
+
+    /**
+     * Restore an archived FAQ.
+     */
+    public function restore(Request $request, $id)
+    {
+        if (!$this->isGuruManager($request)) {
+            abort(403, 'You are not allowed to restore FAQs.');
+        }
+        $faq = HelpDeskFaq::onlyTrashed()->findOrFail($id);
+        $faq->restore();
+
+        return redirect()->route('help-desk-faqs.archived')->with('success', 'FAQ restored successfully.');
+    }
+
+    /**
+     * Permanently delete an archived FAQ.
+     */
+    public function forceDelete(Request $request, $id)
+    {
+        if (!$this->isGuruManager($request)) {
+            abort(403, 'You are not allowed to permanently delete FAQs.');
+        }
+        $faq = HelpDeskFaq::onlyTrashed()->findOrFail($id);
+        $faq->forceDelete();
+
+        return redirect()->route('help-desk-faqs.archived')->with('success', 'FAQ permanently deleted.');
     }
 
     /**
@@ -67,6 +183,9 @@ class HelpDeskFaqController extends Controller
      */
     public function bulkUpdate(Request $request)
     {
+        if (!$this->canEditFaq($request)) {
+            abort(403, 'Only Guru users can edit FAQs.');
+        }
         $validated = $request->validate([
             'ids' => ['required', 'array', 'min:1'],
             'ids.*' => ['integer'],
@@ -109,9 +228,13 @@ class HelpDeskFaqController extends Controller
             $update['dept'] = array_values(array_unique($dept));
         }
 
+        $email = $this->userEmail($request);
         $count = 0;
         foreach (HelpDeskFaq::whereIn('id', $validated['ids'])->get() as $faq) {
-            $faq->update($update);
+            $rowUpdate = $update;
+            $rowUpdate['updated_by_email'] = $email;
+            $rowUpdate['edit_history'] = $this->appendHistory($faq->edit_history, $email, 'edited (bulk)');
+            $faq->update($rowUpdate);
             $count++;
         }
 
@@ -127,9 +250,14 @@ class HelpDeskFaqController extends Controller
      */
     public function bulkImport(Request $request)
     {
+        if (!$this->canEditFaq($request)) {
+            abort(403, 'Only Guru users can import FAQs.');
+        }
         $request->validate([
-            'file' => ['required', 'file', 'mimes:csv,txt', 'max:10240'],
+            'file' => ['required', 'file', 'mimes:csv,txt,xlsx,xls', 'max:10240'],
         ]);
+
+        $importerEmail = $this->userEmail($request);
 
         $departments = ResourceDepartment::all();
         $deptLookup = [];
@@ -139,28 +267,43 @@ class HelpDeskFaqController extends Controller
             $deptLookup[(string) $d->id] = (string) $d->id;
         }
 
-        $path = $request->file('file')->getRealPath();
-        $content = file_get_contents($path);
-        // Strip UTF-8 BOM
-        if (substr($content, 0, 3) === "\xef\xbb\xbf") {
-            $content = substr($content, 3);
+        // Read all rows from CSV or Excel into a uniform array.
+        $file = $request->file('file');
+        $ext = strtolower($file->getClientOriginalExtension());
+        $rows = [];
+
+        if (in_array($ext, ['xlsx', 'xls'], true)) {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getRealPath());
+            $rows = $spreadsheet->getActiveSheet()->toArray(null, true, false, false);
+        } else {
+            $content = file_get_contents($file->getRealPath());
+            if (substr($content, 0, 3) === "\xef\xbb\xbf") {
+                $content = substr($content, 3);
+            }
+            // Normalize line endings (handle Windows \r\n and old Mac \r) so every row is read.
+            $content = str_replace(["\r\n", "\r"], "\n", $content);
+            $tmp = tmpfile();
+            fwrite($tmp, $content);
+            rewind($tmp);
+            while (($csvRow = fgetcsv($tmp)) !== false) {
+                $rows[] = $csvRow;
+            }
+            fclose($tmp);
         }
-        $tmp = tmpfile();
-        fwrite($tmp, $content);
-        rewind($tmp);
 
         $header = null;
         $map = [];
         $imported = 0;
+        $updated = 0;
         $skipped = 0;
 
-        while (($row = fgetcsv($tmp)) !== false) {
-            if ($row === [null] || count(array_filter($row, fn($v) => $v !== null && $v !== '')) === 0) {
+        foreach ($rows as $row) {
+            if (!is_array($row) || count(array_filter($row, fn($v) => $v !== null && trim((string) $v) !== '')) === 0) {
                 continue;
             }
 
             if ($header === null) {
-                $header = array_map(fn($h) => strtolower(trim($h)), $row);
+                $header = array_map(fn($h) => strtolower(trim((string) $h)), $row);
                 foreach (['group', 'faq', 'dept', 'type_variant', 'what', 'answers', 'link', 'link2', 'sop', 'video', 'action', 'ca', 'plus_action', 'messages'] as $col) {
                     $idx = array_search($col, $header, true);
                     if ($idx !== false) {
@@ -168,9 +311,8 @@ class HelpDeskFaqController extends Controller
                     }
                 }
                 if (!isset($map['faq'])) {
-                    fclose($tmp);
                     return redirect()->route('help-desk-faqs.index')
-                        ->with('error', 'CSV must contain a "faq" column. Expected header: faq, dept, answers, link, link2, sop, video');
+                        ->with('error', 'File must contain a "faq" column. Expected header: group, faq, dept, ...');
                 }
                 continue;
             }
@@ -203,8 +345,22 @@ class HelpDeskFaqController extends Controller
                 $dept = array_values(array_unique($dept));
             }
 
-            HelpDeskFaq::create([
-                'group_name' => $get('group') ?: null,
+            $groupName = $get('group') ?: null;
+
+            // Match an existing FAQ by group + question so re-uploading the same
+            // row overwrites it instead of creating a duplicate.
+            $existing = HelpDeskFaq::where('faq', $faq)
+                ->where(function ($q) use ($groupName) {
+                    if ($groupName === null) {
+                        $q->whereNull('group_name');
+                    } else {
+                        $q->where('group_name', $groupName);
+                    }
+                })
+                ->first();
+
+            $attributes = [
+                'group_name' => $groupName,
                 'faq' => $faq,
                 'dept' => $dept,
                 'type_variant' => $get('type_variant') ?: null,
@@ -218,13 +374,26 @@ class HelpDeskFaqController extends Controller
                 'ca' => $get('ca') ?: null,
                 'plus_action' => $get('plus_action') ?: null,
                 'messages' => $get('messages') ? mb_substr($get('messages'), 0, 200) : null,
-            ]);
-            $imported++;
+            ];
+
+            if ($existing) {
+                $attributes['updated_by_email'] = $importerEmail;
+                $attributes['edit_history'] = $this->appendHistory($existing->edit_history, $importerEmail, 'edited (import)');
+                $existing->update($attributes);
+                $updated++;
+            } else {
+                $attributes['created_by_email'] = $importerEmail;
+                $attributes['updated_by_email'] = $importerEmail;
+                $attributes['edit_history'] = $this->appendHistory([], $importerEmail, 'added (import)');
+                HelpDeskFaq::create($attributes);
+                $imported++;
+            }
         }
 
-        fclose($tmp);
-
-        $msg = "Imported {$imported} FAQ(s).";
+        $msg = "Imported {$imported} new FAQ(s).";
+        if ($updated > 0) {
+            $msg .= " Updated {$updated} existing FAQ(s).";
+        }
         if ($skipped > 0) {
             $msg .= " Skipped {$skipped} row(s) with an empty FAQ.";
         }
@@ -233,23 +402,52 @@ class HelpDeskFaqController extends Controller
     }
 
     /**
-     * Download a sample CSV template for bulk FAQ import.
+     * Download an Excel template for bulk FAQ import, with a department dropdown
+     * (data validation) on the "dept" column.
      */
     public function sampleCsv()
     {
-        $headers = [
-            'Content-Type' => 'text/csv; charset=utf-8',
-            'Content-Disposition' => 'attachment; filename="help-desk-faqs-sample.csv"',
-        ];
+        $columns = ['group', 'faq', 'dept', 'type_variant', 'what', 'answers', 'link', 'link2', 'sop', 'video', 'action', 'ca', 'plus_action', 'messages'];
 
-        $callback = function () {
-            $out = fopen('php://output', 'w');
-            fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); // UTF-8 BOM for Excel
-            fputcsv($out, ['group', 'faq', 'dept', 'type_variant', 'what', 'answers', 'link', 'link2', 'sop', 'video', 'action', 'ca', 'plus_action', 'messages']);
-            fclose($out);
-        };
+        $deptOptions = array_merge(['all'], ResourceDepartment::orderBy('name')->pluck('name')->toArray());
+        $listFormula = '"' . implode(',', $deptOptions) . '"';
 
-        return response()->stream($callback, 200, $headers);
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('FAQs');
+
+        // Header row
+        $sheet->fromArray($columns, null, 'A1');
+        $sheet->getStyle('A1:N1')->getFont()->setBold(true);
+
+        // "dept" is the 3rd column (C). Add a dropdown to the data rows.
+        $deptColIndex = array_search('dept', $columns, true);
+        $deptColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($deptColIndex + 1);
+
+        for ($row = 2; $row <= 500; $row++) {
+            $validation = $sheet->getCell($deptColLetter . $row)->getDataValidation();
+            $validation->setType(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::TYPE_LIST);
+            $validation->setErrorStyle(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::STYLE_INFORMATION);
+            $validation->setAllowBlank(true);
+            $validation->setShowInputMessage(true);
+            $validation->setShowErrorMessage(false); // allow typing multiple (e.g. HR|MGMT)
+            $validation->setShowDropDown(true);
+            $validation->setPromptTitle('Department');
+            $validation->setPrompt('Pick a department, type multiple separated by | (e.g. HR|MGMT), or "all".');
+            $validation->setFormula1($listFormula);
+        }
+
+        foreach (range('A', 'N') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, 'help-desk-faqs-template.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 
     private function validateData(Request $request): array

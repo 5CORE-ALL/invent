@@ -317,6 +317,11 @@ Route::prefix('ai')->middleware(['auth'])->group(function () {
 // Help Desk FAQ management (admin UI)
 Route::middleware(['auth'])->group(function () {
     Route::get('/help-desk-faqs', [\App\Http\Controllers\HelpDeskFaqController::class, 'index'])->name('help-desk-faqs.index');
+    Route::get('/help-desk-faqs/archived', [\App\Http\Controllers\HelpDeskFaqController::class, 'archived'])->name('help-desk-faqs.archived');
+    Route::post('/help-desk-faqs/{id}/restore', [\App\Http\Controllers\HelpDeskFaqController::class, 'restore'])->name('help-desk-faqs.restore');
+    Route::delete('/help-desk-faqs/{id}/force-delete', [\App\Http\Controllers\HelpDeskFaqController::class, 'forceDelete'])->name('help-desk-faqs.force-delete');
+    Route::post('/help-desk-faqs/gurus', [\App\Http\Controllers\HelpDeskFaqController::class, 'storeGuru'])->name('help-desk-faqs.gurus.store');
+    Route::delete('/help-desk-faqs/gurus/{id}', [\App\Http\Controllers\HelpDeskFaqController::class, 'destroyGuru'])->name('help-desk-faqs.gurus.destroy');
     Route::get('/help-desk-faqs/sample-csv', [\App\Http\Controllers\HelpDeskFaqController::class, 'sampleCsv'])->name('help-desk-faqs.sample');
     Route::post('/help-desk-faqs/bulk-import', [\App\Http\Controllers\HelpDeskFaqController::class, 'bulkImport'])->name('help-desk-faqs.bulk');
     Route::post('/help-desk-faqs/bulk-update', [\App\Http\Controllers\HelpDeskFaqController::class, 'bulkUpdate'])->name('help-desk-faqs.bulk-update');

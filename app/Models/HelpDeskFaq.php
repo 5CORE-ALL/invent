@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class HelpDeskFaq extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'help_desk_faqs';
 
     protected $fillable = [
@@ -23,9 +26,13 @@ class HelpDeskFaq extends Model
         'ca',
         'plus_action',
         'messages',
+        'created_by_email',
+        'updated_by_email',
+        'edit_history',
     ];
 
     protected $casts = [
         'dept' => 'array',
+        'edit_history' => 'array',
     ];
 }
