@@ -29,6 +29,9 @@ class HelpDeskFaqController extends Controller
         if ($this->isGuruManager($request)) {
             return true;
         }
+        if (! \Illuminate\Support\Facades\Schema::hasTable('help_desk_gurus')) {
+            return false;
+        }
         $email = $this->userEmail($request);
         return $email !== '' && HelpDeskGuru::whereRaw('LOWER(email) = ?', [$email])->exists();
     }
@@ -47,18 +50,30 @@ class HelpDeskFaqController extends Controller
     public function index(Request $request)
     {
         $departments = ResourceDepartment::orderBy('name')->get();
-        $faqs = HelpDeskFaq::orderByDesc('id')->get();
+        $perPage = (int) ($request->input('per_page', 50));
+        if (!in_array($perPage, [25, 50, 100, 200, 500])) {
+            $perPage = 50;
+        }
+
+        $faqs = \Illuminate\Support\Facades\Schema::hasTable('help_desk_faqs')
+            ? HelpDeskFaq::orderByDesc('id')->paginate($perPage)->withQueryString()
+            : collect();
 
         $deptNames = $departments->pluck('name', 'id');
+
+        $gurus = \Illuminate\Support\Facades\Schema::hasTable('help_desk_gurus')
+            ? HelpDeskGuru::orderBy('name')->orderBy('email')->get()
+            : collect();
 
         return view('help-desk-faqs.index', [
             'faqs' => $faqs,
             'departments' => $departments,
             'deptNames' => $deptNames,
-            'gurus' => HelpDeskGuru::orderBy('name')->orderBy('email')->get(),
+            'gurus' => $gurus,
             'canEditFaq' => $this->canEditFaq($request),
             'canDeleteFaq' => $this->isGuruManager($request),
             'isGuruManager' => $this->isGuruManager($request),
+            'perPage' => $perPage,
         ]);
     }
 

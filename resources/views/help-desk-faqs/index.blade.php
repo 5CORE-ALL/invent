@@ -154,6 +154,23 @@
                     <i class="ri-archive-line"></i>
                 </a>
             </div>
+            {{-- Per-page selector --}}
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <form method="GET" action="{{ route('help-desk-faqs.index') }}" class="d-flex align-items-center gap-2 mb-0">
+                    <label class="form-label mb-0 text-muted" style="white-space:nowrap; font-size:0.8rem;">Rows per page:</label>
+                    <select name="per_page" class="form-select form-select-sm" style="width:80px;" onchange="this.form.submit()">
+                        @foreach ([25, 50, 100, 200, 500] as $n)
+                            <option value="{{ $n }}" {{ $perPage == $n ? 'selected' : '' }}>{{ $n }}</option>
+                        @endforeach
+                    </select>
+                </form>
+                @if ($faqs instanceof \Illuminate\Pagination\LengthAwarePaginator)
+                    <span class="text-muted" style="font-size:0.8rem;">
+                        Showing {{ $faqs->firstItem() }}–{{ $faqs->lastItem() }} of {{ $faqs->total() }} total
+                    </span>
+                @endif
+            </div>
+
             <div class="table-responsive">
                 <table id="faqTable" class="table table-bordered table-hover align-middle mb-0">
                     <thead class="table-light">
@@ -300,6 +317,13 @@
                     </tbody>
                 </table>
             </div>
+
+            {{-- Pagination links --}}
+            @if ($faqs instanceof \Illuminate\Pagination\LengthAwarePaginator && $faqs->hasPages())
+                <div class="d-flex justify-content-center mt-3">
+                    {{ $faqs->onEachSide(2)->links() }}
+                </div>
+            @endif
         </div>
     </div>
 
