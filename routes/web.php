@@ -5474,6 +5474,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/buy-box-stats', [\App\Http\Controllers\JungleScout\CompetitorSalesController::class, 'getBuyBoxStats'])->name('buy-box-stats');
     });
 
+    Route::prefix('repricer/amz-comp-jungle')->name('repricer.amz-comp-jungle.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\RePricer\AmzCompJungleController::class, 'index'])->name('index');
+        Route::get('/kws', [\App\Http\Controllers\RePricer\AmzCompJungleController::class, 'getKws'])->name('kws');
+        Route::get('/competitor-asins', [\App\Http\Controllers\RePricer\AmzCompJungleController::class, 'getCompetitorAsins'])->name('competitor-asins');
+        Route::post('/save-kw', [\App\Http\Controllers\RePricer\AmzCompJungleController::class, 'saveKw'])->name('save-kw');
+        Route::post('/save-asins', [\App\Http\Controllers\RePricer\AmzCompJungleController::class, 'saveAsins'])->name('save-asins');
+        Route::post('/save-asins-bulk', [\App\Http\Controllers\RePricer\AmzCompJungleController::class, 'saveAsinsBulk'])->name('save-asins-bulk');
+        Route::get('/import-template', [\App\Http\Controllers\RePricer\AmzCompJungleController::class, 'importTemplate'])->name('import-template');
+        Route::post('/import', [\App\Http\Controllers\RePricer\AmzCompJungleController::class, 'import'])->name('import');
+    });
+
     Route::get('/facebook-image-ads', [FacebookAdsController::class, 'facebookImageAds'])->name('facebook.image.ads');
     Route::get('/facebook-image-ads-data', [FacebookAdsController::class, 'facebookImageAdsData'])->name('facebook.image.ads.data');
     // Removed duplicate route - using /facebook-video-ad (singular) from VideoAdsMasterController instead

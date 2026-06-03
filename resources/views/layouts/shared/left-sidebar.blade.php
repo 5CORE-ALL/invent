@@ -616,6 +616,12 @@
                                             Google Competitors
                                         </a>
                                     </li>
+                                    <li>
+                                        <a href="{{ url('/repricer/amz-comp-jungle') }}"
+                                            class="{{ request()->is('repricer/amz-comp-jungle*') ? 'active' : '' }}">
+                                            Amz Comp Jungle
+                                        </a>
+                                    </li>
                                 </ul>
                 </div>
             </li>

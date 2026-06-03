@@ -1846,6 +1846,7 @@
                             title: "CVR L60",
                             field: "CVR_L60",
                             hozAlign: "center",
+                            visible: false,
                             width: 65,
                             formatter: function(cell) {
                                 const row = cell.getRow().getData();
@@ -1864,6 +1865,7 @@
                             title: "CVR L45",
                             field: "CVR_L45",
                             hozAlign: "center",
+                            visible: false,
                             width: 65,
                             formatter: function(cell) {
                                 const row = cell.getRow().getData();

@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'FBA Dispatch Data', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'FBA dispatch', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -48,6 +48,32 @@
             background-color: #28a745;
         }
 
+        /* Red/Green/Yellow toggle dot for Compliance column */
+        .compliance-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .compliance-dot.red {
+            background-color: #dc3545;
+        }
+
+        .compliance-dot.green {
+            background-color: #28a745;
+        }
+
+        .compliance-dot.yellow {
+            background-color: #ffc107;
+        }
+
+        /* Send Qty column always yellow */
+        .send-qty-cell {
+            background-color: #ffc107 !important;
+        }
+
         /* Ensure all modals have proper z-index */
         .modal {
             z-index: 1050 !important;
@@ -89,37 +115,78 @@
 
 @section('content')
     <div class="toast-container"></div>
+
+    <!-- CTN Details Modal -->
+    <div class="modal fade" id="ctnDetailsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fa fa-lightbulb me-2"></i>CTN Details<span id="ctnDetailsSku" class="ms-2 text-muted"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="ctnProductId">
+                    <input type="hidden" id="ctnSku">
+                    <div class="mb-3">
+                        <label class="form-label">CTN QTY</label>
+                        <input type="number" step="0.01" class="form-control" id="ctnQtyInput">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">CTN L (inch)</label>
+                        <input type="number" step="0.01" class="form-control" id="ctnLInput">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">CTN W (inch)</label>
+                        <input type="number" step="0.01" class="form-control" id="ctnWInput">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">CTN H (inch)</label>
+                        <input type="number" step="0.01" class="form-control" id="ctnHInput">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">CTN WT (LB)</label>
+                        <input type="number" step="0.0001" class="form-control" id="ctnWtLbInput">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="ctnDetailsSaveBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Row Details Modal -->
+    <div class="modal fade" id="rowDetailsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fa fa-search me-2"></i>Row Details<span id="rowDetailsSku" class="ms-2 text-muted"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-sm table-striped table-bordered mb-0">
+                        <tbody id="rowDetailsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="container-fluid">
         <div class="row">
             <div class="col-12">
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <div class="d-flex align-items-center gap-2">
-                            <h4 class="mb-0">FBA Dispatch Data</h4>
+                            <h4 class="mb-0">FBA dispatch</h4>
                         </div>
                         <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span id="sugg-send-rows-badge" class="badge bg-primary me-2 d-inline-flex align-items-center" style="font-size: 0.91875rem; padding: 0.3rem 0.6rem; line-height: 1.5;">
+                                <i class="fa fa-list me-1"></i> <strong>Send:</strong> <span id="sugg-send-rows-count" class="ms-1">0</span>
+                            </span>
                             <input type="text" id="sku-search" class="form-control form-control-sm me-2"
                                 style="width: 200px; display: inline-block;" placeholder="Search SKU or FBA SKU...">
-                            <select id="inventory-filter" class="form-select form-select-sm me-2"
-                                style="width: auto; display: inline-block;">
-                                <option value="all">All Inventory</option>
-                                <option value="zero">0 Inventory</option>
-                                <option value="more">More than 0</option>
-                            </select>
-                            <select id="parent-filter" class="form-select form-select-sm me-2"
-                                style="width: auto; display: inline-block;">
-                                <option value="show">Show Parent</option>
-                                <option value="hide" selected>Hide Parent</option>
-                            </select>
-                            <select id="pft-filter" class="form-select form-select-sm me-2"
-                                style="width: auto; display: inline-block;">
-                                <option value="all">All Pft%</option>
-                                <option value="0-10">0-10%</option>
-                                <option value="11-14">11-14%</option>
-                                <option value="15-20">15-20%</option>
-                                <option value="21-49">21-49%</option>
-                                <option value="50+">50%+</option>
-                            </select>
                             <select id="nrl-fba-filter" class="form-select form-select-sm me-2"
                                 style="width: auto; display: inline-block;">
                                 <option value="all">All Types</option>
@@ -128,15 +195,6 @@
                                 <option value="NRL">NRL</option>
                                 <option value="Both">Both</option>
                             </select>
-                            <select id="roi-filter" class="form-select form-select-sm me-2"
-                                style="width: auto; display: inline-block;">
-                                <option value="all">ROI%</option>
-                                <option value="lt40">&lt; 40%</option>
-                                <option value="40-75">40–75%</option>
-                                <option value="75-125">75–125%</option>
-                                <option value="125-250">125–250%</option>
-                                <option value="gt250">&gt; 250%</option>
-                            </select>
                             <select id="sugg-send-filter" class="form-select form-select-sm me-2"
                                 style="width: auto; display: inline-block;">
                                 <option value="all">All Sugg Send</option>
@@ -144,34 +202,25 @@
                                 <option value="zero">Zero</option>
                                 <option value="negative">Negative</option>
                             </select>
-                            <a href="{{ url('/fba-manual-sample') }}" class="btn btn-sm btn-info me-2">
-                                <i class="fa fa-download"></i> Sample Template
-                            </a>
                             <a href="{{ url('/fba-manual-export') }}" class="btn btn-sm btn-success me-2">
-                                <i class="fa fa-file-excel"></i>
+                                <i class="fa fa-download"></i>
                             </a>
                             <div class="btn-group me-2" role="group">
                                 <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle"
                                     data-bs-toggle="dropdown" aria-expanded="false">
-                                    <i class="fa fa-columns"></i> Columns
+                                    <i class="fa fa-columns"></i>
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end" id="column-dropdown-menu"
                                     style="max-height: 400px; overflow-y: auto;">
                                 </ul>
                             </div>
-                            <button id="show-all-columns-btn" type="button" class="btn btn-sm btn-outline-secondary me-2">
-                                <i class="fa fa-eye"></i> Show All Columns
-                            </button>
                             <button id="reset-all-filters-btn" type="button" class="btn btn-sm btn-warning me-2">
-                                <i class="fa fa-filter-circle-xmark"></i> Show All Data
+                                <i class="fa fa-filter-circle-xmark"></i> all
                             </button>
                             <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
                                 data-bs-target="#importModal">
                                 <i class="fa fa-upload"></i>
                             </button>
-                            <span id="sugg-send-badge" class="badge bg-danger" style="font-size: 14px;">
-                                <i class="fa fa-box"></i> <strong>QTY:</strong> <span id="sugg-send-count">0</span>
-                            </span>
                         </div>
                     </div>
                     <div class="card-body" style="padding: 0;">
@@ -258,6 +307,9 @@
                         </small>
                     </div>
                     <div class="modal-footer">
+                        <a href="{{ url('/fba-manual-sample') }}" class="btn btn-info me-auto">
+                            <i class="fa fa-download"></i> Sample Template
+                        </a>
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                         <button type="submit" class="btn btn-primary" id="uploadBtn">Upload & Import</button>
                     </div>
@@ -566,6 +618,162 @@
             }
 
             $(document).ready(function() {
+                const currentUser = @json(auth()->check() ? (auth()->user()->name ?? 'User') : 'User');
+
+                // Parse Send History (stored as JSON string or array)
+                function parseSendHistory(v) {
+                    if (!v) return [];
+                    if (Array.isArray(v)) return v;
+                    try {
+                        const parsed = JSON.parse(v);
+                        return Array.isArray(parsed) ? parsed : [];
+                    } catch (e) {
+                        return [];
+                    }
+                }
+
+                // Append a history entry (user + date + action) for a row and persist it
+                function appendSendHistory(row, action) {
+                    const data = row.getData();
+                    const history = parseSendHistory(data.Send_History);
+                    const dateStr = new Date().toLocaleString();
+                    history.push({ user: currentUser, date: dateStr, action: action });
+
+                    row.update({ Send_History: history });
+
+                    $.ajax({
+                        url: '/update-fba-manual-data',
+                        method: 'POST',
+                        data: {
+                            _token: '{{ csrf_token() }}',
+                            sku: data.FBA_SKU || data.SKU,
+                            field: 'send_history',
+                            value: JSON.stringify(history)
+                        },
+                        error: function(xhr) {
+                            console.error('Error saving Send History:', xhr.responseText);
+                            showToast('Failed to save history', 'error');
+                        }
+                    });
+                }
+
+                // Show data for a row in a modal — only columns currently visible in the table
+                function showRowDetailsModal(rowData) {
+                    const body = document.getElementById('rowDetailsBody');
+                    body.innerHTML = '';
+
+                    const skuLabel = rowData.FBA_SKU || rowData.SKU || '';
+                    document.getElementById('rowDetailsSku').textContent = skuLabel ? ` — ${skuLabel}` : '';
+
+                    const skipFields = ['_details', '_select', '_accept', 'is_parent'];
+
+                    table.getColumns().forEach(col => {
+                        if (!col.isVisible()) return; // skip hidden columns
+                        const def = col.getDefinition();
+                        const field = def.field;
+                        if (!field || skipFields.includes(field)) return;
+
+                        const title = (def.title || field).replace(/<[^>]*>/g, '').trim() || field;
+                        let value = rowData[field];
+
+                        if (value === null || value === undefined || value === '') {
+                            value = '<span class="text-muted">—</span>';
+                        } else if (typeof value === 'object') {
+                            value = `<code>${JSON.stringify(value)}</code>`;
+                        } else {
+                            value = String(value).replace(/<[^>]*>/g, '').trim() || '<span class="text-muted">—</span>';
+                        }
+
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<th style="width:35%; white-space:nowrap;">${title}</th><td>${value}</td>`;
+                        body.appendChild(tr);
+                    });
+
+                    const modalEl = document.getElementById('rowDetailsModal');
+                    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                    modal.show();
+                }
+
+                // CTN details edit modal (data source: /dim-wt-master-ctn -> ProductMaster Values)
+                const CM_PER_INCH = 2.54;
+                let ctnDetailsRow = null;
+
+                function openCtnDetailsModal(row) {
+                    const data = row.getData();
+                    ctnDetailsRow = row;
+
+                    document.getElementById('ctnProductId').value = data.product_id ?? '';
+                    document.getElementById('ctnSku').value = data.SKU ?? '';
+                    document.getElementById('ctnDetailsSku').textContent = (data.FBA_SKU || data.SKU) ? ` — ${data.FBA_SKU || data.SKU}` : '';
+
+                    const toInch = (cm) => {
+                        const n = parseFloat(cm);
+                        return isNaN(n) ? '' : (n / CM_PER_INCH).toFixed(2);
+                    };
+
+                    document.getElementById('ctnQtyInput').value = (data.CTN_QTY ?? '') === '' ? '' : data.CTN_QTY;
+                    document.getElementById('ctnLInput').value = toInch(data.CTN_L);
+                    document.getElementById('ctnWInput').value = toInch(data.CTN_W);
+                    document.getElementById('ctnHInput').value = toInch(data.CTN_H);
+                    document.getElementById('ctnWtLbInput').value = (data.CTN_WT_LB ?? '') === '' ? '' : data.CTN_WT_LB;
+
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('ctnDetailsModal')).show();
+                }
+
+                $('#ctnDetailsSaveBtn').on('click', function() {
+                    if (!ctnDetailsRow) return;
+
+                    const productId = document.getElementById('ctnProductId').value;
+                    const sku = document.getElementById('ctnSku').value;
+
+                    const num = (v) => {
+                        if (v === '' || v === null || v === undefined) return null;
+                        const n = parseFloat(v);
+                        return isNaN(n) ? null : n;
+                    };
+                    const inchToCm = (v) => {
+                        const n = num(v);
+                        return n === null ? null : +(n * CM_PER_INCH).toFixed(2);
+                    };
+
+                    const ctnQty = num(document.getElementById('ctnQtyInput').value);
+                    const ctnLcm = inchToCm(document.getElementById('ctnLInput').value);
+                    const ctnWcm = inchToCm(document.getElementById('ctnWInput').value);
+                    const ctnHcm = inchToCm(document.getElementById('ctnHInput').value);
+                    const ctnWtLb = num(document.getElementById('ctnWtLbInput').value);
+
+                    $.ajax({
+                        url: '/dim-wt-master/update',
+                        method: 'POST',
+                        data: {
+                            _token: '{{ csrf_token() }}',
+                            product_id: productId,
+                            sku: sku,
+                            ctn_qty: ctnQty,
+                            ctn_l: ctnLcm,
+                            ctn_w: ctnWcm,
+                            ctn_h: ctnHcm,
+                            ctn_weight_lb: ctnWtLb
+                        },
+                        success: function() {
+                            // Reflect changes back into the row (store CM + LB; CTN_QTY)
+                            ctnDetailsRow.update({
+                                CTN_QTY: ctnQty,
+                                CTN_L: ctnLcm,
+                                CTN_W: ctnWcm,
+                                CTN_H: ctnHcm,
+                                CTN_WT_LB: ctnWtLb
+                            });
+                            showToast('CTN details saved', 'success');
+                            bootstrap.Modal.getOrCreateInstance(document.getElementById('ctnDetailsModal')).hide();
+                        },
+                        error: function(xhr) {
+                            console.error('Error saving CTN details:', xhr.responseText);
+                            showToast('Failed to save CTN details', 'error');
+                        }
+                    });
+                });
+
                 // Fix modal backdrop z-index issues globally
                 $(document).on('shown.bs.modal', '.modal', function() {
                     $(this).css('z-index', '1050');
@@ -617,7 +825,9 @@
 
                 const table = new Tabulator("#fba-table", {
                     ajaxURL: "/fba-data-json",
-                    layout: "fitData",
+                    layout: "fitDataStretch",
+                    layoutColumnsOnNewData: true,
+                    editTriggerEvent: "dblclick",
                     pagination: true,
                     paginationSize: 50,
                     rowFormatter: function(row) {
@@ -632,7 +842,8 @@
                             headerFilterPlaceholder: "Search Parent...",
                             cssClass: "text-primary",
                             tooltip: true,
-                            frozen: true
+                            frozen: true,
+                            visible: false
                         },
                         {
                             title: "Child SKU",
@@ -641,7 +852,8 @@
                             headerFilterPlaceholder: "Search SKU...",
                             cssClass: "font-weight-bold",
                             tooltip: true,
-                            frozen: true
+                            frozen: true,
+                            visible: false
                         },
                         {
                             title: "FBA SKU",
@@ -683,78 +895,298 @@
                         },
 
                         {
-                            title: "NRL FBA",
-                            field: "NRL_FBA",
+                            title: "Sugg Send",
+                            field: "Sugg_Send",
                             hozAlign: "center",
-                            editor: "list",
-                            editorParams: {
-                                values: ["All", "FBA", "FBM", "NRL", "Both"],
-                                autocomplete: true,
-                                allowEmpty: false,
-                                listOnEmpty: true
-                            },
                             formatter: function(cell) {
                                 const rowData = cell.getRow().getData();
-                                // Don't show value for parent rows
+                                // Don't show value on parent rows
                                 if (rowData.is_parent) {
                                     return '';
                                 }
-                                const value = cell.getValue() || 'FBA';
-                                const colorMap = {
-                                    'All': '#808080', // Gray
-                                    'FBA': '#28a745', // Green
-                                    'FBM': '#007bff', // Blue
-                                    'NRL': '#ffc107', // Yellow/Orange
-                                    'Both': '#6f42c1' // Purple
-                                };
-                                const color = colorMap[value] ||
-                                '#28a745'; // Default to green (FBA) if unknown
-                                return `<span style="color: ${color}; font-weight: 700;">${value}</span>`;
-                            },
-                            cellEdited: function(cell) {
-                                var data = cell.getRow().getData();
-                                var value = cell.getValue();
+                                let value = parseFloat(cell.getValue());
+                                if (isNaN(value)) return '';
 
-                                // Skip if it's a parent row
-                                if (data.is_parent) {
-                                    cell.setValue('FBA');
-                                    return;
+                                // If Dil is above 50%, force Sugg Send to 0
+                                const dil = parseFloat(rowData.Dil);
+                                if (!isNaN(dil) && dil > 50) {
+                                    value = 0;
                                 }
 
-                                $.ajax({
-                                    url: '/update-fba-listing-status',
-                                    method: 'POST',
-                                    data: {
-                                        sku: data.SKU,
-                                        status: value,
-                                        _token: '{{ csrf_token() }}'
-                                    },
-                                    success: function(response) {
-                                        console.log('NRL FBA status updated:', response);
-                                        if (response.success) {
-                                            console.log('✅ Saved to database - SKU:', data
-                                                .SKU, 'Status:', value);
-                                        }
-                                    },
-                                    error: function(xhr) {
-                                        console.error('Error updating NRL FBA status:',
-                                        xhr);
-                                        var errorMsg = 'Failed to update NRL FBA status';
-                                        if (xhr.responseJSON && xhr.responseJSON.message) {
-                                            errorMsg = xhr.responseJSON.message;
-                                        }
-                                        alert(errorMsg);
-                                        // Revert to old value on error
-                                        cell.setValue(cell.getOldValue() || 'All');
-                                    }
-                                });
+                                // If Compliance toggle is red, force Sugg Send to 0 (default green)
+                                const compliance = (rowData.compliance || 'green').toString().toLowerCase();
+                                if (compliance === 'red') {
+                                    value = 0;
+                                }
+
+                                // If rating is below 3.5 stars, force Sugg Send to 0
+                                const rating = parseFloat(rowData.AMZ_Rating);
+                                if (!isNaN(rating) && rating > 0 && rating < 3.5) {
+                                    value = 0;
+                                }
+
+                                // If Main INV is less than CTN QTY, force Sugg Send to 0
+                                const mainInv = parseFloat(rowData.Shopify_INV);
+                                const ctnQty = parseFloat(rowData.CTN_QTY);
+                                if (!isNaN(ctnQty) && ctnQty > 0 && !isNaN(mainInv) && mainInv < ctnQty) {
+                                    value = 0;
+                                }
+
+                                const display = Number.isInteger(value) ? value : value.toFixed(0);
+
+                                // Color coding: positive = green, else (negative or zero) = red
+                                const bgColor = value > 0 ? '#28a745' :
+                                    '#dc3545'; // green for positive, red for else
+                                const textColor = '#fff';
+                                return `<span style="background-color:${bgColor}; color:${textColor}; padding:4px 8px; border-radius:3px; font-weight:600;">${display}</span>`;
+                            }
+                        },
+
+                        {
+                            title: "<i class='fa fa-search'></i>",
+                            field: "_details",
+                            headerSort: false,
+                            hozAlign: "center",
+                            width: 50,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                return `<i class="fa fa-search row-details-btn" style="cursor:pointer; color:#3b7ddd;" title="View all details"></i>`;
+                            },
+                            cellClick: function(e, cell) {
+                                if (!e.target.closest('.row-details-btn')) return;
+                                const rowData = cell.getRow().getData();
+                                showRowDetailsModal(rowData);
                             }
                         },
 
                         {
                             title: "Main INV",
                             field: "Shopify_INV",
-                            hozAlign: "center"
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const value = cell.getValue();
+                                const mainInv = parseFloat(value);
+                                const ctnQty = parseFloat(rowData.CTN_QTY);
+                                if (!isNaN(ctnQty) && ctnQty > 0 && !isNaN(mainInv) && mainInv < ctnQty) {
+                                    return `<span style="color: #dc3545; font-weight: 600;">${value}</span>`;
+                                }
+                                return `${value ?? ''}`;
+                            }
+                        },
+
+                        {
+                            title: "ctn qty",
+                            field: "CTN_QTY",
+                            hozAlign: "center",
+                            visible: false,
+                            editor: "input",
+                            editable: function(cell) {
+                                // Not editable on parent rows
+                                return !cell.getRow().getData().is_parent;
+                            },
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const value = cell.getValue();
+                                if (value === null || value === undefined || value === '') {
+                                    return '<span class="text-muted">--</span>';
+                                }
+                                return value;
+                            },
+                            cellEdited: function(cell) {
+                                const data = cell.getRow().getData();
+                                if (data.is_parent) return;
+                                const raw = cell.getValue();
+                                const value = (raw === '' || raw === null) ? null : parseFloat(raw);
+
+                                if (raw !== '' && raw !== null && isNaN(value)) {
+                                    showToast('CTN qty must be a number', 'error');
+                                    cell.setValue(cell.getOldValue(), true);
+                                    return;
+                                }
+
+                                // Save to the same place as Dim Wt Master (CTN): ProductMaster Values['ctn_qty']
+                                $.ajax({
+                                    url: '/dim-wt-master/update',
+                                    method: 'POST',
+                                    data: {
+                                        _token: '{{ csrf_token() }}',
+                                        product_id: data.product_id,
+                                        sku: data.SKU,
+                                        ctn_qty: value
+                                    },
+                                    success: function() {
+                                        showToast('CTN qty saved', 'success');
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Error saving CTN qty:', xhr.responseText);
+                                        showToast('Failed to save CTN qty', 'error');
+                                        cell.setValue(cell.getOldValue(), true);
+                                    }
+                                });
+                            }
+                        },
+
+                        {
+                            title: "<i class='fa fa-lightbulb'></i>",
+                            field: "_ctn_details",
+                            headerSort: false,
+                            hozAlign: "center",
+                            width: 50,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                return `<i class="fa fa-lightbulb ctn-details-btn" style="cursor:pointer; color:#f0ad4e;" title="Edit CTN details"></i>`;
+                            },
+                            cellClick: function(e, cell) {
+                                if (!e.target.closest('.ctn-details-btn')) return;
+                                openCtnDetailsModal(cell.getRow());
+                            }
+                        },
+
+                        {
+                            title: "M/A Barcode",
+                            field: "Barcode",
+                            editor: "list",
+                            editorParams: {
+                                values: ["", "Barcode", "Asin", "Verify"],
+                                autocomplete: true,
+                                allowEmpty: true,
+                                listOnEmpty: true
+                            },
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                let value = (cell.getValue() || '').toString().trim();
+                                // Backward-compat with old M/A values
+                                if (value === 'M') value = 'Barcode';
+                                else if (value === 'A') value = 'Asin';
+                                if (!value) return '';
+
+                                const bgMap = {
+                                    'Barcode': '#28a745', // green
+                                    'Asin': '#ffc107',     // yellow
+                                    'Verify': '#dc3545'    // red
+                                };
+                                const bg = bgMap[value];
+                                if (!bg) return value;
+                                const textColor = (value === 'Asin') ? '#000' : '#fff';
+                                return `<span style="background-color:${bg}; color:${textColor}; padding:4px 8px; border-radius:3px; font-weight:600;">${value}</span>`;
+                            }
+                        },
+
+                        {
+                            title: "Send Qty",
+                            field: "Send_Qty",
+                            hozAlign: "center",
+                            cssClass: "send-qty-cell",
+                            editor: "input",
+                            editorParams: function(cell) {
+                                const ctnQty = cell.getRow().getData().CTN_QTY;
+                                return {
+                                    elementAttributes: {
+                                        placeholder: (ctnQty !== null && ctnQty !== undefined && ctnQty !== '') ? String(ctnQty) : ''
+                                    }
+                                };
+                            },
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const value = cell.getValue();
+                                if (value !== null && value !== undefined && value !== '') {
+                                    return `<span style="color:#000; font-weight:600;">${value}</span>`;
+                                }
+                                // Prompt the CTN qty as a suggestion when empty
+                                const ctnQty = rowData.CTN_QTY;
+                                if (ctnQty !== null && ctnQty !== undefined && ctnQty !== '') {
+                                    return `<span style="color:#7a5c00; font-style:italic;">${ctnQty}</span>`;
+                                }
+                                return '';
+                            }
+                        },
+
+                        {
+                            title: "Sent QTY",
+                            field: "Total_quantity_sent",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const v = cell.getValue();
+                                const checked = (v === true || v === 1 || v === '1');
+                                return `<input type="checkbox" class="sent-qty-check" ${checked ? 'checked' : ''} style="width:18px; height:18px; cursor:pointer; accent-color:#28a745;">`;
+                            },
+                            cellClick: function(e, cell) {
+                                const box = e.target.closest('.sent-qty-check');
+                                if (!box) return;
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return;
+
+                                const newVal = box.checked ? 1 : 0;
+                                cell.setValue(newVal);
+
+                                $.ajax({
+                                    url: '/update-fba-manual-data',
+                                    method: 'POST',
+                                    data: {
+                                        _token: '{{ csrf_token() }}',
+                                        sku: rowData.FBA_SKU || rowData.SKU,
+                                        field: 'total_quantity_sent',
+                                        value: newVal
+                                    },
+                                    success: function() {
+                                        console.log('Sent QTY saved:', newVal);
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Error saving Sent QTY:', xhr.responseText);
+                                        showToast('Failed to save Sent QTY', 'error');
+                                        cell.setValue(newVal ? 0 : 1);
+                                    }
+                                });
+
+                                // Log history when checked (Sent)
+                                if (newVal === 1) {
+                                    appendSendHistory(cell.getRow(), 'Sent');
+                                }
+                            }
+                        },
+
+                        {
+                            title: "History",
+                            field: "Send_History",
+                            headerSort: false,
+                            minWidth: 180,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const history = parseSendHistory(cell.getValue());
+
+                                let html = '';
+                                if (history.length > 0) {
+                                    html += '<div style="font-size:11px; line-height:1.4; max-height:60px; overflow-y:auto;">';
+                                    history.forEach(h => {
+                                        const action = h.action || '';
+                                        const color = action === 'Cleared' ? '#dc3545' : '#28a745';
+                                        html += `<div><span style="color:${color}; font-weight:600;">${action}</span> — ${h.user || ''} <span class="text-muted">(${h.date || ''})</span></div>`;
+                                    });
+                                    html += '</div>';
+                                } else {
+                                    html += '<span class="text-muted">No history</span>';
+                                }
+
+                                html += `<button class="btn btn-sm btn-outline-danger send-history-clear mt-1" style="font-size:10px; padding:1px 6px;">Clear</button>`;
+                                return html;
+                            },
+                            cellClick: function(e, cell) {
+                                if (!e.target.closest('.send-history-clear')) return;
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return;
+                                appendSendHistory(cell.getRow(), 'Cleared');
+                            }
                         },
 
 
@@ -769,12 +1201,14 @@
                             title: "Dil",
                             field: "Dil",
                             hozAlign: "center",
+                            visible: false,
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue());
                                 if (isNaN(value)) return '';
                                 const formattedValue = `${value.toFixed(0)}%`;
                                 let color = '';
-                                if (value <= 50) color = 'red';
+                                if (value >= 25 && value <= 50) color = '#b8860b'; // dark mustard
+                                else if (value <= 50) color = 'red';
                                 else if (value <= 100) color = 'green';
                                 else color = 'purple';
                                 return `<span style="color:${color}; font-weight:600;">${formattedValue}</span>`;
@@ -810,6 +1244,7 @@
                         {
                             title: "FBA Dil",
                             field: "FBA_Dil",
+                            visible: false,
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue());
@@ -847,25 +1282,60 @@
                         },
 
                         {
-                            title: "Sugg Send",
-                            field: "Sugg_Send",
+                            title: "Compliance",
+                            field: "compliance",
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const rowData = cell.getRow().getData();
-                                // Don't show value on parent rows
                                 if (rowData.is_parent) {
                                     return '';
                                 }
-                                let value = parseFloat(cell.getValue());
-                                if (isNaN(value)) return '';
+                                // Cycle: red -> green -> yellow. Default green (first time).
+                                let value = (cell.getValue() || 'green').toString().toLowerCase();
+                                if (!['red', 'green', 'yellow'].includes(value)) {
+                                    value = 'green';
+                                }
+                                return `<span class="compliance-dot ${value}" title="Click to toggle compliance"></span>`;
+                            },
+                            cellClick: function(e, cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) {
+                                    return;
+                                }
 
-                                const display = Number.isInteger(value) ? value : value.toFixed(0);
+                                const dot = e.target.closest('.compliance-dot');
+                                if (!dot) return;
 
-                                // Color coding: positive = green, else (negative or zero) = red
-                                const bgColor = value > 0 ? '#28a745' :
-                                    '#dc3545'; // green for positive, red for else
-                                const textColor = '#fff';
-                                return `<span style="background-color:${bgColor}; color:${textColor}; padding:4px 8px; border-radius:3px; font-weight:600;">${display}</span>`;
+                                const order = ['red', 'green', 'yellow'];
+                                let current = (cell.getValue() || 'green').toString().toLowerCase();
+                                if (!order.includes(current)) current = 'green';
+                                const newValue = order[(order.indexOf(current) + 1) % order.length];
+
+                                order.forEach(c => dot.classList.remove(c));
+                                dot.classList.add(newValue);
+                                cell.setValue(newValue, true);
+
+                                $.ajax({
+                                    url: '/update-fba-manual-data',
+                                    method: 'POST',
+                                    data: {
+                                        sku: rowData.FBA_SKU || rowData.SKU,
+                                        field: 'compliance',
+                                        value: newValue,
+                                        _token: '{{ csrf_token() }}'
+                                    },
+                                    success: function(response) {
+                                        console.log('Compliance saved successfully:', response);
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Error saving compliance:', xhr.responseText);
+                                        // Revert on error
+                                        order.forEach(c => dot.classList.remove(c));
+                                        dot.classList.add(current);
+                                        cell.setValue(current, true);
+                                        alert('Failed to save compliance. Please try again.');
+                                    }
+                                });
                             }
                         },
 
@@ -999,7 +1469,7 @@
                             minWidth: 70
                         },
                         {
-                            title: "AMZ<br>GPFT%",
+                            title: "FBM<br>GPFT%",
                             field: "AMZ_GPFT",
                             hozAlign: "center",
                             visible: true,
@@ -1013,7 +1483,7 @@
                                 else if (pct >= 10 && pct < 20) color = '#3591dc';
                                 else if (pct >= 20 && pct <= 40) color = '#28a745';
                                 else color = '#e83e8c';
-                                return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(1)}%</span>`;
+                                return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(0)}%</span>`;
                             },
                             minWidth: 70
                         },
@@ -1021,7 +1491,7 @@
                             title: "AMZ<br>AD%",
                             field: "AMZ_AD",
                             hozAlign: "center",
-                            visible: true,
+                            visible: false,
                             formatter: function(cell) {
                                 const value = cell.getValue();
                                 if (value == null || value === '') return '<span class="text-muted">-</span>';
@@ -1042,7 +1512,7 @@
                             title: "AMZ<br>NPFT%",
                             field: "AMZ_NPFT",
                             hozAlign: "center",
-                            visible: true,
+                            visible: false,
                             formatter: function(cell) {
                                 const value = cell.getValue();
                                 if (value == null || value === '') return '<span class="text-muted">-</span>';
@@ -1061,7 +1531,7 @@
                             title: "CVR<br>L60<br>amz",
                             field: "CVR_L60_amz",
                             hozAlign: "center",
-                            visible: true,
+                            visible: false,
                             formatter: function(cell) {
                                 const row = cell.getRow().getData();
                                 if (row.is_parent) return '';
@@ -1094,7 +1564,7 @@
                             title: "CVR<br>L45<br>amz",
                             field: "CVR_L45_amz",
                             hozAlign: "center",
-                            visible: true,
+                            visible: false,
                             formatter: function(cell) {
                                 const row = cell.getRow().getData();
                                 if (row.is_parent) return '';
@@ -1133,7 +1603,7 @@
                             minWidth: 65
                         },
                         {
-                            title: "CVR<br>L30<br>amz",
+                            title: "cvr",
                             field: "CVR_L30_amz",
                             hozAlign: "center",
                             visible: true,
@@ -1165,7 +1635,7 @@
                                 }
                                 
                                 if (sess30 === 0) {
-                                    return `<span style="color: #a00211; font-weight: 600;">0.0%</span>${arrowHtml}`.trim();
+                                    return `<span style="color: #a00211; font-weight: 600; font-size: 16px;">0%</span>${arrowHtml}`.trim();
                                 }
                                 
                                 const cvr = cvrL30;
@@ -1175,7 +1645,7 @@
                                 else if (cvr > 7 && cvr <= 13) color = '#28a745';
                                 else color = '#e83e8c';
                                 
-                                return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>${arrowHtml}`.trim();
+                                return `<span style="color: ${color}; font-weight: 600; font-size: 16px;">${cvr.toFixed(0)}%</span>${arrowHtml}`.trim();
                             },
                             sorter: function(a, b, aRow, bRow) {
                                 const calcCVR = (row) => {
@@ -1188,7 +1658,7 @@
                             minWidth: 65
                         },
                         {
-                            title: "Rating<br>amz",
+                            title: "Rating",
                             field: "AMZ_Rating",
                             hozAlign: "center",
                             visible: true,
@@ -1233,28 +1703,6 @@
                         },
 
                         {
-                            title: "PRFT<br>%",
-                            field: "TPFT",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = parseFloat(cell.getValue() || 0);
-                                let style = '';
-                                if (value < 10) {
-                                    style = 'color: red;';
-                                } else if (value >= 11 && value <= 15) {
-                                    style = 'background-color: yellow; color: black;';
-                                } else if (value >= 16 && value <= 20) {
-                                    style = 'color: blue;';
-                                } else if (value >= 21 && value <= 40) {
-                                    style = 'color: green;';
-                                } else if (value > 40) {
-                                    style = 'color: purple;';
-                                }
-                                return `<span style="${style}">${value.toFixed(0)}%</span>`;
-                            },
-                        },
-
-                        {
                             title: "ROI%",
                             field: "ROI%",
                             hozAlign: "center",
@@ -1296,69 +1744,60 @@
                         },
 
                         {
-                            title: "Ads%",
-                            field: "TCOS_Percentage",
+                            title: "PRFT<br>%",
+                            field: "TPFT",
                             hozAlign: "center",
-                            editor: "input",
-                            visible: true,
                             formatter: function(cell) {
-                                const value = parseFloat(cell.getValue() || 0);
-                                return `${value.toFixed(0)}%`;
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                // PRFT% = GPFT% - AMZ Ads%
+                                // GPFT% may be an HTML string (e.g. "<span>32%</span>"), so strip tags before parsing
+                                const gpftRaw = String(rowData['GPFT%'] ?? '').replace(/<[^>]*>/g, '');
+                                const gpft = parseFloat(gpftRaw) || 0;
+                                const amzAds = parseFloat(rowData['AMZ_AD']) || 0;
+                                const value = gpft - amzAds;
+                                let style = '';
+                                if (value < 10) {
+                                    style = 'color: red;';
+                                } else if (value >= 11 && value <= 15) {
+                                    style = 'background-color: yellow; color: black;';
+                                } else if (value >= 16 && value <= 20) {
+                                    style = 'color: blue;';
+                                } else if (value >= 21 && value <= 40) {
+                                    style = 'color: green;';
+                                } else if (value > 40) {
+                                    style = 'color: purple;';
+                                }
+                                return `<span style="${style}">${value.toFixed(0)}%</span>`;
                             },
-                            cellEdited: function(cell) {
-                                var data = cell.getRow().getData();
-                                var sku = data.SKU;
-                                var value = parseFloat(cell.getValue());
-                                
-                                // Update TPFT and TROI after TCOS edit
-                                var gpft = parseFloat(data['GPFT%']) || 0;
-                                var roi = parseFloat(data['ROI%']) || 0;
-                                
-                                var tpft = gpft - value;
-                                var troi = roi - value;
-                                
-                                // Update cells
-                                cell.getRow().update({
-                                    'TPFT': tpft.toFixed(2),
-                                    'TROI': troi.toFixed(2)
-                                });
-                                
-                                // Save to database
-                                $.ajax({
-                                    url: '/update-fba-manual-data',
-                                    method: 'POST',
-                                    data: {
-                                        _token: '{{ csrf_token() }}',
-                                        sku: sku,
-                                        field: 'tcos_percentage',
-                                        value: value
-                                    },
-                                    success: function(response) {
-                                        console.log('TCOS updated successfully');
-                                    },
-                                    error: function(xhr) {
-                                        console.error('Error updating TCOS:', xhr.responseText);
-                                        alert('Failed to update TCOS');
-                                    }
-                                });
-                            }
                         },
 
-                         {
-                            title: "FBA<br>Pft%",
-                            field: "Pft%",
+                        {
+                            title: "ROI",
+                            field: "FBA_ROI",
                             hozAlign: "center",
+                            headerTooltip: "ROI = ((FBA Price × Marketplace %) − FBA Ship − LP) / LP × 100 − AMZ Ads%",
                             formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
                                 const value = cell.getValue();
-                                return `
-                                    <span>${value || ''}</span>
-                                    <i class="fa fa-info-circle text-primary pft-toggle-btn" 
-                                        style="cursor:pointer; margin-left:8px;" 
-                                        title="Toggle related columns"></i>
-                                `;
-                            }
+                                if (value === null || value === '' || isNaN(parseFloat(value))) {
+                                    return '<span class="text-muted">-</span>';
+                                }
+                                // ROI minus AMZ Ads%
+                                const amzAds = parseFloat(rowData['AMZ_AD']) || 0;
+                                const roi = parseFloat(value) - amzAds;
+                                let color = '';
+                                if (roi <= 50) {
+                                    color = 'red';
+                                } else if (roi > 50 && roi <= 100) {
+                                    color = 'green';
+                                } else {
+                                    color = 'magenta';
+                                }
+                                return `<span style="color: ${color}; font-weight: bold;">${roi.toFixed(0)}%</span>`;
+                            },
                         },
-
 
                         {
                             title: "ROI%",
@@ -1435,17 +1874,10 @@
                         },
 
                         {
-                            title: "Sent QTY",
-                            field: "Total_quantity_sent",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-
-
-                        {
                             title: "Views",
                             field: "Current_Month_Views",
-                            hozAlign: "center"
+                            hozAlign: "center",
+                            visible: false
                         },
 
 
@@ -1453,49 +1885,25 @@
                             title: "UPC Codes",
                             field: "UPC_Codes",
                             hozAlign: "center",
-                            editor: "input",
-                            tooltip: true
-                        },
-
-
-                        {
-                            title: "M/A Barcode",
-                            field: "Barcode",
-                            editor: "list",
-                            editorParams: {
-                                values: ["", "M", "A"],
-                                autocomplete: true,
-                                allowEmpty: true,
-                                listOnEmpty: true
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const upc = (cell.getValue() || '').toString().trim();
+                                const hasData = upc !== '';
+                                const color = hasData ? '#28a745' : '#dc3545';
+                                const title = hasData ? 'Click to view UPC' : 'No UPC';
+                                return `<span class="upc-dot" data-upc="${upc}" style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:${color}; cursor:${hasData ? 'pointer' : 'default'};" title="${title}"></span>`;
                             },
-                            hozAlign: "center"
-                        },
-
-
-                        {
-                            title: "Done",
-                            field: "Done",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
                             cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-
-
-                        {
-                            title: "D Date",
-                            field: "Dispatch_Date",
-                            hozAlign: "center",
-                            editor: "input",
-                            editorParams: {
-                                elementAttributes: {
-                                    type: "date"
+                                const dot = e.target.closest('.upc-dot');
+                                if (!dot) return;
+                                const upc = dot.getAttribute('data-upc');
+                                if (upc) {
+                                    showToast(`UPC: ${upc}`, 'success');
                                 }
                             }
                         },
+
 
                         {
                             title: "L CTN",
@@ -1741,7 +2149,25 @@
 
                         {
                             title: "ASIN",
-                            field: "ASIN"
+                            field: "ASIN",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const asin = (cell.getValue() || '').toString().trim();
+                                const hasData = asin !== '';
+                                const color = hasData ? '#28a745' : '#dc3545';
+                                const title = hasData ? 'Click to view ASIN' : 'No ASIN';
+                                return `<span class="asin-dot" data-asin="${asin}" style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:${color}; cursor:${hasData ? 'pointer' : 'default'};" title="${title}"></span>`;
+                            },
+                            cellClick: function(e, cell) {
+                                const dot = e.target.closest('.asin-dot');
+                                if (!dot) return;
+                                const asin = dot.getAttribute('data-asin');
+                                if (asin) {
+                                    showToast(`ASIN: ${asin}`, 'success');
+                                }
+                            }
                         },
 
 
@@ -1759,6 +2185,21 @@
                                 return value.toFixed(2);
                             }
                         },
+
+                        {
+                            title: "Ship",
+                            field: "Ship",
+                            hozAlign: "center",
+                            headerTooltip: "Ship value from Shipping Master",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const value = parseFloat(cell.getValue());
+                                if (isNaN(value)) return '<span class="text-muted">--</span>';
+                                return value.toFixed(2);
+                            }
+                        },
+
 
                         {
                             title: "Send Cost",
@@ -1781,26 +2222,33 @@
                         {
                             title: "FBA Fee",
                             field: "Fulfillment_Fee",
-                            hozAlign: "center"
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const raw = cell.getValue();
+                                const value = parseFloat(raw);
+                                const display = (raw === null || raw === '' || isNaN(value)) ? (raw ?? '') : value;
+                                if (!isNaN(value) && value === 0) {
+                                    return `<span style="color: #dc3545; font-weight: 600;">${display}</span>`;
+                                }
+                                return `${display}`;
+                            }
                         },
 
                         {
-                            title: "FBA Fee Manual",
+                            title: "fees manual",
                             field: "FBA_Fee_Manual",
                             hozAlign: "center",
                             editor: "input",
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue());
-                                if (isNaN(value) || value === 0) return '';
+                                if (isNaN(value)) return '';
+                                if (value === 0) {
+                                    return `<span style="color: #dc3545; font-weight: 600;">0</span>`;
+                                }
                                 return value.toFixed(2);
                             }
-                        },
-
-                        {
-                            title: "Comm %",
-                            field: "Commission_Percentage",
-                            hozAlign: "center",
-                            editor: "input"
                         },
 
                         // {
@@ -2001,6 +2449,75 @@
                             }
                         },
 
+                        {
+                            title: "NRL FBA",
+                            field: "NRL_FBA",
+                            hozAlign: "center",
+                            editor: "list",
+                            editorParams: {
+                                values: ["All", "FBA", "FBM", "NRL", "Both"],
+                                autocomplete: true,
+                                allowEmpty: false,
+                                listOnEmpty: true
+                            },
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                // Don't show value for parent rows
+                                if (rowData.is_parent) {
+                                    return '';
+                                }
+                                const value = cell.getValue() || 'FBA';
+                                const colorMap = {
+                                    'All': '#808080', // Gray
+                                    'FBA': '#28a745', // Green
+                                    'FBM': '#007bff', // Blue
+                                    'NRL': '#ffc107', // Yellow/Orange
+                                    'Both': '#6f42c1' // Purple
+                                };
+                                const color = colorMap[value] ||
+                                '#28a745'; // Default to green (FBA) if unknown
+                                return `<span style="color: ${color}; font-weight: 700;">${value}</span>`;
+                            },
+                            cellEdited: function(cell) {
+                                var data = cell.getRow().getData();
+                                var value = cell.getValue();
+
+                                // Skip if it's a parent row
+                                if (data.is_parent) {
+                                    cell.setValue('FBA');
+                                    return;
+                                }
+
+                                $.ajax({
+                                    url: '/update-fba-listing-status',
+                                    method: 'POST',
+                                    data: {
+                                        sku: data.SKU,
+                                        status: value,
+                                        _token: '{{ csrf_token() }}'
+                                    },
+                                    success: function(response) {
+                                        console.log('NRL FBA status updated:', response);
+                                        if (response.success) {
+                                            console.log('✅ Saved to database - SKU:', data
+                                                .SKU, 'Status:', value);
+                                        }
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Error updating NRL FBA status:',
+                                        xhr);
+                                        var errorMsg = 'Failed to update NRL FBA status';
+                                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                                            errorMsg = xhr.responseJSON.message;
+                                        }
+                                        alert(errorMsg);
+                                        // Revert to old value on error
+                                        cell.setValue(cell.getOldValue() || 'All');
+                                    }
+                                });
+                            }
+                        },
+
                         // Jan–Dec columns intentionally removed — values are available in modal via the T_sales eye icon
                     ]
                 });
@@ -2024,7 +2541,8 @@
                         field === 'Warehouse_INV_Reduction' || field ===
                         'Inbound_Quantity' || field === 'FBA_Send' || field ===
                         'FBA_Fee_Manual' || field === 'MSL' || field === 'Correct_Cost' || field ===
-                        'Approval' || field === 'Profit_is_ok' || field === 'UPC_Codes' || field === 'Commission_Percentage') {
+                        'Approval' || field === 'Profit_is_ok' || field === 'UPC_Codes' || field === 'Commission_Percentage' ||
+                        field === 'Send_Qty' || field === 'Send_History') {
                         
                         // Convert field name to lowercase for backend (UPC_Codes -> upc_codes)
                         var fieldName = field.toLowerCase();
@@ -2071,10 +2589,6 @@
                 let skuSearch = '';
 
                 function applyFilters() {
-                    const inventoryFilter = $('#inventory-filter').val();
-                    const parentFilter = $('#parent-filter').val();
-                    const pftFilter = $('#pft-filter').val();
-                    const roiFilter = $('#roi-filter').val();
                     const nrlFbaFilter = $('#nrl-fba-filter').val();
                     const suggSendFilter = $('#sugg-send-filter').val();
 
@@ -2089,50 +2603,21 @@
                         });
                     }
 
-                    if (inventoryFilter === 'zero') {
-                        table.addFilter('FBA_Quantity', '=', 0);
-                    } else if (inventoryFilter === 'more') {
-                        table.addFilter('FBA_Quantity', '>', 0);
-                    }
+                    // Parents are always hidden
+                    table.addFilter(function(data) {
+                        return data.is_parent !== true;
+                    });
 
-                    if (parentFilter === 'hide') {
-                        table.addFilter(function(data) {
-                            return data.is_parent !== true;
-                        });
-                    }
+                    // Hide rows where Dil is above 49% by default
+                    table.addFilter(function(data) {
+                        const dil = parseFloat(data.Dil);
+                        return isNaN(dil) || dil <= 49;
+                    });
 
-                    if (pftFilter !== 'all') {
-                        table.addFilter(function(data) {
-                            const value = parseFloat(data['Gpft']);
-                            if (isNaN(value)) return false;
-
-                            switch (pftFilter) {
-                                case '0-10':
-                                    return value >= 0 && value <= 10;
-                                case '11-14':
-                                    return value >= 11 && value <= 14;
-                                case '15-20':
-                                    return value >= 15 && value <= 20;
-                                case '21-49':
-                                    return value >= 21 && value <= 49;
-                                case '50+':
-                                    return value >= 50;
-                                default:
-                                    return true;
-                            }
-                        });
-                    }
-
-                    if (roiFilter !== 'all') {
-                        table.addFilter(function(data) {
-                            if (data.is_parent) return true;
-                            const roi = parseFloat(data['ROI%']) || 0;
-                            if (roiFilter === 'lt40')  return roi < 40;
-                            if (roiFilter === 'gt250') return roi > 250;
-                            const [min, max] = roiFilter.split('-').map(Number);
-                            return roi >= min && roi <= max;
-                        });
-                    }
+                    // Hide rows where Main INV is 0 by default
+                    table.addFilter(function(data) {
+                        return parseFloat(data.Shopify_INV) !== 0;
+                    });
 
                     if (nrlFbaFilter !== 'all') {
                         console.log('Applying NRL FBA filter:', nrlFbaFilter);
@@ -2143,7 +2628,7 @@
 
                     if (suggSendFilter !== 'all') {
                         table.addFilter(function(data) {
-                            const value = parseFloat(data.Sugg_Send);
+                            const value = getEffectiveSuggSend(data);
                             if (isNaN(value)) return false;
 
                             switch (suggSendFilter) {
@@ -2160,6 +2645,27 @@
                     }
                 }
 
+                // Effective Sugg Send value (mirrors the Sugg Send column formatter rules)
+                function getEffectiveSuggSend(data) {
+                    let value = parseFloat(data.Sugg_Send);
+                    if (isNaN(value)) return NaN;
+
+                    const dil = parseFloat(data.Dil);
+                    if (!isNaN(dil) && dil > 50) value = 0;
+
+                    const compliance = (data.compliance || 'green').toString().toLowerCase();
+                    if (compliance === 'red') value = 0;
+
+                    const rating = parseFloat(data.AMZ_Rating);
+                    if (!isNaN(rating) && rating > 0 && rating < 3.5) value = 0;
+
+                    const mainInv = parseFloat(data.Shopify_INV);
+                    const ctnQty = parseFloat(data.CTN_QTY);
+                    if (!isNaN(ctnQty) && ctnQty > 0 && !isNaN(mainInv) && mainInv < ctnQty) value = 0;
+
+                    return value;
+                }
+
                 function updateSuggSendBadge() {
                     setTimeout(function() {
                         try {
@@ -2171,6 +2677,15 @@
                             }).length;
 
                             $('#sugg-send-count').text(positiveCount);
+
+                            // Count of rows visible in the Sugg Send column
+                            // (non-parent active rows that display a value)
+                            const visibleRowsCount = allData.filter(row => {
+                                if (row.is_parent) return false;
+                                return !isNaN(parseFloat(row.Sugg_Send));
+                            }).length;
+
+                            $('#sugg-send-rows-count').text(visibleRowsCount);
                         } catch (e) {
                             console.log('Badge update error:', e);
                         }
@@ -2179,26 +2694,6 @@
 
                 $('#sku-search').on('input', function() {
                     skuSearch = $(this).val().toUpperCase();
-                    applyFilters();
-                    updateSuggSendBadge();
-                });
-
-                $('#inventory-filter').on('change', function() {
-                    applyFilters();
-                    updateSuggSendBadge();
-                });
-
-                $('#parent-filter').on('change', function() {
-                    applyFilters();
-                    updateSuggSendBadge();
-                });
-
-                $('#pft-filter').on('change', function() {
-                    applyFilters();
-                    updateSuggSendBadge();
-                });
-
-                $('#roi-filter').on('change', function() {
                     applyFilters();
                     updateSuggSendBadge();
                 });
@@ -2218,9 +2713,6 @@
                 // Reset All Filters button - shows ALL data
                 $('#reset-all-filters-btn').on('click', function() {
                     console.log('Reset All Filters clicked - showing ALL data');
-                    $('#inventory-filter').val('all');
-                    $('#parent-filter').val('show');
-                    $('#pft-filter').val('all');
                     $('#nrl-fba-filter').val('all');
                     $('#sugg-send-filter').val('all');
                     $('#sku-search').val('');
@@ -2289,7 +2781,8 @@
                         const field = def.field;
                         const title = def.title || field;
 
-                        if (field && field !== '_select' && field !== '_accept' && title) {
+                        // Only list currently visible columns; hidden columns are not offered as options
+                        if (field && field !== '_select' && field !== '_accept' && field !== '_details' && field !== '_ctn_details' && title && col.isVisible()) {
                             const li = document.createElement('li');
                             const label = document.createElement('label');
                             label.className = 'dropdown-item';
@@ -2376,21 +2869,6 @@
                     applyColumnVisibilityFromServer();
                     buildColumnDropdown();
                 }, 500);
-
-                // Show All Columns button - now shows ALL columns including S_Price, SPft%, etc.
-                document.getElementById("show-all-columns-btn").addEventListener("click", function() {
-                    console.log('Show All Columns clicked - showing ALL columns');
-                    
-                    table.getColumns().forEach(col => {
-                        const def = col.getDefinition();
-                        if (def.field) {
-                            col.show(); // Show ALL columns, no exceptions
-                        }
-                    });
-                    buildColumnDropdown();
-                    saveColumnVisibilityToServer();
-                    showToast('All columns are now visible', 'info');
-                });
 
                 // Toggle column from dropdown
                 document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
