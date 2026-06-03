@@ -516,6 +516,11 @@
                                 <i class="ri-shopping-cart-2-line me-2"></i>Sales by Source
                             </a>
                         </li>
+                        <li>
+                            <a href="{{ route('shopify-raw-data.index') }}">
+                                <i class="ri-database-2-line me-2"></i>Shopify Raw Data
+                            </a>
+                        </li>
                     </ul>
                 </div>
             </li>

@@ -96,8 +96,22 @@ class TransitContainerDetailsController extends Controller
             }
         }
 
+        // Build last-saved map: detail_id => {user_name, saved_at}
+        $lastSavedMap = TransitContainerHistory::with('user')
+            ->whereNotNull('transit_container_detail_id')
+            ->whereIn('action_type', ['row_created', 'row_updated'])
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->unique('transit_container_detail_id')
+            ->mapWithKeys(function ($h) {
+                return [(int) $h->transit_container_detail_id => [
+                    'user_name' => $h->user->name ?? '—',
+                    'saved_at'  => $h->created_at ? $h->created_at->format('d M H:i') : '—',
+                ]];
+            })->toArray();
+
         // Transform TransitContainerDetail Records
-        $allRecords->transform(function ($record) use ($skuParentMap, $parentSupplierMap, $shopifyImages, $productValuesMap, $pushedMap, $clinkBySku) {
+        $allRecords->transform(function ($record) use ($skuParentMap, $parentSupplierMap, $shopifyImages, $productValuesMap, $pushedMap, $clinkBySku, $lastSavedMap) {
             $sku = strtoupper(trim(preg_replace('/\s+/', ' ', $record->our_sku ?? '')));
             $tabKey = strtoupper(trim(preg_replace('/\s+/', ' ', $record->tab_name ?? '')));
             // $rowId = $record->id; 
@@ -125,6 +139,9 @@ class TransitContainerDetailsController extends Controller
             }
             // $record->pushed = isset($pushedMap[$sku]) ? (int) $pushedMap[$sku] : 0;
             $record->created_by_name = $record->user->name ?? '—';
+            $lastSaved = $lastSavedMap[$record->id] ?? null;
+            $record->last_saved_by = $lastSaved['user_name'] ?? ($record->user->name ?? '—');
+            $record->last_saved_at = $lastSaved['saved_at']  ?? ($record->created_at ? $record->created_at->format('d M H:i') : '—');
             $record->setAttribute('Clink', $clinkBySku[$sku] ?? '');
 
             return $record;

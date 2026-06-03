@@ -581,7 +581,7 @@ TAB_NAMES.forEach((tabName, index) => {
                 visible: false,
             },
             {
-            title: "Sl No.",
+            title: "SL",
             formatter: function(cell) {
                 return cell.getRow().getPosition(true) + 0;
             },
@@ -731,8 +731,8 @@ TAB_NAMES.forEach((tabName, index) => {
               }
             },
             // { title: "Rec Qty", field: "rec_qty"},
-            { title: "Qty / Ctns", field: "no_of_units", editor: "input" },
-            { title: "Qty Ctns", field: "total_ctn", editor: "input" },
+            { title: "Qty /<br>Ctns", field: "no_of_units", editor: "input" },
+            { title: "Qty<br>Ctns", field: "total_ctn", editor: "input" },
             { 
               title: "Qty", 
               field: "pcs_qty", 
@@ -746,31 +746,42 @@ TAB_NAMES.forEach((tabName, index) => {
                   return units * ctn;
               }
             },
-            { title: "Rate ($)", field: "rate", editor: "input" },
-            { 
-              title: "CBM", 
-              field: "cbm", 
+            { title: "Rate$", field: "rate", editor: "input" },
+            {
+              title: "CBM",
+              field: "cbm",
               editor: "input",
+              hozAlign: "center",
+              width: 60,
               formatter: function(cell) {
                   const data = cell.getRow().getData();
                   let values = data.Values;
+                  let cbm = 0;
 
-                  if (!values) {
-                      return "0.000";
-                  }
-
-                  if (typeof values === "string") {
-                      try {
-                          values = JSON.parse(values);
-                      } catch (e) {
-                          console.error("JSON parse error:", e, values);
-                          values = {};
+                  if (values) {
+                      if (typeof values === "string") {
+                          try { values = JSON.parse(values); } catch(e) { values = {}; }
                       }
+                      cbm = parseFloat(values?.cbm) || 0;
                   }
 
+                  if (cbm > 0) {
+                      return `<span title="CBM: ${cbm.toFixed(3)}"
+                                    style="display:inline-block;width:14px;height:14px;border-radius:50%;
+                                           background:#16a34a;cursor:default;"></span>`;
+                  }
+                  return `<span title="No CBM data"
+                                style="display:inline-block;width:14px;height:14px;border-radius:50%;
+                                       background:#ef4444;cursor:default;"></span>`;
+              },
+              tooltip: function(cell) {
+                  const data = cell.getRow().getData();
+                  let values = data.Values;
+                  if (!values) return 'No CBM data';
+                  if (typeof values === "string") { try { values = JSON.parse(values); } catch(e) { return 'No CBM data'; } }
                   const cbm = parseFloat(values?.cbm) || 0;
-                  return cbm ? cbm.toFixed(3) : "0.000";
-              }
+                  return cbm > 0 ? 'CBM: ' + cbm.toFixed(3) : 'No CBM data';
+              },
             },
             {
               title: "Unit",
@@ -848,38 +859,19 @@ TAB_NAMES.forEach((tabName, index) => {
                 field: "supplier_name",
                 headerSort: false,
                 hozAlign: "center",
-                width: 220,
+                width: 110,
                 formatter: function (cell) {
-                    const row = cell.getRow().getData();
-                    const saved = String(row.supplier_name || "").trim();
-                    const related = row.supplier_names;
-                    const relatedStr = Array.isArray(related) ? related.filter(Boolean).join(", ") : "";
-                    const parts = [];
-                    if (saved) {
-                        parts.push('<div style="font-weight:600;">' + escapeHtmlTransit(saved) + "</div>");
-                    }
-                    if (relatedStr) {
-                        parts.push(
-                            '<div style="font-size:0.88rem;color:#475569;margin-top:2px;">Related: ' +
-                                escapeHtmlTransit(relatedStr) +
-                                "</div>"
-                        );
-                    }
-                    if (parts.length === 0) {
-                        return '<span class="text-muted">—</span>';
-                    }
-                    return '<div style="text-align:center;max-width:260px;margin:0 auto;">' + parts.join("") + "</div>";
+                    const saved = String(cell.getValue() || "").trim();
+                    if (!saved) return '<span class="text-muted">—</span>';
+                    return `<div title="${saved.replace(/"/g,'&quot;')}"
+                                 style="font-weight:600;overflow:hidden;white-space:nowrap;
+                                        text-overflow:ellipsis;max-width:100px;">
+                                ${escapeHtmlTransit(saved)}
+                            </div>`;
                 },
                 editor: "input",
                 tooltip: function (cell) {
-                    const row = cell.getRow().getData();
-                    const saved = String(row.supplier_name || "").trim();
-                    const related = row.supplier_names;
-                    const relatedStr = Array.isArray(related) ? related.filter(Boolean).join(", ") : "";
-                    const lines = [];
-                    if (saved) lines.push("Saved: " + saved);
-                    if (relatedStr) lines.push("Related: " + relatedStr);
-                    return lines.join("\n") || "";
+                    return String(cell.getValue() || "").trim();
                 },
             },
             // {
@@ -894,28 +886,62 @@ TAB_NAMES.forEach((tabName, index) => {
             //     return Math.round(rate * pcs_qty);
             //   }
             // },
-            { title: "Changes", field: "changes", editor: "input" },
-            { 
-              title: "Spec.",
-              field: "specification", 
-              editor: "input",
-              formatter: function(cell) {
-                const value = cell.getValue();
-                return `<div title="${value?.replace(/"/g, '&quot;') ?? ''}" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;">
-                          ${value ?? ''}
-                        </div>`;
-              }
+            {
+                title: "CHG",
+                field: "changes",
+                editor: "input",
+                hozAlign: "center",
+                width: 60,
+                formatter: function(cell) {
+                    const val = (cell.getValue() || '').trim();
+                    if (val) {
+                        return `<span title="${val.replace(/"/g, '&quot;')}"
+                                      style="display:inline-block;width:14px;height:14px;border-radius:50%;
+                                             background:#16a34a;cursor:default;"></span>`;
+                    }
+                    return `<span title="No data"
+                                  style="display:inline-block;width:14px;height:14px;border-radius:50%;
+                                         background:#eab308;cursor:default;"></span>`;
+                },
+                tooltip: function(cell) {
+                    return (cell.getValue() || '').trim() || 'No data';
+                },
             },
             {
-                title: "Created By",
-                field: "created_by_name",
+              title: "SPEC",
+              field: "specification",
+              editor: "input",
+              hozAlign: "center",
+              width: 65,
+              formatter: function(cell) {
+                const val = (cell.getValue() || '').trim();
+                if (val) {
+                    return `<span title="${val.replace(/"/g, '&quot;')}"
+                                  style="display:inline-block;width:14px;height:14px;border-radius:50%;
+                                         background:#16a34a;cursor:default;"></span>`;
+                }
+                return `<span title="No specification"
+                              style="display:inline-block;width:14px;height:14px;border-radius:50%;
+                                     background:#eab308;cursor:default;"></span>`;
+              },
+              tooltip: function(cell) {
+                return (cell.getValue() || '').trim() || 'No specification';
+              },
+            },
+            {
+                title: "History",
+                field: "last_saved_by",
                 headerSort: false,
                 hozAlign: "center",
+                width: 130,
                 formatter: function(cell) {
-                    const value = cell.getValue();
-                    return `<span class="badge bg-secondary" style="padding: 6px 12px; font-size: 0.9rem;">
-                                ${value || '—'}
-                            </span>`;
+                    const row  = cell.getRow().getData();
+                    const name = row.last_saved_by || '—';
+                    const date = row.last_saved_at  || '—';
+                    return `<div style="line-height:1.3;">
+                                <div style="font-weight:600;font-size:0.85rem;">${name}</div>
+                                <div style="font-size:0.75rem;color:#64748b;">${date}</div>
+                            </div>`;
                 }
             },
         ],
