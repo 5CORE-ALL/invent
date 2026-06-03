@@ -27,14 +27,20 @@ class ShopifyRawDataController extends Controller
 
     /**
      * Apply marketplace exclusions to a query builder instance.
-     * Skips rows whose tags or source_name contain any known marketplace name.
+     * Skips rows whose tags or source_name contain any known marketplace name,
+     * and always excludes rows whose SKU contains "XYZ".
      */
     private function applyExclusions($query)
     {
+        // Exclude marketplace-tagged rows
         foreach (self::EXCLUDE_TAGS as $term) {
             $query->where('tags', 'NOT LIKE', '%' . $term . '%')
                   ->where('source_name', 'NOT LIKE', '%' . $term . '%');
         }
+
+        // Exclude placeholder / test SKUs containing "XYZ"
+        $query->where('sku', 'NOT LIKE', '%XYZ%');
+
         return $query;
     }
 

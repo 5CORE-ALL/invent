@@ -162,18 +162,38 @@
             <div class="card-body p-0">
                 <div style="height:calc(100vh - 280px); display:flex; flex-direction:column;">
                     <div class="p-2 bg-light border-bottom">
-                        <div class="row g-2">
+                        <div class="row g-2 align-items-center">
                             <div class="col-md-3">
                                 <input type="text" id="search-sku" class="form-control form-control-sm"
                                     placeholder="Search SKU...">
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-2">
                                 <input type="text" id="search-order" class="form-control form-control-sm"
                                     placeholder="Search Order #...">
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-2">
                                 <input type="text" id="search-customer" class="form-control form-control-sm"
                                     placeholder="Search Customer...">
+                            </div>
+                            <div class="col-md-3">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text bg-white">
+                                        <i class="fa fa-tag text-muted" style="font-size:11px;"></i>
+                                    </span>
+                                    <input type="text" id="search-tag" class="form-control form-control-sm"
+                                        placeholder="Search Tag... (e.g. wsaio-app)">
+                                    <button class="btn btn-outline-secondary btn-sm" id="clear-tag-btn" title="Clear tag search">
+                                        <i class="fa fa-times"></i>
+                                    </button>
+                                </div>
+                                <div id="tag-suggestions" class="mt-1 d-flex flex-wrap gap-1">
+                                    <span class="badge border tag-pill" data-tag="wsaio-app"
+                                          style="background:#fd7e14;color:#fff;cursor:pointer;font-size:0.72rem;">wsaio-app</span>
+                                    <span class="badge border tag-pill" data-tag="checkout-via-buy-now-button"
+                                          style="background:#6f42c1;color:#fff;cursor:pointer;font-size:0.72rem;">buy-now-button</span>
+                                    <span class="badge border tag-pill" data-tag="shopify_draft_order"
+                                          style="background:#0dcaf0;color:#000;cursor:pointer;font-size:0.72rem;">draft-order</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -288,7 +308,7 @@
                     sorter: 'string',
                 },
                 {
-                    title: 'Order ID', field: 'order_id', width: 160,
+                    title: 'Order ID', field: 'order_id', width: 160, visible: false,
                 },
                 {
                     title: 'SKU', field: 'sku', width: 150, frozen: true,
@@ -296,10 +316,10 @@
                     cssClass: 'text-primary fw-bold',
                 },
                 {
-                    title: 'Product Title', field: 'product_title', width: 280, tooltip: true,
+                    title: 'Product Title', field: 'product_title', width: 280, tooltip: true, visible: false,
                 },
                 {
-                    title: 'Variant', field: 'variant_title', width: 150, tooltip: true,
+                    title: 'Variant', field: 'variant_title', width: 150, tooltip: true, visible: false,
                 },
                 {
                     title: 'Qty', field: 'quantity', width: 70, hozAlign: 'center', sorter: 'number',
@@ -313,7 +333,7 @@
                     formatter: cell => fmtMoney(cell.getValue()),
                 },
                 {
-                    title: 'Currency', field: 'currency', width: 80, hozAlign: 'center',
+                    title: 'Currency', field: 'currency', width: 80, hozAlign: 'center', visible: false,
                 },
                 {
                     title: 'Order Date', field: 'order_date', width: 160, sorter: 'datetime',
@@ -323,23 +343,14 @@
                     title: 'Fin. Status', field: 'financial_status', width: 110,
                     formatter: function(cell) {
                         const v = cell.getValue() || '';
-                        if (!v) return '—';
-                        let c = 'secondary';
-                        if (/paid/i.test(v))   c = 'success';
-                        else if (/pending/i.test(v)) c = 'warning';
-                        else if (/refund/i.test(v))  c = 'danger';
-                        return `<span class="badge bg-${c}">${v}</span>`;
+                        return v || '—';
                     }
                 },
                 {
                     title: 'Fulfill. Status', field: 'fulfillment_status', width: 120,
                     formatter: function(cell) {
-                        const v = cell.getValue() || 'unfulfilled';
-                        let c = 'warning';
-                        if (/fulfilled/i.test(v) && !/partial/i.test(v)) c = 'success';
-                        else if (/partial/i.test(v)) c = 'info';
-                        else if (/unfulfilled/i.test(v)) c = 'warning';
-                        return `<span class="badge bg-${c}">${v}</span>`;
+                        const v = cell.getValue() || '';
+                        return v || '—';
                     }
                 },
                 {
@@ -517,11 +528,19 @@
         const sku      = $('#search-sku').val().trim();
         const orderNum = $('#search-order').val().trim();
         const customer = $('#search-customer').val().trim();
+        const tag      = $('#search-tag').val().trim();
         const filters  = [];
         if (sku)      filters.push({ field:'sku',           type:'like', value:sku });
         if (orderNum) filters.push({ field:'order_number',  type:'like', value:orderNum });
         if (customer) filters.push({ field:'customer_name', type:'like', value:customer });
+        if (tag)      filters.push({ field:'tags',          type:'like', value:tag });
         if (filters.length) table.setFilter(filters);
+
+        // Highlight active tag pill
+        $('.tag-pill').each(function() {
+            const pill = $(this).data('tag');
+            $(this).css('opacity', (!tag || tag.toLowerCase().includes(pill.toLowerCase()) || pill.toLowerCase().includes(tag.toLowerCase())) ? '1' : '0.4');
+        });
     }
 
     // ── Bootstrap ──────────────────────────────────────────────────────────
@@ -547,7 +566,26 @@
         });
 
         // Search inputs
-        $('#search-sku, #search-order, #search-customer').on('keyup', applySearchFilters);
+        $('#search-sku, #search-order, #search-customer, #search-tag').on('keyup', applySearchFilters);
+
+        // Quick-pick tag pills
+        $(document).on('click', '.tag-pill', function() {
+            const tag = $(this).data('tag');
+            const current = $('#search-tag').val().trim();
+            // Toggle: clicking the same pill clears it
+            if (current === tag) {
+                $('#search-tag').val('');
+            } else {
+                $('#search-tag').val(tag);
+            }
+            applySearchFilters();
+        });
+
+        // Clear tag button
+        $('#clear-tag-btn').on('click', function() {
+            $('#search-tag').val('');
+            applySearchFilters();
+        });
 
         // Column visibility dropdown changes
         document.getElementById('col-dropdown').addEventListener('change', function (e) {
