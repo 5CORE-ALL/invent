@@ -186,6 +186,16 @@ class TransitContainerDetailsController extends Controller
             if ($row) {
                 $fromTab = $row->tab_name;
                 $toTab = $data['tab_name'] ?? $fromTab;
+
+                // If qty-related fields changed, reset push_status so it gets re-pushed to Shopify
+                $qtyFields = ['no_of_units', 'total_ctn', 'pcs_qty', 'our_sku'];
+                $qtyChanged = collect($qtyFields)->contains(fn($f) => array_key_exists($f, $data) && (string)($data[$f] ?? '') !== (string)($row->{$f} ?? ''));
+                if ($qtyChanged) {
+                    InventoryWarehouse::where('transit_container_id', $row->id)
+                        ->where('push_status', 'success')
+                        ->update(['push_status' => 'pending', 'pushed' => 0]);
+                }
+
                 $row->update($data);
                 if ($fromTab !== $toTab) {
                     $this->logHistory('row_moved', $row->id, $fromTab, $toTab, $row->our_sku, ['sku' => $row->our_sku, 'from' => $fromTab, 'to' => $toTab]);

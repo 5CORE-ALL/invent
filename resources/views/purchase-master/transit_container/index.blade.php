@@ -558,22 +558,14 @@ TAB_NAMES.forEach((tabName, index) => {
         selectable: true,
         rowFormatter: function(row) {
             const rowData = row.getData();
+            const status  = rowData.push_status || 'pending';
+            const el      = row.getElement();
 
-            // Ensure tab_name and SKU are normalized
-            const tabName = (rowData.tab_name || '').trim().toUpperCase();
-            const sku = (rowData.our_sku || '').trim().toUpperCase();
-            const rowId = rowData.id;
+            el.style.backgroundColor = '';
 
-            // The pushed flag should already be set in your controller for this exact combination
-            // if (rowData.pushed == 1) {
-            //     const cell = row.getCell("our_sku");
-            //     if (cell) {
-            //         const el = cell.getElement();
-            //         el.style.boxShadow = "0 0 10px 2px #4CAF50"; // green shadow
-            //         el.style.borderRadius = "6px";
-            //         el.style.padding = "3px";
-            //     }
-            // }
+            if (status === 'failed') {
+                el.style.backgroundColor = '#f8d7da'; // red for failed
+            }
         },
 
         columns: [{
@@ -702,6 +694,9 @@ TAB_NAMES.forEach((tabName, index) => {
               field: "our_sku",
               formatter: function(cell) {
                 const sku = cell.getValue() || '';
+                const shopifyDomain = '{{ config("services.shopify.store_url") }}';
+                const shopifyUrl = shopifyDomain ? `https://${shopifyDomain}/admin/products/inventory?query=${encodeURIComponent(sku)}` : '#';
+                const shopifyLink = sku ? `<a href="${shopifyUrl}" target="_blank" title="View in Shopify" style="color: #28a745; text-decoration: none; font-size: 0.9rem;" onclick="event.stopPropagation();"><i class="fas fa-external-link-alt"></i></a>` : '';
                 return `
                   <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
                     <span>${sku}</span>
@@ -710,6 +705,7 @@ TAB_NAMES.forEach((tabName, index) => {
                        style="cursor: pointer; color: #2563eb; font-size: 0.9rem; transition: color 0.2s;"
                        title="Copy SKU">
                     </i>
+                    ${shopifyLink}
                   </div>
                 `;
               }
@@ -722,16 +718,15 @@ TAB_NAMES.forEach((tabName, index) => {
               width: 80,
               formatter: function(cell) {
                 const status = cell.getValue() || 'pending';
-                const rowData = cell.getRow().getData();
-                
+
                 if (status === 'success') {
-                  return '<i class="fas fa-check-circle text-success" style="font-size: 1.2rem;" title="Successfully pushed"></i>';
+                  return '<i class="fas fa-check-circle" style="font-size:1.4rem; color:#16a34a;" title="Successfully pushed to Shopify"></i>';
                 } else if (status === 'failed') {
-                  return '<i class="fas fa-times-circle text-danger" style="font-size: 1.2rem;" title="Failed to push"></i>';
+                  return '<i class="fas fa-times-circle text-danger" style="font-size:1.4rem;" title="Push failed"></i>';
                 } else if (status === 'processing') {
-                  return '<i class="fas fa-spinner fa-spin text-primary" style="font-size: 1.2rem;" title="Processing..."></i>';
+                  return '<i class="fas fa-spinner fa-spin text-primary" style="font-size:1.4rem;" title="Processing..."></i>';
                 } else {
-                  return '<i class="fas fa-clock text-muted" style="font-size: 1.2rem;" title="Pending"></i>';
+                  return '<i class="fas fa-clock text-muted" style="font-size:1.4rem;" title="Not pushed yet"></i>';
                 }
               }
             },
@@ -1362,53 +1357,54 @@ document.getElementById("push-inventory-btn").addEventListener("click", async fu
         return;
     }
 
-    // Filter out already pushed items (status = 'success')
-    const rowsToPush = selectedRows.filter(row => {
-        const status = row.push_status || 'pending';
-        return status !== 'success';
-    });
+    const alreadyPushedRows = selectedRows.filter(r => (r.push_status || 'pending') === 'success');
+    const pendingRows       = selectedRows.filter(r => (r.push_status || 'pending') !== 'success');
 
-    const alreadyPushedRows = selectedRows.filter(row => {
-        const status = row.push_status || 'pending';
-        return status === 'success';
-    });
+    // Decide which rows to push and whether to force-repush
+    let rowsToPush = pendingRows;
+    let forceRepush = false;
 
-    // Show message if all selected items are already pushed
-    if (rowsToPush.length === 0) {
-        alert("⚠️ All selected items are already pushed successfully!");
-        return;
+    if (alreadyPushedRows.length > 0 && pendingRows.length === 0) {
+        // All selected are already pushed — ask if they want to re-push
+        if (!confirm(`All ${alreadyPushedRows.length} selected item(s) are already pushed.\n\nDo you want to re-push them to Shopify? (Inventory will be adjusted again)`)) return;
+        rowsToPush = alreadyPushedRows;
+        forceRepush = true;
+    } else if (alreadyPushedRows.length > 0) {
+        // Mix — ask whether to include already-pushed ones
+        const includeAlready = confirm(
+            `You selected ${selectedRows.length} item(s).\n` +
+            `• ${pendingRows.length} pending/failed — will be pushed\n` +
+            `• ${alreadyPushedRows.length} already pushed\n\n` +
+            `Do you also want to RE-PUSH the already-pushed items?\n(Click OK to include them, Cancel to skip them)`
+        );
+        if (includeAlready) {
+            rowsToPush = selectedRows;
+            forceRepush = true;
+        } else {
+            if (!confirm(`Push ${pendingRows.length} pending item(s)? Continue?`)) return;
+        }
+    } else {
+        if (!confirm(`Push ${pendingRows.length} item(s)? Continue?`)) return;
     }
-
-    // Show message if some items are already pushed
-    let confirmMessage = `You have selected ${selectedRows.length} item(s).\n`;
-    if (alreadyPushedRows.length > 0) {
-        confirmMessage += `⚠️ ${alreadyPushedRows.length} item(s) are already pushed and will be skipped.\n`;
-    }
-    confirmMessage += `\nOnly ${rowsToPush.length} item(s) will be pushed.\n\nContinue?`;
-
-    if (!confirm(confirmMessage)) return;
 
     const tabName = activeTab.textContent.trim();
     const button = this;
     const originalText = button.innerHTML;
-    
-    // Disable button during processing
+
     button.disabled = true;
     button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pushing...';
 
     let successCount = 0;
-    let failedCount = 0;
-    let skippedCount = alreadyPushedRows.length; // Count already pushed items as skipped
+    let failedCount  = 0;
+    let skippedCount = 0;
 
-    // Process items one by one (only failed/pending items)
     for (let i = 0; i < rowsToPush.length; i++) {
-        const row = rowsToPush[i];
-        const rowId = row.id;
+        const row    = rowsToPush[i];
+        const rowId  = row.id;
         const tableRow = table.getRow(rowId);
-        
+
         if (!tableRow) continue;
 
-        // Update status to processing
         tableRow.update({ push_status: 'processing' });
         table.redraw();
 
@@ -1419,8 +1415,9 @@ document.getElementById("push-inventory-btn").addEventListener("click", async fu
                     "Content-Type": "application/json",
                     "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
                 },
-                body: JSON.stringify({ 
-                    tab_name: tabName, 
+                body: JSON.stringify({
+                    tab_name: tabName,
+                    force: forceRepush,
                     data: {
                         ...row,
                         our_sku: row.our_sku ? row.our_sku.trim().toUpperCase() : '',
@@ -1431,23 +1428,15 @@ document.getElementById("push-inventory-btn").addEventListener("click", async fu
 
             const response = await res.json();
 
-            // Update status based on response
             if (response.status === 'success') {
-                tableRow.update({ 
-                    push_status: 'success',
-                    pushed: 1
-                });
-                tableRow.getElement().style.backgroundColor = "#d4edda";
+                tableRow.update({ push_status: 'success', pushed: 1 });
                 tableRow.deselect();
                 successCount++;
             } else if (response.status === 'skipped') {
-                // This should not happen since we filtered, but handle it anyway
                 tableRow.update({ push_status: 'success' });
-                tableRow.getElement().style.backgroundColor = "#fff3cd";
                 skippedCount++;
             } else {
                 tableRow.update({ push_status: 'failed' });
-                tableRow.getElement().style.backgroundColor = "#f8d7da";
                 failedCount++;
             }
 
@@ -1456,40 +1445,24 @@ document.getElementById("push-inventory-btn").addEventListener("click", async fu
         } catch (err) {
             console.error(`Error pushing SKU ${row.our_sku}:`, err);
             tableRow.update({ push_status: 'failed' });
-            tableRow.getElement().style.backgroundColor = "#f8d7da";
             failedCount++;
             table.redraw();
         }
 
-        // Small delay between items to avoid overwhelming the server
         if (i < rowsToPush.length - 1) {
             await new Promise(resolve => setTimeout(resolve, 100));
         }
     }
 
-    // Re-enable button
     button.disabled = false;
     button.innerHTML = originalText;
 
-    // Show summary
     let message = `Push completed!\n\n`;
-    if (successCount > 0) {
-        message += `✅ Successfully pushed: ${successCount}\n`;
-    }
-    if (skippedCount > 0) {
-        message += `⚠️ Already pushed (skipped): ${skippedCount}\n`;
-    }
-    if (failedCount > 0) {
-        message += `❌ Failed: ${failedCount}\n`;
-    }
-    
-    if (successCount === 0 && failedCount === 0 && skippedCount > 0) {
-        message = `⚠️ All selected items were already pushed successfully!\n\nNo items were processed.`;
-    }
+    if (successCount > 0) message += `✅ Successfully pushed: ${successCount}\n`;
+    if (skippedCount > 0) message += `⚠️ Skipped (already pushed): ${skippedCount}\n`;
+    if (failedCount  > 0) message += `❌ Failed: ${failedCount}\n`;
 
     alert(message);
-    
-    // Update summary totals
     updateActiveTabSummary(index, table);
 });
 
