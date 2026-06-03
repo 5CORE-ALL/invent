@@ -11,14 +11,6 @@ class ShopifyRawDataController extends Controller
     // Sources/tags this page tracks
     const FILTER_SOURCES = ['checkout-via-buy-now-button', 'wsaio-app', 'shopify_draft_order'];
 
-    // Marketplace tags/sources to always exclude
-    const EXCLUDE_TAGS = [
-        'ebay', 'ebay integration & importer', 'ebay integration',
-        'amazon', 'faire', 'doba', 'wayfair', 'reverb', 'shein',
-        'bestbuy', 'best buy', 'macys', "macy's", 'walmart',
-        'temu', 'purchasing power', 'purchasingpower',
-        'mirakl', 'houzz', 'overstock',
-    ];
 
     public function index()
     {
@@ -26,19 +18,11 @@ class ShopifyRawDataController extends Controller
     }
 
     /**
-     * Apply marketplace exclusions to a query builder instance.
-     * Skips rows whose tags or source_name contain any known marketplace name,
-     * and always excludes rows whose SKU contains "XYZ".
+     * Apply exclusions to a query builder instance.
+     * Skips rows whose SKU contains "XYZ".
      */
     private function applyExclusions($query)
     {
-        // Exclude marketplace-tagged rows
-        foreach (self::EXCLUDE_TAGS as $term) {
-            $query->where('tags', 'NOT LIKE', '%' . $term . '%')
-                  ->where('source_name', 'NOT LIKE', '%' . $term . '%');
-        }
-
-        // Exclude placeholder / test SKUs containing "XYZ"
         $query->where('sku', 'NOT LIKE', '%XYZ%');
 
         return $query;
@@ -63,16 +47,9 @@ class ShopifyRawDataController extends Controller
         $query = DB::connection('apicentral')
             ->table('shopify_order_items')
             ->where('order_date', '>=', $dateFrom)
-            ->where('order_date', '<=', $dateTo)
-            ->where(function ($q) {
-                // Match on source_name OR tags for all three filter values
-                $q->whereIn('source_name', self::FILTER_SOURCES);
-                foreach (self::FILTER_SOURCES as $tag) {
-                    $q->orWhere('tags', 'LIKE', '%' . $tag . '%');
-                }
-            });
+            ->where('order_date', '<=', $dateTo);
 
-        // Exclude marketplace-tagged orders
+        // Exclude marketplace-tagged orders and XYZ SKUs
         $this->applyExclusions($query);
 
         // Optional per-source narrowing
@@ -140,13 +117,7 @@ class ShopifyRawDataController extends Controller
             $q = DB::connection('apicentral')
                 ->table('shopify_order_items')
                 ->where('order_date', '>=', $dateFrom)
-                ->where('order_date', '<=', $dateTo)
-                ->where(function ($q) {
-                    $q->whereIn('source_name', self::FILTER_SOURCES);
-                    foreach (self::FILTER_SOURCES as $tag) {
-                        $q->orWhere('tags', 'LIKE', '%' . $tag . '%');
-                    }
-                });
+                ->where('order_date', '<=', $dateTo);
             $this->applyExclusions($q);
             return $q;
         };
