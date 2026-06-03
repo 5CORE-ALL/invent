@@ -11,9 +11,31 @@ class ShopifyRawDataController extends Controller
     // Sources/tags this page tracks
     const FILTER_SOURCES = ['checkout-via-buy-now-button', 'wsaio-app', 'shopify_draft_order'];
 
+    // Marketplace tags/sources to always exclude
+    const EXCLUDE_TAGS = [
+        'ebay', 'ebay integration & importer', 'ebay integration',
+        'amazon', 'faire', 'doba', 'wayfair', 'reverb', 'shein',
+        'bestbuy', 'best buy', 'macys', "macy's", 'walmart',
+        'temu', 'purchasing power', 'purchasingpower',
+        'mirakl', 'houzz', 'overstock',
+    ];
+
     public function index()
     {
         return view('shopify-raw-data.index');
+    }
+
+    /**
+     * Apply marketplace exclusions to a query builder instance.
+     * Skips rows whose tags or source_name contain any known marketplace name.
+     */
+    private function applyExclusions($query)
+    {
+        foreach (self::EXCLUDE_TAGS as $term) {
+            $query->where('tags', 'NOT LIKE', '%' . $term . '%')
+                  ->where('source_name', 'NOT LIKE', '%' . $term . '%');
+        }
+        return $query;
     }
 
     public function getData(Request $request)
@@ -43,6 +65,9 @@ class ShopifyRawDataController extends Controller
                     $q->orWhere('tags', 'LIKE', '%' . $tag . '%');
                 }
             });
+
+        // Exclude marketplace-tagged orders
+        $this->applyExclusions($query);
 
         // Optional per-source narrowing
         if ($sourceFilter !== 'all') {
@@ -106,7 +131,7 @@ class ShopifyRawDataController extends Controller
             : Carbon::now($pstTimezone)->endOfDay();
 
         $baseQuery = function () use ($dateFrom, $dateTo) {
-            return DB::connection('apicentral')
+            $q = DB::connection('apicentral')
                 ->table('shopify_order_items')
                 ->where('order_date', '>=', $dateFrom)
                 ->where('order_date', '<=', $dateTo)
@@ -116,6 +141,8 @@ class ShopifyRawDataController extends Controller
                         $q->orWhere('tags', 'LIKE', '%' . $tag . '%');
                     }
                 });
+            $this->applyExclusions($q);
+            return $q;
         };
 
         $stats = [];
