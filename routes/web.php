@@ -3174,6 +3174,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shopify-raw-data/get-data', [\App\Http\Controllers\ShopifyRawDataController::class, 'getData'])->name('shopify-raw-data.get-data');
     Route::get('/shopify-raw-data/get-stats', [\App\Http\Controllers\ShopifyRawDataController::class, 'getStats'])->name('shopify-raw-data.get-stats');
 
+    // Shopify Page
+    Route::get('/shopify', [\App\Http\Controllers\ShopifyRawDataController::class, 'shopifyIndex'])->name('shopify.index');
+
     // Shopify Wholesales Sales Routes
     Route::get('/shopify-wholesales/sales-data', [\App\Http\Controllers\Sales\ShopifyWholesalesController::class, 'getData'])->name('shopify-wholesales.sales.data');
     Route::get('/shopify-wholesales/sales', [\App\Http\Controllers\Sales\ShopifyWholesalesController::class, 'index'])->name('shopify-wholesales.sales');

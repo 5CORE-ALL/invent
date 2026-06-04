@@ -154,8 +154,9 @@
                 <div class="d-flex flex-wrap gap-2 mb-2" id="table-stats">
                     <span class="badge bg-primary fs-6 p-2" id="tbl-orders">Orders: 0</span>
                     <span class="badge bg-success fs-6 p-2" id="tbl-qty">Qty: 0</span>
-                    <span class="badge bg-info fs-6 p-2 text-dark" id="tbl-revenue">Revenue: $0.00</span>
-                    <span class="badge bg-secondary fs-6 p-2" id="tbl-avg-price">Avg Price: $0.00</span>
+                    <span class="badge bg-secondary fs-6 p-2" id="tbl-revenue">Gross: $0.00</span>
+                    <span class="badge bg-danger fs-6 p-2" id="tbl-discount">Discount: $0.00</span>
+                    <span class="badge bg-dark fs-6 p-2" id="tbl-net">Net Sales: $0.00</span>
                 </div>
             </div>
 
@@ -264,6 +265,7 @@
             source    : activeSource,
             date_from : $('#date-from').val(),
             date_to   : $('#date-to').val(),
+            page      : 'raw',   // skip marketplace exclusions — show all records
         };
     }
 
@@ -286,54 +288,70 @@
             }}},
             columns: [
                 {
-                    title: 'Source / Tag', field: 'source_name', width: 140, frozen: true,
+                    title: 'Source', field: 'source_name', width: 140, frozen: true,
                     formatter: function(cell) {
-                        const v   = cell.getValue() || '';
-                        const row = cell.getRow().getData();
-                        const tags = (row.tags || '').toLowerCase();
-                        let display = v || '—';
-                        let color   = '#6c757d';
-                        if (v === 'shopify_draft_order' || tags.includes('shopify_draft_order')) {
+                        const v      = cell.getValue() || '';
+                        const tags   = (cell.getRow().getData().tags || '').trim();
+                        const tLower = tags.toLowerCase();
+                        let display = v || 'Unknown', color = '#ffc107';
+                        if (!tags) {
+                            display = 'Unknown'; color = '#ffc107';
+                        } else if (v === 'shopify_draft_order' || tLower.includes('shopify_draft_order')) {
                             color = '#0dcaf0'; display = 'Draft Order';
-                        } else if (v === 'wsaio-app' || tags.includes('wsaio-app')) {
+                        } else if (v === 'wsaio-app' || tLower.includes('wsaio-app')) {
                             color = '#fd7e14'; display = 'WSAIO App';
-                        } else if (tags.includes('checkout-via-buy-now-button')) {
+                        } else if (tLower.includes('checkout-via-buy-now-button')) {
                             color = '#6f42c1'; display = 'Buy Now Btn';
                         }
-                        return `<span class="badge" style="background:${color};color:${color==='#0dcaf0'?'#000':'#fff'};">${display}</span>`;
+                        const txt = (color === '#0dcaf0' || color === '#ffc107') ? '#000' : '#fff';
+                        return `<span class="badge" style="background:${color};color:${txt};">${display}</span>`;
                     }
                 },
+                { title: 'Order #',  field: 'order_number', width: 105, frozen: true, sorter: 'string' },
+                { title: 'Order ID', field: 'order_id',     width: 160, visible: false },
                 {
-                    title: 'Order #', field: 'order_number', width: 100, frozen: true,
-                    sorter: 'string',
-                },
-                {
-                    title: 'Order ID', field: 'order_id', width: 160, visible: false,
-                },
-                {
-                    title: 'SKU', field: 'sku', width: 150, frozen: true,
+                    title: 'SKU', field: 'sku', width: 160, frozen: true,
                     headerFilter: 'input', headerFilterPlaceholder: 'Filter SKU…',
                     cssClass: 'text-primary fw-bold',
                 },
+                { title: 'Product Title', field: 'product_title', width: 280, tooltip: true, visible: false },
+                { title: 'Qty',   field: 'quantity',    width: 70,  hozAlign: 'center', sorter: 'number' },
+                { title: 'Price', field: 'price',       width: 100, hozAlign: 'right',  sorter: 'number', formatter: cell => fmtMoney(cell.getValue()) },
+                { title: 'Total', field: 'total_amount',width: 110, hozAlign: 'right',  sorter: 'number', formatter: cell => fmtMoney(cell.getValue()) },
                 {
-                    title: 'Product Title', field: 'product_title', width: 280, tooltip: true, visible: false,
+                    title: 'Discount Codes', field: 'discount_codes', width: 160, tooltip: true,
+                    formatter: function(cell) {
+                        const v = cell.getValue();
+                        if (!v) return '<span class="text-muted">—</span>';
+                        return v.split(',').map(c => c.trim()).filter(Boolean)
+                            .map(c => `<span class="badge bg-warning text-dark me-1">${c}</span>`)
+                            .join('');
+                    }
                 },
                 {
-                    title: 'Variant', field: 'variant_title', width: 150, tooltip: true, visible: false,
+                    title: 'Discount $', field: 'discount_amount', width: 105, hozAlign: 'right', sorter: 'number',
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (!v) return '<span class="text-muted">—</span>';
+                        return `<span class="text-danger">-$${v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
+                    }
                 },
                 {
-                    title: 'Qty', field: 'quantity', width: 70, hozAlign: 'center', sorter: 'number',
+                    title: 'Net Sales', field: 'net_sales', width: 110, hozAlign: 'right', sorter: 'number',
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (isNaN(v)) return '—';
+                        return `<strong>$${v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>`;
+                    }
                 },
                 {
-                    title: 'Price', field: 'price', width: 100, hozAlign: 'right', sorter: 'number',
-                    formatter: cell => fmtMoney(cell.getValue()),
-                },
-                {
-                    title: 'Total', field: 'total_amount', width: 110, hozAlign: 'right', sorter: 'number',
-                    formatter: cell => fmtMoney(cell.getValue()),
-                },
-                {
-                    title: 'Currency', field: 'currency', width: 80, hozAlign: 'center', visible: false,
+                    title: 'Order Total', field: 'order_total', width: 110, hozAlign: 'right', sorter: 'number',
+                    tooltip: 'Actual total paid for the whole order',
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (isNaN(v) || v === 0) return '<span class="text-muted">—</span>';
+                        return `<span class="badge bg-success">$${v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
+                    }
                 },
                 {
                     title: 'Order Date', field: 'order_date', width: 160, sorter: 'datetime',
@@ -341,64 +359,30 @@
                 },
                 {
                     title: 'Fin. Status', field: 'financial_status', width: 110,
-                    formatter: function(cell) {
-                        const v = cell.getValue() || '';
-                        return v || '—';
-                    }
+                    formatter: cell => cell.getValue() || '—'
                 },
                 {
                     title: 'Fulfill. Status', field: 'fulfillment_status', width: 120,
-                    formatter: function(cell) {
-                        const v = cell.getValue() || '';
-                        return v || '—';
-                    }
+                    formatter: cell => cell.getValue() || '—'
                 },
                 {
                     title: 'Customer', field: 'customer_name', width: 160,
                     headerFilter: 'input', headerFilterPlaceholder: 'Filter…',
                 },
-                {
-                    title: 'Email', field: 'customer_email', width: 200, tooltip: true,
-                },
-                {
-                    title: 'City', field: 'shipping_city', width: 120,
-                },
-                {
-                    title: 'State', field: 'shipping_state', width: 80,
-                },
-                {
-                    title: 'Country', field: 'shipping_country', width: 90,
-                },
-                {
-                    title: 'ZIP', field: 'shipping_zip', width: 80,
-                },
-                {
-                    title: 'Shipping Addr.', field: 'shipping_address', width: 220, tooltip: true,
-                },
-                {
-                    title: 'Tracking #', field: 'tracking_number', width: 160, tooltip: true,
-                },
-                {
-                    title: 'Carrier', field: 'tracking_company', width: 120,
-                },
+                { title: 'Email',   field: 'customer_email',  width: 200, tooltip: true, visible: false },
+                { title: 'City',    field: 'shipping_city',   width: 120, visible: false },
+                { title: 'Country', field: 'shipping_country',width: 90,  visible: false },
+                { title: 'Tracking #', field: 'tracking_number',  width: 160, tooltip: true, visible: false },
+                { title: 'Carrier',    field: 'tracking_company', width: 120, visible: false },
                 {
                     title: 'Tags', field: 'tags', width: 220, tooltip: true,
                     formatter: function(cell) {
                         const v = cell.getValue() || '';
-                        if (!v) return '—';
+                        if (!v) return '<span class="badge" style="background:#ffc107;color:#000;">Unknown</span>';
                         return v.split(',').map(t => t.trim()).filter(Boolean)
                             .map(t => `<span class="badge bg-light text-dark border me-1">${t}</span>`)
                             .join('');
                     }
-                },
-                {
-                    title: 'Discount Codes', field: 'discount_codes', width: 150, tooltip: true,
-                },
-                {
-                    title: 'Note', field: 'note', width: 180, tooltip: true,
-                },
-                {
-                    title: 'Channel', field: 'channel', width: 100,
                 },
             ]
         });
@@ -456,20 +440,19 @@
     function updateTableStats() {
         if (!table) return;
         const rows = table.getData('active');
-        let orders = 0, qty = 0, rev = 0, wtPrice = 0, wtQty = 0;
+        let orders = 0, qty = 0, gross = 0, discount = 0, net = 0;
         rows.forEach(r => {
             orders++;
-            qty    += parseInt(r.quantity) || 0;
-            rev    += parseFloat(r.total_amount) || 0;
-            const q = parseInt(r.quantity) || 0;
-            const p = parseFloat(r.price) || 0;
-            if (q > 0 && p > 0) { wtPrice += p * q; wtQty += q; }
+            qty      += parseInt(r.quantity)        || 0;
+            gross    += parseFloat(r.total_amount)  || 0;
+            discount += parseFloat(r.discount_amount) || 0;
+            net      += parseFloat(r.net_sales)     || 0;
         });
-        const avg = wtQty > 0 ? wtPrice / wtQty : 0;
-        $('#tbl-orders').text('Orders: ' + orders.toLocaleString());
-        $('#tbl-qty').text('Qty: ' + qty.toLocaleString());
-        $('#tbl-revenue').text('Revenue: ' + fmtMoney(rev));
-        $('#tbl-avg-price').text('Avg Price: ' + fmtMoney(avg));
+        $('#tbl-orders').text('Orders: '   + orders.toLocaleString());
+        $('#tbl-qty').text('Qty: '         + qty.toLocaleString());
+        $('#tbl-revenue').text('Gross: '   + fmtMoney(gross));
+        $('#tbl-discount').text('Discount: ' + fmtMoney(discount));
+        $('#tbl-net').text('Net Sales: '   + fmtMoney(net));
     }
 
     // ── Column visibility ──────────────────────────────────────────────────

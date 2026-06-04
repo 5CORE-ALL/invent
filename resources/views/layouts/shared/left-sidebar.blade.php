@@ -521,6 +521,11 @@
                                 <i class="ri-database-2-line me-2"></i>Shopify Raw Data
                             </a>
                         </li>
+                        <li>
+                            <a href="{{ route('shopify.index') }}">
+                                <i class="ri-shopify-line me-2"></i>Shopify
+                            </a>
+                        </li>
                     </ul>
                 </div>
             </li>

@@ -17,22 +17,56 @@ class ShopifyRawDataController extends Controller
         return view('shopify-raw-data.index');
     }
 
+    public function shopifyIndex()
+    {
+        return view('shopify.index');
+    }
+
+    // Marketplace source_name / tag values to always exclude
+    const EXCLUDE_SOURCES = [
+        'amazon', 'shein', 'ebay', 'tiktok', 'temu',
+        '179763773441', "macy's, inc.", "macy's", 'macys',
+        'purchasing power', 'purchasingpower', 'reverb',
+        'faire', 'best buy', 'bestbuy', 'best buy usa',
+        'doba', '145019994113',
+        'newegg', '189863297025',
+        'depop', 'tiendamia',
+    ];
+
     /**
      * Apply exclusions to a query builder instance.
-     * Skips rows whose SKU contains "XYZ".
+     * Skips rows whose source_name or tags match any excluded marketplace,
+     * and skips rows whose SKU contains "XYZ".
      */
     private function applyExclusions($query)
     {
+        foreach (self::EXCLUDE_SOURCES as $term) {
+            $query->whereRaw('LOWER(COALESCE(source_name,"")) NOT LIKE ?', ['%' . strtolower($term) . '%'])
+                  ->whereRaw('LOWER(COALESCE(tags,"")) NOT LIKE ?',        ['%' . strtolower($term) . '%']);
+        }
+
         $query->where('sku', 'NOT LIKE', '%XYZ%');
 
         return $query;
+    }
+
+    private function baseQuery(Carbon $dateFrom, Carbon $dateTo, bool $withExclusions = true)
+    {
+        $q = DB::table('shopify_raw_orders')
+            ->where('order_date', '>=', $dateFrom->toDateString())
+            ->where('order_date', '<=', $dateTo->toDateString());
+
+        if ($withExclusions) {
+            $this->applyExclusions($q);
+        }
+
+        return $q;
     }
 
     public function getData(Request $request)
     {
         $pstTimezone = 'America/Los_Angeles';
 
-        // Date range – default to last 30 days
         $dateFrom = $request->input('date_from')
             ? Carbon::parse($request->input('date_from'), $pstTimezone)->startOfDay()
             : Carbon::now($pstTimezone)->subDays(30)->startOfDay();
@@ -41,18 +75,11 @@ class ShopifyRawDataController extends Controller
             ? Carbon::parse($request->input('date_to'), $pstTimezone)->endOfDay()
             : Carbon::now($pstTimezone)->endOfDay();
 
-        // Active source filter (optional: single source or 'all')
-        $sourceFilter = $request->input('source', 'all');
+        $sourceFilter  = $request->input('source', 'all');
+        $rawPage       = $request->input('page') === 'raw';  // raw-data page — no exclusions
 
-        $query = DB::connection('apicentral')
-            ->table('shopify_order_items')
-            ->where('order_date', '>=', $dateFrom)
-            ->where('order_date', '<=', $dateTo);
+        $query = $this->baseQuery($dateFrom, $dateTo, !$rawPage);
 
-        // Exclude marketplace-tagged orders and XYZ SKUs
-        $this->applyExclusions($query);
-
-        // Optional per-source narrowing
         if ($sourceFilter !== 'all') {
             $query->where(function ($q) use ($sourceFilter) {
                 $q->where('source_name', $sourceFilter)
@@ -63,41 +90,44 @@ class ShopifyRawDataController extends Controller
         $rows = $query->orderBy('order_date', 'desc')->get();
 
         $data = $rows->map(function ($row) {
+            $totalAmount    = round((float) ($row->total_amount    ?? 0), 2);
+            $discountAmount = round((float) ($row->discount_amount ?? 0), 2);
+            $netSales       = round((float) ($row->net_sales       ?? ($totalAmount - $discountAmount)), 2);
+            $orderTotal     = $row->order_total    !== null ? round((float) $row->order_total,    2) : null;
+            $orderSubtotal  = $row->order_subtotal !== null ? round((float) $row->order_subtotal, 2) : null;
+
             return [
-                'id'                 => $row->id ?? '',
-                'order_id'           => $row->order_id ?? '',
-                'order_number'       => $row->order_number ?? '',
-                'sku'                => $row->sku ?? '',
-                'product_title'      => $row->product_title ?? '',
-                'variant_title'      => $row->variant_title ?? '',
+                'id'                 => $row->id              ?? '',
+                'order_id'           => $row->order_id        ?? '',
+                'order_number'       => $row->order_number    ?? '',
+                'sku'                => $row->sku             ?? '',
+                'product_title'      => $row->product_title   ?? '',
                 'quantity'           => (int) ($row->quantity ?? 0),
                 'price'              => round((float) ($row->price ?? 0), 2),
-                'total_amount'       => round((float) ($row->total_amount ?? 0), 2),
-                'order_date'         => $row->order_date ?? '',
-                'financial_status'   => $row->financial_status ?? '',
-                'fulfillment_status' => $row->fulfillment_status ?? '',
-                'customer_name'      => $row->customer_name ?? '',
-                'customer_email'     => $row->customer_email ?? '',
-                'shipping_address'   => $row->shipping_address ?? '',
-                'shipping_city'      => $row->shipping_city ?? '',
-                'shipping_state'     => $row->shipping_state ?? '',
-                'shipping_country'   => $row->shipping_country ?? '',
-                'shipping_zip'       => $row->shipping_zip ?? '',
-                'tracking_number'    => $row->tracking_number ?? '',
-                'tracking_company'   => $row->tracking_company ?? '',
-                'tags'               => $row->tags ?? '',
-                'source_name'        => $row->source_name ?? '',
-                'discount_codes'     => $row->discount_codes ?? '',
-                'note'               => $row->note ?? '',
-                'currency'           => $row->currency ?? '',
-                'channel'            => $row->channel ?? '',
+                'total_amount'       => $totalAmount,
+                'discount_codes'     => $row->discount_codes  ?? '',
+                'discount_amount'    => $discountAmount,
+                'net_sales'          => $netSales,
+                'order_total'        => $orderTotal,      // actual paid total for whole order
+                'order_subtotal'     => $orderSubtotal,
+                'order_date'         => $row->order_date          ?? '',
+                'financial_status'   => $row->financial_status    ?? '',
+                'fulfillment_status' => $row->fulfillment_status  ?? '',
+                'customer_name'      => $row->customer_name       ?? '',
+                'customer_email'     => $row->customer_email      ?? '',
+                'shipping_city'      => $row->shipping_city       ?? '',
+                'shipping_country'   => $row->shipping_country    ?? '',
+                'tracking_number'    => $row->tracking_number     ?? '',
+                'tracking_company'   => $row->tracking_company    ?? '',
+                'tags'               => $row->tags                ?? '',
+                'source_name'        => $row->source_name         ?? '',
             ];
         });
 
         return response()->json([
-            'data'    => $data,
-            'total'   => $data->count(),
-            'status'  => 200,
+            'data'   => $data,
+            'total'  => $data->count(),
+            'status' => 200,
         ]);
     }
 
@@ -113,45 +143,28 @@ class ShopifyRawDataController extends Controller
             ? Carbon::parse($request->input('date_to'), $pstTimezone)->endOfDay()
             : Carbon::now($pstTimezone)->endOfDay();
 
-        $baseQuery = function () use ($dateFrom, $dateTo) {
-            $q = DB::connection('apicentral')
-                ->table('shopify_order_items')
-                ->where('order_date', '>=', $dateFrom)
-                ->where('order_date', '<=', $dateTo);
-            $this->applyExclusions($q);
-            return $q;
-        };
+        $rawPage = $request->input('page') === 'raw';
 
         $stats = [];
         foreach (self::FILTER_SOURCES as $src) {
-            $count = (clone $baseQuery())
+            $q = $this->baseQuery($dateFrom, $dateTo, !$rawPage)
                 ->where(function ($q) use ($src) {
                     $q->where('source_name', $src)
                       ->orWhere('tags', 'LIKE', '%' . $src . '%');
-                })
-                ->count();
-
-            $revenue = (clone $baseQuery())
-                ->where(function ($q) use ($src) {
-                    $q->where('source_name', $src)
-                      ->orWhere('tags', 'LIKE', '%' . $src . '%');
-                })
-                ->sum('total_amount');
+                });
 
             $stats[$src] = [
-                'count'   => $count,
-                'revenue' => round((float) $revenue, 2),
+                'count'   => (clone $q)->count(),
+                'revenue' => round((float) (clone $q)->sum('net_sales'), 2),
             ];
         }
 
-        $totalCount   = $baseQuery()->count();
-        $totalRevenue = round((float) $baseQuery()->sum('total_amount'), 2);
-        $totalQty     = (int) $baseQuery()->sum('quantity');
+        $base = $this->baseQuery($dateFrom, $dateTo, !$rawPage);
 
         return response()->json([
-            'total_orders'  => $totalCount,
-            'total_revenue' => $totalRevenue,
-            'total_qty'     => $totalQty,
+            'total_orders'  => (clone $base)->count(),
+            'total_revenue' => round((float) (clone $base)->sum('total_amount'), 2),
+            'total_qty'     => (int) (clone $base)->sum('quantity'),
             'by_source'     => $stats,
         ]);
     }
