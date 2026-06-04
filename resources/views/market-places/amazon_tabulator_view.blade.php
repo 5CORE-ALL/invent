@@ -3688,6 +3688,41 @@
                         width: 100
                     },
                     {
+                        title: "Diff",
+                        field: "lmp_diff_pct",
+                        hozAlign: "center",
+                        width: 80,
+                        headerSortStartingDir: "desc",
+                        sorter: function(a, b, aRow, bRow) {
+                            const calc = function(rd) {
+                                const lmp = parseFloat(rd.lmp_price || 0);
+                                const price = parseFloat(rd.price || 0);
+                                if (!lmp || lmp <= 0) return -Infinity;
+                                return ((lmp - price) / lmp) * 100;
+                            };
+                            return calc(aRow.getData()) - calc(bRow.getData());
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+
+                            // Empty for parent rows
+                            if (rowData.is_parent_summary) return '';
+
+                            const lmp = parseFloat(rowData.lmp_price || 0);
+                            const price = parseFloat(rowData.price || 0);
+
+                            if (!lmp || lmp <= 0) {
+                                return '<span style="color: #999;">N/A</span>';
+                            }
+
+                            // (LMP - Amazon price) / LMP, as a percentage
+                            const diff = ((lmp - price) / lmp) * 100;
+                            const color = diff < 0 ? '#dc3545' : '#28a745';
+
+                            return `<span style="color: ${color}; font-weight: 600;">${diff.toFixed(1)}%</span>`;
+                        }
+                    },
+                    {
                         title: "Select",
                         field: "_select",
                         hozAlign: "center",
