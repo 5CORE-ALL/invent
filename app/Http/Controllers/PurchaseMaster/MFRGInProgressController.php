@@ -316,6 +316,22 @@ class MFRGInProgressController extends Controller
             );
         }
 
+        // Attach exec from to_order_analysis (single source of truth shared with to-order-analysis page)
+        $execBySku = [];
+        $execRows = DB::table('to_order_analysis')
+            ->whereNull('deleted_at')
+            ->whereNotNull('exec')
+            ->select(['sku', 'exec'])
+            ->get();
+        foreach ($execRows as $r) {
+            $k = strtoupper(trim((string)($r->sku ?? '')));
+            if ($k !== '') $execBySku[$k] = $r->exec;
+        }
+        foreach ($mfrgData as $row) {
+            $key = strtoupper(trim((string)($row->sku ?? '')));
+            $row->exec = $execBySku[$key] ?? null;
+        }
+
         // Filter to show items with stage='mip' or stage='r2s' (exclude transit, all good, etc.)
         // The MIP In Progress page now lists both MIP and R2S stage rows from forecast_analysis.
         $mfrgData = $mfrgData->filter(function($row) {
@@ -573,7 +589,7 @@ class MFRGInProgressController extends Controller
             'advance_amt', 'pay_conf_date', 'o_links', 'adv_date', 'del_date', 'delivery_date', 'total_cbm',
             'barcode_sku', 'artwork_manual_book', 'notes', 'ready_to_ship', 'rate', 'rate_currency',
             'photo_packing', 'photo_int_sale', 'supplier', 'supplier_sku', 'created_at', 'qty',
-            'pkg_inst', 'u_manual', 'compliance',
+            'pkg_inst', 'u_manual', 'compliance', 'exec',
         ];
 
         if (! in_array($column, $validColumns)) {
@@ -1050,26 +1066,23 @@ class MFRGInProgressController extends Controller
             return $productMasterByKey;
         }
 
-        $mipKeySet = array_fill_keys($candidates, true);
-        foreach (DB::table('product_master')->select('sku', 'parent', 'Values')->cursor() as $item) {
-            $norm = $normalizeSku($item->sku);
-            if ($norm === '') {
-                continue;
-            }
-            $keys = array_unique(array_filter([$norm, str_replace(' ', '', $norm)]));
-            $hit = false;
-            foreach ($keys as $k) {
-                if (isset($mipKeySet[$k])) {
-                    $hit = true;
-                    break;
-                }
-            }
-            if (! $hit) {
-                continue;
-            }
-            foreach ($keys as $k) {
-                if ($k !== '' && ! isset($productMasterByKey[$k])) {
-                    $productMasterByKey[$k] = $item;
+        // Fallback: try upper-cased variants via a second targeted whereIn (avoids full table scan)
+        $missingCandidates = array_values(array_filter($candidates, function ($c) use ($productMasterByKey) {
+            return $c !== '' && ! isset($productMasterByKey[$c]);
+        }));
+        foreach (array_chunk($missingCandidates, 450) as $chunk) {
+            $chunk = array_values(array_filter($chunk, fn ($s) => $s !== ''));
+            if ($chunk === []) continue;
+            foreach (DB::table('product_master')
+                ->whereIn(DB::raw('UPPER(TRIM(sku))'), $chunk)
+                ->select('sku', 'parent', 'Values')
+                ->get() as $item) {
+                $norm = $normalizeSku($item->sku);
+                if ($norm === '') continue;
+                foreach (array_unique([$norm, str_replace(' ', '', $norm)]) as $k) {
+                    if ($k !== '' && ! isset($productMasterByKey[$k])) {
+                        $productMasterByKey[$k] = $item;
+                    }
                 }
             }
         }
@@ -1083,6 +1096,9 @@ class MFRGInProgressController extends Controller
     private static function buildShopifyImageByKeyForMipRows(iterable $mfrgRows, callable $normalizeSku): array
     {
         $candidates = self::collectMipSkuCandidates($mfrgRows, $normalizeSku);
+        if (empty($candidates)) {
+            return [];
+        }
         $mipKeySet = array_fill_keys($candidates, true);
         $shopifyImageByKey = [];
 
@@ -1090,26 +1106,16 @@ class MFRGInProgressController extends Controller
             ->select('sku', 'image_src')
             ->whereNotNull('image_src')
             ->where('image_src', '!=', '')
-            ->cursor() as $item) {
+            ->whereIn('sku', $candidates)
+            ->get() as $item) {
             $norm = $normalizeSku($item->sku);
             if ($norm === '') {
                 continue;
             }
             $keys = array_unique(array_filter([$norm, str_replace(' ', '', $norm)]));
-            $hit = false;
-            foreach ($keys as $k) {
-                if (isset($mipKeySet[$k])) {
-                    $hit = true;
-                    break;
-                }
-            }
-            if (! $hit) {
-                continue;
-            }
-            $src = $item->image_src;
             foreach ($keys as $k) {
                 if ($k !== '' && ! isset($shopifyImageByKey[$k])) {
-                    $shopifyImageByKey[$k] = $src;
+                    $shopifyImageByKey[$k] = $item->image_src;
                 }
             }
         }
@@ -1139,7 +1145,8 @@ class MFRGInProgressController extends Controller
             ->whereNotNull('items')
             ->select(['items', 'created_at'])
             ->orderBy('created_at', 'desc')
-            ->cursor() as $po) {
+            ->limit(300)
+            ->get() as $po) {
             $items = json_decode($po->items, true);
             if (! is_array($items)) {
                 continue;

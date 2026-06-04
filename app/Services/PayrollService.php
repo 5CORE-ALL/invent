@@ -9,6 +9,7 @@ use App\Models\PayrollPaymentDeduction;
 use App\Models\PayrollPayslip;
 use App\Models\PayrollSalaryComponent;
 use App\Models\User;
+use App\Models\UserSalary;
 use Carbon\Carbon;
 
 class PayrollService
@@ -357,6 +358,51 @@ class PayrollService
 
         if ($changed) {
             $this->recalculateMonth($month);
+        }
+
+        return $changed;
+    }
+
+    /**
+     * Refresh the bank payout details (B1 / B2 / UPI) on every existing row of an
+     * unlocked month from the user's current saved bank details. Rows snapshot
+     * bank details when first created, so any bank info added/updated on
+     * /users/add afterwards never reached the payroll sheet — leaving some users
+     * blank on the payout export. This re-pulls the latest details so the export
+     * is always complete. Locked months keep their historical snapshot untouched.
+     */
+    public function syncBankDetails(PayrollMonth $month): bool
+    {
+        if ($month->is_locked) {
+            return false;
+        }
+
+        $salariesByUser = UserSalary::query()
+            ->whereIn('user_id', PayrollEmployeeSalary::where('payroll_month_id', $month->id)->pluck('user_id'))
+            ->get()
+            ->keyBy('user_id');
+
+        $changed = false;
+        foreach (PayrollEmployeeSalary::where('payroll_month_id', $month->id)->get() as $row) {
+            $salary = $salariesByUser->get($row->user_id);
+            if (! $salary) {
+                continue;
+            }
+
+            $bank1 = $salary->bank_1;
+            $bank2 = $salary->bank_2;
+            $upi = $salary->upi_id;
+
+            if ($row->bank_1 === $bank1 && $row->bank_2 === $bank2 && $row->upi_id === $upi) {
+                continue;
+            }
+
+            $row->update([
+                'bank_1' => $bank1,
+                'bank_2' => $bank2,
+                'upi_id' => $upi,
+            ]);
+            $changed = true;
         }
 
         return $changed;

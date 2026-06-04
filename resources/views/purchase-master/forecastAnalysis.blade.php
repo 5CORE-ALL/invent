@@ -491,8 +491,6 @@
 
                         <span class="vr align-self-stretch opacity-25"></span>
 
-                        @include('purchase-master.partials.page-exec-dropdown', ['pageKey' => 'forecast'])
-
                         <!-- NRP multiselect -->
                         <div class="dropdown d-inline-block">
                             <button class="btn btn-sm btn-light border border-primary dropdown-toggle" type="button" id="nrp-filter-dropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" style="min-width:120px;">

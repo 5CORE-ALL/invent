@@ -494,7 +494,7 @@ class ToOrderAnalysisController extends Controller
                     'Clink'           => ($forecast ? ($forecast->clink ?? '') : ''),
                     // Use stored supplier; only fallback to parent lookup when never set (null). Empty = user chose "Select" so keep blank.
                     'Supplier'        => $toOrder->supplier_name !== null ? (string) $toOrder->supplier_name : ($supplierName ?? ''),
-                    'Exec'            => $pageExec,
+                    'Exec'            => isset($toOrder->exec) && $toOrder->exec !== null ? (string) $toOrder->exec : '',
                     'msl'             => $mslValue,
                     's_msl'           => $sMsl,
                     'lp_msl'          => $lpMsl,
@@ -757,6 +757,7 @@ class ToOrderAnalysisController extends Controller
             'sheet_link' => null,
             'rfq_report_link' => $forecast?->rfq_report ?? null,
             'supplier_name' => null,
+            'exec' => null,
             'nrl' => null,
             'issues' => null,
             'advance_date' => null,
@@ -775,7 +776,7 @@ class ToOrderAnalysisController extends Controller
             return response()->json(['success' => false, 'message' => 'SKU is required']);
         }
 
-        if (!in_array($column, ['approved_qty','Date of Appr', 'RFQ Form Link', 'Rfq Report Link', 'sheet_link', 'Stage', 'nrl', 'Supplier', 'order_qty', 'Adv date', 'Clink', 'Reviews'])) {
+        if (!in_array($column, ['approved_qty','Date of Appr', 'RFQ Form Link', 'Rfq Report Link', 'sheet_link', 'Stage', 'nrl', 'Supplier', 'order_qty', 'Adv date', 'Clink', 'Reviews', 'Exec'])) {
             return response()->json(['success' => false, 'message' => 'Invalid column']);
         }
 
@@ -842,22 +843,39 @@ class ToOrderAnalysisController extends Controller
             'Adv date'        => 'advance_date',
             'order_qty'       => 'order_qty',
             'approved_qty'    => 'approved_qty',
+            'Exec'            => 'exec',
         };
 
         try {
-            $toOrderQuery = ToOrderAnalysis::query()->whereRaw('TRIM(UPPER(sku)) = ?', [$sku]);
-            if ($rowId > 0) {
-                $toOrderQuery->where('id', $rowId);
-            }
+            // Try indexed lookup first (sku column has an index; $sku is already UPPER+TRIM normalized).
+            // Fall back to the TRIM/UPPER whereRaw only when the indexed lookup finds nothing,
+            // which handles rows stored with non-normalized casing.
+            $buildQuery = function () use ($sku, $rowId) {
+                $q = ToOrderAnalysis::query()->where('sku', $sku);
+                if ($rowId > 0) {
+                    $q->where('id', $rowId);
+                }
+                return $q;
+            };
+            $buildQuerySlow = function () use ($sku, $rowId) {
+                $q = ToOrderAnalysis::query()->whereRaw('TRIM(UPPER(sku)) = ?', [$sku]);
+                if ($rowId > 0) {
+                    $q->where('id', $rowId);
+                }
+                return $q;
+            };
+            $toOrderQuery = $buildQuery();
 
             // Supplier: allow empty string; scope by row_id when sent so duplicate SKUs update the correct row only
             if ($column === 'Supplier') {
                 $updated = $toOrderQuery->update(['supplier_name' => $value]);
+                if ($updated === 0) {
+                    // Try slow fallback (non-normalized SKU casing in DB)
+                    $updated = $buildQuerySlow()->update(['supplier_name' => $value]);
+                }
                 if ($updated === 0 && $rowId > 0) {
                     return response()->json(['success' => false, 'message' => 'Row not found for this SKU'], 422);
                 }
-                // Yellow-cohort / Tabulator rows often have no to_order_analysis row yet; parent-derived supplier
-                // was shown. Without a create here, /update-link succeeds but refresh reverts to parent lookup.
                 if ($updated === 0 && $rowId === 0) {
                     $parent = trim((string) $request->input('parent', ''));
                     ToOrderAnalysis::create([
@@ -870,10 +888,14 @@ class ToOrderAnalysisController extends Controller
                 $updated = $toOrderQuery->update([$updateColumn => $value]);
 
                 if ($updated === 0) {
+                    // Try slow fallback before deciding to create
+                    $updated = $buildQuerySlow()->update([$updateColumn => $value]);
+                }
+
+                if ($updated === 0) {
                     if ($rowId > 0) {
                         return response()->json(['success' => false, 'message' => 'Row not found for this SKU'], 422);
                     }
-                    // No row exists for this SKU, create one (avoid creating if any duplicate already exists)
                     ToOrderAnalysis::create([
                         'sku' => $sku,
                         $updateColumn => $value,
@@ -949,6 +971,59 @@ class ToOrderAnalysisController extends Controller
             ]);
         } catch (\Throwable $e) {
             Log::error('ToOrderAnalysis bulkUpdateSupplier failed', ['skus' => $skus, 'error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function bulkUpdateExec(Request $request)
+    {
+        $skus = $request->input('skus', []);
+        $execName = trim((string) $request->input('exec_name', ''));
+
+        if (empty($skus) || !is_array($skus)) {
+            return response()->json(['success' => false, 'message' => 'No rows selected'], 400);
+        }
+
+        $allowed = ['', 'Atin', 'Jack', 'Nitish', 'Ajay', 'Candy', 'Sruti'];
+        if (!in_array($execName, $allowed, true)) {
+            return response()->json(['success' => false, 'message' => 'Invalid executive name'], 400);
+        }
+
+        $skus = array_map(fn($s) => trim(strtoupper((string) $s)), $skus);
+        $skus = array_filter($skus);
+
+        if (empty($skus)) {
+            return response()->json(['success' => false, 'message' => 'No valid SKUs'], 400);
+        }
+
+        try {
+            $updated = 0;
+            $created = 0;
+            foreach ($skus as $skuOne) {
+                $n = (int) ToOrderAnalysis::query()
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuOne])
+                    ->update(['exec' => $execName !== '' ? $execName : null]);
+                $updated += $n;
+                if ($n === 0) {
+                    ToOrderAnalysis::create([
+                        'sku' => $skuOne,
+                        'exec' => $execName !== '' ? $execName : null,
+                    ]);
+                    $created++;
+                }
+            }
+
+            $msg = $updated . ' row(s) updated';
+            if ($created > 0) $msg .= ', ' . $created . ' row(s) created';
+
+            return response()->json([
+                'success' => true,
+                'message' => $msg . '.',
+                'updated' => $updated,
+                'created' => $created,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('ToOrderAnalysis bulkUpdateExec failed', ['skus' => $skus, 'error' => $e->getMessage()]);
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }

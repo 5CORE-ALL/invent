@@ -87,6 +87,7 @@ class PayrollController extends Controller
             $this->payroll->removeIneligibleEmployees($payrollMonth);
             $this->payroll->ensureSheetPopulated($payrollMonth);
             $this->payroll->syncCarryForwardSalaries($payrollMonth);
+            $this->payroll->syncBankDetails($payrollMonth);
             $this->payroll->refreshLiveHours($payrollMonth);
         }
 
@@ -748,6 +749,10 @@ class PayrollController extends Controller
     {
         $this->authorizeManage();
 
+        if (! $payrollMonth->is_locked) {
+            $this->payroll->syncBankDetails($payrollMonth);
+        }
+
         $rows = PayrollEmployeeSalary::with('user')
             ->where('payroll_month_id', $payrollMonth->id)
             ->get();
@@ -783,6 +788,7 @@ class PayrollController extends Controller
             $this->payroll->removeIneligibleEmployees($payrollMonth);
             $this->payroll->ensureSheetPopulated($payrollMonth);
             $this->payroll->syncCarryForwardSalaries($payrollMonth);
+            $this->payroll->syncBankDetails($payrollMonth);
             $this->payroll->refreshLiveHours($payrollMonth);
         }
 

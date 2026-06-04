@@ -363,10 +363,9 @@
                             </select>
                         </div>
                         <div class="filter-item">
-                            <label for="search-input" class="form-label fw-semibold d-block">🔍 Search</label>
+                            <label for="search-input" class="form-label fw-semibold d-block">🔍 Search All</label>
                             <input type="text" id="search-input" class="form-control" placeholder="Search..." style="width: 160px;">
                         </div>
-                        @include('purchase-master.partials.page-exec-dropdown', ['pageKey' => 'to_order'])
                         <div class="filter-item" id="bulk-supplier-bar">
                             <label class="form-label fw-semibold d-block">🏢 Bulk supplier</label>
                             <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -380,6 +379,24 @@
                                     <i class="fas fa-edit me-1"></i> Update selected
                                 </button>
                                 <span class="text-muted small" id="bulk-selected-count"></span>
+                            </div>
+                        </div>
+                        <div class="filter-item" id="bulk-executive-bar">
+                            <label class="form-label fw-semibold d-block">👤 Bulk Executive</label>
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <select id="bulk-executive-select" class="form-select form-select-sm" style="width: 172px;">
+                                    <option value="">— Choose executive —</option>
+                                    <option value="">— Unassigned —</option>
+                                    <option value="Atin">Atin</option>
+                                    <option value="Jack">Jack</option>
+                                    <option value="Nitish">Nitish</option>
+                                    <option value="Ajay">Ajay</option>
+                                    <option value="Candy">Candy</option>
+                                    <option value="Sruti">Sruti</option>
+                                </select>
+                                <button type="button" id="bulk-update-executive-btn" class="btn btn-sm" style="background:#4db6ac;color:#fff;border:none;">
+                                    <i class="fas fa-user-check me-1"></i> Apply to selected
+                                </button>
                             </div>
                         </div>
                         <div class="filter-item" id="bulk-stage-bar">
@@ -398,6 +415,8 @@
                                     <i class="fas fa-layer-group me-1"></i> Apply to selected
                                 </button>
                             </div>
+                        </div>
+
                         </div>
 
                         <div class="ms-auto d-flex align-items-end">
@@ -632,55 +651,6 @@
             let hideTimeout;
             let uniqueSuppliers = [];
             let allSuppliers = @json($allSuppliers ?? []);
-            let execOptions = @json($execOptions ?? []);
-            let execCanEdit = @json($execCanEdit ?? false);
-            let pageExecSaving = false;
-
-            function renderExecSelect(value, disabled) {
-                const selected = (value || "").trim();
-                let html = `<option value=""${selected === "" ? " selected" : ""}>— Unassigned —</option>`;
-                execOptions.forEach(function (name) {
-                    const esc = escapeHtmlAttr(name);
-                    const label = String(name).replace(/</g, "&lt;");
-                    html += `<option value="${esc}"${selected === name ? " selected" : ""}>${label}</option>`;
-                });
-                const dis = disabled ? " disabled" : "";
-                return `<select class="form-select form-select-sm to-order-exec-select"${dis} style="width: 100px; min-width: 90px; padding: 4px 8px; font-size: 0.875rem;">${html}</select>`;
-            }
-
-            async function savePageExecAssignment(assignedExec) {
-                if (pageExecSaving) return;
-                pageExecSaving = true;
-                try {
-                    const res = await fetch("/purchase-page-exec/to_order/assignment", {
-                        method: "POST",
-                        headers: {
-                            "Accept": "application/json",
-                            "Content-Type": "application/json",
-                            "X-Requested-With": "XMLHttpRequest",
-                            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-                        },
-                        body: JSON.stringify({ assigned_exec: assignedExec || null }),
-                    });
-                    const data = await res.json().catch(function () { return {}; });
-                    if (!res.ok) {
-                        throw new Error(data.message || "Save failed");
-                    }
-                    const topSelect = document.getElementById("page-exec-select-to_order");
-                    if (topSelect && topSelect.value !== (assignedExec || "")) {
-                        topSelect.value = assignedExec || "";
-                        topSelect.dataset.lastValue = assignedExec || "";
-                    }
-                    document.dispatchEvent(new CustomEvent("purchase-page-exec-changed", {
-                        detail: { pageKey: "to_order", assignedExec: assignedExec || null },
-                    }));
-                } catch (err) {
-                    alert(err.message || "Could not save executive assignment");
-                    throw err;
-                } finally {
-                    pageExecSaving = false;
-                }
-            }
 
             function escapeHtmlAttr(s) {
                 return String(s ?? '')
@@ -1024,6 +994,60 @@
                         headerFilterLiveFilter: true,
                     },
                     {
+                        title: "Executive",
+                        field: "Exec",
+                        hozAlign: "center",
+                        width: 120,
+                        minWidth: 100,
+                        headerSort: true,
+                        headerTooltip: "Executive assigned",
+                        headerFilter: "list",
+                        headerFilterParams: {
+                            values: {
+                                "": "— All —",
+                                "__unassigned__": "Unassigned",
+                                "Atin": "Atin",
+                                "Jack": "Jack",
+                                "Nitish": "Nitish",
+                                "Ajay": "Ajay",
+                                "Candy": "Candy",
+                                "Sruti": "Sruti",
+                            },
+                            clearable: true,
+                        },
+                        headerFilterFunc: function(headerVal, rowVal) {
+                            if (!headerVal || headerVal === "") return true;
+                            const rv = (rowVal || "").trim();
+                            if (headerVal === "__unassigned__") return rv === "";
+                            return rv === headerVal;
+                        },
+                        formatter: function(cell) {
+                            const val = (cell.getValue() || "").trim();
+                            const label = val || "— Unassigned —";
+                            const colors = {
+                                "Atin":   { bg: "#3b82f6", text: "#fff" },
+                                "Jack":   { bg: "#10b981", text: "#fff" },
+                                "Nitish": { bg: "#8b5cf6", text: "#fff" },
+                                "Ajay":   { bg: "#f59e0b", text: "#fff" },
+                                "Candy":  { bg: "#ec4899", text: "#fff" },
+                                "Sruti":  { bg: "#14b8a6", text: "#fff" },
+                            };
+                            const c = colors[val] || { bg: "#e5e7eb", text: "#6b7280" };
+                            const options = ["", "Atin", "Jack", "Nitish", "Ajay", "Candy", "Sruti"]
+                                .map(o => `<option value="${o}"${o === val ? " selected" : ""}>${o || "— Unassigned —"}</option>`)
+                                .join("");
+                            const rowData = cell.getRow().getData();
+                            const sku = (rowData.SKU || "").replace(/"/g, "&quot;");
+                            const rowId = rowData.id || 0;
+                            return `<select class="toa-exec-select"
+                                data-sku="${sku}" data-row-id="${rowId}"
+                                style="width:100%;border:none;border-radius:6px;padding:3px 6px;font-size:0.82rem;font-weight:600;background:${c.bg};color:${c.text};cursor:pointer;outline:none;">
+                                ${options}
+                            </select>`;
+                        },
+                        cellClick: function(e) { e.stopPropagation(); },
+                    },
+                    {
                         title: "SKU",
                         field: "SKU", 
                         headerFilter: "input",
@@ -1031,37 +1055,6 @@
                         headerTooltip: "Short name of product",
                         headerFilterPlaceholder: " Filter SKU...",
                         headerFilterLiveFilter: true,
-                    },
-                    {
-                        title: "Exec",
-                        field: "Exec",
-                        hozAlign: "center",
-                        width: 115,
-                        minWidth: 100,
-                        headerSort: true,
-                        headerTooltip: "Executive assigned",
-                        formatter: function (cell) {
-                            const value = (cell.getValue() || "").trim();
-                            const html = renderExecSelect(value, !execCanEdit);
-                            setTimeout(function () {
-                                const select = cell.getElement().querySelector(".to-order-exec-select");
-                                if (!select || select.dataset.bound === "1") return;
-                                select.dataset.bound = "1";
-                                select.dataset.prev = value;
-                                select.addEventListener("change", async function () {
-                                    const newVal = this.value;
-                                    const prev = this.dataset.prev || "";
-                                    if (newVal === prev) return;
-                                    try {
-                                        await savePageExecAssignment(newVal);
-                                        this.dataset.prev = newVal;
-                                    } catch (e) {
-                                        this.value = prev;
-                                    }
-                                });
-                            }, 0);
-                            return html;
-                        },
                     },
                     {
                         title: "MOQ",
@@ -1567,13 +1560,6 @@
                 ajaxResponse: (url, params, response) => {
                     let data = response.data;
 
-                    if (Array.isArray(response.exec_options)) {
-                        execOptions = response.exec_options;
-                    }
-                    if (typeof response.exec_can_edit === "boolean") {
-                        execCanEdit = response.exec_can_edit;
-                    }
-
                     // Backend already returns the Forecast yellow cohort only; do not drop MIP (or other) stage
                     // rows here — Forecast star count (e.g. 146) can include stage=mip when pipeline qty is still empty.
                     let filtered = data.filter(item => {
@@ -1582,32 +1568,49 @@
                     });
 
                     uniqueSuppliers = [...new Set(filtered.map(item => item.Supplier))].filter(Boolean);
+
                     return filtered;
                 },
             });
 
-            function syncToOrderExecColumn(assignedExec) {
-                const val = assignedExec || "";
-                table.getRows().forEach(function (row) {
-                    row.update({ Exec: val }, true);
-                    const select = row.getCell("Exec")?.getElement()?.querySelector(".to-order-exec-select");
-                    if (select && select.value !== val) {
-                        select.value = val;
-                        select.dataset.prev = val;
-                    }
-                });
-            }
+            // Executive column — save on change + update badge colour live
+            const TOA_EXEC_COLORS = {
+                "Atin":   { bg: "#3b82f6", text: "#fff" },
+                "Jack":   { bg: "#10b981", text: "#fff" },
+                "Nitish": { bg: "#8b5cf6", text: "#fff" },
+                "Ajay":   { bg: "#f59e0b", text: "#fff" },
+                "Candy":  { bg: "#ec4899", text: "#fff" },
+                "Sruti":  { bg: "#14b8a6", text: "#fff" },
+            };
 
-            document.addEventListener("purchase-page-exec-changed", function (e) {
-                if (e.detail?.pageKey !== "to_order") return;
-                syncToOrderExecColumn(e.detail.assignedExec);
-            });
-
-            document.addEventListener("purchase-page-exec-options-changed", function (e) {
-                if (Array.isArray(e.detail?.options)) {
-                    execOptions = e.detail.options;
+            document.getElementById("toOrderAnalysis-table").addEventListener("change", async function(e) {
+                const sel = e.target.closest(".toa-exec-select");
+                if (!sel) return;
+                const newVal = sel.value;
+                const sku   = sel.dataset.sku;
+                const rowId = sel.dataset.rowId || 0;
+                const c = TOA_EXEC_COLORS[newVal] || { bg: "#e5e7eb", text: "#6b7280" };
+                sel.style.background = c.bg;
+                sel.style.color      = c.text;
+                // update Tabulator data so filters/sorts reflect change
+                const tRow = table.searchRows("SKU", "=", sku)[0];
+                if (tRow) tRow.update({ Exec: newVal });
+                try {
+                    const res = await fetch("/update-link", {
+                        method: "POST",
+                        headers: {
+                            "Accept": "application/json",
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest",
+                            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+                        },
+                        body: JSON.stringify({ sku, row_id: rowId, column: "Exec", value: newVal || null }),
+                    });
+                    const d = await res.json().catch(() => ({}));
+                    if (!res.ok || !d.success) throw new Error(d.message || "Save failed");
+                } catch(err) {
+                    alert("Could not save executive: " + err.message);
                 }
-                table.redraw(true);
             });
 
             table.on("rowSelectionChanged", function(data, rows) {
@@ -1623,6 +1626,7 @@
             deleteWithSelect();
             bulkUpdateSupplierWithSelect();
             bulkUpdateStageWithSelect();
+            bulkUpdateExecutiveWithSelect();
 
             function deleteWithSelect() {
                 const deleteBtn = document.getElementById('delete-selected-btn');
@@ -1856,6 +1860,65 @@
                         msg += ' Issues: ' + failed.join('; ');
                     }
                     alert(msg);
+                });
+            }
+
+            function bulkUpdateExecutiveWithSelect() {
+                const btn = document.getElementById('bulk-update-executive-btn');
+                if (!btn) return;
+
+                btn.addEventListener('click', function() {
+                    const selectedRows = table.getSelectedRows();
+                    if (selectedRows.length === 0) {
+                        alert('Please select at least one row.');
+                        return;
+                    }
+
+                    const skus = selectedRows
+                        .map(function(row) { return (row.getData().SKU || '').trim().toUpperCase(); })
+                        .filter(function(sku) { return sku && !String(sku).startsWith('PARENT'); });
+
+                    if (skus.length === 0) {
+                        alert('No valid SKU rows selected (parent rows are skipped).');
+                        return;
+                    }
+
+                    const execSel = document.getElementById('bulk-executive-select');
+                    if (!execSel || execSel.selectedIndex === 0) {
+                        alert('Please select an executive.');
+                        return;
+                    }
+                    const execName = execSel.value;
+
+                    const origHtml = btn.innerHTML;
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Updating...';
+
+                    fetch('/to-order-analysis/bulk-update-exec', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                        },
+                        body: JSON.stringify({ skus: skus, exec_name: execName })
+                    })
+                    .then(function(res) { return res.json(); })
+                    .then(function(res) {
+                        if (res.success) {
+                            table.getSelectedRows().forEach(function(row) { table.deselectRow(row); });
+                            table.replaceData();
+                            alert(res.message || 'Bulk executive update successful.');
+                        } else {
+                            throw new Error(res.message || 'Update failed');
+                        }
+                    })
+                    .catch(function(err) {
+                        alert('Error: ' + (err.message || 'Something went wrong'));
+                    })
+                    .finally(function() {
+                        btn.disabled = false;
+                        btn.innerHTML = origHtml;
+                    });
                 });
             }
 
