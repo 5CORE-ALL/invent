@@ -220,9 +220,8 @@
                         style="width: auto; display: inline-block;">
                         <option value="all">All CVR%</option>
                         <option value="0-0">0%</option>
-                        <option value="0-2">0-2%</option>
-                        <option value="2-4">2-4%</option>
-                        <option value="4-7">4-7%</option>
+                        <option value="0-3">0-3%</option>
+                        <option value="3-7">3-7%</option>
                         <option value="7-13">7-13%</option>
                         <option value="13plus">13%+</option>
                     </select>
@@ -234,8 +233,7 @@
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
                         <option value="125-175">125–175%</option>
-                        <option value="175-250">175–250%</option>
-                        <option value="gt250">&gt; 250%</option>
+                        <option value="gt175">175+%</option>
                     </select>
 
                     <select id="cvr-trend-filter" class="form-select form-select-sm"
@@ -4649,7 +4647,7 @@
                         if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         const roiVal = parseFloat(data['GROI%']) || 0;
                         if (roiFilter === 'lt40') return roiVal < 40;
-                        if (roiFilter === 'gt250') return roiVal > 250;
+                        if (roiFilter === 'gt175') return roiVal >= 175;
                         const [min, max] = roiFilter.split('-').map(Number);
                         return roiVal >= min && roiVal <= max;
                     });
@@ -4664,9 +4662,8 @@
                         const cvrRounded = Math.round(cvr * 100) / 100;
 
                         if (cvrFilter === '0-0') return cvrRounded === 0;
-                        if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                        if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                        if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                        if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                        if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                         if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                         if (cvrFilter === '13plus') return cvrRounded > 13;
                         return true;
@@ -5939,7 +5936,7 @@ $('#nmap-count').text(missingCount.toLocaleString());
                             <td class="text-center">${units}</td>
                             <td style="font-size: 11px;">${buyBox}</td>
                             <td class="text-center">${sellerType}</td>
-                            <td class="text-center">${rating}</td>
+                             <td class="text-center">${rating}</td>
                             <td class="text-center">${reviews}</td>
                             <td class="text-center">
                                 <a href="${productLink}" target="_blank" class="btn btn-sm btn-info" title="View Product on Amazon">
