@@ -10,7 +10,7 @@
     title="Page information"
     aria-label="Page information">
     <i class="fas fa-info" aria-hidden="true"></i>
-    <span>Info</span>
+    <span>i</span>
     <span class="purchase-page-info-dot purchase-page-info-dot--empty" aria-hidden="true"></span>
 </button>
 

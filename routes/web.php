@@ -4006,7 +4006,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // MFRG In Progress
     Route::controller(MFRGInProgressController::class)->group(function () {
-        Route::get('/mfrg-in-progress', 'index')->name('mfrg.in.progress');
+        Route::get('/mfrg-in-progress', 'newMfrgView')->name('mfrg.in.progress');
+        Route::get('/mfrg-in-progress-old', 'index')->name('mfrg.in.progress.old');
         Route::post('/mfrg-progresses/inline-update-by-sku', 'inlineUpdateBySku');
         Route::post('/mfrg-progresses/delete', 'deleteBySkus')->name('mfrg.progresses.delete');
         Route::post('/mfrg-progresses/restore', 'restoreBySkus')->name('mfrg.progresses.restore');

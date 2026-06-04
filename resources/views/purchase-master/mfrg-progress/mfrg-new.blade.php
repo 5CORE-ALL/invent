@@ -5,154 +5,55 @@
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         .tabulator .tabulator-header {
-            background: linear-gradient(90deg, #D8F3F3 0%, #D8F3F3 100%);
+            background: #D8F3F3;
             border-bottom: 1px solid #403f3f;
-            box-shadow: 0 4px 16px rgba(37, 99, 235, 0.10);
         }
-
         .tabulator .tabulator-header .tabulator-col {
             text-align: center;
-            background: #D8F3F3;
-            border-right: 1px solid #262626;
-            padding: 16px 10px;
+            background: #3bc0c3;
+            border-right: 1px solid #fff;
+            padding: 10px 6px;
             font-weight: 700;
-            color: #1e293b;
-            font-size: 1.08rem;
-            letter-spacing: 0.02em;
-            transition: background 0.2s;
+            color: #fff;
+            font-size: 0.9rem;
         }
-
-        .tabulator .tabulator-header .tabulator-col:hover {
-            background: #D8F3F3;
-            color: #2563eb;
-        }
-
-        .tabulator-row {
-            background-color: #fff !important;
-            transition: background 0.18s;
-        }
-
-        .tabulator-row:nth-child(even) {
-            background-color: #f8fafc !important;
-        }
-
+        .tabulator-row { background-color: #fff !important; }
+        .tabulator-row:nth-child(even) { background-color: #f8fafc !important; }
+        .tabulator-row:hover { background-color: #dbeafe !important; }
         .tabulator .tabulator-cell {
             text-align: center;
-            padding: 14px 10px;
-            border-right: 1px solid #262626;
-            border-bottom: 1px solid #262626;
-            font-size: 1rem;
-            color: #22223b;
-            vertical-align: middle;
-            transition: background 0.18s, color 0.18s;
+            padding: 6px;
+            border-right: 1px solid #e2e8f0;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 0.85rem;
         }
+        .tabulator .tabulator-cell.mip-new-image-cell { padding: 0 !important; line-height: 0; }
+        .mip-new-img-aspect { width: 44px; height: 44px; margin: 0 auto; }
+        .mip-new-img-aspect img { width: 100%; height: 100%; object-fit: contain; cursor: pointer; display: block; }
 
-        .tabulator .tabulator-cell:focus {
-            outline: 1px solid #262626;
-            background: #e0eaff;
-        }
+        /* Executive colored select */
+        .toa-exec-select { border: none; border-radius: 6px; padding: 3px 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; outline: none; width: 100%; }
 
-        .tabulator-row:hover {
-            background-color: #dbeafe !important;
-        }
+        /* Stage dot + invisible select overlay */
+        .mip-stage-dot { position: relative; width: 44px; height: 30px; margin: 0 auto; }
+        .mip-stage-marker { width: 100%; height: 100%; display: inline-flex; align-items: center; justify-content: center; pointer-events: none; }
+        .mip-stage-dot .stage-status-dot { display: inline-block; width: 16px; height: 16px; border-radius: 50%; }
+        .mip-stage-dot .stage-transit-icon { color: #0ea5e9; font-size: 15px; }
+        .mip-stage-dot .stage-stage-select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 
-        .parent-row {
-            background-color: #e0eaff !important;
-            font-weight: 700;
-        }
+        /* Status dot toggles (Pkg/U-Manual/Compliance) */
+        .mip-status-dot { display: inline-block; width: 16px; height: 16px; border-radius: 50%; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); }
 
-        #account-health-master .tabulator {
-            border-radius: 18px;
-            box-shadow: 0 6px 24px rgba(37, 99, 235, 0.13);
-            overflow: hidden;
-            border: 1px solid #e5e7eb;
-        }
+        /* Communication logos */
+        .mip-plat-icon-link { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; transition: transform 0.12s; }
+        .mip-plat-icon-link:hover { transform: scale(1.2); }
+        .mip-plat-menu { padding: 6px; min-width: auto; }
 
-        .tabulator .tabulator-row .tabulator-cell:last-child,
-        .tabulator .tabulator-header .tabulator-col:last-child {
-            border-right: none;
-        }
-
-        .tabulator .tabulator-footer {
-            background: #f4f7fa;
-            border-top: 1px solid #262626;
-            font-size: 1rem;
-            color: #4b5563;
-            padding: 5px;
-            height: 100px;
-        }
-
-        .tabulator .tabulator-footer:hover {
-            background: #e0eaff;
-        }
-
-        @media (max-width: 768px) {
-
-            .tabulator .tabulator-header .tabulator-col,
-            .tabulator .tabulator-cell {
-                padding: 8px 2px;
-                font-size: 0.95rem;
-            }
-        }
-
-        /* Pagination styling */
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
-            padding: 8px 16px;
-            margin: 0 4px;
-            border-radius: 6px;
-            font-size: 0.95rem;
-            font-weight: 500;
-            transition: all 0.2s;
-        }
-
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
-            background: #e0eaff;
-            color: #2563eb;
-        }
-
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
-            background: #2563eb;
-            color: white;
-        }
-
-        .green-bg {
-            color: #05bd30 !important;
-        }
-
-        .pink-bg {
-            color: #ff01d0 !important;
-        }
-
-        .red-bg {
-            color: #ff2727 !important;
-        }
-
-        /* Image column: fill cell, no card, object-fit contain */
-        .tabulator .tabulator-cell.mip-new-image-cell {
-            padding: 0 !important;
-            vertical-align: middle !important;
-            line-height: 0;
-        }
-        .tabulator .mip-new-img-aspect {
-            width: 46px !important;
-            height: 46px !important;
-            max-width: 46px !important;
-            max-height: 46px !important;
-            margin: 0 auto;
-            box-sizing: border-box;
-        }
-        .tabulator .mip-new-img-aspect img {
-            width: 100% !important;
-            height: 100% !important;
-            max-width: 100% !important;
-            max-height: 100% !important;
-            object-fit: contain;
-            display: block;
-            cursor: pointer;
-            border-radius: 0;
-            box-shadow: none;
-            background: transparent;
-        }
+        /* Footer / pagination */
+        .tabulator .tabulator-footer { background: #f4f7fa; border-top: 1px solid #cbd5e1; padding: 6px; }
+        .tabulator .tabulator-footer .tabulator-page { padding: 6px 12px; margin: 0 3px; border-radius: 6px; }
+        .tabulator .tabulator-footer .tabulator-page.active { background: #3bc0c3; color: #fff; }
+        .tabulator .tabulator-cell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     </style>
 @endsection
 @section('content')
@@ -162,92 +63,113 @@
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-body">
+                    <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'mip'])
 
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h4 class="mb-0">MIP</h4>
-                    </div>
-
-                    <div class="row mb-4 g-3 align-items-end justify-content-between">
-                        <div class="col-auto d-flex align-items-end">
-                            @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'mip'])
-                        </div>
-                        {{-- ▶️ Navigation --}}
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">▶️ Navigation</label>
-                            <div class="btn-group time-navigation-group" role="group">
-                                <button id="play-backward" class="btn btn-light rounded-circle shadow-sm me-2"
-                                    title="Previous parent">
-                                    <i class="fas fa-step-backward"></i>
-                                </button>
-                                <button id="play-pause" class="btn btn-light rounded-circle shadow-sm me-2"
-                                    style="display: none;" title="Pause">
-                                    <i class="fas fa-pause"></i>
-                                </button>
-                                <button id="play-auto" class="btn btn-primary rounded-circle shadow-sm me-2" title="Play">
-                                    <i class="fas fa-play"></i>
-                                </button>
-                                <button id="play-forward" class="btn btn-light rounded-circle shadow-sm"
-                                    title="Next parent">
-                                    <i class="fas fa-step-forward"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">Pending Status</label>
-                            <select id="row-data-pending-status" class="form-select border border-primary" style="width: 150px;">
-                                <option value="">select color</option>
-                                <option value="green">Green <span id="greenCount"></span></option>
-                                <option value="yellow">Yellow <span id="yellowCount"></span></option>
-                                <option value="red">Red <span id="redCount"></span></option>
+                        <div>
+                            <label class="form-label small fw-semibold mb-1 d-block">Stage</label>
+                            <select id="mip-stage-filter" class="form-select form-select-sm" style="width: 130px;">
+                                <option value="both">MIP + R2S</option>
+                                <option value="mip">MIP only</option>
+                                <option value="r2s">R2S only</option>
                             </select>
                         </div>
 
-                        {{-- total amount --}}
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">💰 Amount</label>
-                            <div id="totalAmount" class="fw-bold text-primary" style="font-size: 1.1rem;">
-                                00
+                        <div>
+                            <label class="form-label small fw-semibold mb-1 d-block">Bulk Stage</label>
+                            <div class="d-flex gap-1">
+                                <select id="mip-bulk-stage-select" class="form-select form-select-sm" style="width: 120px;">
+                                    <option value="">— Choose —</option>
+                                    <option value="appr_req">Appr. Req</option>
+                                    <option value="mip">MIP</option>
+                                    <option value="r2s">R2S</option>
+                                    <option value="transit">Transit</option>
+                                    <option value="all_good">😊 All Good</option>
+                                    <option value="to_order_analysis">2 Order</option>
+                                </select>
+                                <button type="button" class="btn btn-sm btn-primary" id="mip-bulk-stage-apply">Apply</button>
                             </div>
                         </div>
 
-                        {{-- 📦 CBM --}}
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">📦 CBM</label>
-                            <div id="totalCBM" class="fw-bold text-success" style="font-size: 1.1rem;">
-                                00
+                        <div>
+                            <label class="form-label small fw-semibold mb-1 d-block">👤 Bulk Exec</label>
+                            <div class="d-flex gap-1">
+                                <select id="mip-bulk-exec-select" class="form-select form-select-sm" style="width: 130px;">
+                                    <option value="">— Select exec —</option>
+                                    <option value="">— Unassigned —</option>
+                                    <option value="Atin">Atin</option>
+                                    <option value="Jack">Jack</option>
+                                    <option value="Nitish">Nitish</option>
+                                    <option value="Ajay">Ajay</option>
+                                    <option value="Candy">Candy</option>
+                                    <option value="Sruti">Sruti</option>
+                                </select>
+                                <button type="button" class="btn btn-sm" style="background:#4db6ac;color:#fff;" id="mip-bulk-exec-apply">Apply</button>
                             </div>
                         </div>
 
-                        {{-- 🔍 Search --}}
-                        <div class="col-auto">
-                            <label for="search-input" class="form-label fw-semibold mb-1 d-block">🔍 Search</label>
-                            <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search anything...">
+                        <div>
+                            <label class="form-label small fw-semibold mb-1 d-block">💰 Amount</label>
+                            <div id="totalAmount" class="fw-bold text-primary">0</div>
+                        </div>
+                        <div>
+                            <label class="form-label small fw-semibold mb-1 d-block">📦 CBM</label>
+                            <div id="totalCBM" class="fw-bold text-success">0</div>
+                        </div>
+                        <div>
+                            <label class="form-label small fw-semibold mb-1 d-block">🔢 Items</label>
+                            <div id="totalItems" class="fw-bold">0</div>
                         </div>
 
-                        {{-- Archived rows --}}
-                        <div class="col-auto d-flex align-items-end">
+                        <div>
+                            <label for="search-input" class="form-label small fw-semibold mb-1 d-block">🔍 Search All</label>
+                            <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search..." style="width: 150px;">
+                        </div>
+
+                        <div class="d-flex align-items-end">
                             <div class="form-check mb-0">
                                 <input class="form-check-input" type="checkbox" id="show-archived-toggle">
-                                <label class="form-check-label fw-semibold" for="show-archived-toggle">Show archived</label>
+                                <label class="form-check-label fw-semibold small" for="show-archived-toggle">Show archived</label>
                             </div>
                         </div>
-
-                        {{-- Archive / Restore selected --}}
-                        <div class="col-auto d-flex align-items-end gap-1">
-                            <button type="button" class="btn btn-sm btn-warning d-none" id="archive-selected-btn" title="Soft-delete; restore from Show archived">
-                                <i class="fas fa-archive me-1"></i> Archive
-                            </button>
-                            <button type="button" class="btn btn-sm btn-success d-none" id="restore-selected-btn"
-                                title="Select archived row(s), then click to move them back to the active list">
-                                <i class="fas fa-undo me-1"></i> Restore
-                            </button>
+                        <div class="d-flex align-items-end gap-1">
+                            <button type="button" class="btn btn-sm btn-info text-white" id="mip-followup-btn"><i class="fas fa-comment-dots me-1"></i> Follow-Up</button>
+                            <button type="button" class="btn btn-sm btn-warning d-none" id="archive-selected-btn"><i class="fas fa-archive me-1"></i> Archive</button>
+                            <button type="button" class="btn btn-sm btn-success d-none" id="restore-selected-btn"><i class="fas fa-undo me-1"></i> Restore</button>
                         </div>
                     </div>
-                    <p class="text-muted small mb-2 mb-md-3" id="mfrg-archive-hint">
-                        <strong>Restore:</strong> turn on <em>Show archived</em>, tick row(s), then click the green <strong>Restore</strong> button.
-                    </p>
+
                     <div id="mfrg-table"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Follow-Up / Current Status Modal --}}
+    <div class="modal fade" id="mipFollowupModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title"><i class="fas fa-comment-dots me-2"></i> Current Status</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Supplier</label>
+                        <select id="followup-supplier-select" class="form-select">
+                            <option value="">-- Select supplier --</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Current Status / Remark</label>
+                        <textarea id="followup-remark-input" class="form-control" rows="3" placeholder="Report the current status..."></textarea>
+                    </div>
+                    <div class="text-end mb-3">
+                        <button type="button" id="followup-save-btn" class="btn btn-primary"><i class="fas fa-save me-1"></i> Submit</button>
+                    </div>
+                    <hr>
+                    <h6 class="fw-semibold mb-2">History</h6>
+                    <div id="followup-history-list"><p class="text-muted small mb-0">Select a supplier to view history.</p></div>
                 </div>
             </div>
         </div>
@@ -257,400 +179,435 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
-        document.addEventListener("DOMContentLoaded", function() {
-            document.body.style.zoom = "80%";
-
+        document.addEventListener("DOMContentLoaded", function () {
+            document.body.style.zoom = "96%";
             document.documentElement.setAttribute("data-sidenav-size", "condensed");
 
-            const globalPreview = Object.assign(document.createElement("div"), {
-                id: "image-hover-preview",
-            });
-
-            Object.assign(globalPreview.style, {
-                position: "fixed",
-                zIndex: 9999,
-                border: "1px solid #ccc",
-                background: "#fff",
-                padding: "4px",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-                display: "none",
-            });
-            document.body.appendChild(globalPreview);
-
-            let hideTimeout;
+            const CSRF = '{{ csrf_token() }}';
             let uniqueSuppliers = [];
             let showArchived = false;
             let table;
 
-            function postMfrgInlineUpdate(sku, column, value) {
+            const EXEC_OPTIONS = ['Atin', 'Jack', 'Nitish', 'Ajay', 'Candy', 'Sruti'];
+            const EXEC_COLORS = {
+                'Atin':   { bg: '#3b82f6', text: '#fff' },
+                'Jack':   { bg: '#10b981', text: '#fff' },
+                'Nitish': { bg: '#8b5cf6', text: '#fff' },
+                'Ajay':   { bg: '#f59e0b', text: '#fff' },
+                'Candy':  { bg: '#ec4899', text: '#fff' },
+                'Sruti':  { bg: '#14b8a6', text: '#fff' },
+            };
+            const STAGE_COLORS = {
+                'appr_req': '#facc15', 'mip': '#2563eb', 'to_order_analysis': '#c2410c',
+                'r2s': '#16a34a', 'all_good': '#22c55e', '': '#94a3b8',
+            };
+            const PLAT_ICON = { 'Website': 'fas fa-globe', 'Email': 'fas fa-envelope', 'WhatsApp': 'fab fa-whatsapp', 'WeChat': 'fab fa-weixin', 'Alibaba': 'fas fa-store' };
+            const PLAT_COLOR = { 'Website': '#2563eb', 'Email': '#dc3545', 'WhatsApp': '#25d366', 'WeChat': '#09b83e', 'Alibaba': '#ff6a00' };
+
+            function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
+            function postInline(sku, mipId, column, value) {
                 return fetch('/mfrg-progresses/inline-update-by-sku', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
-                    body: JSON.stringify({ sku, column, value })
-                }).then(res => res.json());
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF },
+                    body: JSON.stringify({ sku: sku, mip_id: mipId, column: column, value: value })
+                }).then(r => r.json());
+            }
+            function postUpdateLink(sku, column, value) {
+                return fetch('/update-link', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF },
+                    body: JSON.stringify({ sku: sku, row_id: 0, column: column, value: value })
+                }).then(r => r.json());
+            }
+            function postStage(sku, parent, value) {
+                return $.post('/update-forecast-data', { sku: sku, parent: parent || '', column: 'Stage', value: value, _token: CSRF });
+            }
+
+            // ---- formatters ----
+            function execFormatter(cell) {
+                const row = cell.getRow().getData();
+                const val = (cell.getValue() || '').trim();
+                const c = EXEC_COLORS[val] || { bg: '#e5e7eb', text: '#6b7280' };
+                let opts = '<option value=""' + (val === '' ? ' selected' : '') + '>— Unassigned —</option>';
+                EXEC_OPTIONS.forEach(function (n) { opts += '<option value="' + n + '"' + (n === val ? ' selected' : '') + '>' + n + '</option>'; });
+                return '<select class="toa-exec-select" data-sku="' + esc(row.sku) + '" style="background:' + c.bg + ';color:' + c.text + ';">' + opts + '</select>';
+            }
+            function stageFormatter(cell) {
+                const d = cell.getRow().getData();
+                // Archived rows: show a dedicated red "Archived" stage dot (read-only)
+                if (showArchived || d.deleted_at) {
+                    return '<div class="mip-stage-dot" title="Archived"><span class="mip-stage-marker"><span class="stage-status-dot" style="background-color:#dc3545;"></span></span></div>';
+                }
+                const v = (cell.getValue() || '').toLowerCase().trim();
+                const color = STAGE_COLORS[v] !== undefined ? STAGE_COLORS[v] : '#94a3b8';
+                const marker = v === 'transit'
+                    ? '<i class="fas fa-truck stage-transit-icon"></i>'
+                    : '<span class="stage-status-dot" style="background-color:' + color + ';"></span>';
+                const mk = function (val, label) { return '<option value="' + val + '"' + (v === val ? ' selected' : '') + '>' + label + '</option>'; };
+                return '<div class="mip-stage-dot"><span class="mip-stage-marker">' + marker + '</span>' +
+                    '<select class="stage-stage-select editable-stage">' +
+                    '<option value="">Select</option>' + mk('appr_req', 'Appr. Req') + mk('mip', 'MIP') + mk('r2s', 'R2S') +
+                    mk('transit', 'Transit') + mk('all_good', '😊 All Good') + mk('to_order_analysis', '2 Order') +
+                    '</select></div>';
+            }
+            function dotToggleFormatter(column) {
+                return function (cell) {
+                    const on = String(cell.getValue() || '').toLowerCase() === 'yes';
+                    const color = on ? '#22c55e' : '#dc3545';
+                    return '<span class="mip-status-dot mip-dot-toggle" data-column="' + column + '" style="background-color:' + color + ';"></span>';
+                };
+            }
+            function commFormatter(cell) {
+                const list = cell.getRow().getData().supplier_platform_links || [];
+                if (!list.length) return '<span class="text-muted">-</span>';
+                let items = '';
+                list.forEach(function (p) {
+                    const icon = PLAT_ICON[p.label] || 'fas fa-link';
+                    const color = PLAT_COLOR[p.label] || '#6b7280';
+                    const title = esc(p.label + (p.display ? ': ' + p.display : ''));
+                    if (p.url) {
+                        const ext = p.external ? ' target="_blank" rel="noopener noreferrer"' : '';
+                        items += '<a class="mip-plat-icon-link" href="' + esc(p.url) + '"' + ext + ' title="' + title + '" style="color:' + color + ';font-size:16px;"><i class="' + icon + '"></i></a>';
+                    } else {
+                        items += '<span class="mip-plat-icon-link" title="' + title + '" style="color:' + color + ';font-size:16px;"><i class="' + icon + '"></i></span>';
+                    }
+                });
+                return '<div class="dropdown d-inline-block"><button class="btn btn-sm btn-light py-0 px-1" type="button" data-bs-toggle="dropdown" style="font-size:11px;" title="Communication">' + list.length + '</button>' +
+                    '<ul class="dropdown-menu dropdown-menu-end mip-plat-menu"><li class="d-flex align-items-center gap-2 px-2">' + items + '</li></ul></div>';
+            }
+            function inputFormatter(column, type, width) {
+                return function (cell) {
+                    const v = cell.getValue() == null ? '' : cell.getValue();
+                    return '<input type="' + type + '" class="form-control form-control-sm mip-inline-input" data-column="' + column + '" value="' + esc(v) + '" style="width:' + (width || 80) + 'px;text-align:center;">';
+                };
+            }
+            // Display dates as "1 Apr"; empty -> red dot. Editable via Tabulator date editor.
+            function dateDisplayFormatter(cell) {
+                const raw = cell.getValue();
+                if (!raw) return '<span class="mip-status-dot" style="background-color:#dc3545;" title="No date"></span>';
+                const d = new Date(raw);
+                if (isNaN(d.getTime())) return '<span class="mip-status-dot" style="background-color:#dc3545;" title="No date"></span>';
+                return d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' });
+            }
+            function supplierFormatter(cell) {
+                const val = cell.getValue() || '';
+                let opts = '<option value=""></option>';
+                uniqueSuppliers.forEach(function (s) { opts += '<option value="' + esc(s) + '"' + (s === val ? ' selected' : '') + '>' + esc(s) + '</option>'; });
+                return '<select class="form-select form-select-sm mip-supplier-select" style="width:110px;">' + opts + '</select>';
             }
 
             table = new Tabulator("#mfrg-table", {
                 ajaxURL: "/mfrg-in-progress/data",
-                ajaxParams: function () {
-                    return { archived: showArchived ? 1 : 0 };
-                },
+                ajaxParams: function () { return { archived: showArchived ? 1 : 0 }; },
                 ajaxConfig: "GET",
                 selectableRows: true,
-                rowHeader: {
-                    formatter: "rowSelection",
-                    titleFormatter: "rowSelection",
-                    headerSort: false,
-                    resizable: false,
-                    frozen: true,
-                    headerHozAlign: "center",
-                    hozAlign: "center",
-                    width: 50,
-                },
-                layout: "fitData",
-                height: "700px",
+                rowHeader: { formatter: "rowSelection", titleFormatter: "rowSelection", headerSort: false, frozen: true, hozAlign: "center", width: 45 },
+                layout: "fitColumns",
+                columnDefaults: { minWidth: 60, resizable: true },
+                height: "70vh",
                 pagination: true,
-                paginationSize: 100,
+                paginationSize: 50,
+                paginationSizeSelector: [25, 50, 100, 200],
                 paginationCounter: "rows",
-                movableColumns: false,
-                resizableColumns: true,
                 columns: [
                     {
-                        title: "#",
-                        field: "Image",
-                        headerSort: false,
-                        cssClass: "mip-new-image-cell",
-                        width: 52,
-                        minWidth: 52,
-                        maxWidth: 52,
-                        formatter: (cell) => {
+                        title: "#", field: "Image", headerSort: false, cssClass: "mip-new-image-cell", width: 50,
+                        formatter: function (cell) {
                             const url = cell.getValue();
-                            return url
-                                ? `<div class="w-100 h-100 p-0 m-0 mip-new-img-aspect"><img src="${url}" data-full="${url}" class="w-100 h-100 hover-thumb" style="object-fit: contain; display: block;" /></div>`
-                                : `<span class="text-muted" style="line-height: normal;">N/A</span>`;
-                        },
-                        cellMouseOver: (e, cell) => {
-                            clearTimeout(hideTimeout);
-
-                            const img = cell.getElement().querySelector(".hover-thumb");
-                            if (!img) return;
-
-                            globalPreview.innerHTML = `<img src="${img.dataset.full}" style="max-width:350px;max-height:350px;">`;
-                            globalPreview.style.display = "block";
-                            globalPreview.style.top = `${e.clientY + 15}px`;
-                            globalPreview.style.left = `${e.clientX + 15}px`;
-                        },
-                        cellMouseMove: (e) => {
-                            globalPreview.style.top = `${e.clientY + 15}px`;
-                            globalPreview.style.left = `${e.clientX + 15}px`;
-                        },
-                        cellMouseOut: () => {
-                            hideTimeout = setTimeout(() => {
-                                globalPreview.style.display = "none";
-                            }, 150);
-                        },
-                    },
-                    {
-                        title: "Parent",
-                        field: "parent",
-                        headerFilter: "input",
-                        headerFilterPlaceholder: " Filter parent...",
-                        width: 180,
-                        headerFilterLiveFilter: true,
-                    },
-                    {
-                        title: "SKU",
-                        field: "sku", 
-                        headerFilter: "input",
-                        width: 180,
-                        headerFilterPlaceholder: " Filter SKU...",
-                        headerFilterLiveFilter: true,
-                    },
-                    {
-                        title: "QTY",
-                        field: "qty",
-                        hozAlign: "center",
-                        formatter: function (cell) {
-                            const value = cell.getValue() || "";
-                            
-                            const html = `
-                                    <div style="display:flex; justify-content:center; align-items:center; width:100%;">
-                                        <input type="number" 
-                                            class="form-control form-control-sm qty-input" 
-                                            value="${value}" 
-                                            min="0" max="99999" 
-                                            style="width:80px; text-align:center;">
-                                    </div>
-                                `;
-
-                            setTimeout(() => {
-                                const input = cell.getElement().querySelector(".qty-input");
-                                if (input) {
-                                    input.addEventListener("change", function () {
-                                        const newValue = this.value;
-                                        saveLinkUpdate(cell, newValue);
-                                    });
-                                }
-                            }, 10);
-
-                            return html;
+                            return url ? '<div class="mip-new-img-aspect"><img src="' + esc(url) + '"></div>' : '<span class="text-muted">N/A</span>';
                         }
                     },
-                    { 
-                        title: "Rate", 
-                        field: "rate", 
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            const sku = row.sku || '';
-                            const currency = row.rate_currency || 'USD';
-                            const rate = row.rate || '';
-
-                            return `
-                                <div class="input-group input-group-sm" style="width:105px;">
-                                    <span class="input-group-text" style="padding: 0 6px;">
-                                        <select data-sku="${sku}" data-column="rate_currency" 
-                                            class="form-select form-select-sm currency-select auto-save" 
-                                            style="border: none; background: transparent; font-size: 13px; padding: 0 2px;">
-                                            <option value="USD" ${currency === 'USD' ? 'selected' : ''}>$</option>
-                                            <option value="CNY" ${currency === 'CNY' ? 'selected' : ''}>¥</option>
-                                        </select>
-                                    </span>
-                                    <input data-sku="${sku}" data-column="rate" type="number" value="${rate}" 
-                                        class="form-control form-control-sm amount-input auto-save" 
-                                        style="background: #f9f9f9; font-size: 13px;" />
-                                </div>
-                            `;
-                        },
-                        hozAlign: "center",
-                        headerHozAlign: "center",
-                    },
-                    {
-                        title: "Supplier",
-                        field: "supplier",
-                        width: 90,
-                        hozAlign: "center",
-                        formatter: function(cell){
-                            let value = cell.getValue() || "";
-                            let options = uniqueSuppliers.map(supplier => {
-                                let selected = (supplier === value) ? "selected" : "";
-                                return `<option value="${supplier}" ${selected}>${supplier}</option>`;
-                            }).join("");
-
-                            return `
-                                <select class="form-select form-select-sm editable-select" 
-                                    data-sku="${cell.getRow().getData().SKU}" data-column="Supplier" style="width: 90px;">
-                                    ${options}
-                                </select>`;
-                        }
-                    },
-                    {
-                        title: "O Date",
-                        field: "created_at",
-                        hozAlign: "center",
-                        formatter: function (cell) {
-                            const rawValue = cell.getValue() || "";
-                            const formattedDate = rawValue ? new Date(rawValue).toISOString().split('T')[0] : "";
-                            const rowData = cell.getRow().getData();
-
-                            const html = `
-                                <div style="display: flex; flex-direction: column; align-items: flex-start;">
-                                    <input type="date" class="form-control form-control-sm order_date_input" value="${formattedDate}" style="width:85px;">
-                                </div>
-                            `;
-
-                            // setTimeout(() => {
-                            //     const input = cell.getElement().querySelector(".order_date_input");
-                            //     if (input) {
-                            //         input.addEventListener("change", function () {
-                            //             const newValue = this.value;
-                            //             saveLinkUpdate(cell, newValue);
-                            //         });
-                            //     }
-                            // }, 10);
-
-                            return html;
-                        }
-                    },
-                    {
-                        title: "D date",
-                        field: "delivery_date",
-                        hozAlign: "center",
-                        formatter: function (cell) {
-                            const rawValue = cell.getValue() || "";
-                            const formattedDate = rawValue ? new Date(rawValue).toISOString().split('T')[0] : "";
-                            const sku = cell.getRow().getData().sku || "";
-
-                            const html = `
-                                <div style="display: flex; flex-direction: column; align-items: flex-start;">
-                                    <input type="date" class="form-control form-control-sm delivery_date_input" value="${formattedDate}" style="width:85px;">
-                                </div>
-                            `;
-
-                            setTimeout(() => {
-                                const input = cell.getElement().querySelector(".delivery_date_input");
-                                if (input) {
-                                    input.addEventListener("change", function () {
-                                        postMfrgInlineUpdate(sku, "delivery_date", this.value)
-                                            .then((res) => {
-                                                if (!res.success) {
-                                                    alert(res.message || "Failed to save delivery date.");
-                                                }
-                                            })
-                                            .catch(() => alert("Network error while saving."));
-                                    });
-                                }
-                            }, 10);
-
-                            return html;
-                        }
-                    },
-                    {
-                        title: "CBM",
-                        field: "CBM",
-                        hozAlign: "center",
-                        formatter: function(cell){
-                            const cellValue = cell.getValue();
-                            const value = cellValue ? Number(cellValue).toFixed(4) : '0.0000';
-                            return value;
-                        }
-                    },
-                    {
-                        title: "R2S",
-                        field: "ready_to_ship",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const value = cell.getValue() || "";
-                            const rowData = cell.getRow().getData();
-
-                            return `
-                                <select class="form-select form-select-sm editable-select"
-                                    data-column="ready_to_ship"
-                                    data-sku='${rowData["SKU"]}'
-                                    style="width: 75px;">
-                                    <option value="No" ${value === "No" ? "selected" : ""}>No</option>
-                                    <option value="Yes" ${value === "Yes" ? "selected" : ""}>Yes</option>
-                                </select>
-                            `;
-                        },
-                    },
+                    { title: "Executive", field: "exec", width: 120, hozAlign: "center", headerFilter: "list",
+                      headerFilterParams: { values: { "": "— All —", "__un__": "Unassigned", "Atin": "Atin", "Jack": "Jack", "Nitish": "Nitish", "Ajay": "Ajay", "Candy": "Candy", "Sruti": "Sruti" } },
+                      headerFilterFunc: function (h, rv) { if (!h) return true; const r = (rv || '').trim(); return h === '__un__' ? r === '' : r === h; },
+                      formatter: execFormatter },
+                    { title: "SKU", field: "sku", width: 170, headerFilter: "input", headerFilterPlaceholder: " Filter SKU...", headerFilterLiveFilter: true },
+                    { title: "QTY", field: "qty", width: 90, hozAlign: "center", formatter: inputFormatter('qty', 'number', 70) },
+                    { title: "O Date", field: "created_at", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,
+                      editor: "date", editorParams: { format: "yyyy-MM-dd" },
+                      cellEdited: function (cell) { const d = cell.getRow().getData(); postInline(d.sku || '', d.id || 0, 'created_at', cell.getValue()).then(r => { if (!r.success) alert(r.message || 'Save failed'); }); } },
+                    { title: "D Date", field: "delivery_date", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,
+                      editor: "date", editorParams: { format: "yyyy-MM-dd" },
+                      cellEdited: function (cell) { const d = cell.getRow().getData(); postInline(d.sku || '', d.id || 0, 'delivery_date', cell.getValue()).then(r => { if (!r.success) alert(r.message || 'Save failed'); }); } },
+                    { title: "Supplier", field: "supplier", width: 120, hozAlign: "center", headerFilter: "input", headerFilterPlaceholder: " Filter...", formatter: supplierFormatter },
+                    { title: '<i class="fas fa-comments" title="Communication"></i>', field: "supplier_platform_links", width: 56, headerSort: false, formatter: commFormatter },
+                    { title: "PO", field: "mip_po_number", width: 80, hozAlign: "center", formatter: function (c) { const v = c.getValue(); return v ? '<span class="badge bg-info">' + esc(v) + '</span>' : '<span class="mip-status-dot" style="background-color:#dc3545;" title="No PO"></span>'; } },
+                    { title: "T-CBM", field: "total_cbm", width: 90, hozAlign: "center", formatter: function (cell) {
+                        const d = cell.getRow().getData();
+                        const cbm = parseFloat(d.CBM) || 0;
+                        const qty = parseFloat(d.qty) || 0;
+                        const total = cbm * qty;
+                        return total > 0 ? total.toFixed(2) : '<span class="text-muted">-</span>';
+                    } },
+                    { title: "Pkg Inst", field: "pkg_inst", width: 80, hozAlign: "center", formatter: dotToggleFormatter('pkg_inst') },
+                    { title: "U-Manual", field: "u_manual", width: 90, hozAlign: "center", formatter: dotToggleFormatter('u_manual') },
+                    { title: "Compliance", field: "compliance", width: 100, hozAlign: "center", formatter: dotToggleFormatter('compliance') },
+                    { title: "Stage", field: "stage", width: 80, hozAlign: "center", formatter: stageFormatter },
                 ],
-                ajaxResponse: (url, params, response) => {
-                    let data = response.data;
-
-                    let filtered = data.filter(item => {
-                        let qty = parseFloat(item.qty) || 0;
-                        let isParent = item.sku && item.sku.startsWith("PARENT");
-                        let isReadyToShip = item.ready_to_ship && item.ready_to_ship.trim().toLowerCase() === "yes";
-
-                        return qty > 0 && !isParent && !isReadyToShip;
+                ajaxResponse: function (url, params, response) {
+                    let data = response.data || [];
+                    let filtered = data.filter(function (item) {
+                        const qty = parseFloat(item.qty) || 0;
+                        const isParent = item.sku && String(item.sku).startsWith('PARENT');
+                        const isRts = item.ready_to_ship && String(item.ready_to_ship).trim().toLowerCase() === 'yes';
+                        return qty > 0 && !isParent && !isRts;
                     });
-
-                    uniqueSuppliers = [...new Set(filtered.map(item => item.supplier))].filter(Boolean);
+                    uniqueSuppliers = [...new Set(filtered.map(i => i.supplier))].filter(Boolean).sort();
                     return filtered;
                 },
             });
 
+            // ---- combined filtering (stage dropdown + global search) ----
+            function applyFilters() {
+                const stage = (document.getElementById('mip-stage-filter').value || 'both').toLowerCase();
+                const search = (document.getElementById('search-input').value || '').trim().toLowerCase();
+                const pending = (document.getElementById('row-data-pending-status')?.value || '');
+                table.setFilter(function (row) {
+                    let keep = true;
+                    const rs = (row.stage || '').toLowerCase().trim();
+                    if (stage === 'mip') keep = keep && rs === 'mip';
+                    else if (stage === 'r2s') keep = keep && rs === 'r2s';
+                    if (search) keep = keep && Object.values(row).some(v => v && v.toString().toLowerCase().includes(search));
+                    return keep;
+                });
+                setTimeout(updateStats, 0);
+            }
+
+            function updateStats() {
+                const rows = table.getRows(true).filter(r => r.getElement().offsetParent !== null);
+                let amount = 0, cbm = 0;
+                const activeData = table.getData("active");
+                const items = activeData.length;
+                activeData.forEach(function (d) {
+                    const qty = parseFloat(d.qty) || 0;
+                    const cp = parseFloat(d.price_from_po) || parseFloat(d.rate) || 0;
+                    cbm += (parseFloat(d.CBM) || 0) * qty;
+                    amount += cp * qty;
+                });
+                document.getElementById('totalAmount').textContent = Math.round(amount).toLocaleString();
+                document.getElementById('totalCBM').textContent = Math.round(cbm).toLocaleString();
+                document.getElementById('totalItems').textContent = items;
+            }
+
+            table.on("dataLoaded", function () { applyFilters(); updateMfrgArchiveButtons(); });
+            table.on("dataFiltered", updateStats);
+            document.getElementById('mip-stage-filter').addEventListener('change', applyFilters);
+            document.getElementById('search-input').addEventListener('input', function () { clearTimeout(window._mipS); window._mipS = setTimeout(applyFilters, 300); });
+
+            // ---- delegated inline-edit handlers on the table element ----
+            const tableEl = document.getElementById('mfrg-table');
+
+            tableEl.addEventListener('change', function (e) {
+                const t = e.target;
+                const tr = t.closest('.tabulator-row');
+                if (!tr) return;
+                const row = table.getRow(tr);
+                if (!row) return;
+                const d = row.getData();
+                const sku = d.sku || '';
+                const mipId = d.id || 0;
+
+                if (t.classList.contains('toa-exec-select')) {
+                    const v = t.value;
+                    const c = EXEC_COLORS[v] || { bg: '#e5e7eb', text: '#6b7280' };
+                    t.style.background = c.bg; t.style.color = c.text;
+                    row.update({ exec: v });
+                    postUpdateLink(sku, 'Exec', v || null).then(r => { if (!r.success) alert(r.message || 'Save failed'); });
+                } else if (t.classList.contains('editable-stage')) {
+                    const v = t.value;
+                    postStage(sku, d.parent, v).done(function () {
+                        row.update({ stage: v });
+                        if (v === 'mip') {
+                            fetch('/mfrg-progresses/insert', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+                                body: JSON.stringify({ parent: d.parent || '', sku: sku, order_qty: d.qty || '', supplier: d.supplier || '', adv_date: '' }) });
+                        }
+                        applyFilters();
+                    }).fail(function () { alert('Failed to save stage.'); });
+                } else if (t.classList.contains('mip-supplier-select')) {
+                    const v = t.value;
+                    row.update({ supplier: v });
+                    postInline(sku, mipId, 'supplier', v).then(r => { if (!r.success) alert(r.message || 'Save failed'); });
+                } else if (t.classList.contains('mip-inline-input')) {
+                    const col = t.dataset.column;
+                    const v = t.value;
+                    row.update({ [col === 'created_at' ? 'created_at' : col]: v });
+                    postInline(sku, mipId, col, v).then(r => { if (!r.success) alert(r.message || 'Save failed'); else updateStats(); });
+                }
+            });
+
+            tableEl.addEventListener('click', function (e) {
+                const dot = e.target.closest('.mip-dot-toggle');
+                if (!dot) return;
+                const tr = dot.closest('.tabulator-row');
+                const row = table.getRow(tr);
+                if (!row) return;
+                const d = row.getData();
+                const col = dot.dataset.column;
+                const next = String(d[col] || '').toLowerCase() === 'yes' ? 'No' : 'Yes';
+                dot.style.backgroundColor = next === 'Yes' ? '#22c55e' : '#dc3545';
+                row.update({ [col]: next });
+                postInline(d.sku || '', d.id || 0, col, next).then(r => { if (!r.success) alert(r.message || 'Save failed'); });
+            });
+
+            // Communication dropdown: move to body so it isn't clipped
+            document.addEventListener('shown.bs.dropdown', function (e) {
+                const toggle = e.target.closest('.mip-plat-menu') ? null : e.target;
+                const menu = toggle && toggle.parentElement ? toggle.parentElement.querySelector('.mip-plat-menu') : null;
+                if (!menu) return;
+                if (!menu._home) menu._home = menu.parentElement;
+                document.body.appendChild(menu);
+                menu.classList.add('show');
+                const rect = toggle.getBoundingClientRect();
+                menu.style.position = 'fixed';
+                menu.style.zIndex = '20000';
+                menu.style.top = (rect.bottom + 2) + 'px';
+                menu.style.left = Math.max(8, rect.left - 40) + 'px';
+            });
+            document.addEventListener('hide.bs.dropdown', function (e) {
+                const menu = document.querySelector('body > .mip-plat-menu.show');
+                if (!menu) return;
+                menu.classList.remove('show');
+                menu.style = '';
+                if (menu._home) menu._home.appendChild(menu);
+            });
+
+            // ---- Bulk Stage ----
+            document.getElementById('mip-bulk-stage-apply').addEventListener('click', async function () {
+                const stageVal = document.getElementById('mip-bulk-stage-select').value.trim();
+                if (!stageVal) { alert('Choose a stage.'); return; }
+                const rows = table.getSelectedRows();
+                if (!rows.length) { alert('Select at least one row.'); return; }
+                let ok = 0;
+                for (const row of rows) {
+                    const d = row.getData();
+                    if (!d.sku || (parseInt(d.qty, 10) || 0) === 0) continue;
+                    try { await postStage(d.sku, d.parent, stageVal); row.update({ stage: stageVal }); ok++; } catch (e) {}
+                }
+                table.deselectRow();
+                applyFilters();
+                alert('Stage applied to ' + ok + ' row(s).');
+            });
+
+            // ---- Bulk Exec ----
+            document.getElementById('mip-bulk-exec-apply').addEventListener('click', async function () {
+                const sel = document.getElementById('mip-bulk-exec-select');
+                if (sel.selectedIndex === 0) { alert('Select an executive.'); return; }
+                const v = sel.value;
+                const rows = table.getSelectedRows();
+                if (!rows.length) { alert('Select at least one row.'); return; }
+                let ok = 0;
+                for (const row of rows) {
+                    const d = row.getData();
+                    if (!d.sku) continue;
+                    try { const r = await postUpdateLink(d.sku, 'Exec', v || null); if (r.success) { row.update({ exec: v }); ok++; } } catch (e) {}
+                }
+                table.deselectRow();
+                alert('Updated ' + ok + ' row(s) to "' + (v || 'Unassigned') + '".');
+            });
+
+            // ---- Archive / Restore ----
             function updateMfrgArchiveButtons() {
-                const selected = typeof table.getSelectedRows === 'function' ? table.getSelectedRows() : [];
-                const n = selected.length;
+                const n = (table.getSelectedRows() || []).length;
                 if (showArchived) {
                     $('#archive-selected-btn').addClass('d-none');
-                    $('#restore-selected-btn').removeClass('d-none');
-                    $('#restore-selected-btn').prop('disabled', n === 0);
+                    $('#restore-selected-btn').removeClass('d-none').prop('disabled', n === 0);
                 } else {
-                    $('#restore-selected-btn').addClass('d-none').prop('disabled', false);
+                    $('#restore-selected-btn').addClass('d-none');
                     $('#archive-selected-btn').toggleClass('d-none', n === 0);
                 }
             }
-
-            table.on("rowSelectionChanged", function () {
-                updateMfrgArchiveButtons();
-            });
-
-            table.on("dataLoaded", function () {
-                updateMfrgArchiveButtons();
-            });
+            table.on("rowSelectionChanged", updateMfrgArchiveButtons);
 
             $('#show-archived-toggle').on('change', function () {
                 showArchived = this.checked;
                 table.deselectRow();
                 table.replaceData();
-                updateMfrgArchiveButtons();
             });
 
-            $('#archive-selected-btn').on('click', function () {
-                const rows = table.getSelectedData();
-                const skus = rows.map(function (r) { return (r.sku || '').trim(); }).filter(Boolean);
-                if (!skus.length) {
-                    return;
-                }
-                if (!confirm('Archive ' + skus.length + ' row(s)? You can restore them with “Show archived”.')) {
-                    return;
-                }
-                fetch('/mfrg-progresses/delete', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        'Accept': 'application/json',
-                    },
-                    body: JSON.stringify({ skus: skus }),
-                })
-                    .then(function (res) { return res.json(); })
-                    .then(function (res) {
-                        if (res.success) {
-                            table.deselectRow();
-                            table.replaceData();
-                            updateMfrgArchiveButtons();
-                            if (res.message) {
-                                alert(res.message);
-                            }
-                        } else {
-                            alert(res.message || 'Archive failed.');
-                        }
-                    })
-                    .catch(function () {
-                        alert('Network error while archiving.');
-                    });
-            });
+            function bulkArchiveRestore(endpoint, confirmMsg) {
+                const skus = table.getSelectedData().map(r => (r.sku || '').trim()).filter(Boolean);
+                if (!skus.length) return;
+                if (!confirm(confirmMsg.replace('{n}', skus.length))) return;
+                fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF }, body: JSON.stringify({ skus: skus }) })
+                    .then(r => r.json())
+                    .then(r => { if (r.success) { table.deselectRow(); table.replaceData(); if (r.message) alert(r.message); } else alert(r.message || 'Failed.'); })
+                    .catch(() => alert('Network error.'));
+            }
+            $('#archive-selected-btn').on('click', function () { bulkArchiveRestore('/mfrg-progresses/delete', 'Archive {n} row(s)?'); });
+            $('#restore-selected-btn').on('click', function () { bulkArchiveRestore('/mfrg-progresses/restore', 'Restore {n} row(s)?'); });
 
-            $('#restore-selected-btn').on('click', function () {
-                const rows = table.getSelectedData();
-                const skus = rows.map(function (r) { return (r.sku || '').trim(); }).filter(Boolean);
-                if (!skus.length) {
-                    return;
-                }
-                if (!confirm('Restore ' + skus.length + ' row(s) to the active list?')) {
-                    return;
-                }
-                fetch('/mfrg-progresses/restore', {
+            // ---- Follow-Up / Current Status ----
+            function fmtFollowupDate(raw) {
+                if (!raw) return '';
+                const d = new Date(raw);
+                if (isNaN(d.getTime())) return '';
+                return d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' });
+            }
+            function loadFollowupHistory(supplier) {
+                const box = document.getElementById('followup-history-list');
+                if (!supplier) { box.innerHTML = '<p class="text-muted small mb-0">Select a supplier to view history.</p>'; return; }
+                box.innerHTML = '<p class="text-muted small mb-0"><i class="fas fa-spinner fa-spin"></i> Loading...</p>';
+                fetch('/purchase-master/follow-up-history/supplier/' + encodeURIComponent(supplier))
+                    .then(r => r.json())
+                    .then(res => {
+                        const list = (res && res.data) ? res.data : [];
+                        if (!list.length) { box.innerHTML = '<p class="text-muted small mb-0">No history yet.</p>'; return; }
+                        let html = '<div class="list-group">';
+                        list.forEach(function (it) {
+                            html += '<div class="list-group-item py-2">' +
+                                '<div class="d-flex justify-content-between"><span class="fw-semibold small">' + esc(it.created_by || 'Unknown') + '</span>' +
+                                '<span class="text-muted small">' + fmtFollowupDate(it.created_at) + '</span></div>' +
+                                '<div class="small mt-1">' + esc(it.remark || '') + '</div></div>';
+                        });
+                        html += '</div>';
+                        box.innerHTML = html;
+                    })
+                    .catch(() => { box.innerHTML = '<p class="text-danger small mb-0">Failed to load history.</p>'; });
+            }
+            function populateFollowupSuppliers() {
+                const sel = document.getElementById('followup-supplier-select');
+                const cur = sel.value;
+                sel.innerHTML = '<option value="">-- Select supplier --</option>';
+                uniqueSuppliers.forEach(function (s) {
+                    const o = document.createElement('option');
+                    o.value = s; o.textContent = s;
+                    if (s === cur) o.selected = true;
+                    sel.appendChild(o);
+                });
+            }
+            document.getElementById('mip-followup-btn').addEventListener('click', function () {
+                populateFollowupSuppliers();
+                document.getElementById('followup-remark-input').value = '';
+                loadFollowupHistory(document.getElementById('followup-supplier-select').value);
+                new bootstrap.Modal(document.getElementById('mipFollowupModal')).show();
+            });
+            document.getElementById('followup-supplier-select').addEventListener('change', function () {
+                loadFollowupHistory(this.value);
+            });
+            document.getElementById('followup-save-btn').addEventListener('click', function () {
+                const supplier = document.getElementById('followup-supplier-select').value;
+                const remark = document.getElementById('followup-remark-input').value.trim();
+                if (!supplier) { alert('Please select a supplier.'); return; }
+                if (!remark) { alert('Please enter the current status.'); return; }
+                const btn = this;
+                btn.disabled = true;
+                fetch('/purchase-master/follow-up-history/store', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        'Accept': 'application/json',
-                    },
-                    body: JSON.stringify({ skus: skus }),
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF },
+                    body: JSON.stringify({ supplier_name: supplier, remark: remark })
                 })
-                    .then(function (res) { return res.json(); })
-                    .then(function (res) {
+                    .then(r => r.json())
+                    .then(res => {
                         if (res.success) {
-                            table.deselectRow();
-                            table.replaceData();
-                            updateMfrgArchiveButtons();
-                            if (res.message) {
-                                alert(res.message);
-                            }
+                            document.getElementById('followup-remark-input').value = '';
+                            loadFollowupHistory(supplier);
                         } else {
-                            alert(res.message || 'Restore failed.');
+                            alert(res.message || 'Failed to save.');
                         }
                     })
-                    .catch(function () {
-                        alert('Network error while restoring.');
-                    });
+                    .catch(() => alert('Network error.'))
+                    .finally(() => { btn.disabled = false; });
             });
         });
     </script>

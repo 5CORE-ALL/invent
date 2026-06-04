@@ -78,6 +78,18 @@
         background: #eff6ff;
     }
 
+    /* Platform/communication dropdown icons */
+    .mip-plat-icon-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        transition: transform 0.12s;
+    }
+    .mip-plat-icon-link:hover {
+        transform: scale(1.2);
+    }
+
     /* Image column: compact thumb */
     .table-container .wide-table th[data-column="1"],
     .table-container .wide-table td[data-column="1"] {
@@ -228,27 +240,27 @@
 
                         {{-- Stage --}}
                         <div class="d-flex align-items-center gap-1">
-                            <label for="mip-stage-filter" class="mb-0 small fw-semibold text-nowrap text-secondary">Stage</label>
+                                <label for="mip-stage-filter" class="mb-0 small fw-semibold text-nowrap text-secondary">Stage</label>
                             <select id="mip-stage-filter" class="form-select form-select-sm" style="width: 130px;">
-                                <option value="both">MIP + R2S</option>
-                                <option value="mip">MIP only</option>
-                                <option value="r2s">R2S only</option>
-                            </select>
-                        </div>
+                                    <option value="both">MIP + R2S</option>
+                                    <option value="mip">MIP only</option>
+                                    <option value="r2s">R2S only</option>
+                                </select>
+                            </div>
 
                         {{-- Bulk Stage --}}
                         <div class="d-flex align-items-center gap-1 border-start ps-2">
-                            <label for="mip-bulk-stage-select" class="mb-0 small fw-semibold text-nowrap text-secondary">Bulk Stage</label>
+                                <label for="mip-bulk-stage-select" class="mb-0 small fw-semibold text-nowrap text-secondary">Bulk Stage</label>
                             <select id="mip-bulk-stage-select" class="form-select form-select-sm" style="width: 120px;">
-                                <option value="">— Choose —</option>
-                                <option value="appr_req">Appr. Req</option>
-                                <option value="mip">MIP</option>
-                                <option value="r2s">R2S</option>
-                                <option value="transit">Transit</option>
-                                <option value="all_good">😊 All Good</option>
-                                <option value="to_order_analysis">2 Order</option>
-                            </select>
-                            <button type="button" class="btn btn-sm btn-primary" id="mip-bulk-stage-apply">Apply</button>
+                                    <option value="">— Choose —</option>
+                                    <option value="appr_req">Appr. Req</option>
+                                    <option value="mip">MIP</option>
+                                    <option value="r2s">R2S</option>
+                                    <option value="transit">Transit</option>
+                                    <option value="all_good">😊 All Good</option>
+                                    <option value="to_order_analysis">2 Order</option>
+                                </select>
+                                <button type="button" class="btn btn-sm btn-primary" id="mip-bulk-stage-apply">Apply</button>
                         </div>
 
                         {{-- Search inputs --}}
@@ -277,27 +289,27 @@
                                 <div class="text-muted" style="font-size: 0.7rem; font-weight:600; text-transform:uppercase;">TAT MIP</div>
                                 <div id="tat-mip-badge" class="fw-bold" style="font-size: 1rem;">—</div>
                             </div>
-                        </div>
+                            </div>
 
                         {{-- Action buttons --}}
                         <div class="d-flex align-items-center gap-1 ms-auto flex-wrap">
-                            @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'mip'])
+                                @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'mip'])
                             <button type="button" id="mip-bulk-edit-ddate-btn" class="btn btn-sm btn-primary fw-semibold d-inline-flex align-items-center gap-1">
                                 <i class="fas fa-calendar-alt"></i> Bulk Edit D-Date
-                            </button>
+                                </button>
                             <button type="button" id="mip-bulk-edit-po-btn" class="btn btn-sm btn-primary fw-semibold d-inline-flex align-items-center gap-1">
                                 <i class="fas fa-file-invoice"></i> Bulk Edit PO
-                            </button>
+                                </button>
                             <select id="mip-export-supplier-select" class="form-select form-select-sm" style="width: 140px;">
-                                <option value="">All suppliers</option>
-                                @foreach ($suppliers as $supplierName)
-                                    <option value="{{ e($supplierName) }}">{{ $supplierName }}</option>
-                                @endforeach
-                            </select>
+                                    <option value="">All suppliers</option>
+                                    @foreach ($suppliers as $supplierName)
+                                        <option value="{{ e($supplierName) }}">{{ $supplierName }}</option>
+                                    @endforeach
+                                </select>
                             <button type="button" id="mip-summary-export-btn" class="btn btn-sm btn-success fw-semibold d-inline-flex align-items-center gap-1">
                                 <i class="fas fa-file-csv"></i> Export
-                            </button>
-                        </div>
+                                </button>
+                </div>
 
                     </div>
                 </div>
@@ -361,7 +373,7 @@
                         </div>
                     </div>
                 </div>
-
+                            
                 <div class="wide-table-wrapper table-container mip-table-scroll">
                     <table class="wide-table">
                         <thead>
@@ -400,7 +412,7 @@
                                 <th data-column="11" class="text-center">D<br/>date<div class="resizer"></div></th>
                                 <th data-column="5" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="6" class="text-center" style="width: 112.5px; min-width: 112.5px; max-width: 112.5px;">Supplier<div class="resizer"></div></th>
-                                <th data-column="26" class="text-center" style="width: 96px; min-width: 88px; max-width: 120px;">Platform<div class="resizer"></div></th>
+                                <th data-column="26" class="text-center" style="width: 54px; min-width: 48px; max-width: 60px;"><i class="fas fa-comments mip-comm-header-icon" aria-hidden="true" data-bs-toggle="tooltip" data-bs-placement="top" title="Communication"></i><span class="visually-hidden">Communication</span><div class="resizer"></div></th>
                                 <th data-column="27" class="text-center" style="width: 72px; min-width: 64px;">PO<div class="resizer"></div></th>
                                 <th data-column="7" hidden>Advance<br/>Amt<div class="resizer"></div></th>
                                 <th data-column="8" hidden>Adv<br/>Date<div class="resizer"></div></th>
@@ -621,26 +633,51 @@
                                             @endforeach
                                         </select>
                                     </td>
-                                    <td data-column="26" class="text-center align-middle mip-platform-cell" style="min-width: 88px; max-width: 120px;">
+                                    <td data-column="26" class="text-center align-middle mip-platform-cell" style="width: 54px; min-width: 48px; max-width: 60px;">
                                         @php
                                             $mipPlats = $item->supplier_platform_links ?? [];
                                             $mipPlatCount = is_countable($mipPlats) ? count($mipPlats) : 0;
                                         @endphp
                                         @if ($mipPlatCount > 0)
                                             <div class="dropdown d-inline-block">
-                                                <button class="btn btn-sm btn-light dropdown-toggle py-0 px-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="font-size: 11px; max-width: 100%;">
-                                                    Platform ({{ $mipPlatCount }})
+                                                <button class="btn btn-sm btn-light py-0 px-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="font-size: 11px;" title="Communication">
+                                                    C ({{ $mipPlatCount }})
                                                 </button>
-                                                <ul class="dropdown-menu dropdown-menu-end mip-platform-menu" style="max-height: 220px; overflow-y: auto; min-width: 10rem;">
+                                                <ul class="dropdown-menu dropdown-menu-end mip-platform-menu" style="overflow: visible; min-width: auto; padding: 6px;">
+                                                    <li class="d-flex align-items-center gap-2 px-2">
                                                     @foreach ($mipPlats as $plink)
-                                                        <li>
+                                                            @php
+                                                                $plLabel = $plink['label'] ?? '';
+                                                                $plIconMap = [
+                                                                    'Website'  => 'fas fa-globe',
+                                                                    'Email'    => 'fas fa-envelope',
+                                                                    'WhatsApp' => 'fab fa-whatsapp',
+                                                                    'WeChat'   => 'fab fa-weixin',
+                                                                    'Alibaba'  => 'fas fa-store',
+                                                                ];
+                                                                $plIcon = $plIconMap[$plLabel] ?? 'fas fa-link';
+                                                                $plColorMap = [
+                                                                    'Website'  => '#2563eb',
+                                                                    'Email'    => '#dc3545',
+                                                                    'WhatsApp' => '#25d366',
+                                                                    'WeChat'   => '#09b83e',
+                                                                    'Alibaba'  => '#ff6a00',
+                                                                ];
+                                                                $plColor = $plColorMap[$plLabel] ?? '#6b7280';
+                                                                $plTitle = $plLabel . (! empty($plink['display']) ? ': '.$plink['display'] : '');
+                                                            @endphp
                                                             @if (! empty($plink['url']))
-                                                                <a class="dropdown-item py-1 px-2 small" href="{{ $plink['url'] }}" @if (! empty($plink['external'])) target="_blank" rel="noopener noreferrer" @endif>{{ $plink['label'] }}</a>
+                                                                <a href="{{ $plink['url'] }}" @if (! empty($plink['external'])) target="_blank" rel="noopener noreferrer" @endif
+                                                                   class="mip-plat-icon-link" title="{{ $plTitle }}" style="color: {{ $plColor }}; font-size: 18px;">
+                                                                    <i class="{{ $plIcon }}"></i>
+                                                                </a>
                                                             @else
-                                                                <span class="dropdown-item-text py-1 px-2 small text-muted">{{ $plink['label'] }}{{ ! empty($plink['display']) ? ': '.$plink['display'] : '' }}</span>
+                                                                <span class="mip-plat-icon-link" title="{{ $plTitle }}" style="color: {{ $plColor }}; font-size: 18px;">
+                                                                    <i class="{{ $plIcon }}"></i>
+                                                                </span>
                                                             @endif
-                                                        </li>
                                                     @endforeach
+                                                    </li>
                                                 </ul>
                                             </div>
                                         @else
@@ -975,7 +1012,7 @@
      * Re-run the row visibility / totals / pagination pipeline. Defined here as a fallback
      * for the case where window.filterByMIPStage isn't wired yet (its DOMContentLoaded
      * handler runs later). Once `filterByMIPStage` is exposed we use that directly so the
-      */
+     */
     function mipReapplyStageFilter() {
         if (typeof window.filterByMIPStage === 'function') {
             window.filterByMIPStage();
@@ -1152,29 +1189,6 @@
     document.addEventListener('DOMContentLoaded', mipPagSetupControls);
 
     var mipTabulatorLoadPromise = null;
-    function mipEnsureTabulator() {
-        if (typeof Tabulator !== 'undefined') {
-            return Promise.resolve();
-        }
-        if (!mipTabulatorLoadPromise) {
-            mipTabulatorLoadPromise = new Promise(function (resolve, reject) {
-                if (!document.querySelector('link[data-mip-tabulator-css]')) {
-                    var link = document.createElement('link');
-                    link.rel = 'stylesheet';
-                    link.href = 'https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css';
-                    link.setAttribute('data-mip-tabulator-css', '1');
-                    document.head.appendChild(link);
-                }
-                var s = document.createElement('script');
-                s.src = 'https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js';
-                s.async = true;
-                s.onload = function () { resolve(); };
-                s.onerror = function () { reject(new Error('Tabulator failed to load')); };
-                document.body.appendChild(s);
-            });
-        }
-        return mipTabulatorLoadPromise;
-    }
 
     const popup = document.createElement('img');
     popup.className = 'preview-popup';
@@ -1228,19 +1242,36 @@
         if (!list.length) {
             return '<span class="text-muted">-</span>';
         }
+        const iconMap = {
+            'Website':  'fas fa-globe',
+            'Email':    'fas fa-envelope',
+            'WhatsApp': 'fab fa-whatsapp',
+            'WeChat':   'fab fa-weixin',
+            'Alibaba':  'fas fa-store',
+        };
+        const colorMap = {
+            'Website':  '#2563eb',
+            'Email':    '#dc3545',
+            'WhatsApp': '#25d366',
+            'WeChat':   '#09b83e',
+            'Alibaba':  '#ff6a00',
+        };
         let items = '';
         for (let i = 0; i < list.length; i++) {
             const p = list[i];
+            const icon = iconMap[p.label] || 'fas fa-link';
+            const color = colorMap[p.label] || '#6b7280';
+            const title = mipEscapeHtml(p.label + (p.display ? ': ' + p.display : ''));
             if (p.url) {
                 const ext = p.external ? ' target="_blank" rel="noopener noreferrer"' : '';
-                items += '<li><a class="dropdown-item py-1 px-2 small" href="' + mipEscapeHtml(p.url) + '"' + ext + '>' + mipEscapeHtml(p.label) + '</a></li>';
+                items += '<a class="mip-plat-icon-link" href="' + mipEscapeHtml(p.url) + '"' + ext + ' title="' + title + '" style="color:' + color + ';font-size:18px;"><i class="' + icon + '"></i></a>';
             } else {
-                items += '<li><span class="dropdown-item-text py-1 px-2 small text-muted">' + mipEscapeHtml(p.label) + (p.display ? ': ' + mipEscapeHtml(p.display) : '') + '</span></li>';
+                items += '<span class="mip-plat-icon-link" title="' + title + '" style="color:' + color + ';font-size:18px;"><i class="' + icon + '"></i></span>';
             }
         }
         return '<div class="dropdown d-inline-block">' +
-            '<button class="btn btn-sm btn-light dropdown-toggle py-0 px-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="font-size: 11px; max-width: 100%;">Platform (' + list.length + ')</button>' +
-            '<ul class="dropdown-menu dropdown-menu-end mip-platform-menu" style="max-height: 220px; overflow-y: auto; min-width: 10rem;">' + items + '</ul></div>';
+            '<button class="btn btn-sm btn-light py-0 px-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="font-size: 11px;" title="Communication">C (' + list.length + ')</button>' +
+            '<ul class="dropdown-menu dropdown-menu-end mip-platform-menu" style="overflow: visible; min-width: auto; padding: 6px;"><li class="d-flex align-items-center gap-2 px-2">' + items + '</li></ul></div>';
     }
 
     function calculateTotalCBM() {
@@ -1446,6 +1477,60 @@
         setupStageUpdate();
         setupMipBulkStage();
         setupNRPUpdate();
+
+        // Initialize Bootstrap tooltip for the Communication header icon
+        (function () {
+            const el = document.querySelector('.mip-comm-header-icon');
+            if (el && window.bootstrap && bootstrap.Tooltip) {
+                new bootstrap.Tooltip(el);
+            }
+        })();
+
+        // Platform dropdown: move menu to <body> with position:fixed so the table's overflow can't clip it
+        document.addEventListener('shown.bs.dropdown', function (e) {
+            const toggle = e.target.closest('.mip-platform-cell [data-bs-toggle="dropdown"]');
+            if (!toggle) return;
+            const menu = toggle.parentElement.querySelector('.mip-platform-menu');
+            if (!menu) return;
+            // Remember where it lives so we can put it back
+            if (!menu._mipHome) {
+                menu._mipHome = menu.parentElement;
+            }
+            document.body.appendChild(menu);
+            menu.classList.add('show');
+            menu.style.position = 'fixed';
+            menu.style.display = 'block';
+            menu.style.zIndex = '20000';
+            menu.style.margin = '0';
+            menu.style.transform = 'none';
+            menu.style.inset = 'auto';
+            const rect = toggle.getBoundingClientRect();
+            const menuWidth = menu.offsetWidth || 160;
+            let left = rect.right - menuWidth;
+            if (left < 8) left = rect.left;
+            if (left + menuWidth > window.innerWidth - 8) left = window.innerWidth - menuWidth - 8;
+            menu.style.top = (rect.bottom + 2) + 'px';
+            menu.style.left = Math.max(8, left) + 'px';
+        });
+        document.addEventListener('hide.bs.dropdown', function (e) {
+            const toggle = e.target.closest('.mip-platform-cell [data-bs-toggle="dropdown"]');
+            if (!toggle) return;
+            const menu = document.querySelector('body > .mip-platform-menu.show') ||
+                         (toggle.parentElement.querySelector('.mip-platform-menu'));
+            if (!menu) return;
+            menu.classList.remove('show');
+            menu.style.position = '';
+            menu.style.top = '';
+            menu.style.left = '';
+            menu.style.zIndex = '';
+            menu.style.margin = '';
+            menu.style.transform = '';
+            menu.style.inset = '';
+            menu.style.display = '';
+            if (menu._mipHome) {
+                menu._mipHome.appendChild(menu);
+            }
+        });
 
         // Defer row-heavy work so first paint + toolbar stay responsive (large tables).
         requestAnimationFrame(function () {
@@ -1935,13 +2020,13 @@
 
                     // Supplier search
                     if (show && suppSearch) {
-                        const cell = row.querySelector('td[data-column="6"]');
+                            const cell = row.querySelector('td[data-column="6"]');
                         if (cell) {
                             const sel = cell.querySelector('select[data-column="supplier"]');
                             const txt = normalizeSearchText(sel ? (sel.selectedOptions?.[0]?.textContent || sel.value) : cell.textContent);
                             if (!txt.includes(suppSearch)) show = false;
                         } else {
-                            show = false;
+                                show = false;
                         }
                     }
 
@@ -1964,10 +2049,10 @@
                 });
 
                 requestAnimationFrame(function () {
-                    if (typeof calculateTotalCBM === 'function') calculateTotalCBM();
-                    if (typeof calculateTotalAmount === 'function') calculateTotalAmount();
-                    if (typeof calculateTotalOrderItems === 'function') calculateTotalOrderItems();
-                    if (typeof updateFollowSupplierCount === 'function') updateFollowSupplierCount();
+                if (typeof calculateTotalCBM === 'function') calculateTotalCBM();
+                if (typeof calculateTotalAmount === 'function') calculateTotalAmount();
+                if (typeof calculateTotalOrderItems === 'function') calculateTotalOrderItems();
+                if (typeof updateFollowSupplierCount === 'function') updateFollowSupplierCount();
                 });
                 mipPagCurrentPage = 1;
                 mipSchedulePagination();
@@ -2628,41 +2713,10 @@
 </script>
 <script>
     // Helper function to sort rows by order date (oldest first) - Global scope
-    function mipGetRowPoNumber(row) {
-        if (!row) return '';
-        const btn = row.querySelector('.mip-po-dot-btn');
-        return btn ? String(btn.getAttribute('data-po') || '').trim() : '';
-    }
 
 
 
-    function mipPoSortKey(po) {
-        const s = String(po || '').trim().toUpperCase();
-        const m = s.match(/^PO-(\d{2})(\d{2})(\d{2})-(\d+)$/);
-        if (m) {
-            const dd = parseInt(m[1], 10);
-            const mm = parseInt(m[2], 10);
-            const yy = parseInt(m[3], 10);
-            const serial = parseInt(m[4], 10);
-            const year = yy >= 70 ? 1900 + yy : 2000 + yy;
-            const ts = new Date(year, mm - 1, dd).getTime();
-            if (!isNaN(ts)) {
-                return ts * 1000 + serial;
-            }
-        }
-        return s;
-    }
 
-    function mipSortPoNumbersOldestFirst(list) {
-        return [...list].sort(function (a, b) {
-            const ka = mipPoSortKey(a);
-            const kb = mipPoSortKey(b);
-            if (typeof ka === 'number' && typeof kb === 'number') {
-                return ka - kb;
-            }
-            return String(ka).localeCompare(String(kb));
-        });
-    }
 
     function sortRowsByOrderDate(rows) {
         const tbody = document.querySelector('table.wide-table tbody');
@@ -2776,31 +2830,8 @@
 
 
 
-        function mipHideSupplierPlayBadge() {}
-        function mipHidePoPlayBadge() {}
-        function mipResetOtherPlayModes() {}
 
-        function mipRefreshPlayStats() {
-            setTimeout(function () {
-                calculateTotalCBM();
-                calculateTotalAmount();
-                calculateTotalOrderItems();
-                updateFollowSupplierCount();
-                updateCounts();
-                mipPagCurrentPage = 1;
-                mipApplyPagination();
-            }, 50);
-        }
 
-        function mipShowAllMipStageRows() {
-            rows.forEach(function (row) {
-                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-                const stageSelect = row.querySelector('.editable-select-stage');
-                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                const rowStage = rowStageSelect || rowStageAttr;
-                row.style.display = isMipPageStage(rowStage) ? '' : 'none';
-            });
-        }
 
         function updateCounts() {
             let green = 0, yellow = 0, red = 0;
@@ -2858,72 +2889,6 @@
             if (redSpan) redSpan.textContent = `(${red})`;
         }
 
-        function filterDateRows(type) {
-            rows.forEach(row => {
-                // Check if row is MIP/R2S stage first
-                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-                const stageSelect = row.querySelector('.editable-select-stage');
-                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                const rowStage = rowStageSelect || rowStageAttr;
-                
-                if (!isMipPageStage(rowStage)) {
-                    row.style.display = "none";
-                    return;
-                }
-
-                if (!type) {
-                    // Show all MIP/R2S rows if no filter selected
-                    row.style.display = "";
-                    return;
-                }
-
-                // Check created_at (O Date) field for text color
-                const dateInput = row.querySelector('input[data-column="created_at"]');
-                if (!dateInput) {
-                    // If no date input, default to green
-                    row.style.display = (type === "green") ? "" : "none";
-                    return;
-                }
-
-                // Check inline style first (more reliable)
-                const inlineStyle = dateInput.getAttribute('style') || '';
-                const inlineStyleLower = inlineStyle.toLowerCase();
-                
-                // Also check the span element if it exists
-                const dateSpan = dateInput.parentElement.querySelector('span');
-                const spanStyle = dateSpan ? (dateSpan.getAttribute('style') || '') : '';
-                const spanStyleLower = spanStyle.toLowerCase();
-
-                let rowColor = "green"; // Default to green
-                
-                // Check for red color in inline style (color: red; or color:#dc3545;)
-                if (inlineStyleLower.includes('color: red') || inlineStyleLower.includes('color:red') || 
-                    inlineStyleLower.includes('color: #dc3545') || inlineStyleLower.includes('color:#dc3545') ||
-                    spanStyleLower.includes('color: red') || spanStyleLower.includes('color:red') ||
-                    spanStyleLower.includes('color: #dc3545') || spanStyleLower.includes('color:#dc3545')) {
-                    rowColor = "red";
-                }
-                // Check for yellow color in inline style (color: #ffc107;)
-                else if (inlineStyleLower.includes('color: #ffc107') || inlineStyleLower.includes('color:#ffc107') ||
-                         spanStyleLower.includes('color: #ffc107') || spanStyleLower.includes('color:#ffc107')) {
-                    rowColor = "yellow";
-                }
-                // If no color specified or black/default, it's green
-                else {
-                    rowColor = "green";
-                }
-
-                row.style.display = (rowColor === type) ? "" : "none";
-            });
-
-            calculateTotalCBM();
-            calculateTotalAmount();
-            calculateTotalOrderItems();
-            updateFollowSupplierCount();
-            updateCounts(); // Update pending status counts when filtering by date
-            mipPagCurrentPage = 1;
-            mipSchedulePagination();
-        }
 
         updateCounts();
         updateFollowSupplierCount();

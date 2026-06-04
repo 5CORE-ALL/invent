@@ -424,6 +424,19 @@ $(document).ready(function() {
     let availableSkus = [];
     let currentSearchQuery = '';
     let currentMarketplace = 'amazon';
+
+    // Escape a value so it is safe inside an HTML attribute / text node.
+    // Without this, SKUs containing a double quote (e.g. WF 8"-890 1PC) would
+    // truncate the value="" attribute and selection/saving would use the wrong SKU.
+    function escapeHtml(value) {
+        if (value == null) return '';
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
     
     // Initialize Select2 for bulk SKU dropdown
     function initializeSelect2() {
@@ -669,7 +682,7 @@ $(document).ready(function() {
             availableSkus.forEach(function(sku) {
                 // Skip parent SKUs (SKUs with "PARENT" prefix)
                 if (!sku.toUpperCase().startsWith('PARENT')) {
-                    bulkSkuOptions += `<option value="${sku}">${sku}</option>`;
+                    bulkSkuOptions += `<option value="${escapeHtml(sku)}">${escapeHtml(sku)}</option>`;
                 }
             });
             $('#bulkSkuSelect').html(bulkSkuOptions);
@@ -795,11 +808,13 @@ $(document).ready(function() {
             html = '<p class="text-muted">No SKUs available</p>';
         } else {
             filteredSkus.forEach(function(sku) {
+                const safeSku = escapeHtml(sku);
+                const skuId = 'sku-' + sku.replace(/[^a-zA-Z0-9]/g, '_');
                 html += `
                     <div class="form-check mb-2">
-                        <input class="form-check-input sku-checkbox" type="checkbox" value="${sku}" id="sku-${sku.replace(/[^a-zA-Z0-9]/g, '_')}">
-                        <label class="form-check-label" for="sku-${sku.replace(/[^a-zA-Z0-9]/g, '_')}" style="cursor: pointer;">
-                            ${sku}
+                        <input class="form-check-input sku-checkbox" type="checkbox" value="${safeSku}" id="${skuId}">
+                        <label class="form-check-label" for="${skuId}" style="cursor: pointer;">
+                            ${safeSku}
                         </label>
                     </div>
                 `;
