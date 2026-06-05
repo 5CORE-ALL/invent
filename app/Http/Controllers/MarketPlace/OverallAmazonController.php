@@ -506,6 +506,7 @@ class OverallAmazonController extends Controller
             $row['lmp_link'] = $lowestLmp->product_link ?? null;
             $row['lmp_asin'] = $lowestLmp->asin ?? null;
             $row['lmp_title'] = $lowestLmp->product_title ?? null;
+            $row['lmp_delivery'] = $lowestLmp ? $this->normalizeDeliveryText($lowestLmp->delivery ?? null) : null;
             
             // Competitor sales data from JungleScout
             $row['lmp_monthly_revenue'] = ($lowestLmp && isset($lowestLmp->monthly_revenue))
@@ -523,6 +524,7 @@ class OverallAmazonController extends Controller
                         'id' => $entry->id,
                         'asin' => $entry->asin ?? null,
                         'price' => is_numeric($entry->price) ? floatval($entry->price) : null,
+                        'delivery' => $this->normalizeDeliveryText($entry->delivery ?? null),
                         'link' => $entry->product_link ?? null,
                         'product_link' => $entry->product_link ?? null,
                         'title' => $entry->product_title ?? null,
@@ -2881,6 +2883,22 @@ class OverallAmazonController extends Controller
                 'error' => 'Failed to fetch history: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Normalize a competitor delivery value (array | json string | string) into a
+     * short display string. Returns null when there is nothing to show.
+     */
+    private function normalizeDeliveryText($delivery)
+    {
+        if (is_array($delivery)) {
+            return implode(', ', array_slice($delivery, 0, 2));
+        }
+        if (is_string($delivery) && $delivery !== '') {
+            $decoded = json_decode($delivery, true);
+            return is_array($decoded) ? implode(', ', array_slice($decoded, 0, 2)) : $delivery;
+        }
+        return null;
     }
 
     /**

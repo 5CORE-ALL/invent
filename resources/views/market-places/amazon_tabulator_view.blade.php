@@ -3663,13 +3663,21 @@
 
                             let html = '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">';
                             
-                            // Show lowest price OUTSIDE modal
+                            // Show lowest price OUTSIDE modal (incl. shipping if applied)
                             if (lmpPrice) {
-                                const priceFormatted = '$' + parseFloat(lmpPrice).toFixed(2);
+                                const base = parseFloat(lmpPrice) || 0;
+                                let shipCost = 0;
+                                if (rowData.lmp_delivery) {
+                                    const m = String(rowData.lmp_delivery).match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
+                                    if (m) shipCost = parseFloat(m[1].replace(/,/g, '')) || 0;
+                                }
+                                const finalPrice = base + shipCost;
+                                const priceFormatted = '$' + finalPrice.toFixed(2);
                                 const currentPrice = parseFloat(rowData.price || 0);
-                                const priceColor = (lmpPrice < currentPrice) ? '#dc3545' : '#28a745';
-                                
-                                html += `<span style="color: ${priceColor}; font-weight: 600; font-size: 14px;">${priceFormatted}</span>`;
+                                const priceColor = (finalPrice < currentPrice) ? '#dc3545' : '#28a745';
+
+                                const shipTip = shipCost > 0 ? ` title="$${base.toFixed(2)} + $${shipCost.toFixed(2)} ship"` : '';
+                                html += `<span style="color: ${priceColor}; font-weight: 600; font-size: 14px;"${shipTip}>${priceFormatted}</span>`;
                             }
                             
                             // Show link to open modal with all competitors
@@ -5893,6 +5901,7 @@ $('#nmap-count').text(missingCount.toLocaleString());
                             <th style="width: 60px;">Type</th>
                             <th style="width: 70px;">Rating</th>
                             <th style="width: 70px;">Reviews</th>
+                            <th style="width: 140px;">Delivery</th>
                             <th style="width: 60px;">Link</th>
                             <th style="width: 80px;">Actions</th>
                         </tr>
@@ -5901,12 +5910,26 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 `;
                 
                 competitors.forEach((item, index) => {
+                    const basePrice = parseFloat(item.price) || 0;
+
+                    let shipCost = 0;
+                    if (item.delivery) {
+                        const paidMatch = String(item.delivery).match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
+                        if (paidMatch) {
+                            shipCost = parseFloat(paidMatch[1].replace(/,/g, '')) || 0;
+                        }
+                    }
+                    const totalPrice = basePrice + shipCost;
+
                     const isLowest = Math.abs(parseFloat(item.price) - parseFloat(lowestPrice)) < 0.01;
                     const rowClass = isLowest ? 'table-success' : '';
-                    const priceFormatted = '$' + parseFloat(item.price).toFixed(2);
-                    const priceBadge = isLowest ? 
-                        `<span class="badge bg-success">${priceFormatted} <i class="fa fa-trophy"></i></span>` : 
-                        `<strong>${priceFormatted}</strong>`;
+                    const totalFormatted = '$' + totalPrice.toFixed(2);
+                    const priceInner = shipCost > 0
+                        ? `${totalFormatted}<br><small style="color:#888;font-weight:400;">$${basePrice.toFixed(2)} + $${shipCost.toFixed(2)} ship</small>`
+                        : totalFormatted;
+                    const priceBadge = isLowest ?
+                        `<span class="badge bg-success">${priceInner} <i class="fa fa-trophy"></i></span>` :
+                        `<strong>${priceInner}</strong>`;
                     
                     const productLink = item.link || item.product_link || '#';
                     const productTitle = item.title || item.product_title || 'N/A';
@@ -5921,6 +5944,19 @@ $('#nmap-count').text(missingCount.toLocaleString());
                     
                     const rating = item.rating ? `<span style="color: #ffc107;">${parseFloat(item.rating).toFixed(1)} <i class="fa fa-star"></i></span>` : '<span style="color: #999;">—</span>';
                     const reviews = item.reviews ? `<span>${parseInt(item.reviews).toLocaleString()}</span>` : '<span style="color: #999;">—</span>';
+
+                    let deliveryHtml = '<span style="color: #999;">—</span>';
+                    if (item.delivery) {
+                        const isFree = /free/i.test(item.delivery);
+                        const paidMatch = String(item.delivery).match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
+                        if (paidMatch) {
+                            deliveryHtml = `<span style="color: #dc3545; font-weight: 600;" title="${escAttr(item.delivery)}">$${paidMatch[1]} ship</span>`;
+                        } else if (isFree) {
+                            deliveryHtml = `<span style="color: #28a745; font-weight: 600;" title="${escAttr(item.delivery)}">FREE</span>`;
+                        } else {
+                            deliveryHtml = `<span style="font-size: 10px;" title="${escAttr(item.delivery)}">${String(item.delivery).substring(0, 22)}${String(item.delivery).length > 22 ? '…' : ''}</span>`;
+                        }
+                    }
                     
                     html += `
                         <tr class="${rowClass}">
@@ -5938,6 +5974,7 @@ $('#nmap-count').text(missingCount.toLocaleString());
                             <td class="text-center">${sellerType}</td>
                              <td class="text-center">${rating}</td>
                             <td class="text-center">${reviews}</td>
+                            <td class="text-center">${deliveryHtml}</td>
                             <td class="text-center">
                                 <a href="${productLink}" target="_blank" class="btn btn-sm btn-info" title="View Product on Amazon">
                                     <i class="fa fa-external-link"></i>
