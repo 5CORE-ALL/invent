@@ -173,6 +173,9 @@
                             data-bs-target="#bulkImportModal">
                             <i class="mdi mdi-file-import me-1"></i> Bulk Import
                         </button>
+                        <a href="{{ route('supplier.export') }}" id="export-suppliers-btn" class="btn btn-outline-success">
+                            <i class="mdi mdi-file-export me-1"></i> Export
+                        </a>
                     </div>
                 </div>
 
@@ -1334,6 +1337,19 @@
             
             // Attach handlers initially
             attachFilterHandlers();
+
+            // Keep the Export button in sync with the active filters
+            $('#export-suppliers-btn').on('click', function (e) {
+                const params = new URLSearchParams();
+                const category = $('#category-filter').val() || '';
+                const type = $('#type-filter').val() || '';
+                const search = ($('#search-input').val() || '').trim();
+                if (category) params.set('category', category);
+                if (type) params.set('type', type);
+                if (search) params.set('search', search);
+                const base = '{{ route('supplier.export') }}';
+                $(this).attr('href', base + (params.toString() ? '?' + params.toString() : ''));
+            });
 
             // Apply filters when search input changes (with debounce and Enter key)
             let searchTimer;

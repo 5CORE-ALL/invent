@@ -67,6 +67,94 @@ class SupplierController extends Controller
     }
 
     /**
+     * Export the (optionally filtered) supplier list to a CSV file.
+     * Honours the same category / type / search filters as the list page.
+     */
+    public function exportSuppliers(Request $request)
+    {
+        $query = Supplier::query();
+
+        if ($request->filled('category')) {
+            $category = Category::where('name', $request->get('category'))->first();
+            if ($category) {
+                $query->where('category_id', 'LIKE', '%' . $category->id . '%');
+            }
+        }
+
+        if ($request->filled('type')) {
+            $query->where('type', $request->get('type'));
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'LIKE', '%' . $search . '%')
+                  ->orWhere('company', 'LIKE', '%' . $search . '%')
+                  ->orWhere('email', 'LIKE', '%' . $search . '%')
+                  ->orWhere('phone', 'LIKE', '%' . $search . '%');
+            });
+        }
+
+        $categoryNameById = Category::pluck('name', 'id');
+
+        $resolveCategoryNames = function ($categoryId) use ($categoryNameById) {
+            if ($categoryId === null || $categoryId === '') {
+                return '';
+            }
+            $ids = preg_split('/[,\s]+/', (string) $categoryId, -1, PREG_SPLIT_NO_EMPTY);
+            $names = [];
+            foreach ($ids as $id) {
+                if (isset($categoryNameById[$id])) {
+                    $names[] = $categoryNameById[$id];
+                }
+            }
+            return implode(', ', $names);
+        };
+
+        $columns = [
+            'Type', 'Category', 'Name', 'Company', 'Parent', 'Phone', 'City', 'Zone',
+            'Email', 'WhatsApp', 'WeChat', 'Alibaba', 'Others', 'Address', 'Approval Status',
+        ];
+
+        // Fetch all rows up-front. Running queries inside a streamed callback can
+        // fail ("prepare() on null") because the DB connection may be gone by the
+        // time the callback executes, so build the full CSV string here instead.
+        $suppliers = $query->orderBy('name')->get();
+
+        $handle = fopen('php://temp', 'r+');
+        fputcsv($handle, $columns);
+        foreach ($suppliers as $s) {
+            fputcsv($handle, [
+                $s->type ?? '',
+                $resolveCategoryNames($s->category_id ?? ''),
+                $s->name ?? '',
+                $s->company ?? '',
+                $s->parent ?? '',
+                $s->phone ?? '',
+                $s->city ?? '',
+                $s->zone ?? '',
+                $s->email ?? '',
+                $s->whatsapp ?? '',
+                $s->wechat ?? '',
+                $s->alibaba ?? '',
+                $s->others ?? '',
+                $s->address ?? '',
+                $s->approval_status ?? '',
+            ]);
+        }
+        rewind($handle);
+        $csv = stream_get_contents($handle);
+        fclose($handle);
+
+        $filename = 'suppliers-' . now()->format('Y-m-d_His') . '.csv';
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
+    }
+
+    /**
      * Return suppliers list as JSON for dropdowns (e.g. forecast analysis).
      */
     public function getSuppliersJson(Request $request)

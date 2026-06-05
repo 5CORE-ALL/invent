@@ -17,10 +17,14 @@ class RfqForm extends Model
         'dimension_inner',
         'product_dimension',
         'package_dimension',
+        'created_by',
+        'updated_by',
+        'linked_skus',
     ];
 
     protected $casts = [
         'fields' => 'array',
+        'linked_skus' => 'array',
     ];
 
 }

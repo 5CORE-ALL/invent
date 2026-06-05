@@ -2,6 +2,8 @@
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         .tabulator .tabulator-header {
@@ -283,6 +285,30 @@
                 padding: 8px 12px;
             }
         }
+        .supplier-approval-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            padding: 0;
+            border: 2px solid rgba(0, 0, 0, 0.12);
+            display: inline-block;
+            vertical-align: middle;
+            cursor: pointer;
+        }
+        #addSupplierModal .modal-content,
+        #addSupplierModal .modal-body {
+            background-color: #fff !important;
+        }
+        .supplier-approval-dot--red { background-color: #dc3545; }
+        .supplier-approval-dot--green { background-color: #198754; }
+        .supplier-approval-dot--yellow { background-color: #ffc107; }
+        .approval-form-dots label:has(input[type="radio"]:checked) {
+            font-weight: 600;
+        }
+        .approval-form-dots input[type="radio"]:checked + span {
+            box-shadow: 0 0 0 2px #495057;
+            border-radius: 50%;
+        }
     </style>
 @endsection
 @section('content')
@@ -363,6 +389,16 @@
                             </select>
                         </div>
                         <div class="filter-item">
+                            <label class="form-label fw-semibold d-block">🗂️ Category</label>
+                            <select id="category-filter" class="form-select">
+                                <option value="">All Categories</option>
+                                <option value="__blank__">Blank / No category</option>
+                                @foreach($allCategories ?? [] as $c)
+                                <option value="{{ $c }}">{{ $c }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="filter-item">
                             <label for="search-input" class="form-label fw-semibold d-block">🔍 Search All</label>
                             <input type="text" id="search-input" class="form-control" placeholder="Search..." style="width: 160px;">
                         </div>
@@ -378,6 +414,22 @@
                                 <button type="button" id="bulk-update-supplier-btn" class="btn btn-sm btn-primary">
                                     <i class="fas fa-edit me-1"></i> Update selected
                                 </button>
+                                <div class="btn-group">
+                                    <button type="button" id="import-supplier-btn" class="btn btn-sm btn-success" title="Import SKU → Supplier from Excel/CSV">
+                                        <i class="fas fa-file-import me-1"></i> Import
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-success dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
+                                        <span class="visually-hidden">Toggle Dropdown</span>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li>
+                                            <a class="dropdown-item" href="{{ route('to.order.analysis.import.supplier.sample') }}" title="Download sample import file">
+                                                <i class="fas fa-download me-1"></i> Download sample
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </div>
+                                <input type="file" id="import-supplier-file" accept=".xlsx,.xls,.csv" class="d-none">
                                 <span class="text-muted small" id="bulk-selected-count"></span>
                             </div>
                         </div>
@@ -623,10 +675,315 @@
         </div>
     </div>
 
+    <!-- Suppliers-by-category modal: lists all suppliers in the row's category -->
+    <div class="modal fade" id="supplierCategoryModal" tabindex="-1" aria-labelledby="supplierCategoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold" id="supplierCategoryModalLabel">
+                        <i class="fas fa-truck me-2"></i> Suppliers <span id="supplierCategoryName" class="ms-2 fw-normal"></span>
+                    </h5>
+                    <div class="d-flex align-items-center gap-2">
+                        <a href="https://www.alibaba.com" target="_blank" rel="noopener noreferrer"
+                            class="d-inline-flex align-items-center justify-content-center bg-white rounded p-1"
+                            title="Go to Alibaba.com" style="width:34px;height:34px;">
+                            <img src="{{ asset('assets/images/alibaba-icon.png') }}" alt="Alibaba" style="width:24px;height:24px;object-fit:contain;">
+                        </a>
+                        <button type="button" class="btn btn-light btn-sm fw-semibold" id="catModalAddSupplierBtn">
+                            <i class="mdi mdi-plus me-1"></i> Add Supplier
+                        </button>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                </div>
+                <div class="modal-body" id="supplierCategoryModalBody" style="background-color:#fff;"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PKG details modal: shows all 6 packaging/design/CDR/issues fields for a SKU -->
+    <div class="modal fade" id="pkgModal" tabindex="-1" aria-labelledby="pkgModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold" id="pkgModalLabel">
+                        <i class="fas fa-box-open me-2"></i> Packaging Details <span id="pkgModalSku" class="ms-2 fw-normal"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="pkgModalBody" style="background-color:#fff;"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QC / Improvement Required Modal (data from /customer-care/qc-and-packing) -->
+    <div class="modal fade" id="qcIssueModal" tabindex="-1" aria-labelledby="qcIssueModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold" id="qcIssueModalLabel">
+                        <img src="{{ asset('assets/images/improvement.png') }}" alt="" style="width:24px;height:24px;object-fit:contain;" class="me-2">
+                        Improvement Required <span id="qcIssueModalSku" class="ms-2 fw-normal"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="background-color:#fff;">
+                    <h6 class="fw-bold text-secondary mb-2"><i class="fas fa-exclamation-triangle me-1"></i> Issues</h6>
+                    <div id="qcIssueModalIssues"></div>
+                    <hr class="my-3">
+                    <h6 class="fw-bold text-secondary mb-2"><i class="fas fa-clock-rotate-left me-1"></i> History</h6>
+                    <div id="qcIssueModalHistory"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Supplier Modal (duplicated from supplier list page; saves via supplier.create) -->
+    <div class="modal fade" id="addSupplierModal" tabindex="-1" aria-labelledby="supplierModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered shadow-none">
+            <div class="modal-content border-0 shadow-lg">
+                <form method="POST" action="{{ route('supplier.create') }}" class="needs-validation" novalidate id="addSupplierForm">
+                    @csrf
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title fw-bold" id="supplierModalLabel">
+                            <i class="mdi mdi-account-plus me-2"></i> Add Supplier
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body py-4">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Type <span class="text-danger">*</span></label>
+                                @php
+                                    $supplierTypes = ['Supplier','Forwarders', 'Photographer'];
+                                @endphp
+                                <select name="type" class="form-select" required>
+                                    <option value="">Select Type</option>
+                                    @foreach($supplierTypes as $type)
+                                        <option value="{{ $type }}">{{ $type }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Category <span class="text-danger">*</span></label>
+                                <select name="category_id[]" class="form-select select2" data-placeholder="Select Category" multiple required style="min-height: 42px;">
+                                    @foreach($categories ?? [] as $category)
+                                        <option value="{{ $category->id }}">{{ $category->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Name <span class="text-danger">*</span></label>
+                                <input type="text" name="name" class="form-control" required placeholder="Supplier Name">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Company</label>
+                                <input type="text" name="company" class="form-control" placeholder="Company Name">
+                            </div>
+                            <div class="col-md-12">
+                                <label class="form-label fw-semibold">Parents</label>
+                                <input type="text" name="parent" class="form-control" placeholder="Use commas to separate multiple Parents (e.g., TV-BOX, CAMERA)">
+                                <small class="text-muted">Separate multiple parents with commas</small>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-semibold">Country Code</label>
+                                        <input type="text" name="country_code" class="form-control" placeholder="+86">
+                                    </div>
+                                    <div class="col-md-8">
+                                        <label class="form-label fw-semibold">Phone</label>
+                                        <input type="text" name="phone" class="form-control" placeholder="Phone Number">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">City</label>
+                                <input type="text" name="city" class="form-control" placeholder="City">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Zone</label>
+                                <select name="zone" class="form-select">
+                                    <option value="">Select Zone</option>
+                                    <option value="GHZ">GHZ</option>
+                                    <option value="Ningbo">Ningbo</option>
+                                    <option value="Tianjin">Tianjin</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Approved</label>
+                                <div class="d-flex align-items-center gap-2 approval-form-dots flex-wrap">
+                                    <label class="mb-0 cursor-pointer small text-muted border rounded px-2 py-1" title="Not set">
+                                        <input type="radio" name="approval_status" value="" class="d-none" checked> None
+                                    </label>
+                                    <label class="mb-0 cursor-pointer d-inline-flex align-items-center" title="disqualified">
+                                        <input type="radio" name="approval_status" value="red" class="d-none">
+                                        <span class="d-inline-block supplier-approval-dot supplier-approval-dot--red border-0" title="disqualified"></span>
+                                    </label>
+                                    <label class="mb-0 cursor-pointer d-inline-flex align-items-center" title="Qualified">
+                                        <input type="radio" name="approval_status" value="green" class="d-none">
+                                        <span class="d-inline-block supplier-approval-dot supplier-approval-dot--green border-0" title="Qualified"></span>
+                                    </label>
+                                    <label class="mb-0 cursor-pointer d-inline-flex align-items-center" title="Explore">
+                                        <input type="radio" name="approval_status" value="yellow" class="d-none">
+                                        <span class="d-inline-block supplier-approval-dot supplier-approval-dot--yellow border-0" title="Explore"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Email</label>
+                                <input type="email" name="email" class="form-control" placeholder="Email Address">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">WhatsApp</label>
+                                <input type="text" name="whatsapp" class="form-control" placeholder="WhatsApp Number">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">WeChat</label>
+                                <input type="text" name="wechat" class="form-control" placeholder="WeChat ID">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Alibaba</label>
+                                <input type="text" name="alibaba" class="form-control" placeholder="Alibaba Profile">
+                            </div>
+                            <div class="col-md-12">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-semibold">Website URL</label>
+                                        <input type="text" name="website" class="form-control" placeholder="enter website URL">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-semibold">Others</label>
+                                        <input type="text" name="others" class="form-control" placeholder="Other Details">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-semibold">Address</label>
+                                        <input type="text" name="address" class="form-control" placeholder="Full Address">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-12">
+                                <label class="form-label fw-semibold">Bank Details</label>
+                                <textarea name="bank_details" class="form-control" rows="2" placeholder="Bank Details"></textarea>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-end mt-3">
+                            <button type="submit" class="btn btn-primary" id="addSupplierSubmitBtn">
+                                <i class="mdi mdi-content-save"></i> Save Supplier
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
 @endsection
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script>
+        // Add Supplier modal (duplicated from supplier list page) — Select2 + AJAX save
+        $(function () {
+            const $modal = $('#addSupplierModal');
+            if (!$modal.length) return;
+
+            function initCategorySelect2() {
+                const $sel = $modal.find('select[name="category_id[]"]');
+                if ($sel.length && !$sel.hasClass('select2-hidden-accessible')) {
+                    $sel.select2({
+                        theme: 'bootstrap-5',
+                        width: '100%',
+                        placeholder: $sel.data('placeholder') || 'Select Category',
+                        dropdownParent: $modal,
+                        allowClear: false
+                    });
+                }
+            }
+
+            $modal.on('shown.bs.modal', function () {
+                setTimeout(initCategorySelect2, 100);
+            });
+
+            $modal.on('hidden.bs.modal', function () {
+                const $sel = $modal.find('select[name="category_id[]"]');
+                if ($sel.hasClass('select2-hidden-accessible')) {
+                    $sel.select2('destroy');
+                }
+                $modal.find('form')[0].reset();
+                $sel.val(null).trigger('change');
+            });
+
+            $('#addSupplierForm').on('submit', function (e) {
+                e.preventDefault();
+                const form = this;
+                const $btn = $('#addSupplierSubmitBtn');
+
+                const fd = new FormData(form);
+                const cats = fd.getAll('category_id[]').filter(v => v != null && v !== '');
+                if (cats.length === 0) {
+                    alert('Please select at least one category.');
+                    return;
+                }
+                if (!fd.get('type')) { alert('Please select a type.'); return; }
+                if (!String(fd.get('name') || '').trim()) { alert('Please enter supplier name.'); return; }
+
+                const orig = $btn.html();
+                $btn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Saving...');
+
+                $.ajax({
+                    url: form.action,
+                    method: 'POST',
+                    data: fd,
+                    processData: false,
+                    contentType: false,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                })
+                .done(function (res) {
+                    if (res && res.success) {
+                        const newName = res.supplier && res.supplier.name ? res.supplier.name : '';
+                        // Make the new supplier available in the supplier dropdowns immediately
+                        if (newName) {
+                            ['bulk-supplier-select', 'supplier-filter'].forEach(function (id) {
+                                const el = document.getElementById(id);
+                                if (el && !Array.from(el.options).some(o => o.value === newName)) {
+                                    el.add(new Option(newName, newName));
+                                }
+                            });
+                        }
+                        const modalInst = bootstrap.Modal.getInstance($modal[0]) || new bootstrap.Modal($modal[0]);
+                        modalInst.hide();
+                        alert(res.message || 'Supplier successfully created.');
+                    } else {
+                        alert((res && res.message) ? res.message : 'Something went wrong while saving.');
+                    }
+                })
+                .fail(function (xhr) {
+                    let msg = 'Error saving supplier.';
+                    if (xhr.responseJSON) {
+                        if (xhr.responseJSON.errors) {
+                            msg = Object.values(xhr.responseJSON.errors).flat().join('\n');
+                        } else if (xhr.responseJSON.message) {
+                            msg = xhr.responseJSON.message;
+                        }
+                    }
+                    alert(msg);
+                })
+                .always(function () {
+                    $btn.prop('disabled', false).html(orig);
+                });
+            });
+        });
+    </script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
             document.body.style.zoom = "80%";
@@ -651,6 +1008,8 @@
             let hideTimeout;
             let uniqueSuppliers = [];
             let allSuppliers = @json($allSuppliers ?? []);
+            const currentUserEmail = @json(strtolower((string) (auth()->user()->email ?? '')));
+            const canEditDoa = currentUserEmail === 'president@5core.com';
 
             function escapeHtmlAttr(s) {
                 return String(s ?? '')
@@ -734,6 +1093,200 @@
                 if (!path) return "";
                 return /^https?:\/\//i.test(path) ? path : ("/" + path.replace(/^\//, ""));
             }
+
+            // Open the combined PKG modal showing all 6 packaging/design/CDR/issues fields.
+            function openPkgModal(rowData) {
+                const body = document.getElementById("pkgModalBody");
+                const skuEl = document.getElementById("pkgModalSku");
+                skuEl.textContent = rowData.SKU ? `( ${rowData.SKU} )` : "";
+
+                const html = Object.keys(TOA_DATA_FIELD_META).map(function(fieldKey) {
+                    const meta = TOA_DATA_FIELD_META[fieldKey] || { title: fieldKey };
+                    const raw = String(rowData[fieldKey] ?? "").trim();
+                    let valueHtml;
+                    if (!raw) {
+                        valueHtml = '<span class="text-danger fst-italic">No data</span>';
+                    } else if (meta.isFilePath) {
+                        const url = toaFileUrl(raw);
+                        const name = raw.split(/[/\\]/).pop() || raw;
+                        valueHtml = `<a href="${escapeHtmlAttr(url)}" target="_blank" rel="noopener noreferrer">
+                            <i class="fas fa-file-arrow-down me-1"></i>${escapeHtmlAttr(name)}</a>`;
+                    } else {
+                        const esc = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        valueHtml = `<div style="white-space:pre-wrap;">${esc}</div>`;
+                    }
+                    return `<div class="pkg-modal-item mb-3">
+                        <div class="fw-bold text-primary mb-1">${escapeHtmlAttr(meta.title || fieldKey)}</div>
+                        <div class="border rounded p-2 bg-light" style="font-size:13px;">${valueHtml}</div>
+                    </div>`;
+                }).join("");
+
+                body.innerHTML = html;
+                bootstrap.Modal.getOrCreateInstance(document.getElementById("pkgModal")).show();
+            }
+
+            // Open a modal listing all suppliers in the given category.
+            function openSupplierCategoryModal(category) {
+                const nameEl = document.getElementById("supplierCategoryName");
+                const body = document.getElementById("supplierCategoryModalBody");
+                const cat = (category || "").trim();
+                nameEl.textContent = cat ? `( ${cat} )` : "";
+
+                if (!cat) {
+                    body.innerHTML = '<div class="text-muted fst-italic">No category set for this row.</div>';
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById("supplierCategoryModal")).show();
+                    return;
+                }
+
+                body.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i></div>';
+                bootstrap.Modal.getOrCreateInstance(document.getElementById("supplierCategoryModal")).show();
+
+                const dotColor = { red: "#dc3545", green: "#198754", yellow: "#ffc107" };
+                fetch('{{ route('to.order.analysis.suppliers.by.category') }}?category=' + encodeURIComponent(cat), {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                })
+                .then(res => res.json())
+                .then(res => {
+                    const list = (res && res.suppliers) || [];
+                    if (!list.length) {
+                        body.innerHTML = '<div class="text-muted fst-italic">No suppliers found for this category.</div>';
+                        return;
+                    }
+                    const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    let rows = list.map(function(s) {
+                        const dot = s.approval_status && dotColor[s.approval_status]
+                            ? `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${dotColor[s.approval_status]};"></span>`
+                            : '<span class="text-muted">—</span>';
+                        return `<tr>
+                            <td class="text-center">${dot}</td>
+                            <td>${esc(s.name)}</td>
+                            <td>${esc(s.company) || '<span class="text-muted">—</span>'}</td>
+                            <td>${esc(s.phone) || '<span class="text-muted">—</span>'}</td>
+                            <td>${esc(s.email) || '<span class="text-muted">—</span>'}</td>
+                            <td>${esc(s.whatsapp) || '<span class="text-muted">—</span>'}</td>
+                            <td>${esc(s.city) || '<span class="text-muted">—</span>'}</td>
+                        </tr>`;
+                    }).join("");
+                    body.innerHTML = `<div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle mb-0" style="font-size:13px;">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center">Appr</th><th>Name</th><th>Company</th>
+                                    <th>Phone</th><th>Email</th><th>WhatsApp</th><th>City</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>`;
+                })
+                .catch(() => {
+                    body.innerHTML = '<div class="text-danger">Failed to load suppliers.</div>';
+                });
+            }
+
+            $(document).on('click', '.toa-supplier-cat-btn', function() {
+                openSupplierCategoryModal(this.getAttribute('data-category') || '');
+            });
+
+            // Open the QC / Improvement-required modal for a SKU (data from qc-and-packing).
+            function openQcIssueModal(sku) {
+                const titleSku = document.getElementById("qcIssueModalSku");
+                const issuesBody = document.getElementById("qcIssueModalIssues");
+                const historyBody = document.getElementById("qcIssueModalHistory");
+                titleSku.textContent = sku ? `( ${sku} )` : "";
+                issuesBody.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i></div>';
+                historyBody.innerHTML = '';
+                bootstrap.Modal.getOrCreateInstance(document.getElementById("qcIssueModal")).show();
+
+                const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const txt = v => { const s = esc(v); return s.trim() ? s : '<span class="text-muted">—</span>'; };
+                const dot = v => String(v ?? '').trim()
+                    ? '<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#198754;"></span>'
+                    : '<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#dc3545;"></span>';
+
+                fetch('{{ route('to.order.analysis.qc.issues') }}?sku=' + encodeURIComponent(sku), {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                })
+                .then(res => res.json())
+                .then(res => {
+                    const issues = (res && res.issues) || [];
+                    const history = (res && res.history) || [];
+
+                    if (!issues.length) {
+                        issuesBody.innerHTML = '<div class="text-muted fst-italic p-2">No QC / packing issues recorded for this SKU.</div>';
+                    } else {
+                        const rows = issues.map(function(it) {
+                            const found = [it.issue, it.issue_remark].filter(Boolean).join(': ');
+                            const fixed = [it.c_action_1, it.c_action_1_remark].filter(Boolean).join(': ');
+                            return `<tr>
+                                <td>${txt(it.what_happened)}</td>
+                                <td class="text-center">${dot(it.issue)}</td>
+                                <td>${txt(found)}</td>
+                                <td class="text-center">${dot(it.c_action_1)}</td>
+                                <td>${txt(fixed)}</td>
+                            </tr>`;
+                        }).join("");
+                        issuesBody.innerHTML = `<div class="table-responsive">
+                            <table class="table table-sm table-bordered align-middle mb-0" style="font-size:13px;">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Issue?</th>
+                                        <th class="text-center">RC Found</th>
+                                        <th>Root Cause Found</th>
+                                        <th class="text-center">RC Fixed</th>
+                                        <th>Root Cause Fixed</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${rows}</tbody>
+                            </table>
+                        </div>`;
+                    }
+
+                    if (!history.length) {
+                        historyBody.innerHTML = '<div class="text-muted fst-italic p-2">No history found.</div>';
+                    } else {
+                        const hrows = history.map(function(h) {
+                            const found = [h.issue, h.issue_remark].filter(Boolean).join(': ');
+                            const fixed = [h.c_action_1, h.c_action_1_remark].filter(Boolean).join(': ');
+                            const when = h.logged_at || h.created_at || '';
+                            return `<tr>
+                                <td>${txt(when)}</td>
+                                <td>${txt(h.event_type)}</td>
+                                <td>${txt(h.what_happened)}</td>
+                                <td>${txt(found)}</td>
+                                <td>${txt(fixed)}</td>
+                                <td>${txt(h.created_by)}</td>
+                            </tr>`;
+                        }).join("");
+                        historyBody.innerHTML = `<div class="table-responsive">
+                            <table class="table table-sm table-striped align-middle mb-0" style="font-size:12px;">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>When</th><th>Event</th><th>Issue?</th>
+                                        <th>Root Cause Found</th><th>Root Cause Fixed</th><th>By</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${hrows}</tbody>
+                            </table>
+                        </div>`;
+                    }
+                })
+                .catch(() => {
+                    issuesBody.innerHTML = '<div class="text-danger p-2">Failed to load issues.</div>';
+                });
+            }
+
+            // "Add Supplier" inside the suppliers-by-category modal: close it, then open the Add Supplier modal
+            $(document).on('click', '#catModalAddSupplierBtn', function() {
+                const catModalEl = document.getElementById('supplierCategoryModal');
+                const catInst = bootstrap.Modal.getInstance(catModalEl);
+                const openAdd = function() {
+                    catModalEl.removeEventListener('hidden.bs.modal', openAdd);
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('addSupplierModal')).show();
+                };
+                catModalEl.addEventListener('hidden.bs.modal', openAdd);
+                if (catInst) { catInst.hide(); } else { openAdd(); }
+            });
 
             function openToaMoqModal(rowData) {
                 const skuEl = document.getElementById("toaMoqModalSku");
@@ -995,10 +1548,13 @@
                     },
                     {
                         title: "Executive",
+                        titleFormatter: function() {
+                            return '<img src="{{ asset('assets/images/executive.png') }}" alt="Executive" title="Executive" style="width:26px;height:26px;object-fit:contain;vertical-align:middle;">';
+                        },
                         field: "Exec",
                         hozAlign: "center",
-                        width: 120,
-                        minWidth: 100,
+                        width: 72,
+                        minWidth: 60,
                         headerSort: true,
                         headerTooltip: "Executive assigned",
                         headerFilter: "list",
@@ -1126,9 +1682,15 @@
                         field: "Date of Appr",
                         width: 80,
                         minWidth: 72,
-                        headerTooltip: "Approval (needs to be ordered within 15 days max)",
+                        headerTooltip: canEditDoa
+                            ? "Approval (needs to be ordered within 15 days max) - click to edit"
+                            : "Approval (needs to be ordered within 15 days max)",
                         sorter: "date",
                         sorterParams: { format: "YYYY-MM-DD", alignEmptyValues: "bottom" },
+                        editor: canEditDoa ? "date" : false,
+                        cellEdited: function (cell) {
+                            saveLinkUpdate(cell, cell.getValue());
+                        },
                         formatter: function (cell) {
                             const value = cell.getValue() || "";
                             let displayText = "-";
@@ -1177,16 +1739,60 @@
                                 return `<option value="${(supplier || "").replace(/"/g, "&quot;")}" ${selected}>${(supplier || "").replace(/</g, "&lt;")}</option>`;
                             }).join("");
                             let selectSelected = (!value || value.trim() === "") ? " selected" : "";
+                            let categoryAttr = escapeHtmlAttr(rowData.Category || "");
                             return `
-                                <select class="form-select form-select-sm editable-select" data-sku="${sku}" data-parent="${parentAttr}" data-column="Supplier" style="width: 140px; max-width: 100%;">
-                                    <option value=""${selectSelected}>-- Select --</option>
-                                    ${options}
-                                </select>`;
+                                <div class="d-flex align-items-center justify-content-center gap-1">
+                                    <select class="form-select form-select-sm editable-select" data-sku="${sku}" data-parent="${parentAttr}" data-column="Supplier" style="width: 140px; max-width: 100%;">
+                                        <option value=""${selectSelected}>-- Select --</option>
+                                        ${options}
+                                    </select>
+                                    <button type="button" class="btn btn-sm btn-link p-0 toa-supplier-cat-btn" data-category="${categoryAttr}" title="View suppliers in this category">
+                                        <i class="fas fa-search" style="font-size:14px;color:#2563eb;"></i>
+                                    </button>
+                                </div>`;
+                        }
+                    },
+                    {
+                        title: "Category",
+                        field: "Category",
+                        width: 120,
+                        minWidth: 90,
+                        headerTooltip: "Category (from the supplier)",
+                        formatter: function (cell) {
+                            const v = (cell.getValue() || "").trim();
+                            return v ? v : '<span class="text-muted">—</span>';
+                        }
+                    },
+                    {
+                        title: "PKG",
+                        field: "pkg_view",
+                        hozAlign: "center",
+                        vertAlign: "middle",
+                        width: 70,
+                        minWidth: 60,
+                        headerSort: false,
+                        headerTooltip: "View all packaging / design / CDR / issues details",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            if (row.is_parent) {
+                                return '<span class="text-muted small">—</span>';
+                            }
+                            return `<button type="button" class="btn btn-sm btn-link p-0 toa-pkg-view-btn" title="View packaging details">
+                                <i class="fas fa-search" style="font-size:16px;color:#2563eb;"></i>
+                            </button>`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.closest(".toa-pkg-view-btn")) {
+                                const row = cell.getRow().getData();
+                                if (row.is_parent) return;
+                                openPkgModal(row);
+                            }
                         }
                     },
                     {
                         title: "Item Pkg.",
                         field: "instructions_item_pkg",
+                        visible: false,
                         width: 70,
                         minWidth: 60,
                         hozAlign: "center",
@@ -1200,6 +1806,7 @@
                     {
                         title: "Instr<br>Carton",
                         field: "ctn_instructions",
+                        visible: false,
                         width: 70,
                         minWidth: 60,
                         hozAlign: "center",
@@ -1213,6 +1820,7 @@
                     {
                         title: "Design<br>Instr.",
                         field: "packing_instructions",
+                        visible: false,
                         width: 70,
                         minWidth: 60,
                         hozAlign: "center",
@@ -1226,6 +1834,7 @@
                     {
                         title: "Design<br>Instr<br>Carton",
                         field: "instructions_carton_design",
+                        visible: false,
                         width: 70,
                         minWidth: 60,
                         hozAlign: "center",
@@ -1239,6 +1848,7 @@
                     {
                         title: "CDR",
                         field: "packing_cdr_path",
+                        visible: false,
                         width: 70,
                         minWidth: 60,
                         hozAlign: "center",
@@ -1252,6 +1862,7 @@
                     {
                         title: "Issues",
                         field: "issues",
+                        visible: false,
                         width: 70,
                         minWidth: 60,
                         hozAlign: "center",
@@ -1264,27 +1875,37 @@
                     },
                     {
                         title: "Reviews",
-                        field: "Reviews",
-                        width: 160,
-                        minWidth: 100,
-                        hozAlign: "center",
-                        headerSort: false,
-                        editor: "textarea",
-                        formatter: function (cell) {
-                            const v = (cell.getValue() || "").trim();
-                            if (!v) {
-                                return '<span class="text-muted" style="font-size:12px;">—</span>';
-                            }
-                            const div = document.createElement("div");
-                            div.textContent = v;
-                            return (
-                                '<div style="white-space:pre-wrap;max-height:72px;overflow:auto;font-size:12px;line-height:1.3;text-align:center;padding:4px;">' +
-                                div.innerHTML.replace(/\n/g, "<br>") +
-                                "</div>"
-                            );
+                        titleFormatter: function() {
+                            return '<img src="{{ asset('assets/images/improvement.png') }}" alt="Improvement Required" title="Improvement Required" style="width:28px;height:28px;object-fit:contain;vertical-align:middle;">';
                         },
-                        cellEdited: function (cell) {
-                            saveLinkUpdate(cell, cell.getValue());
+                        field: "Reviews",
+                        width: 90,
+                        minWidth: 70,
+                        hozAlign: "center",
+                        vertAlign: "middle",
+                        headerSort: false,
+                        headerTooltip: "Improvement Required",
+                        formatter: function (cell) {
+                            const row = cell.getRow().getData();
+                            if (row.is_parent) {
+                                return '<span class="text-muted small">—</span>';
+                            }
+                            const hasData = String(row.issues || "").trim() !== "";
+                            if (hasData) {
+                                return `<button type="button" class="btn btn-sm btn-link p-0 toa-qc-issue-btn" title="View improvement / QC issues">
+                                    <img src="{{ asset('assets/images/improvement.png') }}" alt="Issues" style="width:24px;height:24px;object-fit:contain;">
+                                </button>`;
+                            }
+                            return `<button type="button" class="btn btn-sm btn-link p-0 toa-qc-issue-btn" title="No issues recorded — view / add">
+                                <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#dc3545;"></span>
+                            </button>`;
+                        },
+                        cellClick: function (e, cell) {
+                            if (e.target.closest(".toa-qc-issue-btn")) {
+                                const row = cell.getRow().getData();
+                                if (row.is_parent) return;
+                                openQcIssueModal(row.SKU || "");
+                            }
                         }
                     },
                     {
@@ -1406,21 +2027,24 @@
                         }
                     },
                     {
-                        title: "RFQ Form",
+                        title: "RFQ",
                         field: "RFQ Form Link",
-                        headerTooltip: "Request for quote form",
-                        formatter: linkFormatter,
+                        headerTooltip: "Request for quote form (linked from RFQ Form list)",
+                        formatter: rfqFormLinkFormatter,
                         editor: "input",  
                         hozAlign: "center",
+                        cellClick: function(e, cell){
+                            handleRfqCopyClick(e);
+                        },
                         cellEdited: function(cell){
                             saveLinkUpdate(cell, cell.getValue());
                         }
                     },
                     {
-                        title: "RFQ Report",
+                        title: "Compare",
                         field: "Rfq Report Link",
-                        headerTooltip: "Request for quote comparison report",
-                        formatter: linkFormatter,
+                        headerTooltip: "Request for quote comparison report (linked from RFQ Form list)",
+                        formatter: rfqReportLinkFormatter,
                         editor: "input",         
                         hozAlign: "center",
                         cellEdited: function(cell){
@@ -1466,39 +2090,50 @@
                     {
                         title: "Stage",
                         field: "stage",
+                        width: 72,
+                        minWidth: 60,
+                        hozAlign: "center",
                         accessor: row => row?.["stage"] ?? null,
                         headerSort: false,
-                        formatter: function(cell) {
+                        formatter: function(cell, formatterParams, onRendered) {
                             const value = cell.getValue() ?? '';
                             const rowData = cell.getRow().getData();
 
-                            // Determine background color based on value
-                            let bgColor = '#fff';
-                            if (value === 'to_order_analysis') {
-                                bgColor = '#ffc107'; // Yellow
-                            } else if (value === 'mip') {
-                                bgColor = '#0d6efd'; // Blue
-                            } else if (value === 'r2s') {
-                                bgColor = '#198754'; // Green
-                            }
+                            const STAGE_META = {
+                                "":                 { label: "Select",   color: "#adb5bd" },
+                                "appr_req":         { label: "Appr. Req", color: "#6f42c1" },
+                                "mip":              { label: "MIP",       color: "#0d6efd" },
+                                "r2s":              { label: "R2S",       color: "#198754" },
+                                "transit":          { label: "Transit",   color: "#fd7e14" },
+                                "all_good":         { label: "😊 All Good", color: "#20c997" },
+                                "to_order_analysis":{ label: "2 Order",   color: "#ffc107" },
+                            };
+                            const meta = STAGE_META[value] || STAGE_META[""];
 
-                            return `
-                        <select class="form-select form-select-sm editable-select"
-                            data-type="Stage"
-                            data-sku='${rowData["SKU"]}'
-                            data-parent='${rowData["Parent"]}'
-                            style="width: auto; min-width: 100px; padding: 4px 24px 4px 8px;
-                                font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
-                                background-color: ${bgColor}; color: #000;">
-                            <option value="">Select</option>
-                            <option value="appr_req" ${value === 'appr_req' ? 'selected' : ''} style="background-color: #fff; color: #000;">Appr. Req</option>
-                            <option value="mip" ${value === 'mip' ? 'selected' : ''} style="background-color: #0d6efd; color: #000;">MIP</option>
-                            <option value="r2s" ${value === 'r2s' ? 'selected' : ''} style="background-color: #198754; color: #000;">R2S</option>
-                            <option value="transit" ${value === 'transit' ? 'selected' : ''} style="background-color: #fff; color: #000;">Transit</option>
-                            <option value="all_good" ${value === 'all_good' ? 'selected' : ''} style="background-color: #fff; color: #000;">😊 All Good</option>
-                            <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''} style="background-color: #ffc107; color: #000;">2 Order</option>
-                        </select>
-                    `;
+                            const html = `
+                                <div class="nrp-dot-cell position-relative d-flex justify-content-center align-items-center w-100" aria-label="${escapeHtmlAttr(meta.label)}">
+                                    <span class="nrp-status-dot" style="background-color:${meta.color};" aria-hidden="true"></span>
+                                    <span class="purchase-hover-tip-badge">${escapeHtmlAttr(meta.label)}</span>
+                                    <select class="form-select form-select-sm editable-select position-absolute top-0 start-0 w-100 h-100"
+                                        data-type="Stage"
+                                        data-sku='${rowData["SKU"]}'
+                                        data-parent='${rowData["Parent"]}'
+                                        style="opacity:0;cursor:pointer;"
+                                        aria-label="Stage: ${escapeHtmlAttr(meta.label)}">
+                                        <option value="">Select</option>
+                                        <option value="appr_req" ${value === 'appr_req' ? 'selected' : ''}>Appr. Req</option>
+                                        <option value="mip" ${value === 'mip' ? 'selected' : ''}>MIP</option>
+                                        <option value="r2s" ${value === 'r2s' ? 'selected' : ''}>R2S</option>
+                                        <option value="transit" ${value === 'transit' ? 'selected' : ''}>Transit</option>
+                                        <option value="all_good" ${value === 'all_good' ? 'selected' : ''}>😊 All Good</option>
+                                        <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''}>2 Order</option>
+                                    </select>
+                                </div>`;
+                            if (onRendered) onRendered(function() {
+                                const el = cell.getElement().querySelector('select');
+                                if (el) el.value = value;
+                            });
+                            return html;
                         }
                     },
                     {
@@ -1625,6 +2260,7 @@
 
             deleteWithSelect();
             bulkUpdateSupplierWithSelect();
+            importSupplierFromFile();
             bulkUpdateStageWithSelect();
             bulkUpdateExecutiveWithSelect();
 
@@ -1725,6 +2361,53 @@
                     .finally(() => {
                         btn.disabled = false;
                         btn.innerHTML = origHtml;
+                    });
+                });
+            }
+
+            function importSupplierFromFile() {
+                const btn = document.getElementById('import-supplier-btn');
+                const fileInput = document.getElementById('import-supplier-file');
+                if (!btn || !fileInput) return;
+
+                btn.addEventListener('click', function() {
+                    fileInput.click();
+                });
+
+                fileInput.addEventListener('change', function() {
+                    const file = fileInput.files && fileInput.files[0];
+                    if (!file) return;
+
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    const origHtml = btn.innerHTML;
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Importing...';
+
+                    fetch('{{ route('to.order.analysis.import.supplier') }}', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                        },
+                        body: formData
+                    })
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.success) {
+                            table.replaceData();
+                            alert(res.message || 'Supplier import successful.');
+                        } else {
+                            throw new Error(res.message || 'Import failed');
+                        }
+                    })
+                    .catch(err => {
+                        alert('Error: ' + (err.message || 'Something went wrong'));
+                    })
+                    .finally(() => {
+                        btn.disabled = false;
+                        btn.innerHTML = origHtml;
+                        fileInput.value = '';
                     });
                 });
             }
@@ -1935,6 +2618,101 @@
                         </div>
                     `;
                 }
+            }
+
+            // RFQ Form column: show form link(s) coming from the RFQ Form list (linked_skus),
+            // plus any manually entered link as a fallback.
+            function rfqFormLinkFormatter(cell) {
+                const rowData = cell.getRow().getData();
+                let forms = rowData.rfq_linked_forms || [];
+                if (typeof forms === "string") {
+                    try { forms = JSON.parse(forms) || []; } catch (e) { forms = []; }
+                }
+                if (!Array.isArray(forms)) forms = [];
+
+                const manual = cell.getValue() || "";
+                let html = '<div style="display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap;">';
+
+                forms.forEach(f => {
+                    if (!f || !f.slug) return;
+                    const url = window.location.origin + '/api/rfq-form/' + f.slug;
+                    const name = (f.name || 'RFQ Form').replace(/"/g, '&quot;');
+                    html += `<span style="display:inline-flex;align-items:center;gap:2px;">
+                                <a href="${url}" target="_blank" rel="noopener noreferrer"
+                                    class="btn btn-sm btn-outline-success"
+                                    title="${name}" aria-label="${name}">
+                                    <i class="mdi mdi-file-document-outline"></i>
+                                </a>
+                                <button type="button" class="btn btn-sm btn-outline-secondary rfq-copy-btn"
+                                    data-copy="${url}" title="Copy link" aria-label="Copy link"
+                                    style="padding:2px 5px;">
+                                    <i class="mdi mdi-content-copy"></i>
+                                </button>
+                            </span>`;
+                });
+
+                if (manual && manual.trim() !== "") {
+                    html += `<a href="${manual}" target="_blank" rel="noopener noreferrer"
+                                class="btn btn-sm btn-outline-primary"
+                                title="Open link" aria-label="Open link">
+                                <i class="mdi mdi-link"></i>
+                            </a>`;
+                }
+
+                html += '</div>';
+                return html;
+            }
+
+            // Copy the RFQ link to clipboard when a copy button inside the cell is clicked
+            function handleRfqCopyClick(e) {
+                const btn = e.target.closest('.rfq-copy-btn');
+                if (!btn) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const url = btn.getAttribute('data-copy') || '';
+                if (!url) return;
+                navigator.clipboard.writeText(url).then(() => {
+                    const icon = btn.querySelector('i');
+                    const prev = icon ? icon.className : '';
+                    if (icon) icon.className = 'mdi mdi-check';
+                    setTimeout(() => { if (icon) icon.className = prev; }, 1200);
+                }).catch(() => {});
+            }
+
+            // RFQ Report column: show report link(s) coming from the RFQ Form list (linked_skus),
+            // plus any manually entered link as a fallback.
+            function rfqReportLinkFormatter(cell) {
+                const rowData = cell.getRow().getData();
+                let forms = rowData.rfq_linked_forms || [];
+                if (typeof forms === "string") {
+                    try { forms = JSON.parse(forms) || []; } catch (e) { forms = []; }
+                }
+                if (!Array.isArray(forms)) forms = [];
+
+                const manual = cell.getValue() || "";
+                let html = '<div style="display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap;">';
+
+                forms.forEach(f => {
+                    if (!f || !f.slug) return;
+                    const url = window.location.origin + '/rfq-form/reports/' + f.slug;
+                    const name = (f.name || 'RFQ Report').replace(/"/g, '&quot;');
+                    html += `<a href="${url}" target="_blank" rel="noopener noreferrer"
+                                class="btn btn-sm btn-outline-info"
+                                title="${name}" aria-label="${name}">
+                                <i class="mdi mdi-chart-box-outline"></i>
+                            </a>`;
+                });
+
+                if (manual && manual.trim() !== "") {
+                    html += `<a href="${manual}" target="_blank" rel="noopener noreferrer"
+                                class="btn btn-sm btn-outline-primary"
+                                title="Open link" aria-label="Open link">
+                                <i class="mdi mdi-link"></i>
+                            </a>`;
+                }
+
+                html += '</div>';
+                return html;
             }
 
             // edit field updated
@@ -2223,6 +3001,8 @@
                 const searchText = document.getElementById("search-input").value.trim().toLowerCase();
                 const supplierFilterEl = document.getElementById("supplier-filter");
                 const supplierFilter = supplierOverride != null ? supplierOverride : (supplierFilterEl ? supplierFilterEl.value.trim() : '');
+                const categoryFilterEl = document.getElementById("category-filter");
+                const categoryFilter = categoryFilterEl ? categoryFilterEl.value.trim() : '';
 
                 table.clearFilter(true);
 
@@ -2245,6 +3025,13 @@
                             keep = keep && (row.Supplier || '').trim() === '';
                         } else {
                             keep = keep && (row.Supplier || '').trim().toLowerCase() === supplierFilter.toLowerCase();
+                        }
+                    }
+                    if (categoryFilter) {
+                        if (categoryFilter === '__blank__') {
+                            keep = keep && (row.Category || '').trim() === '';
+                        } else {
+                            keep = keep && (row.Category || '').trim().toLowerCase() === categoryFilter.toLowerCase();
                         }
                     }
                     if (searchText) keep = keep && Object.values(row).some(val => val && val.toString().toLowerCase().includes(searchText));
@@ -2306,6 +3093,7 @@
             document.getElementById("stage-filter").addEventListener("change", () => applyFilters());
             document.getElementById("moq-filter").addEventListener("change", () => applyFilters());
             document.getElementById("supplier-filter").addEventListener("change", () => applyFilters());
+            document.getElementById("category-filter").addEventListener("change", () => applyFilters());
             document.getElementById("search-input").addEventListener("input", debounce(() => applyFilters(), 300));
 
             document.getElementById("stage-filter").value = "";

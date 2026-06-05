@@ -3877,7 +3877,8 @@
                             var st = rowData.status || '';
                             
                             // Determine permissions (special: Jasmine, Ritu mam, Joy sir can delete/edit any task)
-                            var canEdit = isAdmin || canDeleteAnyTask || assignorId === currentUserId;
+                            // Both the assignor (creator) and the assignee can edit an assigned task.
+                            var canEdit = isAdmin || canDeleteAnyTask || assignorId === currentUserId || currentUserIsAssigneeOnTask(rowData);
                             var canDelete = canDeleteAnyTask || assignorId === currentUserId;
                             var canView = isAdmin || assignorId === currentUserId || currentUserIsAssigneeOnTask(rowData);
                             var canReworkQuick = (isAdmin || canDeleteAnyTask || assignorId === currentUserId) && st !== 'Rework' && st !== 'Archived';

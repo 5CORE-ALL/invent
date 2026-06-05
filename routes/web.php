@@ -2788,6 +2788,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         // supplier email
         Route::get('/rfq-form/suppliers/search', 'searchSuppliers')->name('rfq-form.suppliers.search');
         Route::post('/rfq-form/send-email', 'sendEmailToSuppliers')->name('rfq-form.send-email');
+
+        // linked skus
+        Route::get('/rfq-form/skus/search', 'searchSkus')->name('rfq-form.skus.search');
+        Route::post('/rfq-form/{id}/linked-skus', 'updateLinkedSkus')->name('rfq-form.linked-skus.update');
     });
 
     // Sourcingƒvies
@@ -3851,6 +3855,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::delete('/supplier/delete/{id}', [SupplierController::class, 'deleteSupplier'])->name('supplier.delete');
     Route::post('/forecast-analysis/link-supplier-parent', [\App\Http\Controllers\ProductMaster\ForecastAnalysisController::class, 'linkSupplierToParent'])->name('forecast.link-supplier-parent');
     Route::post('/supplier/import', [SupplierController::class, 'bulkImport'])->name('supplier.import');
+    Route::get('/supplier/export', [SupplierController::class, 'exportSuppliers'])->name('supplier.export');
     Route::post('/supplier-rating', [SupplierController::class, 'storeRating'])->name('supplier.rating.save');
 
     // Catategory routes
@@ -3979,6 +3984,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/to-order-analysis/data', 'getToOrderAnalysis')->name('to.order.analysis.data');
         Route::post('/update-link', 'updateLink')->name('update.rfq.link');
         Route::post('/to-order-analysis/bulk-update-supplier', 'bulkUpdateSupplier')->name('to.order.analysis.bulk.supplier');
+        Route::post('/to-order-analysis/import-supplier', 'importSupplier')->name('to.order.analysis.import.supplier');
+        Route::get('/to-order-analysis/import-supplier/sample', 'importSupplierSample')->name('to.order.analysis.import.supplier.sample');
+        Route::get('/to-order-analysis/suppliers-by-category', 'suppliersByCategory')->name('to.order.analysis.suppliers.by.category');
+        Route::get('/to-order-analysis/qc-issues', 'qcIssuesForSku')->name('to.order.analysis.qc.issues');
         Route::post('/to-order-analysis/bulk-update-exec', 'bulkUpdateExec')->name('to.order.analysis.bulk.exec');
         Route::post('/mfrg-progresses/insert', 'storeMFRG')->name('mfrg.progresses.insert');
         Route::post('/save-to-order-review', 'storeToOrderReview')->name('save.to_order_review');

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
+use App\Models\ProductMaster;
 use App\Models\RfqForm;
 use App\Models\RfqSubmission;
 use App\Models\Supplier;
@@ -11,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 
 class RFQController extends Controller
 {
@@ -32,6 +34,9 @@ class RFQController extends Controller
             'dimension_inner',
             'product_dimension',
             'package_dimension',
+            'linked_skus',
+            'created_by',
+            'updated_by',
             'created_at',
             'updated_at'
             
@@ -62,6 +67,8 @@ class RFQController extends Controller
             return $field;
         })->toArray();
 
+        $userName = Auth::user()->name ?? 'System';
+
         RfqForm::create([
             'name' => $request->rfq_form_name,
             'title' => $request->title,
@@ -72,6 +79,8 @@ class RFQController extends Controller
             'dimension_inner' => $request->dimension_inner,
             'product_dimension' => $request->product_dimension,
             'package_dimension' => $request->package_dimension,
+            'created_by' => $userName,
+            'updated_by' => $userName,
         ]);
 
         return redirect()->back()->with('flash_message', 'RFQ Form created successfully!');
@@ -114,6 +123,7 @@ class RFQController extends Controller
             'dimension_inner' => $request->dimension_inner,
             'product_dimension' => $request->product_dimension,
             'package_dimension' => $request->package_dimension,
+            'updated_by' => Auth::user()->name ?? 'System',
         ]);
 
         return response()->json([
@@ -151,6 +161,84 @@ class RFQController extends Controller
         return response()->json([
             'data' => $submissions
         ]);
+    }
+
+    public function searchSkus(Request $request)
+    {
+        try {
+            $search = $request->get('q', '');
+            $page = (int) $request->get('page', 1);
+            $perPage = 30;
+
+            $query = ProductMaster::select('sku', 'parent');
+
+            if (!empty($search)) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('sku', 'like', "%{$search}%")
+                      ->orWhere('parent', 'like', "%{$search}%");
+                });
+            }
+
+            $total = $query->count();
+            $products = $query->skip(($page - 1) * $perPage)
+                              ->take($perPage)
+                              ->get();
+
+            $items = $products->map(function ($product) {
+                return [
+                    'id' => $product->sku,
+                    'text' => $product->sku . ($product->parent ? ' - ' . $product->parent : ''),
+                    'parent' => $product->parent,
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'items' => $items,
+                'has_more' => ($page * $perPage) < $total,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error in searchSkus: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error searching SKUs',
+                'items' => [],
+                'has_more' => false,
+            ], 500);
+        }
+    }
+
+    public function updateLinkedSkus(Request $request, $id)
+    {
+        try {
+            $request->validate([
+                'linked_skus' => 'nullable|array',
+                'linked_skus.*' => 'string',
+            ]);
+
+            $form = RfqForm::findOrFail($id);
+
+            $skus = array_values(array_unique(array_filter(
+                array_map('trim', $request->input('linked_skus', []))
+            )));
+
+            $form->update([
+                'linked_skus' => $skus,
+                'updated_by' => Auth::user()->name ?? 'System',
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Linked SKUs updated successfully!',
+                'linked_skus' => $skus,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error in updateLinkedSkus: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update linked SKUs',
+            ], 500);
+        }
     }
 
     public function searchSuppliers(Request $request)

@@ -2270,6 +2270,47 @@
                     }
                 },
                 {
+                    title: "C link",
+                    field: "Clink",
+                    hozAlign: "center",
+                    headerSort: false,
+                    headerTooltip: "Comparison link (click cell to edit)",
+                    editor: "input",
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return !(d.is_parent || d.isParent);
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        const url = String(cell.getValue() || '').trim();
+                        if (!url) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;cursor:text;">-</span>';
+                        }
+                        return `<div style="display:flex;align-items:center;justify-content:center;">
+                            <a href="${url}" target="_blank" rel="noopener noreferrer"
+                                class="btn btn-sm btn-outline-primary py-0 px-2" title="Open link" aria-label="Open link">
+                                <i class="mdi mdi-link"></i>
+                            </a>
+                        </div>`;
+                    },
+                    cellEdited: function(cell) {
+                        const row = cell.getRow();
+                        const d = row.getData();
+                        if (d.is_parent || d.isParent) return;
+                        const sku = String(d.SKU || '').trim();
+                        const parent = String(d.Parent || '').trim();
+                        const value = String(cell.getValue() || '').trim();
+                        if (!sku) return;
+                        updateForecastField(
+                            { sku: sku, parent: parent, column: 'Clink', value: value },
+                            function() { row.update({ Clink: value }, true); }
+                        );
+                    }
+                },
+                {
                     title: "RFQ",
                     field: "rfq_form_link",
                     hozAlign: "center",

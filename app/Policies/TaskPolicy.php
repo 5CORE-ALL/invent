@@ -154,8 +154,8 @@ class TaskPolicy
             return true;
         }
 
-        // User can update only if they are the assignor (task creator) - old table uses emails
-        return $task->assignor === $user->email;
+        // Both the assignor (task creator) and the assignee can edit an assigned task.
+        return $task->assignor === $user->email || $this->userIsAssignee($user, $task);
     }
 
     /**

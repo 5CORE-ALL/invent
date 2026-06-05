@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ToOrderAnalysisController extends Controller
 {
@@ -289,14 +290,51 @@ class ToOrderAnalysisController extends Controller
 
     public function toOrderAnalysisNew(){
         $allSuppliers = Supplier::distinctNamesForListPage()->all();
+        $allCategories = DB::table('categories')
+            ->whereNull('deleted_at')
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->orderBy('name')
+            ->pluck('name')
+            ->unique()
+            ->values()
+            ->all();
+        // Category id+name list for the "Add Supplier" modal (mirrors the supplier list page).
+        $categories = \App\Models\Category::orderBy('name')->get(['id', 'name']);
         $execService = app(PurchasePageExecService::class);
 
         return view('purchase-master.to-order-analysis', [
             'allSuppliers' => $allSuppliers,
+            'allCategories' => $allCategories,
+            'categories' => $categories,
             'execOptions' => $execService->getOptions(),
             'pageExec' => $execService->getAssignment('to_order') ?? '',
             'execCanEdit' => PurchasePageExecService::userCanEdit(),
         ]);
+    }
+
+    /**
+     * Map of normalized supplier name => category name, derived from the suppliers
+     * table joined to the categories table. Used to attach a Category to each
+     * To Order Analysis row based on its supplier.
+     *
+     * @return array<string, string>
+     */
+    private function supplierCategoryMap(): array
+    {
+        $categoryById = DB::table('categories')->pluck('name', 'id');
+        $map = [];
+        foreach (DB::table('suppliers')->select('name', 'category_id')->get() as $sup) {
+            $name = strtoupper(trim((string) ($sup->name ?? '')));
+            if ($name === '' || empty($sup->category_id)) {
+                continue;
+            }
+            $catName = $categoryById[$sup->category_id] ?? null;
+            if ($catName && !isset($map[$name])) {
+                $map[$name] = (string) $catName;
+            }
+        }
+        return $map;
     }
 
     public function getToOrderAnalysis()
@@ -366,9 +404,32 @@ class ToOrderAnalysisController extends Controller
             $movementMap = DB::table('movement_analysis')->get()->keyBy(fn($item) => strtoupper(trim($item->sku ?? '')));
             $qcIssuesBySku = $this->buildQcPackingIssuesBySku($allSkus);
 
+            // RFQ forms linked to each SKU (from /rfq-form/list "Linked SKU" data)
+            $rfqFormsBySku = [];
+            foreach (\App\Models\RfqForm::select('name', 'slug', 'linked_skus')->whereNotNull('linked_skus')->get() as $rfqForm) {
+                $linked = $rfqForm->linked_skus;
+                if (is_string($linked)) {
+                    $linked = json_decode($linked, true) ?: [];
+                }
+                if (!is_array($linked)) {
+                    continue;
+                }
+                foreach ($linked as $linkedSku) {
+                    $norm = strtoupper(trim((string) $linkedSku));
+                    if ($norm === '') {
+                        continue;
+                    }
+                    $rfqFormsBySku[$norm][] = [
+                        'name' => $rfqForm->name,
+                        'slug' => $rfqForm->slug,
+                    ];
+                }
+            }
+
             $processedData = [];
             $execService = app(PurchasePageExecService::class);
             $pageExec = $execService->getAssignment('to_order') ?? '';
+            $supplierCategoryMap = $this->supplierCategoryMap();
 
             foreach ($allSkus as $sheetSku) {
                 if ($sheetSku === '') {
@@ -494,6 +555,7 @@ class ToOrderAnalysisController extends Controller
                     'Clink'           => ($forecast ? ($forecast->clink ?? '') : ''),
                     // Use stored supplier; only fallback to parent lookup when never set (null). Empty = user chose "Select" so keep blank.
                     'Supplier'        => $toOrder->supplier_name !== null ? (string) $toOrder->supplier_name : ($supplierName ?? ''),
+                    'Category'        => $supplierCategoryMap[strtoupper(trim((string) ($toOrder->supplier_name !== null ? $toOrder->supplier_name : ($supplierName ?? ''))))] ?? '',
                     'Exec'            => isset($toOrder->exec) && $toOrder->exec !== null ? (string) $toOrder->exec : '',
                     'msl'             => $mslValue,
                     's_msl'           => $sMsl,
@@ -501,6 +563,7 @@ class ToOrderAnalysisController extends Controller
                     'rating'          => $rr['rating'],
                     'reviews'         => $rr['reviews'],
                     'RFQ Form Link'   => $toOrder->rfq_form_link ?? '',
+                    'rfq_linked_forms' => $rfqFormsBySku[$sheetSku] ?? [],
                     'sheet_link'      => $toOrder->sheet_link ?? '',
                     'Rfq Report Link' => $toOrder->rfq_report_link ?? '',
                     'stage'           => strtolower(trim((string) ($faItem->stage ?? ($forecast?->stage ?? '')))),
@@ -780,6 +843,11 @@ class ToOrderAnalysisController extends Controller
             return response()->json(['success' => false, 'message' => 'Invalid column']);
         }
 
+        // DOA (Date of Approval) may only be edited by the president account.
+        if ($column === 'Date of Appr' && strtolower((string) (auth()->user()->email ?? '')) !== 'president@5core.com') {
+            return response()->json(['success' => false, 'message' => 'You are not allowed to edit DOA'], 403);
+        }
+
         if ($column === 'Reviews') {
             $parent = trim((string) $request->input('parent', ''));
             $note = $value === null ? '' : (string) $value;
@@ -975,6 +1043,191 @@ class ToOrderAnalysisController extends Controller
         }
     }
 
+    /**
+     * Return all suppliers that belong to a given category name (JSON).
+     * Used by the "view suppliers in this category" magnifier on the
+     * To Order Analysis Supplier column.
+     */
+    public function suppliersByCategory(Request $request)
+    {
+        $categoryName = trim((string) $request->input('category', ''));
+        if ($categoryName === '') {
+            return response()->json(['success' => true, 'category' => '', 'suppliers' => []]);
+        }
+
+        $category = \App\Models\Category::whereRaw('TRIM(LOWER(name)) = ?', [strtolower($categoryName)])->first();
+        if (!$category) {
+            return response()->json(['success' => true, 'category' => $categoryName, 'suppliers' => []]);
+        }
+
+        // category_id is stored as a comma-separated list of ids on the supplier row.
+        $suppliers = DB::table('suppliers')
+            ->whereRaw('FIND_IN_SET(?, REPLACE(category_id, " ", ""))', [$category->id])
+            ->orderBy('name')
+            ->get(['name', 'company', 'phone', 'email', 'whatsapp', 'city', 'approval_status']);
+
+        return response()->json([
+            'success' => true,
+            'category' => $categoryName,
+            'suppliers' => $suppliers,
+        ]);
+    }
+
+    /**
+     * Import supplier assignments from an Excel/CSV file.
+     * Expected columns (header row, case-insensitive): "SKU", "Supplier" and an
+     * optional "Category". For each row, sets supplier_name on the matching
+     * to_order_analysis record (creating the record when the SKU does not exist).
+     * When a Category is given (and matches an existing category by name), the
+     * supplier's category is updated so the derived Category column reflects it.
+     */
+    public function importSupplier(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:xlsx,xls,csv,txt|max:10240',
+        ]);
+
+        try {
+            $spreadsheet = IOFactory::load($request->file('file')->getPathName());
+            $rows = $spreadsheet->getActiveSheet()->toArray(null, true, false, false);
+        } catch (\Throwable $e) {
+            Log::error('ToOrderAnalysis importSupplier read failed', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Could not read the file: ' . $e->getMessage()], 422);
+        }
+
+        if (empty($rows)) {
+            return response()->json(['success' => false, 'message' => 'The file is empty'], 422);
+        }
+
+        // Locate the SKU, Supplier and (optional) Category columns from the header row.
+        $header = array_map(fn($h) => strtolower(trim((string) $h)), $rows[0]);
+        $skuIdx = null;
+        $supplierIdx = null;
+        $categoryIdx = null;
+        foreach ($header as $idx => $name) {
+            if ($skuIdx === null && $name === 'sku') {
+                $skuIdx = $idx;
+            }
+            if ($supplierIdx === null && in_array($name, ['supplier', 'supplier name', 'supplier_name'], true)) {
+                $supplierIdx = $idx;
+            }
+            if ($categoryIdx === null && in_array($name, ['category', 'category name', 'category_name'], true)) {
+                $categoryIdx = $idx;
+            }
+        }
+
+        if ($skuIdx === null || $supplierIdx === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'File must contain "SKU" and "Supplier" column headers.',
+            ], 422);
+        }
+
+        // Existing categories keyed by lowercase name for fast lookup (category is optional).
+        $categoryIdByName = [];
+        foreach (DB::table('categories')->select('id', 'name')->get() as $cat) {
+            $key = strtolower(trim((string) ($cat->name ?? '')));
+            if ($key !== '' && !isset($categoryIdByName[$key])) {
+                $categoryIdByName[$key] = $cat->id;
+            }
+        }
+
+        $updated = 0;
+        $created = 0;
+        $skipped = 0;
+        $categoryUpdated = 0;
+        $categoryUnmatched = [];
+
+        try {
+            foreach (array_slice($rows, 1) as $row) {
+                $sku = trim(strtoupper((string) ($row[$skuIdx] ?? '')));
+                $supplier = trim((string) ($row[$supplierIdx] ?? ''));
+                $category = $categoryIdx !== null ? trim((string) ($row[$categoryIdx] ?? '')) : '';
+
+                if ($sku === '') {
+                    $skipped++;
+                    continue;
+                }
+
+                $n = (int) ToOrderAnalysis::query()
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$sku])
+                    ->update(['supplier_name' => $supplier]);
+
+                if ($n > 0) {
+                    $updated += $n;
+                } else {
+                    ToOrderAnalysis::create([
+                        'sku' => $sku,
+                        'supplier_name' => $supplier,
+                    ]);
+                    $created++;
+                }
+
+                // Apply category to the supplier record so the derived Category column updates.
+                if ($category !== '' && $supplier !== '') {
+                    $catId = $categoryIdByName[strtolower($category)] ?? null;
+                    if ($catId !== null) {
+                        $cn = (int) DB::table('suppliers')
+                            ->whereRaw('TRIM(UPPER(name)) = ?', [strtoupper($supplier)])
+                            ->update(['category_id' => $catId]);
+                        if ($cn > 0) {
+                            $categoryUpdated += $cn;
+                        }
+                    } elseif (!in_array($category, $categoryUnmatched, true)) {
+                        $categoryUnmatched[] = $category;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::error('ToOrderAnalysis importSupplier failed', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        $msg = "Import complete: {$updated} updated, {$created} created";
+        if ($categoryUpdated > 0) {
+            $msg .= ", {$categoryUpdated} supplier category link(s) updated";
+        }
+        if ($skipped > 0) {
+            $msg .= ", {$skipped} skipped (no SKU)";
+        }
+        if (!empty($categoryUnmatched)) {
+            $msg .= '. Unknown categories ignored: ' . implode(', ', array_slice($categoryUnmatched, 0, 10));
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $msg . '.',
+            'updated' => $updated,
+            'created' => $created,
+            'skipped' => $skipped,
+            'category_updated' => $categoryUpdated,
+        ]);
+    }
+
+    /**
+     * Download a sample CSV template for the supplier import.
+     */
+    public function importSupplierSample()
+    {
+        $rows = [
+            ['SKU', 'Supplier', 'Category'],
+            ['ABC-123', 'Acme Co', 'Electronics'],
+            ['XYZ-9', 'Globex', 'Drum Stool'],
+        ];
+
+        $callback = function () use ($rows) {
+            $handle = fopen('php://output', 'w');
+            foreach ($rows as $row) {
+                fputcsv($handle, $row);
+            }
+            fclose($handle);
+        };
+
+        return response()->streamDownload($callback, 'supplier-import-sample.csv', [
+            'Content-Type' => 'text/csv',
+        ]);
+    }
+
     public function bulkUpdateExec(Request $request)
     {
         $skus = $request->input('skus', []);
@@ -1129,6 +1382,41 @@ class ToOrderAnalysisController extends Controller
      * @param array<int, string> $skus
      * @return array<string, string>
      */
+    /**
+     * Return QC & Packing issues (and their history) for a single SKU as JSON.
+     * Powers the "Improvement Required" modal on the To Order Analysis page.
+     * Source data is the same as /customer-care/qc-and-packing.
+     */
+    public function qcIssuesForSku(Request $request)
+    {
+        $sku = strtoupper(trim((string) $request->input('sku', '')));
+        if ($sku === '') {
+            return response()->json(['success' => true, 'sku' => '', 'issues' => [], 'history' => []]);
+        }
+
+        $cols = ['id', 'sku', 'what_happened', 'issue', 'issue_remark', 'c_action_1', 'c_action_1_remark', 'created_by', 'created_at'];
+
+        $issues = DB::table('qc_and_packing_issues')
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [$sku])
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->orderByDesc('id')
+            ->get($cols);
+
+        $history = DB::table('qc_and_packing_issue_histories')
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [$sku])
+            ->orderByDesc('id')
+            ->get(['id', 'sku', 'event_type', 'revision_no', 'what_happened', 'issue', 'issue_remark', 'c_action_1', 'c_action_1_remark', 'created_by', 'logged_at', 'created_at']);
+
+        return response()->json([
+            'success' => true,
+            'sku' => $sku,
+            'issues' => $issues,
+            'history' => $history,
+        ]);
+    }
+
     private function buildQcPackingIssuesBySku(array $skus): array
     {
         $normalized = array_values(array_unique(array_filter(array_map(

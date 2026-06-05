@@ -305,6 +305,75 @@
     </div>
 </div>
 
+{{-- Linked SKU Modal --}}
+<div class="modal fade" id="linkedSkusModal" tabindex="-1" aria-labelledby="linkedSkusModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered shadow-none">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold" id="linkedSkusModalLabel">
+                    <i class="fa-solid fa-tags me-2"></i> Linked SKUs
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="linked_skus_form_id">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Form Name:</label>
+                    <p id="linked_skus_form_name" class="text-muted mb-0"></p>
+                </div>
+
+                <div class="mb-3 position-relative">
+                    <label for="sku_search" class="form-label">Search SKU <span class="text-danger">*</span></label>
+                    <input type="text" id="sku_search" class="form-control" placeholder="Type to search by SKU or parent...">
+                    <small class="text-muted">Start typing to search and select multiple SKUs</small>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Selected SKUs</label>
+                    <div id="selectedSkusList" class="border rounded p-3" style="min-height: 80px; max-height: 220px; overflow-y: auto;">
+                        <p class="text-muted text-center mb-0">No SKUs selected</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="saveLinkedSkusBtn">
+                    <i class="fa-solid fa-floppy-disk me-1"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- History Modal --}}
+<div class="modal fade" id="rfqHistoryModal" tabindex="-1" aria-labelledby="rfqHistoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered shadow-none">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title fw-bold" id="rfqHistoryModalLabel">
+                    <i class="fa-solid fa-clock-rotate-left me-2"></i> RFQ Form History
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <h6 class="fw-bold mb-3" id="rfqHistoryFormName"></h6>
+                <div class="table-responsive">
+                    <table class="table table-bordered align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Action</th>
+                                <th>User</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rfqHistoryBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 @endsection
 @section('script')
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
@@ -336,6 +405,45 @@
         });
     }
 
+    // Format a date string as "1 APR 26" (or "1 APR" when withYear is false)
+    function formatRfqDate(value, withYear = true) {
+        if (!value) return '';
+        const d = new Date(String(value).replace(' ', 'T'));
+        if (isNaN(d.getTime())) return '';
+        const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+        let out = d.getDate() + ' ' + months[d.getMonth()];
+        if (withYear) out += ' ' + String(d.getFullYear()).slice(-2);
+        return out;
+    }
+
+    // Show the created/updated history for an RFQ form in a modal
+    function showRfqHistory(data) {
+        document.getElementById('rfqHistoryFormName').textContent = data.name || '';
+
+        const rows = [
+            {
+                action: 'Created',
+                user: data.created_by || '-',
+                date: formatRfqDate(data.created_at) || '-'
+            },
+            {
+                action: 'Last Updated',
+                user: data.updated_by || '-',
+                date: formatRfqDate(data.updated_at) || '-'
+            }
+        ];
+
+        document.getElementById('rfqHistoryBody').innerHTML = rows.map(r => `
+            <tr>
+                <td><span class="badge bg-light text-dark">${r.action}</span></td>
+                <td>${r.user}</td>
+                <td class="fw-semibold">${r.date}</td>
+            </tr>
+        `).join('');
+
+        new bootstrap.Modal(document.getElementById('rfqHistoryModal')).show();
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
 
         const table = new Tabulator("#rfq-form-table", {
@@ -355,6 +463,40 @@
                     formatter: function(cell){
                         let value = cell.getValue();
                         return value;
+                    }
+                },
+                {
+                    title: "Linked SKU",
+                    field: "linked_skus",
+                    width: 220,
+                    headerSort: false,
+                    formatter: function(cell){
+                        const data = cell.getData();
+                        let skus = data.linked_skus || [];
+                        if(typeof skus === 'string'){
+                            try { skus = JSON.parse(skus) || []; } catch(e){ skus = []; }
+                        }
+                        if(!Array.isArray(skus)) skus = [];
+
+                        const badges = skus.length
+                            ? skus.map(s => `<span class="badge bg-info-subtle text-dark border me-1 mb-1">${s}</span>`).join('')
+                            : '<span class="text-muted fst-italic">No SKUs</span>';
+
+                        return `
+                            <div class="d-flex flex-column align-items-start py-1">
+                                <div class="mb-1" style="line-height:1.6;">${badges}</div>
+                                <button class="btn btn-sm btn-outline-primary manage-skus-btn" data-id="${data.id}" title="Add SKU" style="cursor:pointer; padding:2px 8px;">
+                                    <i class="fa-solid fa-plus"></i>
+                                </button>
+                            </div>
+                        `;
+                    },
+                    cellClick: function(e, cell){
+                        if(e.target.closest('.manage-skus-btn')){
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openLinkedSkusModal(cell.getData());
+                        }
                     }
                 },
                 {
@@ -401,19 +543,32 @@
                     }
                 },
                 {
-                    title: "Created Date",
-                    field: "created_at",
-                    formatter: function(cell){
-                        let value = cell.getValue();
-                        return value ? moment(value).format('YYYY-MM-DD') : '';
-                    }
-                },
-                {
-                    title: "Updated Date",
+                    title: "Created / Updated",
                     field: "updated_at",
+                    hozAlign: "center",
                     formatter: function(cell){
-                        let value = cell.getValue();
-                        return value ? moment(value).format('YYYY-MM-DD') : '';
+                        const d = cell.getData();
+                        const updatedDate = formatRfqDate(d.updated_at, false);
+                        const updatedBy = d.updated_by || '-';
+
+                        return `
+                            <div class="d-flex align-items-center justify-content-center gap-2 py-1" style="font-size:11px;">
+                                <div class="d-flex flex-column align-items-start lh-sm">
+                                    <span class="fw-semibold">${updatedDate || '-'}</span>
+                                    <span class="text-muted">${updatedBy}</span>
+                                </div>
+                                <button class="btn btn-sm btn-outline-secondary history-btn" data-id="${d.id}" title="View History" style="cursor:pointer; padding:2px 8px;">
+                                    <i class="fa-solid fa-clock-rotate-left"></i>
+                                </button>
+                            </div>
+                        `;
+                    },
+                    cellClick: function(e, cell){
+                        if(e.target.closest('.history-btn')){
+                            e.preventDefault();
+                            e.stopPropagation();
+                            showRfqHistory(cell.getData());
+                        }
                     }
                 },
                 {
@@ -430,7 +585,7 @@
                                 <button class="btn btn-sm btn-success me-2 edit-btn" data-id="${rowData.id}" title="Edit" style="cursor:pointer;">
                                     <i class="fa-solid fa-pen-to-square"></i>
                                 </button>
-                                <button class="btn btn-sm btn-info me-2 copy-btn" data-id="${rowData.id}" title="Copy" style="cursor:pointer;">
+                                <button class="btn btn-sm btn-warning me-2 copy-btn" data-id="${rowData.id}" title="Duplicate Form" style="cursor:pointer;">
                                     <i class="fa-solid fa-copy"></i>
                                 </button>
                                 <button class="btn btn-sm btn-primary me-2 send-email-btn" data-id="${rowData.id}" data-slug="${rowData.slug}" data-name="${rowData.name}" title="Send to Supplier" style="cursor:pointer;">
@@ -1067,6 +1222,145 @@
                 }
             })
             .catch(() => alert("Error updating form"));
+        });
+
+        // ===== Linked SKUs management =====
+        let selectedSkus = [];
+        let skuSearchTimeout;
+
+        window.openLinkedSkusModal = function(data){
+            document.getElementById('linked_skus_form_id').value = data.id;
+            document.getElementById('linked_skus_form_name').textContent = data.name || '';
+
+            let skus = data.linked_skus || [];
+            if(typeof skus === 'string'){
+                try { skus = JSON.parse(skus) || []; } catch(e){ skus = []; }
+            }
+            if(!Array.isArray(skus)) skus = [];
+            selectedSkus = skus.slice();
+
+            document.getElementById('sku_search').value = '';
+            renderSelectedSkus();
+            hideSkuDropdown();
+
+            new bootstrap.Modal(document.getElementById('linkedSkusModal')).show();
+        };
+
+        function renderSelectedSkus(){
+            const list = document.getElementById('selectedSkusList');
+            if(!selectedSkus.length){
+                list.innerHTML = '<p class="text-muted text-center mb-0">No SKUs selected</p>';
+                return;
+            }
+            list.innerHTML = selectedSkus.map(sku => `
+                <span class="badge bg-primary-subtle text-dark border d-inline-flex align-items-center me-1 mb-1 p-2">
+                    ${sku}
+                    <button type="button" class="btn-close ms-2" style="font-size:.6rem;" data-sku="${sku}" aria-label="Remove"></button>
+                </span>
+            `).join('');
+        }
+
+        document.getElementById('selectedSkusList').addEventListener('click', function(e){
+            const btn = e.target.closest('[data-sku]');
+            if(btn){
+                const sku = btn.getAttribute('data-sku');
+                selectedSkus = selectedSkus.filter(s => s !== sku);
+                renderSelectedSkus();
+            }
+        });
+
+        document.getElementById('sku_search').addEventListener('input', function(e){
+            const term = e.target.value.trim();
+            if(term.length < 1){ hideSkuDropdown(); return; }
+            clearTimeout(skuSearchTimeout);
+            skuSearchTimeout = setTimeout(() => {
+                fetch(`{{ url('/rfq-form/skus/search') }}?q=${encodeURIComponent(term)}`, {
+                    headers: { 'Accept':'application/json', 'X-Requested-With':'XMLHttpRequest' }
+                })
+                .then(r => r.json())
+                .then(res => {
+                    if(res.items && res.items.length){ showSkuDropdown(res.items); }
+                    else { hideSkuDropdown(); }
+                })
+                .catch(() => hideSkuDropdown());
+            }, 300);
+        });
+
+        function showSkuDropdown(items){
+            hideSkuDropdown();
+            const dropdown = document.createElement('div');
+            dropdown.id = 'skuDropdown';
+            dropdown.className = 'list-group position-absolute w-100';
+            dropdown.style.cssText = 'z-index:1060; max-height:220px; overflow-y:auto; border:1px solid #ddd; border-radius:4px;';
+
+            let added = 0;
+            items.forEach(item => {
+                if(selectedSkus.includes(item.id)) return;
+                added++;
+                const a = document.createElement('a');
+                a.href = '#';
+                a.className = 'list-group-item list-group-item-action';
+                a.textContent = item.text;
+                a.addEventListener('click', function(ev){
+                    ev.preventDefault();
+                    if(!selectedSkus.includes(item.id)){
+                        selectedSkus.push(item.id);
+                        renderSelectedSkus();
+                    }
+                    document.getElementById('sku_search').value = '';
+                    hideSkuDropdown();
+                });
+                dropdown.appendChild(a);
+            });
+
+            if(added === 0) return;
+
+            const wrapper = document.getElementById('sku_search').parentElement;
+            wrapper.appendChild(dropdown);
+        }
+
+        function hideSkuDropdown(){
+            const d = document.getElementById('skuDropdown');
+            if(d) d.remove();
+        }
+
+        document.addEventListener('click', function(e){
+            if(!e.target.closest('#sku_search') && !e.target.closest('#skuDropdown')){
+                hideSkuDropdown();
+            }
+        });
+
+        document.getElementById('saveLinkedSkusBtn').addEventListener('click', function(){
+            const id = document.getElementById('linked_skus_form_id').value;
+            const btn = this;
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Saving...';
+
+            const formData = new FormData();
+            if(selectedSkus.length === 0){
+                formData.append('linked_skus', '');
+            }
+            selectedSkus.forEach(sku => formData.append('linked_skus[]', sku));
+
+            fetch(`/rfq-form/${id}/linked-skus`, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept':'application/json' }
+            })
+            .then(r => r.json())
+            .then(res => {
+                if(res.success){
+                    const row = table.getRow(id);
+                    if(row){ row.update({ linked_skus: res.linked_skus }); }
+                    showToast('success', 'Linked SKUs updated successfully!');
+                    bootstrap.Modal.getInstance(document.getElementById('linkedSkusModal')).hide();
+                } else {
+                    alert('Failed: ' + (res.message || 'Unknown error'));
+                }
+            })
+            .catch(() => alert('Error saving linked SKUs'))
+            .finally(() => { btn.disabled = false; btn.innerHTML = original; });
         });
 
     });
