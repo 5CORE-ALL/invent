@@ -420,9 +420,8 @@
                             style="width: auto; display: inline-block;">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
-                            <option value="0-2">0-2%</option>
-                            <option value="2-4">2-4%</option>
-                            <option value="4-7">4-7%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
                             <option value="7-13">7-13%</option>
                             <option value="13plus">13%+</option>
                         </select>
@@ -435,8 +434,7 @@
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
                         <option value="125-175">125–175%</option>
-                        <option value="175-250">175–250%</option>
-                        <option value="gt250">&gt; 250%</option>
+                        <option value="gt175">175+%</option>
                     </select>
 
                     <select id="cvr-trend-filter" class="form-select form-select-sm pricing-filter-item"
@@ -3326,6 +3324,7 @@
                     {
                         title: "CVR 60",
                         field: "CVR_60",
+                        visible: false,
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
@@ -3339,6 +3338,7 @@
                     {
                         title: "CVR 45",
                         field: "CVR_45",
+                        visible: false,
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
@@ -3476,6 +3476,7 @@
                     {
                         title: "E L60",
                         field: "eBay L60",
+                        visible: false,
                         hozAlign: "center",
                         width: 50,
                         sorter: "number",
@@ -3488,6 +3489,7 @@
                     {
                         title: "E L45",
                         field: "eBay L45",
+                        visible: false,
                         hozAlign: "center",
                         width: 50,
                         sorter: "number",
@@ -4043,6 +4045,7 @@
                     {
                         title: "S GPFT",
                         field: "SGPFT",
+                        visible: false,
                         hozAlign: "center",
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -4065,6 +4068,7 @@
                     {
                         title: "S PFT",
                         field: "SPFT",
+                        visible: false,
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
@@ -5557,7 +5561,7 @@
                     table.addFilter(function(data) {
                         const roiVal = parseFloat(data['ROI%']) || 0;
                         if (roiFilter === 'lt40') return roiVal < 40;
-                        if (roiFilter === 'gt250') return roiVal > 250;
+                        if (roiFilter === 'gt175') return roiVal >= 175;
                         const [min, max] = roiFilter.split('-').map(Number);
                         return roiVal >= min && roiVal <= max;
                     });
@@ -5577,9 +5581,8 @@
                         const cvrRounded = Math.round(cvr * 100) / 100;
 
                         if (cvrFilter === '0-0') return cvrRounded === 0;
-                        if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                        if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                        if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                        if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                        if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                         if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                         if (cvrFilter === '13plus') return cvrRounded > 13;
                         return true;
@@ -6388,9 +6391,9 @@
             // Define column groups for each section
             // Columns that are ONLY in pricing section (will be hidden when KW Ads is selected)
             var pricingOnlyColumns = [
-                'image_path', 'Missing', 'eBay Stock', 'MAP', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
+                'image_path', 'Missing', 'eBay Stock', 'MAP', 'nr_req', 'SCVR',
                 'GPFT%', 'AD%', 'PFT %', 'ROI%',
-                'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SGROI', 'SROI'
+                'lmp_price', 'SPRICE', '_accept', 'SGROI', 'SROI'
             ];
             // Columns that are ONLY in KW Ads section (will be hidden in pricing view)
             var kwAdsOnlyColumns = [
@@ -6407,9 +6410,17 @@
             ];
             // Columns shared between sections (shown in both pricing and KW Ads)
             var sharedColumns = [
-                '_select', 'INV', 'L30', 'E Dil%', 'eBay Price', 'eBay L60', 'eBay L45', 'eBay L30',
+                '_select', 'INV', 'L30', 'E Dil%', 'eBay Price', 'eBay L30',
                 'growth_percent', 'views'
             ];
+
+            // Columns that should ALWAYS stay hidden, regardless of section or saved state.
+            var alwaysHiddenColumns = ['CVR_60', 'CVR_45', 'eBay L60', 'eBay L45', 'SGPFT', 'SPFT'];
+            function enforceAlwaysHiddenColumns() {
+                alwaysHiddenColumns.forEach(function(col) {
+                    try { table.hideColumn(col); } catch (e) {}
+                });
+            }
 
             // Helper: apply column visibility for a given section
             function applySectionColumnVisibility(sectionVal) {
@@ -6477,6 +6488,7 @@
                         } catch (e) {}
                     });
                 }
+                enforceAlwaysHiddenColumns();
                 table.redraw(true);
             }
 
@@ -6989,6 +7001,7 @@
                                 col.hide();
                             }
                         });
+                        enforceAlwaysHiddenColumns();
                     });
             }
 
