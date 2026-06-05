@@ -236,6 +236,14 @@
                         <option value="gt175">175+%</option>
                     </select>
 
+                    <select id="diff-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">Diff%</option>
+                        <option value="lt80">&lt; 80%</option>
+                        <option value="80-100">80–100%</option>
+                        <option value="gt100">&gt; 100%</option>
+                    </select>
+
                     <select id="cvr-trend-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">CVR trend</option>
@@ -692,6 +700,19 @@
         function escAttr(s) {
             if (s == null) return '';
             return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        // LMP base price + parsed shipping fee from lmp_delivery text (FREE => 0).
+        // Used by the LMP column, Diff column and Diff filter so they all agree.
+        function lmpWithShipping(rowData) {
+            const base = parseFloat(rowData.lmp_price || 0) || 0;
+            if (!base || base <= 0) return base;
+            let shipCost = 0;
+            if (rowData.lmp_delivery) {
+                const m = String(rowData.lmp_delivery).match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
+                if (m) shipCost = parseFloat(m[1].replace(/,/g, '')) || 0;
+            }
+            return base + shipCost;
         }
 
         /** INV vs INV_AMZ counts as Map if diff <= 3 units OR diff <= 3% of Shopify INV (same as saveDailySummaryIfNeeded). */
@@ -3041,7 +3062,7 @@
                             else if (cvr > 7 && cvr <= 13) color = '#28a745'; // green
                             else color = '#e83e8c'; // pink
                             
-                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(cvr)}%</span>`;
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const calcCVR = (row) => {
@@ -3075,7 +3096,7 @@
                             else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
                             else if (cvr > 7 && cvr <= 13) color = '#28a745'; // green
                             else color = '#e83e8c'; // pink
-                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(cvr)}%</span>`;
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const calcCVR = (row) => {
@@ -3138,7 +3159,7 @@
                             else if (cvr > 4 && cvr <= 7) color = '#ffc107';
                             else if (cvr > 7 && cvr <= 13) color = '#28a745';
                             else color = '#e83e8c';
-                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span> ${arrowHtml}`.trim();
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(cvr)}%</span> ${arrowHtml}`.trim();
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const calcCVR = (row) => {
@@ -3666,12 +3687,8 @@
                             // Show lowest price OUTSIDE modal (incl. shipping if applied)
                             if (lmpPrice) {
                                 const base = parseFloat(lmpPrice) || 0;
-                                let shipCost = 0;
-                                if (rowData.lmp_delivery) {
-                                    const m = String(rowData.lmp_delivery).match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
-                                    if (m) shipCost = parseFloat(m[1].replace(/,/g, '')) || 0;
-                                }
-                                const finalPrice = base + shipCost;
+                                const finalPrice = lmpWithShipping(rowData);
+                                const shipCost = finalPrice - base;
                                 const priceFormatted = '$' + finalPrice.toFixed(2);
                                 const currentPrice = parseFloat(rowData.price || 0);
                                 const priceColor = (finalPrice < currentPrice) ? '#dc3545' : '#28a745';
@@ -3701,7 +3718,7 @@
                         headerSortStartingDir: "desc",
                         sorter: function(a, b, aRow, bRow) {
                             const calc = function(rd) {
-                                const lmp = parseFloat(rd.lmp_price || 0);
+                                const lmp = lmpWithShipping(rd);
                                 const price = parseFloat(rd.price || 0);
                                 if (!lmp || lmp <= 0) return -Infinity;
                                 return ((lmp - price) / lmp) * 100;
@@ -3714,14 +3731,14 @@
                             // Empty for parent rows
                             if (rowData.is_parent_summary) return '';
 
-                            const lmp = parseFloat(rowData.lmp_price || 0);
+                            const lmp = lmpWithShipping(rowData);
                             const price = parseFloat(rowData.price || 0);
 
                             if (!lmp || lmp <= 0) {
                                 return '<span style="color: #999;">N/A</span>';
                             }
 
-                            // (LMP - Amazon price) / LMP, as a percentage
+                            // (LMP incl. shipping - Amazon price) / LMP, as a percentage
                             const diff = ((lmp - price) / lmp) * 100;
                             const color = diff < 0 ? '#dc3545' : '#28a745';
 
@@ -4569,6 +4586,7 @@
                 const nrlFilter = $('#nrl-filter').val();
                 const gpftFilter = $('#gpft-filter').val();
                 const roiFilter = $('#roi-filter').val();
+                const diffFilter = $('#diff-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
                 const cvrTrendFilter = $('#cvr-trend-filter').val();
                 const dilFilter = $('#dil-filter').val();
@@ -4658,6 +4676,20 @@
                         if (roiFilter === 'gt175') return roiVal >= 175;
                         const [min, max] = roiFilter.split('-').map(Number);
                         return roiVal >= min && roiVal <= max;
+                    });
+                }
+
+                if (diffFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
+                        const lmp = lmpWithShipping(data);
+                        const price = parseFloat(data.price || 0);
+                        if (!lmp || lmp <= 0) return false;
+                        const diff = ((lmp - price) / lmp) * 100;
+                        if (diffFilter === 'lt80') return diff < 80;
+                        if (diffFilter === '80-100') return diff >= 80 && diff <= 100;
+                        if (diffFilter === 'gt100') return diff > 100;
+                        return true;
                     });
                 }
 
@@ -4890,7 +4922,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #sprice-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #diff-filter, #cvr-filter, #cvr-trend-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #sprice-filter').on('change', function() {
                 applyFilters();
             });
 
