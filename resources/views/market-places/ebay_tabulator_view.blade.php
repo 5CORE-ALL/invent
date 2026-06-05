@@ -788,9 +788,12 @@
                             style="color: black; font-weight: bold;">Views: 0</span>
 
                         <!-- Badge Filters -->
-                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge"
+                        <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter missing SKUs (INV>0)">Missing: 0</span>
+                            title="Click to filter Missing L (INV>0, not listed on eBay, REQ)">Missing L: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="missing-m-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Click to filter Missing M (listed, INV>0, REQ, INV vs eBay Stock mismatch)">Missing M: 0</span>
                     </div>
                 </div>
             </div>
@@ -1373,7 +1376,8 @@
         // Badge filter state variables
         let zeroSoldFilterActive = false;
         let moreSoldFilterActive = false;
-        let missingFilterActive = false;
+        let missingLFilterActive = false;
+        let missingMFilterActive = false;
 
         /**
          * When any narrowing filter/search is on, header "select all" should include every filtered row (all pages).
@@ -1399,7 +1403,7 @@
             } catch (eDil) {
                 /* ignore */ }
             if (dil !== 'all') return true;
-            if (zeroSoldFilterActive || moreSoldFilterActive || missingFilterActive) return true;
+            if (zeroSoldFilterActive || moreSoldFilterActive || missingLFilterActive || missingMFilterActive) return true;
 
             var sec = $('#section-filter').val();
             if (sec === 'kw_ads') {
@@ -1886,8 +1890,17 @@
                 applyFilters();
             });
 
-            $('#missing-count-badge').on('click', function() {
-                missingFilterActive = !missingFilterActive;
+            $('#missing-l-count-badge').on('click', function() {
+                missingLFilterActive = !missingLFilterActive;
+                $(this).toggleClass('bg-secondary', !missingLFilterActive)
+                       .toggleClass('bg-danger', missingLFilterActive);
+                applyFilters();
+            });
+
+            $('#missing-m-count-badge').on('click', function() {
+                missingMFilterActive = !missingMFilterActive;
+                $(this).toggleClass('bg-secondary', !missingMFilterActive)
+                       .toggleClass('bg-danger', missingMFilterActive);
                 applyFilters();
             });
 
@@ -3590,17 +3603,14 @@
                             }
                             const ebayStock = parseFloat(rowData['eBay Stock']) || 0;
                             const inv = parseFloat(rowData['INV']) || 0;
-                            if (inv > 0 && ebayStock === 0) {
-                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${inv})</span>`;
-                            }
-                            if (inv > 0 && ebayStock > 0) {
-                                if (inv === ebayStock) {
+                            if (inv > 0) {
+                                // Mapped (green) when within Amazon-style tolerance (3 units or 3%)
+                                if (ebayInvWithinMapTolerance(inv, ebayStock)) {
                                     return '<span style="color: #28a745; font-weight: bold;">MP</span>';
-                                } else {
-                                    const diff = inv - ebayStock;
-                                    const sign = diff > 0 ? '+' : '';
-                                    return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
                                 }
+                                const diff = inv - ebayStock;
+                                const sign = diff > 0 ? '+' : '';
+                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
                             }
                             return '';
                         }
@@ -5430,12 +5440,63 @@
                 }
             });
 
+            /**
+             * Inventory mapping tolerance — same as amazon-tabulator-view (amazonInvWithinMapTolerance):
+             * mapped (green) when |inv - stock| is within 3 units OR within 3% of INV.
+             */
+            function ebayInvWithinMapTolerance(inv, stock) {
+                const invNum = parseFloat(inv) || 0;
+                const stockNum = parseFloat(stock) || 0;
+                if (invNum <= 0) {
+                    return true;
+                }
+                const diff = Math.abs(invNum - stockNum);
+                if (diff <= 3 + 1e-9) {
+                    return true;
+                }
+                const tolerance = invNum * 0.03;
+                return diff <= tolerance + 1e-9;
+            }
+
+            /**
+             * Missing M (eBay) — same logic as amazon-tabulator-view Missing M (mapping mismatch):
+             * listed (has eBay item_id), REQ (not 'NR'), INV > 0, and INV vs eBay Stock is OUTSIDE the map tolerance.
+             */
+            function isEbayMissingM(data) {
+                var d = data || {};
+                var parent = d['Parent'];
+                if (parent && String(parent).toUpperCase().startsWith('PARENT')) return false;
+                var itemId = d['eBay_item_id'];
+                if (!itemId || itemId === null || itemId === '') return false; // not listed -> handled by Missing L
+                var nr = (d['nr_req'] || '').toString().trim().toUpperCase();
+                if (nr === 'NR') return false;
+                var inv = parseFloat(d['INV'] || 0) || 0;
+                if (inv <= 0) return false;
+                var ebayStock = parseFloat(d['eBay Stock'] || 0) || 0;
+                return !ebayInvWithinMapTolerance(inv, ebayStock);
+            }
+
             /** eBay listing qty: API uses `eBay Stock` (column field); legacy code used `E Stock`. */
             function rowEbayStockQty(data) {
                 var d = data || {};
                 var v = d['eBay Stock'];
                 if (v === undefined || v === null || v === '') v = d['E Stock'];
                 return parseFloat(v || 0) || 0;
+            }
+
+            /**
+             * Missing L (eBay) — same logic as amazon-tabulator-view Missing L:
+             * row is NOT listed (no eBay item_id), NR/REQ is not 'NR', INV > 0, and not a parent row.
+             */
+            function isEbayMissingL(data) {
+                var d = data || {};
+                var parent = d['Parent'];
+                if (parent && String(parent).toUpperCase().startsWith('PARENT')) return false;
+                var itemId = d['eBay_item_id'];
+                var notListed = (!itemId || itemId === null || itemId === '');
+                var nr = (d['nr_req'] || '').toString().trim().toUpperCase();
+                var inv = parseFloat(d['INV'] || 0) || 0;
+                return notListed && nr !== 'NR' && inv > 0;
             }
 
             // Apply filters
@@ -5647,11 +5708,15 @@
                     });
                 }
 
-                if (missingFilterActive) {
+                if (missingLFilterActive) {
                     table.addFilter(function(data) {
-                        const itemId = data['eBay_item_id'];
-                        const estock = rowEbayStockQty(data);
-                        return (!itemId || itemId === null || itemId === '') && estock > 0;
+                        return isEbayMissingL(data);
+                    });
+                }
+
+                if (missingMFilterActive) {
+                    table.addFilter(function(data) {
+                        return isEbayMissingM(data);
                     });
                 }
 
@@ -6839,7 +6904,6 @@
                 let dilCount = 0;
                 let zeroSoldCount = 0;
                 let moreSoldCount = 0;
-                let missingCount = 0;
                 filteredData.forEach(row => {
                     const estock = rowEbayStockQty(row);
                     const ebayL30 = parseFloat(row['eBay L30'] || 0);
@@ -6862,13 +6926,6 @@
                             totalDilPercent += dil;
                             dilCount++;
                         }
-
-                        // Count Missing (only E Stock > 0)
-                        const itemId = row['eBay_item_id'];
-                        if (!itemId || itemId === null || itemId === '') {
-                            missingCount++;
-                        }
-
                     }
                 });
 
@@ -6922,7 +6979,15 @@
                 $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
                 $('#more-sold-count-badge').text('> 0 Sold: ' + moreSoldCount.toLocaleString());
 
-                $('#missing-count-badge').text('Missing: ' + missingCount.toLocaleString());
+                // Missing L (same logic as amazon-tabulator-view): not listed on eBay, REQ, INV > 0.
+                let missingLCount = 0;
+                let missingMCount = 0;
+                allData.forEach(row => {
+                    if (isEbayMissingL(row)) missingLCount++;
+                    if (isEbayMissingM(row)) missingMCount++;
+                });
+                $('#missing-l-count-badge').text('Missing L: ' + missingLCount.toLocaleString());
+                $('#missing-m-count-badge').text('Missing M: ' + missingMCount.toLocaleString());
             }
 
             // Build Column Visibility Dropdown
