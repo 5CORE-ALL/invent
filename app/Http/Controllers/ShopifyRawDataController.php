@@ -131,6 +131,45 @@ class ShopifyRawDataController extends Controller
         ]);
     }
 
+    /**
+     * eBay1 sales from shopify_raw_orders, excluding cancelled orders.
+     * eBay1 = source_name 'eBay' and NOT tagged as the other eBay stores (Ebay 2 / Ebay3).
+     * "Cancelled" excluded via tags and voided/cancelled financial status (no dedicated column exists).
+     * Defaults to the last 30 days (PST) to align with the eBay L30 view.
+     */
+    public function ebay1Sales(Request $request)
+    {
+        $pstTimezone = 'America/Los_Angeles';
+
+        $dateFrom = $request->input('date_from')
+            ? Carbon::parse($request->input('date_from'), $pstTimezone)->startOfDay()
+            : Carbon::now($pstTimezone)->subDays(30)->startOfDay();
+
+        $dateTo = $request->input('date_to')
+            ? Carbon::parse($request->input('date_to'), $pstTimezone)->endOfDay()
+            : Carbon::now($pstTimezone)->endOfDay();
+
+        $query = DB::table('shopify_raw_orders')
+            ->where('order_date', '>=', $dateFrom->toDateString())
+            ->where('order_date', '<=', $dateTo->toDateString())
+            ->where('source_name', 'eBay')
+            ->whereRaw('LOWER(COALESCE(tags,"")) NOT LIKE ?', ['%ebay 2%'])
+            ->whereRaw('LOWER(COALESCE(tags,"")) NOT LIKE ?', ['%ebay3%'])
+            // Exclude cancelled orders
+            ->whereRaw('LOWER(COALESCE(tags,"")) NOT LIKE ?', ['%cancel%'])
+            ->whereRaw('LOWER(COALESCE(financial_status,"")) NOT IN (?, ?)', ['voided', 'cancelled']);
+
+        return response()->json([
+            'sales'     => round((float) (clone $query)->sum('total_amount'), 2),
+            'net_sales' => round((float) (clone $query)->sum('net_sales'), 2),
+            'orders'    => (int) (clone $query)->distinct('order_id')->count('order_id'),
+            'qty'       => (int) (clone $query)->sum('quantity'),
+            'date_from' => $dateFrom->toDateString(),
+            'date_to'   => $dateTo->toDateString(),
+            'status'    => 200,
+        ]);
+    }
+
     public function getStats(Request $request)
     {
         $pstTimezone = 'America/Los_Angeles';

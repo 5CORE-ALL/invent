@@ -767,6 +767,9 @@
                         <!-- Financial Metrics -->
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge"
                             style="color: black; font-weight: bold;">Sales: $0</span>
+                        <span class="badge fs-6 p-2" id="ebay1-shopify-sales-badge"
+                            style="background-color: #0f766e; color: white; font-weight: bold;"
+                            title="eBay1 sales from Shopify raw data (L30, excludes cancelled)">EShp: $0</span>
 
                         <!-- Percentage Metrics -->
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge"
@@ -7076,11 +7079,30 @@
             }
 
             // Wait for table to be built
+            // eBay1 sales (from shopify_raw_orders, L30, excludes cancelled / other eBay stores)
+            function loadEbay1ShopifySales() {
+                fetch('{{ route('shopify-raw-data.ebay1-sales') }}', {
+                        method: 'GET',
+                        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' }
+                    })
+                    .then(r => r.json())
+                    .then(d => {
+                        const sales = parseFloat(d.sales || 0);
+                        $('#ebay1-shopify-sales-badge')
+                            .text('EShp: $' + Math.round(sales).toLocaleString())
+                            .attr('title', 'eBay1 sales from Shopify raw data ' +
+                                (d.date_from || '') + ' to ' + (d.date_to || '') +
+                                ' (excludes cancelled). Orders: ' + (d.orders || 0) + ', Qty: ' + (d.qty || 0));
+                    })
+                    .catch(() => {});
+            }
+
             table.on('tableBuilt', function() {
                 applySectionColumnVisibility($('#section-filter').val() || 'all');
                 applyColumnVisibilityFromServer();
                 buildColumnDropdown();
                 applyFilters();
+                loadEbay1ShopifySales();
 
                 // Set up periodic background retry check (every 30 seconds)
                 setInterval(() => {

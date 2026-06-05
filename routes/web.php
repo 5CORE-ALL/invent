@@ -3173,6 +3173,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shopify-raw-data', [\App\Http\Controllers\ShopifyRawDataController::class, 'index'])->name('shopify-raw-data.index');
     Route::get('/shopify-raw-data/get-data', [\App\Http\Controllers\ShopifyRawDataController::class, 'getData'])->name('shopify-raw-data.get-data');
     Route::get('/shopify-raw-data/get-stats', [\App\Http\Controllers\ShopifyRawDataController::class, 'getStats'])->name('shopify-raw-data.get-stats');
+    Route::get('/shopify-raw-data/ebay1-sales', [\App\Http\Controllers\ShopifyRawDataController::class, 'ebay1Sales'])->name('shopify-raw-data.ebay1-sales');
 
     // Shopify Page
     Route::get('/shopify', [\App\Http\Controllers\ShopifyRawDataController::class, 'shopifyIndex'])->name('shopify.index');
