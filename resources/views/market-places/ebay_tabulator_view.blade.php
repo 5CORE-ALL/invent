@@ -6907,13 +6907,18 @@
                 filteredData.forEach(row => {
                     const estock = rowEbayStockQty(row);
                     const ebayL30 = parseFloat(row['eBay L30'] || 0);
+                    const isParent = row['Parent'] && String(row['Parent']).toUpperCase().startsWith('PARENT');
 
-                    if (estock > 0) {
+                    // Financial totals: include ALL sold items (even out-of-stock) so Sales reflects
+                    // true eBay sales. Exclude parent summary rows to avoid double counting.
+                    if (!isParent) {
                         totalPftAmt += parseFloat(row['Total_pft'] || 0);
                         totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
                         totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * ebayL30;
                         totalFbaL30 += ebayL30;
+                    }
 
+                    if (estock > 0) {
                         // Count 0 Sold and > 0 Sold (only E Stock > 0)
                         if (ebayL30 === 0) {
                             zeroSoldCount++;
