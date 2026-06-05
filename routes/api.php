@@ -79,7 +79,13 @@ Route::get('/product', [ProductMasterController::class, 'getProductBySku']);
 //please dont delete this section 🙏
 Route::prefix('rfq-form')->group(function() {
     Route::post('/{slug}/submit', [SupplierRFQController::class, 'submitRfqForm'])->name('rfq-form.submit');
-    Route::get('/{slug}', [SupplierRFQController::class, 'showRfqForm'])->name('rfq-form.show');
+    // Session/cookie middleware so we can read the logged-in app user (if any) without forcing login.
+    Route::get('/{slug}', [SupplierRFQController::class, 'showRfqForm'])
+        ->middleware([
+            \Illuminate\Cookie\Middleware\EncryptCookies::class,
+            \Illuminate\Session\Middleware\StartSession::class,
+        ])
+        ->name('rfq-form.show');
 });
 
 // api for task manager

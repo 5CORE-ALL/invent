@@ -20,11 +20,13 @@ class RfqForm extends Model
         'created_by',
         'updated_by',
         'linked_skus',
+        'report_meta',
     ];
 
     protected $casts = [
         'fields' => 'array',
         'linked_skus' => 'array',
+        'report_meta' => 'array',
     ];
 
 }

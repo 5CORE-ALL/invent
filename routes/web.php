@@ -266,6 +266,7 @@ use App\Http\Controllers\PurchaseMaster\QcImprovementReqBeforeItemPkgController;
 use App\Http\Controllers\PurchaseMaster\QualityEnhanceController;
 use App\Http\Controllers\PurchaseMaster\ReadyToShipController;
 use App\Http\Controllers\PurchaseMaster\RFQController;
+use App\Http\Controllers\PurchaseMaster\ScopeOfImprovementController;
 use App\Http\Controllers\PurchaseMaster\SourcingController;
 use App\Http\Controllers\PurchaseMaster\SupplierController;
 use App\Http\Controllers\PurchaseMaster\TransitContainerDetailsController;
@@ -2777,6 +2778,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/rfq-form/list', 'index')->name('rfq-form.index');
         Route::get('rfq-form/data', 'getRfqFormsData');
         Route::post('/rfq-form/store', 'storeRFQForm')->name('rfq-form.store');
+        Route::post('/rfq-form/import', 'importForm')->name('rfq-form.import');
         Route::get('/rfq-form/edit/{id}', 'edit')->name('rfq-form.edit');
         Route::post('/rfq-form/update/{id}', 'update')->name('rfq-form.update');
         Route::delete('/rfq-form/delete/{id}', 'destroy')->name('rfq-form.destroy');
@@ -2784,6 +2786,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         // form reports
         Route::get('/rfq-form/reports/{id}', 'rfqReports')->name('rfq-form.reports');
         Route::get('/rfq-form/reports-data/{id}', 'getRfqReportsData')->name('rfq-form.reports.data');
+        Route::post('/rfq-form/submission/{id}/update', 'updateSubmission')->name('rfq-form.submission.update');
+        Route::post('/rfq-form/submission/{id}/photos', 'updateSubmissionPhotos')->name('rfq-form.submission.photos');
+        Route::post('/rfq-form/{id}/import-submissions', 'importSubmissions')->name('rfq-form.import-submissions');
+        Route::post('/rfq-form/{id}/report-meta', 'updateReportMeta')->name('rfq-form.report-meta.update');
 
         // supplier email
         Route::get('/rfq-form/suppliers/search', 'searchSuppliers')->name('rfq-form.suppliers.search');
@@ -2792,6 +2798,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         // linked skus
         Route::get('/rfq-form/skus/search', 'searchSkus')->name('rfq-form.skus.search');
         Route::post('/rfq-form/{id}/linked-skus', 'updateLinkedSkus')->name('rfq-form.linked-skus.update');
+    });
+
+    // Scope of Improvement
+    Route::controller(ScopeOfImprovementController::class)->group(function () {
+        Route::get('/scope-of-improvement', 'index')->name('scope-of-improvement.index');
     });
 
     // Sourcingƒvies
@@ -4782,6 +4793,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/claim-reimbursement', 'index')->name('claim.reimbursement');
         Route::get('/claim-reimbursement/view-data', 'getViewClaimReimbursementData');
         Route::post('/claim-reimbursement/save', 'saveClaimReimbursement')->name('claim.reimbursement.save');
+        Route::post('/claim-reimbursement/{id}/received-amount', 'updateReceivedAmount')->name('claim.reimbursement.received-amount');
+        Route::post('/claim-reimbursement/{id}/action', 'addAction')->name('claim.reimbursement.action');
+        Route::post('/claim-reimbursement/{id}/details-note', 'updateDetailsNote')->name('claim.reimbursement.details-note');
+        Route::post('/claim-reimbursement/{id}/follow-up', 'updateFollowUpDate')->name('claim.reimbursement.follow-up');
+        Route::post('/claim-reimbursement/{id}/archive', 'toggleArchive')->name('claim.reimbursement.archive');
     });
 
     Route::controller(VideoAdsMasterController::class)->group(function () {

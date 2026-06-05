@@ -2635,16 +2635,28 @@
 
                 forms.forEach(f => {
                     if (!f || !f.slug) return;
-                    const url = window.location.origin + '/api/rfq-form/' + f.slug;
+                    const base = window.location.origin + '/api/rfq-form/' + f.slug;
+                    const basicsUrl = base + '?part=basics';
+                    const detailsUrl = base + '?part=details';
                     const name = (f.name || 'RFQ Form').replace(/"/g, '&quot;');
-                    html += `<span style="display:inline-flex;align-items:center;gap:2px;">
-                                <a href="${url}" target="_blank" rel="noopener noreferrer"
-                                    class="btn btn-sm btn-outline-success"
-                                    title="${name}" aria-label="${name}">
-                                    <i class="mdi mdi-file-document-outline"></i>
+                    html += `<span style="display:inline-flex;align-items:center;gap:2px;margin:1px 3px;">
+                                <a href="${basicsUrl}" target="_blank" rel="noopener noreferrer"
+                                    class="btn btn-sm btn-primary" title="Basics - ${name}" aria-label="Basics - ${name}"
+                                    style="padding:2px 6px;">
+                                    <i class="mdi mdi-file-document-outline"></i> B
                                 </a>
-                                <button type="button" class="btn btn-sm btn-outline-secondary rfq-copy-btn"
-                                    data-copy="${url}" title="Copy link" aria-label="Copy link"
+                                <button type="button" class="btn btn-sm btn-outline-primary rfq-copy-btn"
+                                    data-copy="${basicsUrl}" title="Copy Basics link" aria-label="Copy Basics link"
+                                    style="padding:2px 5px;">
+                                    <i class="mdi mdi-content-copy"></i>
+                                </button>
+                                <a href="${detailsUrl}" target="_blank" rel="noopener noreferrer"
+                                    class="btn btn-sm btn-success" title="Details - ${name}" aria-label="Details - ${name}"
+                                    style="padding:2px 6px;">
+                                    <i class="mdi mdi-file-document-outline"></i> D
+                                </a>
+                                <button type="button" class="btn btn-sm btn-outline-success rfq-copy-btn"
+                                    data-copy="${detailsUrl}" title="Copy Details link" aria-label="Copy Details link"
                                     style="padding:2px 5px;">
                                     <i class="mdi mdi-content-copy"></i>
                                 </button>

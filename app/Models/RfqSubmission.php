@@ -8,6 +8,7 @@ class RfqSubmission extends Model
 {
     protected $fillable = [
         'rfq_form_id',
+        'token',
         'data'
     ];
 
