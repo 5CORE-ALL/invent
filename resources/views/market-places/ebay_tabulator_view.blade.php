@@ -311,9 +311,9 @@
 
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">All E Stock</option>
-                        <option value="zero">0 E Stock</option>
-                        <option value="more" selected>E Stock &gt; 0</option>
+                        <option value="all">All INV</option>
+                        <option value="zero">0 INV</option>
+                        <option value="more" selected>INV &gt; 0</option>
                     </select>
 
                     <select id="el30-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
@@ -5490,11 +5490,11 @@
 
                 if (inventoryFilter === 'zero') {
                     table.addFilter(function(data) {
-                        return rowEbayStockQty(data) === 0;
+                        return (parseFloat(data['INV']) || 0) === 0;
                     });
                 } else if (inventoryFilter === 'more') {
                     table.addFilter(function(data) {
-                        return rowEbayStockQty(data) > 0;
+                        return (parseFloat(data['INV']) || 0) > 0;
                     });
                 }
 
