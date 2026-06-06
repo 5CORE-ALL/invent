@@ -57,6 +57,101 @@
 
         @include('layouts.shared.world-clocks-inline')
 
+        <style>
+            .topbar-dar-btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.4rem;
+                flex-shrink: 0;
+                margin-right: 0.5rem;
+                padding: 0.4rem 0.85rem;
+                border: none;
+                cursor: pointer;
+                border-radius: 999px;
+                background: #2563eb;
+                color: #fff;
+                font-size: 0.8rem;
+                font-weight: 700;
+                text-decoration: none;
+                box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+                transition: background 0.15s ease, transform 0.15s ease;
+            }
+            .topbar-dar-btn:hover {
+                background: #1d4ed8;
+                color: #fff;
+                transform: translateY(-1px);
+            }
+            .topbar-dar-btn i { font-size: 0.9rem; }
+            @media (max-width: 575.98px) {
+                .topbar-dar-btn__label { display: none; }
+                .topbar-dar-btn { padding: 0.4rem 0.55rem; }
+            }
+
+            .topbar-helpdesk-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                margin-right: 0.5rem;
+                width: 42px;
+                height: 42px;
+                line-height: 0;
+            }
+            .topbar-helpdesk-btn__icon {
+                width: 100%;
+                height: 100%;
+                object-fit: contain;
+                filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.18));
+                transition: transform 0.2s ease;
+            }
+            .topbar-helpdesk-btn:hover .topbar-helpdesk-btn__icon {
+                transform: scale(1.08);
+            }
+
+            .topbar-task-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                margin-right: 0.5rem;
+                width: 42px;
+                height: 42px;
+                padding: 0;
+                border: none;
+                border-radius: 50%;
+                background: #fff;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+                transition: transform 0.2s ease;
+            }
+            .topbar-task-btn:hover { transform: scale(1.08); }
+            .topbar-task-btn__icon {
+                width: 100%;
+                height: 100%;
+                border-radius: 50%;
+                object-fit: cover;
+            }
+        </style>
+
+        <button type="button" id="darTopbarOpenBtn" class="topbar-dar-btn"
+            title="Daily Activity Report (DAR)" aria-label="Daily Activity Report (DAR)">
+            <i class="fas fa-clipboard-list"></i>
+            <span class="topbar-dar-btn__label">DAR</span>
+        </button>
+
+        @auth
+            @if (auth()->user()->is5CoreMember())
+                <a href="{{ url('/help-desk-faqs') }}" class="topbar-helpdesk-btn" title="5Core Help Desk" aria-label="Open 5Core Help Desk">
+                    <img src="{{ asset('images/chat-icon.png') }}" alt="5Core Help Desk" class="topbar-helpdesk-btn__icon">
+                </a>
+            @endif
+        @endauth
+
+        @unless($hideFloatingTaskButton ?? false)
+            <button type="button" id="open-task-form-btn" class="topbar-task-btn" title="Add Task" aria-label="Add Task">
+                <img src="{{ asset('assets/css/icondes.jpeg') }}" alt="Add Task" class="topbar-task-btn__icon">
+            </button>
+        @endunless
+
         <ul class="topbar-menu d-flex align-items-center gap-3">
             <li class="dropdown d-lg-none">
                 <a class="nav-link dropdown-toggle arrow-none" data-bs-toggle="dropdown" href="#" role="button"

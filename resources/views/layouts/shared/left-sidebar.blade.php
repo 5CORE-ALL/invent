@@ -3005,6 +3005,12 @@
                         <li>
                             <a href="{{ route('inventory.index') }}">Inventory Warehouse</a>
                         </li>
+                        <li>
+                            <a href="{{ route('scope-of-improvement.index') }}">Scope of Improvement</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('dar.index') }}">DAR</a>
+                        </li>
                     </ul>
                 </div>
             </li>

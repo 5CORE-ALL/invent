@@ -62,29 +62,10 @@
     <!-- END wrapper -->
 
     @unless($hideFloatingTaskButton ?? false)
-    <!-- Floating Add Task Button (Chat bot / Help desk icon) -->
-    <button type="button" 
-            class="btn floating-task-btn" 
-            id="open-task-form-btn"
-            style="position: fixed; 
-                   top: 80px; 
-                   right: 20px; 
-                   z-index: 1000; 
-                   border-radius: 50%; 
-                   padding: 0;
-                   width: 42px;
-                   height: 42px;
-                   display: flex;
-                   align-items: center;
-                   justify-content: center;
-                   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-                   border: none;
-                   background: white;
-                   transition: all 0.3s ease;">
-        <img src="{{ asset('assets/css/icondes.jpeg') }}" 
-             alt="Add Task" 
-             style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
-    </button>
+    {{-- The Add Task button now lives in the topbar (see
+         resources/views/layouts/shared/topbar.blade.php), placed after the
+         world clocks. The task form sidebar below is still opened by it via
+         the shared #open-task-form-btn id. --}}
 
     <!-- Floating Task Form Sidebar -->
     <div id="floating-task-form" style="position: fixed; 
@@ -826,6 +807,11 @@
     @include('layouts.shared/footer-scripts')
 
     @vite(['resources/js/layout.js', 'resources/js/main.js'])
+
+    {{-- Shared DAR quick-entry modal (opened from the topbar on every page).
+         Included after Vite so jQuery/Bootstrap are ready, and before the page's
+         own script-after-vite so window.DarModal is defined first. --}}
+    @include('layouts.shared.dar-modal')
 
     {{-- Runs after Vite so jQuery matches head.js; DataTables and similar plugins attach here --}}
     @yield('script-after-vite')

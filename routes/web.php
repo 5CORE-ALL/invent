@@ -267,6 +267,7 @@ use App\Http\Controllers\PurchaseMaster\QualityEnhanceController;
 use App\Http\Controllers\PurchaseMaster\ReadyToShipController;
 use App\Http\Controllers\PurchaseMaster\RFQController;
 use App\Http\Controllers\PurchaseMaster\ScopeOfImprovementController;
+use App\Http\Controllers\PurchaseMaster\DarController as DarReportController;
 use App\Http\Controllers\PurchaseMaster\SourcingController;
 use App\Http\Controllers\PurchaseMaster\SupplierController;
 use App\Http\Controllers\PurchaseMaster\TransitContainerDetailsController;
@@ -2803,6 +2804,19 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Scope of Improvement
     Route::controller(ScopeOfImprovementController::class)->group(function () {
         Route::get('/scope-of-improvement', 'index')->name('scope-of-improvement.index');
+        Route::get('/scope-of-improvement/data', 'data')->name('scope-of-improvement.data');
+        Route::post('/scope-of-improvement/store', 'store')->name('scope-of-improvement.store');
+        Route::post('/scope-of-improvement/update/{id}', 'update')->name('scope-of-improvement.update');
+        Route::post('/scope-of-improvement/delete/{id}', 'destroy')->name('scope-of-improvement.delete');
+    });
+
+    // DAR (Daily Activity Report)
+    Route::controller(DarReportController::class)->group(function () {
+        Route::get('/dar', 'index')->name('dar.index');
+        Route::get('/dar/data', 'data')->name('dar.data');
+        Route::post('/dar/store', 'store')->name('dar.store');
+        Route::post('/dar/update/{id}', 'update')->name('dar.update');
+        Route::post('/dar/delete/{id}', 'destroy')->name('dar.delete');
     });
 
     // Sourcingƒvies
@@ -4150,6 +4164,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/product-master/restore-bulk-update', [ProductMasterController::class, 'restoreBulkUpdate'])->name('product_master.restore_bulk_update');
     Route::get('/product-master/download-template', [ProductMasterController::class, 'downloadTemplate'])->name('product_master.download_template');
     Route::post('/product-master/batch-update', [ProductMasterController::class, 'batchUpdate']);
+    Route::get('/product-master/cp-history', [\App\Http\Controllers\ProductMaster\CpController::class, 'history'])->name('product_master.cp.history');
+    Route::get('/product-master/cp-all-history', [\App\Http\Controllers\ProductMaster\CpController::class, 'allHistory'])->name('product_master.cp.all_history');
+    Route::post('/product-master/cp-update', [\App\Http\Controllers\ProductMaster\CpController::class, 'update'])->name('product_master.cp.update');
+    Route::post('/product-master/cp-approve', [\App\Http\Controllers\ProductMaster\CpController::class, 'approve'])->name('product_master.cp.approve');
     Route::post('/channel_master/store', [ChannelMasterController::class, 'store'])->name('channel_master.store');
     Route::post('/channel-master/update-sheet-link', [ChannelMasterController::class, 'updateSheetLink']);
     Route::post('/channels-master/toggle-flag', [ChannelMasterController::class, 'toggleCheckboxFlag']);

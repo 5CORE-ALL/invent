@@ -160,8 +160,7 @@
                 timeZone: z.tz,
                 weekday: 'short',
                 month: 'short',
-                day: 'numeric',
-                year: 'numeric'
+                day: 'numeric'
             }).format(now);
             var tz = tzAbbrev(now, z.tz);
             timeEl.textContent = timeStr;

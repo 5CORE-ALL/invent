@@ -11,12 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('scope_of_improvements', function (Blueprint $table) {
+        if (Schema::hasTable('dars')) {
+            return;
+        }
+
+        Schema::create('dars', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('user_id')->index();
-            $table->text('issue')->nullable();
-            $table->text('root_cause')->nullable();
-            $table->text('fixing_root_cause')->nullable();
+            $table->date('report_date')->index();
+            $table->string('group')->nullable();
+            $table->text('task')->nullable();
+            $table->decimal('time_taken', 6, 2)->nullable(); // time taken per task, in hours
             $table->json('history')->nullable();
             $table->string('created_by')->nullable();
             $table->string('updated_by')->nullable();
@@ -31,6 +36,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('scope_of_improvements');
+        Schema::dropIfExists('dars');
     }
 };
