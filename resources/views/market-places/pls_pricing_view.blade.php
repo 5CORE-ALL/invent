@@ -110,6 +110,10 @@
                         <i class="fas fa-exchange-alt"></i> Price %
                     </button>
 
+                    <button id="pls-sugg-amz-prc-btn" type="button" class="btn btn-sm btn-warning">
+                        <i class="fab fa-amazon"></i> Sugg Amz Prc
+                    </button>
+
                     <button id="pls-clear-sprice-btn" class="btn btn-sm btn-danger" style="display: none;">
                         <i class="fas fa-eraser"></i> Clear SPRICE
                     </button>
@@ -518,6 +522,21 @@
                         }
                         
                         return `<span style="font-weight: 600;">$${value.toFixed(2)}</span>`;
+                    },
+                    width: 70
+                },
+                {
+                    title: "A Prc",
+                    field: "amazon_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    tooltip: "Amazon price",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        if (value === 0) {
+                            return `<span style="color: #adb5bd;">-</span>`;
+                        }
+                        return `<span style="font-weight: 600; color: #ff9900;">$${value.toFixed(2)}</span>`;
                     },
                     width: 70
                 },
@@ -1454,6 +1473,61 @@
 
         $('#pls-clear-sprice-selected-btn').on('click', function() { plsClearSpriceForSelected(); });
         $('#pls-clear-sprice-btn').on('click', function() { plsClearSpriceForSelected(); });
+
+        // Suggest Amazon Price - copy Amazon price into SPRICE for selected SKUs (like Macy's)
+        function plsApplySuggestAmazonPrice() {
+            if (plsSelectedSkus.size === 0) {
+                showToast('Please select at least one SKU', 'error');
+                return;
+            }
+
+            const allData = table.getData('all');
+            const eligibleRows = allData.filter(function(row) {
+                if (row.parent && String(row.parent).toUpperCase().startsWith('PARENT')) return false;
+                if (!plsSelectedSkus.has(row.sku)) return false;
+                return (parseFloat(row.amazon_price) || 0) > 0;
+            });
+
+            const totalSkus = eligibleRows.length;
+            const noAmazonPriceCount = plsSelectedSkus.size - totalSkus;
+
+            if (totalSkus === 0) {
+                showToast('No selected SKUs have an Amazon price', 'error');
+                return;
+            }
+
+            // Apply optimistically and recalc SGPFT% / SROI% locally (server is source of truth on save)
+            let updatedCount = 0;
+            eligibleRows.forEach(function(row) {
+                const sku = row.sku;
+                const newPriceNum = parseFloat((parseFloat(row.amazon_price) || 0).toFixed(2));
+                const lp = parseFloat(row.lp) || 0;
+                const ship = parseFloat(row.ship) || 0;
+                const sgpft = newPriceNum > 0 ? Math.round(((newPriceNum - lp - ship) / newPriceNum) * 100 * 100) / 100 : 0;
+                const sroi = lp > 0 ? Math.round(((newPriceNum - lp - ship) / lp) * 100 * 100) / 100 : 0;
+
+                const tableRow = table.getRows().find(function(r) { return r.getData().sku === sku; });
+                if (tableRow) {
+                    tableRow.update({ sprice: newPriceNum, sgpft: sgpft, sroi: sroi, has_custom_sprice: true });
+                    tableRow.reformat();
+                }
+
+                // Persist in background; failures are logged, not shown as a danger toast
+                plsSaveSpriceWithRetry(sku, newPriceNum, tableRow).catch(function(err) {
+                    console.error('Failed to save SPRICE for', sku, err);
+                });
+
+                updatedCount++;
+            });
+
+            let message = `SPRICE set to Amazon price for ${updatedCount} SKU(s)`;
+            if (noAmazonPriceCount > 0) {
+                message += ` (${noAmazonPriceCount} had no Amazon price)`;
+            }
+            showToast(message, updatedCount > 0 ? 'success' : 'info');
+        }
+
+        $('#pls-sugg-amz-prc-btn').on('click', function() { plsApplySuggestAmazonPrice(); });
 
     });
 </script>

@@ -504,6 +504,18 @@ class PlsController extends Controller
         // 6b. Get PLS_STATUS from amazon_data_views
         $amazonDataViews = $this->buildAmazonDataViewLookupByNormalizedSku($skus);
 
+        // 6b-2. Get Amazon price from amazon_datsheets (normalized sku lookup)
+        $amazonPriceBySku = [];
+        foreach (\App\Models\AmazonDatasheet::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['sku', 'price']) as $amzRow) {
+            $key = ShopifySku::normalizeSkuForShopifyLookup($amzRow->sku);
+            if ($key !== '' && ! isset($amazonPriceBySku[$key])) {
+                $amazonPriceBySku[$key] = floatval($amzRow->price);
+            }
+        }
+
         // 6c. Buyer / Seller links from pls_listing_statuses
         $plsLinkBySku = [];
         foreach (PlsListingStatus::whereIn('sku', $skus)->get() as $linkRow) {
@@ -582,6 +594,7 @@ class PlsController extends Controller
             
             $row['image_path'] = $imagePath;
             $row['price'] = $price;
+            $row['amazon_price'] = $amazonPriceBySku[$skuNorm] ?? 0;
             $row['lp'] = $lp;
             $row['ship'] = $ship;
             $row['inventory'] = $inventory;
