@@ -3692,6 +3692,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shopifyB2C', [Shopifyb2cController::class, 'shopifyb2cView'])->name('shopifyB2C');
     Route::get('/shopify-ads-master', [ShopifyAdsMasterController::class, 'index'])->name('shopify.ads.master');
     Route::get('/shopify-ads-master/data', [ShopifyAdsMasterController::class, 'data'])->name('shopify.ads.master.data');
+    Route::get('/shopify-ads-master/history', [ShopifyAdsMasterController::class, 'history'])->name('shopify.ads.master.history');
     Route::post('/shopifyb2c/saveLowProfit', [Shopifyb2cController::class, 'saveLowProfit']);
     Route::post('/shopifyb2c-analytics/import', [Shopifyb2cController::class, 'importShopifyB2CAnalytics'])->name('shopifyb2c.analytics.import');
     Route::get('/shopifyb2c-analytics/export', [Shopifyb2cController::class, 'exportShopifyB2CAnalytics'])->name('shopifyb2c.analytics.export');

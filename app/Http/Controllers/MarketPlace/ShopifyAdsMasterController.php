@@ -28,14 +28,248 @@ class ShopifyAdsMasterController extends Controller
 
     public function data()
     {
+        $rows = [
+            $this->googleShoppingMetrics(),
+            $this->metaChannelMetrics('Facebook', 'FB'),
+            $this->metaChannelMetrics('Instagram', 'Insta'),
+        ];
+
+        $netSales = $this->shopifyNetSales();
+
+        // TCOS = channel Spend / S Sales (store net sales), as a %. Computed
+        // here because it needs the store-level net-sales figure.
+        foreach ($rows as &$row) {
+            $spend = (float) ($row['spend'] ?? 0);
+            $row['tcos'] = $netSales > 0
+                ? round(($spend / $netSales) * 100, 0)
+                : ($spend > 0 ? 100 : 0);
+        }
+        unset($row);
+
+        // Persist today's snapshot so the badge trend chart has history.
+        // Never let a snapshot write break the data feed.
+        try {
+            $this->snapshotChannels($rows, $netSales);
+        } catch (\Throwable $e) {
+            \Log::warning('Shopify Ads Master snapshot failed: ' . $e->getMessage());
+        }
+
         return response()->json([
             'status' => 200,
             'message' => 'Shopify Ads Master data fetched successfully',
-            'data' => [
-                $this->googleShoppingMetrics(),
-                $this->facebookMetrics(),
-            ],
+            'data' => $rows,
+            // Net Sales (gross − discounts) for the last 30 days from the
+            // /shopify page, surfaced as the "S Sales" badge.
+            'shopify_net_sales' => $netSales,
         ]);
+    }
+
+    /** Pseudo-channel key used to store the store-level S Sales snapshot. */
+    private const SSALES_CHANNEL = '__ssales__';
+
+    /**
+     * Marketplace sources/tags excluded from the /shopify Net Sales figure.
+     * Mirrors ShopifyRawDataController::EXCLUDE_SOURCES so the badge matches
+     * what that page shows.
+     */
+    private const SHOPIFY_EXCLUDE_SOURCES = [
+        'amazon', 'shein', 'ebay', 'tiktok', 'temu',
+        '179763773441', "macy's, inc.", "macy's", 'macys',
+        'purchasing power', 'purchasingpower', 'reverb',
+        'faire', 'best buy', 'bestbuy', 'best buy usa',
+        'doba', '145019994113',
+        'newegg', '189863297025',
+        'depop', 'tiendamia',
+    ];
+
+    /**
+     * Total Net Sales (gross − discounts) over the last 30 days (PST),
+     * mirroring the /shopify page's Net Sales card: shopify_raw_orders with
+     * the marketplace exclusions and the "XYZ" SKU filter applied.
+     */
+    private function shopifyNetSales(): float
+    {
+        try {
+            $tz       = 'America/Los_Angeles';
+            $dateFrom = Carbon::now($tz)->subDays(30)->startOfDay()->toDateString();
+            $dateTo   = Carbon::now($tz)->endOfDay()->toDateString();
+
+            $q = DB::table('shopify_raw_orders')
+                ->where('order_date', '>=', $dateFrom)
+                ->where('order_date', '<=', $dateTo);
+
+            foreach (self::SHOPIFY_EXCLUDE_SOURCES as $term) {
+                $t = strtolower($term);
+                $q->whereRaw('LOWER(COALESCE(source_name,"")) NOT LIKE ?', ['%' . $t . '%'])
+                  ->whereRaw('LOWER(COALESCE(tags,"")) NOT LIKE ?',        ['%' . $t . '%']);
+            }
+            $q->where('sku', 'NOT LIKE', '%XYZ%');
+
+            return round((float) $q->sum('net_sales'), 2);
+        } catch (\Throwable $e) {
+            \Log::warning('Shopify net sales lookup failed: ' . $e->getMessage());
+            return 0.0;
+        }
+    }
+
+    /**
+     * Upsert one snapshot row per channel for today. Keyed on
+     * (snapshot_date, channel) so repeated page loads simply refresh the
+     * day's value rather than piling up duplicates.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function snapshotChannels(array $rows, float $netSales = 0.0): void
+    {
+        $today = Carbon::today()->toDateString();
+        $now   = now();
+
+        foreach ($rows as $row) {
+            $channel = (string) ($row['channel'] ?? '');
+            if ($channel === '') {
+                continue;
+            }
+            DB::table('shopify_ads_master_metric_snapshots')->updateOrInsert(
+                ['snapshot_date' => $today, 'channel' => $channel],
+                [
+                    'spend'      => (float) ($row['spend'] ?? 0),
+                    'clicks'     => (float) ($row['clicks'] ?? 0),
+                    'sold'       => (float) ($row['sold'] ?? 0),
+                    'sales'      => (float) ($row['sales'] ?? 0),
+                    'updated_at' => $now,
+                    'created_at' => $now,
+                ]
+            );
+        }
+
+        // Store-level S Sales kept as its own pseudo-channel row (the
+        // net-sales figure lives in the `sales` column). Excluded from the
+        // channel totals in history().
+        DB::table('shopify_ads_master_metric_snapshots')->updateOrInsert(
+            ['snapshot_date' => $today, 'channel' => self::SSALES_CHANNEL],
+            ['sales' => $netSales, 'updated_at' => $now, 'created_at' => $now]
+        );
+    }
+
+    /**
+     * Badge trend history. Returns a per-day time-series for every badge
+     * (spend / clicks / sold / sales / cvr / acos), aggregated across all
+     * channels, plus the same broken out per channel so the chart can show
+     * either the rolled-up total or a single channel.
+     *
+     *   GET /shopify-ads-master/history?days=32
+     */
+    public function history(Request $request)
+    {
+        $days = max(1, min(365, (int) $request->query('days', 32)));
+        $from = Carbon::today()->subDays($days - 1)->toDateString();
+
+        $rows = DB::table('shopify_ads_master_metric_snapshots')
+            ->where('snapshot_date', '>=', $from)
+            ->orderBy('snapshot_date')
+            ->get(['snapshot_date', 'channel', 'spend', 'clicks', 'sold', 'sales']);
+
+        // Group the raw measures by date (totals) and by date+channel.
+        // The store-level S Sales pseudo-channel is kept aside so it never
+        // inflates the channel totals.
+        $byDate     = [];   // date => [spend, clicks, sold, sales]
+        $byChannel  = [];   // channel => date => [...]
+        $ssalesByDate = []; // date => net sales
+        $allDates   = [];   // every date seen, incl. ssales-only days
+        foreach ($rows as $r) {
+            $d  = (string) $r->snapshot_date;
+            $ch = (string) $r->channel;
+            $allDates[$d] = true;
+
+            if ($ch === self::SSALES_CHANNEL) {
+                $ssalesByDate[$d] = (float) $r->sales;
+                continue;
+            }
+
+            $byDate[$d] ??= ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0];
+            $byDate[$d]['spend']  += (float) $r->spend;
+            $byDate[$d]['clicks'] += (float) $r->clicks;
+            $byDate[$d]['sold']   += (float) $r->sold;
+            $byDate[$d]['sales']  += (float) $r->sales;
+
+            $byChannel[$ch][$d] = [
+                'spend'  => (float) $r->spend,
+                'clicks' => (float) $r->clicks,
+                'sold'   => (float) $r->sold,
+                'sales'  => (float) $r->sales,
+            ];
+        }
+
+        // Use the union of all dates so an ssales-only day still shows.
+        $labels = array_keys($allDates);
+        sort($labels);
+        foreach ($labels as $d) {
+            $byDate[$d] ??= ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0];
+        }
+
+        $metrics = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
+        $metrics['ssales'] = array_map(fn ($d) => round($ssalesByDate[$d] ?? 0, 2), $labels);
+
+        return response()->json([
+            'status'   => 200,
+            'days'     => $days,
+            'labels'   => array_map(fn ($d) => date('M d', strtotime($d)), $labels),
+            'metrics'  => $metrics,
+            'channels' => $this->buildChannelSeries($byChannel, $labels, $ssalesByDate),
+        ]);
+    }
+
+    /**
+     * Turn the per-day raw measures into the 6 badge series (with CVR /
+     * ACOS derived exactly like the badges / table do).
+     *
+     * @param  array<string, array<string, float>>  $byDate
+     * @param  array<int, string>  $labels
+     * @param  array<string, float>  $ssalesByDate  date => store net sales (for TCOS)
+     * @return array<string, array<int, float>>
+     */
+    private function buildMetricSeries(array $byDate, array $labels, array $ssalesByDate = []): array
+    {
+        $series = ['spend' => [], 'clicks' => [], 'sold' => [], 'sales' => [], 'cvr' => [], 'acos' => [], 'tcos' => []];
+        foreach ($labels as $d) {
+            $m = $byDate[$d];
+            $series['spend'][]  = round($m['spend'], 2);
+            $series['clicks'][] = (int) round($m['clicks']);
+            $series['sold'][]   = (int) round($m['sold']);
+            $series['sales'][]  = round($m['sales'], 2);
+            $series['cvr'][]    = $m['clicks'] > 0 ? round(($m['sold'] / $m['clicks']) * 100, 1) : 0;
+            $series['acos'][]   = $m['sales'] > 0
+                ? round(($m['spend'] / $m['sales']) * 100, 0)
+                : ($m['spend'] > 0 ? 100 : 0);
+            // TCOS = Spend / S Sales (store net sales).
+            $ss = $ssalesByDate[$d] ?? 0;
+            $series['tcos'][]   = $ss > 0
+                ? round(($m['spend'] / $ss) * 100, 0)
+                : ($m['spend'] > 0 ? 100 : 0);
+        }
+        return $series;
+    }
+
+    /**
+     * Per-channel badge series, aligned to the same date labels (missing
+     * days fill with 0 so every line spans the full range).
+     *
+     * @param  array<string, array<string, array<string, float>>>  $byChannel
+     * @param  array<int, string>  $labels
+     * @param  array<string, float>  $ssalesByDate
+     * @return array<string, array<string, array<int, float>>>
+     */
+    private function buildChannelSeries(array $byChannel, array $labels, array $ssalesByDate = []): array
+    {
+        $out = [];
+        foreach ($byChannel as $channel => $perDay) {
+            $byDate = [];
+            foreach ($labels as $d) {
+                $byDate[$d] = $perDay[$d] ?? ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0];
+            }
+            $out[$channel] = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
+        }
+        return $out;
     }
 
     private function googleShoppingMetrics(): array
@@ -71,12 +305,17 @@ class ShopifyAdsMasterController extends Controller
         }
     }
 
-    private function facebookMetrics(): array
+    /**
+     * Totals for one Meta channel lens (CH = FB → /facebook-ads,
+     * CH = Insta → /instagram-ads). Mirrors the merged view but lensed to
+     * the campaigns tagged with $chCode, so each row matches its page.
+     */
+    private function metaChannelMetrics(string $label, string $chCode): array
     {
         try {
             $latestBatches = $this->facebookLatestBatchPerType();
             if (empty($latestBatches)) {
-                return $this->metricRow('Facebook');
+                return $this->metricRow($label);
             }
 
             // Determine base type (same priority as getMergedView: campaign > spend > sales).
@@ -89,11 +328,24 @@ class ShopifyAdsMasterController extends Controller
                 }
             }
             if ($baseType === null) {
-                return $this->metricRow('Facebook');
+                return $this->metricRow($label);
             }
 
             // Step 1: collect valid campaign IDs + name→CID fallback from base batch.
             [$baseCids, $nameToCid] = $this->facebookBuildBaseCids($latestBatches[$baseType]);
+
+            // Lens to the requested channel (CH = FB / Insta) — keep only the
+            // campaign IDs tagged with $chCode so this row mirrors that page,
+            // not the full Meta sheet.
+            $chMap = $this->facebookChMap();
+            $baseCids = array_filter(
+                $baseCids,
+                fn ($_, $cid) => ($chMap[$cid] ?? null) === $chCode,
+                ARRAY_FILTER_USE_BOTH
+            );
+            if (empty($baseCids)) {
+                return $this->metricRow($label);
+            }
 
             $spend  = 0.0;
             $clicks = 0.0;
@@ -137,9 +389,9 @@ class ShopifyAdsMasterController extends Controller
                 }
             }
 
-            return $this->metricRow('Facebook', (object) compact('spend', 'clicks', 'sold', 'sales'));
+            return $this->metricRow($label, (object) compact('spend', 'clicks', 'sold', 'sales'));
         } catch (\Throwable) {
-            return $this->metricRow('Facebook');
+            return $this->metricRow($label);
         }
     }
 
@@ -178,6 +430,37 @@ class ShopifyAdsMasterController extends Controller
         }
 
         return [$baseCids, $nameToCid];
+    }
+
+    /**
+     * Build a `Campaign ID → ch` map (latest CH tag wins per campaign).
+     * Mirrors FacebookAllAdsSheetController::buildChCarryMap() so the
+     * Facebook row here can be lensed to the /facebook-ads channel (CH = FB).
+     *
+     * @return array<string, string>
+     */
+    private function facebookChMap(): array
+    {
+        $rows = FacebookAllAdsSheet::query()
+            ->whereNotNull('ch')
+            ->where('ch', '!=', '')
+            ->orderByDesc('id')
+            ->get(['ch', 'row_data']);
+
+        $map = [];
+        foreach ($rows as $r) {
+            $rd  = array_filter(
+                (array) ($r->row_data ?? []),
+                fn ($_, $k) => ! str_starts_with($k, '__'),
+                ARRAY_FILTER_USE_BOTH
+            );
+            $cid = $this->facebookFindCampaignId($rd);
+            if ($cid !== null && $cid !== '' && ! isset($map[$cid])) {
+                $map[$cid] = $r->ch;
+            }
+        }
+
+        return $map;
     }
 
     /**
@@ -336,6 +619,9 @@ class ShopifyAdsMasterController extends Controller
             'acos' => $sales > 0
                 ? round(($spend / $sales) * 100, 0)
                 : ($spend > 0 ? 100 : 0),
+            // tcos (Spend / S Sales) is filled in by data() once the
+            // store-level net-sales figure is known.
+            'tcos' => 0,
         ];
     }
 

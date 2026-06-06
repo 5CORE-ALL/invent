@@ -228,9 +228,7 @@
                         <option value="lt40">&lt;40%</option>
                         <option value="40-75">40 to 75%</option>
                         <option value="75-125">75 to 125%</option>
-                        <option value="125-175">125 to 175%</option>
-                        <option value="175-250">175 to 250%</option>
-                        <option value="gt250">&gt;250%</option>
+                        <option value="gt125">125%+</option>
                     </select>
 
                     <select id="ad-click-filter" class="form-select form-select-sm" style="width: 130px;">
@@ -2035,10 +2033,10 @@
                             if (isNaN(percent)) return isParent ?
                                 '<span style="color:#6c757d;">-</span>' : '';
                             let color = '';
-                            if (percent < 50) color = '#a00211';
-                            else if (percent >= 50 && percent < 100) color = '#ffc107';
-                            else if (percent >= 100 && percent < 150) color = '#28a745';
-                            else color = '#e83e8c';
+                            if (percent < 40) color = '#a00211';
+                            else if (percent < 75) color = '#ffc107';
+                            else if (percent < 125) color = '#28a745';
+                            else color = '#d63384';
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
                         width: 50
@@ -2252,10 +2250,10 @@
                             const percent = parseFloat(value);
                             let color = '';
 
-                            if (percent < 50) color = '#a00211';
-                            else if (percent >= 50 && percent < 100) color = '#ffc107';
-                            else if (percent >= 100 && percent < 150) color = '#28a745';
-                            else color = '#e83e8c';
+                            if (percent < 40) color = '#a00211';
+                            else if (percent < 75) color = '#ffc107';
+                            else if (percent < 125) color = '#28a745';
+                            else color = '#d63384';
 
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         }
@@ -2651,9 +2649,7 @@
                         if (roiFilter === 'lt40') return roi < 40;
                         if (roiFilter === '40-75') return roi >= 40 && roi < 75;
                         if (roiFilter === '75-125') return roi >= 75 && roi < 125;
-                        if (roiFilter === '125-175') return roi >= 125 && roi < 175;
-                        if (roiFilter === '175-250') return roi >= 175 && roi < 250;
-                        if (roiFilter === 'gt250') return roi >= 250;
+                        if (roiFilter === 'gt125') return roi >= 125;
                         return true;
                     });
                 }

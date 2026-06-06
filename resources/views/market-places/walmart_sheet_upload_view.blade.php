@@ -68,6 +68,11 @@
             background: none !important;
         }
 
+        .walmart-percent-value.purple {
+            color: #d63384 !important;
+            background: none !important;
+        }
+
         /* ========== STATUS INDICATORS ========== */
         .status-circle {
             display: inline-block;
@@ -346,14 +351,10 @@
                         <select id="cvr-filter" class="form-select form-select-sm" style="width: 120px;">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
-                            <option value="0.01-1">0.01-1%</option>
-                            <option value="1-2">1-2%</option>
-                            <option value="2-3">2-3%</option>
-                            <option value="3-4">3-4%</option>
-                            <option value="0-4">0-4%</option>
-                            <option value="4-7">4-7%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
                             <option value="7-13">7-13%</option>
-                            <option value="10plus">10%+</option>
+                            <option value="13plus">13%+</option>
                         </select>
                     </div>
 
@@ -1846,10 +1847,11 @@
 
         const getRoiColor = (value) => {
             const percent = parseFloat(value);
-            if (percent < 50) return 'red';
-            if (percent >= 50 && percent < 75) return 'yellow';
-            if (percent >= 75 && percent <= 125) return 'green';
-            return 'pink';
+            if (isNaN(percent)) return 'red';
+            if (percent >= 125) return 'purple';
+            if (percent >= 75) return 'green';
+            if (percent >= 40) return 'yellow';
+            return 'red';
         };
 
         table = new Tabulator("#walmart-table", {
@@ -2135,7 +2137,7 @@
                         else if (cvr <= 4) color = '#a00211'; // red
                         else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
                         else if (cvr > 7 && cvr <= 13) color = '#28a745'; // green
-                        else color = '#ff1493'; // pink (>10)
+                        else color = '#e83e8c'; // pink (>13)
                         
                         return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
                     },
@@ -2856,14 +2858,10 @@
                     const cvrPercent = views > 0 ? (wl30 / views) * 100 : 0;
                     
                     if (cvrFilter === '0-0') return cvrPercent === 0;
-                    if (cvrFilter === '0.01-1') return cvrPercent >= 0.01 && cvrPercent <= 1;
-                    if (cvrFilter === '1-2') return cvrPercent > 1 && cvrPercent <= 2;
-                    if (cvrFilter === '2-3') return cvrPercent > 2 && cvrPercent <= 3;
-                    if (cvrFilter === '3-4') return cvrPercent > 3 && cvrPercent <= 4;
-                    if (cvrFilter === '0-4') return cvrPercent >= 0 && cvrPercent <= 4;
-                    if (cvrFilter === '4-7') return cvrPercent > 4 && cvrPercent <= 7;
+                    if (cvrFilter === '0-3') return cvrPercent > 0 && cvrPercent <= 3;
+                    if (cvrFilter === '3-7') return cvrPercent > 3 && cvrPercent <= 7;
                     if (cvrFilter === '7-13') return cvrPercent > 7 && cvrPercent <= 13;
-                    if (cvrFilter === '10plus') return cvrPercent > 10;
+                    if (cvrFilter === '13plus') return cvrPercent > 13;
                     return true;
                 });
             }

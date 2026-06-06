@@ -433,8 +433,7 @@
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
-                        <option value="125-175">125–175%</option>
-                        <option value="gt175">175+%</option>
+                        <option value="gt125">125%+</option>
                     </select>
 
                     <select id="cvr-trend-filter" class="form-select form-select-sm pricing-filter-item"
@@ -3832,10 +3831,10 @@
                             let color = '';
 
                             // getRoiColor logic from inc/dec page
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            if (percent < 40) color = '#a00211'; // red
+                            else if (percent < 75) color = '#ffc107'; // yellow
+                            else if (percent < 125) color = '#28a745'; // green
+                            else color = '#d63384'; // magenta
 
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -4118,10 +4117,10 @@
 
                             let color = '';
                             // Same as GROI% / ROI% color logic
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            if (percent < 40) color = '#a00211'; // red
+                            else if (percent < 75) color = '#ffc107'; // yellow
+                            else if (percent < 125) color = '#28a745'; // green
+                            else color = '#d63384'; // magenta
 
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -4140,10 +4139,10 @@
 
                             let color = '';
                             // Same as ROI% color logic
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            if (percent < 40) color = '#a00211'; // red
+                            else if (percent < 75) color = '#ffc107'; // yellow
+                            else if (percent < 125) color = '#28a745'; // green
+                            else color = '#d63384'; // magenta
 
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -4749,10 +4748,10 @@
                             var ebayL30 = parseFloat(rd['eBay L30']) || 0;
                             var scvr = views > 0 ? (ebayL30 / views) * 100 : 0;
                             var color;
-                            if (scvr <= 4) color = 'red';
-                            else if (scvr <= 7) color = '#daa520';
-                            else if (scvr <= 13) color = 'green';
-                            else color = '#E83E8C';
+                            if (scvr <= 4) color = '#a00211';
+                            else if (scvr <= 7) color = '#ffc107';
+                            else if (scvr <= 13) color = '#28a745';
+                            else color = '#e83e8c';
                             return '<span style="color:' + color + '; font-weight: 600;">' + scvr
                                 .toFixed(2) + '%</span>';
                         },
@@ -5625,9 +5624,10 @@
                     table.addFilter(function(data) {
                         const roiVal = parseFloat(data['ROI%']) || 0;
                         if (roiFilter === 'lt40') return roiVal < 40;
-                        if (roiFilter === 'gt175') return roiVal >= 175;
-                        const [min, max] = roiFilter.split('-').map(Number);
-                        return roiVal >= min && roiVal <= max;
+                        if (roiFilter === '40-75') return roiVal >= 40 && roiVal < 75;
+                        if (roiFilter === '75-125') return roiVal >= 75 && roiVal < 125;
+                        if (roiFilter === 'gt125') return roiVal >= 125;
+                        return true;
                     });
                 }
 

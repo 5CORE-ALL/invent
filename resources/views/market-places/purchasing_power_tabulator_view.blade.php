@@ -67,9 +67,8 @@
                         <select id="cvr-filter" class="form-select form-select-sm" style="width: auto;">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
-                            <option value="0-2">0-2%</option>
-                            <option value="2-4">2-4%</option>
-                            <option value="4-7">4-7%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
                             <option value="7-13">7-13%</option>
                             <option value="13plus">13%+</option>
                         </select>
@@ -80,9 +79,7 @@
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
-                        <option value="125-175">125–175%</option>
-                        <option value="175-250">175–250%</option>
-                        <option value="gt250">&gt; 250%</option>
+                        <option value="gt125">125%+</option>
                     </select>
 
                     <select id="dil-filter" class="form-select form-select-sm" style="width: auto;">
@@ -583,7 +580,7 @@
                     title: 'ROI%', field: 'ROI%', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
                         const p = parseFloat(cell.getValue());
-                        const color = p < 50 ? '#a00211' : p < 100 ? '#ffc107' : p < 150 ? '#28a745' : '#e83e8c';
+                        const color = p < 40 ? '#a00211' : p < 75 ? '#ffc107' : p < 125 ? '#28a745' : '#d63384';
                         return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
                     }
                 },
@@ -647,7 +644,7 @@
                     title: 'SROI', field: 'SROI', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
                         const p = parseFloat(cell.getValue());
-                        const color = p < 50 ? '#a00211' : p < 100 ? '#ffc107' : p < 150 ? '#28a745' : '#e83e8c';
+                        const color = p < 40 ? '#a00211' : p < 75 ? '#ffc107' : p < 125 ? '#28a745' : '#d63384';
                         return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
                     }
                 }
@@ -762,9 +759,8 @@
                     const cvrPercent = ov > 0 ? (sold / ov) * 100 : 0;
                     const cvrRounded = Math.round(cvrPercent * 100) / 100;
                     if (cvrF === '0-0') return cvrRounded === 0;
-                    if (cvrF === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                    if (cvrF === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                    if (cvrF === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                    if (cvrF === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                    if (cvrF === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                     if (cvrF === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                     if (cvrF === '13plus') return cvrRounded > 13;
                     return true;
@@ -776,9 +772,10 @@
                 table.addFilter(function(d) {
                     const roiVal = parseFloat(d['ROI%']) || 0;
                     if (roi === 'lt40')  return roiVal < 40;
-                    if (roi === 'gt250') return roiVal > 250;
-                    const [min, max] = roi.split('-').map(Number);
-                    return roiVal >= min && roiVal <= max;
+                    if (roi === '40-75') return roiVal >= 40 && roiVal < 75;
+                    if (roi === '75-125') return roiVal >= 75 && roiVal < 125;
+                    if (roi === 'gt125') return roiVal >= 125;
+                    return true;
                 });
             }
 

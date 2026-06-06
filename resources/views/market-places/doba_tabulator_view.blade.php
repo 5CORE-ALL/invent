@@ -75,6 +75,12 @@
             border-top: 1px solid #e2e8f0 !important;
             padding: 10px 16px !important;
         }
+        #doba-footer-visible-rows {
+            font-weight: 600;
+            color: #4361ee;
+            font-size: 13px;
+            white-space: nowrap;
+        }
         #doba-table .tabulator-footer .tabulator-paginator {
             display: flex;
             align-items: center;
@@ -270,17 +276,6 @@
     ])
     <div class="toast-container"></div>
     
-    <!-- Large Visible Rows Counter Badge -->
-    <div class="row mb-2">
-        <div class="col-12">
-            <div class="d-flex justify-content-start">
-                <span id="visible-rows-badge" class="badge p-3" style="background-color: #0d6efd; color: white; font-size: 24px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                    Visible Rows: 0
-                </span>
-            </div>
-        </div>
-    </div>
-    
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
@@ -305,9 +300,9 @@
                         <option value="missing">Missing Only</option>
                     </select>
 
-                    <!-- GPFT% + CVR% (Reverb-style stack; GPFT = NPFT%, CVR = Doba L30 ÷ OV L30) -->
-                    <div class="d-flex flex-column gap-1" style="width: 130px;" title="GPFT% uses NPFT%; CVR uses Doba L30 sold ÷ OV L30 (Shopify)">
-                        <select id="gpft-filter" class="form-select form-select-sm">
+                    <!-- GPFT% + CVR% (inline; GPFT = NPFT%, CVR = Doba L30 ÷ OV L30) -->
+                    <div class="d-flex align-items-center gap-1" title="GPFT% uses NPFT%; CVR uses Doba L30 sold ÷ OV L30 (Shopify)">
+                        <select id="gpft-filter" class="form-select form-select-sm" style="width: 130px;">
                             <option value="all">GPFT%</option>
                             <option value="negative">Negative</option>
                             <option value="0-10">0-10%</option>
@@ -317,12 +312,11 @@
                             <option value="40-50">40-50%</option>
                             <option value="50plus">Above 50%</option>
                         </select>
-                        <select id="cvr-filter" class="form-select form-select-sm">
+                        <select id="cvr-filter" class="form-select form-select-sm" style="width: 130px;">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
-                            <option value="0-2">0-2%</option>
-                            <option value="2-4">2-4%</option>
-                            <option value="4-7">4-7%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
                             <option value="7-13">7-13%</option>
                             <option value="13plus">13%+</option>
                         </select>
@@ -358,65 +352,8 @@
                             <option value="zero">Zero (= 0)</option>
                             <option value="positive">Positive (&gt; 0)</option>
                         </select>
-                        <input type="number" id="growth-min-filter" class="form-control form-control-sm" 
-                               placeholder="Min %" style="width: 64px;" step="1" title="Optional range on top of sign filter">
-                        <span>-</span>
-                        <input type="number" id="growth-max-filter" class="form-control form-control-sm" 
-                               placeholder="Max %" style="width: 64px;" step="1">
                         <button id="clear-growth-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;" type="button"
-                                title="Clear growth sign and min/max">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-
-                    <!-- L30 Sold Filter -->
-                    <div class="d-flex align-items-center gap-1">
-                        <label class="mb-0 fw-bold" style="font-size: 12px;">L30 Sold:</label>
-                        <input type="number" id="l30-sold-min-filter" class="form-control form-control-sm" 
-                               placeholder="Min" style="width: 70px;" step="1" min="0">
-                        <span>-</span>
-                        <input type="number" id="l30-sold-max-filter" class="form-control form-control-sm" 
-                               placeholder="Max" style="width: 70px;" step="1" min="0">
-                        <button id="clear-l30-sold-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-
-                    <!-- L60 Sold Filter -->
-                    <div class="d-flex align-items-center gap-1">
-                        <label class="mb-0 fw-bold" style="font-size: 12px;">L60 Sold:</label>
-                        <input type="number" id="l60-sold-min-filter" class="form-control form-control-sm" 
-                               placeholder="Min" style="width: 70px;" step="1" min="0">
-                        <span>-</span>
-                        <input type="number" id="l60-sold-max-filter" class="form-control form-control-sm" 
-                               placeholder="Max" style="width: 70px;" step="1" min="0">
-                        <button id="clear-l60-sold-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-
-                    <!-- SPFT Filter -->
-                    <div class="d-flex align-items-center gap-1">
-                        <label class="mb-0 fw-bold" style="font-size: 12px;">SPFT %:</label>
-                        <input type="number" id="spft-min-filter" class="form-control form-control-sm" 
-                               placeholder="Min" style="width: 70px;" step="1">
-                        <span>-</span>
-                        <input type="number" id="spft-max-filter" class="form-control form-control-sm" 
-                               placeholder="Max" style="width: 70px;" step="1">
-                        <button id="clear-spft-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-
-                    <!-- NPFT Filter -->
-                    <div class="d-flex align-items-center gap-1">
-                        <label class="mb-0 fw-bold" style="font-size: 12px;">NPFT %:</label>
-                        <input type="number" id="npft-min-filter" class="form-control form-control-sm" 
-                               placeholder="Min" style="width: 70px;" step="1">
-                        <span>-</span>
-                        <input type="number" id="npft-max-filter" class="form-control form-control-sm" 
-                               placeholder="Max" style="width: 70px;" step="1">
-                        <button id="clear-npft-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;">
+                                title="Clear growth sign">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
@@ -428,26 +365,11 @@
                             <option value="lt40">&lt; 40%</option>
                             <option value="40-75">40–75%</option>
                             <option value="75-125">75–125%</option>
-                            <option value="125-175">125–175%</option>
-                            <option value="175-250">175–250%</option>
-                            <option value="gt250">&gt; 250%</option>
+                            <option value="gt125">125%+</option>
                         </select>
                     </div>
 
-                    <!-- DISC VS AMZ Filter -->
-                    <div class="d-flex align-items-center gap-1">
-                        <label class="mb-0 fw-bold" style="font-size: 12px;">Disc AMZ %:</label>
-                        <input type="number" id="disc-amz-min-filter" class="form-control form-control-sm" 
-                               placeholder="Min" style="width: 70px;" step="1">
-                        <span>-</span>
-                        <input type="number" id="disc-amz-max-filter" class="form-control form-control-sm" 
-                               placeholder="Max" style="width: 70px;" step="1">
-                        <button id="clear-disc-amz-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;">
-                            <i class="fas fa-times"></i>
-                        </button>
                     </div>
-                    </div>
-                    <input type="text" id="sku-search" class="form-control form-control-sm" style="max-width:220px; min-width:180px;" placeholder="Search SKU..." autocomplete="off">
                 </div>
 
                 {{-- Row 2: actions --}}
@@ -485,6 +407,7 @@
                         <span id="zero-sold-count" class="badge bg-danger fs-6 p-2" style="font-weight:700; color: white !important;">L30 0 Sold: 0</span>
                         <span id="sold-count" class="badge bg-success fs-6 p-2" style="font-weight:700; color: white !important;">SOLD: 0</span>
                         <span id="missing-count" class="badge fs-6 p-2" style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
+                        <span id="nmap-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter inventory mismatch (Shop INV vs D INV)">N Map: 0</span>
                         <span id="disc-vs-amz-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter non-competitive items"><i class="fas fa-chart-line"></i> VS AMZ: 0</span>
                         <span id="growth-sales-badge" class="badge fs-6 p-2" style="background-color: #28a745; color: white; font-weight:700;">GROWTH: 0%</span>
                         <span id="pft-percentage-badge" class="badge bg-danger fs-6 p-2" style="color: white; font-weight:700;">L30 GPFT %: 0%</span>
@@ -525,6 +448,9 @@
                         </button>
                         <span id="selected-skus-count" class="text-muted ms-2"></span>
                     </div>
+                </div>
+                <div class="p-2 bg-light border-bottom">
+                    <input type="text" id="sku-search" class="form-control" placeholder="Search SKU..." autocomplete="off">
                 </div>
                 <div id="doba-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <div id="doba-table" style="flex: 1;"></div>
@@ -582,6 +508,26 @@
                 .replace(/'/g, '&#39;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
+        }
+        /** Shop INV vs D INV counts as Map if diff <= 3 units OR <= 3% of Shopify INV (same rule as Amazon). */
+        function dobaInvWithinMapTolerance(shopInv, dInv) {
+            const shopNum = parseFloat(shopInv) || 0;
+            const dNum = parseFloat(dInv) || 0;
+            if (shopNum <= 0) return true;
+            const diff = Math.abs(shopNum - dNum);
+            if (diff <= 3 + 1e-9) return true;
+            return diff <= (shopNum * 0.03) + 1e-9;
+        }
+        /** N Map (Missing M): listed row with Shop INV > 0 and Doba price > 0 whose D INV is out of tolerance. */
+        function dobaInvMismatch(rowData) {
+            if (!rowData || rowData.is_parent) return false;
+            if (rowData.is_missing_doba) return false;
+            const shopInv = parseFloat(rowData.shopify_inv) || 0;
+            if (shopInv <= 0) return false;
+            const dobaPrice = parseFloat(rowData['doba Price']) || 0;
+            if (dobaPrice <= 0) return false;
+            const dInv = parseFloat(rowData.INV) || 0;
+            return !dobaInvWithinMapTolerance(shopInv, dInv);
         }
         let table = null; // Global table reference
         let decreaseModeActive = false; // Track decrease mode state
@@ -674,11 +620,6 @@
             });
 
             // SKU Search functionality
-            $('#sku-search').on('keyup', function() {
-                const value = $(this).val();
-                table.setFilter("(Child) sku", "like", value);
-            });
-
             // Discount type dropdown change handler
             $('#discount-type-select').on('change', function() {
                 if (samePriceModeActive) {
@@ -1666,6 +1607,8 @@
                                 '(Child) sku': item['(Child) sku'] || '',
                                 'R&A': item['R&A'] !== undefined ? item['R&A'] : '',
                                 INV: inv,
+                                shopify_inv: Number(item.shopify_inv) || 0,
+                                is_missing_doba: !!item.is_missing_doba,
                                 L30: l30,
                                 ov_dil: ovDil,
                                 'doba L30': dobaL30,
@@ -1754,22 +1697,7 @@
                         headerHozAlign: "left",
                         formatter: function(cell, formatterParams) {
                             const value = cell.getValue();
-                            const rawData = cell.getRow().getData().raw_data || {};
-                            const buyerLink = rawData['B Link'] || '';
-                            const sellerLink = rawData['S Link'] || '';
                             const copyBtn = '<button type="button" class="btn btn-link btn-sm py-0 px-1 dws-copy-sku" data-sku="' + dobaAttrEscape(value) + '" title="Copy SKU"><i class="fa-regular fa-copy"></i></button>';
-                            
-                            if (buyerLink || sellerLink) {
-                                return (
-                                    '<div class="sku-tooltip-container d-flex align-items-center gap-1 flex-wrap">' +
-                                    '<span class="sku-text">' + dobaEscapeHtml(value) + '</span>' +
-                                    copyBtn +
-                                    '<div class="sku-tooltip">' +
-                                    (buyerLink ? '<div class="sku-link"><a href="' + dobaAttrEscape(buyerLink) + '" target="_blank" rel="noopener noreferrer">Buyer link</a></div>' : '') +
-                                    (sellerLink ? '<div class="sku-link"><a href="' + dobaAttrEscape(sellerLink) + '" target="_blank" rel="noopener noreferrer">Seller link</a></div>' : '') +
-                                    '</div></div>'
-                                );
-                            }
                             return '<div class="d-flex align-items-center gap-1 flex-wrap"><span class="sku-text">' + dobaEscapeHtml(value) + '</span>' + copyBtn + '</div>';
                         }
                     },
@@ -1800,13 +1728,51 @@
                     },
                     
                     {
-                        title: "INV",
+                        title: "Shop INV",
+                        field: "shopify_inv",
+                        width: 80,
+                        sorter: "number",
+                        formatter: function(cell, formatterParams) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            return value.toString();
+                        }
+                    },
+                    {
+                        title: "D INV",
                         field: "INV",
                         width: 70,
                         sorter: "number",
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return value.toString();
+                        }
+                    },
+                    {
+                        title: "Map",
+                        field: "map_sync",
+                        width: 60,
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent) return '';
+                            // Not listed on Doba -> blank (same as Amazon)
+                            if (rowData.is_missing_doba) return '';
+                            // Inventory check uses Shopify INV (Shop INV)
+                            const shopInv = parseFloat(rowData.shopify_inv) || 0;
+                            if (shopInv <= 0) return '';
+                            // Blank when price is missing/zero (same as Amazon: can't evaluate)
+                            const dobaPrice = parseFloat(rowData['doba Price']) || 0;
+                            if (dobaPrice <= 0) return '';
+                            const dInv = parseFloat(rowData.INV) || 0;
+                            const difference = Math.abs(shopInv - dInv);
+                            if (dobaInvWithinMapTolerance(shopInv, dInv)) {
+                                return `<span style="font-size: 20px; color: #28a745;">🟢</span>`;
+                            }
+                            return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                                    <span style="font-size: 16px; color: #dc3545;">🔴</span>
+                                    <span style="font-size: 11px; color: #dc3545; font-weight: 600;">${Math.round(difference)}</span>
+                                </div>`;
                         }
                     },
                     {
@@ -1833,25 +1799,6 @@
                             else style = 'color: #e83e8c; font-weight: 800;'; // pink - bold
                             
                             return `<span style="${style}">${Math.round(percent)}%</span>`;
-                        }
-                    },
-                    {
-                        title: "L60",
-                        field: "doba L60",
-                        width: 70,
-                        sorter: "number",
-                        visible: true,
-                        formatter: function(cell, formatterParams) {
-                            return cell.getValue() || 0;
-                        }
-                    },
-                    {
-                        title: "L45",
-                        field: "doba L45",
-                        width: 70,
-                        sorter: "number",
-                        formatter: function(cell, formatterParams) {
-                            return parseInt(cell.getValue(), 10) || 0;
                         }
                     },
                     {
@@ -1966,51 +1913,17 @@
                     {
                         title: "Missing",
                         field: "missing",
-                        width: 80,
+                        width: 70,
                         hozAlign: "center",
-                        visible: false,
+                        headerSort: false,
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
-                            const inv = parseFloat(rowData.INV) || 0;
-                            const dobaL30 = parseFloat(rowData['doba L30']) || 0;
-                            
-                            // Red badge: Has inventory but not selling (INV > 0 AND L30 = 0)
-                            if (inv > 0 && dobaL30 === 0) {
-                                return '<span class="badge" style="background-color: #b02a37; color: white;"><i class="fas fa-exclamation-triangle"></i></span>';
-                            }
-                            
-                            // Yellow dot: 0 inventory (out of stock)
-                            if (inv === 0) {
-                                return '<span style="color: #ffc107; font-size: 24px; font-weight: bold;">●</span>';
-                            }
-                            
-                            return '';
-                        }
-                    },
-                    {
-                        title: "L60 A Price",
-                        field: "l60_avg_price",
-                        width: 90,
-                        sorter: "number",
-                        visible: true,
-                        formatter: function(cell, formatterParams) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            if (value > 0) {
-                                return `<span style="color: #6c757d; font-weight: bold;">$${value.toFixed(2)}</span>`;
-                            }
-                            return '';
-                        }
-                    },
-                    {
-                        title: "L30 A Price",
-                        field: "l30_avg_price",
-                        width: 90,
-                        sorter: "number",
-                        visible: true,
-                        formatter: function(cell, formatterParams) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            if (value > 0) {
-                                return `<span style="color: #17a2b8; font-weight: bold;">$${value.toFixed(2)}</span>`;
+                            if (rowData.is_parent) return '';
+                            const nrVal = rowData.NR || '';
+                            const shopInv = parseFloat(rowData.shopify_inv) || 0;
+                            // Missing = has inventory but not listed on Doba, excluding NR rows
+                            if (rowData.is_missing_doba && nrVal !== 'NR' && shopInv > 0) {
+                                return '<span style="font-size: 16px; color: #dc3545; font-weight: bold;">M</span>';
                             }
                             return '';
                         }
@@ -2066,10 +1979,10 @@
                             let style = '';
                             
                             // getRoiColor logic from pricing CVR
-                            if (value < 50) style = 'color: #dc3545; font-weight: 800;'; // red - extra bold
-                            else if (value >= 50 && value < 75) style = 'color: #ffc107; font-weight: bold;'; // yellow
-                            else if (value >= 75 && value <= 125) style = 'color: #28a745; font-weight: bold;'; // green
-                            else style = 'color: #e83e8c; font-weight: 800;'; // pink - extra bold
+                            if (value < 40) style = 'color: #a00211; font-weight: 800;'; // red - extra bold
+                            else if (value < 75) style = 'color: #ffc107; font-weight: bold;'; // yellow
+                            else if (value < 125) style = 'color: #28a745; font-weight: bold;'; // green
+                            else style = 'color: #d63384; font-weight: 800;'; // magenta - extra bold
                             
                             return `<span style="${style}">${Math.round(value)}%</span>`;
                         }
@@ -2155,10 +2068,10 @@
                             if (value === 0) return '';
                             let style = '';
                             // Match ROI coloring
-                            if (value < 50) style = 'color: #dc3545; font-weight: 800;'; // red - extra bold
-                            else if (value >= 50 && value < 75) style = 'color: #ffc107; font-weight: bold;'; // yellow
-                            else if (value >= 75 && value <= 125) style = 'color: #28a745; font-weight: bold;'; // green
-                            else style = 'color: #e83e8c; font-weight: 800;'; // pink - extra bold
+                            if (value < 40) style = 'color: #a00211; font-weight: 800;'; // red - extra bold
+                            else if (value < 75) style = 'color: #ffc107; font-weight: bold;'; // yellow
+                            else if (value < 125) style = 'color: #28a745; font-weight: bold;'; // green
+                            else style = 'color: #d63384; font-weight: 800;'; // magenta - extra bold
                             return `<span style="${style}">${Math.round(value)}%</span>`;
                         }
                     },
@@ -2249,9 +2162,9 @@
                 table.clearFilter(true);
                 
                 if (inventoryFilter === 'positive') {
-                    table.setFilter("INV", ">", 0);
+                    table.setFilter("shopify_inv", ">", 0);
                 } else if (inventoryFilter === 'zero') {
-                    table.setFilter("INV", "=", 0);
+                    table.setFilter("shopify_inv", "=", 0);
                 }
                 
                 if (parentFilter === 'parent') {
@@ -2261,12 +2174,19 @@
                 }
 
                 if (missingFilter === 'missing') {
-                    // Show items with inventory > 0 but no sales (exclude 0 inventory items)
+                    // Show items that have inventory but aren't listed on Doba, excluding NR rows
                     table.addFilter(function(data) {
-                        const inv = parseFloat(data['INV']) || 0;
-                        const dobaL30 = parseFloat(data['doba L30']) || 0;
-                        // Show items that have inventory but aren't selling
-                        return inv > 0 && dobaL30 === 0;
+                        if (data.is_parent) return false;
+                        return !!data.is_missing_doba && (data.NR || '') !== 'NR' && (parseFloat(data.shopify_inv) || 0) > 0;
+                    });
+                }
+
+                const skuSearch = ($('#sku-search').val() || '').trim().toLowerCase();
+                if (skuSearch !== '') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent) return false;
+                        const sku = String(data['(Child) sku'] || '').toLowerCase();
+                        return sku.indexOf(skuSearch) !== -1;
                     });
                 }
 
@@ -2293,9 +2213,8 @@
                         const cvrPercent = ovL30 > 0 ? (sold / ovL30) * 100 : 0;
                         const cvrRounded = Math.round(cvrPercent * 100) / 100;
                         if (cvrFilter === '0-0') return cvrRounded === 0;
-                        if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                        if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                        if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                        if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                        if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                         if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                         if (cvrFilter === '13plus') return cvrRounded > 13;
                         return true;
@@ -2421,9 +2340,10 @@
                     table.addFilter(function(data) {
                         const roiVal = parseFloat(data.Roi) || 0;
                         if (roiFilter === 'lt40') return roiVal < 40;
-                        if (roiFilter === 'gt250') return roiVal > 250;
-                        const [min, max] = roiFilter.split('-').map(Number);
-                        return roiVal >= min && roiVal <= max;
+                        if (roiFilter === '40-75') return roiVal >= 40 && roiVal < 75;
+                        if (roiFilter === '75-125') return roiVal >= 75 && roiVal < 125;
+                        if (roiFilter === 'gt125') return roiVal >= 125;
+                        return true;
                     });
                 }
 
@@ -2467,89 +2387,46 @@
                 }, 100);
             }
             
-            // Update visible rows count badge
+            // Visible rows count shown in the table footer (like other pages)
+            function ensureFooterVisibleRowsLabel() {
+                const tableEl = document.getElementById('doba-table');
+                if (!tableEl) return;
+                const footer = tableEl.querySelector('.tabulator-footer');
+                if (!footer || document.getElementById('doba-footer-visible-rows')) return;
+                const el = document.createElement('span');
+                el.id = 'doba-footer-visible-rows';
+                el.textContent = 'Visible rows: 0';
+                footer.insertBefore(el, footer.firstChild);
+            }
+
             function updateVisibleRowsCount() {
+                ensureFooterVisibleRowsLabel();
                 const visibleData = table.getData("active");
                 const visibleNonParentRows = visibleData.filter(row => !row.is_parent);
-                $('#visible-rows-badge').text('Visible Rows: ' + visibleNonParentRows.length);
+                const el = document.getElementById('doba-footer-visible-rows');
+                if (el) el.textContent = 'Visible rows: ' + visibleNonParentRows.length;
             }
 
             $('#inventory-filter, #parent-filter, #missing-filter, #gpft-filter, #cvr-filter').on('change', function() {
                 applyFilters();
             });
 
-            // Growth filter handlers
-            $('#growth-sign-filter').on('change', function() {
+            $('#sku-search').on('keyup input', function() {
                 applyFilters();
             });
-            $('#growth-min-filter, #growth-max-filter').on('keyup change', function() {
+
+            // Growth filter handler (dropdown only)
+            $('#growth-sign-filter').on('change', function() {
                 applyFilters();
             });
 
             $('#clear-growth-filter').on('click', function() {
                 $('#growth-sign-filter').val('all');
-                $('#growth-min-filter').val('');
-                $('#growth-max-filter').val('');
-                applyFilters();
-            });
-
-            // L30 Sold filter handlers
-            $('#l30-sold-min-filter, #l30-sold-max-filter').on('keyup change', function() {
-                applyFilters();
-            });
-
-            $('#clear-l30-sold-filter').on('click', function() {
-                $('#l30-sold-min-filter').val('');
-                $('#l30-sold-max-filter').val('');
-                applyFilters();
-            });
-
-            // L60 Sold filter handlers
-            $('#l60-sold-min-filter, #l60-sold-max-filter').on('keyup change', function() {
-                applyFilters();
-            });
-
-            $('#clear-l60-sold-filter').on('click', function() {
-                $('#l60-sold-min-filter').val('');
-                $('#l60-sold-max-filter').val('');
-                applyFilters();
-            });
-
-            // SPFT filter handlers
-            $('#spft-min-filter, #spft-max-filter').on('keyup change', function() {
-                applyFilters();
-            });
-
-            $('#clear-spft-filter').on('click', function() {
-                $('#spft-min-filter').val('');
-                $('#spft-max-filter').val('');
-                applyFilters();
-            });
-
-            // NPFT filter handlers
-            $('#npft-min-filter, #npft-max-filter').on('keyup change', function() {
-                applyFilters();
-            });
-
-            $('#clear-npft-filter').on('click', function() {
-                $('#npft-min-filter').val('');
-                $('#npft-max-filter').val('');
                 applyFilters();
             });
 
             // ROI filter handler
             $('#roi-filter').on('change', function() {
-                applyFilters();
-            });
-
-            // DISC VS AMZ filter handlers
-            $('#disc-amz-min-filter, #disc-amz-max-filter').on('keyup change', function() {
-                applyFilters();
-            });
-
-            $('#clear-disc-amz-filter').on('click', function() {
-                $('#disc-amz-min-filter').val('');
-                $('#disc-amz-max-filter').val('');
                 applyFilters();
             });
 
@@ -2599,6 +2476,7 @@
                 let l30ZeroSold = 0;
                 let sold = 0;
                 let missing = 0;
+                let nmap = 0;
                 let discVsAmzCount = 0;
                 let totalL30Sales = 0;
                 let totalL60Sales = 0;
@@ -2635,8 +2513,11 @@
                     const dobaPrice = parseFloat(row['doba Price']) || 0;
                     const amazonPrice = parseFloat(row.amazon_price) || 0;
                     
-                    // Missing: Has inventory but no sales in L30 (items that need attention)
-                    if (inv > 0 && dobaL30 === 0) missing++;
+                    // Missing: has inventory but not listed on Doba, excluding NR rows
+                    if (row.is_missing_doba && (row.NR || '') !== 'NR' && (parseFloat(row.shopify_inv) || 0) > 0) missing++;
+
+                    // N Map: listed item with Shop INV > 0 and price > 0 whose D INV is out of tolerance
+                    if (dobaInvMismatch(row)) nmap++;
                     
                     // DISC VS AMZ: Count items with discount > -30% (red color items)
                     if (amazonPrice > 0 && dobaPrice > 0) {
@@ -2698,6 +2579,7 @@
                 $('#zero-sold-count').text('L30 0 Sold: ' + l30ZeroSold);
                 $('#sold-count').text('SOLD: ' + sold);
                 $('#missing-count').html('<i class="fas fa-exclamation-triangle"></i> Missing: ' + missing);
+                $('#nmap-count').text('N Map: ' + nmap);
                 $('#disc-vs-amz-count').html('<i class="fas fa-chart-line"></i> VS AMZ: ' + discVsAmzCount);
                 
                 const growthSign = growthPercent > 0 ? '+' : '';
@@ -2966,31 +2848,42 @@
                 });
             });
 
-            // Missing filter toggle on badge click
+            // Missing filter toggle on badge click — show only items not listed on Doba
             let missingFilterActive = false;
             $('#missing-count').on('click', function() {
                 if (missingFilterActive) {
-                    // Remove filter
-                    table.clearFilter();
                     $('#missing-filter').val('');
-                    $(this).css({
-                        'background-color': '#b02a37',
-                        'color': '#ffffff'
-                    });
+                    $(this).css({ 'background-color': '#b02a37', 'color': '#ffffff' });
+                    applyFilters();
                     showToast('info', 'Showing all items');
                 } else {
-                    // Apply missing filter
-                    table.setFilter("missing", "=", 1);
                     $('#missing-filter').val('missing');
-                    $(this).css({
-                        'background-color': '#ffc107',
-                        'color': '#000'
-                    });
-                    const filteredCount = table.getData("active").length;
+                    $(this).css({ 'background-color': '#ffc107', 'color': '#000' });
+                    applyFilters();
+                    const filteredCount = table.getData("active").filter(r => !r.is_parent).length;
                     showToast('warning', `Filtered to ${filteredCount} missing items`);
                 }
                 missingFilterActive = !missingFilterActive;
             });
+
+            // N Map (Missing M) filter toggle on badge click — show only inventory mismatches
+            let nmapFilterActive = false;
+            $('#nmap-count').on('click', function() {
+                if (nmapFilterActive) {
+                    table.removeFilter(dobaNmapFilterFn);
+                    $(this).css({ 'background-color': '#dc3545', 'color': '#ffffff' });
+                    showToast('info', 'Showing all items');
+                } else {
+                    table.addFilter(dobaNmapFilterFn);
+                    $(this).css({ 'background-color': '#ffc107', 'color': '#000' });
+                    const filteredCount = table.getData("active").filter(r => !r.is_parent).length;
+                    showToast('warning', `Filtered to ${filteredCount} inventory mismatches`);
+                }
+                nmapFilterActive = !nmapFilterActive;
+            });
+            function dobaNmapFilterFn(data) {
+                return dobaInvMismatch(data);
+            }
 
             // DISC VS AMZ filter toggle on badge click
             $('#disc-vs-amz-count').on('click', function() {

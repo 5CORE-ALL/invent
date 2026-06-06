@@ -79,9 +79,7 @@
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
-                        <option value="125-175">125–175%</option>
-                        <option value="175-250">175–250%</option>
-                        <option value="gt250">&gt; 250%</option>
+                        <option value="gt125">125%+</option>
                     </select>
 
                     <select id="dil-filter" class="form-select form-select-sm" style="width: auto;">
@@ -318,9 +316,7 @@
                     if (roiFilter === 'lt40' && roi >= 40) return false;
                     if (roiFilter === '40-75' && (roi < 40 || roi >= 75)) return false;
                     if (roiFilter === '75-125' && (roi < 75 || roi >= 125)) return false;
-                    if (roiFilter === '125-175' && (roi < 125 || roi >= 175)) return false;
-                    if (roiFilter === '175-250' && (roi < 175 || roi >= 250)) return false;
-                    if (roiFilter === 'gt250' && roi < 250) return false;
+                    if (roiFilter === 'gt125' && roi < 125) return false;
                 }
                 
                 // DIL filter
@@ -700,10 +696,9 @@
                         let color = '';
                         
                         if (percent < 40) color = '#a00211';
-                        else if (percent >= 40 && percent < 75) color = '#ffc107';
-                        else if (percent >= 75 && percent < 125) color = '#3591dc';
-                        else if (percent >= 125 && percent < 175) color = '#28a745';
-                        else color = '#20c997';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
@@ -772,10 +767,9 @@
                         let color = '';
                         
                         if (percent < 40) color = '#a00211';
-                        else if (percent >= 40 && percent < 75) color = '#ffc107';
-                        else if (percent >= 75 && percent < 125) color = '#3591dc';
-                        else if (percent >= 125 && percent < 175) color = '#28a745';
-                        else color = '#20c997';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },

@@ -173,9 +173,8 @@
                         <select id="cvr-filter" class="form-select form-select-sm">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
-                            <option value="0-2">0-2%</option>
-                            <option value="2-4">2-4%</option>
-                            <option value="4-7">4-7%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
                             <option value="7-13">7-13%</option>
                             <option value="13plus">13%+</option>
                         </select>
@@ -186,9 +185,7 @@
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
-                        <option value="125-175">125–175%</option>
-                        <option value="175-250">175–250%</option>
-                        <option value="gt250">&gt; 250%</option>
+                        <option value="gt125">125%+</option>
                     </select>
 
                     <!-- DIL Filter (Walmart-style dropdown) -->
@@ -1246,9 +1243,9 @@
                         const cvr = (l30 / adjustedViews) * 100;
                         let color = '';
                         
-                        if (cvr < 1) color = '#a00211';
-                        else if (cvr >= 1 && cvr < 3) color = '#ffc107';
-                        else if (cvr >= 3 && cvr < 5) color = '#28a745';
+                        if (cvr <= 4) color = '#a00211';
+                        else if (cvr > 4 && cvr <= 7) color = '#ffc107';
+                        else if (cvr > 7 && cvr <= 13) color = '#28a745';
                         else color = '#e83e8c';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
@@ -1372,10 +1369,10 @@
                         const percent = parseFloat(value);
                         let color = '';
                         
-                        if (percent < 50) color = '#a00211';
-                        else if (percent >= 50 && percent < 100) color = '#ffc107';
-                        else if (percent >= 100 && percent < 150) color = '#28a745';
-                        else color = '#e83e8c';
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
@@ -1523,10 +1520,10 @@
                         const percent = parseFloat(value);
                         let color = '';
                         
-                        if (percent < 50) color = '#a00211';
-                        else if (percent >= 50 && percent < 100) color = '#ffc107';
-                        else if (percent >= 100 && percent < 150) color = '#28a745';
-                        else color = '#e83e8c';
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
@@ -1732,9 +1729,10 @@
                 table.addFilter(function(data) {
                     const roiVal = parseFloat(data['ROI%']) || 0;
                     if (roiFilter === 'lt40') return roiVal < 40;
-                    if (roiFilter === 'gt250') return roiVal > 250;
-                    const [min, max] = roiFilter.split('-').map(Number);
-                    return roiVal >= min && roiVal <= max;
+                    if (roiFilter === '40-75') return roiVal >= 40 && roiVal < 75;
+                    if (roiFilter === '75-125') return roiVal >= 75 && roiVal < 125;
+                    if (roiFilter === 'gt125') return roiVal >= 125;
+                    return true;
                 });
             }
 
@@ -1749,9 +1747,8 @@
                     const cvrPercent = adjustedViews > 0 ? (wl30 / adjustedViews) * 100 : 0;
 
                     if (cvrFilter === '0-0') return cvrPercent === 0;
-                    if (cvrFilter === '0-2') return cvrPercent > 0 && cvrPercent <= 2;
-                    if (cvrFilter === '2-4') return cvrPercent > 2 && cvrPercent <= 4;
-                    if (cvrFilter === '4-7') return cvrPercent > 4 && cvrPercent <= 7;
+                    if (cvrFilter === '0-3') return cvrPercent > 0 && cvrPercent <= 3;
+                    if (cvrFilter === '3-7') return cvrPercent > 3 && cvrPercent <= 7;
                     if (cvrFilter === '7-13') return cvrPercent > 7 && cvrPercent <= 13;
                     if (cvrFilter === '13plus') return cvrPercent > 13;
                     return true;

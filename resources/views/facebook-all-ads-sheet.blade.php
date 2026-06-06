@@ -581,17 +581,39 @@
                     </span>
                 </div>
 
-                <div class="table-responsive border rounded mb-3">
+                <div class="table-responsive border rounded mb-2">
                     <table class="table table-sm align-middle mb-0" id="auditChecklistTable">
                         <thead class="table-light">
                             <tr>
                                 <th style="width:40px;"></th>
                                 <th>Check</th>
+                                <th style="min-width:200px;">Notes</th>
                                 <th class="text-end" style="width:80px;">Points</th>
+                                <th style="width:36px;"></th>
                             </tr>
                         </thead>
                         <tbody id="auditChecklistBody"></tbody>
                     </table>
+                </div>
+
+                {{-- Manually add a custom check + point row to the checklist
+                     above. Added rows are scored and saved alongside the
+                     built-in checklist items. --}}
+                <div class="d-flex flex-wrap align-items-end gap-2 mb-3 p-2 border rounded bg-light">
+                    <div class="flex-grow-1" style="min-width:200px;">
+                        <label class="form-label small text-muted mb-1">Add custom check</label>
+                        <input type="text" id="auditCustomLabel"
+                               class="form-control form-control-sm"
+                               placeholder="e.g. Landing page loads under 3s">
+                    </div>
+                    <div style="width:90px;">
+                        <label class="form-label small text-muted mb-1">Points</label>
+                        <input type="number" id="auditCustomWeight" min="0" step="1" value="5"
+                               class="form-control form-control-sm text-end">
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="auditAddCustomBtn">
+                        <i class="fas fa-plus me-1"></i>Add
+                    </button>
                 </div>
 
                 <label class="form-label small text-muted mb-1">Comments</label>
@@ -969,9 +991,16 @@
                         const v = (cell.getValue() ?? '').toString();
                         if (!v) return '';
                         const safe = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-                        if (v.length <= 70) return safe;
-                        const truncSafe = v.slice(0, 70).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-                        return `<span title="${safe}">${truncSafe}…</span>`;
+                        const attr = safe.replace(/'/g, '&#39;');
+                        const copy = `<i class="fas fa-copy faas-copy-name" role="button" tabindex="0"`
+                                   + ` title="Copy campaign name" data-copy="${attr}"`
+                                   + ` style="margin-left:6px;color:#94a3b8;cursor:pointer;flex-shrink:0;"></i>`;
+                        const text = v.length <= 70
+                            ? safe
+                            : `<span title="${safe}">${v.slice(0, 70).replace(/&/g, '&amp;').replace(/</g, '&lt;')}…</span>`;
+                        return `<span style="display:inline-flex;align-items:center;gap:2px;max-width:100%;">`
+                             + `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${text}</span>`
+                             + `${copy}</span>`;
                     }
                     // Audit column — small button that opens the audit
                     // modal. Cell text shows the latest score (0–100%)
@@ -2414,6 +2443,41 @@
         const AUDIT_SAVE_URL = '/facebook-all-ads-sheet/audit';
         let auditCurrentCid  = '';
         let auditChecklistCache = [];   // mirrors AUDIT_CHECKLIST from server
+        let auditCustomSeq   = 0;       // counter for client-side custom check keys
+
+        // ── Copy campaign name to clipboard (icon in the name cell) ─────
+        function faasCopyText(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                return navigator.clipboard.writeText(text);
+            }
+            return new Promise((resolve, reject) => {
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.focus(); ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    resolve();
+                } catch (err) { reject(err); }
+            });
+        }
+        document.addEventListener('click', function (e) {
+            const icon = e.target.closest && e.target.closest('.faas-copy-name');
+            if (!icon) return;
+            e.stopPropagation();
+            e.preventDefault();
+            const tmp = document.createElement('textarea');
+            tmp.innerHTML = icon.getAttribute('data-copy') || '';
+            faasCopyText(tmp.value).then(() => {
+                const prev = icon.className;
+                icon.className = 'fas fa-check faas-copy-name';
+                icon.style.color = '#22c55e';
+                setTimeout(() => { icon.className = prev; icon.style.color = '#94a3b8'; }, 1000);
+            }).catch(() => {});
+        });
 
         document.addEventListener('click', function (e) {
             const btn = e.target.closest('[data-audit-cid]');
@@ -2437,9 +2501,14 @@
             document.getElementById('auditCampaignId').textContent   = cid;
             document.getElementById('auditError')?.classList.add('d-none');
             document.getElementById('auditComments').value = '';
+            auditCustomSeq = 0;
+            const cl = document.getElementById('auditCustomLabel');
+            const cw = document.getElementById('auditCustomWeight');
+            if (cl) cl.value = '';
+            if (cw) cw.value = '5';
             // Empty state until the fetch completes.
             document.getElementById('auditChecklistBody').innerHTML =
-                '<tr><td colspan="3" class="text-center small text-muted py-3">Loading…</td></tr>';
+                '<tr><td colspan="5" class="text-center small text-muted py-3">Loading…</td></tr>';
 
             fetch(`${AUDIT_GET_URL}?campaign_id=${encodeURIComponent(cid)}`,
                 { credentials: 'same-origin' })
@@ -2448,7 +2517,10 @@
                     if (!resp.success) throw new Error(resp.error || 'Failed to load audit.');
                     auditChecklistCache = resp.checklist || [];
                     const ticked = (resp.latest && resp.latest.checks) || {};
-                    renderAuditChecklist(auditChecklistCache, ticked);
+                    const notes  = (resp.latest && resp.latest.notes)  || {};
+                    const custom = (resp.latest && resp.latest.custom_items) || [];
+                    renderAuditChecklist(auditChecklistCache, ticked, notes);
+                    custom.forEach(ci => appendAuditCustomRow(ci));
                     document.getElementById('auditComments').value =
                         (resp.latest && resp.latest.comments) || '';
                     renderAuditHistory(resp.history || []);
@@ -2464,20 +2536,34 @@
             if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
         }
 
-        function renderAuditChecklist(items, ticked) {
+        function escapeAuditHtml(s) {
+            return (s ?? '').toString()
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function renderAuditChecklist(items, ticked, notes) {
             const tbody = document.getElementById('auditChecklistBody');
             tbody.innerHTML = '';
+            notes = notes || {};
             items.forEach(it => {
                 const tr = document.createElement('tr');
                 const checked = ticked && ticked[it.key] ? 'checked' : '';
+                const note    = escapeAuditHtml(notes[it.key] || '');
                 tr.innerHTML = `
                     <td class="text-center">
                         <input type="checkbox" class="form-check-input"
                                data-audit-key="${it.key}"
                                data-audit-weight="${it.weight}" ${checked}>
                     </td>
-                    <td>${it.label.replace(/</g, '&lt;')}</td>
-                    <td class="text-end fw-semibold text-muted">${it.weight}</td>`;
+                    <td>${escapeAuditHtml(it.label)}</td>
+                    <td>
+                        <input type="text" class="form-control form-control-sm audit-note-input"
+                               data-audit-note-key="${it.key}"
+                               value="${note}" placeholder="Add a note…">
+                    </td>
+                    <td class="text-end fw-semibold text-muted">${it.weight}</td>
+                    <td></td>`;
                 tbody.appendChild(tr);
             });
             tbody.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -2485,16 +2571,103 @@
             });
         }
 
+        // Append a single manually-added custom check row. `item` may be
+        // undefined (a brand-new blank row using the Add inputs) or a saved
+        // { key, label, weight, checked, note } object loaded from history.
+        function appendAuditCustomRow(item) {
+            const tbody = document.getElementById('auditChecklistBody');
+            if (!tbody) return;
+            item = item || {};
+            const key     = item.key || ('custom_' + (++auditCustomSeq));
+            const label   = escapeAuditHtml(item.label || '');
+            const weight  = Number(item.weight) || 0;
+            const note    = escapeAuditHtml(item.note || '');
+            const checked = item.checked ? 'checked' : '';
+            const tr = document.createElement('tr');
+            tr.dataset.auditCustom = '1';
+            tr.innerHTML = `
+                <td class="text-center">
+                    <input type="checkbox" class="form-check-input"
+                           data-audit-key="${key}"
+                           data-audit-weight="${weight}" ${checked}>
+                </td>
+                <td>
+                    <input type="text" class="form-control form-control-sm audit-custom-label"
+                           value="${label}" placeholder="Custom check…">
+                </td>
+                <td>
+                    <input type="text" class="form-control form-control-sm audit-note-input"
+                           value="${note}" placeholder="Add a note…">
+                </td>
+                <td class="text-end">
+                    <input type="number" min="0" step="1"
+                           class="form-control form-control-sm text-end audit-custom-weight"
+                           style="width:70px;display:inline-block;" value="${weight}">
+                </td>
+                <td class="text-center">
+                    <button type="button" class="btn btn-sm btn-link text-danger p-0 audit-custom-remove"
+                            title="Remove this check"><i class="fas fa-times"></i></button>
+                </td>`;
+            tbody.appendChild(tr);
+            const cb = tr.querySelector('input[type="checkbox"]');
+            cb.addEventListener('change', recalcAuditScore);
+            const wt = tr.querySelector('.audit-custom-weight');
+            wt.addEventListener('input', function () {
+                cb.dataset.auditWeight = Number(this.value) || 0;
+                recalcAuditScore();
+            });
+            tr.querySelector('.audit-custom-remove').addEventListener('click', function () {
+                tr.remove();
+                recalcAuditScore();
+            });
+            return tr;
+        }
+
         function recalcAuditScore() {
             let earned = 0, total = 0;
-            auditChecklistCache.forEach(it => { total += Number(it.weight) || 0; });
             document.querySelectorAll('#auditChecklistBody input[type="checkbox"]')
-                .forEach(cb => { if (cb.checked) earned += Number(cb.dataset.auditWeight) || 0; });
+                .forEach(cb => {
+                    const w = Number(cb.dataset.auditWeight) || 0;
+                    total += w;
+                    if (cb.checked) earned += w;
+                });
             const pct = total > 0 ? Math.round((earned / total) * 100) : 0;
             document.getElementById('auditLiveScore').textContent  = pct + '%';
             document.getElementById('auditLiveEarned').textContent = earned;
             document.getElementById('auditLiveTotal').textContent  = total;
         }
+
+        // "Add custom check" button — pulls the label/points inputs, appends
+        // a row, persists the audit immediately, then clears the inputs ready
+        // for the next entry (the modal stays open).
+        document.getElementById('auditAddCustomBtn')?.addEventListener('click', function () {
+            const labelEl  = document.getElementById('auditCustomLabel');
+            const weightEl = document.getElementById('auditCustomWeight');
+            const label = (labelEl.value || '').trim();
+            if (!label) {
+                labelEl.focus();
+                labelEl.classList.add('is-invalid');
+                setTimeout(() => labelEl.classList.remove('is-invalid'), 1200);
+                return;
+            }
+            appendAuditCustomRow({
+                label:   label,
+                weight:  Math.max(0, Number(weightEl.value) || 0),
+                checked: true,
+            });
+            labelEl.value = '';
+            weightEl.value = '5';
+            recalcAuditScore();
+            performAuditSave({ button: this, closeOnSuccess: false })
+                .then(() => labelEl.focus());
+        });
+
+        document.getElementById('auditCustomLabel')?.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('auditAddCustomBtn')?.click();
+            }
+        });
 
         function renderAuditHistory(rows) {
             const body  = document.getElementById('auditHistoryBody');
@@ -2524,16 +2697,44 @@
             });
         }
 
-        document.getElementById('auditSaveBtn')?.addEventListener('click', function () {
+        // Collect the modal state + POST it. `opts.closeOnSuccess` hides the
+        // modal afterwards (the Save button); the Add button persists without
+        // closing so more custom checks can be added. `opts.button` is shown
+        // in a spinner state while the request is in flight.
+        function performAuditSave(opts) {
+            opts = opts || {};
             const checks = {};
-            document.querySelectorAll('#auditChecklistBody input[type="checkbox"]').forEach(cb => {
-                checks[cb.dataset.auditKey] = !!cb.checked;
+            const notes  = {};
+            const customItems = [];
+            document.querySelectorAll('#auditChecklistBody tr').forEach(tr => {
+                const cb = tr.querySelector('input[type="checkbox"]');
+                if (!cb) return;
+                const noteEl = tr.querySelector('.audit-note-input');
+                const note   = noteEl ? (noteEl.value || '').trim() : '';
+                if (tr.dataset.auditCustom === '1') {
+                    const labelEl  = tr.querySelector('.audit-custom-label');
+                    const weightEl = tr.querySelector('.audit-custom-weight');
+                    const label = labelEl ? (labelEl.value || '').trim() : '';
+                    if (!label) return; // skip blank custom rows
+                    customItems.push({
+                        key:     cb.dataset.auditKey,
+                        label:   label,
+                        weight:  Math.max(0, Number(weightEl ? weightEl.value : 0) || 0),
+                        checked: !!cb.checked,
+                        note:    note,
+                    });
+                } else {
+                    checks[cb.dataset.auditKey] = !!cb.checked;
+                    if (note) notes[cb.dataset.auditKey] = note;
+                }
             });
             const comments = document.getElementById('auditComments').value || '';
-            const btn = this;
-            const original = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+            const btn = opts.button || null;
+            const original = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+            }
 
             // Look up the row's campaign name once more (might have
             // changed if the user switched filters between open + save).
@@ -2544,7 +2745,7 @@
                 if (match) campaignName = match['Campaign name'] || '';
             }
 
-            fetch(AUDIT_SAVE_URL, {
+            return fetch(AUDIT_SAVE_URL, {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: {
@@ -2556,6 +2757,8 @@
                     campaign_id:   auditCurrentCid,
                     campaign_name: campaignName,
                     checks:        checks,
+                    notes:         notes,
+                    custom_items:  customItems,
                     comments:      comments,
                 }),
             })
@@ -2567,6 +2770,7 @@
                         e.classList.remove('d-none');
                         return;
                     }
+                    document.getElementById('auditError')?.classList.add('d-none');
                     // Patch the corresponding Tabulator row in place so
                     // the Audit / History columns repaint without a
                     // full table reload.
@@ -2583,7 +2787,9 @@
                             row.reformat();
                         }
                     }
-                    bootstrap.Modal.getInstance(document.getElementById('auditModal'))?.hide();
+                    if (opts.closeOnSuccess) {
+                        bootstrap.Modal.getInstance(document.getElementById('auditModal'))?.hide();
+                    }
                 })
                 .catch(err => {
                     const e = document.getElementById('auditError');
@@ -2591,9 +2797,15 @@
                     e.classList.remove('d-none');
                 })
                 .finally(() => {
-                    btn.disabled = false;
-                    btn.innerHTML = original;
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = original;
+                    }
                 });
+        }
+
+        document.getElementById('auditSaveBtn')?.addEventListener('click', function () {
+            performAuditSave({ button: this, closeOnSuccess: true });
         });
 
         // ── Export (filtered rows + visible columns) ───────────────────

@@ -67,6 +67,11 @@
             background: none !important;
         }
 
+        .dil-percent-value.purple {
+            color: #d63384 !important;
+            background: none !important;
+        }
+
         .status-circle {
             display: inline-block;
             width: 12px;
@@ -159,9 +164,8 @@
                         <select id="cvr-filter" class="form-select form-select-sm" style="width: 112px;">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
-                            <option value="0-2">0-2%</option>
-                            <option value="2-4">2-4%</option>
-                            <option value="4-7">4-7%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
                             <option value="7-13">7-13%</option>
                             <option value="13plus">13%+</option>
                         </select>
@@ -174,9 +178,7 @@
                             <option value="lt40">&lt; 40%</option>
                             <option value="40-75">40–75%</option>
                             <option value="75-125">75–125%</option>
-                            <option value="125-175">125–175%</option>
-                            <option value="175-250">175–250%</option>
-                            <option value="gt250">&gt; 250%</option>
+                            <option value="gt125">125%+</option>
                         </select>
                     </div>
 
@@ -2498,10 +2500,11 @@
 
         const getRoiColor = (value) => {
             const percent = parseFloat(value);
-            if (percent < 50) return 'red';
-            if (percent >= 50 && percent < 75) return 'yellow';
-            if (percent >= 75 && percent <= 125) return 'green';
-            return 'pink';
+            if (isNaN(percent)) return 'red';
+            if (percent >= 125) return 'purple';
+            if (percent >= 75) return 'green';
+            if (percent >= 40) return 'yellow';
+            return 'red';
         };
 
         let totalCampaignCountFromBackend = 0;
@@ -3560,9 +3563,10 @@
                 table.addFilter(function(data) {
                     const groi = parseFloat(data.roi_percent) || 0;
                     if (groiFilter === 'lt40') return groi < 40;
-                    if (groiFilter === 'gt250') return groi > 250;
-                    const [min, max] = groiFilter.split('-').map(Number);
-                    return groi >= min && groi <= max;
+                    if (groiFilter === '40-75') return groi >= 40 && groi < 75;
+                    if (groiFilter === '75-125') return groi >= 75 && groi < 125;
+                    if (groiFilter === 'gt125') return groi >= 125;
+                    return true;
                 });
             }
 
@@ -3573,9 +3577,8 @@
                     const cvrRounded = Math.round(cvr * 100) / 100;
                     
                     if (cvrFilter === '0-0') return cvrRounded === 0;
-                    if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                    if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                    if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                    if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                    if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                     if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                     if (cvrFilter === '13plus') return cvrRounded > 13;
                     return true;

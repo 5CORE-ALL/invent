@@ -162,9 +162,8 @@
                         <select id="cvr-filter" class="form-select form-select-sm">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
-                            <option value="0-2">0-2%</option>
-                            <option value="2-4">2-4%</option>
-                            <option value="4-7">4-7%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
                             <option value="7-13">7-13%</option>
                             <option value="13plus">13%+</option>
                         </select>
@@ -176,9 +175,7 @@
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
-                        <option value="125-175">125–175%</option>
-                        <option value="175-250">175–250%</option>
-                        <option value="gt250">&gt; 250%</option>
+                        <option value="gt125">125%+</option>
                     </select>
 
                     <!-- DIL Filter (Walmart-style dropdown) -->
@@ -1158,10 +1155,10 @@
                         const percent = parseFloat(value);
                         let color = '';
                         
-                        if (percent < 50) color = '#a00211';
-                        else if (percent >= 50 && percent < 100) color = '#ffc107';
-                        else if (percent >= 100 && percent < 150) color = '#28a745';
-                        else color = '#e83e8c';
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
@@ -1181,10 +1178,10 @@
                         const nroi = roi - ads;
                         
                         let color = '';
-                        if (nroi < 50) color = '#a00211';
-                        else if (nroi >= 50 && nroi < 100) color = '#ffc107';
-                        else if (nroi >= 100 && nroi < 150) color = '#28a745';
-                        else color = '#e83e8c';
+                        if (nroi < 40) color = '#a00211';
+                        else if (nroi < 75) color = '#ffc107';
+                        else if (nroi < 125) color = '#28a745';
+                        else color = '#d63384';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${nroi.toFixed(0)}%</span>`;
                     },
@@ -1335,10 +1332,10 @@
                         const percent = parseFloat(value);
                         let color = '';
                         
-                        if (percent < 50) color = '#a00211';
-                        else if (percent >= 50 && percent < 100) color = '#ffc107';
-                        else if (percent >= 100 && percent < 150) color = '#28a745';
-                        else color = '#e83e8c';
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
@@ -1358,10 +1355,10 @@
                         const snroi = sroi - ads;
                         
                         let color = '';
-                        if (snroi < 50) color = '#a00211';
-                        else if (snroi >= 50 && snroi < 100) color = '#ffc107';
-                        else if (snroi >= 100 && snroi < 150) color = '#28a745';
-                        else color = '#e83e8c';
+                        if (snroi < 40) color = '#a00211';
+                        else if (snroi < 75) color = '#ffc107';
+                        else if (snroi < 125) color = '#28a745';
+                        else color = '#d63384';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${snroi.toFixed(0)}%</span>`;
                     },
@@ -1533,9 +1530,10 @@
                 table.addFilter(function(data) {
                     const roiVal = parseFloat(data['ROI%']) || 0;
                     if (roiFilter === 'lt40') return roiVal < 40;
-                    if (roiFilter === 'gt250') return roiVal > 250;
-                    const [min, max] = roiFilter.split('-').map(Number);
-                    return roiVal >= min && roiVal <= max;
+                    if (roiFilter === '40-75') return roiVal >= 40 && roiVal < 75;
+                    if (roiFilter === '75-125') return roiVal >= 75 && roiVal < 125;
+                    if (roiFilter === 'gt125') return roiVal >= 125;
+                    return true;
                 });
             }
 
@@ -1547,9 +1545,8 @@
                     const cvrPercent = views > 0 ? (l30 / views) * 100 : 0;
                     const cvrRounded = Math.round(cvrPercent * 100) / 100;
                     if (cvrFilter === '0-0') return cvrRounded === 0;
-                    if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                    if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                    if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                    if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                    if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                     if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                     if (cvrFilter === '13plus') return cvrRounded > 13;
                     return true;

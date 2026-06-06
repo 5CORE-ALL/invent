@@ -806,6 +806,8 @@ class FacebookAllAdsSheetController extends Controller
             'latest'    => $latest ? [
                 'score_pct'       => (int) $latest->score_pct,
                 'checks'          => json_decode($latest->checks, true) ?: new \stdClass(),
+                'notes'           => (isset($latest->notes) ? json_decode($latest->notes, true) : null) ?: new \stdClass(),
+                'custom_items'    => (isset($latest->custom_items) ? json_decode($latest->custom_items, true) : null) ?: [],
                 'comments'        => $latest->comments,
                 'audited_at'      => $latest->audited_at,
                 'audited_by_name' => $latest->audited_by_name,
@@ -824,6 +826,8 @@ class FacebookAllAdsSheetController extends Controller
         $cid          = trim((string) $request->input('campaign_id', ''));
         $campaignName = (string) $request->input('campaign_name', '');
         $checks       = $request->input('checks', []);
+        $notes        = $request->input('notes', []);
+        $customItems  = $request->input('custom_items', []);
         $comments     = (string) $request->input('comments', '');
 
         if ($cid === '' || !preg_match('/^\d{6,}$/', $cid)) {
@@ -832,13 +836,51 @@ class FacebookAllAdsSheetController extends Controller
         if (!is_array($checks)) {
             return response()->json(['success' => false, 'error' => 'checks must be an object.'], 422);
         }
+        if (!is_array($notes)) {
+            $notes = [];
+        }
+        if (!is_array($customItems)) {
+            $customItems = [];
+        }
+
+        // Sanitise the manually-added checks: each needs a label and a
+        // non-negative integer weight; a stable key is generated when the
+        // client didn't supply one so notes/checks can map back to it.
+        $cleanCustom = [];
+        foreach ($customItems as $i => $ci) {
+            if (!is_array($ci)) {
+                continue;
+            }
+            $label = trim((string) ($ci['label'] ?? ''));
+            if ($label === '') {
+                continue;
+            }
+            $key = trim((string) ($ci['key'] ?? ''));
+            if ($key === '') {
+                $key = 'custom_' . ($i + 1);
+            }
+            $cleanCustom[] = [
+                'key'     => $key,
+                'label'   => mb_substr($label, 0, 255),
+                'weight'  => max(0, (int) ($ci['weight'] ?? 0)),
+                'checked' => ! empty($ci['checked']),
+                'note'    => mb_substr(trim((string) ($ci['note'] ?? '')), 0, 1000),
+            ];
+        }
 
         // Score = sum(weights of items with key set to true) / sum(all weights) × 100.
+        // Both the built-in checklist and any manually-added custom checks count.
         $totalWeight = 0;
         $earned      = 0;
         foreach (self::AUDIT_CHECKLIST as $item) {
             $totalWeight += (int) $item['weight'];
             if (! empty($checks[$item['key']])) {
+                $earned += (int) $item['weight'];
+            }
+        }
+        foreach ($cleanCustom as $item) {
+            $totalWeight += (int) $item['weight'];
+            if ($item['checked']) {
                 $earned += (int) $item['weight'];
             }
         }
@@ -851,6 +893,8 @@ class FacebookAllAdsSheetController extends Controller
             'campaign_id'      => $cid,
             'campaign_name'    => $campaignName !== '' ? $campaignName : null,
             'checks'           => json_encode($checks),
+            'notes'            => json_encode((object) $notes),
+            'custom_items'     => json_encode($cleanCustom),
             'score_pct'        => $score,
             'comments'         => $comments !== '' ? $comments : null,
             'audited_by'       => $user->id ?? null,

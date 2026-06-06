@@ -756,14 +756,14 @@ class DobaApiService
     }
 
     public function getinventoryData(){
-        $this->info("Fetching Doba Metrics...");
+        Log::info("Fetching Doba Metrics...");
         $page = 1;
          do {
             $timestamp = $this->getMillisecond();
             $getContent = $this->getContent($timestamp);
             $sign = $this->generateSignature($getContent);
             
-            $response = Http::withHeaders([
+            $response = Http::withoutVerifying()->withHeaders([
                 'appKey' => config('services.doba.app_key'),
                 'signType' => 'rsa2',
                 'timestamp' => $timestamp,
@@ -775,12 +775,11 @@ class DobaApiService
             ]);
         
             if (!$response->ok()) {
-                $this->error("API Failed: " . $response->body());
+                Log::error("API Failed: " . $response->body());
                 return;
             }
 
             $data = $response['businessData']['data']['dsGoodsDetailResultVOS'];
-            dd($data);
             if (empty($data)) break;
             foreach ($data as $product) {
                 foreach ($product['skus'] as $sku) {
@@ -788,11 +787,13 @@ class DobaApiService
 
                     if (!$item) continue;
 
+                    // Doba API returns inventory (availableInventory) in the same stocks object — store it on doba_metrics
                     DobaMetric::updateOrCreate(
                         ['sku' => $sku['skuCode']],
                         [
                             'item_id' => $item['itemNo'],
                             'anticipated_income' => $item['anticipatedIncome'],
+                            'inventory' => (int) ($item['availableInventory'] ?? 0),
                         ]
                     );
                 }

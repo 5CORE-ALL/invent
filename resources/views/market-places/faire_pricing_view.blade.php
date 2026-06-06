@@ -169,9 +169,7 @@
                             <option value="lt40">&lt; 40%</option>
                             <option value="40-75">40–75%</option>
                             <option value="75-125">75–125%</option>
-                            <option value="125-175">125–175%</option>
-                            <option value="175-250">175–250%</option>
-                            <option value="gt250">&gt; 250%</option>
+                            <option value="gt125">125%+</option>
                         </select>
                         <select id="fr-fqty-filter" class="form-select form-select-sm" style="width:130px;" title="Units sold (Faire daily data)">
                             <option value="all">Sold</option>
@@ -1045,9 +1043,10 @@
                     if (d.is_parent) return true;
                     const roi = parseFloat(d.groi) || 0;
                     if (roiFilter === 'lt40') return roi < 40;
-                    if (roiFilter === 'gt250') return roi > 250;
-                    const parts = roiFilter.split('-').map(Number);
-                    return roi >= parts[0] && roi <= parts[1];
+                    if (roiFilter === '40-75') return roi >= 40 && roi < 75;
+                    if (roiFilter === '75-125') return roi >= 75 && roi < 125;
+                    if (roiFilter === 'gt125') return roi >= 125;
+                    return true;
                 });
             }
             if (fqtyFilter !== 'all') {
@@ -1461,9 +1460,8 @@
                             let color;
                             if (v < 40) color = '#a00211';
                             else if (v < 75) color = '#ffc107';
-                            else if (v < 125) color = '#3591dc';
-                            else if (v < 250) color = '#28a745';
-                            else color = '#e83e8c';
+                            else if (v < 125) color = '#28a745';
+                            else color = '#d63384';
                             return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
                         }
                     },
@@ -1530,9 +1528,8 @@
                             let color;
                             if (v < 40) color = '#a00211';
                             else if (v < 75) color = '#ffc107';
-                            else if (v < 125) color = '#3591dc';
-                            else if (v < 250) color = '#28a745';
-                            else color = '#e83e8c';
+                            else if (v < 125) color = '#28a745';
+                            else color = '#d63384';
                             return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
                         }
                     },

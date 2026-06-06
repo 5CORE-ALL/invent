@@ -951,6 +951,48 @@
                 });
             }
 
+            // Delegated copy-to-clipboard for the campaign-name copy icon.
+            (function () {
+                function copyText(text) {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        return navigator.clipboard.writeText(text);
+                    }
+                    return new Promise(function (resolve, reject) {
+                        try {
+                            var ta = document.createElement('textarea');
+                            ta.value = text;
+                            ta.style.position = 'fixed';
+                            ta.style.opacity = '0';
+                            document.body.appendChild(ta);
+                            ta.focus(); ta.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(ta);
+                            resolve();
+                        } catch (e) { reject(e); }
+                    });
+                }
+                document.addEventListener('click', function (e) {
+                    var icon = e.target.closest ? e.target.closest('.gac-copy-name') : null;
+                    if (!icon) return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    var text = icon.getAttribute('data-copy') || '';
+                    // Decode the HTML entities stored in the attribute.
+                    var tmp = document.createElement('textarea');
+                    tmp.innerHTML = text;
+                    text = tmp.value;
+                    copyText(text).then(function () {
+                        var prev = icon.className;
+                        icon.className = 'fas fa-check gac-copy-name';
+                        icon.style.color = '#22c55e';
+                        setTimeout(function () {
+                            icon.className = prev;
+                            icon.style.color = '#94a3b8';
+                        }, 1000);
+                    }).catch(function () {});
+                });
+            })();
+
             table = new Tabulator('#google-ads-campaigns-raw-table', {
                 ajaxURL: dataUrl,
                 ajaxConfig: { method: 'GET', credentials: 'same-origin' },
@@ -1102,6 +1144,18 @@
                         var dot = '<span aria-hidden="true" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';"></span>';
                         return '<span class="gac-raw-status-cell" title="' + tipAttr + '" aria-label="' + tipAttr + '" style="display:inline-flex;align-items:center;justify-content:center;">' + dot + '</span>';
                     };
+                    /** Campaign name + a copy-to-clipboard icon. */
+                    var campaignNameFormatter = function(c) {
+                        var v = c.getValue();
+                        var s = v === null || v === undefined ? '' : String(v);
+                        var esc = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                        var attr = esc.replace(/'/g, '&#39;');
+                        var copy = '<i class="fas fa-copy gac-copy-name" role="button" tabindex="0" title="Copy campaign name"'
+                                 + ' data-copy="' + attr + '" style="margin-left:6px;color:#94a3b8;cursor:pointer;flex-shrink:0;"></i>';
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:2px;max-width:100%;">'
+                             + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc + '</span>'
+                             + copy + '</span>';
+                    };
                     /** Server-side sort whitelist — keep in sync with applyRawGridSort() in the controller. */
                     var sortableFields = {
                         campaign_name: true,
@@ -1133,6 +1187,7 @@
                         col.headerHozAlign = 'center';
                         if (col.field === 'campaign_name') {
                             col.minWidth = 141;
+                            col.formatter = campaignNameFormatter;
                         } else if (col.field === 'campaign_status') {
                             col.minWidth = 44;
                             col.width = 44;

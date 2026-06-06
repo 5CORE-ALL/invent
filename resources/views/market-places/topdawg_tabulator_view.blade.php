@@ -351,10 +351,10 @@
                         const percent = parseFloat(c.getValue());
                         if (isNaN(percent)) return '';
                         let color = '';
-                        if (percent < 50) color = '#a00211';
-                        else if (percent < 100) color = '#ffc107';
-                        else if (percent < 150) color = '#28a745';
-                        else color = '#e83e8c';
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
                         return `<span style="color:${color};font-weight:600;">${percent.toFixed(0)}%</span>`;
                     }},
                 { title: 'Profit', field: 'Profit', hozAlign: 'center', width: 70, sorter: 'number', visible: false,
