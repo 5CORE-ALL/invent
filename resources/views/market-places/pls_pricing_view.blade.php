@@ -157,6 +157,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="plsEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="plsEditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="plsSellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="plsBuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="plsSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -185,6 +214,58 @@
     }
 
     $(document).ready(function() {
+
+        // ---- Edit Links (Buyer / Seller) ----
+        let plsEditLinksRow = null;
+        window.openPlsEditLinksModal = function(row) {
+            plsEditLinksRow = row;
+            const d = row.getData();
+            $('#plsEditLinksSku').text(d.sku || '');
+            $('#plsSellerLinkInput').val(d.seller_link || '');
+            $('#plsBuyerLinkInput').val(d.buyer_link || '');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('plsEditLinksModal')).show();
+        };
+        $('#plsSaveLinksBtn').on('click', function() {
+            if (!plsEditLinksRow) return;
+            const sku = plsEditLinksRow.getData().sku;
+            const sellerLink = $('#plsSellerLinkInput').val().trim();
+            const buyerLink = $('#plsBuyerLinkInput').val().trim();
+            const $btn = $(this);
+            $btn.prop('disabled', true).text('Saving...');
+            $.ajax({
+                url: '/pls/save-links',
+                method: 'POST',
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    sku: sku,
+                    seller_link: sellerLink,
+                    buyer_link: buyerLink
+                },
+                success: function(res) {
+                    if (res && res.success) {
+                        plsEditLinksRow.update({
+                            seller_link: res.seller_link || '',
+                            buyer_link: res.buyer_link || ''
+                        }).then(function() {
+                            plsEditLinksRow.reformat();
+                        }).catch(function() {
+                            plsEditLinksRow.reformat();
+                        });
+                        showToast('Links saved successfully', 'success');
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById('plsEditLinksModal')).hide();
+                    } else {
+                        showToast((res && res.message) || 'Failed to save links', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save links';
+                    showToast(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text('Save');
+                }
+            });
+        });
 
         $('#inventory-filter').on('change', function () { applyFilters(); });
         $('#gpft-filter').on('change', function () { applyFilters(); });
@@ -336,6 +417,35 @@
                                    data-sku="${sku}"
                                    title="Copy SKU"></i>`;
                         return html;
+                    }
+                },
+                {
+                    title: "Links",
+                    field: "links_column",
+                    width: 55,
+                    frozen: true,
+                    hozAlign: "center",
+                    headerSort: false,
+                    tooltip: "Double-click to add / edit links",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        const buyerLink = d.buyer_link || '';
+                        const sellerLink = d.seller_link || '';
+                        let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
+                        if (sellerLink) {
+                            html += '<a href="' + sellerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';
+                        }
+                        if (buyerLink) {
+                            html += '<a href="' + buyerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>';
+                        }
+                        if (!sellerLink && !buyerLink) {
+                            html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                        }
+                        html += '</div>';
+                        return html;
+                    },
+                    cellDblClick: function(e, cell) {
+                        openPlsEditLinksModal(cell.getRow());
                     }
                 },
                 {

@@ -3263,9 +3263,9 @@
                         title: "Links",
                         field: "links_column",
                         frozen: true,
-                        width: 100,
+                        width: 55,
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const buyerLink = rowData['B Link'] || '';
@@ -3276,13 +3276,13 @@
 
                             if (sellerLink) {
                                 html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size: 12px; text-decoration: none;">
-                                    <i class="fa fa-link"></i> S Link
+                                    <i class="fa fa-link"></i> S
                                 </a>`;
                             }
 
                             if (buyerLink) {
                                 html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size: 12px; text-decoration: none;">
-                                    <i class="fa fa-link"></i> B Link
+                                    <i class="fa fa-link"></i> B
                                 </a>`;
                             }
 

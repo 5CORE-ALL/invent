@@ -19,7 +19,9 @@ class RefundController extends Controller
 {
     public const PERSON_RESPONSIBLE_OPTIONS = [
         'Shivaji', 'Shreya', 'Suman', 'Hritiksha', 'Srimanta',
+        'Riya S', 'Susoma',
         'USPS', 'UPS', 'Fedex', 'Platform', 'QC', 'Packaging', 'Pricing',
+        'Other',
     ];
 
     public function index()

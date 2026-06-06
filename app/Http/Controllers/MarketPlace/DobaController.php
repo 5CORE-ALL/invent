@@ -121,7 +121,10 @@ class DobaController extends Controller
             ->get()
             ->keyBy("sku");
         $nrValues = DobaDataView::whereIn("sku", $skus)->pluck("value", "sku");
-        
+
+        // Buyer / Seller links stored per SKU in doba_listing_statuses.value JSON
+        $linkValues = DobaListingStatus::whereIn("sku", $skus)->pluck("value", "sku");
+
         // Fetch Amazon prices for comparison
         $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)->pluck('price', 'sku');
 
@@ -379,6 +382,23 @@ class DobaController extends Controller
                 }
             }
 
+            // Buyer / Seller links
+            $bLink = '';
+            $sLink = '';
+            if (isset($linkValues[$pm->sku])) {
+                $linkRaw = $linkValues[$pm->sku];
+                if (!is_array($linkRaw)) {
+                    $linkRaw = json_decode($linkRaw, true);
+                }
+                if (is_array($linkRaw)) {
+                    $bLink = $linkRaw['buyer_link'] ?? '';
+                    $sLink = $linkRaw['seller_link'] ?? '';
+                }
+            }
+            $row['B Link'] = $bLink;
+            $row['S Link'] = $sLink;
+            $row['raw_data'] = ['B Link' => $bLink, 'S Link' => $sLink];
+
             // Image
             $row["image_path"] =
                 $shopify->image_src ??
@@ -391,6 +411,44 @@ class DobaController extends Controller
             "message" => "doba Data Fetched Successfully",
             "data" => $result,
             "status" => 200,
+        ]);
+    }
+
+    /**
+     * Save buyer / seller links for a SKU into doba_listing_statuses.value JSON.
+     * Empty strings clear the link (URL validation only applies to non-empty values).
+     */
+    public function saveLinks(Request $request)
+    {
+        $sku = $request->input('sku');
+        if (!$sku) {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $buyerLink = trim((string) $request->input('buyer_link', ''));
+        $sellerLink = trim((string) $request->input('seller_link', ''));
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $field => $val) {
+            if ($val !== '' && !filter_var($val, FILTER_VALIDATE_URL)) {
+                return response()->json(['success' => false, 'message' => 'Invalid URL for ' . $field], 422);
+            }
+        }
+
+        $status = DobaListingStatus::firstOrNew(['sku' => $sku]);
+        $existing = is_array($status->value)
+            ? $status->value
+            : (json_decode($status->value, true) ?: []);
+
+        $existing['buyer_link'] = $buyerLink !== '' ? $buyerLink : null;
+        $existing['seller_link'] = $sellerLink !== '' ? $sellerLink : null;
+
+        $status->value = $existing;
+        $status->save();
+
+        return response()->json([
+            'success' => true,
+            'buyer_link' => $existing['buyer_link'],
+            'seller_link' => $existing['seller_link'],
         ]);
     }
 

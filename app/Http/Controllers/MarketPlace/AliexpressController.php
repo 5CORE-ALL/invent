@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\ApiController;
 use App\Models\MarketplacePercentage;
 use App\Models\AliexpressDataView;
+use App\Models\AliexpressListingStatus;
 use App\Models\AliexpressDailyData;
 use App\Models\AliexpressDailyDataL60;
 use App\Models\AliexpressLmpDataSheet;
@@ -1279,6 +1280,10 @@ class AliexpressController extends Controller
             $viewMetaBySku = AliexpressDataView::all()
                 ->keyBy(fn ($row) => $normalizeSku($row->sku));
 
+            // Buyer / Seller links from AliexpressListingStatus.value JSON
+            $linksBySku = AliexpressListingStatus::all()
+                ->keyBy(fn ($row) => $normalizeSku($row->sku));
+
             // Same row universe as Amazon tabulator: all product masters + AE upload + daily sales (exact SKU).
             $allNormalizedSkus = collect(array_merge(
                 $productMastersBySku->keys()->all(),
@@ -1390,7 +1395,17 @@ class AliexpressController extends Controller
                 $lmp = count($lmpPrices) > 0 ? min($lmpPrices) : ($aeLmpRow ? $aeLmpRow->lmp : null);
                 $lmpLink = $lmpEntries[0]['link'] ?? ($aeLmpRow ? $aeLmpRow->lmp_link : null);
 
+                // Buyer / Seller links
+                $linkRecord = $linksBySku->get($normalizedSku);
+                $linkVal = $linkRecord
+                    ? (is_array($linkRecord->value) ? $linkRecord->value : (json_decode($linkRecord->value, true) ?: []))
+                    : [];
+                $buyerLink = $linkVal['buyer_link'] ?? '';
+                $sellerLink = $linkVal['seller_link'] ?? '';
+
                 $rows[] = [
+                    'buyer_link'  => $buyerLink,
+                    'seller_link' => $sellerLink,
                     'sku'         => trim((string) $displaySku),
                     'parent'      => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
                     'is_parent'   => false,
@@ -1450,6 +1465,51 @@ class AliexpressController extends Controller
                 'error' => 'Failed to fetch pricing data: ' . $e->getMessage(),
             ], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
         }
+    }
+
+    /**
+     * Save buyer / seller links for a SKU into aliexpress_listing_statuses.value JSON.
+     * Empty strings clear the link (URL validation only applies to non-empty values).
+     */
+    public function saveLinks(Request $request)
+    {
+        $sku = $request->input('sku');
+        if (!$sku) {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $buyerLink = trim((string) $request->input('buyer_link', ''));
+        $sellerLink = trim((string) $request->input('seller_link', ''));
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $field => $val) {
+            if ($val !== '' && !filter_var($val, FILTER_VALIDATE_URL)) {
+                return response()->json(['success' => false, 'message' => 'Invalid URL for ' . $field], 422);
+            }
+        }
+
+        $status = AliexpressListingStatus::where('sku', $sku)
+            ->orderBy('updated_at', 'desc')
+            ->first();
+
+        $existing = $status
+            ? (is_array($status->value) ? $status->value : (json_decode($status->value, true) ?? []))
+            : [];
+
+        $existing['buyer_link'] = $buyerLink !== '' ? $buyerLink : null;
+        $existing['seller_link'] = $sellerLink !== '' ? $sellerLink : null;
+
+        // Delete any duplicates and create a fresh record (mirrors listing save pattern)
+        AliexpressListingStatus::where('sku', $sku)->delete();
+        AliexpressListingStatus::create([
+            'sku' => $sku,
+            'value' => $existing,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'buyer_link' => $existing['buyer_link'],
+            'seller_link' => $existing['seller_link'],
+        ]);
     }
 
     /**

@@ -919,6 +919,8 @@ class ReverbController extends Controller
 
             // Get NR/REQ from reverb_listing_statuses (same table as listing page)
             $processedItem["nr_req"] = 'REQ'; // Default value
+            $processedItem["B Link"] = '';
+            $processedItem["S Link"] = '';
             
             if (isset($reverbListingStatus[$skuNorm])) {
                 $listingStatus = $reverbListingStatus[$skuNorm];
@@ -942,6 +944,10 @@ class ReverbController extends Controller
                 } else {
                     $processedItem["nr_req"] = 'REQ'; // Default
                 }
+
+                // Buyer / Seller links from Listing Reverb
+                $processedItem["B Link"] = $statusValue['buyer_link'] ?? '';
+                $processedItem["S Link"] = $statusValue['seller_link'] ?? '';
             }
 
             // Now calculate MAP and Missing based on nr_req and INV
@@ -1207,6 +1213,66 @@ class ReverbController extends Controller
         } catch (\Exception $e) {
             Log::error('Error updating Reverb NR/REQ: ' . $e->getMessage());
             return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /** Save Buyer (B) / Seller (S) links for a SKU into reverb_listing_statuses.value JSON (same table as listing page). */
+    public function saveLinks(Request $request)
+    {
+        $validated = $request->validate([
+            'sku'         => 'required|string',
+            'buyer_link'  => 'nullable|string|max:1000',
+            'seller_link' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            $sku = trim($validated['sku']);
+
+            $buyerLink  = isset($validated['buyer_link']) ? trim((string) $validated['buyer_link']) : '';
+            $sellerLink = isset($validated['seller_link']) ? trim((string) $validated['seller_link']) : '';
+
+            foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $label => $link) {
+                if ($link !== '' && !filter_var($link, FILTER_VALIDATE_URL)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => ucfirst(str_replace('_', ' ', $label)) . ' must be a valid URL.',
+                    ], 422);
+                }
+            }
+
+            // Merge into the most recent record (preserve rl_nrl, listed, etc.)
+            $listingStatus = ReverbListingStatus::where('sku', $sku)
+                ->orderBy('updated_at', 'desc')
+                ->first();
+
+            $existing = ($listingStatus && is_array($listingStatus->value))
+                ? $listingStatus->value
+                : ($listingStatus ? (json_decode($listingStatus->value, true) ?? []) : []);
+
+            if (!is_array($existing)) {
+                $existing = [];
+            }
+
+            $existing['buyer_link']  = $buyerLink;
+            $existing['seller_link'] = $sellerLink;
+
+            // Clean up duplicates, then store a single clean record.
+            ReverbListingStatus::where('sku', $sku)->delete();
+            ReverbListingStatus::create([
+                'sku'   => $sku,
+                'value' => $existing,
+            ]);
+
+            return response()->json([
+                'success'     => true,
+                'message'     => 'Links saved.',
+                'buyer_link'  => $buyerLink,
+                'seller_link' => $sellerLink,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error saving Reverb links: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 

@@ -532,6 +532,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="dobaEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="dobaEditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="dobaSellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="dobaBuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="dobaSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -1658,6 +1687,8 @@
                                 is_parent: item['(Child) sku'] ? item['(Child) sku'].toUpperCase().includes("PARENT") : false,
                                 thumb_image: item.image_path || item.image || '',
                                 raw_data: item || {},
+                                'B Link': item['B Link'] || '',
+                                'S Link': item['S Link'] || '',
                                 NR: item.NR || '',
                                 NPFT_pct: npft_pct,
                                 Promo: promo,
@@ -1740,6 +1771,31 @@
                                 );
                             }
                             return '<div class="d-flex align-items-center gap-1 flex-wrap"><span class="sku-text">' + dobaEscapeHtml(value) + '</span>' + copyBtn + '</div>';
+                        }
+                    },
+                    {
+                        title: "Links",
+                        field: "links_column",
+                        width: 55,
+                        frozen: true,
+                        hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "Double-click to add / edit links",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const b = d['B Link'] || '';
+                            const s = d['S Link'] || '';
+                            let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
+                            if (s) html += '<a href="' + dobaAttrEscape(s) + '" target="_blank" rel="noopener noreferrer" style="font-size:11px;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';
+                            if (b) html += '<a href="' + dobaAttrEscape(b) + '" target="_blank" rel="noopener noreferrer" style="font-size:11px;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>';
+                            if (!s && !b) html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                            html += '</div>';
+                            return html;
+                        },
+                        cellDblClick: function(e, cell) {
+                            if (cell.getRow().getData().is_parent) return;
+                            openDobaEditLinksModal(cell.getRow());
                         }
                     },
                     
@@ -2854,6 +2910,61 @@
                 bsToast.show();
                 setTimeout(() => toast.remove(), 5000);
             }
+
+            // ---- Edit Links (Buyer / Seller) ----
+            let dobaEditLinksRow = null;
+            window.openDobaEditLinksModal = function(row) {
+                dobaEditLinksRow = row;
+                const d = row.getData();
+                $('#dobaEditLinksSku').text(d['(Child) sku'] || '');
+                $('#dobaSellerLinkInput').val(d['S Link'] || '');
+                $('#dobaBuyerLinkInput').val(d['B Link'] || '');
+                const modalEl = document.getElementById('dobaEditLinksModal');
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            };
+
+            $('#dobaSaveLinksBtn').on('click', function() {
+                if (!dobaEditLinksRow) return;
+                const sku = dobaEditLinksRow.getData()['(Child) sku'];
+                const sellerLink = $('#dobaSellerLinkInput').val().trim();
+                const buyerLink = $('#dobaBuyerLinkInput').val().trim();
+                const $btn = $(this);
+                $btn.prop('disabled', true).text('Saving...');
+                $.ajax({
+                    url: '/doba/save-links',
+                    method: 'POST',
+                    data: {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        sku: sku,
+                        seller_link: sellerLink,
+                        buyer_link: buyerLink
+                    },
+                    success: function(res) {
+                        if (res && res.success) {
+                            dobaEditLinksRow.update({
+                                'S Link': res.seller_link || '',
+                                'B Link': res.buyer_link || '',
+                                'raw_data': { 'S Link': res.seller_link || '', 'B Link': res.buyer_link || '' }
+                            }).then(function() {
+                                dobaEditLinksRow.reformat();
+                            }).catch(function() {
+                                dobaEditLinksRow.reformat();
+                            });
+                            showToast('success', 'Links saved successfully');
+                            bootstrap.Modal.getOrCreateInstance(document.getElementById('dobaEditLinksModal')).hide();
+                        } else {
+                            showToast('danger', (res && res.message) || 'Failed to save links');
+                        }
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save links';
+                        showToast('danger', msg);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).text('Save');
+                    }
+                });
+            });
 
             // Missing filter toggle on badge click
             let missingFilterActive = false;

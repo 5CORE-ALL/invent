@@ -302,6 +302,49 @@ class BestBuyPricingController extends Controller
         return response()->json(["success" => true, "data" => $status, "message" => "NR updated successfully"]);
     }
 
+    /**
+     * Save buyer / seller links for a SKU into bestbuy_u_s_a_listing_statuses.value JSON.
+     * Empty strings clear the link (URL validation only applies to non-empty values).
+     */
+    public function saveLinks(Request $request)
+    {
+        $sku = trim((string) $request->input('sku'));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $buyerLink = trim((string) $request->input('buyer_link', ''));
+        $sellerLink = trim((string) $request->input('seller_link', ''));
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $field => $val) {
+            if ($val !== '' && !filter_var($val, FILTER_VALIDATE_URL)) {
+                return response()->json(['success' => false, 'message' => 'Invalid URL for ' . $field], 422);
+            }
+        }
+
+        // Preserve any existing values (e.g. nr_req) on the latest record
+        $status = BestbuyUSAListingStatus::where('sku', $sku)->orderBy('updated_at', 'desc')->first();
+        $existing = $status
+            ? (is_array($status->value) ? $status->value : (json_decode($status->value, true) ?: []))
+            : [];
+
+        $existing['buyer_link'] = $buyerLink !== '' ? $buyerLink : null;
+        $existing['seller_link'] = $sellerLink !== '' ? $sellerLink : null;
+
+        // Delete duplicates and recreate (mirrors NR save pattern on this page)
+        BestbuyUSAListingStatus::where('sku', $sku)->delete();
+        BestbuyUSAListingStatus::create([
+            'sku' => $sku,
+            'value' => $existing,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'buyer_link' => $existing['buyer_link'],
+            'seller_link' => $existing['seller_link'],
+        ]);
+    }
+
     public function saveSpriceToDatabase(Request $request)
     {
         Log::info('Saving Best Buy pricing data', $request->all());

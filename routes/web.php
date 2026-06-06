@@ -514,6 +514,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // TopDawg Pricing (Tabulator — price/stock from topdawg_products, map/miss like Reverb)
     Route::get('/topdawg-pricing', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'pricingView'])->name('topdawg.pricing');
     Route::get('/topdawg-data-json', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'dataJson'])->name('topdawg.data.json');
+    Route::post('/topdawg-save-links', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'saveLinks'])->name('topdawg.save.links');
 
     // Route::get('/get-channel-sales-data', [ChannelMasterController::class, 'getChannelSalesData']);
     Route::get('/sales-trend-data', [ChannelMasterController::class, 'getSalesTrendData']);
@@ -2862,6 +2863,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-doba-pricing', [DobaController::class, 'updatePrice']);
     Route::get('/doba-pricing-cvr', [DobaController::class, 'dobaPricingCVR']);
     Route::get('/doba-tabulator', [DobaController::class, 'dobaTabulatorView']);
+    Route::post('/doba/save-links', [DobaController::class, 'saveLinks'])->name('doba.save.links');
     Route::get('/doba-data-view-withoutship', [DobaController::class, 'getViewDobaDataWithoutShip']);
     Route::get('/doba-tabulator-withoutship', [DobaController::class, 'dobaTabulatorViewWithoutShip'])->name('doba.withoutship.tabulator');
     Route::get('/doba_withoutship', [DobaController::class, 'dobaTabulatorViewWithoutShip'])->name('doba.withoutship');
@@ -2977,6 +2979,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/wayfair/pricing-price-sample', [WayfairController::class, 'downloadWayfairPricingPriceSample'])->name('wayfair.pricing.price.sample');
     Route::post('/wayfair/pricing-upload-price', [WayfairController::class, 'uploadWayfairPricingPriceSheet'])->name('wayfair.pricing.upload.price');
     Route::post('/wayfair/pricing-save-sprice', [WayfairController::class, 'saveWayfairSpriceUpdates'])->name('wayfair.pricing.save.sprice');
+    Route::post('/wayfair/pricing-save-links', [WayfairController::class, 'saveWayfairLinks'])->name('wayfair.pricing.save.links');
     Route::get('/wayfair/badge-chart-data', [WayfairController::class, 'wayfairBadgeChartData'])->name('wayfair.pricing.badge.chart');
     Route::get('/wayfair/pricing-column-visibility', [WayfairController::class, 'getWayfairPricingColumnVisibility'])->name('wayfair.pricing.column.get');
     Route::post('/wayfair/pricing-column-visibility', [WayfairController::class, 'setWayfairPricingColumnVisibility'])->name('wayfair.pricing.column.set');
@@ -3004,6 +3007,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/bestbuy-pricing', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'bestbuyPricingView'])->name('bestbuy.pricing');
     Route::get('/bestbuy-data-json', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'bestbuyDataJson'])->name('bestbuy.data.json');
     Route::post('/bestbuy-save-nr', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'saveNrToDatabase'])->name('bestbuy.save.nr');
+    Route::post('/bestbuy-save-links', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'saveLinks'])->name('bestbuy.save.links');
     Route::post('/bestbuy-save-sprice', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'saveSpriceToDatabase'])->name('bestbuy.save.sprice');
     Route::post('/bestbuy-update-listed-live', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'updateListedLive'])->name('bestbuy.update.listed.live');
     Route::get('/bestbuy-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'getColumnVisibility'])->name('bestbuy.pricing.column.get');
@@ -3025,6 +3029,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/purchasing-power-pricing', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'pricingView'])->name('purchasing.power.pricing');
     Route::get('/pp-data-json', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'dataJson'])->name('pp.data.json');
     Route::post('/pp-update-nr-req', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'updateNrReq'])->name('pp.update.nr.req');
+    Route::post('/pp-update-links', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'updateLinks'])->name('pp.update.links');
     Route::post('/pp-save-sprice-tabulator', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'saveSpriceTabulator'])->name('pp.save.sprice.tabulator');
     Route::post('/pp-save-sprice-batch', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'saveSpriceUpdates'])->name('pp.save.sprice.batch');
     Route::get('/pp-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'getColumnVisibility'])->name('pp.pricing.column.get');
@@ -3041,6 +3046,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/reverb-daily-data-totals-json', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'reverbDailyDataTotalsJson'])->name('reverb.daily.data.totals.json');
     Route::post('/reverb-update-listed-live', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'updateReverbListedLive'])->name('reverb.update.listed.live');
     Route::post('/reverb-save-sprice', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveSpriceUpdates'])->name('reverb.save.sprice');
+    Route::post('/reverb-save-links', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveLinks'])->name('reverb.save.links');
     Route::post('/reverb-save-recommended-bid', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveRecommendedBid'])->name('reverb.save.recommended.bid');
     Route::post('/reverb-save-bump-req', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveBumpReq'])->name('reverb.save.bump.req');
     Route::get('/reverb-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'getColumnVisibility'])->name('reverb.pricing.column.get');
@@ -3100,6 +3106,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tiktok-save-sprice', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveSpriceUpdates'])->name('tiktok.save.sprice');
     Route::post('/tiktok-2-save-sprice', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveSpriceTiktokTwoUpdates'])->name('tiktok2.save.sprice');
     Route::post('/tiktok-save-nrp', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveTiktokShopNrp'])->name('tiktok.save.nrp');
+    Route::post('/tiktok-save-links', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveLinks'])->name('tiktok.save.links');
+    Route::post('/tiktok-2-save-links', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveTiktokTwoLinks'])->name('tiktok2.save.links');
     Route::post('/tiktok-2-save-nrp', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveTiktokTwoNrp'])->name('tiktok2.save.nrp');
     Route::get('/tiktok-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'getColumnVisibility'])->name('tiktok.pricing.column.get');
     Route::post('/tiktok-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'setColumnVisibility'])->name('tiktok.pricing.column.set');
@@ -3482,6 +3490,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // eBay3 Tabulator View Routes
     Route::get('/ebay3-tabulator-view', [EbayThreeController::class, 'ebay3TabulatorView'])->name('ebay3.tabulator.view');
+    Route::post('/ebay3/save-links', [EbayThreeController::class, 'saveLinks'])->name('ebay3.save.links');
     Route::get('/ebay3-data-json', [EbayThreeController::class, 'ebay3DataJson'])->name('ebay3.data.json');
     Route::get('/ebay3-badge-chart-data', [EbayThreeController::class, 'getEbay3BadgeChartData'])->name('ebay3.badge.chart.data');
     Route::get('/ebay3-column-visibility', [ChannelTabulatorColumnController::class, 'showEbay3'])->name('ebay3.column.visibility.get');
@@ -3542,6 +3551,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/walmart-sheet-upload-summary', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getSummaryStats'])->name('walmart-sheet-upload-summary');
     Route::post('/walmart-sheet-save-amazon-prices', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'saveAmazonPriceUpdates'])->name('walmart-sheet-save-amazon-prices');
     Route::post('/walmart-sheet-update-cell', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'updateCellData'])->name('walmart-sheet-update-cell');
+    Route::post('/walmart-sheet-save-links', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'saveLinks'])->name('walmart-sheet-save-links');
     Route::get('/walmart-metrics-history', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getMetricsHistory'])->name('walmart-metrics-history');
     Route::get('/walmart-campaign-data-by-sku', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getCampaignDataBySku'])->name('walmart.campaign.data.by.sku');
 
@@ -3632,6 +3642,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay3-low-visibility-view', action: [Ebay3LowVisibilityController::class, 'ebay3LowVisibility'])->name('ebay3.low.visibility.view');
     // Listing Audit ebay2
     Route::get('/ebay2-tabulator-view', [EbayTwoController::class, 'ebay2TabulatorView'])->name('ebay2.tabulator.view');
+    Route::post('/ebay2/save-links', [EbayTwoController::class, 'saveLinks'])->name('ebay2.save.links');
     Route::get('/ebay2op-tabulator-view', [EbayTwoController::class, 'ebay2opTabulatorView'])->name('ebay2op.tabulator.view');
     Route::get('/ebay2-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2.data');
     Route::get('/ebay2op-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2op.data');
@@ -3790,6 +3801,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu2-decrease-data-l7', [TemuController::class, 'getTemu2DecreaseDataL7'])->name('temu2.decrease.l7');
     Route::post('/temu2-decrease-column-visibility', [TemuController::class, 'saveTemu2DecreaseColumnVisibility']);
     Route::get('/temu2-decrease-column-visibility', [TemuController::class, 'getTemu2DecreaseColumnVisibility']);
+    Route::post('/temu2-decrease/save-links', [TemuController::class, 'saveTemu2DecreaseLinks'])->name('temu2.decrease.save.links');
     Route::get('/temu-badge-history', [TemuController::class, 'getTemuBadgeHistory']);
     Route::post('/temu-pricing/update-price', [TemuController::class, 'updateTemuPrice']);
     Route::post('/temu-pricing/save-sprice', [TemuController::class, 'saveTemuSprice']);
@@ -3799,6 +3811,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-decrease-column-visibility', [TemuController::class, 'saveTemuDecreaseColumnVisibility']);
     Route::get('/temu-decrease-column-visibility', [TemuController::class, 'getTemuDecreaseColumnVisibility']);
     Route::post('/temu-decrease/save-listing-status', [TemuController::class, 'saveListingStatus']);
+    Route::post('/temu-decrease/save-links', [TemuController::class, 'saveTemuDecreaseLinks'])->name('temu.decrease.save.links');
     Route::post('/temu2-data-view/save-listing-fields', [TemuController::class, 'saveTemu2ListingFieldsToDataView'])->name('temu2.dataview.save.listing');
 
     // Temu LMP (table + upload)
@@ -4324,6 +4337,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/aliexpress/pricing-upload-price', [AliexpressController::class, 'uploadPricingPriceSheet'])->name('aliexpress.pricing.upload.price');
     Route::post('/aliexpress/pricing-sync-api', [AliexpressController::class, 'syncPricingFromApi'])->name('aliexpress.pricing.sync.api');
     Route::post('/aliexpress/save-sprice', [AliexpressController::class, 'saveSpriceUpdates'])->name('aliexpress.pricing.save.sprice');
+    Route::post('/aliexpress/save-links', [AliexpressController::class, 'saveLinks'])->name('aliexpress.pricing.save.links');
     Route::get('/aliexpress/badge-chart-data', [AliexpressController::class, 'badgeChartData'])->name('aliexpress.badge.chart');
     Route::post('/aliexpress-column-visibility', [AliexpressController::class, 'saveAliexpressColumnVisibility'])->name('aliexpress.save.column.visibility');
     Route::get('/aliexpress-column-visibility', [AliexpressController::class, 'getAliexpressColumnVisibility'])->name('aliexpress.get.column.visibility');
@@ -4502,6 +4516,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shein/pricing-sample', [SheinController::class, 'downloadSheinPricingSample'])->name('shein.pricing.sample');
     Route::post('/shein/pricing-upload-price', [SheinController::class, 'uploadSheinPriceSheet'])->name('shein.pricing.upload.price');
     Route::post('/shein/save-sprice', [SheinController::class, 'saveSheinSpriceUpdates'])->name('shein.pricing.save.sprice');
+    Route::post('/shein/save-links', [SheinController::class, 'saveLinks'])->name('shein.pricing.save.links');
     Route::get('/shein/badge-chart-data', [SheinController::class, 'sheinBadgeChartData'])->name('shein.badge.chart');
 
     // faire
@@ -4524,6 +4539,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/faire/pricing-price-sample', [FaireController::class, 'downloadFairePricingPriceSample'])->name('faire.pricing.price.sample');
     Route::post('/faire/pricing-upload-price', [FaireController::class, 'uploadFairePricingPriceSheet'])->name('faire.pricing.upload.price');
     Route::post('/faire/pricing-save-sprice', [FaireController::class, 'saveFaireSpriceUpdates'])->name('faire.pricing.save.sprice');
+    Route::post('/faire/save-links', [FaireController::class, 'saveLinks'])->name('faire.pricing.save.links');
     Route::get('/faire/badge-chart-data', [FaireController::class, 'faireBadgeChartData'])->name('faire.pricing.badge.chart');
     Route::get('/faire/pricing-column-visibility', [FaireController::class, 'getFairePricingColumnVisibility'])->name('faire.pricing.column.get');
     Route::post('/faire/pricing-column-visibility', [FaireController::class, 'setFairePricingColumnVisibility'])->name('faire.pricing.column.set');
@@ -4545,6 +4561,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/pls-pricing-data-json', [PlsController::class, 'pricingDataJson']);
     Route::post('/save-pls-sprice', [PlsController::class, 'savePlsSprice']);
     Route::post('/pls-clear-sprice', [PlsController::class, 'clearPlsSprice']);
+    Route::post('/pls/save-links', [PlsController::class, 'saveLinks'])->name('pls.save.links');
     Route::post('/pls-analytics/import', [PlsController::class, 'importPlsAnalytics'])->name('pls.analytics.import');
     Route::get('/pls-analytics/export', [PlsController::class, 'exportPlsAnalytics'])->name('pls.analytics.export');
     Route::get('/pls-analytics/sample', [PlsController::class, 'downloadSample'])->name('pls.analytics.sample');
@@ -4581,6 +4598,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tiendamia-download-sample-csv', [TiendamiaPricingController::class, 'downloadSampleCsv'])->name('tiendamia.download.sample');
     Route::post('/tiendamia-save-sprice', [TiendamiaPricingController::class, 'saveSpriceUpdates'])->name('tiendamia.save.sprice');
     Route::post('/tiendamia-save-nrp', [TiendamiaPricingController::class, 'saveNrp'])->name('tiendamia.save.nrp');
+    Route::post('/tiendamia-save-links', [TiendamiaPricingController::class, 'saveLinks'])->name('tiendamia.save.links');
     Route::get('/tiendamia-test-nrp', [TiendamiaPricingController::class, 'testNrp'])->name('tiendamia.test.nrp');
     Route::get('/tiendamia-pricing-column-visibility', [TiendamiaPricingController::class, 'getColumnVisibility'])->name('tiendamia.column.get');
     Route::post('/tiendamia-pricing-column-visibility', [TiendamiaPricingController::class, 'setColumnVisibility'])->name('tiendamia.column.set');

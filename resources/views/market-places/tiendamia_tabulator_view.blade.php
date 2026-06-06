@@ -509,6 +509,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="tiendamiaEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="tiendamiaEditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="tiendamiaSellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="tiendamiaBuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="tiendamiaSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @php
@@ -516,6 +545,7 @@
         'dataJson' => route('tiendamia.data.json'),
         'saveSprice' => route('tiendamia.save.sprice'),
         'saveNrp' => route('tiendamia.save.nrp'),
+        'saveLinks' => route('tiendamia.save.links'),
         'columnGet' => route('tiendamia.column.get'),
         'columnSet' => route('tiendamia.column.set'),
         'summaryChannel' => 'tiendamia',
@@ -1520,6 +1550,40 @@
                             return '<span class="fw-bold">' + displaySku +
                                 '</span> <i class="fa fa-copy text-secondary copy-sku-btn" style="cursor:pointer;margin-left:8px;font-size:14px;" data-sku="' +
                                 safe(sku) + '" title="Copy SKU"></i>';
+                        }
+                    },
+                    {
+                        title: "Links",
+                        field: "links_column",
+                        width: 55,
+                        frozen: true,
+                        hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "Double-click to add / edit links",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            const isParent = d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT '));
+                            if (isParent) return '';
+                            const b = d['B Link'] || '';
+                            const s = d['S Link'] || '';
+                            let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
+                            if (s) {
+                                html += '<a href="' + String(s).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';
+                            }
+                            if (b) {
+                                html += '<a href="' + String(b).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>';
+                            }
+                            if (!s && !b) {
+                                html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                            }
+                            html += '</div>';
+                            return html;
+                        },
+                        cellDblClick: function(e, cell) {
+                            const d = cell.getRow().getData();
+                            const isParent = d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT '));
+                            if (isParent) return;
+                            openTiendamiaEditLinksModal(cell.getRow());
                         }
                     },
                     {
@@ -3187,6 +3251,69 @@
                 document.body.removeChild(link);
 
                 showToast('Export downloaded successfully!', 'success');
+            });
+        });
+
+        // ===== Edit Links (Buyer / Seller) =====
+        let tiendamiaEditLinksRow = null;
+
+        function openTiendamiaEditLinksModal(row) {
+            tiendamiaEditLinksRow = row;
+            const d = row.getData();
+            const sku = d['(Child) sku'] || d['Child_sku'] || '';
+            document.getElementById('tiendamiaEditLinksSku').textContent = sku;
+            document.getElementById('tiendamiaSellerLinkInput').value = d['S Link'] || '';
+            document.getElementById('tiendamiaBuyerLinkInput').value = d['B Link'] || '';
+            const modalEl = document.getElementById('tiendamiaEditLinksModal');
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+        }
+
+        $(document).on('click', '#tiendamiaSaveLinksBtn', function() {
+            if (!tiendamiaEditLinksRow) return;
+            const d = tiendamiaEditLinksRow.getData();
+            const sku = d['(Child) sku'] || d['Child_sku'] || '';
+            const sellerLink = document.getElementById('tiendamiaSellerLinkInput').value.trim();
+            const buyerLink = document.getElementById('tiendamiaBuyerLinkInput').value.trim();
+            const $btn = $(this);
+            $btn.prop('disabled', true).text('Saving...');
+
+            $.ajax({
+                url: TTP_CFG.saveLinks,
+                method: 'POST',
+                data: {
+                    sku: sku,
+                    buyer_link: buyerLink,
+                    seller_link: sellerLink
+                },
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function(res) {
+                    if (res && res.success) {
+                        tiendamiaEditLinksRow.update({
+                            'S Link': res.seller_link || '',
+                            'B Link': res.buyer_link || ''
+                        }).then(function() {
+                            tiendamiaEditLinksRow.reformat();
+                        }).catch(function() {
+                            tiendamiaEditLinksRow.reformat();
+                        });
+                        showToast('Links saved', 'success');
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById(
+                            'tiendamiaEditLinksModal')).hide();
+                    } else {
+                        showToast((res && res.message) || 'Error saving links', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    let msg = 'Error saving links';
+                    if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                    showToast(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text('Save');
+                }
             });
         });
     </script>

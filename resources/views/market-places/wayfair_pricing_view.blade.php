@@ -277,6 +277,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="wfEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="wfEditLinksSku">
+                    <p class="mb-3"><strong>SKU:</strong> <span id="wfEditLinksSkuDisplay"></span></p>
+                    <div class="mb-3">
+                        <label for="wfEditBuyerLink" class="form-label">B Link (Buyer · Wayfair)</label>
+                        <input type="url" class="form-control" id="wfEditBuyerLink" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label for="wfEditSellerLink" class="form-label">S Link (Seller · Partners)</label>
+                        <input type="url" class="form-control" id="wfEditSellerLink" placeholder="https://...">
+                    </div>
+                    <div id="wfEditLinksError" class="text-danger small" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="wfSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -1075,6 +1104,7 @@
                         width: 64,
                         download: false,
                         frozen: true,
+                        tooltip: 'Double-click to add / edit links',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
@@ -1089,7 +1119,13 @@
                                 parts.push('<a href="' + wfEscUrlAttr(s) + '" target="_blank" rel="noopener noreferrer" ' +
                                     'class="fw-semibold" style="color:#6f42c1;" title="Seller (Partners)">S</a>');
                             }
-                            return parts.length ? parts.join('<span class="text-muted" style="margin:0 3px;">|</span>') : '';
+                            return parts.length ? parts.join('<span class="text-muted" style="margin:0 3px;">|</span>') : '<span class="text-muted" style="font-size:12px;">-</span>';
+                        },
+                        cellDblClick: function(e, cell) {
+                            e.stopPropagation();
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return;
+                            openWfEditLinksModal(cell.getRow());
                         }
                     },
                     {
@@ -1470,6 +1506,49 @@
                 applyFilters();
             });
             $(document).on('click', function() { $('.wf-manual-dropdown').removeClass('show'); });
+
+            // ---- Edit B/S Links (double-click on B/S cell) ----
+            let wfEditLinksRow = null;
+            window.openWfEditLinksModal = function(row) {
+                if (!row) return;
+                wfEditLinksRow = row;
+                const d = row.getData();
+                $('#wfEditLinksSku').val(d.sku);
+                $('#wfEditLinksSkuDisplay').text(d.sku);
+                $('#wfEditBuyerLink').val(d.buyer_link || '');
+                $('#wfEditSellerLink').val(d.seller_link || '');
+                $('#wfEditLinksError').hide().text('');
+                new bootstrap.Modal(document.getElementById('wfEditLinksModal')).show();
+            };
+
+            $(document).on('click', '#wfSaveLinksBtn', function() {
+                const sku = $('#wfEditLinksSku').val();
+                const buyerLink = $('#wfEditBuyerLink').val().trim();
+                const sellerLink = $('#wfEditSellerLink').val().trim();
+                const $err = $('#wfEditLinksError');
+                $err.hide().text('');
+                const $btn = $(this).prop('disabled', true);
+                $.ajax({
+                    url: '{{ route("wayfair.pricing.save.links") }}',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: { _token: '{{ csrf_token() }}', sku: sku, buyer_link: buyerLink, seller_link: sellerLink },
+                    success: function(res) {
+                        if (wfEditLinksRow) {
+                            wfEditLinksRow.update({ buyer_link: res.buyer_link || null, seller_link: res.seller_link || null })
+                                .then(function() { wfEditLinksRow.reformat(); })
+                                .catch(function() { wfEditLinksRow.reformat(); });
+                        }
+                        if (window.toastr) toastr.success(sku + ': links saved');
+                        bootstrap.Modal.getInstance(document.getElementById('wfEditLinksModal'))?.hide();
+                    },
+                    error: function(xhr) {
+                        const msg = xhr.responseJSON?.message || 'Failed to save links.';
+                        $err.text(msg).show();
+                    },
+                    complete: function() { $btn.prop('disabled', false); }
+                });
+            });
 
             $(document).on('click', '.wf-copy-sku-btn', function(e) {
                 e.preventDefault();

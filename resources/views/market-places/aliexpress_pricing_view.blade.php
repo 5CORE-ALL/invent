@@ -429,6 +429,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="aeEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="aeEditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="aeSellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="aeBuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="aeSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -446,9 +475,22 @@
                 if (type === 'warning') toastr.warning(msg);
                 else if (type === 'error') toastr.error(msg);
                 else toastr.success(msg);
-            } else {
-                alert(msg);
+                return;
             }
+            let c = document.getElementById('aeNotifyToastContainer');
+            if (!c) {
+                c = document.createElement('div');
+                c.id = 'aeNotifyToastContainer';
+                c.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;';
+                document.body.appendChild(c);
+            }
+            const t = document.createElement('div');
+            const bg = type === 'error' ? '#dc3545' : (type === 'warning' ? '#fd7e14' : '#198754');
+            t.style.cssText = 'min-width:220px;max-width:340px;color:#fff;background:' + bg + ';padding:12px 16px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.18);font-size:14px;opacity:0;transition:opacity .25s ease;';
+            t.textContent = msg;
+            c.appendChild(t);
+            requestAnimationFrame(function() { t.style.opacity = '1'; });
+            setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 300); }, 2600);
         }
 
         // Badge-click filter flags (identical to TikTok pattern)
@@ -876,6 +918,59 @@
             }
         }
 
+        // ---- Edit Links (Buyer / Seller) ----
+        let aeEditLinksRow = null;
+        window.openAeEditLinksModal = function(row) {
+            aeEditLinksRow = row;
+            const d = row.getData();
+            $('#aeEditLinksSku').text(d.sku || '');
+            $('#aeSellerLinkInput').val(d.seller_link || '');
+            $('#aeBuyerLinkInput').val(d.buyer_link || '');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('aeEditLinksModal')).show();
+        };
+
+        $(document).on('click', '#aeSaveLinksBtn', function() {
+            if (!aeEditLinksRow) return;
+            const sku = aeEditLinksRow.getData().sku;
+            const sellerLink = $('#aeSellerLinkInput').val().trim();
+            const buyerLink = $('#aeBuyerLinkInput').val().trim();
+            const $btn = $(this);
+            $btn.prop('disabled', true).text('Saving...');
+            $.ajax({
+                url: '/aliexpress/save-links',
+                method: 'POST',
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    sku: sku,
+                    seller_link: sellerLink,
+                    buyer_link: buyerLink
+                },
+                success: function(res) {
+                    if (res && res.success) {
+                        aeEditLinksRow.update({
+                            seller_link: res.seller_link || '',
+                            buyer_link: res.buyer_link || ''
+                        }).then(function() {
+                            aeEditLinksRow.reformat();
+                        }).catch(function() {
+                            aeEditLinksRow.reformat();
+                        });
+                        aeNotify('Links saved successfully', 'success');
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById('aeEditLinksModal')).hide();
+                    } else {
+                        aeNotify((res && res.message) || 'Failed to save links', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save links';
+                    aeNotify(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text('Save');
+                }
+            });
+        });
+
         $(document).ready(function() {
             table = new Tabulator("#aliexpress-pricing-table", {
                 ajaxURL: "/aliexpress/pricing-data",
@@ -953,6 +1048,37 @@
                             }
                             const esc = val.replace(/&/g,'&amp;').replace(/</g,'&lt;');
                             return `<span class="fw-bold">${esc}</span>`;
+                        }
+                    },
+                    {
+                        title: "Links",
+                        field: "links_column",
+                        width: 55,
+                        frozen: true,
+                        hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "Double-click to add / edit links",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const buyerLink = d.buyer_link || '';
+                            const sellerLink = d.seller_link || '';
+                            let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
+                            if (sellerLink) {
+                                html += '<a href="' + sellerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';
+                            }
+                            if (buyerLink) {
+                                html += '<a href="' + buyerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>';
+                            }
+                            if (!sellerLink && !buyerLink) {
+                                html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                            }
+                            html += '</div>';
+                            return html;
+                        },
+                        cellDblClick: function(e, cell) {
+                            if (cell.getRow().getData().is_parent) return;
+                            openAeEditLinksModal(cell.getRow());
                         }
                     },
                     {

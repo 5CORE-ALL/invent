@@ -1268,6 +1268,15 @@ class SheinController extends Controller
                     ->keyBy(fn($r) => $normalizeSku($r->sku));
             }
 
+            // ── 5b. Buyer / Seller links from shein_listing_statuses
+            $linksBySku = collect();
+            if ($allNormalizedSkus->isNotEmpty()) {
+                $linksBySku = \App\Models\SheinListingStatus::query()
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
+                    ->get()
+                    ->keyBy(fn($r) => $normalizeSku($r->sku));
+            }
+
             // ── 6. Margin from marketplace_percentages
             $percentage = $this->sheinMarketplaceMarginPercent();
             $margin = $percentage / 100;
@@ -1328,11 +1337,21 @@ class SheinController extends Controller
                         : 'N Map|' . (int) round($adiff);
                 }
 
+                // Buyer / Seller links
+                $linkRecord = $linksBySku->get($normalizedSku);
+                $linkVal = $linkRecord
+                    ? (is_array($linkRecord->value) ? $linkRecord->value : (json_decode($linkRecord->value, true) ?: []))
+                    : [];
+                $buyerLink  = $linkVal['buyer_link']  ?? '';
+                $sellerLink = $linkVal['seller_link'] ?? '';
+
                 $rows[] = [
                     'sku'          => trim((string) $displaySku),
                     'parent'       => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
                     'is_parent'    => false,
                     'image'        => $imageSrc,
+                    'B Link'       => $buyerLink,
+                    'S Link'       => $sellerLink,
                     'NR'           => $nr,
                     'is_missing_shein' => $isMissingShein,
                     'missing'      => $isMissingShein ? 'M' : '',
@@ -1678,5 +1697,45 @@ class SheinController extends Controller
             Log::error('Shein SPRICE save failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Save buyer / seller links for a SKU into shein_listing_statuses.value JSON.
+     * Empty strings clear the link (URL validation only applies to non-empty values).
+     */
+    public function saveLinks(Request $request)
+    {
+        $sku = trim((string) $request->input('sku'));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $buyerLink = trim((string) $request->input('buyer_link', ''));
+        $sellerLink = trim((string) $request->input('seller_link', ''));
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $field => $val) {
+            if ($val !== '' && !filter_var($val, FILTER_VALIDATE_URL)) {
+                return response()->json(['success' => false, 'message' => 'Invalid URL for ' . $field], 422);
+            }
+        }
+
+        $status = \App\Models\SheinListingStatus::where('sku', $sku)->first();
+        $existing = $status
+            ? (is_array($status->value) ? $status->value : (json_decode($status->value, true) ?: []))
+            : [];
+
+        $existing['buyer_link'] = $buyerLink !== '' ? $buyerLink : null;
+        $existing['seller_link'] = $sellerLink !== '' ? $sellerLink : null;
+
+        \App\Models\SheinListingStatus::updateOrCreate(
+            ['sku' => $sku],
+            ['value' => $existing]
+        );
+
+        return response()->json([
+            'success' => true,
+            'buyer_link' => $existing['buyer_link'],
+            'seller_link' => $existing['seller_link'],
+        ]);
     }
 }

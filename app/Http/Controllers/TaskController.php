@@ -1011,7 +1011,7 @@ class TaskController extends Controller
             ]);
         }
 
-        return redirect()->route('tasks.index')->with($flash, $message);
+        return redirect()->back()->with($flash, $message);
     }
 
     public function show($id)

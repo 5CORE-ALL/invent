@@ -109,7 +109,7 @@ class OutgoingController extends Controller
             'reason' => 'required|string',
             'channel' => ($requireChannel ? 'required' : 'nullable') . '|string|max:255',
             'comment' => 'nullable|string|max:80',
-            'replacement_tracking' => 'nullable|string|max:22',
+            'replacement_tracking' => 'nullable|string|max:40',
             'order_id' => 'nullable|string|max:128',
         ]);
 

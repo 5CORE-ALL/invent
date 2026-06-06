@@ -890,6 +890,8 @@ class Shopifyb2cController extends Controller
 
             // Get NR/REQ from shopify_b2c_listing_statuses
             $processedItem["nr_req"] = 'REQ'; // Default value
+            $processedItem["B Link"] = '';
+            $processedItem["S Link"] = '';
             
             if (isset($listingStatusData[$sku])) {
                 $listingStatus = $listingStatusData[$sku];
@@ -908,6 +910,10 @@ class Shopifyb2cController extends Controller
                 } elseif ($rlNrl === 'NRL') {
                     $processedItem['nr_req'] = 'NR';
                 }
+
+                // Buyer / Seller links from Listing Shopify B2C
+                $processedItem["B Link"] = $statusValue['buyer_link'] ?? '';
+                $processedItem["S Link"] = $statusValue['seller_link'] ?? '';
             }
 
             // Calculate profit metrics with 95% margin

@@ -455,9 +455,13 @@ class WalmartSheetUploadController extends Controller
                 
                 // Get RL/NRL from listing status
                 $rlNrl = null;
+                $buyerLink = '';
+                $sellerLink = '';
                 if ($listingStatus) {
                     $statusValue = is_array($listingStatus->value) ? $listingStatus->value : (json_decode($listingStatus->value, true) ?? []);
                     $rlNrl = $statusValue['rl_nrl'] ?? null;
+                    $buyerLink = $statusValue['buyer_link'] ?? '';
+                    $sellerLink = $statusValue['seller_link'] ?? '';
                 }
                 
                 // Get NRA from WalmartDataView
@@ -718,6 +722,8 @@ class WalmartSheetUploadController extends Controller
                     'map_status' => $mapStatus, // Map/Nmap status
                     'rl_nrl' => $rlNrl ?? '', // RL/NRL from listing status
                     'nra' => $nra ?? '', // NRA from data view
+                    'buyer_link' => $buyerLink, // Buyer link from listing status
+                    'seller_link' => $sellerLink, // Seller link from listing status
                     'INV' => $inv,
                     'L30' => $shopify ? intval($shopify->quantity) : 0,
                     'inventory_walmart' => $wInv,
@@ -1335,6 +1341,51 @@ class WalmartSheetUploadController extends Controller
             Log::error('Error updating cell data: ' . $e->getMessage());
             return response()->json(['error' => 'Error saving data'], 500);
         }
+    }
+
+    /**
+     * Save buyer / seller links for a SKU into walmart_listing_statuses.value JSON.
+     * Empty strings clear the link (URL validation only applies to non-empty values).
+     */
+    public function saveLinks(Request $request)
+    {
+        $sku = $request->input('sku');
+        if (!$sku) {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $buyerLink = trim((string) $request->input('buyer_link', ''));
+        $sellerLink = trim((string) $request->input('seller_link', ''));
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $field => $val) {
+            if ($val !== '' && !filter_var($val, FILTER_VALIDATE_URL)) {
+                return response()->json(['success' => false, 'message' => 'Invalid URL for ' . $field], 422);
+            }
+        }
+
+        $listingStatus = WalmartListingStatus::where('sku', $sku)
+            ->orderBy('updated_at', 'desc')
+            ->first();
+
+        $existingValue = $listingStatus
+            ? (is_array($listingStatus->value) ? $listingStatus->value : (json_decode($listingStatus->value, true) ?? []))
+            : [];
+
+        $existingValue['buyer_link'] = $buyerLink !== '' ? $buyerLink : null;
+        $existingValue['seller_link'] = $sellerLink !== '' ? $sellerLink : null;
+
+        // Delete any duplicates and create a fresh record (mirrors rl_nrl save pattern)
+        WalmartListingStatus::where('sku', $sku)->delete();
+        WalmartListingStatus::create([
+            'sku' => $sku,
+            'value' => $existingValue,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'buyer_link' => $existingValue['buyer_link'],
+            'seller_link' => $existingValue['seller_link'],
+        ]);
     }
 
     /**

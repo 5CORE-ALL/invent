@@ -231,6 +231,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="bestbuyEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="bestbuyEditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="bestbuySellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="bestbuyBuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="bestbuySaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -795,36 +824,32 @@
                     title: "Links",
                     field: "links_column",
                     frozen: true,
-                    width: 100,
+                    width: 55,
                     hozAlign: "center",
-                    visible: false,
+                    visible: true,
+                    headerSort: false,
+                    tooltip: "Double-click to add / edit links",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const buyerLink = rowData['B Link'] || '';
                         const sellerLink = rowData['S Link'] || '';
-                        
-                        let html = '<div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">';
-                        
+
+                        let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
                         if (sellerLink) {
-                            html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size: 12px; text-decoration: none;">
-                                <i class="fa fa-link"></i> S Link
-                            </a>`;
+                            html += '<a href="' + String(sellerLink).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';
                         }
-                        
                         if (buyerLink) {
-                            html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size: 12px; text-decoration: none;">
-                                <i class="fa fa-link"></i> B Link
-                            </a>`;
+                            html += '<a href="' + String(buyerLink).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>';
                         }
-                        
                         if (!sellerLink && !buyerLink) {
-                            html += '<span class="text-muted" style="font-size: 12px;">-</span>';
+                            html += '<span class="text-muted" style="font-size:12px;">-</span>';
                         }
-                        
                         html += '</div>';
                         return html;
                     },
-                    headerSort: false
+                    cellDblClick: function(e, cell) {
+                        openBestbuyEditLinksModal(cell.getRow());
+                    }
                 },
                 {
                     title: "INV",
@@ -1577,6 +1602,7 @@
                 success: function(visibility) {
                     if (visibility && Object.keys(visibility).length > 0) {
                         Object.keys(visibility).forEach(field => {
+                            if (field === 'links_column') return; // always keep Links visible
                             const col = table.getColumn(field);
                             if (col) {
                                 if (visibility[field]) {
@@ -1586,6 +1612,8 @@
                                 }
                             }
                         });
+                        const linksCol = table.getColumn('links_column');
+                        if (linksCol) linksCol.show();
                         buildColumnDropdown();
                     }
                 }
@@ -1730,6 +1758,66 @@
             document.body.removeChild(link);
             
             showToast('Export downloaded successfully!', 'success');
+        });
+    });
+
+    // ===== Edit Links (Buyer / Seller) =====
+    let bestbuyEditLinksRow = null;
+
+    function openBestbuyEditLinksModal(row) {
+        bestbuyEditLinksRow = row;
+        const d = row.getData();
+        const sku = d['(Child) sku'] || d['sku'] || '';
+        document.getElementById('bestbuyEditLinksSku').textContent = sku;
+        document.getElementById('bestbuySellerLinkInput').value = d['S Link'] || '';
+        document.getElementById('bestbuyBuyerLinkInput').value = d['B Link'] || '';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('bestbuyEditLinksModal')).show();
+    }
+
+    $(document).on('click', '#bestbuySaveLinksBtn', function() {
+        if (!bestbuyEditLinksRow) return;
+        const d = bestbuyEditLinksRow.getData();
+        const sku = d['(Child) sku'] || d['sku'] || '';
+        const sellerLink = document.getElementById('bestbuySellerLinkInput').value.trim();
+        const buyerLink = document.getElementById('bestbuyBuyerLinkInput').value.trim();
+        const $btn = $(this);
+        $btn.prop('disabled', true).text('Saving...');
+
+        $.ajax({
+            url: "{{ route('bestbuy.save.links') }}",
+            method: 'POST',
+            data: {
+                sku: sku,
+                buyer_link: buyerLink,
+                seller_link: sellerLink
+            },
+            headers: {
+                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+            },
+            success: function(res) {
+                if (res && res.success) {
+                    bestbuyEditLinksRow.update({
+                        'S Link': res.seller_link || '',
+                        'B Link': res.buyer_link || ''
+                    }).then(function() {
+                        bestbuyEditLinksRow.reformat();
+                    }).catch(function() {
+                        bestbuyEditLinksRow.reformat();
+                    });
+                    showToast('Links saved', 'success');
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('bestbuyEditLinksModal')).hide();
+                } else {
+                    showToast((res && res.message) || 'Error saving links', 'error');
+                }
+            },
+            error: function(xhr) {
+                let msg = 'Error saving links';
+                if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                showToast(msg, 'error');
+            },
+            complete: function() {
+                $btn.prop('disabled', false).text('Save');
+            }
         });
     });
 </script>

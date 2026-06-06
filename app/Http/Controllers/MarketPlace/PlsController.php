@@ -9,6 +9,7 @@ use App\Models\ChannelMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\PLSDataView;
 use App\Models\PLSProduct;
+use App\Models\PlsListingStatus;
 use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -503,6 +504,15 @@ class PlsController extends Controller
         // 6b. Get PLS_STATUS from amazon_data_views
         $amazonDataViews = $this->buildAmazonDataViewLookupByNormalizedSku($skus);
 
+        // 6c. Buyer / Seller links from pls_listing_statuses
+        $plsLinkBySku = [];
+        foreach (PlsListingStatus::whereIn('sku', $skus)->get() as $linkRow) {
+            $key = ShopifySku::normalizeSkuForShopifyLookup($linkRow->sku);
+            if ($key !== '' && ! isset($plsLinkBySku[$key])) {
+                $plsLinkBySku[$key] = $linkRow;
+            }
+        }
+
         // 7. Build Result
         $data = [];
 
@@ -620,7 +630,15 @@ class PlsController extends Controller
             }
             
             $row['pls_status'] = $plsStatus;
-            
+
+            // Buyer / Seller links
+            $linkRecord = $plsLinkBySku[$skuNorm] ?? null;
+            $linkVal = $linkRecord
+                ? (is_array($linkRecord->value) ? $linkRecord->value : (json_decode($linkRecord->value, true) ?: []))
+                : [];
+            $row['buyer_link'] = $linkVal['buyer_link'] ?? '';
+            $row['seller_link'] = $linkVal['seller_link'] ?? '';
+
             // Total profit based on OV L30 (our sales)
             $row['total_pft_l30'] = round($gpft * $ovl30, 2);
             
@@ -900,6 +918,44 @@ class PlsController extends Controller
             'success' => true,
             'message' => "SPRICE cleared for {$cleared} SKU(s)",
             'cleared' => $cleared
+        ]);
+    }
+
+    /**
+     * Save buyer / seller links for a SKU into pls_listing_statuses.value JSON.
+     * Empty strings clear the link (URL validation only applies to non-empty values).
+     */
+    public function saveLinks(Request $request)
+    {
+        $sku = $request->input('sku');
+        if (!$sku) {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $buyerLink = trim((string) $request->input('buyer_link', ''));
+        $sellerLink = trim((string) $request->input('seller_link', ''));
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $field => $val) {
+            if ($val !== '' && !filter_var($val, FILTER_VALIDATE_URL)) {
+                return response()->json(['success' => false, 'message' => 'Invalid URL for ' . $field], 422);
+            }
+        }
+
+        $status = PlsListingStatus::firstOrNew(['sku' => $sku]);
+        $existing = is_array($status->value)
+            ? $status->value
+            : (json_decode($status->value, true) ?: []);
+
+        $existing['buyer_link'] = $buyerLink !== '' ? $buyerLink : null;
+        $existing['seller_link'] = $sellerLink !== '' ? $sellerLink : null;
+
+        $status->value = $existing;
+        $status->save();
+
+        return response()->json([
+            'success' => true,
+            'buyer_link' => $existing['buyer_link'],
+            'seller_link' => $existing['seller_link'],
         ]);
     }
 }

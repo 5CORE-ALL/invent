@@ -297,6 +297,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="reverbEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="reverbEditLinksSku">
+                    <p class="mb-3"><strong>SKU:</strong> <span id="reverbEditLinksSkuDisplay"></span></p>
+                    <div class="mb-3">
+                        <label for="reverbEditSellerLink" class="form-label">S Link (Seller)</label>
+                        <input type="url" class="form-control" id="reverbEditSellerLink" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label for="reverbEditBuyerLink" class="form-label">B Link (Buyer)</label>
+                        <input type="url" class="form-control" id="reverbEditBuyerLink" placeholder="https://...">
+                    </div>
+                    <div id="reverbEditLinksError" class="text-danger small" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="reverbSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -971,9 +1000,10 @@
                     title: "Links",
                     field: "links_column",
                     frozen: true,
-                    width: 100,
+                    width: 55,
                     hozAlign: "center",
-                    visible: false,
+                    visible: true,
+                    tooltip: "Double-click to add / edit links",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const buyerLink = rowData['B Link'] || '';
@@ -983,13 +1013,13 @@
                         
                         if (sellerLink) {
                             html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size: 12px; text-decoration: none;">
-                                <i class="fa fa-link"></i> S Link
+                                <i class="fa fa-link"></i> S
                             </a>`;
                         }
                         
                         if (buyerLink) {
                             html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size: 12px; text-decoration: none;">
-                                <i class="fa fa-link"></i> B Link
+                                <i class="fa fa-link"></i> B
                             </a>`;
                         }
                         
@@ -999,6 +1029,10 @@
                         
                         html += '</div>';
                         return html;
+                    },
+                    cellDblClick: function(e, cell) {
+                        e.stopPropagation();
+                        openReverbEditLinksModal(cell.getRow());
                     },
                     headerSort: false
                 },
@@ -1531,6 +1565,48 @@
                 error: function(xhr) {
                     showToast(`Failed to update status for ${sku}`, 'error');
                 }
+            });
+        });
+
+        // ---- Edit B/S Links (double-click on Links cell) ----
+        let reverbEditLinksRow = null;
+        function openReverbEditLinksModal(row) {
+            if (!row) return;
+            reverbEditLinksRow = row;
+            const d = row.getData();
+            $('#reverbEditLinksSku').val(d['(Child) sku']);
+            $('#reverbEditLinksSkuDisplay').text(d['(Child) sku']);
+            $('#reverbEditSellerLink').val(d['S Link'] || '');
+            $('#reverbEditBuyerLink').val(d['B Link'] || '');
+            $('#reverbEditLinksError').hide().text('');
+            new bootstrap.Modal(document.getElementById('reverbEditLinksModal')).show();
+        }
+
+        $(document).on('click', '#reverbSaveLinksBtn', function() {
+            const sku = $('#reverbEditLinksSku').val();
+            const sellerLink = $('#reverbEditSellerLink').val().trim();
+            const buyerLink = $('#reverbEditBuyerLink').val().trim();
+            const $err = $('#reverbEditLinksError');
+            $err.hide().text('');
+            const $btn = $(this).prop('disabled', true);
+            $.ajax({
+                url: '{{ url("/reverb-save-links") }}',
+                method: 'POST',
+                data: { sku: sku, seller_link: sellerLink, buyer_link: buyerLink, _token: '{{ csrf_token() }}' },
+                success: function(res) {
+                    if (reverbEditLinksRow) {
+                        reverbEditLinksRow.update({ 'S Link': res.seller_link || '', 'B Link': res.buyer_link || '' })
+                            .then(function() { reverbEditLinksRow.reformat(); })
+                            .catch(function() { reverbEditLinksRow.reformat(); });
+                    }
+                    showToast(`${sku}: links saved`, 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('reverbEditLinksModal'))?.hide();
+                },
+                error: function(xhr) {
+                    const msg = xhr.responseJSON?.message || 'Failed to save links.';
+                    $err.text(msg).show();
+                },
+                complete: function() { $btn.prop('disabled', false); }
             });
         });
 

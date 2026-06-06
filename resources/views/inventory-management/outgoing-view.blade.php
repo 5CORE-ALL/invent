@@ -348,8 +348,8 @@
                                         </div>
                                         <div class="mb-3">
                                             <label for="replacement_tracking" class="form-label fw-bold">REPLACEMENT TRACKING</label>
-                                            <input type="text" class="form-control" id="replacement_tracking" name="replacement_tracking" maxlength="22" placeholder="Optional (max 22 characters)">
-                                            <small class="text-muted"><span id="replacement-tracking-char-count">0</span>/22</small>
+                                            <input type="text" class="form-control" id="replacement_tracking" name="replacement_tracking" maxlength="40" placeholder="Optional (max 40 characters)">
+                                            <small class="text-muted"><span id="replacement-tracking-char-count">0</span>/40</small>
                                         </div>
                                         <div class="mb-3">
                                             <label for="outgoingOrderId" class="form-label fw-bold">ORDER ID</label>

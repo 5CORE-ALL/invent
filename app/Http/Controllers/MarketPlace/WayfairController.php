@@ -943,6 +943,44 @@ class WayfairController extends Controller
         }
     }
 
+    /** Save Buyer (B) / Seller (S) links for a SKU into wayfair_listing_statuses.value JSON. */
+    public function saveWayfairLinks(Request $request)
+    {
+        $validated = $request->validate([
+            'sku'         => 'required|string',
+            'buyer_link'  => 'nullable|string|max:1000',
+            'seller_link' => 'nullable|string|max:1000',
+        ]);
+
+        $sku = trim($validated['sku']);
+
+        $buyerLink  = isset($validated['buyer_link']) ? trim((string) $validated['buyer_link']) : '';
+        $sellerLink = isset($validated['seller_link']) ? trim((string) $validated['seller_link']) : '';
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $label => $link) {
+            if ($link !== '' && !filter_var($link, FILTER_VALIDATE_URL)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => ucfirst(str_replace('_', ' ', $label)) . ' must be a valid URL.',
+                ], 422);
+            }
+        }
+
+        $status   = WayfairListingStatus::firstOrNew(['sku' => $sku]);
+        $existing = is_array($status->value) ? $status->value : (json_decode($status->value, true) ?? []);
+        $existing['buyer_link']  = $buyerLink;
+        $existing['seller_link'] = $sellerLink;
+        $status->value = $existing;
+        $status->save();
+
+        return response()->json([
+            'success'     => true,
+            'message'     => 'Links saved.',
+            'buyer_link'  => $buyerLink !== '' ? $buyerLink : null,
+            'seller_link' => $sellerLink !== '' ? $sellerLink : null,
+        ]);
+    }
+
     public function wayfairBadgeChartData(Request $request)
     {
         try {

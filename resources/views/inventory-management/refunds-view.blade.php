@@ -11,7 +11,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="{{ asset('css/select-searchable.css') }}" rel="stylesheet" />
 
 
     <style>
@@ -381,7 +381,7 @@
                                         </div>
                                         <div class="mb-3">
                                             <label for="supplier_id" class="form-label fw-bold">Supplier</label>
-                                            <select class="form-select" id="supplier_id" name="supplier_id">
+                                            <select class="form-select select-searchable" id="supplier_id" name="supplier_id">
                                                 <option value="">— Optional —</option>
                                                 @foreach($suppliers ?? [] as $sup)
                                                     <option value="{{ $sup->id }}">{{ $sup->name }}</option>
@@ -395,7 +395,7 @@
                                         </div>
                                         <div class="mb-3">
                                             <label for="channel_master_id" class="form-label fw-bold">Channel</label>
-                                            <select class="form-select" id="channel_master_id" name="channel_master_id" style="width:100%">
+                                            <select class="form-select select-searchable" id="channel_master_id" name="channel_master_id">
                                                 <option value="">— Optional —</option>
                                                 @foreach($channels ?? [] as $ch)
                                                     <option value="{{ $ch->id }}">{{ $ch->channel }}@if(!empty($ch->type)) — {{ $ch->type }}@endif</option>
@@ -448,7 +448,7 @@
                                     </div>
                                     <div class="mb-3">
                                         <label for="editSupplierId" class="form-label">Supplier</label>
-                                        <select class="form-select" id="editSupplierId">
+                                        <select class="form-select select-searchable" id="editSupplierId">
                                             <option value="">— None —</option>
                                             @foreach($suppliers ?? [] as $sup)
                                                 <option value="{{ $sup->id }}">{{ $sup->name }}</option>
@@ -461,7 +461,7 @@
                                     </div>
                                     <div class="mb-3">
                                         <label for="editChannelMasterId" class="form-label">Channel</label>
-                                        <select class="form-select" id="editChannelMasterId" style="width:100%">
+                                        <select class="form-select select-searchable" id="editChannelMasterId">
                                             <option value="">— Optional —</option>
                                             @foreach($channels ?? [] as $ch)
                                                 <option value="{{ $ch->id }}">{{ $ch->channel }}@if(!empty($ch->type)) — {{ $ch->type }}@endif</option>
@@ -633,6 +633,7 @@
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="{{ asset('js/select-searchable.js') }}"></script>
 
     <script>
 
@@ -973,19 +974,6 @@
                 });
                 console.log('Total SKUs loaded:', allSkus.length);
                 console.log('Search for "PNB WD HD PNK" in Select2 dropdown using the search box');
-                $('#channel_master_id').select2({
-                    dropdownParent: $modal,
-                    placeholder: 'Search channel...',
-                    allowClear: true,
-                    width: '100%'
-                });
-                var $editChModal = $('#editReasonCommentModal');
-                $('#editChannelMasterId').select2({
-                    dropdownParent: $editChModal,
-                    placeholder: 'Search channel...',
-                    allowClear: true,
-                    width: '100%'
-                });
                 var skuSupplierTimer = null;
                 $('#sku_0').on('change', function () {
                     var sku = $(this).val();
@@ -1016,11 +1004,8 @@
                         $('#sku_0').val(null).trigger('change');
                     }
                     $('#order_id').val('');
-                    if ($('#channel_master_id').data('select2')) {
-                        $('#channel_master_id').val(null).trigger('change');
-                    } else {
-                        $('#channel_master_id').val('');
-                    }
+                    $('#channel_master_id').val('').trigger('change');
+                    $('#supplier_id').val('').trigger('change');
                     $('#refundsModal').modal('show');
                 });
                 $(document).on('input', '#comment', function () {
@@ -1173,7 +1158,7 @@
                     var $epr = $('#editPersonResponsible');
                     $epr.val(pr);
                     if (!$epr.val()) { $epr.prop('selectedIndex', 0); }
-                    $('#editSupplierId').val(supId || '');
+                    $('#editSupplierId').val(supId || '').trigger('change');
                     $('#editOrderId').val(rec && rec.order_id ? rec.order_id : '');
                     var chVal = rec && rec.channel_master_id ? String(rec.channel_master_id) : '';
                     $('#editChannelMasterId').val(chVal).trigger('change');

@@ -213,7 +213,7 @@ class CustomerFollowupController extends Controller
             $q->whereDate('followup_date', '<=', $request->date_to);
         }
 
-        $rows = $q->orderBy('followup_date')->orderBy('id')->get();
+        $rows = $q->orderByDesc('followup_date')->orderByDesc('id')->get();
 
         $tz = config('app.timezone');
         $now = Carbon::now($tz);

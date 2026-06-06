@@ -13,6 +13,7 @@ use App\Models\MarketplacePercentage;
 use App\Models\ReverbViewData;
 use App\Models\TiktokShopDataView;
 use App\Models\TiktokTwoShopDataView;
+use App\Models\TiktokShopListingStatus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -91,6 +92,7 @@ class TikTokPricingController extends Controller
                 'badgeChart' => route('tiktok2.badge.chart.data'),
                 'saveSprice' => '/tiktok-2-save-sprice',
                 'saveNrp' => route('tiktok2.save.nrp'),
+                'saveLinks' => '/tiktok-2-save-links',
                 'columnGet' => '/tiktok-pricing-column-visibility',
                 'columnSet' => '/tiktok-pricing-column-visibility',
                 'distinctCampaign' => '/tiktok-distinct-campaign-count',
@@ -369,6 +371,20 @@ class TikTokPricingController extends Controller
             }
         }
 
+        // Buyer / Seller links from TiktokShopListingStatus.value JSON (keyed by normalized SKU) — TikTok 1 only
+        $ttListingLinksByNormSku = [];
+        if (!$isTiktokTwo && $normSkuList !== []) {
+            $linkRows = TiktokShopListingStatus::query()
+                ->whereIn(DB::raw('UPPER(TRIM(sku))'), $normSkuList)
+                ->get();
+            foreach ($linkRows as $lr) {
+                $k = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $lr->sku)));
+                if ($k !== '') {
+                    $ttListingLinksByNormSku[$k] = $lr;
+                }
+            }
+        }
+
         // L30: ShipHub (TikTok) or uploaded orders in tiktok_sales_two (TikTok 2)
         $soldData = $isTiktokTwo
             ? $this->getTiktokTwoL30SoldDataBySku()
@@ -563,10 +579,27 @@ class TikTokPricingController extends Controller
             $tiktokValArr = [];
 
             $skuNorm = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $sku)));
+
+            // Buyer / Seller links default (TikTok 2 reads from its shop data view value below)
+            $processedItem['B Link'] = '';
+            $processedItem['S Link'] = '';
+            if (!$isTiktokTwo) {
+                $linkRecord = $ttListingLinksByNormSku[$skuNorm] ?? null;
+                $linkVal = ($linkRecord && is_array($linkRecord->value))
+                    ? $linkRecord->value
+                    : ($linkRecord ? (json_decode($linkRecord->value, true) ?: []) : []);
+                $processedItem['B Link'] = $linkVal['buyer_link'] ?? '';
+                $processedItem['S Link'] = $linkVal['seller_link'] ?? '';
+            }
+
             $ttShopRow = $ttShopDataByNormSku[$skuNorm] ?? null;
             if ($ttShopRow) {
                 $tiktokVal = $ttShopRow->value;
                 $tiktokValArr = is_array($tiktokVal) ? $tiktokVal : (json_decode($tiktokVal ?? '{}', true) ?: []);
+                if ($isTiktokTwo) {
+                    $processedItem['B Link'] = $tiktokValArr['buyer_link'] ?? '';
+                    $processedItem['S Link'] = $tiktokValArr['seller_link'] ?? '';
+                }
                 $processedItem["SPRICE"] = isset($tiktokValArr["SPRICE"]) ? floatval($tiktokValArr["SPRICE"]) : 0;
                 $processedItem["SGPFT"] = isset($tiktokValArr["SGPFT"]) ? floatval($tiktokValArr["SGPFT"]) : 0;
                 $processedItem["SPFT"] = isset($tiktokValArr["SPFT"]) ? floatval(str_replace("%", "", $tiktokValArr["SPFT"])) : 0;
@@ -1215,6 +1248,94 @@ class TikTokPricingController extends Controller
     public function saveTiktokTwoNrp(Request $request)
     {
         return $this->saveTiktokNrpToShopDataView($request, TiktokTwoShopDataView::class);
+    }
+
+    /**
+     * Save buyer / seller links for a SKU into tiktok_shop_listing_statuses.value JSON.
+     * Empty strings clear the link (URL validation only applies to non-empty values).
+     */
+    public function saveLinks(Request $request)
+    {
+        $sku = trim((string) $request->input('sku'));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $buyerLink = trim((string) $request->input('buyer_link', ''));
+        $sellerLink = trim((string) $request->input('seller_link', ''));
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $field => $val) {
+            if ($val !== '' && !filter_var($val, FILTER_VALIDATE_URL)) {
+                return response()->json(['success' => false, 'message' => 'Invalid URL for ' . $field], 422);
+            }
+        }
+
+        $normalized = strtoupper(str_replace("\u{00a0}", ' ', $sku));
+        $status = TiktokShopListingStatus::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])
+            ->orderBy('updated_at', 'desc')
+            ->first();
+
+        $existing = $status
+            ? (is_array($status->value) ? $status->value : (json_decode($status->value, true) ?? []))
+            : [];
+
+        $existing['buyer_link'] = $buyerLink !== '' ? $buyerLink : null;
+        $existing['seller_link'] = $sellerLink !== '' ? $sellerLink : null;
+
+        // Delete duplicates and create a fresh record (mirrors listing save pattern)
+        TiktokShopListingStatus::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->delete();
+        TiktokShopListingStatus::create([
+            'sku' => $sku,
+            'value' => $existing,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'buyer_link' => $existing['buyer_link'],
+            'seller_link' => $existing['seller_link'],
+        ]);
+    }
+
+    /**
+     * Save buyer / seller links for TikTok 2 into tiktok_two_shop_data_views.value JSON (kept separate from TikTok 1).
+     */
+    public function saveTiktokTwoLinks(Request $request)
+    {
+        $sku = trim((string) $request->input('sku'));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $buyerLink = trim((string) $request->input('buyer_link', ''));
+        $sellerLink = trim((string) $request->input('seller_link', ''));
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $field => $val) {
+            if ($val !== '' && !filter_var($val, FILTER_VALIDATE_URL)) {
+                return response()->json(['success' => false, 'message' => 'Invalid URL for ' . $field], 422);
+            }
+        }
+
+        $normalized = strtoupper(str_replace("\u{00a0}", ' ', $sku));
+        $view = TiktokTwoShopDataView::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])
+            ->first();
+        if (!$view) {
+            $view = new TiktokTwoShopDataView();
+            $view->sku = $sku;
+        }
+
+        $existing = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
+        $existing['buyer_link'] = $buyerLink !== '' ? $buyerLink : null;
+        $existing['seller_link'] = $sellerLink !== '' ? $sellerLink : null;
+        $view->value = $existing;
+        $view->save();
+
+        return response()->json([
+            'success' => true,
+            'buyer_link' => $existing['buyer_link'],
+            'seller_link' => $existing['seller_link'],
+        ]);
     }
 
     private function saveTiktokNrpToShopDataView(Request $request, string $viewModelClass)

@@ -9,6 +9,7 @@ use App\Models\TiendamiaPriceUpload;
 use App\Models\ShopifySku;
 use App\Models\MarketplacePercentage;
 use App\Models\TiendamiaDataView;
+use App\Models\TiendamiaListingStatus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -102,6 +103,9 @@ class TiendamiaPricingController extends Controller
         // Fetch Tiendamia view data for SPRICE
         $tiendamiaViewData = TiendamiaDataView::whereIn("sku", $skus)->get()->keyBy("sku");
 
+        // Buyer / Seller links from tiendamia_listing_statuses
+        $tiendamiaLinkData = TiendamiaListingStatus::whereIn("sku", $skus)->get()->keyBy("sku");
+
         // Process data
         $processedData = [];
         $slNo = 1;
@@ -117,6 +121,14 @@ class TiendamiaPricingController extends Controller
                 "(Child) sku" => $sku,
                 "is_parent" => $isParent,
             ];
+
+            // Buyer / Seller links
+            $linkRecord = $tiendamiaLinkData->get($sku);
+            $linkVal = $linkRecord
+                ? (is_array($linkRecord->value) ? $linkRecord->value : (json_decode($linkRecord->value, true) ?: []))
+                : [];
+            $processedItem['B Link'] = $linkVal['buyer_link'] ?? '';
+            $processedItem['S Link'] = $linkVal['seller_link'] ?? '';
 
             // Add values from product_master
             $values = $productMaster->Values ?: [];
@@ -747,6 +759,46 @@ class TiendamiaPricingController extends Controller
             'message' => 'NRP saved successfully',
             'success' => true,
             'updated_json' => $jsonData,
+        ]);
+    }
+
+    /**
+     * Save buyer / seller links for a SKU into tiendamia_listing_statuses.value JSON.
+     * Empty strings clear the link (URL validation only applies to non-empty values).
+     */
+    public function saveLinks(Request $request)
+    {
+        $sku = trim((string) $request->input('sku'));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $buyerLink = trim((string) $request->input('buyer_link', ''));
+        $sellerLink = trim((string) $request->input('seller_link', ''));
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $field => $val) {
+            if ($val !== '' && !filter_var($val, FILTER_VALIDATE_URL)) {
+                return response()->json(['success' => false, 'message' => 'Invalid URL for ' . $field], 422);
+            }
+        }
+
+        $status = TiendamiaListingStatus::where('sku', $sku)->first();
+        $existing = $status
+            ? (is_array($status->value) ? $status->value : (json_decode($status->value, true) ?: []))
+            : [];
+
+        $existing['buyer_link'] = $buyerLink !== '' ? $buyerLink : null;
+        $existing['seller_link'] = $sellerLink !== '' ? $sellerLink : null;
+
+        TiendamiaListingStatus::updateOrCreate(
+            ['sku' => $sku],
+            ['value' => $existing]
+        );
+
+        return response()->json([
+            'success' => true,
+            'buyer_link' => $existing['buyer_link'],
+            'seller_link' => $existing['seller_link'],
         ]);
     }
 }

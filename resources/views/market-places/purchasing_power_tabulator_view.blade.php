@@ -167,6 +167,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="editLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editLinksSku">
+                    <p class="mb-3"><strong>SKU:</strong> <span id="editLinksSkuDisplay"></span></p>
+                    <div class="mb-3">
+                        <label for="editSellerLink" class="form-label">S Link (Seller)</label>
+                        <input type="url" class="form-control" id="editSellerLink" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editBuyerLink" class="form-label">B Link (Buyer)</label>
+                        <input type="url" class="form-control" id="editBuyerLink" placeholder="https://...">
+                    </div>
+                    <div id="editLinksError" class="text-danger small" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -434,6 +463,31 @@
                         return `<span>${sku}</span><i class="fa fa-copy text-secondary copy-sku-btn" style="cursor:pointer;margin-left:8px;font-size:14px;" data-sku="${sku}" title="Copy SKU"></i>`;
                     }
                 },
+                {
+                    title: 'Links', field: 'links_column', frozen: true, width: 55, hozAlign: 'center', headerSort: false, visible: true,
+                    tooltip: 'Double-click to add / edit links',
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        const buyerLink = d['B Link'] || '';
+                        const sellerLink = d['S Link'] || '';
+                        let html = '<div style="display:flex;flex-direction:column;gap:4px;align-items:center;">';
+                        if (sellerLink) {
+                            html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> S</a>`;
+                        }
+                        if (buyerLink) {
+                            html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> B</a>`;
+                        }
+                        if (!sellerLink && !buyerLink) {
+                            html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                        }
+                        html += '</div>';
+                        return html;
+                    },
+                    cellDblClick: function(e, cell) {
+                        e.stopPropagation();
+                        openEditLinksModal(cell.getRow());
+                    }
+                },
                 { title: 'INV',  field: 'INV',  hozAlign: 'center', width: 50, sorter: 'number' },
                 { title: 'OV L30', field: 'L30', hozAlign: 'center', width: 50, sorter: 'number' },
                 {
@@ -613,6 +667,50 @@
                 data: { sku, nr_req: newValue, _token: '{{ csrf_token() }}' },
                 success: function() { showToast(`${sku}: updated to ${newValue}`, 'success'); row.update({ nr_req: newValue }); },
                 error: function() { showToast(`Failed to update ${sku}`, 'error'); }
+            });
+        });
+
+        // Open Edit Links modal
+        let editLinksRow = null;
+        function openEditLinksModal(row) {
+            if (!row) return;
+            editLinksRow = row;
+            const d = row.getData();
+            $('#editLinksSku').val(d['(Child) sku']);
+            $('#editLinksSkuDisplay').text(d['(Child) sku']);
+            $('#editSellerLink').val(d['S Link'] || '');
+            $('#editBuyerLink').val(d['B Link'] || '');
+            $('#editLinksError').hide().text('');
+            new bootstrap.Modal(document.getElementById('editLinksModal')).show();
+        }
+
+        // Save links
+        $(document).on('click', '#saveLinksBtn', function() {
+            const sku = $('#editLinksSku').val();
+            const sellerLink = $('#editSellerLink').val().trim();
+            const buyerLink = $('#editBuyerLink').val().trim();
+            const $err = $('#editLinksError');
+            $err.hide().text('');
+
+            const $btn = $(this).prop('disabled', true);
+            $.ajax({
+                url: '{{ url("/pp-update-links") }}',
+                method: 'POST',
+                data: { sku, seller_link: sellerLink, buyer_link: buyerLink, _token: '{{ csrf_token() }}' },
+                success: function(res) {
+                    if (editLinksRow) {
+                        editLinksRow.update({ 'S Link': res.seller_link || '', 'B Link': res.buyer_link || '' })
+                            .then(function() { editLinksRow.reformat(); })
+                            .catch(function() { editLinksRow.reformat(); });
+                    }
+                    showToast(`${sku}: links saved`, 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('editLinksModal'))?.hide();
+                },
+                error: function(xhr) {
+                    const msg = xhr.responseJSON?.message || 'Failed to save links.';
+                    $err.text(msg).show();
+                },
+                complete: function() { $btn.prop('disabled', false); }
             });
         });
 

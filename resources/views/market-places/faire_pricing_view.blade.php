@@ -334,6 +334,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="faireEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="faireEditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="faireSellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="faireBuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="faireSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -1120,6 +1149,80 @@
             });
         }
 
+        // ---- Edit Links (Buyer / Seller) ----
+        function frLinksNotify(msg, type) {
+            if (window.toastr) {
+                if (type === 'error' || type === 'danger') toastr.error(msg);
+                else if (type === 'warning') toastr.warning(msg);
+                else toastr.success(msg);
+                return;
+            }
+            let c = document.getElementById('frLinksToastContainer');
+            if (!c) {
+                c = document.createElement('div');
+                c.id = 'frLinksToastContainer';
+                c.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;';
+                document.body.appendChild(c);
+            }
+            const t = document.createElement('div');
+            const bg = (type === 'error' || type === 'danger') ? '#dc3545' : (type === 'warning' ? '#fd7e14' : '#198754');
+            t.style.cssText = 'min-width:220px;max-width:340px;color:#fff;background:' + bg + ';padding:12px 16px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.18);font-size:14px;opacity:0;transition:opacity .25s ease;';
+            t.textContent = msg;
+            c.appendChild(t);
+            requestAnimationFrame(function() { t.style.opacity = '1'; });
+            setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 300); }, 2600);
+        }
+        let faireEditLinksRow = null;
+        window.openFaireEditLinksModal = function(row) {
+            faireEditLinksRow = row;
+            const d = row.getData();
+            $('#faireEditLinksSku').text(d.sku || '');
+            $('#faireSellerLinkInput').val(d.seller_link || '');
+            $('#faireBuyerLinkInput').val(d.buyer_link || '');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('faireEditLinksModal')).show();
+        };
+        $(document).on('click', '#faireSaveLinksBtn', function() {
+            if (!faireEditLinksRow) return;
+            const sku = faireEditLinksRow.getData().sku;
+            const sellerLink = $('#faireSellerLinkInput').val().trim();
+            const buyerLink = $('#faireBuyerLinkInput').val().trim();
+            const $btn = $(this);
+            $btn.prop('disabled', true).text('Saving...');
+            $.ajax({
+                url: '/faire/save-links',
+                method: 'POST',
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    sku: sku,
+                    seller_link: sellerLink,
+                    buyer_link: buyerLink
+                },
+                success: function(res) {
+                    if (res && res.success) {
+                        faireEditLinksRow.update({
+                            seller_link: res.seller_link || '',
+                            buyer_link: res.buyer_link || ''
+                        }).then(function() {
+                            faireEditLinksRow.reformat();
+                        }).catch(function() {
+                            faireEditLinksRow.reformat();
+                        });
+                        frLinksNotify('Links saved successfully', 'success');
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById('faireEditLinksModal')).hide();
+                    } else {
+                        frLinksNotify((res && res.message) || 'Failed to save links', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save links';
+                    frLinksNotify(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text('Save');
+                }
+            });
+        });
+
         $(document).ready(function() {
             $('#frChartRangeSelect').on('change', function() {
                 const days = parseInt($(this).val(), 10);
@@ -1229,28 +1332,35 @@
                         }
                     },
                     {
-                        title: 'B/S',
+                        title: 'Links',
                         field: 'buyer_link',
                         headerSort: false,
                         hozAlign: 'center',
-                        width: 64,
+                        width: 55,
                         download: false,
                         frozen: true,
+                        tooltip: 'Double-click to add / edit links',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            const b = d.buyer_link;
-                            const s = d.seller_link;
-                            const parts = [];
-                            if (b) {
-                                parts.push('<a href="' + frEscUrlAttr(b) + '" target="_blank" rel="noopener noreferrer" ' +
-                                    'class="fw-semibold" style="color:#0d6efd;" title="Buyer (Faire)">B</a>');
-                            }
+                            const b = d.buyer_link || '';
+                            const s = d.seller_link || '';
+                            let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
                             if (s) {
-                                parts.push('<a href="' + frEscUrlAttr(s) + '" target="_blank" rel="noopener noreferrer" ' +
-                                    'class="fw-semibold" style="color:#6f42c1;" title="Seller (portal)">S</a>');
+                                html += '<a href="' + frEscUrlAttr(s) + '" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';
                             }
-                            return parts.length ? parts.join('<span class="text-muted" style="margin:0 3px;">|</span>') : '';
+                            if (b) {
+                                html += '<a href="' + frEscUrlAttr(b) + '" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>';
+                            }
+                            if (!s && !b) {
+                                html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                            }
+                            html += '</div>';
+                            return html;
+                        },
+                        cellDblClick: function(e, cell) {
+                            if (cell.getRow().getData().is_parent) return;
+                            openFaireEditLinksModal(cell.getRow());
                         }
                     },
                     {

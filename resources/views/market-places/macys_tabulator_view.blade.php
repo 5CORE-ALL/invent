@@ -883,17 +883,6 @@
             },
             columns: [
                 {
-                    title: "Parent",
-                    field: "Parent",
-                    headerFilter: "input",
-                    headerFilterPlaceholder: "Search Parent...",
-                    cssClass: "text-primary",
-                    tooltip: true,
-                    frozen: true,
-                    width: 150,
-                    visible: false
-                },
-                {
                     title: "Image",
                     field: "image_path",
                     formatter: function(cell) {
@@ -905,6 +894,17 @@
                     },
                     headerSort: false,
                     width: 80
+                },
+                {
+                    title: "Parent",
+                    field: "Parent",
+                    headerFilter: "input",
+                    headerFilterPlaceholder: "Search Parent...",
+                    cssClass: "text-primary",
+                    tooltip: true,
+                    frozen: true,
+                    width: 150,
+                    visible: false
                 },
                 {
                     title: "SKU",
@@ -931,9 +931,9 @@
                     title: "Links",
                     field: "links_column",
                     frozen: true,
-                    width: 100,
+                    width: 55,
                     hozAlign: "center",
-                    visible: false,
+                    visible: true,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const buyerLink = rowData['B Link'] || '';
@@ -943,13 +943,13 @@
                         
                         if (sellerLink) {
                             html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size: 12px; text-decoration: none;">
-                                <i class="fa fa-link"></i> S Link
+                                <i class="fa fa-link"></i> S
                             </a>`;
                         }
                         
                         if (buyerLink) {
                             html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size: 12px; text-decoration: none;">
-                                <i class="fa fa-link"></i> B Link
+                                <i class="fa fa-link"></i> B
                             </a>`;
                         }
                         
@@ -1659,7 +1659,7 @@
             columns.forEach(col => {
                 const field = col.getField();
                 const title = col.getDefinition().title;
-                if (field && field !== '_select' && title) {
+                if (field && field !== '_select' && title && FORCED_HIDDEN_COLUMNS.indexOf(field) === -1) {
                     const isVisible = col.isVisible();
                     html += `<li class="dropdown-item">
                         <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
@@ -1692,6 +1692,17 @@
             });
         }
 
+        // Columns that must always stay hidden, regardless of saved state.
+        const FORCED_HIDDEN_COLUMNS = ['Parent'];
+        function enforceForcedHiddenColumns() {
+            FORCED_HIDDEN_COLUMNS.forEach(field => {
+                const col = table.getColumn(field);
+                if (col) {
+                    try { col.hide(); } catch (e) {}
+                }
+            });
+        }
+
         function applyColumnVisibilityFromServer() {
             $.ajax({
                 url: '/macys-pricing-column-visibility',
@@ -1708,8 +1719,9 @@
                                 }
                             }
                         });
-                        buildColumnDropdown();
                     }
+                    enforceForcedHiddenColumns();
+                    buildColumnDropdown();
                 }
             });
         }
@@ -1751,10 +1763,11 @@
         // Show All Columns button
         document.getElementById("show-all-columns-btn").addEventListener("click", function() {
             table.getColumns().forEach(col => {
-                if (col.getField() !== '_select') {
+                if (col.getField() !== '_select' && FORCED_HIDDEN_COLUMNS.indexOf(col.getField()) === -1) {
                     col.show();
                 }
             });
+            enforceForcedHiddenColumns();
             buildColumnDropdown();
             saveColumnVisibilityToServer();
         });

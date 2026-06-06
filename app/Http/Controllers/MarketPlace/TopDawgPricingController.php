@@ -7,6 +7,7 @@ use App\Models\AmazonChannelSummary;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Models\TopDawgDataView;
 use App\Models\TopDawgProduct;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -43,6 +44,44 @@ class TopDawgPricingController extends Controller
         }
     }
 
+    /** Save Buyer (B) / Seller (S) links for a SKU into topdawg_data_views.value JSON. */
+    public function saveLinks(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'sku'         => 'required|string',
+            'buyer_link'  => 'nullable|string|max:1000',
+            'seller_link' => 'nullable|string|max:1000',
+        ]);
+
+        $sku = trim($validated['sku']);
+
+        $buyerLink  = isset($validated['buyer_link']) ? trim((string) $validated['buyer_link']) : '';
+        $sellerLink = isset($validated['seller_link']) ? trim((string) $validated['seller_link']) : '';
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $label => $link) {
+            if ($link !== '' && !filter_var($link, FILTER_VALIDATE_URL)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => ucfirst(str_replace('_', ' ', $label)) . ' must be a valid URL.',
+                ], 422);
+            }
+        }
+
+        $dv       = TopDawgDataView::firstOrNew(['sku' => $sku]);
+        $existing = is_array($dv->value) ? $dv->value : (json_decode($dv->value, true) ?? []);
+        $existing['buyer_link']  = $buyerLink;
+        $existing['seller_link'] = $sellerLink;
+        $dv->value = $existing;
+        $dv->save();
+
+        return response()->json([
+            'success'     => true,
+            'message'     => 'Links saved.',
+            'buyer_link'  => $buyerLink,
+            'seller_link' => $sellerLink,
+        ]);
+    }
+
     public function getViewTopDawgTabularData(Request $request): JsonResponse
     {
         $percentageValue = $this->marketplacePercentage() / 100;
@@ -57,6 +96,10 @@ class TopDawgPricingController extends Controller
         $topdawgData = Schema::hasTable('topdawg_products')
             ? TopDawgProduct::buildLookupByNormalizedSku($skus)
             : [];
+
+        $dataViews = Schema::hasTable('topdawg_data_views')
+            ? TopDawgDataView::whereIn('sku', $skus)->get()->keyBy('sku')
+            : collect();
 
         $processedData = [];
 
@@ -94,9 +137,20 @@ class TopDawgPricingController extends Controller
                 'LP_productmaster' => $lp,
                 'Ship_productmaster' => $ship,
                 'nr_req' => 'REQ',
+                'B Link' => '',
+                'S Link' => '',
                 'percentage' => $percentageValue,
                 'image_path' => ($td ? ($td->image_src ?? null) : null) ?: ($shopifyItem->image_src ?? ($values['image_path'] ?? ($productMaster->image_path ?? null))),
             ];
+
+            $dvRecord = $dataViews->get($sku);
+            if ($dvRecord) {
+                $dvValue = is_array($dvRecord->value) ? $dvRecord->value : (json_decode($dvRecord->value, true) ?? []);
+                if (is_array($dvValue)) {
+                    $row['B Link'] = $dvValue['buyer_link'] ?? '';
+                    $row['S Link'] = $dvValue['seller_link'] ?? '';
+                }
+            }
 
             $nrReq = $row['nr_req'];
             $isMissing = ($nrReq === 'REQ' && $inv > 0 && $tdPrice <= 0);

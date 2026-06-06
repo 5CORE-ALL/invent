@@ -335,6 +335,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="sheinEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="sheinEditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="sheinSellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="sheinBuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="sheinSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -823,6 +852,38 @@
                             }
                             const esc = val.replace(/&/g,'&amp;').replace(/</g,'&lt;');
                             return `<span class="fw-bold">${esc}</span>`;
+                        }
+                    },
+                    {
+                        title: "Links",
+                        field: "links_column",
+                        width: 55,
+                        frozen: true,
+                        hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "Double-click to add / edit links",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const b = d['B Link'] || '';
+                            const s = d['S Link'] || '';
+                            let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
+                            if (s) {
+                                html += '<a href="' + String(s).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';
+                            }
+                            if (b) {
+                                html += '<a href="' + String(b).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>';
+                            }
+                            if (!s && !b) {
+                                html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                            }
+                            html += '</div>';
+                            return html;
+                        },
+                        cellDblClick: function(e, cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return;
+                            openSheinEditLinksModal(cell.getRow());
                         }
                     },
                     {
@@ -1541,6 +1602,97 @@
                 aeBadgeDays = d;
                 $('#aeBadgeChartTitle').text(aeBadgeChartModalTitle());
                 aeLoadChart();
+            });
+        });
+
+        // ===== Edit Links (Buyer / Seller) =====
+        function sheinLinksNotify(message, type) {
+            if (window.toastr) {
+                (type === 'error' ? toastr.error : toastr.success)(message);
+                return;
+            }
+            let container = document.getElementById('sheinToastContainer');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'sheinToastContainer';
+                container.style.cssText =
+                    'position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;';
+                document.body.appendChild(container);
+            }
+            const toast = document.createElement('div');
+            const bg = type === 'error' ? '#dc3545' : '#198754';
+            toast.style.cssText =
+                'min-width:220px;max-width:340px;color:#fff;background:' + bg +
+                ';padding:12px 16px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.18);font-size:14px;opacity:0;transition:opacity .25s ease;';
+            toast.textContent = message;
+            container.appendChild(toast);
+            requestAnimationFrame(function() {
+                toast.style.opacity = '1';
+            });
+            setTimeout(function() {
+                toast.style.opacity = '0';
+                setTimeout(function() {
+                    toast.remove();
+                }, 300);
+            }, 2600);
+        }
+
+        let sheinEditLinksRow = null;
+
+        function openSheinEditLinksModal(row) {
+            sheinEditLinksRow = row;
+            const d = row.getData();
+            document.getElementById('sheinEditLinksSku').textContent = d.sku || '';
+            document.getElementById('sheinSellerLinkInput').value = d['S Link'] || '';
+            document.getElementById('sheinBuyerLinkInput').value = d['B Link'] || '';
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('sheinEditLinksModal')).show();
+        }
+
+        $(document).on('click', '#sheinSaveLinksBtn', function() {
+            if (!sheinEditLinksRow) return;
+            const d = sheinEditLinksRow.getData();
+            const sku = d.sku || '';
+            const sellerLink = document.getElementById('sheinSellerLinkInput').value.trim();
+            const buyerLink = document.getElementById('sheinBuyerLinkInput').value.trim();
+            const $btn = $(this);
+            $btn.prop('disabled', true).text('Saving...');
+
+            $.ajax({
+                url: "/shein/save-links",
+                method: 'POST',
+                data: {
+                    sku: sku,
+                    buyer_link: buyerLink,
+                    seller_link: sellerLink
+                },
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function(res) {
+                    if (res && res.success) {
+                        sheinEditLinksRow.update({
+                            'S Link': res.seller_link || '',
+                            'B Link': res.buyer_link || ''
+                        }).then(function() {
+                            sheinEditLinksRow.reformat();
+                        }).catch(function() {
+                            sheinEditLinksRow.reformat();
+                        });
+                        sheinLinksNotify('Links saved', 'success');
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById(
+                            'sheinEditLinksModal')).hide();
+                    } else {
+                        sheinLinksNotify((res && res.message) || 'Error saving links', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    let msg = 'Error saving links';
+                    if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                    sheinLinksNotify(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text('Save');
+                }
             });
         });
     </script>

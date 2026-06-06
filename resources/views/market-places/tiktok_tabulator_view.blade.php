@@ -521,6 +521,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="tiktokEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="tiktokEditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="tiktokSellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="tiktokBuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="tiktokSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @php
@@ -530,6 +559,7 @@
             'badgeChart' => '/tiktok-badge-chart-data',
             'saveSprice' => '/tiktok-save-sprice',
             'saveNrp' => route('tiktok.save.nrp'),
+            'saveLinks' => '/tiktok-save-links',
             'columnGet' => '/tiktok-pricing-column-visibility',
             'columnSet' => '/tiktok-pricing-column-visibility',
             'distinctCampaign' => '/tiktok-distinct-campaign-count',
@@ -627,6 +657,80 @@
             if (ttIsParentRow(d)) return false;
             return ttIsStrictNMapMapValue(d.MAP, ttRowIsMissing(d));
         }
+
+        // ---- Edit Links (Buyer / Seller) ----
+        function ttLinksNotify(msg, type) {
+            if (window.toastr) {
+                if (type === 'error' || type === 'danger') toastr.error(msg);
+                else if (type === 'warning') toastr.warning(msg);
+                else toastr.success(msg);
+                return;
+            }
+            let c = document.getElementById('ttLinksToastContainer');
+            if (!c) {
+                c = document.createElement('div');
+                c.id = 'ttLinksToastContainer';
+                c.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;';
+                document.body.appendChild(c);
+            }
+            const t = document.createElement('div');
+            const bg = (type === 'error' || type === 'danger') ? '#dc3545' : (type === 'warning' ? '#fd7e14' : '#198754');
+            t.style.cssText = 'min-width:220px;max-width:340px;color:#fff;background:' + bg + ';padding:12px 16px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.18);font-size:14px;opacity:0;transition:opacity .25s ease;';
+            t.textContent = msg;
+            c.appendChild(t);
+            requestAnimationFrame(function() { t.style.opacity = '1'; });
+            setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 300); }, 2600);
+        }
+        let tiktokEditLinksRow = null;
+        window.openTiktokEditLinksModal = function(row) {
+            tiktokEditLinksRow = row;
+            const d = row.getData();
+            $('#tiktokEditLinksSku').text(d['(Child) sku'] || '');
+            $('#tiktokSellerLinkInput').val(d['S Link'] || '');
+            $('#tiktokBuyerLinkInput').val(d['B Link'] || '');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('tiktokEditLinksModal')).show();
+        };
+        $(document).on('click', '#tiktokSaveLinksBtn', function() {
+            if (!tiktokEditLinksRow) return;
+            const sku = tiktokEditLinksRow.getData()['(Child) sku'];
+            const sellerLink = $('#tiktokSellerLinkInput').val().trim();
+            const buyerLink = $('#tiktokBuyerLinkInput').val().trim();
+            const $btn = $(this);
+            $btn.prop('disabled', true).text('Saving...');
+            $.ajax({
+                url: (typeof TTP_CFG !== 'undefined' && TTP_CFG.saveLinks) ? TTP_CFG.saveLinks : '/tiktok-save-links',
+                method: 'POST',
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    sku: sku,
+                    seller_link: sellerLink,
+                    buyer_link: buyerLink
+                },
+                success: function(res) {
+                    if (res && res.success) {
+                        tiktokEditLinksRow.update({
+                            'S Link': res.seller_link || '',
+                            'B Link': res.buyer_link || ''
+                        }).then(function() {
+                            tiktokEditLinksRow.reformat();
+                        }).catch(function() {
+                            tiktokEditLinksRow.reformat();
+                        });
+                        ttLinksNotify('Links saved successfully', 'success');
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById('tiktokEditLinksModal')).hide();
+                    } else {
+                        ttLinksNotify((res && res.message) || 'Failed to save links', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save links';
+                    ttLinksNotify(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text('Save');
+                }
+            });
+        });
 
         $(document).ready(function() {
             let ttAllSkuRows = [];
@@ -1572,6 +1676,40 @@
                             return '<span class="fw-bold">' + displaySku +
                                 '</span> <i class="fa fa-copy text-secondary copy-sku-btn" style="cursor:pointer;margin-left:8px;font-size:14px;" data-sku="' +
                                 safe(sku) + '" title="Copy SKU"></i>';
+                        }
+                    },
+                    {
+                        title: "Links",
+                        field: "links_column",
+                        width: 55,
+                        frozen: true,
+                        hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "Double-click to add / edit links",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            const isParent = d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT '));
+                            if (isParent) return '';
+                            const b = d['B Link'] || '';
+                            const s = d['S Link'] || '';
+                            let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
+                            if (s) {
+                                html += '<a href="' + String(s).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';
+                            }
+                            if (b) {
+                                html += '<a href="' + String(b).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>';
+                            }
+                            if (!s && !b) {
+                                html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                            }
+                            html += '</div>';
+                            return html;
+                        },
+                        cellDblClick: function(e, cell) {
+                            const d = cell.getRow().getData();
+                            const isParent = d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT '));
+                            if (isParent) return;
+                            openTiktokEditLinksModal(cell.getRow());
                         }
                     },
                     {

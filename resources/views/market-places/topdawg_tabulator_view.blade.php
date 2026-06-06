@@ -85,6 +85,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="tdEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="tdEditLinksSku">
+                    <p class="mb-3"><strong>SKU:</strong> <span id="tdEditLinksSkuDisplay"></span></p>
+                    <div class="mb-3">
+                        <label for="tdEditSellerLink" class="form-label">S Link (Seller)</label>
+                        <input type="url" class="form-control" id="tdEditSellerLink" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label for="tdEditBuyerLink" class="form-label">B Link (Buyer)</label>
+                        <input type="url" class="form-control" id="tdEditBuyerLink" placeholder="https://...">
+                    </div>
+                    <div id="tdEditLinksError" class="text-danger small" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="tdSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -207,6 +236,31 @@
                     }},
                 { title: 'SKU', field: '(Child) sku', frozen: true, width: 250, headerFilter: 'input',
                     cssClass: 'text-primary fw-bold' },
+                {
+                    title: 'Links', field: 'links_column', frozen: true, width: 55, hozAlign: 'center', headerSort: false, visible: true,
+                    tooltip: 'Double-click to add / edit links',
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        const buyerLink = d['B Link'] || '';
+                        const sellerLink = d['S Link'] || '';
+                        let html = '<div style="display:flex;flex-direction:column;gap:4px;align-items:center;">';
+                        if (sellerLink) {
+                            html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> S</a>`;
+                        }
+                        if (buyerLink) {
+                            html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> B</a>`;
+                        }
+                        if (!sellerLink && !buyerLink) {
+                            html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                        }
+                        html += '</div>';
+                        return html;
+                    },
+                    cellDblClick: function(e, cell) {
+                        e.stopPropagation();
+                        openTdEditLinksModal(cell.getRow());
+                    }
+                },
                 { title: 'INV', field: 'INV', hozAlign: 'center', width: 50, sorter: 'number' },
                 { title: 'OV L30', field: 'L30', hozAlign: 'center', width: 50, sorter: 'number' },
                 { title: 'Dil', field: 'Dil', hozAlign: 'center', width: 50, sorter: 'number',
@@ -345,6 +399,65 @@
         $('#nmap-badge').on('click', function() { nmapFilter = !nmapFilter; missingFilter = mapFilter = false; applyFilters(); });
 
         $('#export-btn').on('click', () => table.download('csv', 'topdawg_pricing.csv'));
+
+        // ---- Edit B/S Links (double-click on Links cell) ----
+        let tdEditLinksRow = null;
+        window.openTdEditLinksModal = function(row) {
+            if (!row) return;
+            tdEditLinksRow = row;
+            const d = row.getData();
+            $('#tdEditLinksSku').val(d['(Child) sku']);
+            $('#tdEditLinksSkuDisplay').text(d['(Child) sku']);
+            $('#tdEditSellerLink').val(d['S Link'] || '');
+            $('#tdEditBuyerLink').val(d['B Link'] || '');
+            $('#tdEditLinksError').hide().text('');
+            new bootstrap.Modal(document.getElementById('tdEditLinksModal')).show();
+        };
+
+        function tdNotify(msg, type) {
+            if (window.toastr) { toastr[type === 'error' ? 'error' : 'success'](msg); return; }
+            let c = document.getElementById('tdToastContainer');
+            if (!c) {
+                c = document.createElement('div');
+                c.id = 'tdToastContainer';
+                c.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;';
+                document.body.appendChild(c);
+            }
+            const t = document.createElement('div');
+            t.style.cssText = 'min-width:220px;max-width:340px;color:#fff;background:' + (type === 'error' ? '#dc3545' : '#198754') + ';padding:12px 16px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.18);font-size:14px;opacity:0;transition:opacity .25s ease;';
+            t.textContent = msg;
+            c.appendChild(t);
+            requestAnimationFrame(function() { t.style.opacity = '1'; });
+            setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 300); }, 2600);
+        }
+
+        $(document).on('click', '#tdSaveLinksBtn', function() {
+            const sku = $('#tdEditLinksSku').val();
+            const sellerLink = $('#tdEditSellerLink').val().trim();
+            const buyerLink = $('#tdEditBuyerLink').val().trim();
+            const $err = $('#tdEditLinksError');
+            $err.hide().text('');
+            const $btn = $(this).prop('disabled', true);
+            $.ajax({
+                url: '{{ url("/topdawg-save-links") }}',
+                method: 'POST',
+                data: { sku: sku, seller_link: sellerLink, buyer_link: buyerLink, _token: '{{ csrf_token() }}' },
+                success: function(res) {
+                    if (tdEditLinksRow) {
+                        tdEditLinksRow.update({ 'S Link': res.seller_link || '', 'B Link': res.buyer_link || '' })
+                            .then(function() { tdEditLinksRow.reformat(); })
+                            .catch(function() { tdEditLinksRow.reformat(); });
+                    }
+                    tdNotify(sku + ': links saved', 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('tdEditLinksModal'))?.hide();
+                },
+                error: function(xhr) {
+                    const msg = xhr.responseJSON?.message || 'Failed to save links.';
+                    $err.text(msg).show();
+                },
+                complete: function() { $btn.prop('disabled', false); }
+            });
+        });
     });
 </script>
 @endsection

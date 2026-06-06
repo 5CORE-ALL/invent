@@ -983,6 +983,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="ebay3EditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="ebay3EditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="ebay3SellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="ebay3BuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="ebay3SaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -1784,6 +1813,59 @@
         if (lmpModalEl) {
             lmpModalEl.addEventListener('hidden.bs.modal', cleanupLmpModalBackdrop);
         }
+
+        // ---- Edit Links (Buyer / Seller) ----
+        let ebay3EditLinksRow = null;
+        window.openEbay3EditLinksModal = function(row) {
+            ebay3EditLinksRow = row;
+            const d = row.getData();
+            $('#ebay3EditLinksSku').text(d['(Child) sku'] || '');
+            $('#ebay3SellerLinkInput').val(d.seller_link || '');
+            $('#ebay3BuyerLinkInput').val(d.buyer_link || '');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('ebay3EditLinksModal')).show();
+        };
+
+        $('#ebay3SaveLinksBtn').on('click', function() {
+            if (!ebay3EditLinksRow) return;
+            const sku = ebay3EditLinksRow.getData()['(Child) sku'];
+            const sellerLink = $('#ebay3SellerLinkInput').val().trim();
+            const buyerLink = $('#ebay3BuyerLinkInput').val().trim();
+            const $btn = $(this);
+            $btn.prop('disabled', true).text('Saving...');
+            $.ajax({
+                url: '/ebay3/save-links',
+                method: 'POST',
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    sku: sku,
+                    seller_link: sellerLink,
+                    buyer_link: buyerLink
+                },
+                success: function(res) {
+                    if (res && res.success) {
+                        ebay3EditLinksRow.update({
+                            seller_link: res.seller_link || '',
+                            buyer_link: res.buyer_link || ''
+                        }).then(function() {
+                            ebay3EditLinksRow.reformat();
+                        }).catch(function() {
+                            ebay3EditLinksRow.reformat();
+                        });
+                        showToast('Links saved successfully', 'success');
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById('ebay3EditLinksModal')).hide();
+                    } else {
+                        showToast((res && res.message) || 'Failed to save links', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save links';
+                    showToast(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text('Save');
+                }
+            });
+        });
 
         $('#ebay3ChartRangeSelect').on('change', function() {
             const days = parseInt($(this).val(), 10);
@@ -2850,6 +2932,36 @@
                     }
                 },
                 {
+                    title: "Links",
+                    field: "buyer_link",
+                    hozAlign: "center",
+                    width: 55,
+                    frozen: true,
+                    headerSort: false,
+                    headerTooltip: "eBay Buyer / Seller links (same source as pricing-master-cvr)",
+                    tooltip: "Double-click to add / edit links",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const buyerLink = rowData.buyer_link || '';
+                        const sellerLink = rowData.seller_link || '';
+                        let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
+                        if (sellerLink) {
+                            html += '<a href="' + sellerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';
+                        }
+                        if (buyerLink) {
+                            html += '<a href="' + buyerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>';
+                        }
+                        if (!sellerLink && !buyerLink) {
+                            html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                        }
+                        html += '</div>';
+                        return html;
+                    },
+                    cellDblClick: function(e, cell) {
+                        openEbay3EditLinksModal(cell.getRow());
+                    }
+                },
+                {
                     title: "INV",
                     field: "INV",
                     hozAlign: "center",
@@ -3114,27 +3226,6 @@
                         if (($('#variation-filter').val() || 'all') !== 'all') {
                             applyFilters();
                         }
-                    }
-                },
-                {
-                    title: "B/S",
-                    field: "buyer_link",
-                    hozAlign: "center",
-                    width: 70,
-                    headerTooltip: "eBay Buyer / Seller links (same source as pricing-master-cvr)",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const buyerLink = rowData.buyer_link || '';
-                        const sellerLink = rowData.seller_link || '';
-                        if (!buyerLink && !sellerLink) return '-';
-                        let html = '';
-                        if (buyerLink) {
-                            html += '<a href="' + buyerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary me-1" title="Buyer link">B</a>';
-                        }
-                        if (sellerLink) {
-                            html += '<a href="' + sellerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="Seller link">S</a>';
-                        }
-                        return html;
                     }
                 },
                 {

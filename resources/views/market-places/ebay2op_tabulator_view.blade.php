@@ -943,6 +943,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="ebay2opEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="ebay2opEditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="ebay2opSellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="ebay2opBuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="ebay2opSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
     @section('script-bottom')
@@ -1241,6 +1270,73 @@
             if (lmpModalEl) {
                 lmpModalEl.addEventListener('hidden.bs.modal', cleanupLmpModalBackdrop);
             }
+
+            // ---- Edit Links (Buyer / Seller) ----
+            function ebay2opLinksNotify(msg, type) {
+                type = type || 'info';
+                var bg = type === 'success' ? 'bg-success' : (type === 'error' || type === 'danger' ? 'bg-danger' : 'bg-info');
+                var $c = $('.toast-container');
+                if (!$c.length) {
+                    $c = $('<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index:1090;"></div>').appendTo('body');
+                }
+                var $t = $('<div class="toast align-items-center text-white ' + bg + ' border-0" role="alert"><div class="d-flex"><div class="toast-body">' + msg + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>');
+                $c.append($t);
+                var bsT = new bootstrap.Toast($t[0]);
+                bsT.show();
+                setTimeout(function() { $t.remove(); }, 5000);
+            }
+
+            let ebay2opEditLinksRow = null;
+            window.openEbay2opEditLinksModal = function(row) {
+                ebay2opEditLinksRow = row;
+                const d = row.getData();
+                $('#ebay2opEditLinksSku').text(d['(Child) sku'] || '');
+                $('#ebay2opSellerLinkInput').val(d['S Link'] || '');
+                $('#ebay2opBuyerLinkInput').val(d['B Link'] || '');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('ebay2opEditLinksModal')).show();
+            };
+
+            $('#ebay2opSaveLinksBtn').on('click', function() {
+                if (!ebay2opEditLinksRow) return;
+                const sku = ebay2opEditLinksRow.getData()['(Child) sku'];
+                const sellerLink = $('#ebay2opSellerLinkInput').val().trim();
+                const buyerLink = $('#ebay2opBuyerLinkInput').val().trim();
+                const $btn = $(this);
+                $btn.prop('disabled', true).text('Saving...');
+                $.ajax({
+                    url: '/ebay2/save-links',
+                    method: 'POST',
+                    data: {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        sku: sku,
+                        seller_link: sellerLink,
+                        buyer_link: buyerLink
+                    },
+                    success: function(res) {
+                        if (res && res.success) {
+                            ebay2opEditLinksRow.update({
+                                'S Link': res.seller_link || '',
+                                'B Link': res.buyer_link || ''
+                            }).then(function() {
+                                ebay2opEditLinksRow.reformat();
+                            }).catch(function() {
+                                ebay2opEditLinksRow.reformat();
+                            });
+                            ebay2opLinksNotify('Links saved successfully', 'success');
+                            bootstrap.Modal.getOrCreateInstance(document.getElementById('ebay2opEditLinksModal')).hide();
+                        } else {
+                            ebay2opLinksNotify((res && res.message) || 'Failed to save links', 'error');
+                        }
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save links';
+                        ebay2opLinksNotify(msg, 'error');
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).text('Save');
+                    }
+                });
+            });
 
             // Initialize SKU-specific chart only
             initSkuMetricsChart();
@@ -2449,44 +2545,32 @@
                         title: "Links",
                         field: "links_column",
                         frozen: true,
-                        width: 100,
-                        visible: false,
+                        width: 55,
+                        visible: true,
                         hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "Double-click to add / edit links",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const buyerLink = rowData['B Link'] || '';
                             const sellerLink = rowData['S Link'] || '';
-                            
-                            // Enhanced debug logging - log every row to see what's happening
-                            console.log('eBay Row Data:', {
-                                sku: rowData['(Child) sku'],
-                                buyerLink: buyerLink,
-                                sellerLink: sellerLink,
-                                allKeys: Object.keys(rowData).filter(k => k.toLowerCase().includes('link'))
-                            });
-                            
-                            let html = '<div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">';
-                            
+
+                            let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
                             if (sellerLink) {
-                                html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size: 12px; text-decoration: none;">
-                                    <i class="fa fa-link"></i> S Link
-                                </a>`;
+                                html += `<a href="${sellerLink}" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>`;
                             }
-                            
                             if (buyerLink) {
-                                html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size: 12px; text-decoration: none;">
-                                    <i class="fa fa-link"></i> B Link
-                                </a>`;
+                                html += `<a href="${buyerLink}" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>`;
                             }
-                            
                             if (!sellerLink && !buyerLink) {
-                                html += '<span class="text-muted" style="font-size: 12px;">-</span>';
+                                html += '<span class="text-muted" style="font-size:12px;">-</span>';
                             }
-                            
                             html += '</div>';
                             return html;
                         },
-                        headerSort: false
+                        cellDblClick: function(e, cell) {
+                            openEbay2opEditLinksModal(cell.getRow());
+                        }
                     },
                     
                     {

@@ -103,6 +103,8 @@ class PurchasingPowerController extends Controller
             $row['SPRICE']          = null;
             $row['has_custom_sprice'] = false;
             $row['SPRICE_STATUS']   = null;
+            $row['B Link']          = '';
+            $row['S Link']          = '';
 
             if (isset($dataViews[$pm->sku])) {
                 $raw = $dataViews[$pm->sku];
@@ -112,6 +114,8 @@ class PurchasingPowerController extends Controller
                     $row['NR']     = $raw['NR']     ?? '';
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['Live']   = isset($raw['Live'])   ? filter_var($raw['Live'],   FILTER_VALIDATE_BOOLEAN) : null;
+                    $row['B Link'] = $raw['buyer_link']  ?? '';
+                    $row['S Link'] = $raw['seller_link'] ?? '';
 
                     if (isset($raw['SPRICE'])) {
                         $row['SPRICE']           = floatval($raw['SPRICE']);
@@ -181,6 +185,44 @@ class PurchasingPowerController extends Controller
         $dv->save();
 
         return response()->json(['success' => true, 'message' => 'NR/REQ updated']);
+    }
+
+    /** Save Buyer (B) / Seller (S) links for a SKU into purchasing_power_data_views.value JSON. */
+    public function updateLinks(Request $request)
+    {
+        $validated = $request->validate([
+            'sku'         => 'required|string',
+            'buyer_link'  => 'nullable|string|max:1000',
+            'seller_link' => 'nullable|string|max:1000',
+        ]);
+
+        $sku = trim($validated['sku']);
+
+        $buyerLink  = isset($validated['buyer_link']) ? trim((string) $validated['buyer_link']) : '';
+        $sellerLink = isset($validated['seller_link']) ? trim((string) $validated['seller_link']) : '';
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $label => $link) {
+            if ($link !== '' && !filter_var($link, FILTER_VALIDATE_URL)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => ucfirst(str_replace('_', ' ', $label)) . ' must be a valid URL.',
+                ], 422);
+            }
+        }
+
+        $dv       = PurchasingPowerDataView::firstOrNew(['sku' => $sku]);
+        $existing = is_array($dv->value) ? $dv->value : (json_decode($dv->value, true) ?? []);
+        $existing['buyer_link']  = $buyerLink;
+        $existing['seller_link'] = $sellerLink;
+        $dv->value = $existing;
+        $dv->save();
+
+        return response()->json([
+            'success'     => true,
+            'message'     => 'Links saved.',
+            'buyer_link'  => $buyerLink,
+            'seller_link' => $sellerLink,
+        ]);
     }
 
     public function saveSpriceTabulator(Request $request)

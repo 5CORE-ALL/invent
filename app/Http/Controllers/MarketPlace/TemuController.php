@@ -429,6 +429,54 @@ class TemuController extends Controller
         ]);
     }
 
+    /** Save Buyer (B) / Seller (S) links for a SKU into temu_listing_statuses.value JSON (preserves nr_req etc.). */
+    public function saveTemuDecreaseLinks(Request $request)
+    {
+        $validated = $request->validate([
+            'sku'         => 'required|string',
+            'buyer_link'  => 'nullable|string|max:1000',
+            'seller_link' => 'nullable|string|max:1000',
+        ]);
+
+        $sku = trim($validated['sku']);
+
+        $buyerLink  = isset($validated['buyer_link']) ? trim((string) $validated['buyer_link']) : '';
+        $sellerLink = isset($validated['seller_link']) ? trim((string) $validated['seller_link']) : '';
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $label => $link) {
+            if ($link !== '' && !filter_var($link, FILTER_VALIDATE_URL)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => ucfirst(str_replace('_', ' ', $label)) . ' must be a valid URL.',
+                ], 422);
+            }
+        }
+
+        $status   = TemuListingStatus::where('sku', $sku)->first();
+        $rawValue = $status ? $status->getRawOriginal('value') : null;
+        $existing = $status ? $status->value : [];
+        if (!is_array($existing)) {
+            $existing = is_string($rawValue) && $rawValue !== ''
+                ? (json_decode($rawValue, true) ?: [])
+                : [];
+        }
+
+        $existing['buyer_link']  = $buyerLink;
+        $existing['seller_link'] = $sellerLink;
+
+        TemuListingStatus::updateOrCreate(
+            ['sku' => $sku],
+            ['value' => $existing]
+        );
+
+        return response()->json([
+            'success'     => true,
+            'message'     => 'Links saved.',
+            'buyer_link'  => $buyerLink,
+            'seller_link' => $sellerLink,
+        ]);
+    }
+
     /**
      * Temu 2: persist nr_req / listed / links inside temu2_data_view.value (same JSON as SPRICE).
      */
@@ -476,6 +524,57 @@ class TemuController extends Controller
             'status' => 'success',
             'message' => 'NR/REQ updated (temu2_data_view)',
             'nr_req' => $existing['nr_req'] ?? null,
+        ]);
+    }
+
+    /** Temu 2: save Buyer (B) / Seller (S) links into temu2_data_view.value JSON (preserves nr_req etc.). */
+    public function saveTemu2DecreaseLinks(Request $request)
+    {
+        $validated = $request->validate([
+            'sku'         => 'required|string',
+            'buyer_link'  => 'nullable|string|max:1000',
+            'seller_link' => 'nullable|string|max:1000',
+        ]);
+
+        $sku = trim((string) $validated['sku']);
+
+        $buyerLink  = isset($validated['buyer_link']) ? trim((string) $validated['buyer_link']) : '';
+        $sellerLink = isset($validated['seller_link']) ? trim((string) $validated['seller_link']) : '';
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $label => $link) {
+            if ($link !== '' && !filter_var($link, FILTER_VALIDATE_URL)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => ucfirst(str_replace('_', ' ', $label)) . ' must be a valid URL.',
+                ], 422);
+            }
+        }
+
+        $row = Temu2DataView::firstOrNew(['sku' => $sku]);
+        $row->sku = $sku;
+
+        $existing = is_array($row->value)
+            ? $row->value
+            : (is_string($row->value) ? json_decode($row->value, true) : []);
+        if (!is_array($existing)) {
+            $raw = $row->getRawOriginal('value');
+            $existing = is_string($raw) && $raw !== '' ? (json_decode($raw, true) ?: []) : [];
+        }
+        if (!is_array($existing)) {
+            $existing = [];
+        }
+
+        $existing['buyer_link']  = $buyerLink;
+        $existing['seller_link'] = $sellerLink;
+
+        $row->value = $existing;
+        $row->save();
+
+        return response()->json([
+            'success'     => true,
+            'message'     => 'Links saved.',
+            'buyer_link'  => $buyerLink,
+            'seller_link' => $sellerLink,
         ]);
     }
 

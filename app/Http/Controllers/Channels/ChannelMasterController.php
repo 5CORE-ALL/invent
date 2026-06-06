@@ -2964,30 +2964,36 @@ class ChannelMasterController extends Controller
             $hasSellerLink = Schema::hasColumn('channel_master', 'seller_link');
 
             if ($hasLogo || $hasSellerLink) {
-                $names = $channels->pluck('channel')->filter()->unique()->values();
-                if ($names->isNotEmpty()) {
-                    $select = ['channel'];
-                    if ($hasLogo) $select[] = 'logo';
-                    if ($hasSellerLink) $select[] = 'seller_link';
+                $select = ['channel', 'status'];
+                if ($hasLogo) $select[] = 'logo';
+                if ($hasSellerLink) $select[] = 'seller_link';
 
-                    $rows = ChannelMaster::whereIn('channel', $names)->get($select);
-                    foreach ($rows as $r) {
-                        if ($hasLogo) {
-                            $logoMap[$r->channel] = $r->logo ?: null;
-                        }
-                        if ($hasSellerLink) {
-                            $sellerLinkMap[$r->channel] = $r->seller_link ?: null;
-                        }
+                // Load every channel_master row and key by a canonical name so
+                // duplicate/aliased rows resolve correctly. Active rows are taken
+                // first, and an empty logo/link never overwrites a real one.
+                $rows = ChannelMaster::query()
+                    ->orderByRaw("CASE WHEN LOWER(TRIM(status)) = 'active' THEN 0 ELSE 1 END")
+                    ->orderBy('id', 'asc')
+                    ->get($select);
+
+                foreach ($rows as $r) {
+                    $key = $this->canonicalChannelKey($r->channel);
+                    if ($hasLogo && !empty($r->logo) && empty($logoMap[$key])) {
+                        $logoMap[$key] = $r->logo;
+                    }
+                    if ($hasSellerLink && !empty($r->seller_link) && empty($sellerLinkMap[$key])) {
+                        $sellerLinkMap[$key] = $r->seller_link;
                     }
                 }
             }
 
             // Format data for frontend (match expected format)
             $formattedData = $channels->map(function($channel) use ($logoMap, $sellerLinkMap) {
+                $canonicalKey = $this->canonicalChannelKey($channel->channel);
                 return [
                     'Channel ' => $channel->channel,
-                    'logo' => $logoMap[$channel->channel] ?? null,
-                    'seller_link' => $sellerLinkMap[$channel->channel] ?? null,
+                    'logo' => $logoMap[$canonicalKey] ?? null,
+                    'seller_link' => $sellerLinkMap[$canonicalKey] ?? null,
                     'sheet_link' => $channel->sheet_link,
                     'channel_percentage' => $channel->channel_percentage,
                     'type' => $channel->type,
@@ -11146,6 +11152,45 @@ class ChannelMasterController extends Controller
      * (e.g. "channel-logos/1716743521_abc.png") suitable to combine with
      * asset('storage/...') on the frontend.
      */
+    /**
+     * Normalise a channel name to a canonical key so duplicate / aliased names
+     * (e.g. "TikTok 2" vs "Tiktok Shop 2") resolve to the same logo / seller link.
+     */
+    private function canonicalChannelKey(?string $name): string
+    {
+        $key = strtolower(trim((string) $name));
+        $key = preg_replace('/\s+/', ' ', $key);
+
+        $aliases = [
+            'tiktok shop 2' => 'tiktok 2',
+            'depop.com'     => 'depop',
+        ];
+
+        return $aliases[$key] ?? $key;
+    }
+
+    /**
+     * Return every channel_master name that is an alias of the given channel
+     * (lower-cased, used for case/space-insensitive lookups).
+     */
+    private function channelAliasNames(?string $name): array
+    {
+        $key = strtolower(trim((string) $name));
+        $key = preg_replace('/\s+/', ' ', $key);
+
+        $groups = [
+            ['tiktok 2', 'tiktok shop 2'],
+        ];
+
+        foreach ($groups as $group) {
+            if (in_array($key, $group, true)) {
+                return $group;
+            }
+        }
+
+        return [$key];
+    }
+
     private function storeChannelLogo(\Illuminate\Http\UploadedFile $file): string
     {
         $ext = $file->getClientOriginalExtension() ?: $file->guessExtension() ?: 'png';
@@ -11179,7 +11224,15 @@ class ChannelMasterController extends Controller
         $sellerLink = $request->input('seller_link');
         $updateFlag = $request->input('update');
 
-        $channel = ChannelMaster::where('channel', $originalChannel)->first();
+        // Prefer the ACTIVE row when duplicate channel names exist, and resolve
+        // known aliases (e.g. "TikTok 2" stored as "Tiktok Shop 2") so the logo
+        // is saved to the row actually displayed on the page.
+        $lookupNames = $this->channelAliasNames($originalChannel);
+        $channel = ChannelMaster::query()
+            ->whereIn(DB::raw('LOWER(TRIM(channel))'), $lookupNames)
+            ->orderByRaw("CASE WHEN LOWER(TRIM(status)) = 'active' THEN 0 ELSE 1 END")
+            ->orderBy('id', 'asc')
+            ->first();
 
         if (!$channel) {
             return response()->json(['success' => false, 'message' => 'Channel not found']);

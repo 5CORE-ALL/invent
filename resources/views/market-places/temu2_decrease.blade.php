@@ -802,6 +802,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="temu2EditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="temu2EditLinksSku">
+                    <p class="mb-3"><strong>SKU:</strong> <span id="temu2EditLinksSkuDisplay"></span></p>
+                    <div class="mb-3">
+                        <label for="temu2EditSellerLink" class="form-label">S Link (Seller)</label>
+                        <input type="url" class="form-control" id="temu2EditSellerLink" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label for="temu2EditBuyerLink" class="form-label">B Link (Buyer)</label>
+                        <input type="url" class="form-control" id="temu2EditBuyerLink" placeholder="https://...">
+                    </div>
+                    <div id="temu2EditLinksError" class="text-danger small" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="temu2SaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -2543,6 +2572,31 @@
                     }
                 },
                 {
+                    title: "Links", field: "links_column", frozen: true, width: 55, hozAlign: "center", headerSort: false,
+                    tooltip: "Double-click to add / edit links",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        const buyerLink = d.buyer_link || '';
+                        const sellerLink = d.seller_link || '';
+                        let html = '<div style="display:flex;flex-direction:column;gap:4px;align-items:center;">';
+                        if (sellerLink) {
+                            html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> S</a>`;
+                        }
+                        if (buyerLink) {
+                            html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> B</a>`;
+                        }
+                        if (!sellerLink && !buyerLink) {
+                            html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                        }
+                        html += '</div>';
+                        return html;
+                    },
+                    cellDblClick: function(e, cell) {
+                        e.stopPropagation();
+                        openTemu2EditLinksModal(cell.getRow());
+                    }
+                },
+                {
                     title: "Goods ID",
                     field: "goods_id",
                     hozAlign: "left",
@@ -4063,6 +4117,49 @@
                     }
                     showToast(msg, 'error');
                 }
+            });
+        });
+
+        // ---- Edit B/S Links (double-click on Links cell) ----
+        let temu2EditLinksRow = null;
+        window.openTemu2EditLinksModal = function(row) {
+            if (!row) return;
+            temu2EditLinksRow = row;
+            const d = row.getData();
+            $('#temu2EditLinksSku').val(d.sku);
+            $('#temu2EditLinksSkuDisplay').text(d.sku);
+            $('#temu2EditSellerLink').val(d.seller_link || '');
+            $('#temu2EditBuyerLink').val(d.buyer_link || '');
+            $('#temu2EditLinksError').hide().text('');
+            new bootstrap.Modal(document.getElementById('temu2EditLinksModal')).show();
+        };
+
+        $(document).on('click', '#temu2SaveLinksBtn', function() {
+            const sku = $('#temu2EditLinksSku').val();
+            const sellerLink = $('#temu2EditSellerLink').val().trim();
+            const buyerLink = $('#temu2EditBuyerLink').val().trim();
+            const $err = $('#temu2EditLinksError');
+            $err.hide().text('');
+            const $btn = $(this).prop('disabled', true);
+            $.ajax({
+                url: '/temu2-decrease/save-links',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { sku: sku, seller_link: sellerLink, buyer_link: buyerLink },
+                success: function(res) {
+                    if (temu2EditLinksRow) {
+                        temu2EditLinksRow.update({ seller_link: res.seller_link || '', buyer_link: res.buyer_link || '' })
+                            .then(function() { temu2EditLinksRow.reformat(); })
+                            .catch(function() { temu2EditLinksRow.reformat(); });
+                    }
+                    showToast(sku + ': links saved', 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('temu2EditLinksModal'))?.hide();
+                },
+                error: function(xhr) {
+                    const msg = xhr.responseJSON?.message || 'Failed to save links.';
+                    $err.text(msg).show();
+                },
+                complete: function() { $btn.prop('disabled', false); }
             });
         });
 
