@@ -712,6 +712,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Sync ALL eBay campaign ad listings into ebay_campaign_ads before the
+        // suggested-bid job (13:23) consumes them.
+        $ist($schedule->command('ebay:sync-campaign-listings')
+            ->dailyAt('11:30')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-sync-campaign-listings')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('ebay:update-suggestedbid')
             ->dailyAt('13:23')
             ->timezone('Asia/Kolkata')
