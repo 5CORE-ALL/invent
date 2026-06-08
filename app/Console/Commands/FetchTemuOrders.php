@@ -11,19 +11,17 @@ use Illuminate\Support\Facades\Log;
 class FetchTemuOrders extends Command
 {
     /**
-     * Examples:
-     *   php artisan app:fetch-temu-orders                 (last 30 days)
-     *   php artisan app:fetch-temu-orders --days=60
-     *   php artisan app:fetch-temu-orders --from=2026-05-01 --to=2026-05-31
-     *   php artisan app:fetch-temu-orders --status=2      (only a given parentOrderStatus)
+     * Always fetches the last 60 days of Temu orders and keeps the table pruned
+     * to a rolling 60-day window.
+     *
+     *   php artisan app:fetch-temu-orders
      */
-    protected $signature = 'app:fetch-temu-orders
-        {--days=30 : Number of days back to fetch (ignored if --from/--to given)}
-        {--from= : Start date (Y-m-d), inclusive}
-        {--to= : End date (Y-m-d), inclusive}
-        {--status= : Optional parentOrderStatus filter}';
+    protected $signature = 'app:fetch-temu-orders';
 
-    protected $description = 'Fetch order-wise raw data from Temu (bg.order.list.v2.get) and store it in the temu_orders table';
+    protected $description = 'Fetch the last 60 days of order-wise raw data from Temu (bg.order.list.v2.get) into temu_orders (rolling 60-day window)';
+
+    /** Rolling window size — always 60 days. */
+    private const WINDOW_DAYS = 60;
 
     private const ORDER_STATUS_MAP = [
         1 => 'PENDING',
@@ -50,26 +48,11 @@ class FetchTemuOrders extends Command
             return self::FAILURE;
         }
 
-        // Resolve date window
-        try {
-            if ($this->option('from') || $this->option('to')) {
-                $from = Carbon::parse($this->option('from') ?: $this->option('to'))->startOfDay();
-                $to = Carbon::parse($this->option('to') ?: $this->option('from'))->endOfDay();
-            } else {
-                $days = max(1, (int) $this->option('days'));
-                $to = Carbon::today()->subDay()->endOfDay();
-                $from = $to->copy()->subDays($days - 1)->startOfDay();
-            }
-        } catch (\Throwable $e) {
-            $this->error('Invalid date option: '.$e->getMessage());
-
-            return self::FAILURE;
-        }
-
-        $status = $this->option('status');
-        $window = ($this->option('from') || $this->option('to'))
-            ? 'manual'
-            : 'L'.max(1, (int) $this->option('days'));
+        // Always last 60 days (rolling window)
+        $to = Carbon::today()->subDay()->endOfDay();
+        $from = $to->copy()->subDays(self::WINDOW_DAYS - 1)->startOfDay();
+        $status = null;
+        $window = 'L'.self::WINDOW_DAYS;
 
         $this->info('Window: '.$from->toDateTimeString().' → '.$to->toDateTimeString());
 
@@ -186,11 +169,15 @@ class FetchTemuOrders extends Command
                 usleep(300000); // 0.3s to avoid rate limits
             } while ($hasMorePages);
 
-            $this->info("✅ Done. Parent orders: {$totalParents}, sub-orders seen: {$totalSubOrders}, rows upserted: {$totalUpserted}");
+            // Keep only a rolling 60-day window: prune orders older than the start of the window.
+            $pruned = TemuOrder::where('parent_order_time', '<', $from)->delete();
+
+            $this->info("✅ Done. Parent orders: {$totalParents}, sub-orders seen: {$totalSubOrders}, rows upserted: {$totalUpserted}, pruned (>60d): {$pruned}");
             Log::info('Completed FetchTemuOrders', [
                 'parents' => $totalParents,
                 'sub_orders' => $totalSubOrders,
                 'upserted' => $totalUpserted,
+                'pruned' => $pruned,
             ]);
 
             return self::SUCCESS;
