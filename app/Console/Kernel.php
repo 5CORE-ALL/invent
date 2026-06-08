@@ -168,7 +168,7 @@ class Kernel extends ConsoleKernel
      *   cannot block the job for 24 hours (Laravel default).
      * - If a tick fires while the same command is still running, that tick is
      *   skipped (not queued). Stagger daily jobs and use evening closing pipeline.
-     * - Artisan commands use ->runInBackground() so the scheduler can proceed.
+     * - Artisan coforcemmands use ->runInBackground() so the scheduler can proceed.
      * - between(09:00–20:00) skips new starts outside the window; running jobs
      *   are never stopped and may finish after 20:00.
      *

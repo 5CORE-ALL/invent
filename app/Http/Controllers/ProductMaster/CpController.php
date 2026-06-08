@@ -275,6 +275,48 @@ class CpController extends Controller
     }
 
     /**
+     * Unarchive a previously approved/archived CP history entry so it returns
+     * to the active (pending) history. Restricted to the configured approvers.
+     */
+    public function unarchive(Request $request)
+    {
+        $request->headers->set('Accept', 'application/json');
+
+        $validated = $request->validate([
+            'id' => 'required|integer',
+        ]);
+
+        if (! $this->userCanApprove()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only inventory@5core.com or president@5core.com can unarchive a CP change.',
+            ], 403);
+        }
+
+        $entry = CpHistory::find($validated['id']);
+        if (! $entry) {
+            return response()->json([
+                'success' => false,
+                'message' => 'History entry not found.',
+            ], 404);
+        }
+
+        // Reverting the archive also reverts the approval that caused it,
+        // so the entry becomes pending again in the active history.
+        $entry->archived = false;
+        $entry->archived_at = null;
+        $entry->approved = false;
+        $entry->approved_by = null;
+        $entry->approved_at = null;
+        $entry->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'CP change unarchived and moved back to pending.',
+        ]);
+    }
+
+    /**
      * Whether the currently authenticated user may approve CP changes.
      */
     private function userCanApprove(): bool

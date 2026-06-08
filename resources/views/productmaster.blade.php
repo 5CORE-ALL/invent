@@ -3902,6 +3902,14 @@
                     approveCpAll(ab.getAttribute('data-id'), ab);
                 });
 
+                // Unarchive buttons inside the all-SKU history table.
+                document.addEventListener('click', function(e) {
+                    const ub = e.target.closest('.cp-unarchive-all-btn');
+                    if (!ub) return;
+                    e.preventDefault();
+                    unarchiveCpAll(ub.getAttribute('data-id'), ub);
+                });
+
                 // Global "CP History" (all SKUs).
                 const allBtn = document.getElementById('cpAllHistoryBtn');
                 if (allBtn) allBtn.addEventListener('click', function() {
@@ -3963,6 +3971,35 @@
                 }
             }
 
+            async function unarchiveCpAll(id, btnEl) {
+                if (btnEl) {
+                    btnEl.disabled = true;
+                    btnEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+                }
+                try {
+                    const res = await fetch('/product-master/cp-unarchive', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ id: id })
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                        showToast('danger', data.message || 'Failed to unarchive.');
+                        if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = '<i class="fas fa-rotate-left me-1"></i>Unarchive'; }
+                        return;
+                    }
+                    showToast('success', data.message || 'Unarchived.');
+                    loadAllCpHistory();
+                } catch (err) {
+                    showToast('danger', 'Error: ' + err.message);
+                    if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = '<i class="fas fa-rotate-left me-1"></i>Unarchive'; }
+                }
+            }
+
             function renderAllCpHistoryRow(h) {
                 const arrow = h.is_increase
                     ? '<span style="color:#dc3545;font-weight:700;">▲ Increase</span>'
@@ -3986,9 +4023,13 @@
 
                 let approval;
                 if (h.approved) {
+                    const unarchiveBtn = canApproveCp
+                        ? `<div class="mt-1"><button type="button" class="btn btn-sm btn-outline-warning cp-unarchive-all-btn" data-id="${h.id}" title="Move back to pending">
+                                    <i class="fas fa-rotate-left me-1"></i>Unarchive</button></div>`
+                        : '';
                     approval = `<span class="badge bg-secondary" title="Approved by ${escapeHtml(h.approved_by || '')} on ${escapeHtml(h.approved_at || '')}">
                                     <i class="fas fa-box-archive me-1"></i>Archived</span>
-                                <div class="small text-muted mt-1">${escapeHtml(h.approved_by || '')}</div>`;
+                                <div class="small text-muted mt-1">${escapeHtml(h.approved_by || '')}</div>${unarchiveBtn}`;
                 } else if (canApproveCp) {
                     approval = `<button type="button" class="btn btn-sm btn-success cp-approve-all-btn" data-id="${h.id}">
                                     <i class="fas fa-check me-1"></i>Approve</button>`;

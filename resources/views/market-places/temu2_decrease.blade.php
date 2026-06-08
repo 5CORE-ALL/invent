@@ -300,9 +300,6 @@
                     <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
                         <i class="fa fa-dollar-sign"></i> Up Pricing
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-dark" id="sync-temu2-dataview-btn" title="Copy SPRICE / JSON from temu_data_view into temu2_data_view (e.g. after Temu 2 split). Optional: one SKU only.">
-                        <i class="fa fa-clone"></i> Sync data view (Temu → Temu 2)
-                    </button>
                 </div>
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
@@ -1738,6 +1735,17 @@
         let mapBadgeFilterActive = false;
         let notMapBadgeFilterActive = false;
 
+        // Map tolerance — matches amazon-tabulator-view (amazonInvWithinMapTolerance):
+        // |INV − stock| <= 3 units OR <= 3% of INV. INV <= 0 always counts as mapped.
+        function temuInvWithinMapTolerance(inv, stock) {
+            const invNum = parseFloat(inv) || 0;
+            const stockNum = parseFloat(stock) || 0;
+            if (invNum <= 0) return true;
+            const diff = Math.abs(invNum - stockNum);
+            if (diff <= 3 + 1e-9) return true;
+            return diff <= (invNum * 0.03) + 1e-9;
+        }
+
         $('#zero-sold-count-badge').on('click', function() {
             zeroSoldFilterActive = !zeroSoldFilterActive;
             applyFilters();
@@ -2369,27 +2377,20 @@
                     zeroSoldCount++;
                 }
                 
-                // Count missing SKUs (only count if INV > 0)
-                if (missing === 'M' && inventory > 0) {
+                const nrReq = (row['nr_req'] || 'REQ').toString().toUpperCase();
+
+                // Missing L: not listed (missing === 'M'), INV > 0, exclude NR/NRL (matches amazon-tabulator-view)
+                if (missing === 'M' && inventory > 0 && nrReq !== 'NR' && nrReq !== 'NRL') {
                     missingCount++;
                 }
-                
-                // Count MAP status - ONLY for items that exist in Temu (not missing)
-                // Tolerance: |INV − Temu Stock| <= 3 counts as mapped (not Missing M)
-                const invTemuDiff2 = Math.abs(inventory - temuStock);
-                if (missing !== 'M' && goodsId && goodsId !== '') {
-                    if (inventory > 0 && temuStock > 0) {
-                        if (inventory === temuStock || invTemuDiff2 <= 3) {
-                            mappedCount++;
-                        } else {
-                            notMappedCount++;
-                        }
-                    } else if (inventory > 0 && temuStock === 0) {
-                        if (invTemuDiff2 > 3) {
-                            notMappedCount++;
-                        } else {
-                            mappedCount++;
-                        }
+
+                // Map / Missing M: REQ, listed, price > 0 — tolerance = |INV − stock| <= 3 OR <= 3% of INV
+                // (mirrors amazonInvWithinMapTolerance + map count conditions)
+                if (inventory > 0 && nrReq === 'REQ' && missing !== 'M' && temuPrice > 0) {
+                    if (temuInvWithinMapTolerance(inventory, temuStock)) {
+                        mappedCount++;
+                    } else {
+                        notMappedCount++;
                     }
                 }
                 
@@ -2781,24 +2782,17 @@
                         
                         const temuStock = parseFloat(rowData['temu_stock']) || 0;
                         const inv = parseFloat(rowData['inventory']) || 0;
-                        
-                        if (inv > 0 && temuStock === 0) {
-                            if (inv <= 3) {
-                                return '<span style="color: #28a745; font-weight: bold;" title="Within tolerance (≤3)">MP</span>';
+
+                        if (inv > 0) {
+                            // Tolerance: |INV − stock| <= 3 units OR <= 3% of INV (matches amazon-tabulator-view)
+                            if (temuInvWithinMapTolerance(inv, temuStock)) {
+                                return '<span style="color: #28a745; font-weight: bold;" title="Within tolerance (3 units or 3%)">MP</span>';
                             }
-                            return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${inv})</span>`;
+                            const diff = inv - temuStock;
+                            const sign = diff > 0 ? '+' : '';
+                            return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
                         }
-                        
-                        if (inv > 0 && temuStock > 0) {
-                            if (inv === temuStock || Math.abs(inv - temuStock) <= 3) {
-                                return '<span style="color: #28a745; font-weight: bold;" title="Within ≤3: counts as MP">MP</span>';
-                            } else {
-                                const diff = inv - temuStock;
-                                const sign = diff > 0 ? '+' : '';
-                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
-                            }
-                        }
-                        
+
                         return '';
                     }
                 },
@@ -3684,13 +3678,6 @@
                 });
             }
 
-            // Missing badge filter (clickable badge only - no dropdown)
-            if (missingBadgeFilterActive) {
-                table.addFilter(function(data) {
-                    return data['missing'] === 'M';
-                });
-            }
-
             // 0 Sold badge filter (only INV > 0)
             if (zeroSoldFilterActive) {
                 table.addFilter(function(data) {
@@ -3700,37 +3687,38 @@
                 });
             }
 
-            // Missing badge filter (only INV > 0)
+            // Missing L badge filter — not listed (missing='M'), INV > 0, exclude NR/NRL (matches amazon-tabulator-view)
             if (missingBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
-                    return data['missing'] === 'M' && inv > 0;
+                    const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
+                    return data['missing'] === 'M' && inv > 0 && nrReq !== 'NR' && nrReq !== 'NRL';
                 });
             }
 
-            // Map badge — |INV−Temu Stock| <= 3 counts as mapped
+            // Map badge — REQ, listed, price > 0; within tolerance (3 units OR 3% of INV)
             if (mapBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
                     const missing = data['missing'];
-                    const goodsId = data['goods_id'];
-                    if (missing === 'M' || !goodsId || goodsId === '' || inv === 0) return false;
+                    const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
+                    const price = parseFloat(data['temu_price']) || 0;
+                    if (inv <= 0 || nrReq !== 'REQ' || missing === 'M' || price <= 0) return false;
                     const temuStock = parseFloat(data['temu_stock']) || 0;
-                    if (temuStock < 0) return false;
-                    return Math.abs(inv - temuStock) <= 3;
+                    return temuInvWithinMapTolerance(inv, temuStock);
                 });
             }
 
+            // Missing M badge — REQ, listed, price > 0; NOT within tolerance (3 units OR 3% of INV)
             if (notMapBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
                     const missing = data['missing'];
-                    const goodsId = data['goods_id'];
-                    if (missing === 'M' || !goodsId || goodsId === '' || inv === 0) return false;
+                    const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
+                    const price = parseFloat(data['temu_price']) || 0;
+                    if (inv <= 0 || nrReq !== 'REQ' || missing === 'M' || price <= 0) return false;
                     const temuStock = parseFloat(data['temu_stock']) || 0;
-                    const d = Math.abs(inv - temuStock);
-                    if (d <= 3) return false;
-                    return inv > 0 && (temuStock === 0 || (temuStock > 0 && inv !== temuStock));
+                    return !temuInvWithinMapTolerance(inv, temuStock);
                 });
             }
 

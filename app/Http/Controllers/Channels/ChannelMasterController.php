@@ -234,8 +234,25 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Map tolerance — matches amazon-tabulator-view / temu2_decrease:
+     * |INV − stock| <= 3 units OR <= 3% of INV. INV <= 0 always counts as mapped.
+     */
+    private function temuInvWithinMapTolerance(float $inv, float $stock): bool
+    {
+        if ($inv <= 0) {
+            return true;
+        }
+        $diff = abs($inv - $stock);
+        if ($diff <= 3 + 1e-9) {
+            return true;
+        }
+
+        return $diff <= ($inv * 0.03) + 1e-9;
+    }
+
+    /**
      * Map / Miss (Missing L) / NMap for Temu & Temu 2 — same rules as temu_decrease / temu2_decrease badges
-     * (TemuController JSON: missing, inv×price, nr_req=NR, |INV−temu_stock|≤3 tolerance).
+     * (TemuController JSON: missing='M', nr_req, temu_price; tolerance = |INV−temu_stock| <= 3 OR <= 3% of INV).
      */
     private function getTemuLiveMapMissNMapFromDecreaseData(bool $isTemu2 = false): array
     {
@@ -270,27 +287,21 @@ class ChannelMasterController extends Controller
                 $inventory = (float) ($row['inventory'] ?? 0);
                 $temuStock = (float) ($row['temu_stock'] ?? 0);
                 $missing = (string) ($row['missing'] ?? '');
-                $goodsId = trim((string) ($row['goods_id'] ?? ''));
+                $temuPrice = (float) ($row['temu_price'] ?? 0);
+                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
                 $totalViews += (int) ($row['product_clicks'] ?? 0);
 
-                if ($missing === 'M' && $inventory > 0) {
+                // Missing L: not listed (missing='M'), INV > 0, exclude NR/NRL
+                if ($missing === 'M' && $inventory > 0 && $nrReq !== 'NR' && $nrReq !== 'NRL') {
                     $missingC++;
                 }
 
-                $invTemuDiff = abs($inventory - $temuStock);
-                if ($missing !== 'M' && $goodsId !== '') {
-                    if ($inventory > 0 && $temuStock > 0) {
-                        if ($invTemuDiff <= 3) {
-                            $mapC++;
-                        } else {
-                            $nmapC++;
-                        }
-                    } elseif ($inventory > 0 && $temuStock == 0.0) {
-                        if ($invTemuDiff > 3) {
-                            $nmapC++;
-                        } else {
-                            $mapC++;
-                        }
+                // Map / Missing M: REQ, listed, price > 0; tolerance = |INV − stock| <= 3 OR <= 3% of INV
+                if ($inventory > 0 && $nrReq === 'REQ' && $missing !== 'M' && $temuPrice > 0) {
+                    if ($this->temuInvWithinMapTolerance($inventory, $temuStock)) {
+                        $mapC++;
+                    } else {
+                        $nmapC++;
                     }
                 }
             }

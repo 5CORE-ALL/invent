@@ -4182,6 +4182,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/product-master/cp-all-history', [\App\Http\Controllers\ProductMaster\CpController::class, 'allHistory'])->name('product_master.cp.all_history');
     Route::post('/product-master/cp-update', [\App\Http\Controllers\ProductMaster\CpController::class, 'update'])->name('product_master.cp.update');
     Route::post('/product-master/cp-approve', [\App\Http\Controllers\ProductMaster\CpController::class, 'approve'])->name('product_master.cp.approve');
+    Route::post('/product-master/cp-unarchive', [\App\Http\Controllers\ProductMaster\CpController::class, 'unarchive'])->name('product_master.cp.unarchive');
     Route::post('/channel_master/store', [ChannelMasterController::class, 'store'])->name('channel_master.store');
     Route::post('/channel-master/update-sheet-link', [ChannelMasterController::class, 'updateSheetLink']);
     Route::post('/channels-master/toggle-flag', [ChannelMasterController::class, 'toggleCheckboxFlag']);
