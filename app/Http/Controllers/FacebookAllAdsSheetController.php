@@ -1679,28 +1679,13 @@ class FacebookAllAdsSheetController extends Controller
     ];
 
     /**
-     * Audit checklist — the items the user ticks in the Audit modal.
-     * Each item carries a key (saved verbatim into facebook_campaign_audits.checks),
-     * a human label, and a point weight. Score = sum(weights of ticked) /
-     * sum(all weights) × 100.
-     *
-     * Tweak this list freely; old rows store whichever keys they had at
-     * audit time, so dropping a key won't break the history.
+     * Audit checklist — intentionally empty. The Audit modal has no
+     * built-in/static checks: every check is manually added by the user
+     * via the "Add custom check" box and stored in custom_items. Old rows
+     * keep whatever built-in keys they had at audit time, so history is
+     * unaffected.
      */
-    private const AUDIT_CHECKLIST = [
-        ['key' => 'objective',       'label' => 'Campaign objective is set correctly',                'weight' => 10],
-        ['key' => 'audience',        'label' => 'Audience targeting is defined (age / geo / interests)', 'weight' => 10],
-        ['key' => 'budget',          'label' => 'Daily budget set within the Sbgt recommendation',     'weight' => 10],
-        ['key' => 'creative_count',  'label' => 'Ad set has at least 3 active creatives',              'weight' => 10],
-        ['key' => 'creative_quality','label' => 'Creatives meet image / video quality guidelines',     'weight' => 10],
-        ['key' => 'utm',             'label' => 'UTM parameters present on the destination URL',       'weight' => 10],
-        ['key' => 'pixel',           'label' => 'Meta Pixel / Conversion API tracking is firing',      'weight' => 10],
-        ['key' => 'bid_strategy',    'label' => 'Bid strategy matches campaign goal',                  'weight' => 5],
-        ['key' => 'schedule',        'label' => 'Schedule / start-stop dates set correctly',           'weight' => 5],
-        ['key' => 'name_convention', 'label' => 'Naming convention followed (PARENT / GROUP …)',       'weight' => 5],
-        ['key' => 'duplicates',      'label' => 'No duplicate / overlapping ad sets',                  'weight' => 5],
-        ['key' => 'performance',     'label' => 'Performance KPIs (ACOS / ROAS) are within target',    'weight' => 10],
-    ];
+    private const AUDIT_CHECKLIST = [];
 
     /**
      * Header-signature rules used by {@see validateUploadFormat()} to make
