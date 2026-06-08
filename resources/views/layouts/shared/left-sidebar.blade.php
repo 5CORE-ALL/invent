@@ -518,7 +518,7 @@
                         </li>
                         <li>
                             <a href="{{ route('shopify-raw-data.index') }}">
-                                <i class="ri-database-2-line me-2"></i>Shopify Raw Data
+                                <i class="ri-database-2-line me-2"></i>All Orders
                             </a>
                         </li>
                         <li>

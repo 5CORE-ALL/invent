@@ -3786,7 +3786,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Temu Ad Data Upload
     Route::post('/temu-ad-data/upload', [TemuController::class, 'uploadTemuAdData'])->name('temu.addata.upload');
-    Route::get('/temu-ad-data/sample', [TemuController::class, 'downloadTemuAdDataSample'])->name('temu.addata.sample');
 
     // Temu R Pricing Upload
     Route::post('/temu-r-pricing/upload', [TemuController::class, 'uploadTemuRPricing'])->name('temu.rpricing.upload');

@@ -643,9 +643,8 @@
                             <i class="fa fa-exclamation-triangle me-2"></i>
                             <strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading new data!
                             <br>
-                            <a href="{{ route('temu.addata.sample') }}" class="alert-link">
-                                <i class="fa fa-download"></i> Download Sample File
-                            </a>
+                            <i class="fa fa-info-circle me-1"></i>
+                            Upload the Temu Ads report Excel directly (as exported from Temu).
                         </div>
                     </form>
                 </div>

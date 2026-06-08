@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Shopify Raw Data', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'All Orders', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -53,6 +53,33 @@
             gap: 10px;
             flex-wrap: wrap;
         }
+        .ord-eye {
+            cursor: pointer;
+            color: #0d6efd;
+            font-size: 14px;
+        }
+        .ord-eye:hover { color: #0a58ca; }
+        #ord-pop {
+            position: fixed;
+            display: none;
+            align-items: center;
+            gap: 10px;
+            background: #212529;
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12.5px;
+            font-weight: 600;
+            white-space: nowrap;
+            z-index: 99999;
+            box-shadow: 0 2px 10px rgba(0,0,0,.35);
+        }
+        #ord-pop .ord-copy {
+            cursor: pointer;
+            color: #adb5bd;
+            transition: color .15s;
+        }
+        #ord-pop .ord-copy:hover { color: #4dd4e8; }
     </style>
 @endsection
 
@@ -64,7 +91,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Shopify Raw Data',
+        'page_title' => 'All Orders',
         'sub_title'  => 'Raw order-item records filtered by source / tag',
     ])
 
@@ -98,7 +125,7 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4 class="mb-3">Shopify Raw Data
+                <h4 class="mb-3">All Orders
                     <small class="text-muted fs-6 ms-2">— checkout-via-buy-now-button · wsaio-app · shopify_draft_order</small>
                 </h4>
 
@@ -164,6 +191,10 @@
                 <div style="height:calc(100vh - 280px); display:flex; flex-direction:column;">
                     <div class="p-2 bg-light border-bottom">
                         <div class="row g-2 align-items-center">
+                            <div class="col-md-2">
+                                <input type="text" id="search-source" class="form-control form-control-sm"
+                                    placeholder="Search Source...">
+                            </div>
                             <div class="col-md-3">
                                 <input type="text" id="search-sku" class="form-control form-control-sm"
                                     placeholder="Search SKU...">
@@ -255,6 +286,20 @@
         return isNaN(d.getTime()) ? v : d.toLocaleDateString('en-US') + ' ' + d.toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit'});
     }
 
+    // Normalized shipment status -> badge styling (matches ShipmentTrackingService)
+    const SHIPMENT_STATUS_META = {
+        Pending:            { color: '#6c757d', label: 'Pending',     icon: 'fa-clock' },
+        InfoReceived:       { color: '#0dcaf0', label: 'Info Rcvd',   icon: 'fa-circle-info' },
+        InTransit:          { color: '#0d6efd', label: 'In Transit',  icon: 'fa-truck' },
+        OutForDelivery:     { color: '#fd7e14', label: 'Out for Del', icon: 'fa-truck-fast' },
+        AvailableForPickup: { color: '#6f42c1', label: 'Pickup',      icon: 'fa-box-open' },
+        Delivered:          { color: '#28a745', label: 'Delivered',   icon: 'fa-circle-check' },
+        DeliveryFailure:    { color: '#dc3545', label: 'Failed',      icon: 'fa-triangle-exclamation' },
+        Exception:          { color: '#dc3545', label: 'Exception',   icon: 'fa-triangle-exclamation' },
+        Expired:            { color: '#adb5bd', label: 'Expired',     icon: 'fa-hourglass-end' },
+        NotFound:           { color: '#6c757d', label: 'Not Found',   icon: 'fa-circle-question' },
+    };
+
     // ── Date pickers ───────────────────────────────────────────────────────
     const fpFrom = flatpickr('#date-from', { dateFormat: 'Y-m-d', defaultDate: new Date(Date.now() - 30*86400*1000) });
     const fpTo   = flatpickr('#date-to',   { dateFormat: 'Y-m-d', defaultDate: new Date() });
@@ -307,7 +352,16 @@
                         return `<span class="badge" style="background:${color};color:${txt};">${display}</span>`;
                     }
                 },
-                { title: 'Order #',  field: 'order_number', width: 105, frozen: true, sorter: 'string' },
+                {
+                    title: 'Ord.', field: 'order_number', width: 70, frozen: true, sorter: 'string', hozAlign: 'center',
+                    headerHozAlign: 'center',
+                    formatter: function(cell) {
+                        const v = cell.getValue() || '';
+                        if (!v) return '<span class="text-muted">—</span>';
+                        const safe = String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+                        return `<i class="fas fa-eye ord-eye" data-order="${safe}"></i>`;
+                    }
+                },
                 { title: 'Order ID', field: 'order_id',     width: 160, visible: false },
                 {
                     title: 'SKU', field: 'sku', width: 160, frozen: true,
@@ -319,13 +373,13 @@
                 { title: 'Price', field: 'price',       width: 100, hozAlign: 'right',  sorter: 'number', formatter: cell => fmtMoney(cell.getValue()) },
                 { title: 'Total', field: 'total_amount',width: 110, hozAlign: 'right',  sorter: 'number', formatter: cell => fmtMoney(cell.getValue()) },
                 {
-                    title: 'Discount Codes', field: 'discount_codes', width: 160, tooltip: true,
+                    title: 'Code.', field: 'discount_codes', width: 70, hozAlign: 'center', headerHozAlign: 'center',
                     formatter: function(cell) {
                         const v = cell.getValue();
                         if (!v) return '<span class="text-muted">—</span>';
-                        return v.split(',').map(c => c.trim()).filter(Boolean)
-                            .map(c => `<span class="badge bg-warning text-dark me-1">${c}</span>`)
-                            .join('');
+                        const codes = v.split(',').map(c => c.trim()).filter(Boolean).join(', ');
+                        const safe = String(codes).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+                        return `<i class="fas fa-eye ord-eye" data-order="${safe}"></i>`;
                     }
                 },
                 {
@@ -346,6 +400,7 @@
                 },
                 {
                     title: 'Order Total', field: 'order_total', width: 110, hozAlign: 'right', sorter: 'number',
+                    visible: false,
                     tooltip: 'Actual total paid for the whole order',
                     formatter: function(cell) {
                         const v = parseFloat(cell.getValue());
@@ -354,16 +409,30 @@
                     }
                 },
                 {
-                    title: 'Order Date', field: 'order_date', width: 160, sorter: 'datetime',
-                    formatter: cell => fmtDate(cell.getValue()),
+                    title: 'Order Date', field: 'order_date', width: 100, sorter: 'datetime',
+                    formatter: function(cell) {
+                        const v = cell.getValue();
+                        if (!v) return '';
+                        const d = new Date(v);
+                        if (isNaN(d.getTime())) return v;
+                        const short = d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' });
+                        const full  = fmtDate(v).replace(/"/g, '&quot;');
+                        return `<span title="${full}">${short}</span>`;
+                    },
                 },
                 {
                     title: 'Fin. Status', field: 'financial_status', width: 110,
                     formatter: cell => cell.getValue() || '—'
                 },
                 {
-                    title: 'Fulfill. Status', field: 'fulfillment_status', width: 120,
-                    formatter: cell => cell.getValue() || '—'
+                    title: 'Fulfill. Status', field: 'fulfillment_status', width: 120, hozAlign: 'center', headerHozAlign: 'center',
+                    formatter: function(cell) {
+                        const v = (cell.getValue() || '').toString().trim();
+                        const fulfilled = v.toLowerCase() === 'fulfilled';
+                        const color = fulfilled ? '#28a745' : '#dc3545';
+                        const label = v || 'unfulfilled';
+                        return `<span title="${label}" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${color};"></span>`;
+                    }
                 },
                 {
                     title: 'Customer', field: 'customer_name', width: 160,
@@ -373,6 +442,36 @@
                 { title: 'City',    field: 'shipping_city',   width: 120, visible: false },
                 { title: 'Country', field: 'shipping_country',width: 90,  visible: false },
                 { title: 'Tracking #', field: 'tracking_number',  width: 160, tooltip: true, visible: false },
+                {
+                    title: 'Track N.', field: 'track_view', width: 75, hozAlign: 'center', headerHozAlign: 'center',
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const v = cell.getRow().getData().tracking_number || '';
+                        if (!v) return '<span class="text-muted">—</span>';
+                        const safe = String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+                        return `<i class="fas fa-eye ord-eye" data-order="${safe}"></i>`;
+                    }
+                },
+                {
+                    title: 'Status', field: 'shipment_status', width: 130, hozAlign: 'center', headerHozAlign: 'center',
+                    visible: false,
+                    formatter: function(cell) {
+                        const v = (cell.getValue() || '').toString().trim();
+                        const d = cell.getRow().getData();
+                        const hasTracking = (d.tracking_number || '').toString().trim() !== '';
+                        if (!v) {
+                            return hasTracking
+                                ? '<span class="badge bg-light text-dark border" title="Not checked yet">—</span>'
+                                : '<span class="text-muted">—</span>';
+                        }
+                        const meta = SHIPMENT_STATUS_META[v] || { color: '#6c757d', label: v, icon: 'fa-circle-question' };
+                        const detail = (d.shipment_status_detail || '').toString().replace(/"/g,'&quot;');
+                        const when   = d.shipment_checked_at ? ('  ·  checked ' + fmtDate(d.shipment_checked_at)) : '';
+                        const title  = (detail || meta.label) + when;
+                        return `<span class="badge" title="${title}" style="background:${meta.color};color:#fff;">
+                            <i class="fas ${meta.icon} me-1"></i>${meta.label}</span>`;
+                    }
+                },
                 { title: 'Carrier',    field: 'tracking_company', width: 120, visible: false },
                 {
                     title: 'Tags', field: 'tags', width: 220, tooltip: true,
@@ -508,11 +607,13 @@
     function applySearchFilters() {
         if (!table) return;
         table.clearFilter();
+        const source   = $('#search-source').val().trim();
         const sku      = $('#search-sku').val().trim();
         const orderNum = $('#search-order').val().trim();
         const customer = $('#search-customer').val().trim();
         const tag      = $('#search-tag').val().trim();
         const filters  = [];
+        if (source)   filters.push({ field:'source_name',   type:'like', value:source });
         if (sku)      filters.push({ field:'sku',           type:'like', value:sku });
         if (orderNum) filters.push({ field:'order_number',  type:'like', value:orderNum });
         if (customer) filters.push({ field:'customer_name', type:'like', value:customer });
@@ -549,7 +650,7 @@
         });
 
         // Search inputs
-        $('#search-sku, #search-order, #search-customer, #search-tag').on('keyup', applySearchFilters);
+        $('#search-source, #search-sku, #search-order, #search-customer, #search-tag').on('keyup', applySearchFilters);
 
         // Quick-pick tag pills
         $(document).on('click', '.tag-pill', function() {
@@ -595,6 +696,57 @@
             const to   = $('#date-to').val()   || 'end';
             table.download('csv', `shopify_raw_${src}_${from}_${to}.csv`);
         });
+
+        // ── Order # view-icon popover (hover to reveal + copy) ─────────────────
+        initOrderPopover();
     });
+
+    function initOrderPopover() {
+        const pop = document.createElement('div');
+        pop.id = 'ord-pop';
+        pop.innerHTML = '<span class="ord-pop-text"></span><i class="fas fa-copy ord-copy" title="Copy order #"></i>';
+        document.body.appendChild(pop);
+
+        const popText = pop.querySelector('.ord-pop-text');
+        const copyBtn = pop.querySelector('.ord-copy');
+        let currentOrder = '';
+        let hideTimer = null;
+
+        const cancelHide = () => { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } };
+        const scheduleHide = () => { cancelHide(); hideTimer = setTimeout(() => { pop.style.display = 'none'; }, 200); };
+
+        function showPopFor(eye) {
+            currentOrder = eye.getAttribute('data-order') || '';
+            popText.textContent = currentOrder;
+            pop.style.display = 'flex';
+            const r = eye.getBoundingClientRect();
+            // position to the right of the icon, vertically centered
+            let top  = r.top + r.height / 2 - pop.offsetHeight / 2;
+            let left = r.right + 8;
+            if (left + pop.offsetWidth > window.innerWidth - 8) {
+                left = r.left - pop.offsetWidth - 8; // flip to the left if no room
+            }
+            pop.style.top  = Math.max(8, top) + 'px';
+            pop.style.left = Math.max(8, left) + 'px';
+        }
+
+        // Delegated hover on dynamically-rendered eye icons
+        document.addEventListener('mouseover', function (e) {
+            const eye = e.target.closest('.ord-eye');
+            if (eye) { cancelHide(); showPopFor(eye); }
+        });
+        document.addEventListener('mouseout', function (e) {
+            if (e.target.closest('.ord-eye')) scheduleHide();
+        });
+        pop.addEventListener('mouseenter', cancelHide);
+        pop.addEventListener('mouseleave', scheduleHide);
+
+        copyBtn.addEventListener('click', function () {
+            if (!currentOrder) return;
+            navigator.clipboard.writeText(currentOrder)
+                .then(() => showToast('Order # copied: ' + currentOrder, 'success'))
+                .catch(() => showToast('Copy failed', 'error'));
+        });
+    }
 </script>
 @endsection

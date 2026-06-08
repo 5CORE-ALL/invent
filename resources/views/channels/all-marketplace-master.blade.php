@@ -1355,17 +1355,18 @@
                         }
                     },
                     {
-                        title: "Sales",
-                        field: "L30 Sales",
-                        headerTooltip: "Rolling sales per channel. Amazon = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific — same formula as Amazon Daily Sales (AMAZON_SALES_TOTAL_MODE; Canceled/Cancelled excluded).",
+                        title: "L60 Sales",
+                        field: "L-60 Sales",
+                        headerTooltip: "Sales from days 31-60 (previous 30-day period). Used for Growth calculation.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
+                        visible: true,
                         formatter: function(cell) {
                             const value = Math.round(parseNumber(cell.getValue()));
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const dotColor = getMetricDotColor(channel, 'l30_sales');
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l30_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'l60_sales');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l60_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View L60 Sales Chart"></i>`;
                             return `<span style="font-weight: 600;">$${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1381,18 +1382,17 @@
                         }
                     },
                     {
-                        title: "L60 Sales",
-                        field: "L-60 Sales",
-                        headerTooltip: "Sales from days 31-60 (previous 30-day period). Used for Growth calculation.",
+                        title: "Sales",
+                        field: "L30 Sales",
+                        headerTooltip: "Rolling sales per channel. Amazon = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific — same formula as Amazon Daily Sales (AMAZON_SALES_TOTAL_MODE; Canceled/Cancelled excluded).",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
-                        visible: true,
                         formatter: function(cell) {
                             const value = Math.round(parseNumber(cell.getValue()));
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const dotColor = getMetricDotColor(channel, 'l60_sales');
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l60_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View L60 Sales Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'l30_sales');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l30_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight: 600;">$${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {

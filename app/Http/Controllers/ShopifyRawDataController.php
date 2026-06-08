@@ -119,6 +119,9 @@ class ShopifyRawDataController extends Controller
                 'shipping_country'   => $row->shipping_country    ?? '',
                 'tracking_number'    => $row->tracking_number     ?? '',
                 'tracking_company'   => $row->tracking_company    ?? '',
+                'shipment_status'        => $row->shipment_status        ?? '',
+                'shipment_status_detail' => $row->shipment_status_detail ?? '',
+                'shipment_checked_at'    => $row->shipment_checked_at    ?? '',
                 'tags'               => $row->tags                ?? '',
                 'source_name'        => $row->source_name         ?? '',
             ];

@@ -214,6 +214,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Shipment Tracking (multi-carrier aggregator)
+    |--------------------------------------------------------------------------
+    |
+    | Used by the "All Orders" Status column to pull live shipment status from
+    | a tracking number across carriers (GOFO, USPS, UPS, FedEx, ...).
+    |
+    | Default driver is 17TRACK (https://api.17track.net) which natively
+    | supports all of the above with a single API key. Get a key from the
+    | 17TRACK dashboard -> Settings -> Security and put it in TRACKING_API_KEY.
+    |
+    | Swap providers by changing TRACKING_PROVIDER and TRACKING_API_BASE.
+    |
+    */
+    'tracking' => [
+        'provider'      => env('TRACKING_PROVIDER', '17track'),
+        'api_key'       => env('TRACKING_API_KEY', ''),
+        'api_base'      => env('TRACKING_API_BASE', 'https://api.17track.net/track/v2.2'),
+        // Per-run safety limits so a sync can't blow the provider quota
+        'batch_size'    => (int) env('TRACKING_BATCH_SIZE', 40),
+        'max_per_run'   => (int) env('TRACKING_MAX_PER_RUN', 2000),
+        'http_timeout'  => (int) env('TRACKING_HTTP_TIMEOUT', 30),
+        'sleep_ms'      => (int) env('TRACKING_SLEEP_MS', 400),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Amazon SP-API
     |--------------------------------------------------------------------------
     */

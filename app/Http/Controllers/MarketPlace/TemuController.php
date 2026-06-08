@@ -1772,16 +1772,18 @@ class TemuController extends Controller
     public function getDailyData(Request $request)
     {
         try {
-            [$start, $end] = TemuShopifySalesService::tabulatorL30Window();
-            $result = TemuShopifySalesService::getDailyDataRows($start, $end);
+            // Source: temu_orders table (Temu API order-wise data), last 30 days.
+            $start = Carbon::now()->subDays(30)->startOfDay();
+            $end = Carbon::now()->endOfDay();
+            $result = TemuShopifySalesService::getOrdersTableRows($start, $end);
 
-            Log::info('Temu daily data fetched from shopify_order_items', [
+            Log::info('Temu daily data fetched from temu_orders', [
                 'result_count' => count($result),
             ]);
 
             return response()->json($result);
         } catch (\Exception $e) {
-            Log::error('Error fetching Temu daily data from shopify_order_items: ' . $e->getMessage(), [
+            Log::error('Error fetching Temu daily data from temu_orders: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
 
@@ -1795,16 +1797,17 @@ class TemuController extends Controller
     public function getDailyDataL60(Request $request)
     {
         try {
+            // Source: temu_orders table, prior 30-day window (days 31–60).
             [$start, $end] = TemuShopifySalesService::channelMasterL60Window();
-            $result = TemuShopifySalesService::getDailyDataRows($start, $end);
+            $result = TemuShopifySalesService::getOrdersTableRows($start, $end);
 
-            Log::info('Temu L60 daily data fetched from shopify_order_items', [
+            Log::info('Temu L60 daily data fetched from temu_orders', [
                 'result_count' => count($result),
             ]);
 
             return response()->json($result);
         } catch (\Exception $e) {
-            Log::error('Error fetching Temu L60 daily data from shopify_order_items: ' . $e->getMessage(), [
+            Log::error('Error fetching Temu L60 daily data from temu_orders: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
 
@@ -3951,6 +3954,17 @@ class TemuController extends Controller
 
                 return floatval(str_replace('%', '', $value));
             };
+            // Read a value by trying the new Temu export header first, then legacy aliases.
+            $col = function (array $rowData, array $aliases) {
+                foreach ($aliases as $a) {
+                    if (array_key_exists($a, $rowData) && $rowData[$a] !== null && $rowData[$a] !== '') {
+                        return $rowData[$a];
+                    }
+                }
+
+                return null;
+            };
+            $parseInt = fn ($value) => (int) str_replace(',', '', (string) ($value ?? 0));
 
             $imported = 0;
             $highestRow = (int) $sheet->getHighestDataRow();
@@ -3987,30 +4001,31 @@ class TemuController extends Controller
                         continue;
                     }
 
+                    // Map each field to the new Temu export columns (Ad variants), legacy headers as fallback.
                     $adData = [
-                        'goods_name' => $rowData['Goods name'] ?? null,
+                        'goods_name' => $col($rowData, ['Goods name']),
                         'goods_id' => $goodsIdNormalized,
-                        'spend' => $parseCurrency($rowData['Spend'] ?? null),
-                        'base_price_sales' => $parseCurrency($rowData['Base price sales'] ?? null),
-                        'roas' => floatval($rowData['ROAS'] ?? 0),
-                        'acos_ad' => $parsePercent($rowData['ACOS(AD)'] ?? null),
-                        'cost_per_transaction' => $parseCurrency($rowData['Cost per transaction'] ?? null),
-                        'sub_orders' => ! empty($rowData['Sub-Orders']) ? (int) $rowData['Sub-Orders'] : 0,
-                        'items' => ! empty($rowData['Items']) ? (int) $rowData['Items'] : 0,
-                        'net_total_cost' => $parseCurrency($rowData['Net total cost'] ?? null),
-                        'net_declared_sales' => $parseCurrency($rowData['Net declared sales'] ?? null),
-                        'net_roas' => floatval($rowData['Net advertising return on investment (ROAS)'] ?? 0),
-                        'net_acos_ad' => $parsePercent($rowData['Net advertising cost ratio (advertising)'] ?? null),
-                        'net_cost_per_transaction' => $parseCurrency($rowData['Net cost per transaction'] ?? null),
-                        'net_orders' => ! empty($rowData['Net Orders']) ? (int) $rowData['Net Orders'] : 0,
-                        'net_number_pieces' => ! empty($rowData['Net number of pieces']) ? (int) $rowData['Net number of pieces'] : 0,
-                        'impressions' => ! empty($rowData['Impressions']) ? (int) str_replace(',', '', $rowData['Impressions']) : 0,
-                        'clicks' => ! empty($rowData['Clicks']) ? (int) str_replace(',', '', $rowData['Clicks']) : 0,
-                        'ctr' => $parsePercent($rowData['CTR'] ?? null),
-                        'cvr' => $parsePercent($rowData['Conversion Rate (CVR)'] ?? null),
-                        'add_to_cart_number' => ! empty($rowData['Add-to-cart number']) ? (int) str_replace(',', '', $rowData['Add-to-cart number']) : 0,
-                        'weekly_roas' => floatval($rowData['Weekly ROAS'] ?? 0),
-                        'target' => floatval($rowData['Target'] ?? 0),
+                        'spend' => $parseCurrency($col($rowData, ['Spend'])),
+                        'base_price_sales' => $parseCurrency($col($rowData, ['Base Price Sales (Ad)', 'Base price sales'])),
+                        'roas' => floatval($col($rowData, ['ROAS (Ad)', 'ROAS']) ?? 0),
+                        'acos_ad' => $parsePercent($col($rowData, ['ACOS (Ad)', 'ACOS(AD)'])),
+                        'cost_per_transaction' => $parseCurrency($col($rowData, ['Cost Per Order (Ad)', 'Cost per transaction'])),
+                        'sub_orders' => $parseInt($col($rowData, ['Sub Order Count (Ad)', 'Sub-Orders'])),
+                        'items' => $parseInt($col($rowData, ['Item Quantity (Ad)', 'Items'])),
+                        'net_total_cost' => $parseCurrency($col($rowData, ['Net total cost'])),
+                        'net_declared_sales' => $parseCurrency($col($rowData, ['Net Base Price Sales (Ad)', 'Net declared sales'])),
+                        'net_roas' => floatval($col($rowData, ['Net ROAS (Ad)', 'Net advertising return on investment (ROAS)']) ?? 0),
+                        'net_acos_ad' => $parsePercent($col($rowData, ['Net ACOS (Ad)', 'Net advertising cost ratio (advertising)'])),
+                        'net_cost_per_transaction' => $parseCurrency($col($rowData, ['Net Cost Per Order (Ad)', 'Net cost per transaction'])),
+                        'net_orders' => $parseInt($col($rowData, ['Net Sub Order Count (Ad)', 'Net Orders'])),
+                        'net_number_pieces' => $parseInt($col($rowData, ['Net Item Quantity (Ad)', 'Net number of pieces'])),
+                        'impressions' => $parseInt($col($rowData, ['Impressions (Ad)', 'Impressions'])),
+                        'clicks' => $parseInt($col($rowData, ['Clicks (Ad)', 'Clicks'])),
+                        'ctr' => $parsePercent($col($rowData, ['Click Through Rate (Ad)', 'CTR'])),
+                        'cvr' => $parsePercent($col($rowData, ['Conversion Rate (Ad)', 'Conversion Rate (CVR)'])),
+                        'add_to_cart_number' => $parseInt($col($rowData, ['Add To Cart (Ad)', 'Add-to-cart number'])),
+                        'weekly_roas' => floatval($col($rowData, ['Natural Week ROAS (Ad)', 'Weekly ROAS']) ?? 0),
+                        'target' => floatval($col($rowData, ['Natural Week Target ROAS (Ad)', 'Target']) ?? 0),
                     ];
 
                     TemuAdData::create($adData);
@@ -4028,98 +4043,6 @@ class TemuController extends Controller
             Log::error('Error uploading Temu ad data: ' . $e->getMessage());
             return back()->with('error', 'Error uploading file: ' . $e->getMessage());
         }
-    }
-
-    /**
-     * Download Temu Ad Data Sample File
-     */
-    public function downloadTemuAdDataSample()
-    {
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-
-        // Header Row - matches Temu export format
-        $headers = [
-            'Goods name',
-            'Goods ID',
-            'Spend',
-            'Base price sales',
-            'ROAS',
-            'ACOS(AD)',
-            'Cost per transaction',
-            'Sub-Orders',
-            'Items',
-            'Net total cost',
-            'Net declared sales',
-            'Net advertising return on investment (ROAS)',
-            'Net advertising cost ratio (advertising)',
-            'Net cost per transaction',
-            'Net Orders',
-            'Net number of pieces',
-            'Impressions',
-            'Clicks',
-            'CTR',
-            'Conversion Rate (CVR)',
-            'Add-to-cart number',
-            'Weekly ROAS',
-            'Target'
-        ];
-        
-        $sheet->fromArray($headers, NULL, 'A1');
-
-        // Sample Data
-        $sampleData = [
-            [
-                '5Core 12" Subwoofer 1200W PA DJ',
-                '603186094008569',
-                '$78.01',
-                '$954.55',
-                '12.24',
-                '8.17%',
-                '$3.13',
-                '25',
-                '25',
-                '$74.74',
-                '$842.98',
-                '11.28',
-                '8.86%',
-                '$3.40',
-                '22',
-                '22',
-                '48283',
-                '1452',
-                '3.00%',
-                '1.72%',
-                '164',
-                '0.00',
-                '0.00'
-            ]
-        ];
-
-        $sheet->fromArray($sampleData, NULL, 'A2');
-
-        // Set column widths
-        foreach (range('A', 'W') as $col) {
-            $sheet->getColumnDimension($col)->setWidth(20);
-        }
-
-        // Style header row
-        $headerStyle = [
-            'font' => ['bold' => true],
-            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']]
-        ];
-        $sheet->getStyle('A1:W1')->applyFromArray($headerStyle);
-
-        // Output Download
-        $fileName = 'Temu_Ad_Data_Sample_' . date('Y-m-d') . '.xlsx';
-
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment;filename="' . $fileName . '"');
-        header('Cache-Control: max-age=0');
-
-        $writer = new Xlsx($spreadsheet);
-        $writer->save('php://output');
-        exit;
     }
 
     /**

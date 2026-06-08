@@ -329,8 +329,9 @@ class ChannelMasterController extends Controller
     {
         if (! $isTemu2) {
             try {
-                [$start, $end] = TemuShopifySalesService::tabulatorL30Window();
-                $m = TemuShopifySalesService::computeMetrics($start, $end);
+                $start = Carbon::now()->subDays(30)->startOfDay();
+                $end = Carbon::now()->endOfDay();
+                $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
 
                 return [
                     'total_orders' => $m['orders'],
@@ -338,7 +339,7 @@ class ChannelMasterController extends Controller
                     'total_revenue' => $m['sales'],
                 ];
             } catch (\Throwable $e) {
-                Log::warning('Temu shopify live sales summary failed: '.$e->getMessage());
+                Log::warning('Temu orders live sales summary failed: '.$e->getMessage());
 
                 return null;
             }
@@ -500,14 +501,14 @@ class ChannelMasterController extends Controller
         if (! $isTemu2) {
             try {
                 [$start, $end] = TemuShopifySalesService::channelMasterL60Window();
-                $m = TemuShopifySalesService::computeMetrics($start, $end);
+                $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
 
                 return [
                     'sales' => (float) $m['sales'],
                     'orders' => (int) $m['orders'],
                 ];
             } catch (\Throwable $e) {
-                Log::warning('Temu shopify L60 failed: '.$e->getMessage());
+                Log::warning('Temu orders L60 failed: '.$e->getMessage());
 
                 return ['sales' => 0.0, 'orders' => 0];
             }
@@ -3833,7 +3834,7 @@ class ChannelMasterController extends Controller
     private function computeTemuYSalesLikeAmazon(bool $isTemu2): ?float
     {
         if (! $isTemu2) {
-            return TemuShopifySalesService::computeYSales();
+            return TemuShopifySalesService::computeYSalesFromOrders();
         }
 
         $modelClass = Temu2DailyData::class;
@@ -4506,7 +4507,7 @@ class ChannelMasterController extends Controller
     private function computeTemuL7SalesLikeAmazon(bool $isTemu2): ?float
     {
         if (! $isTemu2) {
-            return TemuShopifySalesService::computeL7Sales();
+            return TemuShopifySalesService::computeL7SalesFromOrders();
         }
 
         $modelClass = Temu2DailyData::class;
@@ -7029,11 +7030,12 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // L30 / L60 from shopify_order_items (apicentral) — same Temu identification as /shopify-orders.
-        [$l30Start, $l30End] = TemuShopifySalesService::tabulatorL30Window();
+        // L30 / L60 from the temu_orders table (Temu API order-wise data).
+        $l30Start = Carbon::now()->subDays(30)->startOfDay();
+        $l30End = Carbon::now()->endOfDay();
         [$l60Start, $l60End] = TemuShopifySalesService::channelMasterL60Window();
-        $l30 = TemuShopifySalesService::computeMetrics($l30Start, $l30End);
-        $l60 = TemuShopifySalesService::computeMetrics($l60Start, $l60End);
+        $l30 = TemuShopifySalesService::computeMetricsFromOrders($l30Start, $l30End);
+        $l60 = TemuShopifySalesService::computeMetricsFromOrders($l60Start, $l60End);
 
         $l30Sales = $l30['sales'];
         $l30Orders = $l30['orders'];

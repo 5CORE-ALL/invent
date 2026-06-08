@@ -1349,6 +1349,20 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(self::HF_MUTEX_HOURLY)
             ->runInBackground()
             ->appendOutputTo($log));
+
+        /*
+        |--------------------------------------------------------------------------
+        | SHIPMENT TRACKING (All Orders Status column)
+        |--------------------------------------------------------------------------
+        | Refresh live shipment status from the tracking provider every 3 hours.
+        | Runs 24/7 (no IST window) so status stays current; --stale guards quota.
+        */
+        $schedule->command('tracking:sync-status --stale=150')
+            ->everyThreeHours()
+            ->name('shipment-tracking-sync-status')
+            ->withoutOverlapping(170)
+            ->runInBackground()
+            ->appendOutputTo($log);
     }
 
     /**

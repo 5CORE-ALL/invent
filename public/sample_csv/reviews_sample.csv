@@ -1,0 +1,6 @@
+sku,marketplace,review_id,rating,review_title,review_text,reviewer_name,review_date
+SKU12345,amazon,AMZ-1001,5,Excellent quality,"Works exactly as described, very happy with this purchase.",John D.,2026-05-01
+SKU12345,amazon,AMZ-1002,2,Stopped working,"Stopped working after two weeks, disappointed.",Maria S.,2026-05-12
+SKU67890,ebay,EBAY-2001,4,Good value,"Good product for the price, shipping was a bit slow.",Alex P.,2026-05-15
+SKU67890,walmart,WM-3001,1,Damaged on arrival,"Arrived damaged, packaging was poor.",Chris T.,2026-05-20
+SKU24680,temu,TEMU-4001,3,Average,"It's okay, does the job but feels cheap.",Priya R.,2026-05-22

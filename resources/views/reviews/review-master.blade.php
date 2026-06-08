@@ -349,6 +349,11 @@
                 <div class="alert alert-info small">
                     <strong>Required CSV Columns:</strong><br>
                     <code>sku, marketplace, review_id, rating, review_title, review_text, reviewer_name, review_date</code>
+                    <div class="mt-2">
+                        <a href="{{ asset('sample_csv/reviews_sample.csv') }}" download>
+                            <i class="ri-download-2-line me-1"></i>Download sample CSV
+                        </a>
+                    </div>
                 </div>
                 <form id="csvUploadForm" enctype="multipart/form-data">
                     @csrf
@@ -550,8 +555,17 @@ $(function () {
 
     // ---- CSV Upload ----
     $('#btnUploadCsv').on('click', function() {
+        const fileInput = $('#csv_file')[0];
+        if (!fileInput || !fileInput.files.length) {
+            $('#csvUploadMsg').html('<div class="alert alert-warning small mb-0">Please select a CSV file first.</div>');
+            return;
+        }
+
         const form = new FormData($('#csvUploadForm')[0]);
-        const $btn = $(this).html('<i class="ri-loader-4-line ri-spin"></i> Uploading...').prop('disabled', true);
+        const $btn = $(this);
+        const original = $btn.html();
+        $btn.html('<i class="ri-loader-4-line ri-spin"></i> Uploading...').prop('disabled', true);
+        $('#csvUploadMsg').html('');
 
         $.ajax({
             url: '{{ route("reviews.upload-csv") }}',
@@ -559,13 +573,25 @@ $(function () {
             data: form,
             processData: false,
             contentType: false,
+            headers: { 'X-CSRF-TOKEN': CSRF },
         }).done(res => {
-            $('#csvUploadMsg').html('<div class="alert alert-success small">' + res.message + '</div>');
+            $('#csvUploadMsg').html('<div class="alert alert-success small mb-0">' + (res.message || 'Upload complete.') + '</div>');
+            $('#csv_file').val('');
+            if (typeof reviewTable !== 'undefined') {
+                reviewTable.ajax.reload(null, false);
+            }
+            if (typeof showToast === 'function') {
+                showToast(res.message || 'Reviews imported successfully', 'success');
+            }
         }).fail(err => {
-            const msg = err.responseJSON?.message || 'Upload failed';
-            $('#csvUploadMsg').html('<div class="alert alert-danger small">' + msg + '</div>');
+            let msg = err.responseJSON?.message || 'Upload failed';
+            const errors = err.responseJSON?.errors;
+            if (errors) {
+                msg = Object.values(errors).flat().join(' ');
+            }
+            $('#csvUploadMsg').html('<div class="alert alert-danger small mb-0">' + msg + '</div>');
         }).always(() => {
-            $btn.html('<i class="ri-upload-2-line me-1"></i>Upload & Process').prop('disabled', false);
+            $btn.html(original).prop('disabled', false);
         });
     });
 
