@@ -108,7 +108,7 @@ class AmazonBidUtilizationService
     /**
      * Suggested SBID from U2%/U1% bands using {@see AmazonAdsSbidRule::resolvedRule()} (thresholds and multipliers).
      *
-     * - Both below util_low: L1×m1, else L2×m2, else L7×m7, else both_low_fallback when all CPCs zero.
+     * - Both below util_low: L1×m1, else L7×m7, else L2×m2, else both_low_fallback when all CPCs zero.
      * - Both above util_high: L1×both_high_mult_l1 (or null when L1 CPC missing, same as legacy).
      * - Otherwise: sbid null (display "--" in Amazon Ads All).
      *
@@ -145,11 +145,11 @@ class AmazonBidUtilizationService
             if ($l1 > 0.0) {
                 return ['sbid' => round($l1 * $m1, 2), 'band' => 'under'];
             }
-            if ($l2 > 0.0) {
-                return ['sbid' => round($l2 * $m2, 2), 'band' => 'under'];
-            }
             if ($l7 > 0.0) {
                 return ['sbid' => round($l7 * $m7, 2), 'band' => 'under'];
+            }
+            if ($l2 > 0.0) {
+                return ['sbid' => round($l2 * $m2, 2), 'band' => 'under'];
             }
 
             return ['sbid' => round($fallback, 2), 'band' => 'under'];

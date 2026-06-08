@@ -448,7 +448,7 @@ class AutoUpdateAmzUnderHlBids extends Command
             }
 
             $bidOut = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc(
-                $ub2,
+                $ub7,
                 $ub1,
                 $l1_cpc,
                 $l2_cpc,
@@ -458,8 +458,8 @@ class AutoUpdateAmzUnderHlBids extends Command
 
             $row['INV'] = (int) ($row['INV'] ?? 0);
             $row['sbid'] = $bidOut['sbid'];
-            $bothLowHl = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRule);
-            $bothHighHl = AmazonAdsSbidRule::isBothAboveUtilHigh($ub2, $ub1, $sbidRule);
+            $bothLowHl = AmazonAdsSbidRule::isBothBelowUtilLow($ub7, $ub1, $sbidRule);
+            $bothHighHl = AmazonAdsSbidRule::isBothAboveUtilHigh($ub7, $ub1, $sbidRule);
             if ($row['campaignName'] !== '' && ($row['campaignStatus'] ?? '') === 'ENABLED'
                 && $row['sbid'] !== null && $row['sbid'] > 0
                 && (($bothLowHl && $bidOut['band'] === 'under') || ($bothHighHl && $bidOut['band'] === 'over'))) {

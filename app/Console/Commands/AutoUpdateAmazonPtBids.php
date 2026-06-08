@@ -99,8 +99,8 @@ class AutoUpdateAmazonPtBids extends Command
                         $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
                         $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
                         $ub2 = floatval($campaign->ub2 ?? 0);
-                        $pinkPink = AmazonAdsSbidRule::isBothAboveUtilHigh($ub2, $ub1, $sbidRule);
-                        $redRed = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRule);
+                        $pinkPink = AmazonAdsSbidRule::isBothAboveUtilHigh($ub7, $ub1, $sbidRule);
+                        $redRed = AmazonAdsSbidRule::isBothBelowUtilLow($ub7, $ub1, $sbidRule);
                         $campaignBudgetMap[$campaignId] = $sbid;
                         $campaignDetails[$campaignId] = [
                             'name' => $campaignName,
@@ -603,7 +603,7 @@ class AutoUpdateAmazonPtBids extends Command
             }
 
             $bidOut = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc(
-                $ub2,
+                $ub7,
                 $ub1,
                 $l1_cpc,
                 $l2_cpc,
@@ -626,10 +626,10 @@ class AutoUpdateAmazonPtBids extends Command
                 continue;
             }
 
-            $bothRed = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRule);
-            $bothPink = AmazonAdsSbidRule::isBothAboveUtilHigh($ub2, $ub1, $sbidRule);
+            $bothRed = AmazonAdsSbidRule::isBothBelowUtilLow($ub7, $ub1, $sbidRule);
+            $bothPink = AmazonAdsSbidRule::isBothAboveUtilHigh($ub7, $ub1, $sbidRule);
 
-            // Include when U2/U1 both red or both pink and band matches (same gating as over-KW / HL)
+            // Include when U7/U1 both red or both pink and band matches (same gating as over-KW / HL)
             if ($row['INV'] > 0 && ($row['campaignStatus'] ?? '') === 'ENABLED'
                 && (($bothRed && $bidOut['band'] === 'under') || ($bothPink && $bidOut['band'] === 'over'))) {
                 $result[] = (object) $row;

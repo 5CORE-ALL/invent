@@ -1948,7 +1948,7 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Grid SBID from U2%/U1% + L1/L2/L7 CPC (or CPC1 / `costPerClick` fallback), aligned with auto-update commands.
+     * Grid SBID from U7%/U1% + L1/L2/L7 CPC (or CPC1 / `costPerClick` fallback), aligned with auto-update commands.
      * Outside red+red / pink+pink bands, sbid is forced to null so the UI shows "--".
      */
     private static function applyGridSbidFromUb2Ub1AndCpc(array &$arr, array $u, array $rowArr, array $dbColumns, string $table): void
@@ -1956,7 +1956,8 @@ class AmazonAdsController extends Controller
         if (! in_array('sbid', $dbColumns, true)) {
             return;
         }
-        $u2 = $u['U2'];
+        // SBID rule bands are driven by U7% (interchanged from U2%) and U1%.
+        $u2 = $u['U7'];
         $u1 = $u['U1'];
         if ($u2 === null || $u1 === null) {
             $arr['sbid'] = null;

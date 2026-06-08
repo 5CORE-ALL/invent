@@ -460,7 +460,7 @@ class AutoUpdateAmzUnderPtBids extends Command
             }
 
             $bidOut = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc(
-                $ub2,
+                $ub7,
                 $ub1,
                 $l1_cpc,
                 $l2_cpc,
@@ -470,7 +470,7 @@ class AutoUpdateAmzUnderPtBids extends Command
             $row['sbid'] = $bidOut['sbid'];
             $row['ub2'] = $ub2;
 
-            $bothLowPt = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRule);
+            $bothLowPt = AmazonAdsSbidRule::isBothBelowUtilLow($ub7, $ub1, $sbidRule);
             // Same gating as PT over / grid: red+red + under band + ENABLED + inventory
             if ($row['INV'] > 0 && $row['campaignName'] !== '' && $bothLowPt && $bidOut['band'] === 'under'
                 && $row['sbid'] !== null && is_numeric($row['sbid']) && (float) $row['sbid'] > 0

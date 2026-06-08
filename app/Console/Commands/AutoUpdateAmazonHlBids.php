@@ -75,8 +75,8 @@ class AutoUpdateAmazonHlBids extends Command
                         $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
                         $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
                         $ub2 = floatval($campaign->ub2 ?? 0);
-                        $bothHigh = AmazonAdsSbidRule::isBothAboveUtilHigh($ub2, $ub1, $sbidRuleLog);
-                        $bothLow = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRuleLog);
+                        $bothHigh = AmazonAdsSbidRule::isBothAboveUtilHigh($ub7, $ub1, $sbidRuleLog);
+                        $bothLow = AmazonAdsSbidRule::isBothBelowUtilLow($ub7, $ub1, $sbidRuleLog);
                         $campaignBudgetMap[$campaignId] = $sbid;
                         $campaignDetails[$campaignId] = [
                             'name' => $campaignName,
@@ -455,7 +455,7 @@ class AutoUpdateAmazonHlBids extends Command
             }
 
             $bidOut = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc(
-                $ub2,
+                $ub7,
                 $ub1,
                 $l1_cpc,
                 $l2_cpc,
@@ -479,8 +479,8 @@ class AutoUpdateAmazonHlBids extends Command
                 continue;
             }
 
-            $bothLow = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRule);
-            $bothHigh = AmazonAdsSbidRule::isBothAboveUtilHigh($ub2, $ub1, $sbidRule);
+            $bothLow = AmazonAdsSbidRule::isBothBelowUtilLow($ub7, $ub1, $sbidRule);
+            $bothHigh = AmazonAdsSbidRule::isBothAboveUtilHigh($ub7, $ub1, $sbidRule);
             if (! (($bothLow && $bidOut['band'] === 'under') || ($bothHigh && $bidOut['band'] === 'over'))) {
                 continue;
             }

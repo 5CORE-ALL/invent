@@ -94,13 +94,13 @@ trait CalculatesAmazonFbaBidUpdates
         if ($cpcFallback !== null && $cpcFallback <= 0) {
             $cpcFallback = null;
         }
-        $bidOut = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc($ub2, $ub1, $cpcL1, $cpcL2, $cpcL7, $cpcFallback);
+        $bidOut = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc($ub7Eff, $ub1, $cpcL1, $cpcL2, $cpcL7, $cpcFallback);
         if ($wantOverUtilized) {
-            if (! AmazonAdsSbidRule::isBothAboveUtilHigh($ub2, $ub1, $r) || $bidOut['band'] !== 'over') {
+            if (! AmazonAdsSbidRule::isBothAboveUtilHigh($ub7Eff, $ub1, $r) || $bidOut['band'] !== 'over') {
                 return null;
             }
         } else {
-            if (! AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $r) || $bidOut['band'] !== 'under') {
+            if (! AmazonAdsSbidRule::isBothBelowUtilLow($ub7Eff, $ub1, $r) || $bidOut['band'] !== 'under') {
                 return null;
             }
         }
