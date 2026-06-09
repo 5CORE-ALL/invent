@@ -1087,7 +1087,7 @@ class AmazonAdsController extends Controller
      *
      * @param  array<int, string>  $dbColumns
      * @param  iterable<int, object>  $pageRows
-     * @return array<string, array{spend: ?float, purchases30d: ?int, sales30d: ?float}>
+     * @return array<string, array{spend: ?float, purchases30d: ?int, sales30d: ?float, clicks: ?int}>
      */
     private static function fetchL30SummarySliceMap(string $table, array $dbColumns, iterable $pageRows): array
     {
@@ -1141,10 +1141,16 @@ class AmazonAdsController extends Controller
             $key = $cid."\0".$ad;
             $spend = self::l30DisplaySpendFromRowArray($r, $dbColumns);
             $spendOut = ($spend !== null && is_finite($spend)) ? $spend : null;
+            $clicksOut = null;
+            if (in_array('clicks', $dbColumns, true) && array_key_exists('clicks', $r) && $r['clicks'] !== null && $r['clicks'] !== '') {
+                $cv = (float) $r['clicks'];
+                $clicksOut = is_finite($cv) ? (int) round($cv) : null;
+            }
             $map[$key] = [
                 'spend' => $spendOut,
                 'purchases30d' => self::l30Purchases30dFromRowArray($r, $dbColumns),
                 'sales30d' => self::l30Sales30dFromRowArray($r, $dbColumns),
+                'clicks' => $clicksOut,
             ];
         }
 
@@ -1157,7 +1163,7 @@ class AmazonAdsController extends Controller
      *
      * @param  array<int, string>  $dbColumns
      * @param  array<int, string>  $columns   Display column keys
-     * @return array{cost_sum: float, sales_sum: float}|null
+     * @return array{cost_sum: float, sales_sum: float, purchases_sum: float, clicks_sum: float}|null
      */
     private static function aggregateL30CostAndSalesDistinctForFilteredAmazonAdsRows(Builder $filteredBaseQuery, string $table, array $dbColumns, array $columns): ?array
     {
@@ -1176,7 +1182,7 @@ class AmazonAdsController extends Controller
             $pairs = $pairsQ->select('r.campaign_id')->distinct()->get();
         }
         if ($pairs->isEmpty()) {
-            return ['cost_sum' => 0.0, 'sales_sum' => 0.0];
+            return ['cost_sum' => 0.0, 'sales_sum' => 0.0, 'purchases_sum' => 0.0, 'clicks_sum' => 0.0];
         }
         $stubRows = [];
         foreach ($pairs as $p) {
@@ -1190,18 +1196,21 @@ class AmazonAdsController extends Controller
         $needL30ForAcosSbgt = in_array('cost', $columns, true)
             || in_array('ACOS', $columns, true)
             || in_array('sbgt', $columns, true);
-        $needL30Slice = ($needL30ForAcosSbgt && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true)))
-            || (in_array('Prchase', $columns, true) && (in_array('purchases30d', $dbColumns, true) || in_array('purchases', $dbColumns, true)))
-            || (in_array('sales30d', $columns, true) && (in_array('sales30d', $dbColumns, true) || in_array('sales', $dbColumns, true)))
-            || (($needL30ForAcosSbgt) && in_array('sales30d', $dbColumns, true));
-        $l30SliceMap = $needL30Slice ? self::fetchL30SummarySliceMap($table, $dbColumns, $stubRows) : [];
+        // Always fetch the L30 slice: badge totals (Spend / Sold / Sales / Clicks) all read distinct-campaign L30 values from it.
+        $l30SliceMap = self::fetchL30SummarySliceMap($table, $dbColumns, $stubRows);
         $l30SpendMap = $needL30ForAcosSbgt && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true))
             ? self::fetchL30DailySpendSumMap($table, $dbColumns, $stubRows)
             : [];
         $rawByKey = [];
         $rawSalesByKey = [];
+        $rawPurchByKey = [];
+        $rawClicksByKey = [];
         $coalesce = self::costPreferCoalesceExprForTableAlias('r', $dbColumns);
         $salesColRaw = self::l30SummarySalesDbColumn($dbColumns);
+        $purchColRaw = in_array('purchases30d', $dbColumns, true)
+            ? 'purchases30d'
+            : (in_array('purchases', $dbColumns, true) ? 'purchases' : null);
+        $clicksColRaw = in_array('clicks', $dbColumns, true) ? 'clicks' : null;
         $gq = DB::query()->fromSub($filteredBaseQuery->clone()->reorder(), 'r');
         $selectChunks = [];
         if ($hasAd) {
@@ -1215,6 +1224,12 @@ class AmazonAdsController extends Controller
         }
         if ($salesColRaw !== null) {
             $selectChunks[] = 'MAX(r.`'.$salesColRaw.'`) AS mx_sales';
+        }
+        if ($purchColRaw !== null) {
+            $selectChunks[] = 'MAX(r.`'.$purchColRaw.'`) AS mx_purch';
+        }
+        if ($clicksColRaw !== null) {
+            $selectChunks[] = 'MAX(r.`'.$clicksColRaw.'`) AS mx_clicks';
         }
         if (count($selectChunks) > ($hasAd ? 2 : 1)) {
             $gq->selectRaw(implode(', ', $selectChunks));
@@ -1248,10 +1263,30 @@ class AmazonAdsController extends Controller
                         $rawSalesByKey[$key] = is_finite($sn) ? $sn : null;
                     }
                 }
+                if ($purchColRaw !== null && property_exists($rw, 'mx_purch')) {
+                    $mp = $rw->mx_purch ?? null;
+                    if ($mp === null || $mp === '') {
+                        $rawPurchByKey[$key] = null;
+                    } else {
+                        $pn = (float) $mp;
+                        $rawPurchByKey[$key] = is_finite($pn) ? $pn : null;
+                    }
+                }
+                if ($clicksColRaw !== null && property_exists($rw, 'mx_clicks')) {
+                    $mk = $rw->mx_clicks ?? null;
+                    if ($mk === null || $mk === '') {
+                        $rawClicksByKey[$key] = null;
+                    } else {
+                        $kn = (float) $mk;
+                        $rawClicksByKey[$key] = is_finite($kn) ? $kn : null;
+                    }
+                }
             }
         }
         $costSum = 0.0;
         $salesSum = 0.0;
+        $purchasesSum = 0.0;
+        $clicksSum = 0.0;
         foreach ($pairs as $p) {
             $cid = isset($p->campaign_id) ? trim((string) $p->campaign_id) : '';
             if ($cid === '') {
@@ -1288,9 +1323,35 @@ class AmazonAdsController extends Controller
             if ($salesVal !== null) {
                 $salesSum += $salesVal;
             }
+            $purchVal = null;
+            if ($l30SliceMap !== [] && array_key_exists($lkL30, $l30SliceMap)) {
+                $p30 = $l30SliceMap[$lkL30]['purchases30d'] ?? null;
+                if ($p30 !== null && is_finite((float) $p30)) {
+                    $purchVal = (float) $p30;
+                }
+            }
+            if ($purchVal === null && array_key_exists($lkL30, $rawPurchByKey) && $rawPurchByKey[$lkL30] !== null && is_finite((float) $rawPurchByKey[$lkL30])) {
+                $purchVal = (float) $rawPurchByKey[$lkL30];
+            }
+            if ($purchVal !== null) {
+                $purchasesSum += $purchVal;
+            }
+            $clicksVal = null;
+            if ($l30SliceMap !== [] && array_key_exists($lkL30, $l30SliceMap)) {
+                $c30 = $l30SliceMap[$lkL30]['clicks'] ?? null;
+                if ($c30 !== null && is_finite((float) $c30)) {
+                    $clicksVal = (float) $c30;
+                }
+            }
+            if ($clicksVal === null && array_key_exists($lkL30, $rawClicksByKey) && $rawClicksByKey[$lkL30] !== null && is_finite((float) $rawClicksByKey[$lkL30])) {
+                $clicksVal = (float) $rawClicksByKey[$lkL30];
+            }
+            if ($clicksVal !== null) {
+                $clicksSum += $clicksVal;
+            }
         }
 
-        return ['cost_sum' => $costSum, 'sales_sum' => $salesSum];
+        return ['cost_sum' => $costSum, 'sales_sum' => $salesSum, 'purchases_sum' => $purchasesSum, 'clicks_sum' => $clicksSum];
     }
 
     /**
@@ -2753,6 +2814,29 @@ class AmazonAdsController extends Controller
             $overallAcosPercent = self::overallAcosPercentFromAggregatedSums($l30AggDistinct['cost_sum'], $l30AggDistinct['sales_sum']);
         }
 
+        // Spend / Clicks / Sold / Sales badges: distinct-campaign L30 sums (same source/overlay as the
+        // SPL30, ACOS and grid columns). Each campaign has many report_date_range rows (daily + L1/L7/L15/L30),
+        // so a plain SUM over the filtered rows multiplies every campaign by its row count — use the L30 slice
+        // once per distinct campaign (+ ad_type) instead.
+        $spendTotal = null;
+        $clicksTotal = null;
+        $soldTotal = null;
+        $salesTotal = null;
+        if ($l30AggDistinct !== null) {
+            if (in_array('spend', $dbColumns, true) || in_array('cost', $dbColumns, true)) {
+                $spendTotal = round((float) $l30AggDistinct['cost_sum'], 2);
+            }
+            if (in_array('clicks', $dbColumns, true)) {
+                $clicksTotal = (int) round((float) $l30AggDistinct['clicks_sum']);
+            }
+            if (in_array('purchases30d', $dbColumns, true) || in_array('purchases', $dbColumns, true)) {
+                $soldTotal = (int) round((float) $l30AggDistinct['purchases_sum']);
+            }
+            if (in_array('sales30d', $dbColumns, true) || in_array('sales', $dbColumns, true)) {
+                $salesTotal = round((float) $l30AggDistinct['sales_sum'], 2);
+            }
+        }
+
         self::applyRawDataOrder($query, $table, $dbColumns, $columns, $orderColumnIndex, $orderDir);
 
         $rows = $query->offset($start)
@@ -2976,6 +3060,18 @@ class AmazonAdsController extends Controller
         }
         if ($overallAcosPercent !== null) {
             $payload['overallAcosPercent'] = $overallAcosPercent;
+        }
+        if ($spendTotal !== null) {
+            $payload['spendTotal'] = $spendTotal;
+        }
+        if ($clicksTotal !== null) {
+            $payload['clicksTotal'] = $clicksTotal;
+        }
+        if ($soldTotal !== null) {
+            $payload['soldTotal'] = $soldTotal;
+        }
+        if ($salesTotal !== null) {
+            $payload['salesTotal'] = $salesTotal;
         }
 
         return response()->json($payload);

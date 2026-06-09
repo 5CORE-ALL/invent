@@ -90,11 +90,52 @@
             min-height: 400px;
             width: 100%;
         }
-        .amazon-ads-all .amazon-ads-toolbar-badge {
+        /* Stat badges (SPl30 / ACOS / Spend): rounded-rectangle label:value chips with light backgrounds */
+        .amazon-ads-all .amazon-ads-stat-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
             flex-shrink: 0;
-            padding-left: 0.35rem;
-            margin-left: 0.15rem;
-            border-left: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 8px;
+            padding: 0.3rem 0.65rem;
+            font-size: 0.8rem;
+            font-weight: 700;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .amazon-ads-all .amazon-ads-stat-badge .amazon-ads-stat-label {
+            font-weight: 700;
+            opacity: 0.85;
+        }
+        .amazon-ads-all .amazon-ads-stat-badge .amazon-ads-stat-value {
+            font-weight: 700;
+        }
+        .amazon-ads-all .amazon-ads-stat-badge--spl30 {
+            background-color: #343a40;
+            color: #fff;
+        }
+        .amazon-ads-all .amazon-ads-stat-badge--acos {
+            background-color: #e8590c;
+            color: #fff;
+        }
+        .amazon-ads-all .amazon-ads-stat-badge--spend {
+            background-color: #e2665b;
+            color: #fff;
+        }
+        .amazon-ads-all .amazon-ads-stat-badge--clicks {
+            background-color: #d97706;
+            color: #fff;
+        }
+        .amazon-ads-all .amazon-ads-stat-badge--sold {
+            background-color: #6f42c1;
+            color: #fff;
+        }
+        .amazon-ads-all .amazon-ads-stat-badge--sales {
+            background-color: #2f9e44;
+            color: #fff;
+        }
+        .amazon-ads-all .amazon-ads-stat-badge .amazon-ads-stat-value {
+            color: #fff;
         }
         .amazon-ads-all .amazon-sbid-push-panel {
             border-left: 2px solid #0d6efd;
@@ -136,6 +177,30 @@
 
     <div class="row amazon-ads-all amazon-ads-toolbar">
         <div class="col-12 d-flex flex-wrap justify-content-end align-items-center gap-1">
+            <div class="amazon-ads-stat-badge amazon-ads-stat-badge--spl30" id="amazonAdsSpl30BadgeWrap" hidden title="Total SPL30: sum of L30 spend per distinct campaign (+ ad type) for current filters (same logic as the grid; all matching rows, not only this page).">
+                <span class="amazon-ads-stat-label">SPl30</span>
+                <span class="amazon-ads-stat-value tabular-nums" id="amazonAdsSpl30BadgeValue"></span>
+            </div>
+            <div class="amazon-ads-stat-badge amazon-ads-stat-badge--acos" id="amazonAdsOverallAcosBadgeWrap" hidden title="Overall ACOS: (sum of L30 SPL30 spend ÷ sum of L30 sales) × 100 for distinct campaign (+ ad type) in current filters — same L30 overlays as the grid (SP/SB only).">
+                <span class="amazon-ads-stat-label">ACOS</span>
+                <span class="amazon-ads-stat-value tabular-nums" id="amazonAdsOverallAcosBadgeValue"></span>
+            </div>
+            <div class="amazon-ads-stat-badge amazon-ads-stat-badge--spend" id="amazonAdsSpendBadgeWrap" hidden title="Spend: sum of the spend column across all rows matching the current filters (not only this page).">
+                <span class="amazon-ads-stat-label">Spend</span>
+                <span class="amazon-ads-stat-value tabular-nums" id="amazonAdsSpendBadgeValue"></span>
+            </div>
+            <div class="amazon-ads-stat-badge amazon-ads-stat-badge--clicks" id="amazonAdsClicksBadgeWrap" hidden title="Clicks: sum of the clicks column across all rows matching the current filters (not only this page).">
+                <span class="amazon-ads-stat-label">Clicks</span>
+                <span class="amazon-ads-stat-value tabular-nums" id="amazonAdsClicksBadgeValue"></span>
+            </div>
+            <div class="amazon-ads-stat-badge amazon-ads-stat-badge--sold" id="amazonAdsSoldBadgeWrap" hidden title="Sold: sum of purchases across all rows matching the current filters (not only this page).">
+                <span class="amazon-ads-stat-label">Sold</span>
+                <span class="amazon-ads-stat-value tabular-nums" id="amazonAdsSoldBadgeValue"></span>
+            </div>
+            <div class="amazon-ads-stat-badge amazon-ads-stat-badge--sales" id="amazonAdsSalesBadgeWrap" hidden title="Sales: sum of the sales column across all rows matching the current filters (not only this page).">
+                <span class="amazon-ads-stat-label">Sales</span>
+                <span class="amazon-ads-stat-value tabular-nums" id="amazonAdsSalesBadgeValue"></span>
+            </div>
             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS boundaries and SBGT tier amounts used for suggested budgets">BGT RULE</button>
             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID (grid and bid jobs)">SBID RULE</button>
             <a href="{{ route('amazon-ads.push-logs.index') }}" class="btn btn-sm btn-outline-danger" title="View campaigns that failed to update (skipped/failed bids & budgets)">
@@ -235,14 +300,6 @@
                                     <option value="PAUSED">Paused</option>
                                     <option value="ARCHIVED">Arch</option>
                                 </select>
-                            </div>
-                            <div class="d-flex align-items-center amazon-ads-toolbar-badge" id="amazonAdsSpl30BadgeWrap" hidden title="Total SPL30: sum of L30 spend per distinct campaign (+ ad type) for current filters (same logic as the grid; all matching rows, not only this page).">
-                                <span class="badge bg-dark">SPl30</span>
-                                <span class="ms-1 small fw-semibold tabular-nums" id="amazonAdsSpl30BadgeValue"></span>
-                            </div>
-                            <div class="d-flex align-items-center amazon-ads-toolbar-badge" id="amazonAdsOverallAcosBadgeWrap" hidden title="Overall ACOS: (sum of L30 SPL30 spend ÷ sum of L30 sales) × 100 for distinct campaign (+ ad type) in current filters — same L30 overlays as the grid (SP/SB only).">
-                                <span class="badge bg-secondary">ACOS</span>
-                                <span class="ms-1 small fw-semibold tabular-nums" id="amazonAdsOverallAcosBadgeValue"></span>
                             </div>
                             <div class="d-flex gap-1 flex-shrink-0 align-items-end pb-0 ms-auto">
                                 <button type="button" class="btn btn-sm btn-primary py-0" id="amazonAdsFilterApply">Apply</button>
@@ -1250,6 +1307,10 @@
                 activeRawSourceKey = table.getAttribute('data-raw-source') || 'sp_reports';
                 amazonAdsUpdateSpl30BadgeFromJson({}, sourceKey);
                 amazonAdsUpdateOverallAcosBadgeFromJson({}, sourceKey);
+                amazonAdsUpdateSpendBadgeFromJson({}, sourceKey);
+                amazonAdsUpdateClicksBadgeFromJson({}, sourceKey);
+                amazonAdsUpdateSoldBadgeFromJson({}, sourceKey);
+                amazonAdsUpdateSalesBadgeFromJson({}, sourceKey);
                 amazonAdsUpdateSbidPushButton();
                 initTable(table.id, table.getAttribute('data-raw-source'));
             }
@@ -1344,15 +1405,87 @@
                     wrap.hidden = false;
                     var p = Number(json.overallAcosPercent);
                     valEl.textContent = p.toFixed(0) + '%';
-                    if (typeof amazonAdsAcosTierColor === 'function') {
-                        valEl.style.color = amazonAdsAcosTierColor(p);
-                    } else {
-                        valEl.style.color = '';
-                    }
+                    valEl.style.color = '';
                 } else {
                     wrap.hidden = true;
                     valEl.textContent = '';
                     valEl.style.color = '';
+                }
+            }
+
+            /** Spend total from raw-data JSON: sum of the `spend` column across all filtered rows. */
+            function amazonAdsUpdateSpendBadgeFromJson(json, responseSourceKey) {
+                if (responseSourceKey && responseSourceKey !== activeRawSourceKey) {
+                    return;
+                }
+                var wrap = document.getElementById('amazonAdsSpendBadgeWrap');
+                var valEl = document.getElementById('amazonAdsSpendBadgeValue');
+                if (!wrap || !valEl) {
+                    return;
+                }
+                if (json && typeof json.spendTotal === 'number' && isFinite(json.spendTotal)) {
+                    wrap.hidden = false;
+                    valEl.textContent = '$' + Number(json.spendTotal).toLocaleString('en-US', { maximumFractionDigits: 0 });
+                } else {
+                    wrap.hidden = true;
+                    valEl.textContent = '';
+                }
+            }
+
+            /** Clicks total from raw-data JSON: sum of the `clicks` column across all filtered rows. */
+            function amazonAdsUpdateClicksBadgeFromJson(json, responseSourceKey) {
+                if (responseSourceKey && responseSourceKey !== activeRawSourceKey) {
+                    return;
+                }
+                var wrap = document.getElementById('amazonAdsClicksBadgeWrap');
+                var valEl = document.getElementById('amazonAdsClicksBadgeValue');
+                if (!wrap || !valEl) {
+                    return;
+                }
+                if (json && typeof json.clicksTotal === 'number' && isFinite(json.clicksTotal)) {
+                    wrap.hidden = false;
+                    valEl.textContent = Number(json.clicksTotal).toLocaleString('en-US');
+                } else {
+                    wrap.hidden = true;
+                    valEl.textContent = '';
+                }
+            }
+
+            /** Sold total from raw-data JSON: sum of purchases across all filtered rows. */
+            function amazonAdsUpdateSoldBadgeFromJson(json, responseSourceKey) {
+                if (responseSourceKey && responseSourceKey !== activeRawSourceKey) {
+                    return;
+                }
+                var wrap = document.getElementById('amazonAdsSoldBadgeWrap');
+                var valEl = document.getElementById('amazonAdsSoldBadgeValue');
+                if (!wrap || !valEl) {
+                    return;
+                }
+                if (json && typeof json.soldTotal === 'number' && isFinite(json.soldTotal)) {
+                    wrap.hidden = false;
+                    valEl.textContent = Number(json.soldTotal).toLocaleString('en-US');
+                } else {
+                    wrap.hidden = true;
+                    valEl.textContent = '';
+                }
+            }
+
+            /** Sales total from raw-data JSON: sum of the `sales` column across all filtered rows. */
+            function amazonAdsUpdateSalesBadgeFromJson(json, responseSourceKey) {
+                if (responseSourceKey && responseSourceKey !== activeRawSourceKey) {
+                    return;
+                }
+                var wrap = document.getElementById('amazonAdsSalesBadgeWrap');
+                var valEl = document.getElementById('amazonAdsSalesBadgeValue');
+                if (!wrap || !valEl) {
+                    return;
+                }
+                if (json && typeof json.salesTotal === 'number' && isFinite(json.salesTotal)) {
+                    wrap.hidden = false;
+                    valEl.textContent = '$' + Number(json.salesTotal).toLocaleString('en-US', { maximumFractionDigits: 0 });
+                } else {
+                    wrap.hidden = true;
+                    valEl.textContent = '';
                 }
             }
 
@@ -1978,6 +2111,10 @@
                         dataSrc: function (json) {
                             amazonAdsUpdateSpl30BadgeFromJson(json, sourceKey);
                             amazonAdsUpdateOverallAcosBadgeFromJson(json, sourceKey);
+                            amazonAdsUpdateSpendBadgeFromJson(json, sourceKey);
+                            amazonAdsUpdateClicksBadgeFromJson(json, sourceKey);
+                            amazonAdsUpdateSoldBadgeFromJson(json, sourceKey);
+                            amazonAdsUpdateSalesBadgeFromJson(json, sourceKey);
                             return json && json.data ? json.data : [];
                         },
                         error: function (xhr) {
