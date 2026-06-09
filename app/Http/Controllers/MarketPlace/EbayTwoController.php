@@ -121,10 +121,15 @@ class EbayTwoController extends Controller
             ->values()
             ->all();
 
-        // Fetch ALL ebay2_metrics (including Open Box items not in product_masters)
+        // Fetch ALL ebay2_metrics (including Open Box items not in product_masters).
+        // Key by NBSP / Unicode space–safe normalized SKU: ebay2_metrics.sku can contain
+        // non-breaking spaces (U+00A0) while product_masters.sku uses normal spaces, which
+        // otherwise breaks the lookup (item_id/price missing → row wrongly shows as Missing L).
         $ebayMetrics = Ebay2Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'l7_views', 'item_id', 'ebay_stock')
             ->get()
-            ->keyBy("sku");
+            ->keyBy(function ($metric) {
+                return ShopifySku::normalizeSkuForShopifyLookup($metric->sku);
+            });
         
         // Fetch Amazon prices for comparison
         $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)->pluck('price', 'sku');
@@ -399,7 +404,7 @@ class EbayTwoController extends Controller
             $parent = $pm->parent;
 
             $shopify = $shopifyData->get($pm->sku);
-            $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
+            $ebayMetric = $ebayMetrics[ShopifySku::normalizeSkuForShopifyLookup($pm->sku)] ?? null;
             // Try both lowercase and original case for listing status lookup
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? $listingStatusData[$pm->sku] ?? null;
 

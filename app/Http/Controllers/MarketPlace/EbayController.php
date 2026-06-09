@@ -257,6 +257,9 @@ class EbayController extends Controller
         // 3. Related Models (NBSP / Unicode space–safe PM ↔ shopify_skus match)
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
+        // Key by NBSP / Unicode space–safe normalized SKU: ebay_metrics.sku can contain
+        // non-breaking spaces (U+00A0) while product_masters.sku uses normal spaces, which
+        // otherwise breaks the lookup (item_id/price missing → row wrongly shows as Missing L).
         $ebayMetrics = EbayMetric::select(
                 'sku',
                 'ebay_l30',
@@ -270,7 +273,9 @@ class EbayController extends Controller
             )
             ->whereIn('sku', $skus)
             ->get()
-            ->keyBy('sku');
+            ->keyBy(function ($metric) {
+                return ShopifySku::normalizeSkuForShopifyLookup($metric->sku);
+            });
 
         // Fetch Amazon prices for comparison
         $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)
@@ -480,7 +485,7 @@ class EbayController extends Controller
             $parent = $pm->parent;
 
             $shopify = $shopifyData->get($pm->sku);
-            $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
+            $ebayMetric = $ebayMetrics[ShopifySku::normalizeSkuForShopifyLookup($pm->sku)] ?? null;
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
 
             $row = [];
