@@ -78,6 +78,7 @@ use App\Http\Controllers\EbayDataUpdateController;
 use App\Http\Controllers\FacebookAdsController;
 use App\Http\Controllers\FBAAnalysticsController;
 use App\Http\Controllers\FbaDataController;
+use App\Http\Controllers\MapIssuesController;
 use App\Http\Controllers\InventoryManagement\AutoStockBalanceController;
 use App\Http\Controllers\InventoryManagement\IncomingController;
 use App\Http\Controllers\InventoryManagement\IssueController as SparePartsIssueController;
@@ -2688,6 +2689,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/stock-transfer-view', [StockTransferController::class, 'index'])->name('stock.transfer.view');
     Route::post('/stock-transfer-store', [StockTransferController::class, 'store'])->name('stock.transfer.store');
     Route::get('/stock-transfer-data-list', [StockTransferController::class, 'list']);
+
+    // Map Issues
+    Route::get('/map-issues', [MapIssuesController::class, 'index'])->name('map.issues');
+    Route::get('/map-issues-data', [MapIssuesController::class, 'data'])->name('map.issues.data');
+    Route::post('/map-issues-update-nr', [MapIssuesController::class, 'updateNrReq'])->name('map.issues.update.nr');
 
     // Stock Balance
     Route::get('/stock-balance-view', [StockBalanceController::class, 'index'])->name('stock.balance.view');

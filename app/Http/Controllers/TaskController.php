@@ -1465,7 +1465,7 @@ class TaskController extends Controller
             $action = $request->input('action');
             $taskIdRule = $isAutomatedTask ? 'integer' : (($action === 'delete') ? 'integer' : 'exists:tasks,id');
             $rules = [
-                'action' => 'required|in:delete,priority,tid,assignee,etc,assign_assignee,assign_assignor,duplicate,assignor,freq,group,task',
+                'action' => 'required|in:delete,mark_done,priority,tid,assignee,etc,assign_assignee,assign_assignor,duplicate,assignor,freq,group,task',
                 'task_ids' => 'required|array',
                 'task_ids.*' => $taskIdRule,
                 'is_automated' => 'nullable|boolean',
@@ -1476,6 +1476,7 @@ class TaskController extends Controller
                 'assignee' => 'nullable|string',
                 'assignor' => 'nullable|string',
                 'etc_minutes' => 'nullable|integer|min:1',
+                'atc' => 'nullable|integer|min:1|digits_between:1,10',
                 'freq' => 'nullable|in:daily,weekly,monthly',
                 'duplicate_group' => 'nullable|string|max:255',
                 'duplicate_title_suffix' => 'nullable|string|max:500',
@@ -1588,6 +1589,92 @@ class TaskController extends Controller
                             'message' => 'Failed to delete tasks: ' . (config('app.debug') ? $e->getMessage() : 'Please try again or contact support.'),
                         ], 500);
                     }
+                }
+
+            case 'mark_done':
+                try {
+                    $tasksToComplete = Task::whereIn('id', $taskIds)->get();
+                    $canCompleteAny = $isAdmin || TaskPolicy::userHasSpecialTaskPermission($user);
+
+                    // Same ATC (minutes) is applied to every selected task.
+                    $bulkAtc = array_key_exists('atc', $validated) && $validated['atc'] !== null
+                        ? (int) $validated['atc']
+                        : null;
+
+                    $doneCount = 0;
+                    $skippedNoPermission = 0;
+                    $alreadyDone = 0;
+
+                    foreach ($tasksToComplete as $task) {
+                        // Permission: admin / special users can complete any task;
+                        // otherwise only the assignor or an assignee of the task.
+                        $allowed = $canCompleteAny || $user->can('updateStatus', $task);
+                        if (!$allowed) {
+                            $skippedNoPermission++;
+                            continue;
+                        }
+
+                        if (($task->status ?? '') === 'Done') {
+                            $alreadyDone++;
+                            continue;
+                        }
+
+                        $task->status = 'Done';
+                        // Same ATC applied to all; report can't be collected per-task in bulk so it's preserved.
+                        $this->applyTaskDoneEffects($task, $bulkAtc);
+                        $task->save();
+
+                        try {
+                            $this->taskWhatsApp->notifyTaskDone($task->fresh());
+                        } catch (\Throwable $e) {
+                            \Log::warning('Bulk mark done: WhatsApp notify failed', [
+                                'task_id' => $task->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
+
+                        // Completed automated tasks are auto-archived (kept out of active list).
+                        try {
+                            $this->archiveCompletedAutomatedTask($task);
+                        } catch (\Throwable $e) {
+                            \Log::warning('Bulk mark done: auto-archive failed', [
+                                'task_id' => $task->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
+
+                        $doneCount++;
+                    }
+
+                    if ($doneCount === 0 && $skippedNoPermission > 0 && $alreadyDone === 0) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'You can only mark tasks done that you created or are assigned to. None of the selected tasks qualify.',
+                        ], 403);
+                    }
+
+                    $message = "$doneCount task(s) marked as Done!";
+                    if ($alreadyDone > 0) {
+                        $message .= " ($alreadyDone already Done)";
+                    }
+                    if ($skippedNoPermission > 0) {
+                        $message .= " ($skippedNoPermission skipped - no permission)";
+                    }
+
+                    return response()->json([
+                        'success' => true,
+                        'message' => $message,
+                    ]);
+                } catch (\Throwable $e) {
+                    \Log::error('Bulk mark done failed', [
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                        'task_ids' => $taskIds,
+                    ]);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Failed to mark tasks done: ' . (config('app.debug') ? $e->getMessage() : 'Please try again or contact support.'),
+                    ], 500);
                 }
 
             case 'priority':

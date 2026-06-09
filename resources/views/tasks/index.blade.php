@@ -1575,6 +1575,14 @@
                             style="width:38px;height:38px;object-fit:contain;cursor:pointer;border-radius:8px;transition:transform 0.15s ease;"
                             onmouseover="this.style.transform='scale(1.1)'"
                             onmouseout="this.style.transform='scale(1)'">
+                        @if(strtolower(trim((string) (Auth::user()->email ?? ''))) === 'tech-support@5core.com')
+                        <button type="button" id="bulk-info-icon"
+                            class="btn btn-info btn-sm rounded-circle d-flex align-items-center justify-content-center p-0"
+                            title="Bulk actions: select tasks below, then mark them Done or delete them"
+                            style="width:34px;height:34px;">
+                            <i class="mdi mdi-information-variant" style="font-size:18px;"></i>
+                        </button>
+                        @endif
                     </div>
                     <div class="page-title-right">
                         <ol class="breadcrumb m-0">
@@ -4942,6 +4950,15 @@
                 $('#bulk-actions-btn').click();
             });
 
+            // Info "i" icon near the title = directly mark selected tasks done (just ask for time)
+            $('#bulk-info-icon').on('click', function() {
+                if (selectedTasks.length === 0) {
+                    alert('Please select at least one task first.');
+                    return;
+                }
+                openBulkMarkDoneForm();
+            });
+
             
             // ==========================================
             // MOBILE QUICK FILTER CHIPS
@@ -5596,6 +5613,23 @@
                 $('#bulkAssignorModal').modal('hide');
             });
 
+            // Bulk Mark as Done (asks for ATC time, same ATC applied to all selected tasks)
+            function openBulkMarkDoneForm() {
+                if (selectedTasks.length === 0) {
+                    return;
+                }
+                bulkActionType = 'mark_done';
+                var html = `
+                    <p class="mb-3"><strong>Mark ${selectedTasks.length} task(s) as Done</strong></p>
+                    <div class="mb-3">
+                        <label for="bulk-atc-input" class="form-label">ATC (Actual Time Consumed) in minutes:</label>
+                        <input type="number" class="form-control" id="bulk-atc-input" min="1" placeholder="e.g., 30" required>
+                        <small class="text-muted">The same ATC will be applied to every selected task.</small>
+                    </div>
+                `;
+                showBulkUpdateForm('Mark as Done', html);
+            }
+
             // Bulk Delete (no confirmation)
             $('#bulk-delete-btn').on('click', function(e) {
                 e.preventDefault();
@@ -5719,6 +5753,13 @@
                 var data = {};
                 
                 switch(bulkActionType) {
+                    case 'mark_done':
+                        data.atc = $('#bulk-atc-input').val();
+                        if (!data.atc || data.atc <= 0) {
+                            alert('Please enter a valid ATC value (minutes)');
+                            return;
+                        }
+                        break;
                     case 'priority':
                         data.priority = $('#bulk-priority-select').val();
                         break;
@@ -5774,7 +5815,12 @@
                         $('#bulkActionsModal').modal('hide');
                         table.deselectRow();
                         table.replaceData();
-                        
+
+                        // No toast for mark done — just refresh silently.
+                        if (action === 'mark_done') {
+                            return;
+                        }
+
                         var alertHtml = `
                             <div class="alert alert-success alert-dismissible fade show" role="alert">
                                 <i class="mdi mdi-check-circle me-2"></i>${response.message}
