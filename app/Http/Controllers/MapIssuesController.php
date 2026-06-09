@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AmazonDatasheet;
+use App\Models\AmazonDataView;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\EbayDataView;
 use App\Models\EbayMetric;
-use App\Models\EbayThreeDataView;
-use App\Models\EbayTwoDataView;
+use App\Models\EbayThreeListingStatus;
+use App\Models\EbayTwoListingStatus;
 use App\Models\ProductMaster;
+use App\Models\ProductStockMapping;
 use App\Models\ShopifySku;
 use Illuminate\Http\Request;
 
@@ -58,6 +61,9 @@ class MapIssuesController extends Controller
                 'missing_listing_count' => 0,
                 'ebay2_missing_listing_count' => 0,
                 'ebay3_missing_listing_count' => 0,
+                'amazon_not_map_count' => 0,
+                'amazon_mismatch_count' => 0,
+                'amazon_missing_listing_count' => 0,
             ]);
         }
 
@@ -68,9 +74,18 @@ class MapIssuesController extends Controller
         $ebay3ByNorm   = $this->buildMetricLookupByNormalizedSku(Ebay3Metric::class, $skus);
 
         // NR/REQ values per marketplace — used for the Missing Listing condition.
-        $nrValues  = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
-        $nrValues2 = EbayTwoDataView::whereIn('sku', $skus)->pluck('value', 'sku');
-        $nrValues3 = EbayThreeDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+        // eBay 1 uses EbayDataView's "NRL" key (REQ/NRL).
+        // eBay 2 & 3 use their listing-status "nr_req" key (REQ/NR) — same source as their pages.
+        $nrValues   = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+        $nrStatus2  = $this->buildNrReqStatusLookup(EbayTwoListingStatus::class, $skus);
+        $nrStatus3  = $this->buildNrReqStatusLookup(EbayThreeListingStatus::class, $skus);
+
+        // Amazon: stock comes from product_stock_mappings.inventory_amazon, the listing
+        // (ASIN) / stored SKU come from amazon_datsheets, and REQ/NRL comes from
+        // amazon_data_view's "NRL" key — same source the amazon-tabulator-view page uses.
+        $amazonStockByNorm = $this->buildAmazonStockLookupByNormalizedSku($skus);
+        $amazonSheetByNorm = $this->buildAmazonSheetLookupByNormalizedSku($skus);
+        $nrValuesAmz       = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
         // 4. Build rows
         $result = [];
@@ -83,6 +98,9 @@ class MapIssuesController extends Controller
         $missingListingCount = 0;       // eBay1: not listed, REQ, INV > 0
         $ebay2MissingListingCount = 0;  // eBay2: not listed, REQ, INV > 0
         $ebay3MissingListingCount = 0;  // eBay3: not listed, REQ, INV > 0
+        $amazonNotMapCount = 0;          // Amazon: INV != Amazon Stock
+        $amazonMismatchCount = 0;        // Amazon: SKU stored differently
+        $amazonMissingListingCount = 0;  // Amazon: not listed, REQ, INV > 0
         foreach ($productMasters as $pm) {
             $key = ShopifySku::normalizeSkuForShopifyLookup($pm->sku);
 
@@ -90,6 +108,7 @@ class MapIssuesController extends Controller
             $ebay    = $key !== '' ? ($ebayByNorm[$key] ?? null) : null;
             $ebay2   = $key !== '' ? ($ebay2ByNorm[$key] ?? null) : null;
             $ebay3   = $key !== '' ? ($ebay3ByNorm[$key] ?? null) : null;
+            $amazonSheet = $key !== '' ? ($amazonSheetByNorm[$key] ?? null) : null;
 
             $inv = floatval($shopify->inv ?? 0);
 
@@ -102,16 +121,20 @@ class MapIssuesController extends Controller
             if ($ebayHasIssue) {
                 $mismatchCount++;
             }
+            $ebayNrReq = $this->isReq($nrValues, $pm->sku) ? 'REQ' : 'NRL';
+            // N Map within a 3% tolerance, both sides with stock, REQ only (NL / Not Req not counted).
             $ebayIsNotMap = false;
-            if ($ebayItemId && $ebayItemId !== null && $ebayItemId !== '') {
-                if ($inv > 0 && ($ebayStock === 0.0 || ($ebayStock > 0 && $inv !== $ebayStock))) {
+            $ebayWithin3 = false;
+            if ($ebayItemId && $ebayItemId !== null && $ebayItemId !== '' && $ebayNrReq === 'REQ' && $inv > 0 && $ebayStock > 0) {
+                $ebayDiffPct = (abs($inv - $ebayStock) / $inv) * 100;
+                if (round($ebayDiffPct) > 3) {
                     $ebayIsNotMap = true;
                     $notMapCount++;
                 }
+                $ebayWithin3 = round($ebayDiffPct) <= 3;
             }
 
             // Missing Listing: not listed on the marketplace, INV > 0 (NRL rows are kept, just labelled).
-            $ebayNrReq = $this->isReq($nrValues, $pm->sku) ? 'REQ' : 'NRL';
             $ebayNotListed = ! ($ebayItemId && $ebayItemId !== null && $ebayItemId !== '');
             $ebayMissingListing = $ebayNotListed && $inv > 0;
             if ($ebayMissingListing && $ebayNrReq === 'REQ') {
@@ -127,14 +150,19 @@ class MapIssuesController extends Controller
             if ($ebay2HasIssue) {
                 $ebay2MismatchCount++;
             }
+            $ebay2NrReq = $this->isReqStatus($nrStatus2, $pm->sku) ? 'REQ' : 'NR';
+            // eBay 2 only: allow a 3% tolerance — within 3% counts as mapped (e.g. 100 vs 97).
+            // NL / 0 stock and Not Req rows are not counted as N Map.
             $ebay2IsNotMap = false;
-            if ($ebay2ItemId && $ebay2ItemId !== null && $ebay2ItemId !== '') {
-                if ($inv > 0 && ($ebay2Stock === 0.0 || ($ebay2Stock > 0 && $inv !== $ebay2Stock))) {
+            $ebay2Within3 = false;
+            if ($ebay2ItemId && $ebay2ItemId !== null && $ebay2ItemId !== '' && $ebay2NrReq === 'REQ' && $inv > 0 && $ebay2Stock > 0) {
+                $ebay2DiffPct = (abs($inv - $ebay2Stock) / $inv) * 100;
+                if (round($ebay2DiffPct) > 3) {
                     $ebay2IsNotMap = true;
                     $ebay2NotMapCount++;
                 }
+                $ebay2Within3 = round($ebay2DiffPct) <= 3;
             }
-            $ebay2NrReq = $this->isReq($nrValues2, $pm->sku) ? 'REQ' : 'NRL';
             $ebay2NotListed = ! ($ebay2ItemId && $ebay2ItemId !== null && $ebay2ItemId !== '');
             $ebay2MissingListing = $ebay2NotListed && $inv > 0;
             if ($ebay2MissingListing && $ebay2NrReq === 'REQ') {
@@ -150,23 +178,57 @@ class MapIssuesController extends Controller
             if ($ebay3HasIssue) {
                 $ebay3MismatchCount++;
             }
+            $ebay3NrReq = $this->isReqStatus($nrStatus3, $pm->sku) ? 'REQ' : 'NR';
+            // eBay 3 caps listing stock at 100, so the expected stock is min(INV, 100).
+            // Allow a 3% tolerance against that expected value. NL / 0 stock and Not Req rows are not counted.
             $ebay3IsNotMap = false;
-            if ($ebay3ItemId && $ebay3ItemId !== null && $ebay3ItemId !== '') {
-                if ($inv > 0 && ($ebay3Stock === 0.0 || ($ebay3Stock > 0 && $inv !== $ebay3Stock))) {
+            $ebay3Within3 = false;
+            if ($ebay3ItemId && $ebay3ItemId !== null && $ebay3ItemId !== '' && $ebay3NrReq === 'REQ' && $inv > 0 && $ebay3Stock > 0) {
+                $ebay3Expected = min($inv, 100.0);
+                $ebay3DiffPct = (abs($ebay3Stock - $ebay3Expected) / $ebay3Expected) * 100;
+                if (round($ebay3DiffPct) > 3) {
                     $ebay3IsNotMap = true;
                     $ebay3NotMapCount++;
                 }
+                $ebay3Within3 = round($ebay3DiffPct) <= 3;
             }
-            $ebay3NrReq = $this->isReq($nrValues3, $pm->sku) ? 'REQ' : 'NRL';
             $ebay3NotListed = ! ($ebay3ItemId && $ebay3ItemId !== null && $ebay3ItemId !== '');
             $ebay3MissingListing = $ebay3NotListed && $inv > 0;
             if ($ebay3MissingListing && $ebay3NrReq === 'REQ') {
                 $ebay3MissingListingCount++;
             }
 
+            // ---- Amazon ----
+            $amazonStock = floatval($key !== '' ? ($amazonStockByNorm[$key] ?? 0) : 0);
+            $amazonAsin = $amazonSheet->asin ?? '';
+            $amazonSku = $amazonSheet->sku ?? null;
+            $amazonReason = $amazonSku !== null ? $this->skuDifferenceReason($pm->sku, $amazonSku) : '';
+            $amazonHasIssue = $amazonReason !== '';
+            if ($amazonHasIssue) {
+                $amazonMismatchCount++;
+            }
+            $amazonNrReq = $this->isReq($nrValuesAmz, $pm->sku) ? 'REQ' : 'NRL';
+            // N Map within a 3% tolerance, both sides with stock, REQ only (NL / Not Req not counted).
+            $amazonIsNotMap = false;
+            $amazonWithin3 = false;
+            if ($amazonAsin && $amazonAsin !== null && $amazonAsin !== '' && $amazonNrReq === 'REQ' && $inv > 0 && $amazonStock > 0) {
+                $amazonDiffPct = (abs($inv - $amazonStock) / $inv) * 100;
+                if (round($amazonDiffPct) > 3) {
+                    $amazonIsNotMap = true;
+                    $amazonNotMapCount++;
+                }
+                $amazonWithin3 = round($amazonDiffPct) <= 3;
+            }
+            $amazonNotListed = ! ($amazonAsin && $amazonAsin !== null && $amazonAsin !== '');
+            $amazonMissingListing = $amazonNotListed && $inv > 0;
+            if ($amazonMissingListing && $amazonNrReq === 'REQ') {
+                $amazonMissingListingCount++;
+            }
+
             $result[] = [
                 '(Child) sku'    => $pm->sku,
                 'INV'            => $shopify->inv ?? 0,
+                'listed_on'      => '',
 
                 'Ebay Inv'        => $ebay->ebay_stock ?? 0,
                 'ebay_sku'        => $ebaySku,
@@ -174,6 +236,7 @@ class MapIssuesController extends Controller
                 'issue'           => $ebayReason,
                 'has_issue'       => $ebayHasIssue,
                 'is_not_map'      => $ebayIsNotMap,
+                'ebay_within3'    => $ebayWithin3,
                 'missing_listing' => $ebayMissingListing,
                 'ebay_nr_req'     => $ebayNrReq,
 
@@ -182,6 +245,7 @@ class MapIssuesController extends Controller
                 'ebay2_mismatch'        => $ebay2HasIssue,
                 'ebay2_issue'           => $ebay2Reason,
                 'ebay2_not_map'         => $ebay2IsNotMap,
+                'ebay2_within3'         => $ebay2Within3,
                 'ebay2_missing_listing' => $ebay2MissingListing,
                 'ebay2_nr_req'          => $ebay2NrReq,
 
@@ -190,9 +254,29 @@ class MapIssuesController extends Controller
                 'ebay3_mismatch'        => $ebay3HasIssue,
                 'ebay3_issue'           => $ebay3Reason,
                 'ebay3_not_map'         => $ebay3IsNotMap,
+                'ebay3_within3'         => $ebay3Within3,
                 'ebay3_missing_listing' => $ebay3MissingListing,
                 'ebay3_nr_req'          => $ebay3NrReq,
+
+                'Amazon Inv'             => $amazonStock,
+                'amazon_sku'             => $amazonSku,
+                'amazon_mismatch'        => $amazonHasIssue,
+                'amazon_issue'           => $amazonReason,
+                'amazon_not_map'         => $amazonIsNotMap,
+                'amazon_within3'         => $amazonWithin3,
+                'amazon_missing_listing' => $amazonMissingListing,
+                'amazon_nr_req'          => $amazonNrReq,
+
+                'pm_missing'            => false,
             ];
+        }
+
+        // Optionally append SKUs that exist on a marketplace but NOT in Product Master.
+        $pmMissingCount = 0;
+        if ($request->boolean('site_only')) {
+            $siteOnlyRows = $this->buildSiteOnlyRows($skus);
+            $pmMissingCount = count($siteOnlyRows);
+            $result = array_merge($result, $siteOnlyRows);
         }
 
         return response()->json([
@@ -206,7 +290,157 @@ class MapIssuesController extends Controller
             'missing_listing_count' => $missingListingCount,
             'ebay2_missing_listing_count' => $ebay2MissingListingCount,
             'ebay3_missing_listing_count' => $ebay3MissingListingCount,
+            'amazon_not_map_count'  => $amazonNotMapCount,
+            'amazon_mismatch_count' => $amazonMismatchCount,
+            'amazon_missing_listing_count' => $amazonMissingListingCount,
+            'pm_missing_count'      => $pmMissingCount,
         ]);
+    }
+
+    /**
+     * Build rows for SKUs that exist on a marketplace (listed) but are missing
+     * from Product Master.
+     *
+     * @param  array<int, string>  $productSkus
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildSiteOnlyRows(array $productSkus): array
+    {
+        $pmKeys = [];
+        foreach ($productSkus as $s) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $s);
+            if ($k !== '') {
+                $pmKeys[$k] = true;
+            }
+        }
+
+        $map = [];
+        $scan = function (string $modelClass, string $field) use (&$map, $pmKeys) {
+            $modelClass::query()
+                ->select('sku', 'ebay_stock', 'item_id', 'id')
+                ->whereNotNull('item_id')
+                ->where('item_id', '!=', '')
+                ->orderBy('id')
+                ->chunkById(3000, function ($rows) use (&$map, $pmKeys, $field) {
+                    foreach ($rows as $r) {
+                        $k = ShopifySku::normalizeSkuForShopifyLookup($r->sku);
+                        if ($k === '' || isset($pmKeys[$k])) {
+                            continue;
+                        }
+                        if (! isset($map[$k])) {
+                            $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null];
+                        }
+                        $map[$k][$field] = $r->ebay_stock ?? 0;
+                    }
+
+                    return true;
+                });
+        };
+
+        $scan(EbayMetric::class, 'ebay');
+        $scan(Ebay2Metric::class, 'ebay2');
+        $scan(Ebay3Metric::class, 'ebay3');
+
+        // Amazon: a SKU is "listed" when it has an ASIN in amazon_datsheets.
+        AmazonDatasheet::query()
+            ->select('sku', 'asin', 'id')
+            ->whereNotNull('asin')
+            ->where('asin', '!=', '')
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$map, $pmKeys) {
+                foreach ($rows as $r) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $r->sku);
+                    if ($k === '' || isset($pmKeys[$k])) {
+                        continue;
+                    }
+                    if (! isset($map[$k])) {
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null];
+                    }
+                    $map[$k]['amazon'] = 0; // listed flag; real stock filled in below
+                }
+
+                return true;
+            });
+
+        // Fill Amazon stock for the collected site-only SKUs.
+        $amazonSiteOnlySkus = [];
+        foreach ($map as $m) {
+            if ($m['amazon'] !== null) {
+                $amazonSiteOnlySkus[] = $m['sku'];
+            }
+        }
+        if ($amazonSiteOnlySkus !== []) {
+            $stockByNorm = $this->buildAmazonStockLookupByNormalizedSku($amazonSiteOnlySkus);
+            foreach ($map as $k => $m) {
+                if ($m['amazon'] !== null) {
+                    $map[$k]['amazon'] = $stockByNorm[$k] ?? 0;
+                }
+            }
+        }
+
+        $rows = [];
+        foreach ($map as $m) {
+            $listedOn = [];
+            if ($m['ebay'] !== null) {
+                $listedOn[] = 'eBay';
+            }
+            if ($m['ebay2'] !== null) {
+                $listedOn[] = 'eBay 2';
+            }
+            if ($m['ebay3'] !== null) {
+                $listedOn[] = 'eBay 3';
+            }
+            if ($m['amazon'] !== null) {
+                $listedOn[] = 'Amazon';
+            }
+
+            $rows[] = [
+                '(Child) sku'    => $m['sku'],
+                'INV'            => 0,
+                'listed_on'      => implode(', ', $listedOn),
+
+                'Ebay Inv'        => $m['ebay'] ?? 0,
+                'ebay_sku'        => $m['ebay'] !== null ? $m['sku'] : null,
+                'ebay_mismatch'   => false,
+                'issue'           => '',
+                'has_issue'       => false,
+                'is_not_map'      => false,
+                'ebay_within3'    => false,
+                'missing_listing' => false,
+                'ebay_nr_req'     => 'REQ',
+
+                'Ebay2 Inv'             => $m['ebay2'] ?? 0,
+                'ebay2_sku'             => $m['ebay2'] !== null ? $m['sku'] : null,
+                'ebay2_mismatch'        => false,
+                'ebay2_issue'           => '',
+                'ebay2_not_map'         => false,
+                'ebay2_within3'         => false,
+                'ebay2_missing_listing' => false,
+                'ebay2_nr_req'          => 'REQ',
+
+                'Ebay3 Inv'             => $m['ebay3'] ?? 0,
+                'ebay3_sku'             => $m['ebay3'] !== null ? $m['sku'] : null,
+                'ebay3_mismatch'        => false,
+                'ebay3_issue'           => '',
+                'ebay3_not_map'         => false,
+                'ebay3_within3'         => false,
+                'ebay3_missing_listing' => false,
+                'ebay3_nr_req'          => 'REQ',
+
+                'Amazon Inv'             => $m['amazon'] ?? 0,
+                'amazon_sku'             => $m['amazon'] !== null ? $m['sku'] : null,
+                'amazon_mismatch'        => false,
+                'amazon_issue'           => '',
+                'amazon_not_map'         => false,
+                'amazon_within3'         => false,
+                'amazon_missing_listing' => false,
+                'amazon_nr_req'          => 'REQ',
+
+                'pm_missing'            => true,
+            ];
+        }
+
+        return $rows;
     }
 
     /**
@@ -218,25 +452,68 @@ class MapIssuesController extends Controller
         $market = (string) $request->input('marketplace');
         $status = strtoupper((string) $request->input('status'));
 
-        $modelMap = [
-            'ebay'  => EbayDataView::class,
-            'ebay2' => EbayTwoDataView::class,
-            'ebay3' => EbayThreeDataView::class,
+        // Per-marketplace config: model, JSON key, and the "not required" status value.
+        // eBay 1 stores REQ/NRL under "NRL" in EbayDataView.
+        // eBay 2 & 3 store REQ/NR under "nr_req" in their listing-status tables.
+        $config = [
+            'ebay'   => ['model' => EbayDataView::class,           'key' => 'NRL',    'notReq' => 'NRL'],
+            'ebay2'  => ['model' => EbayTwoListingStatus::class,   'key' => 'nr_req', 'notReq' => 'NR'],
+            'ebay3'  => ['model' => EbayThreeListingStatus::class, 'key' => 'nr_req', 'notReq' => 'NR'],
+            'amazon' => ['model' => AmazonDataView::class,         'key' => 'NRL',    'notReq' => 'NRL'],
         ];
 
-        if ($sku === '' || ! isset($modelMap[$market]) || ! in_array($status, ['REQ', 'NRL'], true)) {
+        if ($sku === '' || ! isset($config[$market])) {
             return response()->json(['success' => false, 'message' => 'Invalid request'], 422);
         }
 
-        $modelClass = $modelMap[$market];
-        $row = $modelClass::firstOrNew(['sku' => $sku]);
+        $cfg = $config[$market];
+        if (! in_array($status, ['REQ', $cfg['notReq']], true)) {
+            return response()->json(['success' => false, 'message' => 'Invalid status'], 422);
+        }
+
+        $modelClass = $cfg['model'];
+        $row = $modelClass::whereRaw('LOWER(sku) = ?', [strtolower($sku)])->first();
+        if (! $row) {
+            $row = new $modelClass();
+            $row->sku = $sku;
+        }
 
         $value = is_array($row->value) ? $row->value : (json_decode((string) $row->value, true) ?: []);
-        $value['NRL'] = $status; // stored under the NRL key: 'REQ' or 'NRL'
+        $value[$cfg['key']] = $status;
         $row->value = $value;
         $row->save();
 
         return response()->json(['success' => true, 'sku' => $sku, 'marketplace' => $market, 'status' => $status]);
+    }
+
+    /**
+     * Build a SKU(lowercased) => nr_req status lookup from a listing-status model.
+     *
+     * @param  class-string<\Illuminate\Database\Eloquent\Model>  $modelClass
+     * @param  array<int, string>  $skus
+     * @return array<string, string>
+     */
+    private function buildNrReqStatusLookup(string $modelClass, array $skus): array
+    {
+        $out = [];
+        foreach ($modelClass::whereIn('sku', $skus)->get(['sku', 'value']) as $row) {
+            $value = is_array($row->value) ? $row->value : (json_decode((string) $row->value, true) ?: []);
+            $out[strtolower(trim((string) $row->sku))] = strtoupper((string) ($value['nr_req'] ?? 'REQ'));
+        }
+
+        return $out;
+    }
+
+    /**
+     * Whether a SKU is REQ in a listing-status nr_req lookup (default REQ).
+     *
+     * @param  array<string, string>  $statusMap
+     */
+    private function isReqStatus(array $statusMap, string $sku): bool
+    {
+        $status = $statusMap[strtolower(trim($sku))] ?? 'REQ';
+
+        return $status === 'REQ';
     }
 
     /**
@@ -297,6 +574,106 @@ class MapIssuesController extends Controller
             ->chunkById(3000, function ($rows) use (&$byNorm, &$missing) {
                 foreach ($rows as $row) {
                     $k = ShopifySku::normalizeSkuForShopifyLookup($row->sku);
+                    if ($k !== '' && isset($missing[$k]) && ! isset($byNorm[$k])) {
+                        $byNorm[$k] = $row;
+                        unset($missing[$k]);
+                    }
+                }
+
+                return count($missing) > 0;
+            });
+
+        return $byNorm;
+    }
+
+    /**
+     * Build a normalized-SKU => Amazon stock (inventory_amazon) lookup from
+     * product_stock_mappings, with a full-scan fallback for formatting variants.
+     *
+     * @param  array<int, string>  $productSkus
+     * @return array<string, float>
+     */
+    private function buildAmazonStockLookupByNormalizedSku(array $productSkus): array
+    {
+        $byNorm = [];
+
+        foreach (ProductStockMapping::select('sku', 'inventory_amazon')->whereIn('sku', $productSkus)->get() as $row) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $byNorm[$k] = floatval($row->inventory_amazon ?? 0);
+            }
+        }
+
+        $missing = [];
+        foreach ($productSkus as $pmSku) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $pmSku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $missing[$k] = true;
+            }
+        }
+
+        if ($missing === []) {
+            return $byNorm;
+        }
+
+        ProductStockMapping::query()
+            ->select('sku', 'inventory_amazon', 'id')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$byNorm, &$missing) {
+                foreach ($rows as $row) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+                    if ($k !== '' && isset($missing[$k]) && ! isset($byNorm[$k])) {
+                        $byNorm[$k] = floatval($row->inventory_amazon ?? 0);
+                        unset($missing[$k]);
+                    }
+                }
+
+                return count($missing) > 0;
+            });
+
+        return $byNorm;
+    }
+
+    /**
+     * Build a normalized-SKU => Amazon datasheet row (sku + asin) lookup, with a
+     * full-scan fallback for SKUs that differ only by formatting.
+     *
+     * @param  array<int, string>  $productSkus
+     * @return array<string, \Illuminate\Database\Eloquent\Model>
+     */
+    private function buildAmazonSheetLookupByNormalizedSku(array $productSkus): array
+    {
+        $byNorm = [];
+
+        foreach (AmazonDatasheet::select('sku', 'asin')->whereIn('sku', $productSkus)->get() as $row) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $byNorm[$k] = $row;
+            }
+        }
+
+        $missing = [];
+        foreach ($productSkus as $pmSku) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $pmSku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $missing[$k] = true;
+            }
+        }
+
+        if ($missing === []) {
+            return $byNorm;
+        }
+
+        AmazonDatasheet::query()
+            ->select('sku', 'asin', 'id')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$byNorm, &$missing) {
+                foreach ($rows as $row) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
                     if ($k !== '' && isset($missing[$k]) && ! isset($byNorm[$k])) {
                         $byNorm[$k] = $row;
                         unset($missing[$k]);

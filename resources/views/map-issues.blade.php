@@ -12,6 +12,13 @@
             color: #a00211 !important;
             font-weight: 600;
         }
+
+        /* Active badge outline */
+        .badge.map-active {
+            box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.55);
+            outline: 2px solid #fff;
+            outline-offset: -1px;
+        }
     </style>
 @endsection
 
@@ -29,7 +36,7 @@
                         <span class="badge bg-secondary fs-6 p-2" id="mismatch-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="eBay SKU Mismatch — eBay SKU does not exactly match the Product Master SKU">E SM: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="missing-listing-count-badge"
+                        <span class="badge bg-secondary fs-6 p-2" id="missing-listing-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="eBay Missing Listing — not listed on eBay, marked REQ, INV > 0">E ML: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="ebay2-not-map-count-badge"
@@ -50,10 +57,31 @@
                         <span class="badge bg-success fs-6 p-2" id="ebay3-missing-listing-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="eBay 3 Missing Listing — not listed on eBay 3, marked REQ, INV > 0">E3 ML: 0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="amazon-not-map-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Amazon Not Mapped — listed on Amazon but INV does not match Amazon Inv">A NP: 0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="amazon-mismatch-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Amazon SKU Mismatch — Amazon SKU does not exactly match the Product Master SKU">A SM: 0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="amazon-missing-listing-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Amazon Missing Listing — not listed on Amazon, marked REQ, INV > 0">A ML: 0</span>
                     </div>
-                    <div class="mb-3 form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="req-only-toggle" style="cursor:pointer;">
-                        <label class="form-check-label" for="req-only-toggle" style="cursor:pointer;">Show Req only</label>
+                    <div class="mb-3 d-flex gap-4">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="req-only-toggle" style="cursor:pointer;">
+                            <label class="form-check-label" for="req-only-toggle" style="cursor:pointer;">Show Req only</label>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="hide-small-diff-toggle" style="cursor:pointer;">
+                            <label class="form-check-label" for="hide-small-diff-toggle" style="cursor:pointer;">Hide &le;3% diff rows</label>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="site-only-toggle" style="cursor:pointer;">
+                            <label class="form-check-label" for="site-only-toggle" style="cursor:pointer;">
+                                Show SKUs not in Product Master <span id="site-only-count" class="text-danger fw-bold"></span>
+                            </label>
+                        </div>
                     </div>
                     <div id="map-issues-table"></div>
                 </div>
@@ -100,14 +128,17 @@
             var activeFilter = null;  // which badge is active, or null
             var activeMarket = null;  // 'ebay' | 'ebay2' | 'ebay3' for the active badge
             var reqOnly = false;      // "Show Req only" toggle
+            var showSiteOnly = false; // "Show SKUs not in Product Master" toggle
+            var hideSmallDiff = false; // "Hide ≤3% diff rows" toggle
 
-            var invFieldByMarket = { ebay: 'Ebay Inv', ebay2: 'Ebay2 Inv', ebay3: 'Ebay3 Inv' };
-            var nrFieldByMarket  = { ebay: 'ebay_nr_req', ebay2: 'ebay2_nr_req', ebay3: 'ebay3_nr_req' };
+            var invFieldByMarket = { ebay: 'Ebay Inv', ebay2: 'Ebay2 Inv', ebay3: 'Ebay3 Inv', amazon: 'Amazon Inv' };
+            var nrFieldByMarket  = { ebay: 'ebay_nr_req', ebay2: 'ebay2_nr_req', ebay3: 'ebay3_nr_req', amazon: 'amazon_nr_req' };
+            var within3FieldByMarket = { ebay: 'ebay_within3', ebay2: 'ebay2_within3', ebay3: 'ebay3_within3', amazon: 'amazon_within3' };
 
-            // NR/REQ column: green "Req", red "Not Req".
+            // NR/REQ column: green "Req", red "Not Req" (anything other than REQ).
             function nrReqFormatter(cell) {
                 var v = cell.getValue();
-                if (v === 'NRL') return '<span style="color:#a00211;font-weight:600;">Not Req</span>';
+                if (v && v !== 'REQ') return '<span style="color:#a00211;font-weight:600;">Not Req</span>';
                 return '<span style="color:#28a745;font-weight:600;">Req</span>';
             }
 
@@ -209,6 +240,14 @@
                         'E3 SM: ' + (response.ebay3_mismatch_count || 0).toLocaleString();
                     document.getElementById('ebay3-missing-listing-count-badge').textContent =
                         'E3 ML: ' + (response.ebay3_missing_listing_count || 0).toLocaleString();
+                    document.getElementById('amazon-not-map-count-badge').textContent =
+                        'A NP: ' + (response.amazon_not_map_count || 0).toLocaleString();
+                    document.getElementById('amazon-mismatch-count-badge').textContent =
+                        'A SM: ' + (response.amazon_mismatch_count || 0).toLocaleString();
+                    document.getElementById('amazon-missing-listing-count-badge').textContent =
+                        'A ML: ' + (response.amazon_missing_listing_count || 0).toLocaleString();
+                    document.getElementById('site-only-count').textContent =
+                        response.pm_missing_count ? '(' + response.pm_missing_count.toLocaleString() + ')' : '';
                     return response.data || [];
                 },
                 pagination: true,
@@ -216,11 +255,23 @@
                 paginationSize: 50,
                 paginationSizeSelector: [25, 50, 100, 250],
                 columns: [
-                    { title: '(Child) SKU', field: '(Child) sku', headerFilter: 'input', widthGrow: 2 },
+                    {
+                        title: '(Child) SKU', field: '(Child) sku', headerFilter: 'input', widthGrow: 2,
+                        formatter: function (cell) {
+                            var v = cell.getValue();
+                            if (cell.getRow().getData().pm_missing) {
+                                return '<span style="color:#a00211;font-weight:600;">' + v +
+                                    ' <small>(not in PM)</small></span>';
+                            }
+                            return v;
+                        },
+                    },
+                    { title: 'Listed On', field: 'listed_on', visible: false, widthGrow: 1 },
                     { title: 'Marketplace SKU', field: 'mp_sku', visible: false, widthGrow: 2, formatter: marketSkuFormatter },
                     { title: 'NR/REQ', field: 'ebay_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NRL: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('ebay') },
-                    { title: 'NR/REQ', field: 'ebay2_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NRL: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('ebay2') },
-                    { title: 'NR/REQ', field: 'ebay3_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NRL: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('ebay3') },
+                    { title: 'NR/REQ', field: 'ebay2_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('ebay2') },
+                    { title: 'NR/REQ', field: 'ebay3_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('ebay3') },
+                    { title: 'NR/REQ', field: 'amazon_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NRL: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('amazon') },
                     { title: 'INV', field: 'INV', hozAlign: 'right', sorter: 'number' },
                     {
                         title: 'Ebay Inv', field: 'Ebay Inv', hozAlign: 'right', sorter: 'number',
@@ -252,6 +303,16 @@
                             }
                         },
                     },
+                    {
+                        title: 'Amazon Inv', field: 'Amazon Inv', hozAlign: 'right', sorter: 'number',
+                        formatter: invFormatter('amazon_mismatch'),
+                        cellClick: function (e, cell) {
+                            if (e.target.classList.contains('map-info-icon')) {
+                                var d = cell.getRow().getData();
+                                showIssueModal('Amazon', d['(Child) sku'], d.amazon_sku, d.amazon_issue);
+                            }
+                        },
+                    },
                     { title: 'Diff', field: 'diff', visible: false, hozAlign: 'right', formatter: diffFormatter },
                 ],
             });
@@ -261,13 +322,16 @@
             var badges = {
                 enp:  { el: document.getElementById('not-map-count-badge'),        field: 'is_not_map',    market: 'ebay',  off: 'bg-secondary', on: 'bg-danger' },
                 esm:  { el: document.getElementById('mismatch-count-badge'),       field: 'has_issue',     market: 'ebay',  off: 'bg-secondary', on: 'bg-danger' },
-                eml:  { el: document.getElementById('missing-listing-count-badge'), field: 'missing_listing', market: 'ebay', off: 'bg-warning',  on: 'bg-danger' },
+                eml:  { el: document.getElementById('missing-listing-count-badge'), field: 'missing_listing', market: 'ebay', off: 'bg-secondary',  on: 'bg-danger' },
                 e2np: { el: document.getElementById('ebay2-not-map-count-badge'),  field: 'ebay2_not_map', market: 'ebay2', off: 'bg-info',      on: 'bg-primary' },
                 e2sm: { el: document.getElementById('ebay2-mismatch-count-badge'), field: 'ebay2_mismatch',market: 'ebay2', off: 'bg-info',      on: 'bg-primary' },
                 e2ml: { el: document.getElementById('ebay2-missing-listing-count-badge'), field: 'ebay2_missing_listing', market: 'ebay2', off: 'bg-info', on: 'bg-primary' },
                 e3np: { el: document.getElementById('ebay3-not-map-count-badge'),  field: 'ebay3_not_map', market: 'ebay3', off: 'bg-success',   on: 'bg-dark' },
                 e3sm: { el: document.getElementById('ebay3-mismatch-count-badge'), field: 'ebay3_mismatch',market: 'ebay3', off: 'bg-success',   on: 'bg-dark' },
                 e3ml: { el: document.getElementById('ebay3-missing-listing-count-badge'), field: 'ebay3_missing_listing', market: 'ebay3', off: 'bg-success', on: 'bg-dark' },
+                anp:  { el: document.getElementById('amazon-not-map-count-badge'),  field: 'amazon_not_map', market: 'amazon', off: 'bg-warning',  on: 'bg-danger' },
+                asm:  { el: document.getElementById('amazon-mismatch-count-badge'), field: 'amazon_mismatch',market: 'amazon', off: 'bg-warning',  on: 'bg-danger' },
+                aml:  { el: document.getElementById('amazon-missing-listing-count-badge'), field: 'amazon_missing_listing', market: 'amazon', off: 'bg-warning', on: 'bg-danger' },
             };
 
             function applyFilters() {
@@ -276,6 +340,7 @@
                     var on = (activeFilter === k);
                     b.el.classList.toggle(b.off, !on);
                     b.el.classList.toggle(b.on, on);
+                    b.el.classList.toggle('map-active', on);
                 });
 
                 if (activeFilter) {
@@ -302,20 +367,37 @@
                     });
                 }
 
-                // Combine the badge filter with the "Req only" filter.
-                var filters = [];
-                if (activeFilter) {
-                    filters.push({ field: badges[activeFilter].field, type: '=', value: true });
-                }
-                if (reqOnly && activeMarket) {
-                    filters.push({ field: nrFieldByMarket[activeMarket], type: '=', value: 'REQ' });
-                }
-                if (filters.length) {
-                    table.setFilter(filters);
+                // "Listed On" column only matters for the site-only view.
+                if (showSiteOnly) {
+                    table.showColumn('listed_on');
                 } else {
-                    table.clearFilter();
+                    table.hideColumn('listed_on');
                 }
+
+                // Combine the badge filter with the "Req only" filter, or show site-only rows.
+                var filters = [];
+                if (showSiteOnly) {
+                    filters.push({ field: 'pm_missing', type: '=', value: true });
+                } else {
+                    filters.push({ field: 'pm_missing', type: '!=', value: true });
+                    if (activeFilter) {
+                        filters.push({ field: badges[activeFilter].field, type: '=', value: true });
+                    }
+                    if (reqOnly && activeMarket) {
+                        filters.push({ field: nrFieldByMarket[activeMarket], type: '=', value: 'REQ' });
+                    }
+                    if (hideSmallDiff && activeMarket) {
+                        filters.push({ field: within3FieldByMarket[activeMarket], type: '!=', value: true });
+                    }
+                }
+                table.setFilter(filters);
                 table.redraw(true);
+            }
+
+            // (Re)load data, including site-only SKUs when the toggle is on.
+            function loadData() {
+                table.setData("{{ route('map.issues.data') }}", { site_only: showSiteOnly ? 1 : 0 })
+                    .then(applyFilters);
             }
 
             Object.keys(badges).forEach(function (k) {
@@ -328,6 +410,18 @@
             document.getElementById('req-only-toggle').addEventListener('change', function () {
                 reqOnly = this.checked;
                 applyFilters();
+            });
+
+            document.getElementById('hide-small-diff-toggle').addEventListener('change', function () {
+                hideSmallDiff = this.checked;
+                applyFilters();
+            });
+
+            document.getElementById('site-only-toggle').addEventListener('change', function () {
+                showSiteOnly = this.checked;
+                // Site-only view ignores badge filters.
+                activeFilter = null;
+                loadData();
             });
         });
     </script>
