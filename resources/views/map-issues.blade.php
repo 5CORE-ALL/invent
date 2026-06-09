@@ -189,6 +189,16 @@
                 return dot + '<span style="color:' + color + ';font-weight:600;">' + sign + diff + '</span>';
             }
 
+            // Sort the Diff column by the active marketplace's (INV - Inv) value.
+            function diffSorter(a, b, aRow, bRow) {
+                function d(row) {
+                    if (!activeMarket) return 0;
+                    var x = row.getData();
+                    return (parseFloat(x['INV']) || 0) - (parseFloat(x[invFieldByMarket[activeMarket]]) || 0);
+                }
+                return d(aRow) - d(bRow);
+            }
+
             // Info-icon cell formatter: shows an icon when `mismatchField` is true on the row.
             // Renders "NL" (not listed) instead of 0 / empty values.
             function invFormatter(mismatchField) {
@@ -313,7 +323,7 @@
                             }
                         },
                     },
-                    { title: 'Diff', field: 'diff', visible: false, hozAlign: 'right', formatter: diffFormatter },
+                    { title: 'Diff', field: 'diff', visible: false, hozAlign: 'right', formatter: diffFormatter, sorter: diffSorter },
                 ],
             });
 
@@ -347,6 +357,7 @@
                     activeMarket = badges[activeFilter].market;
                     table.showColumn('mp_sku');
                     table.showColumn('diff');
+                    table.setSort('diff', 'asc');
                     // Show only the active marketplace's Inv + NR/REQ columns.
                     Object.keys(invFieldByMarket).forEach(function (m) {
                         if (m === activeMarket) {
@@ -361,6 +372,7 @@
                     activeMarket = null;
                     table.hideColumn('mp_sku');
                     table.hideColumn('diff');
+                    table.clearSort();
                     Object.keys(invFieldByMarket).forEach(function (m) {
                         table.showColumn(invFieldByMarket[m]);
                         table.hideColumn(nrFieldByMarket[m]);
