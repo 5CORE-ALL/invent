@@ -5466,12 +5466,14 @@
              */
             function isEbayMissingM(data) {
                 var d = data || {};
+                if (d.is_parent_summary === true) return false;
                 var parent = d['Parent'];
                 if (parent && String(parent).toUpperCase().startsWith('PARENT')) return false;
                 var itemId = d['eBay_item_id'];
                 if (!itemId || itemId === null || itemId === '') return false; // not listed -> handled by Missing L
+                // REQ only — match the default "REQ Only" view (nr_req can also be NRL / LATER / NR).
                 var nr = (d['nr_req'] || '').toString().trim().toUpperCase();
-                if (nr === 'NR') return false;
+                if (nr !== 'REQ') return false;
                 var inv = parseFloat(d['INV'] || 0) || 0;
                 if (inv <= 0) return false;
                 var ebayStock = parseFloat(d['eBay Stock'] || 0) || 0;
@@ -5492,13 +5494,15 @@
              */
             function isEbayMissingL(data) {
                 var d = data || {};
+                if (d.is_parent_summary === true) return false;
                 var parent = d['Parent'];
                 if (parent && String(parent).toUpperCase().startsWith('PARENT')) return false;
                 var itemId = d['eBay_item_id'];
                 var notListed = (!itemId || itemId === null || itemId === '');
+                // REQ only — match the default "REQ Only" view (nr_req can also be NRL / LATER / NR).
                 var nr = (d['nr_req'] || '').toString().trim().toUpperCase();
                 var inv = parseFloat(d['INV'] || 0) || 0;
-                return notListed && nr !== 'NR' && inv > 0;
+                return notListed && nr === 'REQ' && inv > 0;
             }
 
             // Apply filters

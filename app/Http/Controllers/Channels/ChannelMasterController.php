@@ -5967,10 +5967,12 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Keep all-marketplace-master eBay Map/Miss/NMap aligned with ebay tabulator default view.
-     * Same scope: child rows, E Stock &gt; 0, nr_req = REQ, parent summaries skipped.
-     * Missing: no listing item_id (per JS truthy rules) with E Stock &gt; 0.
-     * Map / NMap: has item, INV &gt; 0, and |INV − eBay Stock| &le; 3 (map) or &gt; 3 (NMap).
+     * Keep all-marketplace-master eBay Map/Miss/NMap aligned with the ebay-tabulator-view badges
+     * (Missing L / Missing M), counted over the full dataset like the tabulator badges (allData),
+     * not the default "E Stock > 0" view filter.
+     *   Missing L (miss): not listed (no item_id), nr_req != 'NR', INV > 0, non-parent.
+     *   Map / N Map (Missing M): listed, nr_req != 'NR', INV > 0; mapped when |INV − eBay Stock|
+     *   <= 3 OR within 3% of INV (ebayInvWithinMapTolerance), otherwise N Map / Missing M.
      */
     private function getEbayLiveMapMissCountsFromTabulator(Request $request): array
     {
@@ -6004,28 +6006,32 @@ class ChannelMasterController extends Controller
                 $eStock = is_numeric($eStockRaw) ? (float) $eStockRaw : 0.0;
                 $rawItemId = $row['eBay_item_id'] ?? null;
                 $hasItem = $this->ebayTabulatorRowHasListingItemId($rawItemId);
-                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
+                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? '')));
                 $isReq = ($nrReq === 'REQ');
 
-                // Match default eBay tabulator view: "E Stock > 0" (listing qty) and REQ.
-                if ($eStock <= 0) {
-                    continue;
-                }
-                if (! $isReq) {
-                    continue;
+                // Views: traffic to live listings (E Stock > 0, REQ) — unchanged scope.
+                if ($eStock > 0 && $isReq) {
+                    $views += (float) ($row['views'] ?? 0);
                 }
 
-                $views += (float) ($row['views'] ?? 0);
+                // Both Missing L and Missing M are REQ only (nr_req can also be NRL / LATER / NR) and INV > 0.
+                if (! $isReq || $inv <= 0) {
+                    continue;
+                }
 
                 if (! $hasItem) {
+                    // Missing L: in stock but not listed on eBay.
                     $missing++;
-                } elseif ($inv > 0) {
-                    $diff = abs($inv - $eStock);
-                    if ($diff <= 3) {
-                        $map++;
-                    } else {
-                        $nmap++;
-                    }
+                    continue;
+                }
+
+                // Listed: Map vs N Map / Missing M (tolerance = |INV − eBay Stock| <= 3 OR <= 3% INV).
+                $diff = abs($inv - $eStock);
+                $tolerance = max(3.0, $inv * 0.03);
+                if ($diff <= $tolerance + 1e-9) {
+                    $map++;
+                } else {
+                    $nmap++;
                 }
             }
 
@@ -6042,8 +6048,11 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Keep all-marketplace-master eBay 2 Map/Miss/NMap aligned with ebay2-tabulator-view.
-     * Same rules as eBay 1 tabulator: E Stock &gt; 0, nr_req = REQ; |INV − E Stock| ≤ 3 → map.
+     * Keep all-marketplace-master eBay 2 Map/Miss/NMap aligned with the ebay2-tabulator-view badges
+     * (Missing L / Missing M), counted over the full dataset like the tabulator badges.
+     *   Missing L (miss): not listed (no item_id), nr_req != 'NR', INV > 0, non-parent.
+     *   Map / N Map (Missing M): listed, nr_req != 'NR', INV > 0; mapped when |INV − eBay Stock|
+     *   <= 3 OR within 3% of INV, otherwise N Map / Missing M.
      */
     private function getEbay2LiveMapMissCountsFromTabulator(Request $request): array
     {
@@ -6080,27 +6089,32 @@ class ChannelMasterController extends Controller
                 $eStock = is_numeric($eStockRaw) ? (float) $eStockRaw : 0.0;
                 $rawItemId = $row['eBay_item_id'] ?? null;
                 $hasItem = $this->ebayTabulatorRowHasListingItemId($rawItemId);
-                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
+                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? '')));
                 $isReq = ($nrReq === 'REQ');
 
-                if ($eStock <= 0) {
-                    continue;
-                }
-                if (! $isReq) {
-                    continue;
+                // Views: traffic to live listings (E Stock > 0, REQ) — unchanged scope.
+                if ($eStock > 0 && $isReq) {
+                    $views += (float) ($row['views'] ?? 0);
                 }
 
-                $views += (float) ($row['views'] ?? 0);
+                // Both Missing L and Missing M are REQ only (nr_req can also be NRL / LATER / NR) and INV > 0.
+                if (! $isReq || $inv <= 0) {
+                    continue;
+                }
 
                 if (! $hasItem) {
+                    // Missing L: in stock but not listed on eBay.
                     $missing++;
-                } elseif ($inv > 0) {
-                    $diff = abs($inv - $eStock);
-                    if ($diff <= 3) {
-                        $map++;
-                    } else {
-                        $nmap++;
-                    }
+                    continue;
+                }
+
+                // Listed: Map vs N Map / Missing M (tolerance = |INV − eBay Stock| <= 3 OR <= 3% INV).
+                $diff = abs($inv - $eStock);
+                $tolerance = max(3.0, $inv * 0.03);
+                if ($diff <= $tolerance + 1e-9) {
+                    $map++;
+                } else {
+                    $nmap++;
                 }
             }
 
