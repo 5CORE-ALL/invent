@@ -126,12 +126,18 @@ class MapIssuesController extends Controller
             $ebayIsNotMap = false;
             $ebayWithin3 = false;
             if ($ebayItemId && $ebayItemId !== null && $ebayItemId !== '' && $ebayNrReq === 'REQ' && $inv > 0 && $ebayStock > 0) {
-                $ebayDiffPct = (abs($inv - $ebayStock) / $inv) * 100;
-                if (round($ebayDiffPct) > 3) {
-                    $ebayIsNotMap = true;
+                $ebayDiffUnits = abs($inv - $ebayStock);
+                // When 3% of INV is below 3 units, require an absolute gap > 3 units;
+                // otherwise apply the (rounded) 3% rule.
+                if ($inv * 0.03 < 3) {
+                    $ebayIsNotMap = $ebayDiffUnits > 3;
+                } else {
+                    $ebayIsNotMap = round(($ebayDiffUnits / $inv) * 100) > 3;
+                }
+                if ($ebayIsNotMap) {
                     $notMapCount++;
                 }
-                $ebayWithin3 = round($ebayDiffPct) <= 3;
+                $ebayWithin3 = ! $ebayIsNotMap;
             }
 
             // Missing Listing: not listed on the marketplace, INV > 0 (NRL rows are kept, just labelled).
@@ -156,12 +162,16 @@ class MapIssuesController extends Controller
             $ebay2IsNotMap = false;
             $ebay2Within3 = false;
             if ($ebay2ItemId && $ebay2ItemId !== null && $ebay2ItemId !== '' && $ebay2NrReq === 'REQ' && $inv > 0 && $ebay2Stock > 0) {
-                $ebay2DiffPct = (abs($inv - $ebay2Stock) / $inv) * 100;
-                if (round($ebay2DiffPct) > 3) {
-                    $ebay2IsNotMap = true;
+                $ebay2DiffUnits = abs($inv - $ebay2Stock);
+                if ($inv * 0.03 < 3) {
+                    $ebay2IsNotMap = $ebay2DiffUnits > 3;
+                } else {
+                    $ebay2IsNotMap = round(($ebay2DiffUnits / $inv) * 100) > 3;
+                }
+                if ($ebay2IsNotMap) {
                     $ebay2NotMapCount++;
                 }
-                $ebay2Within3 = round($ebay2DiffPct) <= 3;
+                $ebay2Within3 = ! $ebay2IsNotMap;
             }
             $ebay2NotListed = ! ($ebay2ItemId && $ebay2ItemId !== null && $ebay2ItemId !== '');
             $ebay2MissingListing = $ebay2NotListed && $inv > 0;
@@ -185,12 +195,16 @@ class MapIssuesController extends Controller
             $ebay3Within3 = false;
             if ($ebay3ItemId && $ebay3ItemId !== null && $ebay3ItemId !== '' && $ebay3NrReq === 'REQ' && $inv > 0 && $ebay3Stock > 0) {
                 $ebay3Expected = min($inv, 100.0);
-                $ebay3DiffPct = (abs($ebay3Stock - $ebay3Expected) / $ebay3Expected) * 100;
-                if (round($ebay3DiffPct) > 3) {
-                    $ebay3IsNotMap = true;
+                $ebay3DiffUnits = abs($ebay3Stock - $ebay3Expected);
+                if ($ebay3Expected * 0.03 < 3) {
+                    $ebay3IsNotMap = $ebay3DiffUnits > 3;
+                } else {
+                    $ebay3IsNotMap = round(($ebay3DiffUnits / $ebay3Expected) * 100) > 3;
+                }
+                if ($ebay3IsNotMap) {
                     $ebay3NotMapCount++;
                 }
-                $ebay3Within3 = round($ebay3DiffPct) <= 3;
+                $ebay3Within3 = ! $ebay3IsNotMap;
             }
             $ebay3NotListed = ! ($ebay3ItemId && $ebay3ItemId !== null && $ebay3ItemId !== '');
             $ebay3MissingListing = $ebay3NotListed && $inv > 0;
@@ -212,12 +226,16 @@ class MapIssuesController extends Controller
             $amazonIsNotMap = false;
             $amazonWithin3 = false;
             if ($amazonAsin && $amazonAsin !== null && $amazonAsin !== '' && $amazonNrReq === 'REQ' && $inv > 0 && $amazonStock > 0) {
-                $amazonDiffPct = (abs($inv - $amazonStock) / $inv) * 100;
-                if (round($amazonDiffPct) > 3) {
-                    $amazonIsNotMap = true;
+                $amazonDiffUnits = abs($inv - $amazonStock);
+                if ($inv * 0.03 < 3) {
+                    $amazonIsNotMap = $amazonDiffUnits > 3;
+                } else {
+                    $amazonIsNotMap = round(($amazonDiffUnits / $inv) * 100) > 3;
+                }
+                if ($amazonIsNotMap) {
                     $amazonNotMapCount++;
                 }
-                $amazonWithin3 = round($amazonDiffPct) <= 3;
+                $amazonWithin3 = ! $amazonIsNotMap;
             }
             $amazonNotListed = ! ($amazonAsin && $amazonAsin !== null && $amazonAsin !== '');
             $amazonMissingListing = $amazonNotListed && $inv > 0;
