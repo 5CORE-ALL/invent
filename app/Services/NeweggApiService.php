@@ -86,6 +86,38 @@ class NeweggApiService
     }
 
     /**
+     * Get Item Inventory for a single item.
+     *   POST /marketplace/contentmgmt/item/inventory?sellerid=XXXX
+     *
+     * @param  int  $type  0 = NE Item#, 1 = Seller Part#, 2 = UPC
+     * @return array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error:?string}
+     */
+    public function getItemInventory(string $value, int $type = 1): array
+    {
+        return $this->request('POST', '/marketplace/contentmgmt/item/inventory', [], [
+            'Type'  => (string) $type,
+            'Value' => $value,
+        ]);
+    }
+
+    /**
+     * Get Item Price (international) for a single item.
+     *   PUT /marketplace/contentmgmt/item/international/price?sellerid=XXXX
+     *
+     * @param  list<string>  $countries  ISO 3-letter codes; defaults to USA.
+     * @param  int  $type  0 = NE Item#, 1 = Seller Part#, 2 = UPC
+     * @return array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error:?string}
+     */
+    public function getItemPrice(string $value, array $countries = ['USA'], int $type = 1): array
+    {
+        return $this->request('PUT', '/marketplace/contentmgmt/item/international/price', [], [
+            'Type'        => (string) $type,
+            'Value'       => $value,
+            'CountryList' => ['CountryCode' => array_values($countries)],
+        ]);
+    }
+
+    /**
      * Low-level request helper. Returns a normalized result array instead of
      * throwing, so callers (and the artisan test command) can inspect exactly
      * what came back — including a Cloudflare challenge page.
