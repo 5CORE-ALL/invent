@@ -3129,6 +3129,8 @@
 
                         <li><a href="{{ route('bestbuy.daily.sales') }}">Best Buy Sales Data</a></li>
 
+                        <li><a href="{{ route('newegg.daily.sales') }}">Newegg Sales Data</a></li>
+
                         <li><a href="{{ route('macys.daily.sales') }}">Macy's Sales Data</a></li>
 
                         <li><a href="{{ route('tiendamia.daily.sales') }}">Tiendamia Sales Data</a></li>

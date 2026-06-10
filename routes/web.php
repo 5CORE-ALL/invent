@@ -282,6 +282,7 @@ use App\Http\Controllers\Sales\AmazonSalesDataTestController;
 use App\Http\Controllers\Sales\BestBuySalesController;
 use App\Http\Controllers\Sales\DobaSalesController;
 use App\Http\Controllers\Sales\EbaySalesController;
+use App\Http\Controllers\Sales\NeweggSalesController;
 use App\Http\Controllers\Sales\MercariController;
 use App\Http\Controllers\Sales\WayfairSalesController;
 use App\Http\Controllers\ShopifyController;
@@ -2971,6 +2972,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'getColumnVisibility']);
     Route::post('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'saveColumnVisibility']);
     Route::get('/ebay/sku-sales-data', [EbaySalesController::class, 'getSkuSalesData'])->name('ebay.sku.sales.data');
+
+    // Newegg Sales Routes
+    Route::get('/newegg/daily-sales-data', [NeweggSalesController::class, 'getData'])->name('newegg.daily.sales.data');
+    Route::get('/newegg/daily-sales', [NeweggSalesController::class, 'index'])->name('newegg.daily.sales');
+    Route::get('/newegg-daily-sales-column-visibility', [NeweggSalesController::class, 'getColumnVisibility']);
+    Route::post('/newegg-daily-sales-column-visibility', [NeweggSalesController::class, 'saveColumnVisibility']);
 
     // Wayfair Sales Routes
     Route::get('/wayfair/daily-sales-data', [WayfairSalesController::class, 'getData'])->name('wayfair.daily.sales.data');

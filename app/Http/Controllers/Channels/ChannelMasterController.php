@@ -3564,6 +3564,7 @@ class ChannelMasterController extends Controller
             'macys'     => 'getMacysChannelData',
             'tiendamia' => 'getTiendamiaChannelData',
             'bestbuyusa'=> 'getBestbuyUsaChannelData',
+            'newegg'    => 'getNeweggChannelData',
             'reverb'    => 'getReverbChannelData',
             'doba'      => 'getDobaChannelData',
             'temu'      => 'getTemuChannelData',
@@ -5046,6 +5047,7 @@ class ChannelMasterController extends Controller
         'macys'     => 'getMacysChannelData',
         'tiendamia' => 'getTiendamiaChannelData',
         'bestbuyusa'=> 'getBestbuyUsaChannelData',
+        'newegg'    => 'getNeweggChannelData',
         'reverb'    => 'getReverbChannelData',
         'doba'      => 'getDobaChannelData',
         'temu'      => 'getTemuChannelData',
@@ -7782,6 +7784,157 @@ class ChannelMasterController extends Controller
             'message' => 'Bestbuy USA channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Newegg channel data for /all-marketplace-master.
+     *
+     * Computed directly from newegg_orders / newegg_order_items (populated by
+     * `php artisan newegg:orders --save`). Margin comes from marketplace_percentages
+     * (Neweggb2c): margin = percentage - ad_updates. Voided orders are excluded.
+     */
+    public function getNeweggChannelData(Request $request)
+    {
+        $result = [];
+
+        $mp = MarketplacePercentage::where('marketplace', 'Neweggb2c')->first();
+        $percentage = $mp ? (float) $mp->percentage : 85;
+        $adUpdates  = $mp ? (float) $mp->ad_updates : 0;
+        $margin     = $percentage - $adUpdates;
+        $factor     = $margin > 0 ? $margin / 100 : 0.85;
+
+        // Product master costs keyed by normalized SKU (NBSP / space tolerant).
+        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+            return ShopifySku::normalizeSkuForShopifyLookup($item->sku);
+        });
+
+        $now = Carbon::now();
+        $l30 = $this->computeNeweggWindow($now->copy()->subDays(30), $now, $productMasters, $factor);
+        $l60 = $this->computeNeweggWindow($now->copy()->subDays(60), $now->copy()->subDays(30), $productMasters, $factor);
+        $l7  = $this->computeNeweggWindow($now->copy()->subDays(7), $now, $productMasters, $factor);
+        $y   = $this->computeNeweggWindow($now->copy()->subDay()->startOfDay(), $now->copy()->subDay()->endOfDay(), $productMasters, $factor);
+
+        $growth     = $l60['sales'] > 0 ? (($l30['sales'] - $l60['sales']) / $l60['sales']) * 100 : 0;
+        $gProfitPct = $l30['sales'] > 0 ? ($l30['profit'] / $l30['sales']) * 100 : 0;
+        $gRoi       = $l30['cogs'] > 0 ? ($l30['profit'] / $l30['cogs']) * 100 : 0;
+        $gprofitL60 = $l60['sales'] > 0 ? ($l60['profit'] / $l60['sales']) * 100 : 0;
+        $gRoiL60    = $l60['cogs'] > 0 ? ($l60['profit'] / $l60['cogs']) * 100 : 0;
+
+        $channelData = ChannelMaster::where('channel', 'Newegg')->first();
+
+        $result[] = [
+            'Channel '   => 'Newegg',
+            'L-60 Sales' => round($l60['sales']),
+            'L30 Sales'  => round($l30['sales']),
+            'L7 Sales'   => round($l7['sales']),
+            'Y Sales'    => round($y['sales']),
+            'Growth'     => round($growth, 2) . '%',
+            'L60 Orders' => $l60['orders'],
+            'L30 Orders' => $l30['orders'],
+            'Qty'        => intval($l30['qty']),
+            'Gprofit%'   => round($gProfitPct, 2) . '%',
+            'gprofitL60' => round($gprofitL60, 2) . '%',
+            'G Roi'      => round($gRoi, 2),
+            'G RoiL60'   => round($gRoiL60, 2),
+            'Total PFT'  => round($l30['profit'], 2),
+            'N PFT'      => round($gProfitPct, 2) . '%',
+            'N ROI'      => round($gRoi, 2),
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
+            'type'       => $channelData->type ?? 'B2C',
+            'W/Ads'      => $channelData->w_ads ?? 0,
+            'NR'         => $channelData->nr ?? 0,
+            'Update'     => $channelData->update ?? 0,
+            'cogs'       => round($l30['cogs'], 2),
+            'sheet_link' => $channelData->sheet_link ?? null,
+            'missing_link' => $channelData->missing_link ?? null,
+            'Map' => 0,
+            'Miss' => 0,
+            'NMap' => 0,
+            'Total Views' => 0,
+            ...$this->getChannelHealthAndReviewsStub(),
+        ];
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Newegg channel data fetched successfully',
+            'data' => $result,
+        ]);
+    }
+
+    /**
+     * Aggregate Newegg sales/profit for a date window from newegg_orders + items.
+     * Excludes voided orders (order_status 4).
+     *
+     * @return array{sales:float,orders:int,qty:float,profit:float,cogs:float}
+     */
+    private function computeNeweggWindow($from, $to, $productMasters, float $factor): array
+    {
+        $orders = \App\Models\NeweggOrder::with('items')
+            ->whereBetween('order_date', [$from, $to])
+            ->where(function ($q) {
+                $q->whereNull('order_status')->orWhere('order_status', '!=', 4);
+            })
+            ->get();
+
+        $sales = 0.0; $qty = 0.0; $profit = 0.0; $cogs = 0.0;
+
+        foreach ($orders as $order) {
+            foreach ($order->items as $item) {
+                $quantity  = (float) ($item->ordered_qty ?? 0);
+                $unitPrice = (float) ($item->unit_price ?? 0);
+                if ($quantity <= 0) {
+                    continue;
+                }
+
+                [$lp, $ship] = $this->neweggItemCosts($item->seller_part_number, $productMasters);
+
+                $sales  += $unitPrice * $quantity;
+                $qty    += $quantity;
+                $profit += (($unitPrice * $factor) - $lp - $ship) * $quantity;
+                $cogs   += $lp * $quantity;
+            }
+        }
+
+        return [
+            'sales'  => $sales,
+            'orders' => $orders->count(),
+            'qty'    => $qty,
+            'profit' => $profit,
+            'cogs'   => $cogs,
+        ];
+    }
+
+    /**
+     * LP + Ship for a Newegg SKU from ProductMaster.
+     *
+     * @return array{0:float,1:float} [lp, ship]
+     */
+    private function neweggItemCosts(?string $sku, $productMasters): array
+    {
+        if (!$sku) {
+            return [0.0, 0.0];
+        }
+
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        $pm = $productMasters[$norm] ?? null;
+        if (!$pm) {
+            return [0.0, 0.0];
+        }
+
+        $values = is_array($pm->Values)
+            ? $pm->Values
+            : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
+
+        $lp   = isset($values['lp']) ? (float) $values['lp'] : (float) ($pm->lp ?? 0);
+        $ship = isset($values['ship']) ? (float) $values['ship'] : (float) ($pm->ship ?? 0);
+
+        return [$lp, $ship];
     }
 
     /**
@@ -13165,6 +13318,14 @@ class ChannelMasterController extends Controller
                     ->latest('date')
                     ->first();
                 $totalQuantity = $metrics ? ($metrics->total_quantity ?? $metrics->total_orders ?? 0) : 0;
+
+                // Fallback: channels computed directly (no marketplace_daily_metrics row,
+                // e.g. Newegg/PLS) carry their units in the page row's "Qty". Without this
+                // the qty trend dot/chart would always read 0 even though the column shows
+                // the correct number.
+                if (!$totalQuantity) {
+                    $totalQuantity = floatval($row['Qty'] ?? 0);
+                }
                 
                 // Prepare summary data
                 $summaryData = [
