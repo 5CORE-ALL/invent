@@ -118,6 +118,44 @@ class NeweggApiService
     }
 
     /**
+     * Submit an Item Basic Information Report request (async). Returns a
+     * RequestID you then poll with getReportResult().
+     *   POST /marketplace/reportmgmt/report/submitrequest?sellerid=XXXX
+     *
+     * @param  int  $status  0 = All, 1 = Active, 2 = Inactive
+     * @param  string  $fileType  TXT | CSV | XLS
+     * @return array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error:?string}
+     */
+    public function submitItemBasicInfoReport(int $status = 0, string $fileType = 'CSV'): array
+    {
+        return $this->request('POST', '/marketplace/reportmgmt/report/submitrequest', [], [
+            'OperationType' => 'ItemBasicInfoReportRequest',
+            'RequestBody'   => [
+                'ItemBasicInfoReportCriteria' => [
+                    'RequestType' => 'ITEM_BASIC_INFO_REPORT',
+                    'Status'      => $status,
+                    'FileType'    => $fileType,
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Poll a previously submitted report. When ready the response carries a
+     * ReportFileURL (an ftp:// link to the result file).
+     *   PUT /marketplace/reportmgmt/report/result?sellerid=XXXX
+     *
+     * @return array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error:?string}
+     */
+    public function getReportResult(string $requestId, string $operationType = 'ItemBasicInfoReportRequest'): array
+    {
+        return $this->request('PUT', '/marketplace/reportmgmt/report/result', [], [
+            'OperationType' => $operationType,
+            'RequestBody'   => ['RequestID' => $requestId],
+        ]);
+    }
+
+    /**
      * Low-level request helper. Returns a normalized result array instead of
      * throwing, so callers (and the artisan test command) can inspect exactly
      * what came back — including a Cloudflare challenge page.

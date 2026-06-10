@@ -5,24 +5,27 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class NeweggItemInventory extends Model
+class NeweggItem extends Model
 {
     use HasFactory;
 
-    protected $table = 'newegg_item_inventory';
+    protected $table = 'newegg_items';
 
     protected $fillable = [
         'seller_part_number',
         'newegg_item_number',
-        'active',
-        'fulfillment_option',
-        'available_quantity',
-        'warehouse_allocation',
+        'title',
+        'manufacturer_part_number',
+        'upc',
+        'status',
+        'platform',
+        'item_weight',
+        'date_created',
         'raw_json',
     ];
 
     protected $casts = [
-        'warehouse_allocation' => 'array',
-        'raw_json'             => 'array',
+        'item_weight' => 'decimal:2',
+        'raw_json'    => 'array',
     ];
 }
