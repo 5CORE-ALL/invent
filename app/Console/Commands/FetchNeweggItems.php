@@ -20,6 +20,7 @@ class FetchNeweggItems extends Command
      */
     protected $signature = 'newegg:items
         {--status=0 : 0 All, 1 Active, 2 Inactive}
+        {--request-id= : Reuse an already-submitted report RequestID (skips submit)}
         {--save : Persist the catalog into newegg_items}
         {--with-price : After saving the catalog, run newegg:item-data --save for all listed SKUs}
         {--poll=10 : Seconds between report status polls}
@@ -30,31 +31,37 @@ class FetchNeweggItems extends Command
 
     public function handle(NeweggApiService $newegg): int
     {
-        $status = (int) $this->option('status');
+        $status    = (int) $this->option('status');
+        $requestId = $this->option('request-id') ? trim((string) $this->option('request-id')) : null;
 
-        $this->info('Submitting Item Basic Information report request...');
         $this->line('  SellerID: ' . (config('services.newegg.seller_id') ?: '(not set)'));
 
-        $submit = $newegg->submitItemBasicInfoReport($status, 'CSV');
-        if ($submit['blocked_by_cloudflare']) {
-            $this->error('Blocked by Cloudflare. Run this from a Newegg-whitelisted server.');
-            return self::FAILURE;
-        }
-        if ($this->option('raw')) {
-            $this->line(json_encode($submit['json'], JSON_UNESCAPED_SLASHES));
-        }
+        if ($requestId) {
+            $this->info('Reusing existing report RequestID (skipping submit)...');
+        } else {
+            $this->info('Submitting Item Basic Information report request...');
 
-        $requestId = $this->findValue($submit['json'], [
-            'ResponseBody.ResponseList.0.RequestId',
-            'NeweggAPIResponse.ResponseBody.ResponseList.0.RequestId',
-            'ResponseBody.RequestId',
-            'NeweggAPIResponse.ResponseBody.RequestId',
-        ]);
+            $submit = $newegg->submitItemBasicInfoReport($status, 'CSV');
+            if ($submit['blocked_by_cloudflare']) {
+                $this->error('Blocked by Cloudflare. Run this from a Newegg-whitelisted server.');
+                return self::FAILURE;
+            }
+            if ($this->option('raw')) {
+                $this->line(json_encode($submit['json'], JSON_UNESCAPED_SLASHES));
+            }
 
-        if (!$requestId) {
-            $this->error('Could not get a RequestID from the submit response:');
-            $this->line(json_encode($submit['json'] ?? $submit['raw'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-            return self::FAILURE;
+            $requestId = $this->findValue($submit['json'], [
+                'ResponseBody.ResponseList.0.RequestId',
+                'NeweggAPIResponse.ResponseBody.ResponseList.0.RequestId',
+                'ResponseBody.RequestId',
+                'NeweggAPIResponse.ResponseBody.RequestId',
+            ]);
+
+            if (!$requestId) {
+                $this->error('Could not get a RequestID from the submit response:');
+                $this->line(json_encode($submit['json'] ?? $submit['raw'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                return self::FAILURE;
+            }
         }
 
         $this->line('  RequestID: ' . $requestId);
@@ -263,7 +270,14 @@ class FetchNeweggItems extends Command
     {
         // Strip a UTF-8 BOM if present.
         $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
-        $lines   = preg_split('/\r\n|\r|\n/', trim($content));
+
+        // Newegg report files are commonly Windows-1252 / Latin-1, not UTF-8.
+        // Normalize so JSON encoding of raw rows won't fail on bad bytes.
+        if (!mb_check_encoding($content, 'UTF-8')) {
+            $content = mb_convert_encoding($content, 'UTF-8', 'Windows-1252');
+        }
+
+        $lines = preg_split('/\r\n|\r|\n/', trim($content));
 
         if (!$lines || count($lines) < 2) {
             return [];
@@ -284,12 +298,27 @@ class FetchNeweggItems extends Command
                 if ($h === '') {
                     continue;
                 }
-                $row[$h] = isset($cols[$idx]) ? trim((string) $cols[$idx]) : null;
+                $row[$h] = isset($cols[$idx]) ? $this->clean($cols[$idx]) : null;
             }
             $rows[] = $row;
         }
 
         return $rows;
+    }
+
+    /** Trim and guarantee a valid UTF-8 string (drops any remaining bad bytes). */
+    private function clean(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        if (!mb_check_encoding($value, 'UTF-8')) {
+            $value = mb_convert_encoding($value, 'UTF-8', 'Windows-1252');
+        }
+        // Final safety net for any byte that still isn't valid UTF-8.
+        $value = (string) iconv('UTF-8', 'UTF-8//IGNORE', $value);
+
+        return trim($value);
     }
 
     private function normalizeHeader(string $header): string
