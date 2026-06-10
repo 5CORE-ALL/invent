@@ -78,6 +78,7 @@ use App\Http\Controllers\EbayDataUpdateController;
 use App\Http\Controllers\FacebookAdsController;
 use App\Http\Controllers\FBAAnalysticsController;
 use App\Http\Controllers\FbaDataController;
+use App\Http\Controllers\GoogleMapsDataExtractorController;
 use App\Http\Controllers\InventoryManagement\AutoStockBalanceController;
 use App\Http\Controllers\InventoryManagement\IncomingController;
 use App\Http\Controllers\InventoryManagement\IssueController as SparePartsIssueController;
@@ -413,6 +414,21 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             return response()->json(['error' => $e->getMessage()], 403);
         }
     });
+
+    Route::prefix('google-maps-data-extractor')->name('google-maps-data-extractor.')->group(function () {
+        Route::get('/', [GoogleMapsDataExtractorController::class, 'index'])->name('index');
+        Route::post('/search', [GoogleMapsDataExtractorController::class, 'search'])->name('search');
+        Route::post('/search/start', [GoogleMapsDataExtractorController::class, 'start'])->name('start');
+        Route::post('/search/process', [GoogleMapsDataExtractorController::class, 'process'])->name('process');
+        Route::get('/progress/{token}', [GoogleMapsDataExtractorController::class, 'progress'])->name('progress');
+        Route::post('/control/{token}', [GoogleMapsDataExtractorController::class, 'control'])->name('control');
+        Route::delete('/{search}', [GoogleMapsDataExtractorController::class, 'destroy'])->name('destroy');
+        Route::get('/{search}', [GoogleMapsDataExtractorController::class, 'show'])->name('show');
+        Route::post('/{search}/enrich', [GoogleMapsDataExtractorController::class, 'enrich'])->name('enrich');
+        Route::post('/{search}/enrich-batch', [GoogleMapsDataExtractorController::class, 'enrichBatch'])->name('enrich-batch');
+        Route::get('/{search}/export', [GoogleMapsDataExtractorController::class, 'export'])->name('export');
+    });
+
     Route::get('/amazon-summary-data', [OverallAmazonController::class, 'getAmazonDataSummary']);
     Route::get('/ebay-data-view', [EbayController::class, 'getViewEbayData']);
     Route::get('/ebay2-data-view', [EbayTwoController::class, 'getViewEbayData']);
