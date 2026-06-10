@@ -60,6 +60,32 @@ class NeweggApiService
     }
 
     /**
+     * Get Order Information.
+     *   PUT /marketplace/ordermgmt/order/orderinfo?sellerid=XXXX&version=NNN
+     *
+     * Pass any subset of Newegg RequestCriteria fields, e.g.:
+     *   ['Status' => 0, 'OrderDateFrom' => '2026-05-01 00:00:00', 'OrderDateTo' => '2026-06-01 00:00:00']
+     *
+     * Dates must be Pacific Standard Time.
+     *
+     * @param  array<string,mixed>  $criteria
+     * @return array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error:?string}
+     */
+    public function getOrders(array $criteria = [], int $pageIndex = 1, int $pageSize = 100, string $version = '315'): array
+    {
+        $body = [
+            'OperationType' => 'GetOrderInfoRequest',
+            'RequestBody'   => [
+                'PageIndex'       => (string) $pageIndex,
+                'PageSize'        => (string) min(max($pageSize, 1), 100),
+                'RequestCriteria' => (object) $criteria,
+            ],
+        ];
+
+        return $this->request('PUT', '/marketplace/ordermgmt/order/orderinfo', ['version' => $version], $body);
+    }
+
+    /**
      * Low-level request helper. Returns a normalized result array instead of
      * throwing, so callers (and the artisan test command) can inspect exactly
      * what came back — including a Cloudflare challenge page.
