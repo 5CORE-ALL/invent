@@ -43,13 +43,20 @@ class NeweggApiService
 
     /**
      * Service Status API — the standard connectivity/auth test endpoint.
-     * GET /marketplace/servicestatus/status?sellerid=XXXX
+     *
+     * URL format (per Newegg docs):
+     *   GET https://api.newegg.com/marketplace/{servicegroup}/servicestatus?sellerid=XXXX
+     *
+     * $servicegroup is one of: contentmgmt, ordermgmt, reportmgmt, sellermgmt, ...
+     * URLs must be all lowercase (Seller ID excepted).
      *
      * @return array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error:?string}
      */
-    public function getServiceStatus(): array
+    public function getServiceStatus(string $servicegroup = 'contentmgmt'): array
     {
-        return $this->request('GET', '/marketplace/servicestatus/status');
+        $servicegroup = strtolower(trim($servicegroup));
+
+        return $this->request('GET', "/marketplace/{$servicegroup}/servicestatus");
     }
 
     /**

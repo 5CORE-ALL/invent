@@ -10,20 +10,29 @@ class TestNeweggApi extends Command
     /**
      * Run from a Newegg-whitelisted server:  php artisan newegg:test
      */
-    protected $signature = 'newegg:test {--raw : Print the full raw response body}';
+    protected $signature = 'newegg:test {--group=contentmgmt : Service group (contentmgmt, ordermgmt, reportmgmt, sellermgmt)} {--raw : Print the full raw response body}';
 
     protected $description = 'Test the Newegg Marketplace API connection (Service Status endpoint) and print the response';
 
     public function handle(NeweggApiService $newegg): int
     {
+        $group = (string) $this->option('group');
+
         $this->info('Calling Newegg Service Status API...');
-        $this->line('  SellerID:   ' . (config('services.newegg.seller_id') ?: '(not set)'));
-        $this->line('  API Key:    ' . $this->mask(config('services.newegg.api_key')));
-        $this->line('  Secret Key: ' . $this->mask(config('services.newegg.secret_key')));
-        $this->line('  Base URL:   ' . config('services.newegg.base_url'));
+        $this->line('  SellerID:     ' . (config('services.newegg.seller_id') ?: '(not set)'));
+        $this->line('  API Key:      ' . $this->mask(config('services.newegg.api_key')));
+        $this->line('  Secret Key:   ' . $this->mask(config('services.newegg.secret_key')));
+        $this->line('  Base URL:     ' . config('services.newegg.base_url'));
+        $this->line('  Servicegroup: ' . $group);
+        $this->line('  Endpoint:     /marketplace/' . strtolower($group) . '/servicestatus?sellerid=' . config('services.newegg.seller_id'));
         $this->newLine();
 
-        $result = $newegg->getServiceStatus();
+        if (!config('services.newegg.seller_id') || !config('services.newegg.api_key')) {
+            $this->warn('Credentials show as (not set). Add NEWEGG_* to this server\'s .env then run: php artisan config:clear');
+            $this->newLine();
+        }
+
+        $result = $newegg->getServiceStatus($group);
 
         $this->line('HTTP status: ' . $result['status']);
 
