@@ -4,15 +4,24 @@ namespace App\Http\Controllers;
 
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
+use App\Models\BestbuyPriceData;
+use App\Models\BestbuyUSAListingStatus;
+use App\Models\BestbuyUsaProduct;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\EbayDataView;
 use App\Models\EbayMetric;
 use App\Models\EbayThreeListingStatus;
 use App\Models\EbayTwoListingStatus;
+use App\Models\MacyProduct;
+use App\Models\MacysListingStatus;
 use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
+use App\Models\ReverbListingStatus;
+use App\Models\ReverbProduct;
 use App\Models\ShopifySku;
+use App\Models\TiendamiaDataView;
+use App\Models\TiendamiaProduct;
 use Illuminate\Http\Request;
 
 class MapIssuesController extends Controller
@@ -64,6 +73,18 @@ class MapIssuesController extends Controller
                 'amazon_not_map_count' => 0,
                 'amazon_mismatch_count' => 0,
                 'amazon_missing_listing_count' => 0,
+                'reverb_not_map_count' => 0,
+                'reverb_mismatch_count' => 0,
+                'reverb_missing_listing_count' => 0,
+                'macys_not_map_count' => 0,
+                'macys_mismatch_count' => 0,
+                'macys_missing_listing_count' => 0,
+                'bestbuy_not_map_count' => 0,
+                'bestbuy_mismatch_count' => 0,
+                'bestbuy_missing_listing_count' => 0,
+                'tiendamia_not_map_count' => 0,
+                'tiendamia_mismatch_count' => 0,
+                'tiendamia_missing_listing_count' => 0,
             ]);
         }
 
@@ -87,6 +108,30 @@ class MapIssuesController extends Controller
         $amazonSheetByNorm = $this->buildAmazonSheetLookupByNormalizedSku($skus);
         $nrValuesAmz       = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
+        // Reverb: stock (remaining_inventory), price and stored SKU come from reverb_products
+        // (listed = price > 0, like the reverb-pricing page), and REQ/NR comes from
+        // reverb_listing_statuses' "rl_nrl" key (RL = REQ, NRL = NR).
+        $reverbByNorm    = $this->buildReverbLookupByNormalizedSku($skus);
+        $nrStatusReverb  = $this->buildReverbNrReqStatusLookup($skus);
+
+        // Macy's: stock, price and stored SKU come from macy_products (listed = price > 0,
+        // like the macys-pricing page), and REQ/NR comes from macys_listing_statuses' "nr_req" key.
+        $macyByNorm      = $this->buildMacyLookupByNormalizedSku($skus);
+        $nrStatusMacy    = $this->buildNrReqStatusLookup(MacysListingStatus::class, $skus);
+
+        // Best Buy: stock and stored SKU come from bestbuy_usa_products; price comes from
+        // bestbuy_price_data (fallback to product price) — listed = price > 0, like the
+        // bestbuy-pricing page. REQ/NR comes from bestbuy_usa_listing_statuses' "nr_req" key.
+        $bestbuyByNorm      = $this->buildBestbuyLookupByNormalizedSku($skus);
+        $bestbuyPriceByNorm = $this->buildBestbuyPriceLookupByNormalizedSku($skus);
+        $nrStatusBestbuy    = $this->buildNrReqStatusLookup(BestbuyUSAListingStatus::class, $skus);
+
+        // Tiendamia: stock and stored SKU come from tiendamia_products (listed = the SKU exists
+        // in tiendamia_products, like the tiendamia-pricing page's Missing rule). REQ/NR comes
+        // from tiendamia_data_views' "NRP" key (RA = REQ, NRA = NR).
+        $tiendamiaByNorm    = $this->buildTiendamiaLookupByNormalizedSku($skus);
+        $nrStatusTiendamia  = $this->buildTiendamiaNrReqStatusLookup($skus);
+
         // 4. Build rows
         $result = [];
         $notMapCount = 0;          // eBay:  INV != eBay Stock (same logic as eBay page)
@@ -101,6 +146,18 @@ class MapIssuesController extends Controller
         $amazonNotMapCount = 0;          // Amazon: INV != Amazon Stock
         $amazonMismatchCount = 0;        // Amazon: SKU stored differently
         $amazonMissingListingCount = 0;  // Amazon: not listed, REQ, INV > 0
+        $reverbNotMapCount = 0;          // Reverb: INV != Reverb Stock
+        $reverbMismatchCount = 0;        // Reverb: SKU stored differently
+        $reverbMissingListingCount = 0;  // Reverb: not listed, REQ, INV > 0
+        $macysNotMapCount = 0;           // Macy's: INV != Macy's Stock
+        $macysMismatchCount = 0;         // Macy's: SKU stored differently
+        $macysMissingListingCount = 0;   // Macy's: not listed, REQ, INV > 0
+        $bestbuyNotMapCount = 0;         // Best Buy: INV != Best Buy Stock
+        $bestbuyMismatchCount = 0;       // Best Buy: SKU stored differently
+        $bestbuyMissingListingCount = 0; // Best Buy: not listed, REQ, INV > 0
+        $tiendamiaNotMapCount = 0;          // Tiendamia: INV != Tiendamia Stock
+        $tiendamiaMismatchCount = 0;        // Tiendamia: SKU stored differently
+        $tiendamiaMissingListingCount = 0;  // Tiendamia: not listed, REQ, INV > 0
         foreach ($productMasters as $pm) {
             $key = ShopifySku::normalizeSkuForShopifyLookup($pm->sku);
 
@@ -109,6 +166,10 @@ class MapIssuesController extends Controller
             $ebay2   = $key !== '' ? ($ebay2ByNorm[$key] ?? null) : null;
             $ebay3   = $key !== '' ? ($ebay3ByNorm[$key] ?? null) : null;
             $amazonSheet = $key !== '' ? ($amazonSheetByNorm[$key] ?? null) : null;
+            $reverb  = $key !== '' ? ($reverbByNorm[$key] ?? null) : null;
+            $macy    = $key !== '' ? ($macyByNorm[$key] ?? null) : null;
+            $bestbuy = $key !== '' ? ($bestbuyByNorm[$key] ?? null) : null;
+            $tiendamia = $key !== '' ? ($tiendamiaByNorm[$key] ?? null) : null;
 
             $inv = floatval($shopify->inv ?? 0);
 
@@ -243,6 +304,126 @@ class MapIssuesController extends Controller
                 $amazonMissingListingCount++;
             }
 
+            // ---- Reverb ----
+            $reverbStock = floatval($reverb->remaining_inventory ?? 0);
+            $reverbPrice = floatval($reverb->price ?? 0);
+            $reverbListed = $reverbPrice > 0; // live listing, same as the reverb-pricing page
+            $reverbSku = $reverb->sku ?? null;
+            $reverbReason = $reverbSku !== null ? $this->skuDifferenceReason($pm->sku, $reverbSku) : '';
+            $reverbHasIssue = $reverbReason !== '';
+            if ($reverbHasIssue) {
+                $reverbMismatchCount++;
+            }
+            $reverbNrReq = $this->isReqStatus($nrStatusReverb, $pm->sku) ? 'REQ' : 'NR';
+            $reverbIsNotMap = false;
+            $reverbWithin3 = false;
+            if ($reverbListed && $reverbNrReq === 'REQ' && $inv > 0 && $reverbStock > 0) {
+                $reverbDiffUnits = abs($inv - $reverbStock);
+                if ($inv * 0.03 < 3) {
+                    $reverbIsNotMap = $reverbDiffUnits > 3;
+                } else {
+                    $reverbIsNotMap = round(($reverbDiffUnits / $inv) * 100) > 3;
+                }
+                if ($reverbIsNotMap) {
+                    $reverbNotMapCount++;
+                }
+                $reverbWithin3 = ! $reverbIsNotMap;
+            }
+            $reverbMissingListing = ! $reverbListed && $inv > 0;
+            if ($reverbMissingListing && $reverbNrReq === 'REQ') {
+                $reverbMissingListingCount++;
+            }
+
+            // ---- Macy's ----
+            $macyStock = floatval($macy->stock ?? 0);
+            $macyPrice = floatval($macy->price ?? 0);
+            $macyListed = $macyPrice > 0; // live listing, same as the macys-pricing page
+            $macySku = $macy->sku ?? null;
+            $macyReason = $macySku !== null ? $this->skuDifferenceReason($pm->sku, $macySku) : '';
+            $macyHasIssue = $macyReason !== '';
+            if ($macyHasIssue) {
+                $macysMismatchCount++;
+            }
+            $macyNrReq = $this->isReqStatus($nrStatusMacy, $pm->sku) ? 'REQ' : 'NR';
+            $macyIsNotMap = false;
+            $macyWithin3 = false;
+            if ($macyListed && $macyNrReq === 'REQ' && $inv > 0 && $macyStock > 0) {
+                $macyDiffUnits = abs($inv - $macyStock);
+                if ($inv * 0.03 < 3) {
+                    $macyIsNotMap = $macyDiffUnits > 3;
+                } else {
+                    $macyIsNotMap = round(($macyDiffUnits / $inv) * 100) > 3;
+                }
+                if ($macyIsNotMap) {
+                    $macysNotMapCount++;
+                }
+                $macyWithin3 = ! $macyIsNotMap;
+            }
+            $macyMissingListing = ! $macyListed && $inv > 0;
+            if ($macyMissingListing && $macyNrReq === 'REQ') {
+                $macysMissingListingCount++;
+            }
+
+            // ---- Best Buy ----
+            $bestbuyStock = floatval($bestbuy->stock ?? 0);
+            $bestbuyDataPrice = $key !== '' ? ($bestbuyPriceByNorm[$key] ?? null) : null;
+            $bestbuyPrice = $bestbuyDataPrice !== null ? floatval($bestbuyDataPrice) : floatval($bestbuy->price ?? 0);
+            $bestbuyListed = $bestbuyPrice > 0; // live listing, same as the bestbuy-pricing page
+            $bestbuySku = $bestbuy->sku ?? null;
+            $bestbuyReason = $bestbuySku !== null ? $this->skuDifferenceReason($pm->sku, $bestbuySku) : '';
+            $bestbuyHasIssue = $bestbuyReason !== '';
+            if ($bestbuyHasIssue) {
+                $bestbuyMismatchCount++;
+            }
+            $bestbuyNrReq = $this->isReqStatus($nrStatusBestbuy, $pm->sku) ? 'REQ' : 'NR';
+            $bestbuyIsNotMap = false;
+            $bestbuyWithin3 = false;
+            if ($bestbuyListed && $bestbuyNrReq === 'REQ' && $inv > 0 && $bestbuyStock > 0) {
+                $bestbuyDiffUnits = abs($inv - $bestbuyStock);
+                if ($inv * 0.03 < 3) {
+                    $bestbuyIsNotMap = $bestbuyDiffUnits > 3;
+                } else {
+                    $bestbuyIsNotMap = round(($bestbuyDiffUnits / $inv) * 100) > 3;
+                }
+                if ($bestbuyIsNotMap) {
+                    $bestbuyNotMapCount++;
+                }
+                $bestbuyWithin3 = ! $bestbuyIsNotMap;
+            }
+            $bestbuyMissingListing = ! $bestbuyListed && $inv > 0;
+            if ($bestbuyMissingListing && $bestbuyNrReq === 'REQ') {
+                $bestbuyMissingListingCount++;
+            }
+
+            // ---- Tiendamia ----
+            $tiendamiaStock = floatval($tiendamia->stock ?? 0);
+            $tiendamiaListed = $tiendamia !== null; // SKU exists in tiendamia_products
+            $tiendamiaSku = $tiendamia->sku ?? null;
+            $tiendamiaReason = $tiendamiaSku !== null ? $this->skuDifferenceReason($pm->sku, $tiendamiaSku) : '';
+            $tiendamiaHasIssue = $tiendamiaReason !== '';
+            if ($tiendamiaHasIssue) {
+                $tiendamiaMismatchCount++;
+            }
+            $tiendamiaNrReq = $this->isReqStatus($nrStatusTiendamia, $pm->sku) ? 'REQ' : 'NR';
+            $tiendamiaIsNotMap = false;
+            $tiendamiaWithin3 = false;
+            if ($tiendamiaListed && $tiendamiaNrReq === 'REQ' && $inv > 0 && $tiendamiaStock > 0) {
+                $tiendamiaDiffUnits = abs($inv - $tiendamiaStock);
+                if ($inv * 0.03 < 3) {
+                    $tiendamiaIsNotMap = $tiendamiaDiffUnits > 3;
+                } else {
+                    $tiendamiaIsNotMap = round(($tiendamiaDiffUnits / $inv) * 100) > 3;
+                }
+                if ($tiendamiaIsNotMap) {
+                    $tiendamiaNotMapCount++;
+                }
+                $tiendamiaWithin3 = ! $tiendamiaIsNotMap;
+            }
+            $tiendamiaMissingListing = ! $tiendamiaListed && $inv > 0;
+            if ($tiendamiaMissingListing && $tiendamiaNrReq === 'REQ') {
+                $tiendamiaMissingListingCount++;
+            }
+
             $result[] = [
                 '(Child) sku'    => $pm->sku,
                 'INV'            => $shopify->inv ?? 0,
@@ -285,6 +466,42 @@ class MapIssuesController extends Controller
                 'amazon_missing_listing' => $amazonMissingListing,
                 'amazon_nr_req'          => $amazonNrReq,
 
+                'Reverb Inv'             => $reverbStock,
+                'reverb_sku'             => $reverbSku,
+                'reverb_mismatch'        => $reverbHasIssue,
+                'reverb_issue'           => $reverbReason,
+                'reverb_not_map'         => $reverbIsNotMap,
+                'reverb_within3'         => $reverbWithin3,
+                'reverb_missing_listing' => $reverbMissingListing,
+                'reverb_nr_req'          => $reverbNrReq,
+
+                'Macys Inv'             => $macyStock,
+                'macys_sku'             => $macySku,
+                'macys_mismatch'        => $macyHasIssue,
+                'macys_issue'           => $macyReason,
+                'macys_not_map'         => $macyIsNotMap,
+                'macys_within3'         => $macyWithin3,
+                'macys_missing_listing' => $macyMissingListing,
+                'macys_nr_req'          => $macyNrReq,
+
+                'Bestbuy Inv'            => $bestbuyStock,
+                'bestbuy_sku'            => $bestbuySku,
+                'bestbuy_mismatch'       => $bestbuyHasIssue,
+                'bestbuy_issue'          => $bestbuyReason,
+                'bestbuy_not_map'        => $bestbuyIsNotMap,
+                'bestbuy_within3'        => $bestbuyWithin3,
+                'bestbuy_missing_listing'=> $bestbuyMissingListing,
+                'bestbuy_nr_req'         => $bestbuyNrReq,
+
+                'Tiendamia Inv'            => $tiendamiaStock,
+                'tiendamia_sku'            => $tiendamiaSku,
+                'tiendamia_mismatch'       => $tiendamiaHasIssue,
+                'tiendamia_issue'          => $tiendamiaReason,
+                'tiendamia_not_map'        => $tiendamiaIsNotMap,
+                'tiendamia_within3'        => $tiendamiaWithin3,
+                'tiendamia_missing_listing'=> $tiendamiaMissingListing,
+                'tiendamia_nr_req'         => $tiendamiaNrReq,
+
                 'pm_missing'            => false,
             ];
         }
@@ -311,6 +528,18 @@ class MapIssuesController extends Controller
             'amazon_not_map_count'  => $amazonNotMapCount,
             'amazon_mismatch_count' => $amazonMismatchCount,
             'amazon_missing_listing_count' => $amazonMissingListingCount,
+            'reverb_not_map_count'  => $reverbNotMapCount,
+            'reverb_mismatch_count' => $reverbMismatchCount,
+            'reverb_missing_listing_count' => $reverbMissingListingCount,
+            'macys_not_map_count'   => $macysNotMapCount,
+            'macys_mismatch_count'  => $macysMismatchCount,
+            'macys_missing_listing_count' => $macysMissingListingCount,
+            'bestbuy_not_map_count'  => $bestbuyNotMapCount,
+            'bestbuy_mismatch_count' => $bestbuyMismatchCount,
+            'bestbuy_missing_listing_count' => $bestbuyMissingListingCount,
+            'tiendamia_not_map_count'  => $tiendamiaNotMapCount,
+            'tiendamia_mismatch_count' => $tiendamiaMismatchCount,
+            'tiendamia_missing_listing_count' => $tiendamiaMissingListingCount,
             'pm_missing_count'      => $pmMissingCount,
         ]);
     }
@@ -346,7 +575,7 @@ class MapIssuesController extends Controller
                             continue;
                         }
                         if (! isset($map[$k])) {
-                            $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null];
+                            $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null];
                         }
                         $map[$k][$field] = $r->ebay_stock ?? 0;
                     }
@@ -372,9 +601,88 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null];
                     }
                     $map[$k]['amazon'] = 0; // listed flag; real stock filled in below
+                }
+
+                return true;
+            });
+
+        // Reverb: a SKU is "listed" when it has a live listing (price > 0) in reverb_products.
+        ReverbProduct::query()
+            ->select('sku', 'price', 'remaining_inventory', 'id')
+            ->where('price', '>', 0)
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$map, $pmKeys) {
+                foreach ($rows as $r) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $r->sku);
+                    if ($k === '' || isset($pmKeys[$k])) {
+                        continue;
+                    }
+                    if (! isset($map[$k])) {
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null];
+                    }
+                    $map[$k]['reverb'] = floatval($r->remaining_inventory ?? 0);
+                }
+
+                return true;
+            });
+
+        // Macy's: a SKU is "listed" when it has a live listing (price > 0) in macy_products.
+        MacyProduct::query()
+            ->select('sku', 'price', 'stock', 'id')
+            ->where('price', '>', 0)
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$map, $pmKeys) {
+                foreach ($rows as $r) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $r->sku);
+                    if ($k === '' || isset($pmKeys[$k])) {
+                        continue;
+                    }
+                    if (! isset($map[$k])) {
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null];
+                    }
+                    $map[$k]['macys'] = floatval($r->stock ?? 0);
+                }
+
+                return true;
+            });
+
+        // Best Buy: a SKU is "listed" when it has a live listing (price > 0) in bestbuy_usa_products.
+        BestbuyUsaProduct::query()
+            ->select('sku', 'price', 'stock', 'id')
+            ->where('price', '>', 0)
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$map, $pmKeys) {
+                foreach ($rows as $r) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $r->sku);
+                    if ($k === '' || isset($pmKeys[$k])) {
+                        continue;
+                    }
+                    if (! isset($map[$k])) {
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null];
+                    }
+                    $map[$k]['bestbuy'] = floatval($r->stock ?? 0);
+                }
+
+                return true;
+            });
+
+        // Tiendamia: a SKU is "listed" when it exists in tiendamia_products.
+        TiendamiaProduct::query()
+            ->select('sku', 'stock', 'id')
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$map, $pmKeys) {
+                foreach ($rows as $r) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $r->sku);
+                    if ($k === '' || isset($pmKeys[$k])) {
+                        continue;
+                    }
+                    if (! isset($map[$k])) {
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null];
+                    }
+                    $map[$k]['tiendamia'] = floatval($r->stock ?? 0);
                 }
 
                 return true;
@@ -410,6 +718,18 @@ class MapIssuesController extends Controller
             }
             if ($m['amazon'] !== null) {
                 $listedOn[] = 'Amazon';
+            }
+            if ($m['reverb'] !== null) {
+                $listedOn[] = 'Reverb';
+            }
+            if ($m['macys'] !== null) {
+                $listedOn[] = "Macy's";
+            }
+            if ($m['bestbuy'] !== null) {
+                $listedOn[] = 'Best Buy';
+            }
+            if ($m['tiendamia'] !== null) {
+                $listedOn[] = 'Tiendamia';
             }
 
             $rows[] = [
@@ -454,6 +774,42 @@ class MapIssuesController extends Controller
                 'amazon_missing_listing' => false,
                 'amazon_nr_req'          => 'REQ',
 
+                'Reverb Inv'             => $m['reverb'] ?? 0,
+                'reverb_sku'             => $m['reverb'] !== null ? $m['sku'] : null,
+                'reverb_mismatch'        => false,
+                'reverb_issue'           => '',
+                'reverb_not_map'         => false,
+                'reverb_within3'         => false,
+                'reverb_missing_listing' => false,
+                'reverb_nr_req'          => 'REQ',
+
+                'Macys Inv'             => $m['macys'] ?? 0,
+                'macys_sku'             => $m['macys'] !== null ? $m['sku'] : null,
+                'macys_mismatch'        => false,
+                'macys_issue'           => '',
+                'macys_not_map'         => false,
+                'macys_within3'         => false,
+                'macys_missing_listing' => false,
+                'macys_nr_req'          => 'REQ',
+
+                'Bestbuy Inv'            => $m['bestbuy'] ?? 0,
+                'bestbuy_sku'            => $m['bestbuy'] !== null ? $m['sku'] : null,
+                'bestbuy_mismatch'       => false,
+                'bestbuy_issue'          => '',
+                'bestbuy_not_map'        => false,
+                'bestbuy_within3'        => false,
+                'bestbuy_missing_listing'=> false,
+                'bestbuy_nr_req'         => 'REQ',
+
+                'Tiendamia Inv'            => $m['tiendamia'] ?? 0,
+                'tiendamia_sku'            => $m['tiendamia'] !== null ? $m['sku'] : null,
+                'tiendamia_mismatch'       => false,
+                'tiendamia_issue'          => '',
+                'tiendamia_not_map'        => false,
+                'tiendamia_within3'        => false,
+                'tiendamia_missing_listing'=> false,
+                'tiendamia_nr_req'         => 'REQ',
+
                 'pm_missing'            => true,
             ];
         }
@@ -473,11 +829,16 @@ class MapIssuesController extends Controller
         // Per-marketplace config: model, JSON key, and the "not required" status value.
         // eBay 1 stores REQ/NRL under "NRL" in EbayDataView.
         // eBay 2 & 3 store REQ/NR under "nr_req" in their listing-status tables.
+        // Reverb stores REQ/NR as RL/NRL under "rl_nrl" in reverb_listing_statuses.
         $config = [
             'ebay'   => ['model' => EbayDataView::class,           'key' => 'NRL',    'notReq' => 'NRL'],
             'ebay2'  => ['model' => EbayTwoListingStatus::class,   'key' => 'nr_req', 'notReq' => 'NR'],
             'ebay3'  => ['model' => EbayThreeListingStatus::class, 'key' => 'nr_req', 'notReq' => 'NR'],
             'amazon' => ['model' => AmazonDataView::class,         'key' => 'NRL',    'notReq' => 'NRL'],
+            'reverb' => ['model' => ReverbListingStatus::class,    'key' => 'rl_nrl', 'notReq' => 'NR', 'transform' => ['REQ' => 'RL', 'NR' => 'NRL']],
+            'macys'  => ['model' => MacysListingStatus::class,     'key' => 'nr_req', 'notReq' => 'NR'],
+            'bestbuy'=> ['model' => BestbuyUSAListingStatus::class, 'key' => 'nr_req', 'notReq' => 'NR'],
+            'tiendamia' => ['model' => TiendamiaDataView::class,   'key' => 'NRP',    'notReq' => 'NR', 'transform' => ['REQ' => 'RA', 'NR' => 'NRA']],
         ];
 
         if ($sku === '' || ! isset($config[$market])) {
@@ -496,8 +857,9 @@ class MapIssuesController extends Controller
             $row->sku = $sku;
         }
 
+        $stored = isset($cfg['transform']) ? ($cfg['transform'][$status] ?? $status) : $status;
         $value = is_array($row->value) ? $row->value : (json_decode((string) $row->value, true) ?: []);
-        $value[$cfg['key']] = $status;
+        $value[$cfg['key']] = $stored;
         $row->value = $value;
         $row->save();
 
@@ -702,6 +1064,269 @@ class MapIssuesController extends Controller
             });
 
         return $byNorm;
+    }
+
+    /**
+     * Build a normalized-SKU => reverb_products row (sku + price + remaining_inventory)
+     * lookup, with a full-scan fallback for SKUs that differ only by formatting.
+     *
+     * @param  array<int, string>  $productSkus
+     * @return array<string, \Illuminate\Database\Eloquent\Model>
+     */
+    private function buildReverbLookupByNormalizedSku(array $productSkus): array
+    {
+        $byNorm = [];
+
+        foreach (ReverbProduct::select('sku', 'price', 'remaining_inventory')->whereIn('sku', $productSkus)->get() as $row) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $byNorm[$k] = $row;
+            }
+        }
+
+        $missing = [];
+        foreach ($productSkus as $pmSku) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $pmSku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $missing[$k] = true;
+            }
+        }
+
+        if ($missing === []) {
+            return $byNorm;
+        }
+
+        ReverbProduct::query()
+            ->select('sku', 'price', 'remaining_inventory', 'id')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$byNorm, &$missing) {
+                foreach ($rows as $row) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+                    if ($k !== '' && isset($missing[$k]) && ! isset($byNorm[$k])) {
+                        $byNorm[$k] = $row;
+                        unset($missing[$k]);
+                    }
+                }
+
+                return count($missing) > 0;
+            });
+
+        return $byNorm;
+    }
+
+    /**
+     * Build a normalized-SKU => macy_products row (sku + price + stock) lookup,
+     * with a full-scan fallback for SKUs that differ only by formatting.
+     *
+     * @param  array<int, string>  $productSkus
+     * @return array<string, \Illuminate\Database\Eloquent\Model>
+     */
+    private function buildMacyLookupByNormalizedSku(array $productSkus): array
+    {
+        $byNorm = [];
+
+        foreach (MacyProduct::select('sku', 'price', 'stock')->whereIn('sku', $productSkus)->get() as $row) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $byNorm[$k] = $row;
+            }
+        }
+
+        $missing = [];
+        foreach ($productSkus as $pmSku) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $pmSku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $missing[$k] = true;
+            }
+        }
+
+        if ($missing === []) {
+            return $byNorm;
+        }
+
+        MacyProduct::query()
+            ->select('sku', 'price', 'stock', 'id')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$byNorm, &$missing) {
+                foreach ($rows as $row) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+                    if ($k !== '' && isset($missing[$k]) && ! isset($byNorm[$k])) {
+                        $byNorm[$k] = $row;
+                        unset($missing[$k]);
+                    }
+                }
+
+                return count($missing) > 0;
+            });
+
+        return $byNorm;
+    }
+
+    /**
+     * Build a normalized-SKU => bestbuy_usa_products row (sku + price + stock) lookup,
+     * with a full-scan fallback for SKUs that differ only by formatting.
+     *
+     * @param  array<int, string>  $productSkus
+     * @return array<string, \Illuminate\Database\Eloquent\Model>
+     */
+    private function buildBestbuyLookupByNormalizedSku(array $productSkus): array
+    {
+        $byNorm = [];
+
+        foreach (BestbuyUsaProduct::select('sku', 'price', 'stock')->whereIn('sku', $productSkus)->get() as $row) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $byNorm[$k] = $row;
+            }
+        }
+
+        $missing = [];
+        foreach ($productSkus as $pmSku) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $pmSku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $missing[$k] = true;
+            }
+        }
+
+        if ($missing === []) {
+            return $byNorm;
+        }
+
+        BestbuyUsaProduct::query()
+            ->select('sku', 'price', 'stock', 'id')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$byNorm, &$missing) {
+                foreach ($rows as $row) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+                    if ($k !== '' && isset($missing[$k]) && ! isset($byNorm[$k])) {
+                        $byNorm[$k] = $row;
+                        unset($missing[$k]);
+                    }
+                }
+
+                return count($missing) > 0;
+            });
+
+        return $byNorm;
+    }
+
+    /**
+     * Build a normalized-SKU => Best Buy price lookup from bestbuy_price_data.
+     *
+     * @param  array<int, string>  $productSkus
+     * @return array<string, float>
+     */
+    private function buildBestbuyPriceLookupByNormalizedSku(array $productSkus): array
+    {
+        $byNorm = [];
+
+        foreach (BestbuyPriceData::select('sku', 'price')->whereIn('sku', $productSkus)->get() as $row) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $byNorm[$k] = floatval($row->price ?? 0);
+            }
+        }
+
+        return $byNorm;
+    }
+
+    /**
+     * Build a normalized-SKU => tiendamia_products row (sku + stock) lookup, with a
+     * full-scan fallback for SKUs that differ only by formatting.
+     *
+     * @param  array<int, string>  $productSkus
+     * @return array<string, \Illuminate\Database\Eloquent\Model>
+     */
+    private function buildTiendamiaLookupByNormalizedSku(array $productSkus): array
+    {
+        $byNorm = [];
+        $upper = array_map('strtoupper', $productSkus);
+
+        foreach (TiendamiaProduct::select('sku', 'stock')->whereIn('sku', $upper)->get() as $row) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $byNorm[$k] = $row;
+            }
+        }
+
+        $missing = [];
+        foreach ($productSkus as $pmSku) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $pmSku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $missing[$k] = true;
+            }
+        }
+
+        if ($missing === []) {
+            return $byNorm;
+        }
+
+        TiendamiaProduct::query()
+            ->select('sku', 'stock', 'id')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$byNorm, &$missing) {
+                foreach ($rows as $row) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+                    if ($k !== '' && isset($missing[$k]) && ! isset($byNorm[$k])) {
+                        $byNorm[$k] = $row;
+                        unset($missing[$k]);
+                    }
+                }
+
+                return count($missing) > 0;
+            });
+
+        return $byNorm;
+    }
+
+    /**
+     * Build a SKU(lowercased) => REQ/NR lookup from tiendamia_data_views' "NRP" key
+     * (RA = REQ, NRA = NR; LATER and missing default to REQ).
+     *
+     * @param  array<int, string>  $skus
+     * @return array<string, string>
+     */
+    private function buildTiendamiaNrReqStatusLookup(array $skus): array
+    {
+        $out = [];
+        foreach (TiendamiaDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $row) {
+            $value = is_array($row->value) ? $row->value : (json_decode((string) $row->value, true) ?: []);
+            $nrp = strtoupper((string) ($value['NRP'] ?? 'RA'));
+            $out[strtolower(trim((string) $row->sku))] = ($nrp === 'NRA') ? 'NR' : 'REQ';
+        }
+
+        return $out;
+    }
+
+    /**
+     * Build a SKU(lowercased) => REQ/NR lookup from reverb_listing_statuses.
+     * Reverb stores RL/NRL under "rl_nrl" (RL = REQ, NRL = NR); older rows may
+     * still use "nr_req". Defaults to REQ when not explicitly set.
+     *
+     * @param  array<int, string>  $skus
+     * @return array<string, string>
+     */
+    private function buildReverbNrReqStatusLookup(array $skus): array
+    {
+        $out = [];
+        foreach (ReverbListingStatus::whereIn('sku', $skus)->get(['sku', 'value']) as $row) {
+            $value = is_array($row->value) ? $row->value : (json_decode((string) $row->value, true) ?: []);
+            $rlNrl = $value['rl_nrl'] ?? null;
+            if ($rlNrl === null && isset($value['nr_req'])) {
+                $rlNrl = $value['nr_req'] === 'NR' ? 'NRL' : 'RL';
+            }
+            $out[strtolower(trim((string) $row->sku))] = ($rlNrl === 'NRL') ? 'NR' : 'REQ';
+        }
+
+        return $out;
     }
 
     /**

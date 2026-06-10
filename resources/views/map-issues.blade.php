@@ -13,6 +13,42 @@
             font-weight: 600;
         }
 
+        /* Reverb badge colors (purple) */
+        .badge.rv-off {
+            background-color: #6f42c1 !important;
+        }
+
+        .badge.rv-on {
+            background-color: #3d1f73 !important;
+        }
+
+        /* Macy's badge colors (red) */
+        .badge.mc-off {
+            background-color: #c8102e !important;
+        }
+
+        .badge.mc-on {
+            background-color: #7a0a1c !important;
+        }
+
+        /* Best Buy badge colors (blue) */
+        .badge.bb-off {
+            background-color: #0046be !important;
+        }
+
+        .badge.bb-on {
+            background-color: #00257a !important;
+        }
+
+        /* Tiendamia badge colors (teal) */
+        .badge.tm-off {
+            background-color: #009688 !important;
+        }
+
+        .badge.tm-on {
+            background-color: #00574d !important;
+        }
+
         /* Active badge outline */
         .badge.map-active {
             box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.55);
@@ -66,6 +102,42 @@
                         <span class="badge bg-warning fs-6 p-2" id="amazon-missing-listing-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Amazon Missing Listing — not listed on Amazon, marked REQ, INV > 0">A ML: 0</span>
+                        <span class="badge rv-off fs-6 p-2" id="reverb-not-map-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Reverb Not Mapped — listed on Reverb but INV does not match Reverb Inv">R NP: 0</span>
+                        <span class="badge rv-off fs-6 p-2" id="reverb-mismatch-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Reverb SKU Mismatch — Reverb SKU does not exactly match the Product Master SKU">R SM: 0</span>
+                        <span class="badge rv-off fs-6 p-2" id="reverb-missing-listing-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Reverb Missing Listing — not listed on Reverb, marked REQ, INV > 0">R ML: 0</span>
+                        <span class="badge mc-off fs-6 p-2" id="macys-not-map-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Macy's Not Mapped — listed on Macy's but INV does not match Macy's Inv">M NP: 0</span>
+                        <span class="badge mc-off fs-6 p-2" id="macys-mismatch-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Macy's SKU Mismatch — Macy's SKU does not exactly match the Product Master SKU">M SM: 0</span>
+                        <span class="badge mc-off fs-6 p-2" id="macys-missing-listing-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Macy's Missing Listing — not listed on Macy's, marked REQ, INV > 0">M ML: 0</span>
+                        <span class="badge bb-off fs-6 p-2" id="bestbuy-not-map-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Best Buy Not Mapped — listed on Best Buy but INV does not match Best Buy Inv">BB NP: 0</span>
+                        <span class="badge bb-off fs-6 p-2" id="bestbuy-mismatch-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Best Buy SKU Mismatch — Best Buy SKU does not exactly match the Product Master SKU">BB SM: 0</span>
+                        <span class="badge bb-off fs-6 p-2" id="bestbuy-missing-listing-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Best Buy Missing Listing — not listed on Best Buy, marked REQ, INV > 0">BB ML: 0</span>
+                        <span class="badge tm-off fs-6 p-2" id="tiendamia-not-map-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Tiendamia Not Mapped — listed on Tiendamia but INV does not match Tiendamia Inv">T NP: 0</span>
+                        <span class="badge tm-off fs-6 p-2" id="tiendamia-mismatch-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Tiendamia SKU Mismatch — Tiendamia SKU does not exactly match the Product Master SKU">T SM: 0</span>
+                        <span class="badge tm-off fs-6 p-2" id="tiendamia-missing-listing-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Tiendamia Missing Listing — not listed on Tiendamia, marked REQ, INV > 0">T ML: 0</span>
                     </div>
                     <div class="mb-3 d-flex gap-4">
                         <div class="form-check form-switch">
@@ -131,9 +203,9 @@
             var showSiteOnly = false; // "Show SKUs not in Product Master" toggle
             var hideSmallDiff = false; // "Hide ≤3% diff rows" toggle
 
-            var invFieldByMarket = { ebay: 'Ebay Inv', ebay2: 'Ebay2 Inv', ebay3: 'Ebay3 Inv', amazon: 'Amazon Inv' };
-            var nrFieldByMarket  = { ebay: 'ebay_nr_req', ebay2: 'ebay2_nr_req', ebay3: 'ebay3_nr_req', amazon: 'amazon_nr_req' };
-            var within3FieldByMarket = { ebay: 'ebay_within3', ebay2: 'ebay2_within3', ebay3: 'ebay3_within3', amazon: 'amazon_within3' };
+            var invFieldByMarket = { ebay: 'Ebay Inv', ebay2: 'Ebay2 Inv', ebay3: 'Ebay3 Inv', amazon: 'Amazon Inv', reverb: 'Reverb Inv', macys: 'Macys Inv', bestbuy: 'Bestbuy Inv', tiendamia: 'Tiendamia Inv' };
+            var nrFieldByMarket  = { ebay: 'ebay_nr_req', ebay2: 'ebay2_nr_req', ebay3: 'ebay3_nr_req', amazon: 'amazon_nr_req', reverb: 'reverb_nr_req', macys: 'macys_nr_req', bestbuy: 'bestbuy_nr_req', tiendamia: 'tiendamia_nr_req' };
+            var within3FieldByMarket = { ebay: 'ebay_within3', ebay2: 'ebay2_within3', ebay3: 'ebay3_within3', amazon: 'amazon_within3', reverb: 'reverb_within3', macys: 'macys_within3', bestbuy: 'bestbuy_within3', tiendamia: 'tiendamia_within3' };
 
             // NR/REQ column: green "Req", red "Not Req" (anything other than REQ).
             function nrReqFormatter(cell) {
@@ -256,6 +328,30 @@
                         'A SM: ' + (response.amazon_mismatch_count || 0).toLocaleString();
                     document.getElementById('amazon-missing-listing-count-badge').textContent =
                         'A ML: ' + (response.amazon_missing_listing_count || 0).toLocaleString();
+                    document.getElementById('reverb-not-map-count-badge').textContent =
+                        'R NP: ' + (response.reverb_not_map_count || 0).toLocaleString();
+                    document.getElementById('reverb-mismatch-count-badge').textContent =
+                        'R SM: ' + (response.reverb_mismatch_count || 0).toLocaleString();
+                    document.getElementById('reverb-missing-listing-count-badge').textContent =
+                        'R ML: ' + (response.reverb_missing_listing_count || 0).toLocaleString();
+                    document.getElementById('macys-not-map-count-badge').textContent =
+                        'M NP: ' + (response.macys_not_map_count || 0).toLocaleString();
+                    document.getElementById('macys-mismatch-count-badge').textContent =
+                        'M SM: ' + (response.macys_mismatch_count || 0).toLocaleString();
+                    document.getElementById('macys-missing-listing-count-badge').textContent =
+                        'M ML: ' + (response.macys_missing_listing_count || 0).toLocaleString();
+                    document.getElementById('bestbuy-not-map-count-badge').textContent =
+                        'BB NP: ' + (response.bestbuy_not_map_count || 0).toLocaleString();
+                    document.getElementById('bestbuy-mismatch-count-badge').textContent =
+                        'BB SM: ' + (response.bestbuy_mismatch_count || 0).toLocaleString();
+                    document.getElementById('bestbuy-missing-listing-count-badge').textContent =
+                        'BB ML: ' + (response.bestbuy_missing_listing_count || 0).toLocaleString();
+                    document.getElementById('tiendamia-not-map-count-badge').textContent =
+                        'T NP: ' + (response.tiendamia_not_map_count || 0).toLocaleString();
+                    document.getElementById('tiendamia-mismatch-count-badge').textContent =
+                        'T SM: ' + (response.tiendamia_mismatch_count || 0).toLocaleString();
+                    document.getElementById('tiendamia-missing-listing-count-badge').textContent =
+                        'T ML: ' + (response.tiendamia_missing_listing_count || 0).toLocaleString();
                     document.getElementById('site-only-count').textContent =
                         response.pm_missing_count ? '(' + response.pm_missing_count.toLocaleString() + ')' : '';
                     return response.data || [];
@@ -282,6 +378,10 @@
                     { title: 'NR/REQ', field: 'ebay2_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('ebay2') },
                     { title: 'NR/REQ', field: 'ebay3_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('ebay3') },
                     { title: 'NR/REQ', field: 'amazon_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NRL: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('amazon') },
+                    { title: 'NR/REQ', field: 'reverb_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('reverb') },
+                    { title: 'NR/REQ', field: 'macys_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('macys') },
+                    { title: 'NR/REQ', field: 'bestbuy_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('bestbuy') },
+                    { title: 'NR/REQ', field: 'tiendamia_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('tiendamia') },
                     { title: 'INV', field: 'INV', hozAlign: 'right', sorter: 'number' },
                     {
                         title: 'Ebay Inv', field: 'Ebay Inv', hozAlign: 'right', sorter: 'number',
@@ -323,6 +423,46 @@
                             }
                         },
                     },
+                    {
+                        title: 'Reverb Inv', field: 'Reverb Inv', hozAlign: 'right', sorter: 'number',
+                        formatter: invFormatter('reverb_mismatch'),
+                        cellClick: function (e, cell) {
+                            if (e.target.classList.contains('map-info-icon')) {
+                                var d = cell.getRow().getData();
+                                showIssueModal('Reverb', d['(Child) sku'], d.reverb_sku, d.reverb_issue);
+                            }
+                        },
+                    },
+                    {
+                        title: 'Macys Inv', field: 'Macys Inv', hozAlign: 'right', sorter: 'number',
+                        formatter: invFormatter('macys_mismatch'),
+                        cellClick: function (e, cell) {
+                            if (e.target.classList.contains('map-info-icon')) {
+                                var d = cell.getRow().getData();
+                                showIssueModal("Macy's", d['(Child) sku'], d.macys_sku, d.macys_issue);
+                            }
+                        },
+                    },
+                    {
+                        title: 'Bestbuy Inv', field: 'Bestbuy Inv', hozAlign: 'right', sorter: 'number',
+                        formatter: invFormatter('bestbuy_mismatch'),
+                        cellClick: function (e, cell) {
+                            if (e.target.classList.contains('map-info-icon')) {
+                                var d = cell.getRow().getData();
+                                showIssueModal('Best Buy', d['(Child) sku'], d.bestbuy_sku, d.bestbuy_issue);
+                            }
+                        },
+                    },
+                    {
+                        title: 'Tiendamia Inv', field: 'Tiendamia Inv', hozAlign: 'right', sorter: 'number',
+                        formatter: invFormatter('tiendamia_mismatch'),
+                        cellClick: function (e, cell) {
+                            if (e.target.classList.contains('map-info-icon')) {
+                                var d = cell.getRow().getData();
+                                showIssueModal('Tiendamia', d['(Child) sku'], d.tiendamia_sku, d.tiendamia_issue);
+                            }
+                        },
+                    },
                     { title: 'Diff', field: 'diff', visible: false, hozAlign: 'right', formatter: diffFormatter, sorter: diffSorter },
                 ],
             });
@@ -342,6 +482,18 @@
                 anp:  { el: document.getElementById('amazon-not-map-count-badge'),  field: 'amazon_not_map', market: 'amazon', off: 'bg-warning',  on: 'bg-danger' },
                 asm:  { el: document.getElementById('amazon-mismatch-count-badge'), field: 'amazon_mismatch',market: 'amazon', off: 'bg-warning',  on: 'bg-danger' },
                 aml:  { el: document.getElementById('amazon-missing-listing-count-badge'), field: 'amazon_missing_listing', market: 'amazon', off: 'bg-warning', on: 'bg-danger' },
+                rnp:  { el: document.getElementById('reverb-not-map-count-badge'),  field: 'reverb_not_map', market: 'reverb', off: 'rv-off',  on: 'rv-on' },
+                rsm:  { el: document.getElementById('reverb-mismatch-count-badge'), field: 'reverb_mismatch',market: 'reverb', off: 'rv-off',  on: 'rv-on' },
+                rml:  { el: document.getElementById('reverb-missing-listing-count-badge'), field: 'reverb_missing_listing', market: 'reverb', off: 'rv-off', on: 'rv-on' },
+                mnp:  { el: document.getElementById('macys-not-map-count-badge'),  field: 'macys_not_map', market: 'macys', off: 'mc-off',  on: 'mc-on' },
+                msm:  { el: document.getElementById('macys-mismatch-count-badge'), field: 'macys_mismatch',market: 'macys', off: 'mc-off',  on: 'mc-on' },
+                mml:  { el: document.getElementById('macys-missing-listing-count-badge'), field: 'macys_missing_listing', market: 'macys', off: 'mc-off', on: 'mc-on' },
+                bbnp: { el: document.getElementById('bestbuy-not-map-count-badge'),  field: 'bestbuy_not_map', market: 'bestbuy', off: 'bb-off',  on: 'bb-on' },
+                bbsm: { el: document.getElementById('bestbuy-mismatch-count-badge'), field: 'bestbuy_mismatch',market: 'bestbuy', off: 'bb-off',  on: 'bb-on' },
+                bbml: { el: document.getElementById('bestbuy-missing-listing-count-badge'), field: 'bestbuy_missing_listing', market: 'bestbuy', off: 'bb-off', on: 'bb-on' },
+                tnp:  { el: document.getElementById('tiendamia-not-map-count-badge'),  field: 'tiendamia_not_map', market: 'tiendamia', off: 'tm-off',  on: 'tm-on' },
+                tsm:  { el: document.getElementById('tiendamia-mismatch-count-badge'), field: 'tiendamia_mismatch',market: 'tiendamia', off: 'tm-off',  on: 'tm-on' },
+                tml:  { el: document.getElementById('tiendamia-missing-listing-count-badge'), field: 'tiendamia_missing_listing', market: 'tiendamia', off: 'tm-off', on: 'tm-on' },
             };
 
             function applyFilters() {

@@ -86,6 +86,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ route('map.issues') }}" class="side-nav-link">
+                    <i class="ri-node-tree"></i>
+                    <span>Map Issues</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a href="{{ route('compliance-certificates.index') }}" class="side-nav-link">
                     <i class="ri-shield-check-line"></i>
                     <span>Compliance Certificates</span>
