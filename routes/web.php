@@ -3409,6 +3409,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/overallAmazon/saveLowProfit', action: [OverallAmazonController::class, 'saveLowProfit']);
     Route::get('/amazon-pricing-cvr', action: [OverallAmazonController::class, 'amazonPricingCVR'])->name('amazon.pricing.cvr');
     Route::get('/amazon-tabulator-view', action: [OverallAmazonController::class, 'amazonTabulatorView'])->name('amazon.tabulator.view');
+    Route::get('/mercari-with-ship-tabulator-view', [MercariWShipController::class, 'mercariWshipTabulatorView'])->name('mercari.wship.tabulator.view');
+    Route::get('/mercari-with-ship-tabulator-data', [MercariWShipController::class, 'getMercariWshipTabulatorData'])->name('mercari.wship.tabulator.data');
+    Route::post('/mercari-with-ship-price-sold/import', [MercariWShipController::class, 'importMercariWshipPriceSold'])->name('mercari.wship.price-sold.import');
+    Route::get('/mercari-with-ship-price-sold/sample', [MercariWShipController::class, 'downloadMercariWshipPriceSoldSample'])->name('mercari.wship.price-sold.sample');
+    Route::post('/mercari-with-ship-tabulator/save-status', [MercariWShipController::class, 'saveMercariWshipStatus'])->name('mercari.wship.tabulator.save-status');
+    Route::get('/mercari-without-ship-tabulator-view', [MercariWoShipController::class, 'mercariWoShipTabulatorView'])->name('mercari.woship.tabulator.view');
+    Route::get('/mercari-without-ship-tabulator-data', [MercariWoShipController::class, 'getMercariWoShipTabulatorData'])->name('mercari.woship.tabulator.data');
+    Route::post('/mercari-without-ship-price-sold/import', [MercariWoShipController::class, 'importMercariWoShipPriceSold'])->name('mercari.woship.price-sold.import');
+    Route::get('/mercari-without-ship-price-sold/sample', [MercariWoShipController::class, 'downloadMercariWoShipPriceSoldSample'])->name('mercari.woship.price-sold.sample');
+    Route::post('/mercari-without-ship-tabulator/save-status', [MercariWoShipController::class, 'saveMercariWoShipStatus'])->name('mercari.woship.tabulator.save-status');
     Route::get('/amazonpricing-cvr-tabular', action: [OverallAmazonController::class, 'amazonPricingCvrTabular'])->name('amazon.pricing.cvr.tabular');
     Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility'])->name('amazon.column.visibility');
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
@@ -4649,7 +4659,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/mercariwship-analytics/sample', [MercariWShipController::class, 'downloadSample'])->name('mercariwship.analytics.sample');
 
     // mercari wo ship
-    Route::get('mercariwoshipAnalysis', action: [MercariWoShipController::class, 'overallMercariWoShip']);
     Route::get('/mercariwoship/view-data', [MercariWoShipController::class, 'getViewMercariWoShipData']);
     Route::get('mercariwoshipPricingCVR', [MercariWoShipController::class, 'MercariWoShipPricingCVR'])->name('mercariwoship.pricing.cvr');
     Route::post('/update-all-mercariwoship-skus', [MercariWoShipController::class, 'updateAllMercariWoShipSkus']);

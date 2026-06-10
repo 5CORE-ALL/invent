@@ -525,14 +525,12 @@ class FaireController extends Controller
     public function getDailyData(Request $request)
     {
         try {
-            // Source changed from `faire_daily_data` (manual Excel uploads) to live Shopify
-            // order data on the `apicentral` connection. Faire orders are identified the same
-            // way the Shopify Orders page identifies them: source_name='faire' OR tags contain
-            // "Faire" (covers shopify_draft_order rows tagged Faire too).
+            // Source: shopify_raw_orders on the default (inventory_db) connection. Faire orders
+            // are identified the same way the Shopify Orders page identifies them:
+            // source_name='faire' OR tags contain "Faire".
             // Window: last 30 days (Pacific time) to match the L30 view used elsewhere.
             $thirtyDaysAgo = \Carbon\Carbon::now('America/Los_Angeles')->subDays(30)->startOfDay();
-            $rows = DB::connection('apicentral')
-                ->table('shopify_order_items')
+            $rows = DB::table('shopify_raw_orders')
                 ->where('order_date', '>=', $thirtyDaysAgo)
                 ->where(function ($q) {
                     $q->where('source_name', 'faire')
@@ -549,7 +547,12 @@ class FaireController extends Controller
                 $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
             }
 
-            $mapped = $rows->map(function ($item) use ($productMasters) {
+            // Keep-rate from marketplace_percentages (Faire), not hardcoded. Stored as a whole
+            // number (e.g. 70 = 70%), same convention as the eBay daily-sales page.
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'Faire')->first();
+            $keepRate = ($marketplaceData ? (float) $marketplaceData->percentage : 100) / 100;
+
+            $mapped = $rows->map(function ($item) use ($productMasters, $keepRate) {
                 $sku = $item->sku;
                 $lp = 0.0;
 
@@ -577,12 +580,15 @@ class FaireController extends Controller
                 $price    = (float) ($item->price ?? 0);
                 $quantity = (float) ($item->quantity ?? 0);
 
-                // Same profit formula as before: PFT each = (price × 0.75) − LP. Faire keeps 25%.
-                $pftEachAmount = ($price * 0.75) - $lp;
+                // PFT each = (price × keep-rate) − LP. Keep-rate comes from marketplace_percentages
+                // (Faire). No ship cost on Faire.
+                $pftEachAmount = ($price * $keepRate) - $lp;
                 $pftEachPct    = $price > 0 ? ($pftEachAmount / $price) * 100 : 0;
-                $roi           = $lp > 0 ? ($pftEachAmount / $lp) * 100 : 0;
                 $totalPft      = $pftEachAmount * $quantity;
                 $cogs          = $lp * $quantity;
+                // ROI = (T PFT / COGS) × 100. Dividing by total COGS (lp × qty) keeps ROI
+                // quantity-independent and consistent with the ROI summary badge.
+                $roi           = $cogs > 0 ? ($totalPft / $cogs) * 100 : 0;
 
                 return [
                     // Core identifiers

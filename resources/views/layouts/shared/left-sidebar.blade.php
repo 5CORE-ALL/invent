@@ -2121,7 +2121,8 @@
                 </a>
                 <div class="collapse" id="sidebarMercariWShip">
                     <ul class="side-nav-third-level">
-                        <li><a href="{{ url('mercariAnalysis') }}">Mercari w Ship Analytics</a></li>
+                        <li><a href="{{ route('mercari.wship.tabulator.view') }}">Mercari w Ship Analytics</a></li>
+
 
                         <li>
                             <a href="{{ route('zero.mercariwship') }}">Mercari w Ship 0 view</a>
@@ -2210,8 +2211,7 @@
                 </a>
                 <div class="collapse" id="sidebarMercariWoShip">
                     <ul class="side-nav-third-level">
-                        <li><a href="{{ url('mercariwoshipAnalysis') }}">Mercari w/o Ship Analytics</a>
-                        </li>
+                        <li><a href="{{ route('mercari.woship.tabulator.view') }}">Mercari w/o Ship Analytics</a></li>
 
                         <li>
                             <a href="{{ route('zero.mercariwoship') }}">Mercari w/o Ship 0

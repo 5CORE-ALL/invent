@@ -79,7 +79,7 @@ class SocialiteController extends Controller
         } catch (Exception $e) {
             Log::error('Google Auth Error: ' . $e->getMessage());
             return redirect()
-                ->route('auth.login')
+                ->route('login')
                 ->withErrors(['error' => 'Google authentication failed. Please try again.']);
         }
     }

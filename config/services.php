@@ -383,6 +383,31 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Newegg Marketplace API
+    |--------------------------------------------------------------------------
+    |
+    | Newegg uses three pieces of identity on (almost) every request:
+    |   - SellerID   : your Newegg seller account id (sent as ?sellerid=XXXX)
+    |   - API Key    : sent in the `Authorization` header
+    |   - Secret Key : sent in the `SecretKey` header
+    |
+    | NOTE: api.newegg.com is fronted by Cloudflare. Calls must originate from
+    | an IP that is whitelisted in the Newegg Seller Portal, otherwise Cloudflare
+    | returns a 403 "managed challenge" CAPTCHA page before the request ever
+    | reaches the API. Run any test from a whitelisted (production) server.
+    |
+    */
+    'newegg' => [
+        'seller_id'   => env('NEWEGG_SELLER_ID'),
+        'api_key'     => env('NEWEGG_API_KEY'),
+        'secret_key'  => env('NEWEGG_SECRET_KEY'),
+        'base_url'    => env('NEWEGG_BASE_URL', 'https://api.newegg.com'),
+        'http_timeout'    => (int) env('NEWEGG_HTTP_TIMEOUT', 60),
+        'connect_timeout' => (int) env('NEWEGG_CONNECT_TIMEOUT', 15),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Walmart
     |--------------------------------------------------------------------------
     */

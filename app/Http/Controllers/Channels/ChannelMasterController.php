@@ -4114,7 +4114,7 @@ class ChannelMasterController extends Controller
      */
     private function computeFaireYSalesLikeAmazon(): ?float
     {
-        // Sourced from shopify_order_items (apicentral) so Faire's Y Sales uses the same
+        // Sourced from shopify_raw_orders (inventory_db) so Faire's Y Sales uses the same
         // pipeline as the all-marketplace-master Faire row and /faire-tabulator page.
         // Previously this queried `faire_daily_data` (manual Excel uploads) which had a
         // different latest-order anchor and could disagree with the L30/L60 numbers.
@@ -4124,7 +4124,7 @@ class ChannelMasterController extends Controller
               ->orWhere('tags', 'LIKE', '%Faire%');
         };
 
-        $latestRaw = DB::connection('apicentral')->table('shopify_order_items')
+        $latestRaw = DB::table('shopify_raw_orders')
             ->where($faireWhere)
             ->whereNotNull('order_date')
             ->max('order_date');
@@ -4136,7 +4136,7 @@ class ChannelMasterController extends Controller
         $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
         $yEndPacific   = $latestPacific->copy()->subDay()->endOfDay();
 
-        $sum = (float) DB::connection('apicentral')->table('shopify_order_items')
+        $sum = (float) DB::table('shopify_raw_orders')
             ->where($faireWhere)
             ->where('order_date', '>=', $yStartPacific)
             ->where('order_date', '<=', $yEndPacific)
@@ -8194,15 +8194,14 @@ class ChannelMasterController extends Controller
 
     /**
      * Aggregate Faire sales/profit for a date window straight from Shopify
-     * (apicentral.shopify_order_items). Same identification logic as the
-     * faire-tabulator page so the two stay in sync.
+     * (shopify_raw_orders). Same identification logic as the faire-tabulator
+     * page so the two stay in sync.
      *
      * @return array{sales:float, orders:int, qty:int, pft:float, cogs:float}
      */
     private function computeFaireMetricsFromShopify(\Carbon\Carbon $startDate, \Carbon\Carbon $endDate): array
     {
-        $rows = DB::connection('apicentral')
-            ->table('shopify_order_items')
+        $rows = DB::table('shopify_raw_orders')
             ->whereBetween('order_date', [$startDate, $endDate])
             ->where(function ($q) {
                 $q->where('source_name', 'faire')
@@ -8274,7 +8273,7 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // L30 and L60 are computed directly from shopify_order_items (Faire source) —
+        // L30 and L60 are computed directly from shopify_raw_orders (Faire source) —
         // same data source the /faire-tabulator page uses — so the two pages match.
         // Previously this read from marketplace_daily_metrics which in turn was sourced
         // from faire_daily_data (manual Excel uploads), drifting out of sync.

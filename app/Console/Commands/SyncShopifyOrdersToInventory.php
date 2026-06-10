@@ -104,19 +104,40 @@ class SyncShopifyOrdersToInventory extends Command
     private function verifyApi(): bool
     {
         $this->line('Verifying Shopify API connection…');
-        try {
-            $resp = $this->httpClient()->get(
-                "https://{$this->storeUrl}/admin/api/{$this->apiVersion}/orders.json",
-                ['limit' => 1, 'status' => 'any']
-            );
-            if ($resp->successful()) {
-                $this->info('✅ API connection OK');
-                return true;
+
+        $url  = "https://{$this->storeUrl}/admin/api/{$this->apiVersion}/orders.json";
+        $wait = 1;
+
+        for ($try = 1; $try <= 5; $try++) {
+            try {
+                $resp = $this->httpClient()->get($url, ['limit' => 1, 'status' => 'any']);
+
+                if ($resp->successful()) {
+                    $this->info('✅ API connection OK');
+                    return true;
+                }
+
+                // A 429 means the credentials authenticated fine — we're just being
+                // throttled. Back off and retry; the main fetch loop also rate-limits.
+                if ($resp->status() === 429) {
+                    if ($try === 5) {
+                        $this->warn('⚠️  Still rate-limited (429), but credentials are valid — proceeding.');
+                        return true;
+                    }
+                    $this->warn("  Rate-limit (429) — waiting {$wait}s… (try {$try}/5)");
+                    sleep($wait);
+                    $wait = min($wait * 2, 16);
+                    continue;
+                }
+
+                $this->error('❌ API error ' . $resp->status() . ': ' . $resp->body());
+                return false;
+            } catch (\Throwable $e) {
+                $this->error('❌ Connection failed: ' . $e->getMessage());
+                return false;
             }
-            $this->error('❌ API error ' . $resp->status() . ': ' . $resp->body());
-        } catch (\Throwable $e) {
-            $this->error('❌ Connection failed: ' . $e->getMessage());
         }
+
         return false;
     }
 
