@@ -131,16 +131,16 @@ class FetchNeweggItems extends Command
                 }
 
                 NeweggItem::updateOrCreate(
-                    ['seller_part_number' => $sku],
+                    ['seller_part_number' => $this->cap($sku, 100)],
                     [
-                        'newegg_item_number'       => $row['neitem'] ?? null,
-                        'title'                    => $row['websiteshorttitle'] ?? ($row['title'] ?? null),
-                        'manufacturer_part_number' => $row['manufacturerpart'] ?? null,
-                        'upc'                      => $row['upc'] ?? null,
-                        'status'                   => $row['status'] ?? null,
-                        'platform'                 => $row['platform'] ?? null,
+                        'newegg_item_number'       => $this->cap($row['neitem'] ?? null, 60),
+                        'title'                    => $this->cap($row['websiteshorttitle'] ?? ($row['title'] ?? null), 500),
+                        'manufacturer_part_number' => $this->cap($row['manufacturerpart'] ?? null, 100),
+                        'upc'                      => $this->cap($row['upc'] ?? null, 60),
+                        'status'                   => $this->cap($row['status'] ?? null, 20),
+                        'platform'                 => $this->cap($row['platform'] ?? null, 20),
                         'item_weight'              => is_numeric($row['itemweight'] ?? null) ? (float) $row['itemweight'] : null,
-                        'date_created'             => $row['datecreated'] ?? null,
+                        'date_created'             => $this->cap($row['datecreated'] ?? null, 30),
                         'raw_json'                 => $row,
                     ]
                 );
@@ -277,23 +277,33 @@ class FetchNeweggItems extends Command
             $content = mb_convert_encoding($content, 'UTF-8', 'Windows-1252');
         }
 
-        $lines = preg_split('/\r\n|\r|\n/', trim($content));
-
-        if (!$lines || count($lines) < 2) {
+        // Detect the delimiter from the header line only.
+        $firstLine = strtok($content, "\r\n");
+        if ($firstLine === false) {
             return [];
         }
+        $delimiter = substr_count($firstLine, "\t") > substr_count($firstLine, ',') ? "\t" : ',';
 
-        $delimiter = substr_count($lines[0], "\t") > substr_count($lines[0], ',') ? "\t" : ',';
-        $headers   = array_map([$this, 'normalizeHeader'], str_getcsv($lines[0], $delimiter));
+        // Parse with fgetcsv so quoted fields containing commas AND embedded
+        // newlines (Newegg titles/descriptions) are handled correctly.
+        $fh = fopen('php://temp', 'r+');
+        fwrite($fh, $content);
+        rewind($fh);
+
+        $headerCols = fgetcsv($fh, 0, $delimiter, '"', '');
+        if ($headerCols === false) {
+            fclose($fh);
+            return [];
+        }
+        $headers = array_map([$this, 'normalizeHeader'], $headerCols);
 
         $rows = [];
-        $count = count($lines);
-        for ($i = 1; $i < $count; $i++) {
-            if (trim($lines[$i]) === '') {
+        while (($cols = fgetcsv($fh, 0, $delimiter, '"', '')) !== false) {
+            // Skip fully blank lines.
+            if ($cols === [null] || (count($cols) === 1 && trim((string) $cols[0]) === '')) {
                 continue;
             }
-            $cols = str_getcsv($lines[$i], $delimiter);
-            $row  = [];
+            $row = [];
             foreach ($headers as $idx => $h) {
                 if ($h === '') {
                     continue;
@@ -302,6 +312,7 @@ class FetchNeweggItems extends Command
             }
             $rows[] = $row;
         }
+        fclose($fh);
 
         return $rows;
     }
@@ -324,5 +335,15 @@ class FetchNeweggItems extends Command
     private function normalizeHeader(string $header): string
     {
         return strtolower(preg_replace('/[^a-z0-9]/i', '', $header));
+    }
+
+    /** Truncate a string to a column's max length (multibyte-safe). */
+    private function cap(?string $value, int $length): ?string
+    {
+        if ($value === null || $value === '') {
+            return $value === '' ? null : $value;
+        }
+
+        return mb_substr($value, 0, $length);
     }
 }
