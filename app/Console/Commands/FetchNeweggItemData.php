@@ -25,6 +25,7 @@ class FetchNeweggItemData extends Command
         {--source=auto : Where to pull the SKU list from: auto, catalog (newegg_items), or orders (newegg_order_items)}
         {--country=USA : Destination country code for price (ISO 3-letter)}
         {--save : Persist results to the database}
+        {--only-missing : Only process SKUs that do not yet have a selling_price in newegg_pricing}
         {--sleep=200 : Milliseconds to wait between SKUs (rate limiting)}
         {--raw : Print raw JSON for each SKU}';
 
@@ -45,9 +46,12 @@ class FetchNeweggItemData extends Command
         $this->line('  Country:  ' . $country);
         $this->newLine();
 
-        $sleepMs = max((int) $this->option('sleep'), 0);
-        $rows    = [];
-        $saved   = 0;
+        $sleepMs   = max((int) $this->option('sleep'), 0);
+        $rows      = [];
+        $saved     = 0;
+        $tally     = [];
+        $withPrice = 0;
+        $verbose   = !$this->option('save') || count($skus) <= 50;
 
         foreach ($skus as $sku) {
             $invRes   = $newegg->getItemInventory($sku);
@@ -70,16 +74,22 @@ class FetchNeweggItemData extends Command
             }
 
             $priceStatus = $price !== null ? 'ok' : ($priceErr ?: 'no data');
+            $tally[$priceStatus] = ($tally[$priceStatus] ?? 0) + 1;
+            if ($price !== null) {
+                $withPrice++;
+            }
 
-            $rows[] = [
-                $sku,
-                $inv['AvailableQuantity'] ?? ($invErr ?: '—'),
-                isset($inv['Active']) ? (string) $inv['Active'] : '—',
-                $price['SellingPrice'] ?? '—',
-                $price['MAP'] ?? '—',
-                $price['Currency'] ?? '—',
-                $priceStatus,
-            ];
+            if ($verbose) {
+                $rows[] = [
+                    $sku,
+                    $inv['AvailableQuantity'] ?? ($invErr ?: '—'),
+                    isset($inv['Active']) ? (string) $inv['Active'] : '—',
+                    $price['SellingPrice'] ?? '—',
+                    $price['MAP'] ?? '—',
+                    $price['Currency'] ?? '—',
+                    $priceStatus,
+                ];
+            }
 
             // Persist price + inventory together (one row per SKU + country).
             if ($this->option('save') && ($price !== null || $inv !== null)) {
@@ -118,13 +128,23 @@ class FetchNeweggItemData extends Command
         }
 
         $this->newLine();
-        $this->table(['SKU', 'Avail Qty', 'Active', 'Selling', 'MAP', 'Cur', 'Price Status'], $rows);
-
-        if ($this->option('save')) {
+        if ($verbose && !empty($rows)) {
+            $this->table(['SKU', 'Avail Qty', 'Active', 'Selling', 'MAP', 'Cur', 'Price Status'], $rows);
             $this->newLine();
+        }
+
+        // Price status breakdown so it's clear why some SKUs have no price.
+        $this->info('Price status breakdown:');
+        ksort($tally);
+        foreach ($tally as $status => $n) {
+            $this->line(sprintf('  %-40s %d', $status, $n));
+        }
+        $this->line(sprintf('  %-40s %d / %d', 'TOTAL with price', $withPrice, count($skus)));
+
+        $this->newLine();
+        if ($this->option('save')) {
             $this->info("Saved/updated {$saved} rows in newegg_pricing.");
         } else {
-            $this->newLine();
             $this->comment('Use --save to persist into newegg_pricing.');
         }
 
@@ -148,28 +168,38 @@ class FetchNeweggItemData extends Command
         }
 
         $source = strtolower((string) $this->option('source'));
+        $skus   = [];
 
         // catalog = all listed SKUs from the Item Basic Info report (newegg_items).
         if ($source === 'catalog' || $source === 'auto') {
-            $catalog = NeweggItem::query()
+            $skus = NeweggItem::query()
                 ->whereNotNull('seller_part_number')
                 ->where('seller_part_number', '!=', '')
                 ->distinct()
                 ->pluck('seller_part_number')
                 ->all();
-
-            if (!empty($catalog) || $source === 'catalog') {
-                return $catalog;
-            }
         }
 
         // Fallback (auto with empty catalog) / orders: SKUs seen in Newegg orders.
-        return NeweggOrderItem::query()
-            ->whereNotNull('seller_part_number')
-            ->where('seller_part_number', '!=', '')
-            ->distinct()
-            ->pluck('seller_part_number')
-            ->all();
+        if (empty($skus) && $source !== 'catalog') {
+            $skus = NeweggOrderItem::query()
+                ->whereNotNull('seller_part_number')
+                ->where('seller_part_number', '!=', '')
+                ->distinct()
+                ->pluck('seller_part_number')
+                ->all();
+        }
+
+        // Optionally skip SKUs that already have a price stored.
+        if ($this->option('only-missing') && !empty($skus)) {
+            $priced = NeweggPricing::whereNotNull('selling_price')
+                ->pluck('seller_part_number')
+                ->flip();
+
+            $skus = array_values(array_filter($skus, fn ($s) => !isset($priced[$s])));
+        }
+
+        return $skus;
     }
 
     /**

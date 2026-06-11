@@ -347,11 +347,21 @@
                 ],
                 ajaxResponse: function (url, params, response) {
                     let data = response.data || [];
+                    const normSku = function (s) { return String(s == null ? '' : s).trim().toUpperCase(); };
+                    // SKUs that already exist as real MIP rows (anything not from ready_to_ship).
+                    const mipSkus = new Set(
+                        data.filter(i => (i.source_table || '').toString() !== 'ready_to_ship')
+                            .map(i => normSku(i.sku))
+                            .filter(Boolean)
+                    );
+                    // Match the old MIP page: skip genuine NR rows (never skip RTS for the NR rule),
+                    // and drop the bare Ready-to-Ship duplicate when the same SKU is already a MIP row.
                     let filtered = data.filter(function (item) {
-                        const qty = parseFloat(item.qty) || 0;
-                        const isParent = item.sku && String(item.sku).startsWith('PARENT');
-                        const isRts = item.ready_to_ship && String(item.ready_to_ship).trim().toLowerCase() === 'yes';
-                        return qty > 0 && !isParent && !isRts;
+                        const isRts = (item.source_table || '').toString() === 'ready_to_ship';
+                        const nr = (item.nr || '').toString().trim().toUpperCase();
+                        if (!isRts && nr === 'NR') return false;
+                        if (isRts && mipSkus.has(normSku(item.sku))) return false;
+                        return true;
                     });
                     uniqueSuppliers = [...new Set(filtered.map(i => i.supplier))].filter(Boolean).sort();
                     return filtered;

@@ -2979,6 +2979,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/newegg-daily-sales-column-visibility', [NeweggSalesController::class, 'getColumnVisibility']);
     Route::post('/newegg-daily-sales-column-visibility', [NeweggSalesController::class, 'saveColumnVisibility']);
 
+    // Newegg Pricing & Inventory Routes
+    Route::get('/newegg-pricing-view', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'index'])->name('newegg.pricing.view');
+    Route::get('/newegg-pricing-data', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'getData'])->name('newegg.pricing.data');
+    Route::get('/newegg-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'getColumnVisibility']);
+    Route::post('/newegg-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveColumnVisibility']);
+    Route::post('/newegg-pricing-save-sprice', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveSprice'])->name('newegg.pricing.save.sprice');
+    Route::post('/newegg-pricing-save-nr', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveNr'])->name('newegg.pricing.save.nr');
+    Route::post('/newegg-pricing-save-links', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveLinks'])->name('newegg.pricing.save.links');
+
     // Wayfair Sales Routes
     Route::get('/wayfair/daily-sales-data', [WayfairSalesController::class, 'getData'])->name('wayfair.daily.sales.data');
     Route::get('/wayfair/daily-sales', [WayfairSalesController::class, 'index'])->name('wayfair.daily.sales');

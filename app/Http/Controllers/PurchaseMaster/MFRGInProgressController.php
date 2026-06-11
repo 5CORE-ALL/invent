@@ -26,7 +26,10 @@ class MFRGInProgressController extends Controller
         );
 
         // Get Ready-to-Ship data - SIMPLE VERSION
-        $readyToShipData = ReadyToShip::whereNull('deleted_at')
+        // Only rows still on Ready to Ship (transit_inv_status = 0); rows already moved to
+        // transit are flagged transit_inv_status = 1 and must not appear on the MIP page.
+        $readyToShipData = ReadyToShip::where('transit_inv_status', 0)
+            ->whereNull('deleted_at')
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -92,9 +95,13 @@ class MFRGInProgressController extends Controller
             supplierCache: $supplierCache,
         );
 
-        // Also include Ready-to-Ship data if not archived
+        // Also include Ready-to-Ship data if not archived.
+        // Only rows still on Ready to Ship (transit_inv_status = 0); rows moved to transit
+        // are flagged transit_inv_status = 1 and must drop off the MIP (MIP + R2S) page,
+        // matching the Ready to Ship page query.
         if (!$archived) {
-            $readyToShipData = ReadyToShip::whereNull('deleted_at')
+            $readyToShipData = ReadyToShip::where('transit_inv_status', 0)
+                ->whereNull('deleted_at')
                 ->orderBy('created_at', 'desc')
                 ->get();
             
