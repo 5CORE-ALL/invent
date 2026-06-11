@@ -751,6 +751,33 @@ class MFRGInProgressController extends Controller
     public function deleteBySkus(Request $request)
     {
         try {
+            // Preferred: archive specific rows by id + source table (only the selected rows,
+            // even when several rows share the same SKU).
+            $items = $request->input('items', []);
+            if (is_array($items) && ! empty($items)) {
+                $archivedCount = 0;
+                foreach ($items as $item) {
+                    $id = (int) ($item['id'] ?? 0);
+                    if ($id <= 0) {
+                        continue;
+                    }
+                    $source = ($item['source'] ?? '') === 'ready_to_ship' ? 'ready_to_ship' : 'mfrg_progress';
+                    if ($source === 'ready_to_ship') {
+                        $archivedCount += ReadyToShip::query()->where('id', $id)->delete();
+                    } else {
+                        $archivedCount += MfrgProgress::query()->where('id', $id)->delete();
+                    }
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'deleted_count' => $archivedCount,
+                    'message' => $archivedCount > 0
+                        ? "Archived {$archivedCount} row(s). You can restore them from “Show archived”."
+                        : 'No matching rows to archive.',
+                ]);
+            }
+
             $skus = $request->input('skus', []);
 
             if (empty($skus) || ! is_array($skus)) {
@@ -800,6 +827,36 @@ class MFRGInProgressController extends Controller
     public function restoreBySkus(Request $request)
     {
         try {
+            // Preferred: restore specific rows by id + source table.
+            $items = $request->input('items', []);
+            if (is_array($items) && ! empty($items)) {
+                $restoredCount = 0;
+                foreach ($items as $item) {
+                    $id = (int) ($item['id'] ?? 0);
+                    if ($id <= 0) {
+                        continue;
+                    }
+                    $source = ($item['source'] ?? '') === 'ready_to_ship' ? 'ready_to_ship' : 'mfrg_progress';
+                    if ($source === 'ready_to_ship') {
+                        $row = ReadyToShip::onlyTrashed()->find($id);
+                    } else {
+                        $row = MfrgProgress::onlyTrashed()->find($id);
+                    }
+                    if ($row) {
+                        $row->restore();
+                        $restoredCount++;
+                    }
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'restored_count' => $restoredCount,
+                    'message' => $restoredCount > 0
+                        ? "Restored {$restoredCount} row(s)."
+                        : 'No archived rows matched.',
+                ]);
+            }
+
             $skus = $request->input('skus', []);
 
             if (empty($skus) || ! is_array($skus)) {

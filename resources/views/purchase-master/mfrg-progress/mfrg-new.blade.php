@@ -763,12 +763,16 @@
                 // filter — a "select all" header check can otherwise include filtered-out rows.
                 const activeSet = new Set(table.getRows("active"));
                 const selectedRows = table.getSelectedRows().filter(r => activeSet.has(r));
-                const skus = [...new Set(
-                    selectedRows.map(r => (r.getData().sku || '').trim()).filter(Boolean)
-                )];
-                if (!skus.length) { alert('No rows selected in the current view.'); return; }
-                if (!confirm(confirmMsg.replace('{n}', skus.length))) return;
-                fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF }, body: JSON.stringify({ skus: skus }) })
+                // Archive by specific row id + source table so only the selected rows are affected
+                // (multiple rows can share the same SKU).
+                const items = selectedRows.map(function (r) {
+                    const d = r.getData();
+                    const source = (d.source_table === 'ready_to_ship') ? 'ready_to_ship' : 'mfrg_progress';
+                    return { id: d.id, source: source };
+                }).filter(x => x.id);
+                if (!items.length) { alert('No rows selected in the current view.'); return; }
+                if (!confirm(confirmMsg.replace('{n}', items.length))) return;
+                fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF }, body: JSON.stringify({ items: items }) })
                     .then(r => r.json())
                     .then(r => { if (r.success) { table.deselectRow(); table.replaceData(); if (r.message) alert(r.message); } else alert(r.message || 'Failed.'); })
                     .catch(() => alert('Network error.'));
