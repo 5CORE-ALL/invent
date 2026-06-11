@@ -116,8 +116,14 @@ class NeweggPricingController extends Controller
             $buyerLink  = $dvValue['BUYER_LINK'] ?? null;
             $sellerLink = $dvValue['SELLER_LINK'] ?? null;
 
+            $image = $pm->main_image
+                ?: ($pm->image1 ?? null)
+                ?: ($pm->getAttribute('image_path') ?? null)
+                ?: ($shopify->image_src ?? null);
+
             $data[] = [
                 'sku'                => $sku,
+                'image'              => $image ?: null,
                 'title'              => $titleByNorm[$norm] ?? null,
                 'inv'                => (int) $inv,
                 'ovl30'              => (int) $ovl30,

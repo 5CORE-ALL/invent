@@ -6,6 +6,21 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
+        /* Column show/hide menu */
+        .toa-columns-wrap { position: relative; }
+        .toa-columns-menu {
+            position: absolute; z-index: 4000; top: 100%; left: 0; margin-top: 4px;
+            background: #fff; border: 1px solid #cbd5e1; border-radius: 8px;
+            padding: 8px 10px; min-width: 220px; max-height: 360px; overflow: auto;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+        }
+        .toa-columns-menu .toa-columns-head {
+            display: flex; justify-content: space-between; align-items: center;
+            gap: 8px; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0;
+        }
+        .toa-columns-menu .form-check { margin-bottom: 3px; }
+        .toa-columns-menu .form-check-label { cursor: pointer; }
+
         .tabulator .tabulator-header {
             background: linear-gradient(90deg, #D8F3F3 0%, #D8F3F3 100%);
             border-bottom: 1px solid #403f3f;
@@ -401,6 +416,13 @@
                         <div class="filter-item">
                             <label for="search-input" class="form-label fw-semibold d-block">🔍 Search All</label>
                             <input type="text" id="search-input" class="form-control" placeholder="Search..." style="width: 160px;">
+                        </div>
+                        <div class="filter-item toa-columns-wrap">
+                            <label class="form-label fw-semibold d-block">Columns</label>
+                            <button type="button" class="btn btn-outline-secondary" id="toa-columns-btn">
+                                <i class="fas fa-table-columns me-1"></i> Show / Hide
+                            </button>
+                            <div id="toa-columns-menu" class="toa-columns-menu" style="display:none;"></div>
                         </div>
                         <div class="filter-item" id="bulk-supplier-bar">
                             <label class="form-label fw-semibold d-block">🏢 Bulk supplier</label>
@@ -3124,6 +3146,108 @@
             table.on("dataSorted", updateCounts);
             table.on("dataChanged", updateCounts);
             table.on("cellEdited", updateCounts);
+
+            // ---- Column show/hide menu (shared for all users via channel_tabulator_column_settings) ----
+            (function () {
+                const TOA_COLUMN_CHANNEL = 'to_order_analysis';
+                const TOA_COLUMN_URL = '/tabulator-column-visibility';
+                const TOA_CSRF = '{{ csrf_token() }}';
+                const colBtn = document.getElementById('toa-columns-btn');
+                const colMenu = document.getElementById('toa-columns-menu');
+                if (!colBtn || !colMenu) return;
+
+                function escAttr(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+                function columnLabel(col) {
+                    const def = col.getDefinition() || {};
+                    const field = col.getField();
+                    let label = def.title || field || '';
+                    const tmp = document.createElement('div');
+                    tmp.innerHTML = label;
+                    label = (tmp.textContent || tmp.innerText || '').trim();
+                    return label || field || '(column)';
+                }
+                function buildMenu() {
+                    let rows = '';
+                    table.getColumns().forEach(function (col) {
+                        const field = col.getField();
+                        if (!field) return;
+                        const checked = col.isVisible() ? 'checked' : '';
+                        rows += '<div class="form-check">' +
+                            '<input class="form-check-input toa-col-toggle" type="checkbox" data-field="' + escAttr(field) + '" id="toacol-' + escAttr(field) + '" ' + checked + '>' +
+                            '<label class="form-check-label small" for="toacol-' + escAttr(field) + '">' + escAttr(columnLabel(col)) + '</label>' +
+                            '</div>';
+                    });
+                    colMenu.innerHTML =
+                        '<div class="toa-columns-head"><span class="fw-semibold small">Toggle columns</span>' +
+                        '<button type="button" class="btn btn-sm btn-link p-0 small" id="toa-columns-all">Show all</button></div>' + rows;
+                }
+                function saveVisibility() {
+                    const visibility = {};
+                    table.getColumns().forEach(function (col) {
+                        const field = col.getField();
+                        if (field) visibility[field] = col.isVisible();
+                    });
+                    fetch(TOA_COLUMN_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': TOA_CSRF },
+                        body: JSON.stringify({ channel: TOA_COLUMN_CHANNEL, visibility: visibility })
+                    }).catch(function () {});
+                }
+                function applyVisibility() {
+                    return fetch(TOA_COLUMN_URL + '?channel=' + encodeURIComponent(TOA_COLUMN_CHANNEL), {
+                        method: 'GET', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': TOA_CSRF }
+                    })
+                        .then(r => r.json())
+                        .then(function (saved) {
+                            if (!saved || typeof saved !== 'object') return;
+                            table.getColumns().forEach(function (col) {
+                                const field = col.getField();
+                                if (!field) return;
+                                if (saved[field] === false) col.hide(); else col.show();
+                            });
+                            table.redraw(true);
+                        })
+                        .catch(function () {});
+                }
+
+                colBtn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    if (colMenu.style.display === 'none' || colMenu.style.display === '') {
+                        buildMenu();
+                        colMenu.style.display = 'block';
+                    } else {
+                        colMenu.style.display = 'none';
+                    }
+                });
+                colMenu.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    if (e.target && e.target.id === 'toa-columns-all') {
+                        table.getColumns().forEach(function (col) { if (col.getField()) table.showColumn(col.getField()); });
+                        table.redraw(true);
+                        buildMenu();
+                        saveVisibility();
+                    }
+                });
+                colMenu.addEventListener('change', function (e) {
+                    const t = e.target;
+                    if (!t.classList.contains('toa-col-toggle')) return;
+                    const field = t.dataset.field;
+                    if (t.checked) table.showColumn(field); else table.hideColumn(field);
+                    table.redraw(true);
+                    saveVisibility();
+                });
+                document.addEventListener('click', function (e) {
+                    if (colMenu.style.display === 'block' && !colMenu.contains(e.target) && e.target !== colBtn) {
+                        colMenu.style.display = 'none';
+                    }
+                });
+
+                // Apply saved (shared) visibility once the table is ready.
+                let applied = false;
+                const applyOnce = function () { if (applied) return; applied = true; applyVisibility(); };
+                table.on('tableBuilt', applyOnce);
+                try { if (table.getColumns && table.getColumns().length) applyOnce(); } catch (e) {}
+            })();
 
             // add and edit review
             let activeReviewRow = null;

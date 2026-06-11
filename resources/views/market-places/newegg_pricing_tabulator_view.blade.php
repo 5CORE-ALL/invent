@@ -11,6 +11,31 @@
         .editable-cell {
             cursor: pointer;
         }
+        .ne-thumb {
+            width: 40px;
+            height: 40px;
+            object-fit: cover;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            cursor: zoom-in;
+        }
+        #ne-img-preview {
+            position: fixed;
+            display: none;
+            z-index: 99999;
+            pointer-events: none;
+            border: 2px solid #0d6efd;
+            border-radius: 6px;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+            background: #fff;
+            padding: 3px;
+        }
+        #ne-img-preview img {
+            display: block;
+            max-width: 320px;
+            max-height: 320px;
+            object-fit: contain;
+        }
     </style>
 @endsection
 
@@ -50,12 +75,10 @@
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary Statistics</h6>
                     <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-primary fs-6 p-2" id="total-skus-badge" style="color: white; font-weight: bold;">Total SKUs: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="with-price-badge" style="color: white; font-weight: bold;">With Price: 0</span>
-                        <span class="badge fs-6 p-2" id="total-inv-badge" style="background-color: #17a2b8; color: white; font-weight: bold;">Total INV: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="total-ovl30-badge" style="color: black; font-weight: bold;">Total OVL30: 0</span>
                         <span class="badge bg-dark fs-6 p-2" id="total-l30-badge" style="color: white; font-weight: bold;">Total L30: 0</span>
                         <span class="badge fs-6 p-2" id="avg-price-badge" style="background-color: purple; color: white; font-weight: bold;">Avg Price: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="pft-badge" style="color: black; font-weight: bold;">PFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="roi-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">ROI: 0%</span>
                     </div>
                 </div>
             </div>
@@ -70,6 +93,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Floating image preview -->
+    <div id="ne-img-preview"><img src="" alt="preview"></div>
 
     <!-- Buyer / Seller link modal -->
     <div class="modal fade" id="bsLinkModal" tabindex="-1" aria-hidden="true">
@@ -144,12 +170,39 @@
                 },
                 initialSort: [{ column: "l30", dir: "desc" }],
                 columns: [
+                    {
+                        title: "Image", field: "image", hozAlign: "center", headerSort: false, frozen: true,
+                        formatter: function(cell) {
+                            const v = cell.getValue();
+                            if (!v) return '';
+                            return `<img src="${v}" class="ne-thumb" alt="img" loading="lazy">`;
+                        }
+                    },
                     { title: "SKU", field: "sku", frozen: true, headerFilter: "input", headerFilterPlaceholder: "Search SKU...", cssClass: "text-primary fw-bold" },
                     { title: "Title", field: "title", visible: false, tooltip: true },
                     { title: "INV", field: "inv", hozAlign: "center", sorter: "number" },
+                    { title: "N INV", field: "available_quantity", hozAlign: "center", sorter: "number" },
                     { title: "OVL30", field: "ovl30", hozAlign: "center", sorter: "number" },
                     { title: "DIL %", field: "dil", hozAlign: "center", sorter: "number", formatter: dilFormatter },
-                    { title: "N INV", field: "available_quantity", hozAlign: "center", sorter: "number" },
+                    {
+                        title: "B/S", field: "bs", hozAlign: "center", headerSort: false,
+                        cssClass: "editable-cell",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            const parts = [];
+                            if (d.buyer_link) {
+                                parts.push(`<a href="${d.buyer_link}" target="_blank" title="Buyer link" style="font-weight:bold;color:#0d6efd;text-decoration:none;">B</a>`);
+                            }
+                            if (d.seller_link) {
+                                parts.push(`<a href="${d.seller_link}" target="_blank" title="Seller link" style="font-weight:bold;color:#198754;text-decoration:none;">S</a>`);
+                            }
+                            return parts.join(' / ');
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target && e.target.tagName === 'A') return; // let links open
+                            openBsModal(cell.getRow().getData());
+                        }
+                    },
                     moneyCol("Price", "price"),
                     { title: "L30", field: "l30", hozAlign: "center", sorter: "number",
                         formatter: function(cell) {
@@ -157,8 +210,6 @@
                             return v > 0 ? `<span style="color:#28a745;font-weight:bold;">${v}</span>` : '0';
                         }
                     },
-                    moneyCol("LP", "lp", false),
-                    moneyCol("Ship", "ship", false),
                     {
                         title: "Pft %", field: "pft_pct", hozAlign: "right", sorter: "number",
                         formatter: function(cell) {
@@ -241,26 +292,6 @@
                         }
                     },
                     {
-                        title: "B/S", field: "bs", hozAlign: "center", headerSort: false,
-                        cssClass: "editable-cell",
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            const parts = [];
-                            if (d.buyer_link) {
-                                parts.push(`<a href="${d.buyer_link}" target="_blank" title="Buyer link" style="font-weight:bold;color:#0d6efd;text-decoration:none;">B</a>`);
-                            }
-                            if (d.seller_link) {
-                                parts.push(`<a href="${d.seller_link}" target="_blank" title="Seller link" style="font-weight:bold;color:#198754;text-decoration:none;">S</a>`);
-                            }
-                            return parts.join(' / ');
-                        },
-                        cellClick: function(e, cell) {
-                            if (e.target && e.target.tagName === 'A') return; // let links open
-                            openBsModal(cell.getRow().getData());
-                        }
-                    },
-                    { title: "Currency", field: "currency", visible: false },
-                    {
                         title: "Status", field: "status", hozAlign: "center",
                         formatter: function(cell) {
                             const v = cell.getValue() || '';
@@ -270,9 +301,46 @@
                             const letter = isActive ? 'A' : 'I';
                             return `<span title="${v}" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${color};color:#fff;font-weight:bold;font-size:12px;">${letter}</span>`;
                         }
-                    }
+                    },
+                    moneyCol("LP", "lp", false),
+                    moneyCol("Ship", "ship", false),
+                    { title: "Currency", field: "currency", visible: false }
                 ]
             });
+
+            // Floating image preview on thumbnail hover.
+            const imgPreview = document.getElementById('ne-img-preview');
+            const imgPreviewImg = imgPreview ? imgPreview.querySelector('img') : null;
+            const tableEl = document.getElementById('newegg-pricing-table');
+
+            function positionPreview(e) {
+                const pad = 16;
+                let x = e.clientX + pad;
+                let y = e.clientY + pad;
+                const w = imgPreview.offsetWidth || 326;
+                const h = imgPreview.offsetHeight || 326;
+                if (x + w > window.innerWidth) x = e.clientX - w - pad;
+                if (y + h > window.innerHeight) y = window.innerHeight - h - pad;
+                if (y < 0) y = pad;
+                imgPreview.style.left = x + 'px';
+                imgPreview.style.top = y + 'px';
+            }
+
+            if (tableEl && imgPreview && imgPreviewImg) {
+                tableEl.addEventListener('mouseover', function(e) {
+                    const thumb = e.target.closest('.ne-thumb');
+                    if (!thumb) return;
+                    imgPreviewImg.src = thumb.getAttribute('src');
+                    imgPreview.style.display = 'block';
+                    positionPreview(e);
+                });
+                tableEl.addEventListener('mousemove', function(e) {
+                    if (imgPreview.style.display === 'block') positionPreview(e);
+                });
+                tableEl.addEventListener('mouseout', function(e) {
+                    if (e.target.closest('.ne-thumb')) imgPreview.style.display = 'none';
+                });
+            }
 
             // Save SPRICE / NR on edit.
             table.on("cellEdited", function(cell) {
@@ -353,29 +421,40 @@
                 const data = table.getData("active");
                 let totalSkus = 0, withPrice = 0, totalInv = 0, totalOvl30 = 0, totalL30 = 0;
                 let totalWeightedPrice = 0, priceCount = 0;
+                // Overall PFT/ROI accumulators (over L30), same approach as amazon-tabulator-view.
+                let totalPftAmt = 0, totalSalesAmt = 0, totalCogsAmt = 0;
 
                 data.forEach(row => {
                     if (!row.sku) return;
                     totalSkus++;
                     totalInv += parseInt(row.inv) || 0;
                     totalOvl30 += parseInt(row.ovl30) || 0;
-                    totalL30 += parseInt(row.l30) || 0;
+                    const l30 = parseInt(row.l30) || 0;
+                    totalL30 += l30;
                     const price = parseFloat(row.price);
                     if (!isNaN(price) && price > 0) {
                         withPrice++;
                         totalWeightedPrice += price;
                         priceCount++;
+
+                        // PFT/ROI weighted by units sold (L30).
+                        const pftEach = parseFloat(row.pft) || 0;
+                        const lp = parseFloat(row.lp) || 0;
+                        totalPftAmt += pftEach * l30;
+                        totalSalesAmt += price * l30;
+                        totalCogsAmt += lp * l30;
                     }
                 });
 
                 const avgPrice = priceCount > 0 ? totalWeightedPrice / priceCount : 0;
+                // Overall PFT% = total profit / total sales; ROI% = total profit / total COGS.
+                const pftPct = totalSalesAmt > 0 ? (totalPftAmt / totalSalesAmt) * 100 : 0;
+                const roiPct = totalCogsAmt > 0 ? (totalPftAmt / totalCogsAmt) * 100 : 0;
 
-                $('#total-skus-badge').text('Total SKUs: ' + totalSkus.toLocaleString());
-                $('#with-price-badge').text('With Price: ' + withPrice.toLocaleString());
-                $('#total-inv-badge').text('Total INV: ' + totalInv.toLocaleString());
-                $('#total-ovl30-badge').text('Total OVL30: ' + totalOvl30.toLocaleString());
                 $('#total-l30-badge').text('Total L30: ' + totalL30.toLocaleString());
                 $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
+                $('#pft-badge').text('PFT: ' + Math.round(pftPct) + '%');
+                $('#roi-badge').text('ROI: ' + Math.round(roiPct) + '%');
             }
 
             const COL_URL = '/newegg-pricing-column-visibility';

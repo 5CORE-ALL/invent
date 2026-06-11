@@ -232,8 +232,9 @@
 
             const CSRF = '{{ csrf_token() }}';
             const USER_EMAIL = '{{ strtolower(trim(auth()->user()->email ?? "")) }}';
-            const CAN_EDIT_ALL = USER_EMAIL === 'president@5core.com' || USER_EMAIL === 'purchase@5core.com';
-            const CAN_ARCHIVE = USER_EMAIL === 'president@5core.com' || USER_EMAIL === 'purchase@5core.com';
+            const PRIVILEGED_EMAILS = ['president@5core.com', 'purchase@5core.com', 'software5@5core.com'];
+            const CAN_EDIT_ALL = PRIVILEGED_EMAILS.includes(USER_EMAIL);
+            const CAN_ARCHIVE = PRIVILEGED_EMAILS.includes(USER_EMAIL);
             let uniqueSuppliers = [];
             let showArchived = false;
             let table;
