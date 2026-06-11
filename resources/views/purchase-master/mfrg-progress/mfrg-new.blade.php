@@ -54,6 +54,21 @@
         .tabulator .tabulator-footer .tabulator-page { padding: 6px 12px; margin: 0 3px; border-radius: 6px; }
         .tabulator .tabulator-footer .tabulator-page.active { background: #3bc0c3; color: #fff; }
         .tabulator .tabulator-cell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* Column show/hide menu */
+        .mip-columns-wrap { position: relative; }
+        .mip-columns-menu {
+            position: absolute; z-index: 4000; top: 100%; left: 0; margin-top: 4px;
+            background: #fff; border: 1px solid #cbd5e1; border-radius: 8px;
+            padding: 8px 10px; min-width: 210px; max-height: 340px; overflow: auto;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+        }
+        .mip-columns-menu .mip-columns-head {
+            display: flex; justify-content: space-between; align-items: center;
+            gap: 8px; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0;
+        }
+        .mip-columns-menu .form-check { margin-bottom: 3px; }
+        .mip-columns-menu .form-check-label { cursor: pointer; }
     </style>
 @endsection
 @section('content')
@@ -124,6 +139,14 @@
                         <div>
                             <label for="search-input" class="form-label small fw-semibold mb-1 d-block">🔍 Search All</label>
                             <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search..." style="width: 150px;">
+                        </div>
+
+                        <div class="mip-columns-wrap">
+                            <label class="form-label small fw-semibold mb-1 d-block">Columns</label>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="mip-columns-btn">
+                                <i class="fas fa-table-columns me-1"></i> Show / Hide
+                            </button>
+                            <div id="mip-columns-menu" class="mip-columns-menu" style="display:none;"></div>
                         </div>
 
                         <div class="d-flex align-items-end">
@@ -205,6 +228,16 @@
             const PLAT_COLOR = { 'Website': '#2563eb', 'Email': '#dc3545', 'WhatsApp': '#25d366', 'WeChat': '#09b83e', 'Alibaba': '#ff6a00' };
 
             function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
+            // Per-unit cost price: price_from_po, then rate, then product_master CP.
+            function rowCp(d) {
+                return parseFloat(d.price_from_po) || parseFloat(d.rate) || parseFloat(d.product_cp) || 0;
+            }
+            // Per-row Amount = CP * qty — same math as the Amount badge.
+            function rowAmount(d) {
+                const qty = parseFloat(d.qty) || 0;
+                return rowCp(d) * qty;
+            }
 
             function postInline(sku, mipId, column, value) {
                 return fetch('/mfrg-progresses/inline-update-by-sku', {
@@ -340,6 +373,21 @@
                         const total = cbm * qty;
                         return total > 0 ? total.toFixed(2) : '<span class="text-muted">-</span>';
                     } },
+                    { title: "CP", field: "row_cp", width: 90, hozAlign: "center",
+                      sorter: function (a, b, aRow, bRow) { return rowCp(aRow.getData()) - rowCp(bRow.getData()); },
+                      formatter: function (cell) {
+                          const cp = rowCp(cell.getRow().getData());
+                          return cp > 0 ? cp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '<span class="text-muted">-</span>';
+                      } },
+                    { title: "Amount", field: "row_amount", width: 100, hozAlign: "center",
+                      sorter: function (a, b, aRow, bRow) {
+                          const av = rowAmount(aRow.getData()); const bv = rowAmount(bRow.getData());
+                          return av - bv;
+                      },
+                      formatter: function (cell) {
+                          const amt = rowAmount(cell.getRow().getData());
+                          return amt > 0 ? Math.round(amt).toLocaleString() : '<span class="text-muted">-</span>';
+                      } },
                     { title: "Pkg Inst", field: "pkg_inst", width: 80, hozAlign: "center", formatter: dotToggleFormatter('pkg_inst') },
                     { title: "U-Manual", field: "u_manual", width: 90, hozAlign: "center", formatter: dotToggleFormatter('u_manual') },
                     { title: "Compliance", field: "compliance", width: 100, hozAlign: "center", formatter: dotToggleFormatter('compliance') },
@@ -368,6 +416,65 @@
                 },
             });
 
+            // ---- Column show/hide menu ----
+            const colBtn = document.getElementById('mip-columns-btn');
+            const colMenu = document.getElementById('mip-columns-menu');
+            function columnLabel(col) {
+                const def = col.getDefinition() || {};
+                const field = col.getField();
+                let label = def.title || field || '';
+                const tmp = document.createElement('div');
+                tmp.innerHTML = label;
+                label = (tmp.textContent || tmp.innerText || '').trim();
+                return label || field || '(column)';
+            }
+            function buildColumnsMenu() {
+                let rows = '';
+                table.getColumns().forEach(function (col) {
+                    const field = col.getField();
+                    if (!field) return; // skip row-selection / non-data columns
+                    const checked = col.isVisible() ? 'checked' : '';
+                    rows += '<div class="form-check">' +
+                        '<input class="form-check-input mip-col-toggle" type="checkbox" data-field="' + esc(field) + '" id="mipcol-' + esc(field) + '" ' + checked + '>' +
+                        '<label class="form-check-label small" for="mipcol-' + esc(field) + '">' + esc(columnLabel(col)) + '</label>' +
+                        '</div>';
+                });
+                colMenu.innerHTML =
+                    '<div class="mip-columns-head">' +
+                        '<span class="fw-semibold small">Toggle columns</span>' +
+                        '<button type="button" class="btn btn-sm btn-link p-0 small" id="mip-columns-all">Show all</button>' +
+                    '</div>' + rows;
+            }
+            colBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (colMenu.style.display === 'none' || colMenu.style.display === '') {
+                    buildColumnsMenu();
+                    colMenu.style.display = 'block';
+                } else {
+                    colMenu.style.display = 'none';
+                }
+            });
+            colMenu.addEventListener('click', function (e) { e.stopPropagation(); });
+            colMenu.addEventListener('change', function (e) {
+                const t = e.target;
+                if (!t.classList.contains('mip-col-toggle')) return;
+                const field = t.dataset.field;
+                if (t.checked) table.showColumn(field); else table.hideColumn(field);
+                table.redraw(true);
+            });
+            colMenu.addEventListener('click', function (e) {
+                if (e.target && e.target.id === 'mip-columns-all') {
+                    table.getColumns().forEach(function (col) { if (col.getField()) table.showColumn(col.getField()); });
+                    table.redraw(true);
+                    buildColumnsMenu();
+                }
+            });
+            document.addEventListener('click', function (e) {
+                if (colMenu.style.display === 'block' && !colMenu.contains(e.target) && e.target !== colBtn) {
+                    colMenu.style.display = 'none';
+                }
+            });
+
             // ---- combined filtering (stage dropdown + global search) ----
             function applyFilters() {
                 const stage = (document.getElementById('mip-stage-filter').value || 'both').toLowerCase();
@@ -391,9 +498,8 @@
                 const items = activeData.length;
                 activeData.forEach(function (d) {
                     const qty = parseFloat(d.qty) || 0;
-                    const cp = parseFloat(d.price_from_po) || parseFloat(d.rate) || 0;
                     cbm += (parseFloat(d.CBM) || 0) * qty;
-                    amount += cp * qty;
+                    amount += rowAmount(d);
                 });
                 document.getElementById('totalAmount').textContent = Math.round(amount).toLocaleString();
                 document.getElementById('totalCBM').textContent = Math.round(cbm).toLocaleString();

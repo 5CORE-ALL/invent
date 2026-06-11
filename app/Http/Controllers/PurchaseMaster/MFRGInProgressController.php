@@ -44,6 +44,8 @@ class MFRGInProgressController extends Controller
             // Keep original fields: sku, supplier, zone, packing, terms, etc.
         }
 
+        self::attachProductCpToRows($readyToShipData);
+
         // Combine both datasets
         $combinedData = $mfrgData->concat($readyToShipData);
 
@@ -113,7 +115,9 @@ class MFRGInProgressController extends Controller
                 $item->order_qty = $item->qty ?? 0;
                 $item->ready_to_ship = 'No';
             }
-            
+
+            self::attachProductCpToRows($readyToShipData);
+
             $mfrgData = $mfrgData->concat($readyToShipData);
         }
 
@@ -400,6 +404,7 @@ class MFRGInProgressController extends Controller
         $supplierNames = [];
         $priceFromPO = null;
         $currencyFromPO = null;
+        $productCp = null;
 
         $skuVariations = self::mipRowSkuVariations($row->sku ?? null, $normalizeSku);
 
@@ -434,6 +439,11 @@ class MFRGInProgressController extends Controller
                     $ctnCbmE = $values['cbm_e'];
                 } elseif (isset($values['ctn_cbm_e'])) {
                     $ctnCbmE = $values['ctn_cbm_e'];
+                }
+                // CP (cost price) stored in product_master Values->cp (also accept 'CP').
+                $cpRaw = $values['cp'] ?? $values['CP'] ?? null;
+                if ($cpRaw !== null && $cpRaw !== '' && is_numeric($cpRaw)) {
+                    $productCp = (float) $cpRaw;
                 }
             }
 
@@ -474,6 +484,7 @@ class MFRGInProgressController extends Controller
         $row->ctn_cbm_e = $ctnCbmE;
         $row->price_from_po = $priceFromPO;
         $row->currency_from_po = $currencyFromPO;
+        $row->product_cp = $productCp;
 
         $supplierName = trim((string) ($row->supplier ?? ''));
         $row->supplier_platform_links = ($supplierName !== '' && isset($platformsByName[$supplierName]))
@@ -1133,6 +1144,55 @@ class MFRGInProgressController extends Controller
     /**
      * @param  iterable<int, object>  $mfrgRows
      */
+    /**
+     * Attach product_master CP (Values->cp) to Ready-to-Ship rows so the MIP page CP column
+     * is populated for SKUs that have a cost price in /product-master.
+     */
+    private static function attachProductCpToRows(Collection $rows): void
+    {
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        $normalizeSku = fn (?string $sku) => self::normalizeMipSku($sku);
+
+        $candidates = [];
+        foreach ($rows as $r) {
+            $n = $normalizeSku($r->sku ?? '');
+            if ($n !== '') {
+                $candidates[$n] = true;
+                $candidates[str_replace(' ', '', $n)] = true;
+            }
+        }
+        $candidates = array_keys($candidates);
+
+        $cpByKey = [];
+        foreach (array_chunk($candidates, 450) as $chunk) {
+            $chunk = array_values(array_filter($chunk, fn ($s) => $s !== ''));
+            if ($chunk === []) {
+                continue;
+            }
+            foreach (DB::table('product_master')->whereIn('sku', $chunk)->select('sku', 'Values')->get() as $item) {
+                $values = json_decode($item->Values ?? '{}', true);
+                $cpRaw = is_array($values) ? ($values['cp'] ?? $values['CP'] ?? null) : null;
+                if ($cpRaw === null || $cpRaw === '' || ! is_numeric($cpRaw)) {
+                    continue;
+                }
+                $norm = $normalizeSku($item->sku);
+                foreach (array_unique([$norm, str_replace(' ', '', $norm)]) as $k) {
+                    if ($k !== '' && ! isset($cpByKey[$k])) {
+                        $cpByKey[$k] = (float) $cpRaw;
+                    }
+                }
+            }
+        }
+
+        foreach ($rows as $r) {
+            $n = $normalizeSku($r->sku ?? '');
+            $r->product_cp = $cpByKey[$n] ?? $cpByKey[str_replace(' ', '', $n)] ?? null;
+        }
+    }
+
     private static function buildSkuToPriceMapForMipRows(iterable $mfrgRows, callable $normalizeSku): array
     {
         $mipSkuSet = [];
