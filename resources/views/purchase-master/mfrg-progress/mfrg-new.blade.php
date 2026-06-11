@@ -69,6 +69,11 @@
         }
         .mip-columns-menu .form-check { margin-bottom: 3px; }
         .mip-columns-menu .form-check-label { cursor: pointer; }
+
+        /* SKU copy icon */
+        .mip-sku-copy { margin-left: 6px; cursor: pointer; color: #3bc0c3; font-size: 0.8rem; opacity: 0.75; transition: opacity 0.12s, color 0.12s; }
+        .mip-sku-copy:hover { opacity: 1; color: #2563eb; }
+        .mip-sku-copy.copied { color: #16a34a; opacity: 1; }
     </style>
 @endsection
 @section('content')
@@ -168,6 +173,25 @@
         </div>
     </div>
 
+    {{-- Edit All Fields Modal (president@5core.com only) --}}
+    <div class="modal fade" id="mipEditModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="fas fa-pen me-2"></i> Edit Row <span id="mip-edit-sku" class="ms-2 fw-normal small"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="mip-edit-form" class="row g-3"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="mip-edit-save"><i class="fas fa-save me-1"></i> Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Follow-Up / Current Status Modal --}}
     <div class="modal fade" id="mipFollowupModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -207,6 +231,9 @@
             document.documentElement.setAttribute("data-sidenav-size", "condensed");
 
             const CSRF = '{{ csrf_token() }}';
+            const USER_EMAIL = '{{ strtolower(trim(auth()->user()->email ?? "")) }}';
+            const CAN_EDIT_ALL = USER_EMAIL === 'president@5core.com';
+            const CAN_ARCHIVE = USER_EMAIL === 'president@5core.com' || USER_EMAIL === 'purchase@5core.com';
             let uniqueSuppliers = [];
             let showArchived = false;
             let table;
@@ -255,6 +282,9 @@
             }
             function postStage(sku, parent, value) {
                 return $.post('/update-forecast-data', { sku: sku, parent: parent || '', column: 'Stage', value: value, _token: CSRF });
+            }
+            function postForecastData(sku, parent, column, value) {
+                return $.post('/update-forecast-data', { sku: sku, parent: parent || '', column: column, value: value, _token: CSRF });
             }
 
             // ---- formatters ----
@@ -321,7 +351,9 @@
                 if (!raw) return '<span class="mip-status-dot" style="background-color:#dc3545;" title="No date"></span>';
                 const d = new Date(raw);
                 if (isNaN(d.getTime())) return '<span class="mip-status-dot" style="background-color:#dc3545;" title="No date"></span>';
-                return d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' });
+                const short = d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' });
+                const full = short + ' ' + d.getFullYear();
+                return '<span title="' + full + '">' + short + '</span>';
             }
             function supplierFormatter(cell) {
                 const val = cell.getValue() || '';
@@ -355,7 +387,13 @@
                       headerFilterParams: { values: { "": "— All —", "__un__": "Unassigned", "Atin": "Atin", "Jack": "Jack", "Nitish": "Nitish", "Ajay": "Ajay", "Candy": "Candy", "Sruti": "Sruti" } },
                       headerFilterFunc: function (h, rv) { if (!h) return true; const r = (rv || '').trim(); return h === '__un__' ? r === '' : r === h; },
                       formatter: execFormatter },
-                    { title: "SKU", field: "sku", width: 170, headerFilter: "input", headerFilterPlaceholder: " Filter SKU...", headerFilterLiveFilter: true },
+                    { title: "SKU", field: "sku", width: 190, headerFilter: "input", headerFilterPlaceholder: " Filter SKU...", headerFilterLiveFilter: true,
+                      formatter: function (cell) {
+                          const v = cell.getValue() || '';
+                          if (!v) return '';
+                          return '<span class="mip-sku-text">' + esc(v) + '</span>' +
+                              '<i class="far fa-copy mip-sku-copy" data-sku="' + esc(v) + '" title="Copy SKU"></i>';
+                      } },
                     { title: "QTY", field: "qty", width: 90, hozAlign: "center", formatter: inputFormatter('qty', 'number', 70) },
                     { title: "O Date", field: "created_at", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,
                       editor: "date", editorParams: { format: "yyyy-MM-dd" },
@@ -372,6 +410,10 @@
                         const qty = parseFloat(d.qty) || 0;
                         const total = cbm * qty;
                         return total > 0 ? total.toFixed(2) : '<span class="text-muted">-</span>';
+                    } },
+                    { title: "CBM", field: "CBM", width: 80, hozAlign: "center", formatter: function (cell) {
+                        const v = parseFloat(cell.getValue());
+                        return (!isNaN(v) && v > 0) ? v.toFixed(2) : '<span class="text-muted">-</span>';
                     } },
                     { title: "CP", field: "row_cp", width: 90, hozAlign: "center",
                       sorter: function (a, b, aRow, bRow) { return rowCp(aRow.getData()) - rowCp(bRow.getData()); },
@@ -392,6 +434,12 @@
                     { title: "U-Manual", field: "u_manual", width: 90, hozAlign: "center", formatter: dotToggleFormatter('u_manual') },
                     { title: "Compliance", field: "compliance", width: 100, hozAlign: "center", formatter: dotToggleFormatter('compliance') },
                     { title: "Stage", field: "stage", width: 80, hozAlign: "center", formatter: stageFormatter },
+                    ...(CAN_EDIT_ALL ? [{
+                        title: "Action", field: "row_action", width: 80, hozAlign: "center", headerSort: false,
+                        formatter: function () {
+                            return '<button type="button" class="btn btn-sm btn-outline-primary mip-action-btn" title="Edit all fields"><i class="fas fa-pen"></i></button>';
+                        }
+                    }] : []),
                 ],
                 ajaxResponse: function (url, params, response) {
                     let data = response.data || [];
@@ -553,6 +601,34 @@
             });
 
             tableEl.addEventListener('click', function (e) {
+                const actBtn = e.target.closest('.mip-action-btn');
+                if (actBtn) {
+                    const tr = actBtn.closest('.tabulator-row');
+                    const row = tr ? table.getRow(tr) : null;
+                    if (row) openEditModal(row);
+                    return;
+                }
+
+                const copyIcon = e.target.closest('.mip-sku-copy');
+                if (copyIcon) {
+                    const sku = copyIcon.dataset.sku || '';
+                    const done = function () {
+                        copyIcon.classList.remove('far'); copyIcon.classList.add('fas', 'fa-check', 'copied');
+                        setTimeout(function () {
+                            copyIcon.classList.remove('fas', 'fa-check', 'copied'); copyIcon.classList.add('far');
+                        }, 1200);
+                    };
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(sku).then(done).catch(function () {});
+                    } else {
+                        const ta = document.createElement('textarea');
+                        ta.value = sku; document.body.appendChild(ta); ta.select();
+                        try { document.execCommand('copy'); done(); } catch (err) {}
+                        document.body.removeChild(ta);
+                    }
+                    return;
+                }
+
                 const dot = e.target.closest('.mip-dot-toggle');
                 if (!dot) return;
                 const tr = dot.closest('.tabulator-row');
@@ -624,6 +700,12 @@
 
             // ---- Archive / Restore ----
             function updateMfrgArchiveButtons() {
+                // Archive/Restore is restricted to president@5core.com and purchase@5core.com.
+                if (!CAN_ARCHIVE) {
+                    $('#archive-selected-btn').addClass('d-none');
+                    $('#restore-selected-btn').addClass('d-none');
+                    return;
+                }
                 const n = (table.getSelectedRows() || []).length;
                 if (showArchived) {
                     $('#archive-selected-btn').addClass('d-none');
@@ -642,8 +724,14 @@
             });
 
             function bulkArchiveRestore(endpoint, confirmMsg) {
-                const skus = table.getSelectedData().map(r => (r.sku || '').trim()).filter(Boolean);
-                if (!skus.length) return;
+                // Only act on rows that are BOTH selected AND currently visible under the active
+                // filter — a "select all" header check can otherwise include filtered-out rows.
+                const activeSet = new Set(table.getRows("active"));
+                const selectedRows = table.getSelectedRows().filter(r => activeSet.has(r));
+                const skus = [...new Set(
+                    selectedRows.map(r => (r.getData().sku || '').trim()).filter(Boolean)
+                )];
+                if (!skus.length) { alert('No rows selected in the current view.'); return; }
                 if (!confirm(confirmMsg.replace('{n}', skus.length))) return;
                 fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF }, body: JSON.stringify({ skus: skus }) })
                     .then(r => r.json())
@@ -652,6 +740,123 @@
             }
             $('#archive-selected-btn').on('click', function () { bulkArchiveRestore('/mfrg-progresses/delete', 'Archive {n} row(s)?'); });
             $('#restore-selected-btn').on('click', function () { bulkArchiveRestore('/mfrg-progresses/restore', 'Restore {n} row(s)?'); });
+
+            // ---- Edit All Fields modal (president@5core.com only) ----
+            function toDateInput(raw) {
+                if (!raw) return '';
+                const d = new Date(raw);
+                if (isNaN(d.getTime())) {
+                    const m = String(raw).match(/^\d{4}-\d{2}-\d{2}/);
+                    return m ? m[0] : '';
+                }
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                return d.getFullYear() + '-' + mm + '-' + dd;
+            }
+            const YESNO = [['Yes', 'Yes'], ['No', 'No']];
+            const EDIT_FIELDS = [
+                { key: 'sku', label: 'SKU', type: 'text', readonly: true },
+                { key: 'exec', label: 'Executive', type: 'select', options: function () { return [['', '— Unassigned —']].concat(EXEC_OPTIONS.map(function (n) { return [n, n]; })); } },
+                { key: 'qty', label: 'QTY', type: 'number' },
+                { key: 'created_at', label: 'O Date', type: 'date' },
+                { key: 'delivery_date', label: 'D Date', type: 'date' },
+                { key: 'supplier', label: 'Supplier', type: 'select', options: function () { return [['', '']].concat(uniqueSuppliers.map(function (s) { return [s, s]; })); } },
+                { key: 'supplier_sku', label: 'Supplier SKU', type: 'text' },
+                { key: 'rate', label: 'Rate (CP)', type: 'number' },
+                { key: 'CBM', label: 'CBM', type: 'number', note: 'Saved to product master' },
+                { key: 'mip_po_number', label: 'PO Number', type: 'text', readonly: true },
+                { key: 'pkg_inst', label: 'Pkg Inst', type: 'select', options: function () { return YESNO; } },
+                { key: 'u_manual', label: 'U-Manual', type: 'select', options: function () { return YESNO; } },
+                { key: 'compliance', label: 'Compliance', type: 'select', options: function () { return YESNO; } },
+                { key: 'ready_to_ship', label: 'Ready To Ship', type: 'select', options: function () { return YESNO; } },
+                { key: 'barcode_sku', label: 'Barcode SKU', type: 'text' },
+                { key: 'artwork_manual_book', label: 'Artwork Manual Book', type: 'text' },
+                { key: 'o_links', label: 'O Links', type: 'text' },
+                { key: 'notes', label: 'Notes', type: 'textarea' },
+                { key: 'stage', label: 'Stage', type: 'select', options: function () {
+                    return [['', 'Select'], ['appr_req', 'Appr. Req'], ['mip', 'MIP'], ['r2s', 'R2S'], ['transit', 'Transit'], ['all_good', 'All Good'], ['to_order_analysis', '2 Order']];
+                } },
+            ];
+            function openEditModal(row) {
+                window._mipEditRow = row;
+                const d = row.getData();
+                document.getElementById('mip-edit-sku').textContent = d.sku || '';
+                let html = '';
+                EDIT_FIELDS.forEach(function (f) {
+                    const id = 'medit-' + f.key;
+                    let val = d[f.key] == null ? '' : d[f.key];
+                    let input = '';
+                    if (f.type === 'select') {
+                        const opts = (f.options ? f.options() : []).map(function (o) {
+                            return '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(val) ? ' selected' : '') + '>' + esc(o[1]) + '</option>';
+                        }).join('');
+                        input = '<select class="form-select form-select-sm" id="' + id + '" data-key="' + esc(f.key) + '"' + (f.readonly ? ' disabled' : '') + '>' + opts + '</select>';
+                    } else if (f.type === 'textarea') {
+                        input = '<textarea class="form-control form-control-sm" id="' + id + '" data-key="' + esc(f.key) + '" rows="2"' + (f.readonly ? ' readonly' : '') + '>' + esc(val) + '</textarea>';
+                    } else {
+                        if (f.type === 'date') val = toDateInput(val);
+                        input = '<input type="' + f.type + '" class="form-control form-control-sm" id="' + id + '" data-key="' + esc(f.key) + '" value="' + esc(val) + '"' + (f.readonly ? ' readonly' : '') + '>';
+                    }
+                    html += '<div class="col-md-4">' +
+                        '<label class="form-label small fw-semibold mb-1" for="' + id + '">' + esc(f.label) + '</label>' +
+                        input +
+                        (f.note ? '<div class="text-muted" style="font-size:0.7rem;">' + esc(f.note) + '</div>' : '') +
+                        '</div>';
+                });
+                document.getElementById('mip-edit-form').innerHTML = html;
+                new bootstrap.Modal(document.getElementById('mipEditModal')).show();
+            }
+            document.getElementById('mip-edit-save').addEventListener('click', async function () {
+                const row = window._mipEditRow;
+                if (!row) return;
+                const d = row.getData();
+                const sku = d.sku || '';
+                const mipId = d.id || 0;
+                const btn = this;
+                btn.disabled = true;
+                const updates = {};
+                const tasks = [];
+                document.querySelectorAll('#mip-edit-form [data-key]').forEach(function (el) {
+                    const key = el.dataset.key;
+                    const field = EDIT_FIELDS.find(function (f) { return f.key === key; });
+                    if (!field || field.readonly) return;
+                    let newVal = el.value;
+                    let oldVal = d[key] == null ? '' : d[key];
+                    if (field.type === 'date') oldVal = toDateInput(oldVal);
+                    if (String(newVal) === String(oldVal)) return; // unchanged
+                    if (key === 'exec') {
+                        tasks.push(postUpdateLink(sku, 'Exec', newVal || null));
+                        updates.exec = newVal;
+                    } else if (key === 'stage') {
+                        tasks.push(Promise.resolve(postStage(sku, d.parent, newVal)));
+                        updates.stage = newVal;
+                    } else if (key === 'CBM') {
+                        tasks.push(Promise.resolve(postForecastData(sku, d.parent, 'CBM', newVal)));
+                        updates.CBM = newVal;
+                    } else {
+                        tasks.push(postInline(sku, mipId, key, newVal));
+                        updates[key] = newVal;
+                    }
+                });
+                if (tasks.length === 0) {
+                    btn.disabled = false;
+                    bootstrap.Modal.getInstance(document.getElementById('mipEditModal')).hide();
+                    return;
+                }
+                // Reflect changes in the grid immediately (optimistic), then persist.
+                try { row.update(updates); row.reformat(); } catch (e) {}
+                updateStats();
+                try {
+                    await Promise.all(tasks);
+                    // Re-apply + reformat after server confirms, so computed columns are accurate.
+                    row.update(updates); row.reformat();
+                    updateStats();
+                } catch (err) {
+                    alert('Some changes could not be saved. Please retry.');
+                }
+                btn.disabled = false;
+                bootstrap.Modal.getInstance(document.getElementById('mipEditModal')).hide();
+            });
 
             // ---- Follow-Up / Current Status ----
             function fmtFollowupDate(raw) {

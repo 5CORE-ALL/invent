@@ -119,6 +119,24 @@ class MFRGInProgressController extends Controller
             self::attachProductCpToRows($readyToShipData);
 
             $mfrgData = $mfrgData->concat($readyToShipData);
+        } else {
+            // Archived view: also show archived (soft-deleted) Ready-to-Ship rows so they
+            // can be restored from "Show archived".
+            $trashedRts = ReadyToShip::onlyTrashed()
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            foreach ($trashedRts as $item) {
+                $item->stage = 'rts';
+                $item->source_table = 'ready_to_ship';
+                $item->nr = 'RTS';
+                $item->order_qty = $item->qty ?? 0;
+                $item->ready_to_ship = 'No';
+            }
+
+            self::attachProductCpToRows($trashedRts);
+
+            $mfrgData = $mfrgData->concat($trashedRts);
         }
 
         if (config('app.debug')) {
@@ -754,6 +772,12 @@ class MFRGInProgressController extends Controller
                 $archivedCount += MfrgProgress::query()
                     ->whereRaw('UPPER(TRIM(sku)) = ?', [$ns])
                     ->delete();
+
+                // MIP page also lists Ready-to-Ship rows; archive those too (soft delete).
+                $archivedCount += ReadyToShip::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$ns])
+                    ->where('transit_inv_status', 0)
+                    ->delete();
             }
 
             return response()->json([
@@ -799,6 +823,15 @@ class MFRGInProgressController extends Controller
                     ->get();
                 foreach ($rows as $row) {
                     $row->restore();
+                    $restoredCount++;
+                }
+
+                // Restore archived Ready-to-Ship rows as well.
+                $rtsRows = ReadyToShip::onlyTrashed()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$ns])
+                    ->get();
+                foreach ($rtsRows as $rtsRow) {
+                    $rtsRow->restore();
                     $restoredCount++;
                 }
             }

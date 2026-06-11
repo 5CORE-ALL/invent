@@ -1163,6 +1163,20 @@ class ForecastAnalysisController extends Controller
             return response()->json(['success' => false, 'message' => 'Product not found']);
         }
 
+        // Handle CBM updates: save to product_master Values->cbm
+        if (strtoupper($column) === 'CBM') {
+            $valueNum = is_numeric($value) ? (float) $value : null;
+            $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
+            if ($product) {
+                $values = is_array($product->Values) ? $product->Values : (json_decode($product->Values ?? '{}', true) ?? []);
+                $values['cbm'] = $valueNum !== null ? $valueNum : '';
+                $product->Values = $values;
+                $product->save();
+                return response()->json(['success' => true, 'message' => 'CBM updated successfully']);
+            }
+            return response()->json(['success' => false, 'message' => 'Product not found']);
+        }
+
         // Handle 2-Order updates: persist to to_order_analysis.approved_qty
         if (strtoupper($column) === 'ORDER') {
             if (!is_numeric($value)) {
