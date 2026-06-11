@@ -464,7 +464,39 @@
                 },
             });
 
-            // ---- Column show/hide menu ----
+            // ---- Column show/hide menu (shared for all users via channel_tabulator_column_settings) ----
+            const TABULATOR_COLUMN_CHANNEL = 'mfrg_in_progress';
+            const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+            function applyColumnVisibilityFromServer() {
+                return fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+                    method: 'GET', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF }
+                })
+                    .then(r => r.json())
+                    .then(function (saved) {
+                        if (!saved || typeof saved !== 'object') return;
+                        table.getColumns().forEach(function (col) {
+                            const field = col.getField();
+                            if (!field) return;
+                            if (saved[field] === false) col.hide(); else col.show();
+                        });
+                        table.redraw(true);
+                    })
+                    .catch(function () {});
+            }
+            function saveColumnVisibilityToServer() {
+                const visibility = {};
+                table.getColumns().forEach(function (col) {
+                    const field = col.getField();
+                    if (field) visibility[field] = col.isVisible();
+                });
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+                    body: JSON.stringify({ channel: TABULATOR_COLUMN_CHANNEL, visibility: visibility })
+                }).catch(function () {});
+            }
+            table.on('tableBuilt', applyColumnVisibilityFromServer);
+
             const colBtn = document.getElementById('mip-columns-btn');
             const colMenu = document.getElementById('mip-columns-menu');
             function columnLabel(col) {
@@ -509,12 +541,14 @@
                 const field = t.dataset.field;
                 if (t.checked) table.showColumn(field); else table.hideColumn(field);
                 table.redraw(true);
+                saveColumnVisibilityToServer();
             });
             colMenu.addEventListener('click', function (e) {
                 if (e.target && e.target.id === 'mip-columns-all') {
                     table.getColumns().forEach(function (col) { if (col.getField()) table.showColumn(col.getField()); });
                     table.redraw(true);
                     buildColumnsMenu();
+                    saveColumnVisibilityToServer();
                 }
             });
             document.addEventListener('click', function (e) {
