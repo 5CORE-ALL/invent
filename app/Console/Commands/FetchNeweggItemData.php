@@ -275,9 +275,17 @@ class FetchNeweggItemData extends Command
                 continue;
             }
 
-            $prices = data_get($result, 'PriceList.Price', []);
-            if (empty($prices)) {
+            $priceList = data_get($result, 'PriceList');
+            if (!is_array($priceList) || empty($priceList)) {
                 continue;
+            }
+
+            // The live API returns PriceList as a direct array of price rows,
+            // but the docs show PriceList.Price — support both.
+            if (array_is_list($priceList)) {
+                $prices = $priceList;
+            } else {
+                $prices = data_get($priceList, 'Price', $priceList);
             }
 
             // A single price comes back as an associative array, not a list.
