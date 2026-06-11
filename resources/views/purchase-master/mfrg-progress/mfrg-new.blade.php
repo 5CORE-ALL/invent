@@ -232,7 +232,7 @@
 
             const CSRF = '{{ csrf_token() }}';
             const USER_EMAIL = '{{ strtolower(trim(auth()->user()->email ?? "")) }}';
-            const CAN_EDIT_ALL = USER_EMAIL === 'president@5core.com';
+            const CAN_EDIT_ALL = USER_EMAIL === 'president@5core.com' || USER_EMAIL === 'purchase@5core.com';
             const CAN_ARCHIVE = USER_EMAIL === 'president@5core.com' || USER_EMAIL === 'purchase@5core.com';
             let uniqueSuppliers = [];
             let showArchived = false;
@@ -396,10 +396,10 @@
                       } },
                     { title: "QTY", field: "qty", width: 90, hozAlign: "center", formatter: inputFormatter('qty', 'number', 70) },
                     { title: "O Date", field: "created_at", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,
-                      editor: "date", editorParams: { format: "yyyy-MM-dd" },
+                      editor: "date",
                       cellEdited: function (cell) { const d = cell.getRow().getData(); postInline(d.sku || '', d.id || 0, 'created_at', cell.getValue()).then(r => { if (!r.success) alert(r.message || 'Save failed'); }); } },
                     { title: "D Date", field: "delivery_date", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,
-                      editor: "date", editorParams: { format: "yyyy-MM-dd" },
+                      editor: "date",
                       cellEdited: function (cell) { const d = cell.getRow().getData(); postInline(d.sku || '', d.id || 0, 'delivery_date', cell.getValue()).then(r => { if (!r.success) alert(r.message || 'Save failed'); }); } },
                     { title: "Supplier", field: "supplier", width: 120, hozAlign: "center", headerFilter: "input", headerFilterPlaceholder: " Filter...", formatter: supplierFormatter },
                     { title: '<i class="fas fa-comments" title="Communication"></i>', field: "supplier_platform_links", width: 56, headerSort: false, formatter: commFormatter },
