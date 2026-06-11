@@ -506,6 +506,44 @@
             $('#inv-r-stock-badge').toggleClass('active-filter', invRStockFilterActive);
         }
 
+        // Columns hidden while the "Missing L" badge filter is active
+        const missingHiddenColumnFields = [
+            'RV Price',
+            'GPFT%', 'PFT %', 'ROI%', 'SPRICE', 'SGPFT', 'SPFT', 'SROI',
+            'RV L30', 'reverb_daily_qty', 'reverb_daily_qty_x_subtotal', 'reverb_daily_qty_x_amount', 'R Stock',
+            'Views', 'CVR',
+            'L30', 'RV Dil%', 'MAP', 'Profit', 'Sales L30', 'LP_productmaster', 'Ship_productmaster'
+        ];
+
+        // Remember each column's visibility before the filter hid it, so we can restore it
+        let missingColumnPrevVisibility = null;
+
+        function applyMissingColumnVisibility() {
+            if (!table) return;
+            if (missingFilterActive) {
+                if (!missingColumnPrevVisibility) {
+                    missingColumnPrevVisibility = {};
+                    missingHiddenColumnFields.forEach(function(field) {
+                        const col = table.getColumn(field);
+                        if (col) missingColumnPrevVisibility[field] = col.isVisible();
+                    });
+                }
+                missingHiddenColumnFields.forEach(function(field) {
+                    const col = table.getColumn(field);
+                    if (col) col.hide();
+                });
+            } else if (missingColumnPrevVisibility) {
+                missingHiddenColumnFields.forEach(function(field) {
+                    const col = table.getColumn(field);
+                    if (!col) return;
+                    if (missingColumnPrevVisibility[field]) col.show();
+                    else col.hide();
+                });
+                missingColumnPrevVisibility = null;
+            }
+            buildColumnDropdown();
+        }
+
         function applyReverbUrlBadgeFilter() {
             const badge = (new URLSearchParams(window.location.search).get('badge') || '').toLowerCase();
             if (badge && table) {
@@ -516,6 +554,7 @@
                 else if (badge === 'zero_sold') zeroSoldFilterActive = true;
                 else if (badge === 'more_sold') moreSoldFilterActive = true;
                 syncReverbBadgeFilterStyles();
+                applyMissingColumnVisibility();
             }
             applyFilters();
         }
@@ -524,6 +563,7 @@
             missingFilterActive = !missingFilterActive;
             mapFilterActive = invRStockFilterActive = false;
             syncReverbBadgeFilterStyles();
+            applyMissingColumnVisibility();
             applyFilters();
         });
 

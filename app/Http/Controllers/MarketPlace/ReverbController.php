@@ -965,16 +965,19 @@ class ReverbController extends Controller
                 $processedItem["Missing"] = '';
             }
             
-            // MAP: Only for REQ items with INV > 0 and NOT Missing (|INV − R Stock| ≤ 3 = Map, same as Best Buy / Macys / eBay)
-            if ($nrReq === 'REQ' && $inv > 0 && !$isMissing) {
+            // MAP / N Map: REQ + INV > 0 + NOT Missing + R Stock > 0, using the same
+            // 3% tolerance as /map-issues (when 3% of INV is below 3 units, require an
+            // absolute gap > 3 units; otherwise apply the rounded 3% rule).
+            if ($nrReq === 'REQ' && $inv > 0 && !$isMissing && $rStock > 0) {
                 $diff = abs((float) $inv - (float) $rStock);
-                if ($diff <= 3) {
-                    $processedItem["MAP"] = 'Map';
+                if ($inv * 0.03 < 3) {
+                    $isNotMap = $diff > 3;
                 } else {
-                    $processedItem["MAP"] = 'N Map|'.$diff;
+                    $isNotMap = round(($diff / $inv) * 100) > 3;
                 }
+                $processedItem["MAP"] = $isNotMap ? 'N Map|'.$diff : 'Map';
             } else {
-                // Don't show MAP for NR items, INV = 0, or Missing items
+                // Don't show MAP for NR items, INV = 0, Missing items, or zero R Stock
                 $processedItem["MAP"] = '';
             }
 

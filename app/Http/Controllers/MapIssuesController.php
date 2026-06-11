@@ -166,7 +166,9 @@ class MapIssuesController extends Controller
             $ebay2   = $key !== '' ? ($ebay2ByNorm[$key] ?? null) : null;
             $ebay3   = $key !== '' ? ($ebay3ByNorm[$key] ?? null) : null;
             $amazonSheet = $key !== '' ? ($amazonSheetByNorm[$key] ?? null) : null;
-            $reverb  = $key !== '' ? ($reverbByNorm[$key] ?? null) : null;
+            // Reverb uses its own normalization (PCS→PC + no-space fallback), same as reverb-pricing.
+            $reverbKey = ReverbProduct::normalizeSkuForLookup($pm->sku);
+            $reverb  = $reverbKey !== '' ? ($reverbByNorm[$reverbKey] ?? null) : null;
             $macy    = $key !== '' ? ($macyByNorm[$key] ?? null) : null;
             $bestbuy = $key !== '' ? ($bestbuyByNorm[$key] ?? null) : null;
             $tiendamia = $key !== '' ? ($tiendamiaByNorm[$key] ?? null) : null;
@@ -1075,45 +1077,10 @@ class MapIssuesController extends Controller
      */
     private function buildReverbLookupByNormalizedSku(array $productSkus): array
     {
-        $byNorm = [];
-
-        foreach (ReverbProduct::select('sku', 'price', 'remaining_inventory')->whereIn('sku', $productSkus)->get() as $row) {
-            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
-            if ($k !== '' && ! isset($byNorm[$k])) {
-                $byNorm[$k] = $row;
-            }
-        }
-
-        $missing = [];
-        foreach ($productSkus as $pmSku) {
-            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $pmSku);
-            if ($k !== '' && ! isset($byNorm[$k])) {
-                $missing[$k] = true;
-            }
-        }
-
-        if ($missing === []) {
-            return $byNorm;
-        }
-
-        ReverbProduct::query()
-            ->select('sku', 'price', 'remaining_inventory', 'id')
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->orderBy('id')
-            ->chunkById(3000, function ($rows) use (&$byNorm, &$missing) {
-                foreach ($rows as $row) {
-                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
-                    if ($k !== '' && isset($missing[$k]) && ! isset($byNorm[$k])) {
-                        $byNorm[$k] = $row;
-                        unset($missing[$k]);
-                    }
-                }
-
-                return count($missing) > 0;
-            });
-
-        return $byNorm;
+        // Use the same lookup/normalization as the reverb-pricing page
+        // (ReverbProduct::normalizeSkuForLookup adds PCS→PC + no-space fallback),
+        // so R Stock / Reverb Inv match between the two pages.
+        return ReverbProduct::buildLookupByNormalizedSku($productSkus);
     }
 
     /**
