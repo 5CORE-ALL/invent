@@ -12990,6 +12990,7 @@ class ChannelMasterController extends Controller
                 'l60_sales' => 'l60_sales',
                 'l60_orders' => 'l60_orders',
                 'l30_sales' => 'l30_sales',
+                'y_sales' => 'y_sales',
                 'l30_orders' => 'l30_orders',
                 'qty' => 'total_quantity',
                 'gprofit' => 'gprofit_percent',
@@ -13005,7 +13006,7 @@ class ChannelMasterController extends Controller
                 'total_views' => 'total_views',
                 'inv_at_lp' => 'inv_at_lp',
             ];
-            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp'];
+            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp'];
             $out = [];
 
             foreach ($channelKeys as $channel) {

@@ -1561,12 +1561,21 @@
                         width: 90,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue() || 0);
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'y_sales');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="y_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             if (!value || value === 0) {
                                 // NYS = "No Yesterday Sales" — shown whenever a channel had
                                 // zero revenue on the prior PST day.
-                                return '<span style="color:#adb5bd;font-weight:600;" title="No Yesterday Sales">NYS</span>';
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No Yesterday Sales">NYS</span>${chartIcon}`;
                             }
-                            return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>`;
+                            return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -3558,7 +3567,9 @@
 
             // ---- Persisted column visibility (channel_tabulator_column_settings) ----
             const COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
-            const COLUMN_VISIBILITY_CHANNEL = 'all_marketplace_master';
+            // Per-user key so each user keeps their own saved column layout and
+            // gets their latest selection back when they reopen the page.
+            const COLUMN_VISIBILITY_CHANNEL = 'all_marketplace_master_user_{{ auth()->id() ?? 'guest' }}';
             const columnCsrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
             let savedColumnVisibility = {};
 
@@ -4289,6 +4300,7 @@
                 'l60_sales': 'L60 Sales',
                 'l60_orders': 'L60 Orders',
                 'l30_sales': 'Sales',
+                'y_sales': 'Y Sales',
                 'l30_orders': 'Orders',
                 'qty': 'Qty',
                 'gprofit': 'Gprofit%',
@@ -4415,7 +4427,7 @@
                 // --- Format helper (no decimals for spend/sales) ---
                 const fmtVal = (v) => {
                     const m = currentChartMetric;
-                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp') {
+                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp') {
                         return '$' + Math.round(v).toLocaleString('en-US');
                     }
                     if (m === 'acos' || m === 'cvr' || m === 'ads_cvr' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'nroi') {
