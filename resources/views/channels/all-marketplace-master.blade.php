@@ -498,6 +498,12 @@
                             <input type="text" class="form-control" id="channelName" required>
                         </div>
                         <div class="mb-3">
+                            <label for="channelAlias" class="form-label">Alias</label>
+                            <input type="text" class="form-control" id="channelAlias" maxlength="190"
+                                placeholder="Short display name">
+                            <small class="text-muted">Shown in the Alias column; click it to open this channel's view.</small>
+                        </div>
+                        <div class="mb-3">
                             <label for="channelLogo" class="form-label">Channel Logo</label>
                             <div class="d-flex align-items-center gap-2">
                                 <div id="channelLogoPreview" class="channel-logo-preview">
@@ -572,6 +578,12 @@
                             @unless ($canEditChannelName)
                                 <small class="text-muted">Channel name editing is restricted.</small>
                             @endunless
+                        </div>
+                        <div class="mb-3">
+                            <label for="editChannelAlias" class="form-label">Alias</label>
+                            <input type="text" class="form-control" id="editChannelAlias" maxlength="190"
+                                placeholder="Short display name">
+                            <small class="text-muted">Shown in the Alias column; click it to open this channel's view.</small>
                         </div>
                         <div class="mb-3">
                             <label for="editChannelLogo" class="form-label">Channel Logo</label>
@@ -1208,6 +1220,27 @@
                                 : `<span>${channel}</span>`;
 
                             return `<div>${channelDisplay}</div>`;
+                        }
+                    },
+                    {
+                        // Alias: short display label set per channel in the Edit modal.
+                        // Clicking it opens the channel's tabulator view (the same
+                        // "Blade page link" / missing_link used by the channel name).
+                        title: "Alias",
+                        field: "alias",
+                        hozAlign: "center",
+                        headerTooltip: "Channel alias — click to open this channel's view.",
+                        formatter: function(cell) {
+                            const alias = (cell.getValue() || '').toString().trim();
+                            if (!alias) {
+                                return '<span style="color:#adb5bd;">-</span>';
+                            }
+                            const rowData = cell.getRow().getData();
+                            const viewLink = rowData['missing_link'] || '';
+                            if (viewLink) {
+                                return `<a href="${viewLink}" target="_blank" class="channel-alias-link" style="color:#0d6efd;font-weight:600;text-decoration:none;cursor:pointer;" title="Open ${alias} view">${alias}</a>`;
+                            }
+                            return `<span style="font-weight:600;">${alias}</span>`;
                         }
                     },
                     {
@@ -3187,6 +3220,7 @@
 
                                     // Populate modal
                                     $('#editChannelName').val(channel);
+                                    $('#editChannelAlias').val(rowData['alias'] || '');
                                     $('#editChannelUrl').val(sheetUrl);
                                     $('#editType').val(type);
                                     $('#editMissingLink').val(missingLink);
@@ -4580,6 +4614,7 @@
 
                     // Populate modal fields
                     $('#editChannelName').val(channel);
+                    $('#editChannelAlias').val(rowData['alias'] || '');
                     $('#editChannelUrl').val(sheetUrl);
                     $('#editType').val(type);
                     $('#editMissingLink').val(missingLink);
@@ -4684,6 +4719,7 @@
 
                 const formData = new FormData();
                 formData.append('channel', channelName);
+                formData.append('alias', $('#channelAlias').val().trim());
                 formData.append('sheet_link', channelUrl);
                 formData.append('type', type);
                 formData.append('seller_link', sellerLink);
@@ -4726,6 +4762,7 @@
             // Update channel form handler
             $(document).on('click', '#updateChannelBtn', function() {
                 const channel = $('#editChannelName').val().trim();
+                const alias = $('#editChannelAlias').val().trim();
                 const sheetUrl = $('#editChannelUrl').val().trim();
                 const type = $('#editType').val();
                 const missingLink = $('#editMissingLink').val().trim();
@@ -4741,6 +4778,7 @@
 
                 const formData = new FormData();
                 formData.append('channel', channel);
+                formData.append('alias', alias);
                 formData.append('sheet_url', sheetUrl);
                 formData.append('type', type);
                 formData.append('missing_link', missingLink);

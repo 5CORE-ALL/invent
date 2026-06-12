@@ -13,6 +13,7 @@ class ChannelMaster extends Model
 
     protected $fillable = [
         'channel',
+        'alias',
         'logo',
         'seller_link',
         'sheet_link',

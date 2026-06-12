@@ -3127,13 +3127,16 @@ class ChannelMasterController extends Controller
             // pre-calculated table doesn't need extra columns of its own.
             $logoMap = [];
             $sellerLinkMap = [];
+            $aliasMap = [];
             $hasLogo = Schema::hasColumn('channel_master', 'logo');
             $hasSellerLink = Schema::hasColumn('channel_master', 'seller_link');
+            $hasAlias = Schema::hasColumn('channel_master', 'alias');
 
-            if ($hasLogo || $hasSellerLink) {
+            if ($hasLogo || $hasSellerLink || $hasAlias) {
                 $select = ['channel', 'status'];
                 if ($hasLogo) $select[] = 'logo';
                 if ($hasSellerLink) $select[] = 'seller_link';
+                if ($hasAlias) $select[] = 'alias';
 
                 // Load every channel_master row and key by a canonical name so
                 // duplicate/aliased rows resolve correctly. Active rows are taken
@@ -3151,14 +3154,18 @@ class ChannelMasterController extends Controller
                     if ($hasSellerLink && !empty($r->seller_link) && empty($sellerLinkMap[$key])) {
                         $sellerLinkMap[$key] = $r->seller_link;
                     }
+                    if ($hasAlias && !empty($r->alias) && empty($aliasMap[$key])) {
+                        $aliasMap[$key] = $r->alias;
+                    }
                 }
             }
 
             // Format data for frontend (match expected format)
-            $formattedData = $channels->map(function($channel) use ($logoMap, $sellerLinkMap) {
+            $formattedData = $channels->map(function($channel) use ($logoMap, $sellerLinkMap, $aliasMap) {
                 $canonicalKey = $this->canonicalChannelKey($channel->channel);
                 return [
                     'Channel ' => $channel->channel,
+                    'alias' => $aliasMap[$canonicalKey] ?? null,
                     'logo' => $logoMap[$canonicalKey] ?? null,
                     'seller_link' => $sellerLinkMap[$canonicalKey] ?? null,
                     'sheet_link' => $channel->sheet_link,
@@ -3299,6 +3306,9 @@ class ChannelMasterController extends Controller
         $columns = ['channel', 'sheet_link', 'channel_percentage', 'type'];
         
         // Check optional columns before adding them
+        if (Schema::hasColumn('channel_master', 'alias')) {
+            $columns[] = 'alias';
+        }
         if (Schema::hasColumn('channel_master', 'base')) {
             $columns[] = 'base';
         }
@@ -3761,6 +3771,7 @@ class ChannelMasterController extends Controller
             
             $row = [
                 'Channel '       => ucfirst($channel),
+                'alias'          => $channelRow->alias ?? null,
                 'logo'           => $channelRow->logo ?? null,
                 'seller_link'    => $channelRow->seller_link ?? null,
                 'Link'           => null,
@@ -11435,6 +11446,7 @@ class ChannelMasterController extends Controller
         // Validate Request Data
         $validatedData = $request->validate([
             'channel' => 'required|string',
+            'alias' => 'nullable|string|max:190',
             'sheet_link' => 'nullable|url',
             'addition_sheet' => 'nullable|url',
             'type' => 'nullable|string',
@@ -11456,6 +11468,11 @@ class ChannelMasterController extends Controller
         try {
             if (!Schema::hasColumn('channel_master', 'addition_sheet')) {
                 unset($validatedData['addition_sheet']);
+            }
+
+            // alias column may not exist yet (pre-migration); strip if missing
+            if (!Schema::hasColumn('channel_master', 'alias')) {
+                unset($validatedData['alias']);
             }
 
             // Logo column may not exist yet (pre-migration); strip if missing
@@ -11565,6 +11582,7 @@ class ChannelMasterController extends Controller
 
         $originalChannel = $request->input('original_channel');
         $updatedChannel = $request->input('channel');
+        $alias = $request->input('alias');
         $sheetUrl = $request->input('sheet_url');
         $type = $request->input('type');
         $channelPercentage = $request->input('channel_percentage');
@@ -11617,6 +11635,11 @@ class ChannelMasterController extends Controller
             $channel->target = $target;
         }
         
+        // Save alias if column exists (treat blank as NULL)
+        if (Schema::hasColumn('channel_master', 'alias') && $request->has('alias')) {
+            $channel->alias = ($alias !== '' && $alias !== null) ? $alias : null;
+        }
+
         // Save missing_link if column exists
         if (Schema::hasColumn('channel_master', 'missing_link')) {
             $channel->missing_link = $missingLink;
