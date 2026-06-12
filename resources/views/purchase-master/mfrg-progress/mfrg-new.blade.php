@@ -44,6 +44,14 @@
         /* Status dot toggles (Pkg/U-Manual/Compliance) */
         .mip-status-dot { display: inline-block; width: 16px; height: 16px; border-radius: 50%; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); }
 
+        /* Supplier cell — searchable dropdown trigger */
+        .mip-supplier-display { display: flex; align-items: center; justify-content: space-between; gap: 4px; width: 100%; padding: 3px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer; font-size: 12px; line-height: 1.3; min-height: 26px; }
+        .mip-supplier-display:hover { border-color: #4db6ac; background: #f0fdfa; }
+        .mip-supplier-display .mip-supplier-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        /* Make the autocomplete edit list comfortably readable */
+        .tabulator-edit-list { max-height: 260px; }
+        .tabulator-edit-list .tabulator-edit-list-item { font-size: 12px; padding: 5px 8px; }
+
         /* Communication logos */
         .mip-plat-icon-link { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; transition: transform 0.12s; }
         .mip-plat-icon-link:hover { transform: scale(1.2); }
@@ -239,6 +247,10 @@
             let showArchived = false;
             let table;
 
+            // Full supplier list from the database (supplier.list — Supplier type), used for the
+            // searchable Supplier dropdown so every supplier is selectable, not just ones already in the grid.
+            const ALL_SUPPLIERS = @json($allSuppliers ?? []);
+
             const EXEC_OPTIONS = ['Atin', 'Jack', 'Nitish', 'Ajay', 'Candy', 'Sruti'];
             const EXEC_COLORS = {
                 'Atin':   { bg: '#3b82f6', text: '#fff' },
@@ -371,10 +383,11 @@
                 return '<span title="' + full + '">' + short + '</span>';
             }
             function supplierFormatter(cell) {
-                const val = cell.getValue() || '';
-                let opts = '<option value=""></option>';
-                uniqueSuppliers.forEach(function (s) { opts += '<option value="' + esc(s) + '"' + (s === val ? ' selected' : '') + '>' + esc(s) + '</option>'; });
-                return '<select class="form-select form-select-sm mip-supplier-select" style="width:110px;">' + opts + '</select>';
+                const val = (cell.getValue() || '').trim();
+                const txt = val ? esc(val) : '<span class="text-muted">— Select —</span>';
+                return '<div class="mip-supplier-display" title="Click to search & change supplier">' +
+                    '<span class="mip-supplier-name">' + txt + '</span>' +
+                    '<i class="fas fa-caret-down ms-1 text-muted"></i></div>';
             }
 
             table = new Tabulator("#mfrg-table", {
@@ -416,7 +429,26 @@
                     { title: "D Date", field: "delivery_date", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,
                       editor: "date",
                       cellEdited: function (cell) { const d = cell.getRow().getData(); postInline(d.sku || '', d.id || 0, 'delivery_date', cell.getValue(), d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save date: ' + (err && err.message ? err.message : err))); } },
-                    { title: "Supplier", field: "supplier", width: 120, hozAlign: "center", headerFilter: "input", headerFilterPlaceholder: " Filter...", formatter: supplierFormatter },
+                    { title: "Supplier", field: "supplier", width: 140, hozAlign: "left",
+                      headerFilter: "input", headerFilterPlaceholder: " Filter...",
+                      formatter: supplierFormatter,
+                      editor: "list",
+                      editorParams: {
+                          values: ALL_SUPPLIERS,
+                          autocomplete: true,
+                          listOnEmpty: true,
+                          clearable: true,
+                          freetext: false,
+                          placeholderEmpty: "No supplier found",
+                          maxHeight: 260,
+                      },
+                      cellEdited: function (cell) {
+                          const d = cell.getRow().getData();
+                          const v = (cell.getValue() || '').trim();
+                          postInline(d.sku || '', d.id || 0, 'supplier', v, d.source_table)
+                              .then(r => { if (!r || !r.success) alert((r && r.message) || 'Could not save supplier.'); })
+                              .catch(err => { alert('Could not save supplier: ' + (err && err.message ? err.message : err)); });
+                      } },
                     { title: '<i class="fas fa-comments" title="Communication"></i>', field: "supplier_platform_links", width: 56, headerSort: false, formatter: commFormatter },
                     { title: "PO", field: "mip_po_number", width: 80, hozAlign: "center", formatter: function (c) { const v = c.getValue(); return v ? '<span class="badge bg-info">' + esc(v) + '</span>' : '<span class="mip-status-dot" style="background-color:#dc3545;" title="No PO"></span>'; } },
                     { title: "T-CBM", field: "total_cbm", width: 90, hozAlign: "center", formatter: function (cell) {
@@ -643,14 +675,6 @@
                         }
                         applyFilters();
                     }).fail(function () { alert('Failed to save stage.'); });
-                } else if (t.classList.contains('mip-supplier-select')) {
-                    const v = t.value;
-                    postInline(sku, mipId, 'supplier', v, d.source_table)
-                        .then(r => {
-                            if (r && r.success) { row.update({ supplier: v }); }
-                            else { alert((r && r.message) || 'Could not save supplier.'); }
-                        })
-                        .catch(err => { alert('Could not save supplier: ' + (err && err.message ? err.message : err)); });
                 } else if (t.classList.contains('mip-inline-input')) {
                     const col = t.dataset.column;
                     const v = t.value;

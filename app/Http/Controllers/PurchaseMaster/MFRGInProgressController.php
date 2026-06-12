@@ -78,7 +78,18 @@ class MFRGInProgressController extends Controller
 
     public function newMfrgView()
     {
-        return view('purchase-master.mfrg-progress.mfrg-new');
+        $allSuppliers = Supplier::query()
+            ->where('type', 'Supplier')
+            ->orderBy('name')
+            ->pluck('name')
+            ->map(fn ($n) => trim((string) $n))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return view('purchase-master.mfrg-progress.mfrg-new', [
+            'allSuppliers' => $allSuppliers,
+        ]);
     }
 
     public function archivedMfrgCount()
