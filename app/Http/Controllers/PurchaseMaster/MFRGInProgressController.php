@@ -151,6 +151,10 @@ class MFRGInProgressController extends Controller
             $mfrgData = $mfrgData->concat($trashedRts);
         }
 
+        // Attach exec to the full set (incl. Ready-to-Ship rows). Exec is keyed by SKU in
+        // to_order_analysis, so RTS rows that aren't in mfrg_progress still show their saved exec.
+        self::attachExecBySku($mfrgData);
+
         if (config('app.debug')) {
             Log::debug('mip.getMfrgProgressData', [
                 'archived' => $archived,
@@ -300,6 +304,35 @@ class MFRGInProgressController extends Controller
     /**
      * Load MfrgProgress rows with shared enrichment (index blade + Tabulator JSON).
      */
+    /**
+     * Attach `exec` to each row from to_order_analysis (single source of truth, keyed by SKU).
+     * Works for any row that has a `sku`, including Ready-to-Ship rows not present in mfrg_progress.
+     */
+    private static function attachExecBySku(Collection $rows): void
+    {
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        $execBySku = [];
+        $execRows = DB::table('to_order_analysis')
+            ->whereNull('deleted_at')
+            ->whereNotNull('exec')
+            ->select(['sku', 'exec'])
+            ->get();
+        foreach ($execRows as $r) {
+            $k = strtoupper(trim((string) ($r->sku ?? '')));
+            if ($k !== '') {
+                $execBySku[$k] = $r->exec;
+            }
+        }
+
+        foreach ($rows as $row) {
+            $key = strtoupper(trim((string) ($row->sku ?? '')));
+            $row->exec = $execBySku[$key] ?? null;
+        }
+    }
+
     private static function loadEnrichedMipProgressCollection(bool $onlyTrashed, array $supplierCache): Collection
     {
         $normalizeSku = fn (?string $sku) => self::normalizeMipSku($sku);
@@ -358,20 +391,7 @@ class MFRGInProgressController extends Controller
         }
 
         // Attach exec from to_order_analysis (single source of truth shared with to-order-analysis page)
-        $execBySku = [];
-        $execRows = DB::table('to_order_analysis')
-            ->whereNull('deleted_at')
-            ->whereNotNull('exec')
-            ->select(['sku', 'exec'])
-            ->get();
-        foreach ($execRows as $r) {
-            $k = strtoupper(trim((string)($r->sku ?? '')));
-            if ($k !== '') $execBySku[$k] = $r->exec;
-        }
-        foreach ($mfrgData as $row) {
-            $key = strtoupper(trim((string)($row->sku ?? '')));
-            $row->exec = $execBySku[$key] ?? null;
-        }
+        self::attachExecBySku($mfrgData);
 
         // Filter to show items with stage='mip' or stage='r2s' (exclude transit, all good, etc.)
         // The MIP In Progress page now lists both MIP and R2S stage rows from forecast_analysis.
