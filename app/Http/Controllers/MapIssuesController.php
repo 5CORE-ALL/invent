@@ -21,6 +21,8 @@ use App\Models\ProductStockMapping;
 use App\Models\ReverbListingStatus;
 use App\Models\ReverbProduct;
 use App\Models\ShopifySku;
+use App\Models\TemuListingStatus;
+use App\Models\TemuPricing;
 use App\Models\TiendamiaDataView;
 use App\Models\TiendamiaProduct;
 use Illuminate\Http\Request;
@@ -86,6 +88,9 @@ class MapIssuesController extends Controller
                 'tiendamia_not_map_count' => 0,
                 'tiendamia_mismatch_count' => 0,
                 'tiendamia_missing_listing_count' => 0,
+                'temu_not_map_count' => 0,
+                'temu_mismatch_count' => 0,
+                'temu_missing_listing_count' => 0,
             ]);
         }
 
@@ -136,6 +141,13 @@ class MapIssuesController extends Controller
         $tiendamiaByNorm    = $this->buildTiendamiaLookupByNormalizedSku($skus);
         $nrStatusTiendamia  = $this->buildTiendamiaNrReqStatusLookup($skus);
 
+        // Temu: stock (temu_pricing.quantity), price (base_price) and stored SKU come from
+        // temu_pricing (listed = a live pricing row with base price > 0, same as the
+        // temu-decrease page's Missing rule). REQ/NR comes from temu_listing_statuses' "nr_req"
+        // key (default REQ when INV > 0), matching the temu-decrease page.
+        $temuByNorm     = $this->buildTemuLookupByNormalizedSku($skus);
+        $nrStatusTemu   = $this->buildTemuNrReqStatusLookup($skus);
+
         // 4. Build rows
         $result = [];
         $notMapCount = 0;          // eBay:  INV != eBay Stock (same logic as eBay page)
@@ -162,6 +174,9 @@ class MapIssuesController extends Controller
         $tiendamiaNotMapCount = 0;          // Tiendamia: INV != Tiendamia Stock
         $tiendamiaMismatchCount = 0;        // Tiendamia: SKU stored differently
         $tiendamiaMissingListingCount = 0;  // Tiendamia: not listed, REQ, INV > 0
+        $temuNotMapCount = 0;          // Temu: INV != Temu Stock
+        $temuMismatchCount = 0;        // Temu: SKU stored differently
+        $temuMissingListingCount = 0;  // Temu: not listed, REQ, INV > 0
         foreach ($productMasters as $pm) {
             $key = ShopifySku::normalizeSkuForShopifyLookup($pm->sku);
 
@@ -179,6 +194,9 @@ class MapIssuesController extends Controller
             $macy    = $key !== '' ? ($macyByNorm[$key] ?? null) : null;
             $bestbuy = $key !== '' ? ($bestbuyByNorm[$key] ?? null) : null;
             $tiendamia = $key !== '' ? ($tiendamiaByNorm[$key] ?? null) : null;
+            // Temu uses its own normalization (PCS→PC + collapsed spaces), same as temu-decrease.
+            $temuKey = $this->normalizeTemuSku($pm->sku);
+            $temu    = $temuKey !== '' ? ($temuByNorm[$temuKey] ?? null) : null;
 
             $inv = floatval($shopify->inv ?? 0);
 
@@ -433,6 +451,38 @@ class MapIssuesController extends Controller
                 $tiendamiaMissingListingCount++;
             }
 
+            // ---- Temu ----
+            $temuStock = floatval($temu->quantity ?? 0);
+            $temuBasePrice = floatval($temu->base_price ?? 0);
+            // Listed = a live pricing row with a base price (same as the temu-decrease page's
+            // Missing rule: missing when not in pricing, or in pricing with INV > 0 and no price).
+            $temuListed = $temu !== null && $temuBasePrice > 0;
+            $temuSku = $temu->sku ?? null;
+            $temuReason = $temuSku !== null ? $this->skuDifferenceReason($pm->sku, $temuSku, [$this, 'normalizeTemuSku']) : '';
+            $temuHasIssue = $temuReason !== '';
+            if ($temuHasIssue) {
+                $temuMismatchCount++;
+            }
+            $temuNrReq = $this->resolveTemuNrReq($nrStatusTemu, $pm->sku, $inv);
+            $temuIsNotMap = false;
+            $temuWithin3 = false;
+            if ($temuListed && $temuNrReq === 'REQ' && $inv > 0 && $temuStock > 0) {
+                $temuDiffUnits = abs($inv - $temuStock);
+                if ($inv * 0.03 < 3) {
+                    $temuIsNotMap = $temuDiffUnits > 3;
+                } else {
+                    $temuIsNotMap = round(($temuDiffUnits / $inv) * 100) > 3;
+                }
+                if ($temuIsNotMap) {
+                    $temuNotMapCount++;
+                }
+                $temuWithin3 = ! $temuIsNotMap;
+            }
+            $temuMissingListing = ! $temuListed && $inv > 0;
+            if ($temuMissingListing && $temuNrReq === 'REQ') {
+                $temuMissingListingCount++;
+            }
+
             $result[] = [
                 '(Child) sku'    => $pm->sku,
                 'INV'            => $shopify->inv ?? 0,
@@ -511,6 +561,15 @@ class MapIssuesController extends Controller
                 'tiendamia_missing_listing'=> $tiendamiaMissingListing,
                 'tiendamia_nr_req'         => $tiendamiaNrReq,
 
+                'Temu Inv'              => $temuStock,
+                'temu_sku'              => $temuSku,
+                'temu_mismatch'         => $temuHasIssue,
+                'temu_issue'            => $temuReason,
+                'temu_not_map'          => $temuIsNotMap,
+                'temu_within3'          => $temuWithin3,
+                'temu_missing_listing'  => $temuMissingListing,
+                'temu_nr_req'           => $temuNrReq,
+
                 'pm_missing'            => false,
             ];
         }
@@ -549,6 +608,9 @@ class MapIssuesController extends Controller
             'tiendamia_not_map_count'  => $tiendamiaNotMapCount,
             'tiendamia_mismatch_count' => $tiendamiaMismatchCount,
             'tiendamia_missing_listing_count' => $tiendamiaMissingListingCount,
+            'temu_not_map_count'  => $temuNotMapCount,
+            'temu_mismatch_count' => $temuMismatchCount,
+            'temu_missing_listing_count' => $temuMissingListingCount,
             'pm_missing_count'      => $pmMissingCount,
         ]);
     }
@@ -584,7 +646,7 @@ class MapIssuesController extends Controller
                             continue;
                         }
                         if (! isset($map[$k])) {
-                            $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null];
+                            $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null];
                         }
                         $map[$k][$field] = $r->ebay_stock ?? 0;
                     }
@@ -610,7 +672,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null];
                     }
                     $map[$k]['amazon'] = 0; // listed flag; real stock filled in below
                 }
@@ -630,7 +692,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null];
                     }
                     $map[$k]['reverb'] = floatval($r->remaining_inventory ?? 0);
                 }
@@ -650,7 +712,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null];
                     }
                     $map[$k]['macys'] = floatval($r->stock ?? 0);
                 }
@@ -670,7 +732,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null];
                     }
                     $map[$k]['bestbuy'] = floatval($r->stock ?? 0);
                 }
@@ -689,9 +751,29 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null];
                     }
                     $map[$k]['tiendamia'] = floatval($r->stock ?? 0);
+                }
+
+                return true;
+            });
+
+        // Temu: a SKU is "listed" when it has a live pricing row (base price > 0) in temu_pricing.
+        TemuPricing::query()
+            ->select('sku', 'base_price', 'quantity', 'id')
+            ->where('base_price', '>', 0)
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$map, $pmKeys) {
+                foreach ($rows as $r) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $r->sku);
+                    if ($k === '' || isset($pmKeys[$k])) {
+                        continue;
+                    }
+                    if (! isset($map[$k])) {
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null];
+                    }
+                    $map[$k]['temu'] = floatval($r->quantity ?? 0);
                 }
 
                 return true;
@@ -742,6 +824,9 @@ class MapIssuesController extends Controller
             }
             if ($m['tiendamia'] !== null) {
                 $listedOn[] = 'Tiendamia';
+            }
+            if ($m['temu'] !== null) {
+                $listedOn[] = 'Temu';
             }
 
             $rows[] = [
@@ -822,6 +907,15 @@ class MapIssuesController extends Controller
                 'tiendamia_missing_listing'=> false,
                 'tiendamia_nr_req'         => 'REQ',
 
+                'Temu Inv'              => $m['temu'] ?? 0,
+                'temu_sku'              => $m['temu'] !== null ? $m['sku'] : null,
+                'temu_mismatch'         => false,
+                'temu_issue'            => '',
+                'temu_not_map'          => false,
+                'temu_within3'          => false,
+                'temu_missing_listing'  => false,
+                'temu_nr_req'           => 'REQ',
+
                 'pm_missing'            => true,
             ];
         }
@@ -851,6 +945,7 @@ class MapIssuesController extends Controller
             'macys'  => ['model' => MacysListingStatus::class,     'key' => 'nr_req', 'notReq' => 'NR'],
             'bestbuy'=> ['model' => BestbuyUSAListingStatus::class, 'key' => 'nr_req', 'notReq' => 'NR'],
             'tiendamia' => ['model' => TiendamiaDataView::class,   'key' => 'NRP',    'notReq' => 'NR', 'transform' => ['REQ' => 'RA', 'NR' => 'NRA']],
+            'temu'   => ['model' => TemuListingStatus::class,      'key' => 'nr_req', 'notReq' => 'NR'],
         ];
 
         if ($sku === '' || ! isset($config[$market])) {
@@ -1327,6 +1422,77 @@ class MapIssuesController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Normalize a SKU the same way the temu-decrease page does so listed/stock
+     * matching is identical: uppercase, fold a trailing piece-count (PCS/PIECES → PC),
+     * and collapse runs of whitespace to a single space.
+     */
+    private function normalizeTemuSku(string $sku): string
+    {
+        $sku = strtoupper(trim($sku));
+        $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+        $sku = preg_replace('/\s+/', ' ', $sku);
+
+        return (string) $sku;
+    }
+
+    /**
+     * Build a normalized-SKU => temu_pricing row (sku + base_price + quantity) lookup.
+     * Loads every pricing row and keys by the temu-decrease normalization (first row wins),
+     * exactly like the temu-decrease page builds its Missing/Map state.
+     *
+     * @param  array<int, string>  $productSkus
+     * @return array<string, \Illuminate\Database\Eloquent\Model>
+     */
+    private function buildTemuLookupByNormalizedSku(array $productSkus): array
+    {
+        $byNorm = [];
+        foreach (TemuPricing::select('sku', 'base_price', 'quantity')->get() as $row) {
+            $k = $this->normalizeTemuSku((string) $row->sku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $byNorm[$k] = $row;
+            }
+        }
+
+        return $byNorm;
+    }
+
+    /**
+     * Build a SKU(lowercased) => raw nr_req lookup from temu_listing_statuses.value JSON.
+     *
+     * @param  array<int, string>  $skus
+     * @return array<string, string>
+     */
+    private function buildTemuNrReqStatusLookup(array $skus): array
+    {
+        $out = [];
+        foreach (TemuListingStatus::whereIn('sku', $skus)->get(['sku', 'value']) as $row) {
+            $value = is_array($row->value) ? $row->value : (json_decode((string) $row->value, true) ?: []);
+            $out[strtolower(trim((string) $row->sku))] = strtoupper((string) ($value['nr_req'] ?? ''));
+        }
+
+        return $out;
+    }
+
+    /**
+     * Resolve Temu REQ/NR exactly like the temu-decrease page: use the stored nr_req
+     * when present (NRL collapses to NR), otherwise default REQ when INV > 0 and NR when not.
+     *
+     * @param  array<string, string>  $statusMap
+     */
+    private function resolveTemuNrReq(array $statusMap, string $sku, float $inv): string
+    {
+        $nr = $statusMap[strtolower(trim($sku))] ?? '';
+        if ($nr === 'REQ') {
+            return 'REQ';
+        }
+        if ($nr === 'NR' || $nr === 'NRL') {
+            return 'NR';
+        }
+
+        return $inv > 0 ? 'REQ' : 'NR';
     }
 
     /**

@@ -2453,6 +2453,7 @@
                 const missing = row['missing'];
                 const goodsId = row['goods_id'];
                 const temuStock = parseFloat(row['temu_stock']) || 0;
+                const nrReq = (row['nr_req'] || 'REQ').toString().toUpperCase();
                 
                 totalInv += parseInt(row['inventory']) || 0;
                 
@@ -2461,28 +2462,25 @@
                     zeroSoldCount++;
                 }
                 
-                // Count missing SKUs (only count if INV > 0)
-                if (missing === 'M' && inventory > 0) {
+                // Missing L: not listed (missing='M'), INV > 0, REQ only — same rule as /map-issues.
+                if (missing === 'M' && inventory > 0 && nrReq === 'REQ') {
                     missingCount++;
                 }
                 
-                // Count MAP status - ONLY for items that exist in Temu (not missing)
-                // Skip missing items - same logic as eBay (only count if exists in marketplace)
-                // Tolerance: |INV − Temu Stock| <= 3 counts as mapped (not Missing M)
-                const invTemuDiff = Math.abs(inventory - temuStock);
-                if (missing !== 'M' && goodsId && goodsId !== '') {
-                    if (inventory > 0 && temuStock > 0) {
-                        if (inventory === temuStock || invTemuDiff <= 3) {
-                            mappedCount++; // MP (Mapped) or within tolerance
-                        } else {
-                            notMappedCount++; // N MP (Not Mapped - mismatch)
-                        }
-                    } else if (inventory > 0 && temuStock === 0) {
-                        if (invTemuDiff > 3) {
-                            notMappedCount++; // N MP (Not Mapped - no Temu stock)
-                        } else {
-                            mappedCount++;
-                        }
+                // Map / Missing M (N Map): listed, REQ, both sides with stock — same rule as /map-issues.
+                // Tolerance: < 3 units when 3% of INV < 3, else rounded % > 3.
+                if (missing !== 'M' && goodsId && goodsId !== '' && nrReq === 'REQ' && inventory > 0 && temuStock > 0) {
+                    const invTemuDiff = Math.abs(inventory - temuStock);
+                    let isNotMap;
+                    if (inventory * 0.03 < 3) {
+                        isNotMap = invTemuDiff > 3;
+                    } else {
+                        isNotMap = Math.round((invTemuDiff / inventory) * 100) > 3;
+                    }
+                    if (isNotMap) {
+                        notMappedCount++; // N MP (Not Mapped - mismatch)
+                    } else {
+                        mappedCount++; // MP (Mapped) or within tolerance
                     }
                 }
                 
@@ -2982,38 +2980,34 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const missing = rowData['missing'];
-                        
-                        // IMPORTANT: Only show MAP if SKU exists in Temu (not missing)
-                        // Same logic as eBay - check if item exists before showing MAP
-                        if (missing === 'M' || !rowData['goods_id'] || rowData['goods_id'] === '') {
-                            return ''; // Don't show MAP for missing items
+                        const nrReq = (rowData['nr_req'] || 'REQ').toString().toUpperCase();
+
+                        // Map / N Map only for listed (not missing) REQ rows with stock on both
+                        // sides — same gate as /map-issues. Otherwise leave blank.
+                        if (missing === 'M' || !rowData['goods_id'] || rowData['goods_id'] === '' || nrReq !== 'REQ') {
+                            return '';
                         }
-                        
+
                         const temuStock = parseFloat(rowData['temu_stock']) || 0;
                         const inv = parseFloat(rowData['inventory']) || 0;
-                        
-                        // Show "N MP" with INV if Temu Stock is 0 but INV exists (and diff > 3)
-                        if (inv > 0 && temuStock === 0) {
-                            if (inv <= 3) {
-                                return '<span style="color: #28a745; font-weight: bold;" title="Within tolerance (≤3)">MP</span>';
-                            }
-                            return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${inv})</span>`;
+                        if (inv <= 0 || temuStock <= 0) {
+                            return '';
                         }
-                        
-                        // Only show if both INV and Temu Stock exist
-                        if (inv > 0 && temuStock > 0) {
-                            if (inv === temuStock || Math.abs(inv - temuStock) <= 3) {
-                                // Perfect match or within tolerance — Green "MP"
-                                return '<span style="color: #28a745; font-weight: bold;" title="Within ≤3: counts as MP">MP</span>';
-                            } else {
-                                // Mismatch - Red "N MP" with difference
-                                const diff = inv - temuStock;
-                                const sign = diff > 0 ? '+' : '';
-                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
-                            }
+
+                        // Tolerance: < 3 units when 3% of INV < 3, else rounded % > 3.
+                        const diffUnits = Math.abs(inv - temuStock);
+                        let isNotMap;
+                        if (inv * 0.03 < 3) {
+                            isNotMap = diffUnits > 3;
+                        } else {
+                            isNotMap = Math.round((diffUnits / inv) * 100) > 3;
                         }
-                        
-                        return '';
+                        if (!isNotMap) {
+                            return '<span style="color: #28a745; font-weight: bold;" title="Within tolerance: counts as MP">MP</span>';
+                        }
+                        const diff = inv - temuStock;
+                        const sign = diff > 0 ? '+' : '';
+                        return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
                     }
                 },
                 {
@@ -4280,41 +4274,54 @@
                 });
             }
 
-            // Missing badge filter (only INV > 0)
+            // Missing L badge filter — not listed, INV > 0, REQ only (same as /map-issues).
             if (missingBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
-                    return data['missing'] === 'M' && inv > 0;
+                    const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
+                    return data['missing'] === 'M' && inv > 0 && nrReq === 'REQ';
                 });
             }
 
-            // Map badge filter (only INV > 0) — include |INV−Temu Stock| <= 3 as mapped
+            // Map badge filter — listed, REQ, both sides with stock, within tolerance (same as /map-issues).
             if (mapBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
                     const missing = data['missing'];
                     const goodsId = data['goods_id'];
-                    if (missing === 'M' || !goodsId || goodsId === '' || inv === 0) return false;
-                    
+                    const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
                     const temuStock = parseFloat(data['temu_stock']) || 0;
-                    if (temuStock < 0) return false;
-                    const d = Math.abs(inv - temuStock);
-                    return d <= 3;
+                    if (missing === 'M' || !goodsId || goodsId === '' || nrReq !== 'REQ' || inv <= 0 || temuStock <= 0) return false;
+
+                    const diffUnits = Math.abs(inv - temuStock);
+                    let isNotMap;
+                    if (inv * 0.03 < 3) {
+                        isNotMap = diffUnits > 3;
+                    } else {
+                        isNotMap = Math.round((diffUnits / inv) * 100) > 3;
+                    }
+                    return !isNotMap;
                 });
             }
 
-            // Not Map badge filter (only INV > 0) — exclude |diff| <= 3
+            // Not Map (Missing M) badge filter — listed, REQ, both sides with stock, out of tolerance (same as /map-issues).
             if (notMapBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
                     const missing = data['missing'];
                     const goodsId = data['goods_id'];
-                    if (missing === 'M' || !goodsId || goodsId === '' || inv === 0) return false;
-                    
+                    const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
                     const temuStock = parseFloat(data['temu_stock']) || 0;
-                    const d = Math.abs(inv - temuStock);
-                    if (d <= 3) return false;
-                    return inv > 0 && (temuStock === 0 || (temuStock > 0 && inv !== temuStock));
+                    if (missing === 'M' || !goodsId || goodsId === '' || nrReq !== 'REQ' || inv <= 0 || temuStock <= 0) return false;
+
+                    const diffUnits = Math.abs(inv - temuStock);
+                    let isNotMap;
+                    if (inv * 0.03 < 3) {
+                        isNotMap = diffUnits > 3;
+                    } else {
+                        isNotMap = Math.round((diffUnits / inv) * 100) > 3;
+                    }
+                    return isNotMap;
                 });
             }
 

@@ -1081,6 +1081,15 @@ class Kernel extends ConsoleKernel
         | TEMU
         |--------------------------------------------------------------------------
         */
+        // Fetch rolling 60-day order-wise raw data (powers /temu-tabulator)
+        $ist($schedule->command('app:fetch-temu-orders')
+            ->dailyAt('14:15')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-temu-orders')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('app:fetch-temu-metrics')
             ->dailyAt('14:25')
             ->timezone('Asia/Kolkata')

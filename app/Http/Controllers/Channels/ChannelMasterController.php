@@ -393,8 +393,9 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Map / Miss (Missing L) / NMap for Temu & Temu 2 — same rules as temu_decrease / temu2_decrease badges
-     * (TemuController JSON: missing='M', nr_req, temu_price; tolerance = |INV−temu_stock| <= 3 OR <= 3% of INV).
+     * Map / Miss (Missing L) / NMap for Temu & Temu 2 — same rules as temu_decrease / temu2_decrease
+     * badges and /map-issues: Missing L = missing='M', INV>0, REQ; Map/N Map = listed, REQ, price>0,
+     * INV>0 and temu_stock>0, tolerance < 3 units when 3% of INV < 3, else rounded % > 3.
      */
     private function getTemuLiveMapMissNMapFromDecreaseData(bool $isTemu2 = false): array
     {
@@ -433,17 +434,24 @@ class ChannelMasterController extends Controller
                 $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
                 $totalViews += (int) ($row['product_clicks'] ?? 0);
 
-                // Missing L: not listed (missing='M'), INV > 0, exclude NR/NRL
-                if ($missing === 'M' && $inventory > 0 && $nrReq !== 'NR' && $nrReq !== 'NRL') {
+                // Missing L: not listed (missing='M'), INV > 0, REQ only — same rule as /map-issues.
+                if ($missing === 'M' && $inventory > 0 && $nrReq === 'REQ') {
                     $missingC++;
                 }
 
-                // Map / Missing M: REQ, listed, price > 0; tolerance = |INV − stock| <= 3 OR <= 3% of INV
-                if ($inventory > 0 && $nrReq === 'REQ' && $missing !== 'M' && $temuPrice > 0) {
-                    if ($this->temuInvWithinMapTolerance($inventory, $temuStock)) {
-                        $mapC++;
+                // Map / Missing M (N Map): listed, REQ, price > 0, both sides with stock — same gate as
+                // /map-issues. Tolerance: < 3 units when 3% of INV < 3, else rounded % > 3.
+                if ($inventory > 0 && $nrReq === 'REQ' && $missing !== 'M' && $temuPrice > 0 && $temuStock > 0) {
+                    $diff = abs($inventory - $temuStock);
+                    if ($inventory * 0.03 < 3) {
+                        $isNotMap = $diff > 3;
                     } else {
+                        $isNotMap = round(($diff / $inventory) * 100) > 3;
+                    }
+                    if ($isNotMap) {
                         $nmapC++;
+                    } else {
+                        $mapC++;
                     }
                 }
             }
@@ -977,6 +985,8 @@ class ChannelMasterController extends Controller
             'Faire' => fn () => $this->getFaireLiveMapMissNMapFromPricingData(Request::create('/faire/pricing-data', 'GET')),
             'Reverb' => fn () => $this->getReverbLiveMapMissNMapFromPricingData(Request::create('/reverb-data-json', 'GET')),
             'TopDawg' => fn () => $this->getTopDawgLiveMapMissNMapFromPricingData(),
+            'Temu' => fn () => $this->getTemuLiveMapMissNMapFromDecreaseData(false),
+            'Temu 2' => fn () => $this->getTemuLiveMapMissNMapFromDecreaseData(true),
         ];
 
         foreach ($rows as &$row) {

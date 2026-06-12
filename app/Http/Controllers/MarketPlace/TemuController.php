@@ -2961,8 +2961,9 @@ class TemuController extends Controller
             // Fetch shopify data for inventory
             $shopifyData = ShopifySku::mapByProductSkus($skus);
 
-            // L30 = orders from temu_daily_data matched by SKU (contribution_sku normalized to ProductMaster)
-            // Same source as tabulator; normalized so "abc" on orders matches "ABC" on ProductMaster
+            // L30 = orders matched by SKU (contribution_sku normalized to ProductMaster).
+            // Temu 1 pulls from the temu_orders API table (same source as the tabulator); Temu 2 from temu2_daily_data.
+            // Normalized so "abc" on orders matches "ABC" on ProductMaster
             $normalizedPmSkus = collect($skus)->mapWithKeys(function ($sku) use ($normalizeSku) {
                 return [$normalizeSku($sku) => $sku];
             })->all();
@@ -2975,26 +2976,28 @@ class TemuController extends Controller
                     $noSpaceToNormalized[$noSpace] = $nk;
                 }
             }
+            // Temu 1 sources order data from the temu_orders API table (same as /temu-tabulator
+            // and the Channel Master sales badges); Temu 2 keeps using its uploaded temu2_daily_data tables.
             if ($isTemu2Pricing) {
                 $hasL7Rows = $isL7Period
                     && Schema::hasTable('temu2_daily_data_l7')
                     && Temu2DailyDataL7::query()->exists();
-            } else {
-                $hasL7Rows = $isL7Period
-                    && Schema::hasTable('temu_daily_data_l7')
-                    && TemuDailyDataL7::query()->exists();
-            }
-            $orderRowsQuery = $hasL7Rows
-                ? ($isTemu2Pricing
+
+                $orderRowsQuery = $hasL7Rows
                     ? Temu2DailyDataL7::select('contribution_sku', 'quantity_purchased')
-                    : TemuDailyDataL7::select('contribution_sku', 'quantity_purchased'))
-                : ($isTemu2Pricing
-                    ? Temu2DailyData::select('contribution_sku', 'quantity_purchased')
-                    : TemuDailyData::select('contribution_sku', 'quantity_purchased'));
-            if ($isL7Period && !$hasL7Rows) {
-                $orderRowsQuery->where('purchase_date', '>=', Carbon::now()->subDays(7));
+                    : Temu2DailyData::select('contribution_sku', 'quantity_purchased');
+                if ($isL7Period && !$hasL7Rows) {
+                    $orderRowsQuery->where('purchase_date', '>=', Carbon::now()->subDays(7));
+                }
+                $orderRows = $orderRowsQuery->get();
+            } else {
+                $hasL7Rows = $isL7Period;
+                [$apiStart, $apiEnd] = $isL7Period
+                    ? [Carbon::now()->subDays(7)->startOfDay(), Carbon::now()->endOfDay()]
+                    : [Carbon::now()->subDays(30)->startOfDay(), Carbon::now()->endOfDay()];
+                $orderRows = collect(TemuShopifySalesService::getOrdersTableRows($apiStart, $apiEnd))
+                    ->map(fn ($r) => (object) $r);
             }
-            $orderRows = $orderRowsQuery->get();
             foreach ($orderRows as $row) {
                 $raw = trim((string) ($row->contribution_sku ?? ''));
                 if ($raw === '') {
@@ -3016,11 +3019,15 @@ class TemuController extends Controller
                 return [$sku => (object) ['sku' => $sku, 'temu_l30' => $temuL30]];
             });
 
-            // L60 = orders from temu_daily_data_l60 or temu2_daily_data_l60 (same structure as L30, separate table)
+            // L60 = prior 30-day window. Temu 1: temu_orders (days 31–60); Temu 2: temu2_daily_data_l60.
             $l60ByNormalizedSku = array_fill_keys(array_keys($normalizedPmSkus), 0);
-            $orderRowsL60 = $isTemu2Pricing
-                ? Temu2DailyDataL60::select('contribution_sku', 'quantity_purchased')->get()
-                : TemuDailyDataL60::select('contribution_sku', 'quantity_purchased')->get();
+            if ($isTemu2Pricing) {
+                $orderRowsL60 = Temu2DailyDataL60::select('contribution_sku', 'quantity_purchased')->get();
+            } else {
+                [$l60Start, $l60End] = TemuShopifySalesService::channelMasterL60Window();
+                $orderRowsL60 = collect(TemuShopifySalesService::getOrdersTableRows($l60Start, $l60End))
+                    ->map(fn ($r) => (object) $r);
+            }
             foreach ($orderRowsL60 as $row) {
                 $raw = trim((string) ($row->contribution_sku ?? ''));
                 if ($raw === '') {
@@ -3042,13 +3049,16 @@ class TemuController extends Controller
             $normalizedPmSet = collect($skus)->mapWithKeys(function ($s) use ($normalizeSku) {
                 return [$normalizeSku($s) => true];
             })->all();
-            $salesSource = $hasL7Rows
-                ? ($isTemu2Pricing ? Temu2DailyDataL7::query() : TemuDailyDataL7::query())
-                : ($isTemu2Pricing ? Temu2DailyData::query() : TemuDailyData::query());
-            if ($isL7Period && !$hasL7Rows) {
-                $salesSource->where('purchase_date', '>=', Carbon::now()->subDays(7));
+            if ($isTemu2Pricing) {
+                $salesSource = $hasL7Rows ? Temu2DailyDataL7::query() : Temu2DailyData::query();
+                if ($isL7Period && !$hasL7Rows) {
+                    $salesSource->where('purchase_date', '>=', Carbon::now()->subDays(7));
+                }
+                $salesOrderRows = $salesSource->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
+            } else {
+                // Reuse the same temu_orders window already loaded for the L30/L7 table rows.
+                $salesOrderRows = $orderRows;
             }
-            $salesOrderRows = $salesSource->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
             $salesTotalOrders = 0;
             $salesTotalQuantity = 0;
             $salesTotalRevenue = 0.0;
