@@ -3531,6 +3531,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay3-column-visibility', [ChannelTabulatorColumnController::class, 'storeEbay3'])->name('ebay3.column.visibility.set');
     Route::get('/tabulator-column-visibility', [ChannelTabulatorColumnController::class, 'show'])->name('tabulator.column.visibility.get');
     Route::post('/tabulator-column-visibility', [ChannelTabulatorColumnController::class, 'store'])->name('tabulator.column.visibility.set');
+    Route::get('/tabulator-column-visibility-user', [ChannelTabulatorColumnController::class, 'showUser'])->name('tabulator.column.visibility.user.get');
+    Route::post('/tabulator-column-visibility-user', [ChannelTabulatorColumnController::class, 'storeUser'])->name('tabulator.column.visibility.user.set');
     Route::post('/push-ebay3-price-tabulator', [EbayThreeController::class, 'pushEbay3Price'])->name('ebay3.push.price.tabulator');
     Route::post('/update-ebay3-sprice-status', [EbayThreeController::class, 'updateEbay3SpriceStatus'])->name('ebay3.update.sprice.status');
     Route::post('/clear-all-sprice-ebay3', [EbayThreeController::class, 'clearAllSprice'])->name('ebay3.clear.all.sprice');

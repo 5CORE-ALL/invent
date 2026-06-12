@@ -118,17 +118,15 @@ class CustomerCareDepartments
             return;
         }
         $lowerNeedle = strtolower($department);
-        $query->where(function ($q) use ($column, $department, $lowerNeedle) {
-            foreach (self::departmentJsonMatchStrings($department) as $variant) {
-                $jsonFragment = json_encode($variant, JSON_UNESCAPED_UNICODE);
-                $q->orWhereRaw(
-                    '(JSON_VALID(`'.$column.'`) AND JSON_CONTAINS(CAST(`'.$column.'` AS JSON), CAST(? AS JSON), \'$\'))',
-                    [$jsonFragment]
-                );
-            }
-            $q->orWhere($column, $department)
+        // Match the quoted element inside the JSON-array string, e.g. ["Chargeback"].
+        // Uses LOWER(col) LIKE instead of JSON_CONTAINS/CAST(.. AS JSON) so it works
+        // on both MySQL and MariaDB (MariaDB does not support CAST(.. AS JSON)).
+        $likeToken = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], '"'.$lowerNeedle.'"').'%';
+        $query->where(function ($q) use ($column, $department, $lowerNeedle, $likeToken) {
+            $q->whereRaw('LOWER(`'.$column.'`) LIKE ?', [$likeToken])
+                ->orWhere($column, $department)
                 ->orWhereRaw(
-                    '(NOT JSON_VALID(`'.$column.'`) OR LEFT(TRIM(`'.$column.'`), 1) <> ?) AND LOWER(TRIM(`'.$column.'`)) = ?',
+                    '(LEFT(TRIM(`'.$column.'`), 1) <> ?) AND LOWER(TRIM(`'.$column.'`)) = ?',
                     ['[', $lowerNeedle]
                 );
         });

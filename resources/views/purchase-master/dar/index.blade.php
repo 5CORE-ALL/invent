@@ -113,6 +113,25 @@
             white-space: nowrap;
         }
         .dar-count-badge strong { font-weight: 800; }
+
+        /* Blue "DAR" button — matches the topbar DAR button styling. */
+        .dar-page-add-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 18px;
+            border: 0;
+            border-radius: 999px;
+            background: #2563eb;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+            transition: background 0.15s ease, transform 0.12s ease;
+        }
+        .dar-page-add-btn:hover { background: #1d4ed8; transform: translateY(-1px); }
+        .dar-page-add-btn i { font-size: 15px; }
         .dar-count-pct {
             margin-left: 6px;
             padding: 1px 8px;
@@ -146,7 +165,11 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <div class="d-flex justify-content-end mb-2">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <button type="button" class="dar-page-add-btn" id="darPageAddBtn" title="Add Daily Activity Report">
+                            <i class="fas fa-clipboard-list"></i>
+                            <span>DAR</span>
+                        </button>
                         <span class="dar-count-badge" id="darCountBadge" title="Total DAR entries out of a target of 25">
                             <i class="fas fa-list-check me-1"></i>
                             Total Count: <strong id="darCountValue">0</strong>/25
@@ -310,6 +333,11 @@
             });
             // Exposed so the shared DAR modal can refresh the grid after saving.
             window.__darTable = table;
+
+            // Page "DAR" button opens the shared add modal (blank/create mode).
+            $('#darPageAddBtn').on('click', function () {
+                if (window.DarModal) window.DarModal.open();
+            });
 
             function deleteRow(id) {
                 if (!id || !confirm('Delete this DAR entry?')) return;
