@@ -10,11 +10,12 @@ class TaskPolicy
 {
     /**
      * Emails with this permission can delete or modify anybody's task (case-insensitive).
-     * Per requirement: only president@5core.com (plus each task's own assignor) may
-     * edit/delete tasks. Keep this list limited to the president override only.
+     * president@5core.com and software5@5core.com (plus each task's own assignor) may
+     * edit/delete tasks.
      */
     private const SPECIAL_TASK_DELETE_MODIFY_EMAILS = [
         'president@5core.com',
+        'software5@5core.com',
     ];
 
     /**
