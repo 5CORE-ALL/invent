@@ -121,11 +121,15 @@ class FetchAmazonListings extends Command
             // Create Amazon product link
             $amazonLink = $asin ? "https://www.amazon.com/dp/{$asin}" : null;
 
-            if ($asin) {
+            // Key by SKU (not ASIN): multiple SKUs can share one ASIN (e.g. FBM + FBA
+            // variants like "SPKN RED 4PCS" and "SPKN RED 4PCS FBA"). Keying by ASIN
+            // made the second SKU overwrite the first, leaving product_master SKUs
+            // unmatched ("not synced"). This matches the amazon_datsheets_sku_unique migration.
+            if ($sku) {
                 AmazonDatasheet::updateOrCreate(
-                    ['asin' => $asin],
+                    ['sku' => $sku],
                     [
-                        'sku' => $sku,
+                        'asin' => $asin,
                         'price' => $price,
                         'amazon_title' => $amazonTitle,
                         'amazon_link' => $amazonLink,

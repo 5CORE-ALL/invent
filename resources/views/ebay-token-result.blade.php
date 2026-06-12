@@ -138,12 +138,25 @@
                 </div>
             @endif
 
-            <div class="env-instruction">
-                <strong>⚠️ Important:</strong> Update your <code>.env</code> file with the following:
-                <div style="margin-top: 10px; font-family: 'Courier New', monospace; background: white; padding: 10px; border-radius: 4px;">
-                    {{ $envKey ?? 'EBAY_REFRESH_TOKEN' }}={{ $refreshToken }}
+            @if(isset($envUpdated) && $envUpdated)
+                <div class="success-box">
+                    <strong style="color: #155724;">✅ Saved to .env automatically</strong>
+                    <p style="margin-top: 10px; color: #155724;">
+                        <code>{{ $envKey ?? 'EBAY_REFRESH_TOKEN' }}</code> has been updated and the config cache was refreshed. No manual steps required &mdash; just re-run your eBay job.
+                    </p>
                 </div>
-            </div>
+            @else
+                <div class="env-instruction">
+                    @if(!empty($envError))
+                        <strong>⚠️ Auto-save failed:</strong> {{ $envError }}
+                    @else
+                        <strong>⚠️ Important:</strong> Update your <code>.env</code> file with the following:
+                    @endif
+                    <div style="margin-top: 10px; font-family: 'Courier New', monospace; background: white; padding: 10px; border-radius: 4px;">
+                        {{ $envKey ?? 'EBAY_REFRESH_TOKEN' }}="{{ $refreshToken }}"
+                    </div>
+                </div>
+            @endif
 
         @else
             <div class="error-box">

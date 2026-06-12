@@ -157,6 +157,14 @@ class UpdateEbaySuggestedBid extends Command
             : $this->defaultBands();
         $this->info('SBID Rule bands: ' . collect($sbidBands)->map(fn($b) => "SCVR≤{$b['scvr_max']}%→{$b['bid']}")->implode(', '));
 
+        // Load DIL → Bid rule (ebay1_dil). Used together with SCVR: if EITHER the SCVR or
+        // the DIL value falls in its Pink (catch-all / last) band, the Pink bid is pushed.
+        $dilRule = DB::table('ebay_sbid_rules')->where('key', 'ebay1_dil')->first();
+        $dilBands = $dilRule
+            ? (json_decode($dilRule->rule, true)['bands'] ?? $this->defaultDilBands())
+            : $this->defaultDilBands();
+        $this->info('DIL Rule bands: ' . collect($dilBands)->map(fn($b) => "DIL≤{$b['dil_max']}%→{$b['bid']}")->implode(', '));
+
         // Process ProductMaster data in chunks and update campaign listings
         $this->info('Processing bid updates based on SCVR (eBay L30 / Views) thresholds...');
         $updatedListings = 0;
@@ -170,6 +178,7 @@ class UpdateEbaySuggestedBid extends Command
                 $ebayMetricsNormalized, 
                 $campaignListings,
                 $sbidBands,
+                $dilBands,
                 $ebayGeneralL30, 
                 &$updatedListings,
                 $normalizeSku
@@ -188,17 +197,33 @@ class UpdateEbaySuggestedBid extends Command
                         $esbid    = (float) ($listing->suggested_bid ?? 0);
                         $scvr     = $views > 0 ? ($soldL30 / $views) * 100 : 0;
 
-                        // SCVR → Bid using dynamic rule from ebay_sbid_rules table
-                        $newBid = $this->getBidFromRule($scvr, $sbidBands);
+                        // DIL = (L30 sold / inventory) * 100, from Shopify data
+                        $inv = (float) ($shopify->inv ?? 0);
+                        $qty = (float) ($shopify->quantity ?? 0);
+                        $dil = $inv > 0 ? ($qty / $inv) * 100 : 0;
+
+                        // Combined rule: if SCVR OR DIL is Pink (catch-all) → push the Pink bid;
+                        // otherwise fall back to the normal SCVR bid (which skips when SCVR = 0).
+                        $newBid = $this->resolveCombinedBid($scvr, $sbidBands, $dil, $dilBands, [
+                            'ebay_price' => (float) ($ebayMetric->ebay_price ?? 0),
+                            'ebay_l30'   => $soldL30,
+                            'views'      => $views,
+                        ]);
 
                         $listing->new_bid = $newBid;
                         $listing->sku = $pm->sku;
 
+                        $scvrPink = $this->isPinkBand($scvr, $sbidBands);
+                        $dilPink  = $this->isPinkBand($dil, $dilBands);
+                        $pinkTag  = ($scvrPink || $dilPink)
+                            ? ' | PINK(' . ($scvrPink ? 'SCVR' : '') . ($scvrPink && $dilPink ? '+' : '') . ($dilPink ? 'DIL' : '') . ')'
+                            : '';
+
                         if ($newBid <= 0) {
-                            // 0 CVR → no SBID. Logged but excluded from API push by the > 0 check below.
-                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | SCVR: 0% (sold={$soldL30}, views={$views}) → No SBID (skipped)");
+                            // No signal (SCVR=0 and not Pink) → no SBID. Excluded from API push below.
+                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | SCVR: 0% (sold={$soldL30}, views={$views}) DIL: " . round($dil, 2) . "% → No SBID (skipped)");
                         } else {
-                            $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | SCVR: " . round($scvr, 2) . "% | SBID: {$newBid}");
+                            $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | SCVR: " . round($scvr, 2) . "% | DIL: " . round($dil, 2) . "% | SBID: {$newBid}{$pinkTag}");
                             $updatedListings++;
                         }
                     }
@@ -402,18 +427,101 @@ class UpdateEbaySuggestedBid extends Command
      * Returns 0.0 when SCVR (CVR) is 0 — no L30 sales means we have no signal,
      * so no SBID is pushed for that listing. Callers must treat 0 as "skip".
      */
-    private function getBidFromRule(float $scvr, array $bands): float
+    /**
+     * Combined SCVR + DIL bid.
+     * If EITHER the SCVR value or the DIL value lands in its Pink (catch-all / last)
+     * band, the Pink bid is pushed (e.g. 2.1). This applies even if BOTH are Pink.
+     * Otherwise the normal SCVR rule decides (and still skips when SCVR = 0).
+     */
+    private function resolveCombinedBid(float $scvr, array $sbidBands, float $dil, array $dilBands, array $ctx = []): float
+    {
+        $scvrPink = $this->isPinkBand($scvr, $sbidBands);
+        $dilPink  = $this->isPinkBand($dil, $dilBands);
+
+        if ($dilPink) {
+            return $this->pinkBid($dilBands);
+        }
+        if ($scvrPink) {
+            return $this->pinkBid($sbidBands);
+        }
+
+        return $this->getBidFromRule($scvr, $sbidBands, $ctx);
+    }
+
+    /**
+     * True when $value falls in the last (catch-all / Pink) band.
+     * Bands are stored sorted ascending by their threshold, so the last band is Pink.
+     */
+    private function isPinkBand(float $value, array $bands): bool
+    {
+        $n = count($bands);
+        if ($n === 0) {
+            return false;
+        }
+        foreach ($bands as $i => $band) {
+            $max = (float) ($band['scvr_max'] ?? $band['dil_max'] ?? 9999);
+            if ($value <= $max) {
+                return $i === $n - 1;
+            }
+        }
+        return true; // matched none → catch-all (last band)
+    }
+
+    /** Bid of the last (Pink / catch-all) band. */
+    private function pinkBid(array $bands): float
+    {
+        $last = end($bands);
+        return (float) ($last['bid'] ?? 2.1);
+    }
+
+    private function defaultDilBands(): array
+    {
+        return [
+            ['dil_max' => 16.66, 'bid' => 9.1, 'label' => 'Red',    'color' => '#a00211'],
+            ['dil_max' => 25,    'bid' => 7.1, 'label' => 'Yellow', 'color' => '#ffc107'],
+            ['dil_max' => 50,    'bid' => 4.1, 'label' => 'Green',  'color' => '#28a745'],
+            ['dil_max' => 9999,  'bid' => 2.1, 'label' => 'Pink',   'color' => '#e83e8c'],
+        ];
+    }
+
+    private function getBidFromRule(float $scvr, array $bands, array $ctx = []): float
     {
         if ($scvr <= 0) {
             return 0.0;
         }
+        $ctx['scvr'] = $scvr;
         foreach ($bands as $band) {
             if ($scvr <= (float)($band['scvr_max'] ?? 9999)) {
-                return (float)($band['bid'] ?? 9.1);
+                return $this->resolveBandBid($band, $ctx);
             }
         }
         // Fallback: last band
-        return (float)(end($bands)['bid'] ?? 2.1);
+        $last = end($bands);
+        return $last ? $this->resolveBandBid($last, $ctx) : 2.1;
+    }
+
+    /**
+     * Resolve a band's bid. If the band carries a dynamic sub-rule, the bid is
+     * chosen from its sub-bands using the configured metric value; otherwise the
+     * band's flat bid is used.
+     *
+     * sub = ['metric' => 'ebay_price'|'scvr'|'ebay_l30'|'views',
+     *        'bands'  => [['max' => float, 'bid' => float], ...]]
+     */
+    private function resolveBandBid(array $band, array $ctx): float
+    {
+        $sub = $band['sub'] ?? null;
+        if (is_array($sub) && !empty($sub['metric']) && !empty($sub['bands']) && is_array($sub['bands'])) {
+            $val = (float)($ctx[$sub['metric']] ?? 0);
+            foreach ($sub['bands'] as $sb) {
+                if ($val <= (float)($sb['max'] ?? 9999)) {
+                    return (float)($sb['bid'] ?? $band['bid'] ?? 2.1);
+                }
+            }
+            $lastSub = end($sub['bands']);
+            return (float)($lastSub['bid'] ?? $band['bid'] ?? 2.1);
+        }
+        return (float)($band['bid'] ?? 9.1);
     }
 
     private function defaultBands(): array

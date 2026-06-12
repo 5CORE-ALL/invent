@@ -421,6 +421,9 @@
                         <span class="badge bg-success fs-6 p-2 missing-amz-nonfba-filter-badge" id="missing-amazon-nonfba-badge" data-filter="missing-amazon-nonfba" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing M FBM">
                             Missing M FBM: <span id="missing-amazon-nonfba-count">0</span>
                         </span>
+                        <span class="badge bg-dark fs-6 p-2 missing-l-amz-filter-badge" id="missing-l-amz-badge" data-filter="missing-l-amz" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing L (not listed on Amazon, REQ, INV > 0) — same as /map-issues">
+                            Missing L: <span id="missing-l-amz-count">0</span>
+                        </span>
                         <span class="badge bg-success fs-6 p-2" id="variation-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Variation (NRL count)">
                             Variation: <span id="variation-count">0</span>
                         </span>
@@ -695,6 +698,7 @@
         let missingAmazonFilterActive = false;   // Track Missing L (all) — header dot
         let missingAmazonFbaFilterActive = false;    // Track Missing L FBA filter
         let missingAmazonNonFbaFilterActive = false; // Track Missing M FBM (non-FBA listing) filter
+        let missingLAmzFilterActive = false;         // Track Missing L (all) — same as /map-issues
 
         // Escape string for safe use in HTML attribute (fixes SKUs with " e.g. WF 8"-890 1PC)
         function escAttr(s) {
@@ -715,7 +719,11 @@
             return base + shipCost;
         }
 
-        /** INV vs INV_AMZ counts as Map if diff <= 3 units OR diff <= 3% of Shopify INV (same as saveDailySummaryIfNeeded). */
+        /**
+         * INV vs INV_AMZ map tolerance — same rule as /map-issues:
+         * when 3% of INV is below 3 units, require an absolute gap > 3 units to be a mismatch;
+         * otherwise apply the rounded 3% rule. Mapped when within tolerance.
+         */
         function amazonInvWithinMapTolerance(inv, invAmz) {
             const invNum = parseFloat(inv) || 0;
             const amzNum = parseFloat(invAmz) || 0;
@@ -723,11 +731,13 @@
                 return true;
             }
             const diff = Math.abs(invNum - amzNum);
-            if (diff <= 3 + 1e-9) {
-                return true;
+            let isNotMap;
+            if (invNum * 0.03 < 3) {
+                isNotMap = diff > 3;
+            } else {
+                isNotMap = Math.round((diff / invNum) * 100) > 3;
             }
-            const tolerance = invNum * 0.03;
-            return diff <= tolerance + 1e-9;
+            return !isNotMap;
         }
 
         /** FBA row: fba flag or SKU/Parent contains "FBA" (aligns with rowIsFba in filters). */
@@ -737,6 +747,22 @@
             if (fbaFlag === 1 || fbaFlag === '1' || fbaFlag === true) return true;
             const sku = String(rowData['(Child) sku'] || rowData['Parent'] || '').toUpperCase();
             return sku.indexOf('FBA') !== -1;
+        }
+
+        /** Missing L — same rule as /map-issues: not listed on Amazon, REQ, INV > 0, non-parent (FBA + FBM). */
+        function isAmazonMissingL(rowData) {
+            if (!rowData) return false;
+            if (rowData.is_parent_summary === true || rowData.is_parent_summary === 1) return false;
+            const sku = String(rowData['(Child) sku'] || rowData['Parent'] || '').trim().toUpperCase();
+            if (sku.indexOf('PARENT ') === 0 || sku === 'PARENT') return false;
+            // REQ by default — only exclude rows explicitly flagged NR/NRL (matches /map-issues isReq()).
+            const nr = String(rowData.NR || '').trim().toUpperCase();
+            if (nr === 'NR' || nr === 'NRL') return false;
+            const inv = parseFloat(rowData['INV'] || 0) || 0;
+            if (inv <= 0) return false;
+            // "Not listed on Amazon" = no live price (price <= 0), same rule as Reverb (RV Price <= 0).
+            const price = parseFloat(rowData['price'] || 0) || 0;
+            return price <= 0;
         }
 
         /** Parent group key: Parent/parent field, or "PARENT xxx" pseudo-SKU on summary rows (matches table filters). */
@@ -1575,6 +1601,9 @@
                 } else {
                     // Set new filter
                     mapFilterActive = filter;
+                    // Map badge is mutually exclusive with the Missing L (all) badge
+                    missingLAmzFilterActive = false;
+                    $('#missing-l-amz-badge').removeClass('bg-info').addClass('bg-dark').css('color', 'white');
                     // Update badge appearance
                     $('.map-filter-badge').each(function() {
                         const badgeFilter = $(this).data('filter');
@@ -1600,6 +1629,8 @@
                 if (missingAmazonFbaFilterActive) {
                     missingAmazonNonFbaFilterActive = false;
                     missingAmazonFilterActive = false;
+                    missingLAmzFilterActive = false;
+                    $('#missing-l-amz-badge').removeClass('bg-info').addClass('bg-dark').css('color', 'white');
                     $(this).removeClass('bg-secondary bg-warning').addClass('bg-info').css('color', 'black');
                     $('#missing-amazon-nonfba-badge').removeClass('bg-info').addClass('bg-success').css('color', 'white');
                     mapFilterActive = 'all';
@@ -1620,6 +1651,8 @@
                 if (missingAmazonNonFbaFilterActive) {
                     missingAmazonFbaFilterActive = false;
                     missingAmazonFilterActive = false;
+                    missingLAmzFilterActive = false;
+                    $('#missing-l-amz-badge').removeClass('bg-info').addClass('bg-dark').css('color', 'white');
                     $(this).removeClass('bg-success bg-warning').addClass('bg-info').css('color', 'black');
                     $('#missing-amazon-fba-badge').removeClass('bg-info').addClass('bg-secondary').css('color', 'white');
                     mapFilterActive = 'all';
@@ -1630,6 +1663,29 @@
                     });
                 } else {
                     $(this).removeClass('bg-info').addClass('bg-success').css('color', 'white');
+                }
+                applyFilters();
+            });
+
+            // Missing L (all) badge click — show not-listed-on-Amazon rows (REQ, INV > 0), same as /map-issues
+            $(document).on('click', '.missing-l-amz-filter-badge', function() {
+                missingLAmzFilterActive = !missingLAmzFilterActive;
+                if (missingLAmzFilterActive) {
+                    // Deactivate the other mutually-exclusive missing/map filters
+                    missingAmazonFbaFilterActive = false;
+                    missingAmazonNonFbaFilterActive = false;
+                    missingAmazonFilterActive = false;
+                    mapFilterActive = 'all';
+                    $('#missing-amazon-fba-badge').removeClass('bg-info').addClass('bg-secondary').css('color', 'white');
+                    $('#missing-amazon-nonfba-badge').removeClass('bg-info').addClass('bg-success').css('color', 'white');
+                    $('.map-filter-badge').each(function() {
+                        const badgeFilter = $(this).data('filter');
+                        if (badgeFilter === 'mapped') $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
+                        else $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
+                    });
+                    $(this).removeClass('bg-dark').addClass('bg-info').css('color', 'black');
+                } else {
+                    $(this).removeClass('bg-info').addClass('bg-dark').css('color', 'white');
                 }
                 applyFilters();
             });
@@ -3211,10 +3267,8 @@
                             // Empty for parent rows
                             if (rowData.is_parent_summary) return '';
                             
-                            const isMissingAmazon = rowData.is_missing_amazon || false;
-                            const nrVal = rowData.NR || '';
-                            // Missing L badge/column: exclude NR and FBA from "datasheet missing" indicator
-                            if (isMissingAmazon && nrVal !== 'NR' && !amazonRowIsFba(rowData)) {
+                            // Missing L: same rule as the filter/count (REQ + INV>0 + price<=0, like Reverb)
+                            if (isAmazonMissingL(rowData)) {
                                 return `<span style="font-size: 16px; color: #dc3545; font-weight: bold;">M</span>`;
                             }
                             
@@ -3246,6 +3300,8 @@
                             if (isMissingAmazon || rowPrice <= 0) return '';
                             
                             const invAmz = parseFloat(rowData.INV_AMZ) || 0;
+                            // Same as /map-issues: both sides must have stock to be Map / Missing M.
+                            if (invAmz <= 0) return '';
                             const difference = Math.abs(inv - invAmz);
                             
                             if (amazonInvWithinMapTolerance(inv, invAmz)) {
@@ -4780,12 +4836,14 @@
 
                 // Play / Pause filter is applied at top of applyFilters when isProductNavigationActive (early return)
 
-                // SKU search: match SKU (or Parent for parent rows)
-                var searchVal = ($('#sku-search').val() || '').trim().toLowerCase();
+                // SKU search: match SKU (or Parent for parent rows).
+                // Normalize away all whitespace + case so inconsistently formatted SKUs
+                // (e.g. "CAPO BLUE 2 Pcs" vs "CAPO BLUE 2PCS") still match.
+                var searchVal = ($('#sku-search').val() || '').replace(/\s+/g, '').toLowerCase();
                 if (searchVal) {
                     table.addFilter(function(data) {
                         var sku = (data.is_parent_summary ? (data.Parent || data['(Child) sku'] || data.sku || '') : (data['(Child) sku'] || data.sku || ''));
-                        sku = (sku + '').toLowerCase();
+                        sku = (sku + '').replace(/\s+/g, '').toLowerCase();
                         return sku.indexOf(searchVal) !== -1;
                     });
                 }
@@ -4863,6 +4921,8 @@
                         if (inv <= 0 || nrValue !== 'REQ' || isMissingAmazon || price <= 0) return false;
                         
                         const invAmz = parseFloat(data.INV_AMZ) || 0;
+                        // Same as /map-issues: both sides must have stock to be Map / N Map.
+                        if (invAmz <= 0) return false;
                         
                         if (mapFilterActive === 'mapped') {
                             return amazonInvWithinMapTolerance(inv, invAmz);
@@ -4904,12 +4964,16 @@
                         return !!(data.is_missing_amazon && !rowIsFba(data) && nr !== 'NR');
                     });
                 }
-                // Missing L filter — all (header dot): not listed on Amazon. Exclude parent, NR, and FBA (same as badge logic).
+                // Missing L filter — all (header dot): same Reverb-style rule as the column 'M' and badge (REQ + INV>0 + price<=0).
                 if (missingAmazonFilterActive) {
                     table.addFilter(function(data) {
-                        if (isParentRow(data)) return false;
-                        const nr = data.NR || '';
-                        return !!(data.is_missing_amazon && nr !== 'NR' && !rowIsFba(data));
+                        return isAmazonMissingL(data);
+                    });
+                }
+                // Missing L (all) badge — same rule as /map-issues: not listed, REQ, INV > 0 (FBA + FBM).
+                if (missingLAmzFilterActive) {
+                    table.addFilter(function(data) {
+                        return isAmazonMissingL(data);
                     });
                 }
 
@@ -5046,6 +5110,7 @@
                 let missingCount = 0;
                 let missingAmazonFbaCount = 0;
                 let missingAmazonNonFbaCount = 0;
+                let missingLAmzCount = 0;
                 let variationCount = 0;
                 
                 // Variation count (NRL / red dot rows - all rows including parents)
@@ -5090,13 +5155,16 @@
                             missingAmazonNonFbaCount++;
                         }
                         
-                        // Map / Missing M: REQ, listed, price > 0; FBA rows excluded from mismatch count only
+                        // Map / Missing M: REQ, listed, price > 0, Amazon stock > 0 (same as /map-issues);
+                        // FBA rows excluded from mismatch count only
                         if (inv > 0 && nrValue === 'REQ' && !isMissingAmazon && rowPrice > 0) {
                             const invAmzNum = parseFloat(row['INV_AMZ'] || 0);
-                            if (amazonInvWithinMapTolerance(inv, invAmzNum)) {
-                                mapCount++;
-                            } else if (!amazonRowIsFba(row)) {
-                                missingCount++; // Inventory mismatch beyond 3% tolerance (non-FBA only)
+                            if (invAmzNum > 0) {
+                                if (amazonInvWithinMapTolerance(inv, invAmzNum)) {
+                                    mapCount++;
+                                } else if (!amazonRowIsFba(row)) {
+                                    missingCount++; // Inventory mismatch beyond tolerance (non-FBA only)
+                                }
                             }
                         }
                         
@@ -5144,6 +5212,13 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 // Update Missing L FBA and Missing M FBM counts
                 $('#missing-amazon-fba-count').text(missingAmazonFbaCount.toLocaleString());
                 $('#missing-amazon-nonfba-count').text(missingAmazonNonFbaCount.toLocaleString());
+
+                // Missing L (all, same as /map-issues): not listed on Amazon, REQ, INV > 0 (FBA + FBM).
+                // Counted over the FULL dataset so not-listed rows hidden by active filters are included.
+                table.getData().forEach(function(row) {
+                    if (isAmazonMissingL(row)) missingLAmzCount++;
+                });
+                $('#missing-l-amz-count').text(missingLAmzCount.toLocaleString());
                 var $missingFbaBadge = $('#missing-amazon-fba-badge');
                 var $missingNonFbaBadge = $('#missing-amazon-nonfba-badge');
                 if (missingAmazonFbaCount > 0) {

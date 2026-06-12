@@ -611,7 +611,7 @@
                         <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: white; font-weight: bold;">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="ebay2-missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: E Stock &gt; 0, no eBay item id (Missing L)">Missing: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="ebay2-missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: not listed (no eBay item id), REQ, INV &gt; 0 (Missing L) — same as /map-issues">Missing: 0</span>
                         <span class="badge fs-6 p-2" id="ebay2-map-count-badge" style="background-color: #198754; color: #fff; font-weight: bold; cursor: pointer;" title="Click to filter: |INV − E Stock| ≤ 3 (MP rows)">Map: 0</span>
                         <span class="badge fs-6 p-2" id="ebay2-nmap-count-badge" style="color: white; font-weight: bold; cursor: pointer; background-color: #a71d2a;" title="Click to filter: N Map rows (same as MAP column)">N Map: 0</span>
                         
@@ -1052,7 +1052,7 @@
             const p = data.Parent;
             return !!(p && String(p).toUpperCase().startsWith('PARENT'));
         }
-        /** Same N Map test as eBay 1 tabulator (isEbayTabulatorNMapRow), E Stock field. */
+        /** N Map — same rule as /map-issues (listed, REQ, INV>0, E Stock>0, outside tolerance). */
         function isEbay2TabulatorNMapRow(data) {
             if (isEbay2TabulatorParentRowForMap(data)) return false;
             const itemId = data['eBay_item_id'];
@@ -1061,9 +1061,12 @@
             if (inv <= 0) return false;
             if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
             const ebayStock = rowEbay2StockQty(data);
-            if (ebayStock === 0) return inv > 3;
-            if (ebayStock > 0 && Math.abs(inv - ebayStock) > 3) return true;
-            return false;
+            if (ebayStock <= 0) return false; // same as /map-issues: both sides need stock
+            const diff = Math.abs(inv - ebayStock);
+            if (inv * 0.03 < 3) {
+                return diff > 3;
+            }
+            return Math.round((diff / inv) * 100) > 3;
         }
         function isEbay2TabulatorMapRow(data) {
             if (isEbay2TabulatorParentRowForMap(data)) return false;
@@ -1074,7 +1077,21 @@
             if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
             const ebayStock = rowEbay2StockQty(data);
             if (ebayStock <= 0) return false;
-            return Math.abs(inv - ebayStock) <= 3;
+            const diff = Math.abs(inv - ebayStock);
+            if (inv * 0.03 < 3) {
+                return diff <= 3;
+            }
+            return Math.round((diff / inv) * 100) <= 3;
+        }
+        /** Missing L — same rule as /map-issues: not listed (no item id), REQ, INV > 0, non-parent. */
+        function isEbay2MissingL(data) {
+            if (isEbay2TabulatorParentRowForMap(data)) return false;
+            const itemId = data['eBay_item_id'];
+            const notListed = (!itemId || String(itemId).trim() === '');
+            if (!notListed) return false;
+            if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
+            const inv = parseFloat(data['INV']) || 0;
+            return inv > 0;
         }
         
         // Toast notification function
@@ -2861,14 +2878,10 @@
                         field: "Missing",
                         hozAlign: "center",
                         width: 70,
-                        headerTooltip: "M when listed in REQ scope but no eBay item id (same as eBay 1 tabulator).",
+                        headerTooltip: "M when not listed (no eBay item id), REQ, INV > 0 — same as /map-issues.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            if (rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT')) {
-                                return '';
-                            }
-                            const itemId = rowData['eBay_item_id'];
-                            if (!itemId || itemId === null || itemId === '') {
+                            if (isEbay2MissingL(rowData)) {
                                 return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
                             }
                             return '';
@@ -2879,7 +2892,7 @@
                         field: "MAP",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "MP when |INV − E Stock| ≤ 3; N MP otherwise (listed rows only). Matches eBay 1 tabulator.",
+                        headerTooltip: "MP when within /map-issues tolerance (3 units, or rounded 3% for INV ≥ 100); N MP otherwise (listed rows with E Stock > 0).",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT')) {
@@ -2891,16 +2904,16 @@
                             }
                             const ebayStock = parseFloat(rowData['E Stock']) || 0;
                             const inv = parseFloat(rowData['INV']) || 0;
-                            if (inv > 0 && ebayStock === 0) {
-                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${inv})</span>`;
-                            }
+                            // Same as /map-issues: both sides must have stock to be Map / N Map.
                             if (inv > 0 && ebayStock > 0) {
-                                if (Math.abs(inv - ebayStock) <= 3) {
+                                const diff = Math.abs(inv - ebayStock);
+                                const isNotMap = (inv * 0.03 < 3) ? (diff > 3) : (Math.round((diff / inv) * 100) > 3);
+                                if (!isNotMap) {
                                     return '<span style="color: #28a745; font-weight: bold;">MP</span>';
                                 }
-                                const diff = inv - ebayStock;
-                                const sign = diff > 0 ? '+' : '';
-                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
+                                const signedDiff = inv - ebayStock;
+                                const sign = signedDiff > 0 ? '+' : '';
+                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${signedDiff})</span>`;
                             }
                             return '';
                         }
@@ -4533,14 +4546,21 @@
 
                 table.clearFilter(true);
 
-                if (inventoryFilter === 'zero') {
-                    table.addFilter(function(data) {
-                        return (parseFloat(data['E Stock'] || 0) || 0) === 0;
-                    });
-                } else if (inventoryFilter === 'more') {
-                    table.addFilter(function(data) {
-                        return (parseFloat(data['E Stock'] || 0) || 0) > 0;
-                    });
+                // Missing / Map / N Map badges are authoritative (same rows as /map-issues).
+                // Skip the "E Stock" inventory filter while one is active, otherwise not-listed
+                // Missing L rows (E Stock = 0) get filtered out and the view shows nothing.
+                const badgeFilterActive = missingFilterActive || mapFilterActive || nmapFilterActive;
+
+                if (!badgeFilterActive) {
+                    if (inventoryFilter === 'zero') {
+                        table.addFilter(function(data) {
+                            return (parseFloat(data['E Stock'] || 0) || 0) === 0;
+                        });
+                    } else if (inventoryFilter === 'more') {
+                        table.addFilter(function(data) {
+                            return (parseFloat(data['E Stock'] || 0) || 0) > 0;
+                        });
+                    }
                 }
 
                 if (el30Filter === 'zero') {
@@ -4676,11 +4696,7 @@
 
                 if (missingFilterActive) {
                     table.addFilter(function(data) {
-                        const estock = rowEbay2StockQty(data);
-                        if (estock <= 0) return false;
-                        const itemId = data['eBay_item_id'];
-                        if (isEbay2TabulatorParentRowForMap(data)) return false;
-                        return !itemId || itemId === null || itemId === '';
+                        return isEbay2MissingL(data);
                     });
                 }
                 if (mapFilterActive) {
@@ -5357,17 +5373,14 @@
                 });
                 const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
 
+                // Missing L / Map / N Map are counted over the FULL dataset (like /map-issues),
+                // not the active/filtered view — otherwise not-listed rows are hidden by the
+                // default filters and the Missing badge shows 0.
                 let missingCount = 0;
                 let mapCount = 0;
                 let nmapCount = 0;
-                data.forEach(row => {
-                    const estock = rowEbay2StockQty(row);
-                    if (estock > 0) {
-                        const itemId = row['eBay_item_id'];
-                        if ((!itemId || itemId === null || itemId === '') && !isEbay2TabulatorParentRowForMap(row)) {
-                            missingCount++;
-                        }
-                    }
+                table.getData().forEach(row => {
+                    if (isEbay2MissingL(row)) missingCount++;
                     if (isEbay2TabulatorMapRow(row)) mapCount++;
                     if (isEbay2TabulatorNMapRow(row)) nmapCount++;
                 });

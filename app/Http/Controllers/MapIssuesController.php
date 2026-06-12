@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
+use App\Models\AmazonListingStatus;
 use App\Models\BestbuyPriceData;
 use App\Models\BestbuyUSAListingStatus;
 use App\Models\BestbuyUsaProduct;
@@ -107,6 +108,9 @@ class MapIssuesController extends Controller
         $amazonStockByNorm = $this->buildAmazonStockLookupByNormalizedSku($skus);
         $amazonSheetByNorm = $this->buildAmazonSheetLookupByNormalizedSku($skus);
         $nrValuesAmz       = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+        // Amazon REQ/NR falls back to AmazonListingStatus.nr_req (same as the
+        // amazon-tabulator-view page) when amazon_data_view has no NRL flag.
+        $amazonListingStatus = AmazonListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Reverb: stock (remaining_inventory), price and stored SKU come from reverb_products
         // (listed = price > 0, like the reverb-pricing page), and REQ/NR comes from
@@ -165,7 +169,10 @@ class MapIssuesController extends Controller
             $ebay    = $key !== '' ? ($ebayByNorm[$key] ?? null) : null;
             $ebay2   = $key !== '' ? ($ebay2ByNorm[$key] ?? null) : null;
             $ebay3   = $key !== '' ? ($ebay3ByNorm[$key] ?? null) : null;
-            $amazonSheet = $key !== '' ? ($amazonSheetByNorm[$key] ?? null) : null;
+            // Amazon uses its own normalization (remove ALL spaces), same as the
+            // amazon-tabulator-view page, so listed/stock matching is identical.
+            $amazonKey = AmazonDatasheet::normalizeSkuForLookup($pm->sku);
+            $amazonSheet = $amazonKey !== '' ? ($amazonSheetByNorm[$amazonKey] ?? null) : null;
             // Reverb uses its own normalization (PCS→PC + no-space fallback), same as reverb-pricing.
             $reverbKey = ReverbProduct::normalizeSkuForLookup($pm->sku);
             $reverb  = $reverbKey !== '' ? ($reverbByNorm[$reverbKey] ?? null) : null;
@@ -276,15 +283,15 @@ class MapIssuesController extends Controller
             }
 
             // ---- Amazon ----
-            $amazonStock = floatval($key !== '' ? ($amazonStockByNorm[$key] ?? 0) : 0);
+            $amazonStock = floatval($amazonKey !== '' ? ($amazonStockByNorm[$amazonKey] ?? 0) : 0);
             $amazonAsin = $amazonSheet->asin ?? '';
             $amazonSku = $amazonSheet->sku ?? null;
-            $amazonReason = $amazonSku !== null ? $this->skuDifferenceReason($pm->sku, $amazonSku) : '';
+            $amazonReason = $amazonSku !== null ? $this->skuDifferenceReason($pm->sku, $amazonSku, [AmazonDatasheet::class, 'normalizeSkuForLookup']) : '';
             $amazonHasIssue = $amazonReason !== '';
             if ($amazonHasIssue) {
                 $amazonMismatchCount++;
             }
-            $amazonNrReq = $this->isReq($nrValuesAmz, $pm->sku) ? 'REQ' : 'NRL';
+            $amazonNrReq = $this->resolveAmazonNrReq($nrValuesAmz, $amazonListingStatus, $pm->sku);
             // N Map within a 3% tolerance, both sides with stock, REQ only (NL / Not Req not counted).
             $amazonIsNotMap = false;
             $amazonWithin3 = false;
@@ -311,7 +318,7 @@ class MapIssuesController extends Controller
             $reverbPrice = floatval($reverb->price ?? 0);
             $reverbListed = $reverbPrice > 0; // live listing, same as the reverb-pricing page
             $reverbSku = $reverb->sku ?? null;
-            $reverbReason = $reverbSku !== null ? $this->skuDifferenceReason($pm->sku, $reverbSku) : '';
+            $reverbReason = $reverbSku !== null ? $this->skuDifferenceReason($pm->sku, $reverbSku, [ReverbProduct::class, 'normalizeSkuForLookup']) : '';
             $reverbHasIssue = $reverbReason !== '';
             if ($reverbHasIssue) {
                 $reverbMismatchCount++;
@@ -698,10 +705,13 @@ class MapIssuesController extends Controller
             }
         }
         if ($amazonSiteOnlySkus !== []) {
+            // $stockByNorm is keyed by the amazon normalization (spaces removed);
+            // $map is keyed by the shopify normalization, so resolve via the row SKU.
             $stockByNorm = $this->buildAmazonStockLookupByNormalizedSku($amazonSiteOnlySkus);
             foreach ($map as $k => $m) {
                 if ($m['amazon'] !== null) {
-                    $map[$k]['amazon'] = $stockByNorm[$k] ?? 0;
+                    $amzKey = AmazonDatasheet::normalizeSkuForLookup((string) $m['sku']);
+                    $map[$k]['amazon'] = $stockByNorm[$amzKey] ?? 0;
                 }
             }
         }
@@ -917,6 +927,48 @@ class MapIssuesController extends Controller
     }
 
     /**
+     * Resolve Amazon REQ/NR exactly like the amazon-tabulator-view page:
+     * use amazon_data_view's NRL flag first ('NRL' => NR, 'REQ' => REQ), and when
+     * it is absent fall back to amazon_listing_statuses.nr_req; default REQ.
+     *
+     * @param  \Illuminate\Support\Collection  $nrValues       amazon_data_view value JSON keyed by SKU
+     * @param  \Illuminate\Support\Collection  $listingStatus  AmazonListingStatus rows keyed by SKU
+     */
+    private function resolveAmazonNrReq($nrValues, $listingStatus, string $sku): string
+    {
+        // 1) amazon_data_view NRL flag (authoritative when present)
+        if (isset($nrValues[$sku])) {
+            $raw = $nrValues[$sku];
+            if (! is_array($raw)) {
+                $raw = json_decode($raw, true) ?? [];
+            }
+            $nrl = is_array($raw) ? ($raw['NRL'] ?? null) : null;
+            if ($nrl === 'NRL') {
+                return 'NRL';
+            }
+            if ($nrl === 'REQ') {
+                return 'REQ';
+            }
+        }
+
+        // 2) Fallback to AmazonListingStatus.nr_req
+        $ls = $listingStatus[$sku] ?? null;
+        if ($ls && $ls->value) {
+            $val = is_array($ls->value) ? $ls->value : (json_decode((string) $ls->value, true) ?: []);
+            $nrReq = strtoupper((string) ($val['nr_req'] ?? ''));
+            if ($nrReq === 'NR' || $nrReq === 'NRL') {
+                return 'NRL';
+            }
+            if ($nrReq === 'REQ') {
+                return 'REQ';
+            }
+        }
+
+        // 3) Default REQ
+        return 'REQ';
+    }
+
+    /**
      * Build a normalized-SKU => metric-row lookup, falling back to a full scan
      * for SKUs whose value differs only by formatting (NBSP / case / spaces).
      * Works for any metric model that has sku / ebay_stock / item_id columns.
@@ -979,8 +1031,10 @@ class MapIssuesController extends Controller
     {
         $byNorm = [];
 
+        // Key by the amazon-tabulator-view normalization (remove ALL spaces) so the
+        // same stock rows are resolved as on the Amazon page.
         foreach (ProductStockMapping::select('sku', 'inventory_amazon')->whereIn('sku', $productSkus)->get() as $row) {
-            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+            $k = AmazonDatasheet::normalizeSkuForLookup((string) $row->sku);
             if ($k !== '' && ! isset($byNorm[$k])) {
                 $byNorm[$k] = floatval($row->inventory_amazon ?? 0);
             }
@@ -988,7 +1042,7 @@ class MapIssuesController extends Controller
 
         $missing = [];
         foreach ($productSkus as $pmSku) {
-            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $pmSku);
+            $k = AmazonDatasheet::normalizeSkuForLookup((string) $pmSku);
             if ($k !== '' && ! isset($byNorm[$k])) {
                 $missing[$k] = true;
             }
@@ -1005,7 +1059,7 @@ class MapIssuesController extends Controller
             ->orderBy('id')
             ->chunkById(3000, function ($rows) use (&$byNorm, &$missing) {
                 foreach ($rows as $row) {
-                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+                    $k = AmazonDatasheet::normalizeSkuForLookup((string) $row->sku);
                     if ($k !== '' && isset($missing[$k]) && ! isset($byNorm[$k])) {
                         $byNorm[$k] = floatval($row->inventory_amazon ?? 0);
                         unset($missing[$k]);
@@ -1029,8 +1083,10 @@ class MapIssuesController extends Controller
     {
         $byNorm = [];
 
+        // Key by the amazon-tabulator-view normalization (remove ALL spaces) so the
+        // same datasheet rows are resolved as on the Amazon page.
         foreach (AmazonDatasheet::select('sku', 'asin')->whereIn('sku', $productSkus)->get() as $row) {
-            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+            $k = AmazonDatasheet::normalizeSkuForLookup((string) $row->sku);
             if ($k !== '' && ! isset($byNorm[$k])) {
                 $byNorm[$k] = $row;
             }
@@ -1038,7 +1094,7 @@ class MapIssuesController extends Controller
 
         $missing = [];
         foreach ($productSkus as $pmSku) {
-            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $pmSku);
+            $k = AmazonDatasheet::normalizeSkuForLookup((string) $pmSku);
             if ($k !== '' && ! isset($byNorm[$k])) {
                 $missing[$k] = true;
             }
@@ -1055,7 +1111,7 @@ class MapIssuesController extends Controller
             ->orderBy('id')
             ->chunkById(3000, function ($rows) use (&$byNorm, &$missing) {
                 foreach ($rows as $row) {
-                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+                    $k = AmazonDatasheet::normalizeSkuForLookup((string) $row->sku);
                     if ($k !== '' && isset($missing[$k]) && ! isset($byNorm[$k])) {
                         $byNorm[$k] = $row;
                         unset($missing[$k]);
@@ -1299,15 +1355,24 @@ class MapIssuesController extends Controller
     /**
      * Explain why an actual stored SKU differs from the expected Product Master SKU.
      * Returns '' when they match exactly.
+     *
+     * $normalizer is the marketplace's own SKU normalization (the same one used to
+     * MATCH the listing row). When the two SKUs are equal under that normalization
+     * the difference is only formatting (spaces / case / PCS↔PC), not a different
+     * SKU — so each marketplace reports the same way it matches.
+     *
+     * @param  callable|null  $normalizer  fn(string): string (defaults to ShopifySku)
      */
-    private function skuDifferenceReason(string $expected, string $actual): string
+    private function skuDifferenceReason(string $expected, string $actual, ?callable $normalizer = null): string
     {
         if ($expected === $actual) {
             return '';
         }
 
-        // If they don't even match after normalization, it's a genuinely different SKU.
-        if (ShopifySku::normalizeSkuForShopifyLookup($expected) !== ShopifySku::normalizeSkuForShopifyLookup($actual)) {
+        $normalizer = $normalizer ?? [ShopifySku::class, 'normalizeSkuForShopifyLookup'];
+
+        // If they don't even match under the marketplace's own normalization, it's a genuinely different SKU.
+        if (call_user_func($normalizer, $expected) !== call_user_func($normalizer, $actual)) {
             return 'Different SKU text';
         }
 
@@ -1341,6 +1406,19 @@ class MapIssuesController extends Controller
         if (trim($cleanExpected) !== trim($cleanActual)
             && strtoupper(trim($cleanExpected)) === strtoupper(trim($cleanActual))) {
             $reasons[] = 'case mismatch';
+        }
+
+        // They matched under the marketplace normalization; classify the remaining
+        // difference. Equal once all spaces are removed => only spacing differs;
+        // otherwise the marketplace normalization folded a piece-count (PCS <-> PC).
+        $noSpaceExp = str_replace(' ', '', strtoupper($cleanExpected));
+        $noSpaceAct = str_replace(' ', '', strtoupper($cleanActual));
+        if ($noSpaceExp === $noSpaceAct) {
+            if (empty($reasons)) {
+                $reasons[] = 'spacing mismatch';
+            }
+        } else {
+            $reasons[] = 'PCS/PC format';
         }
 
         $reasons = array_values(array_unique($reasons));

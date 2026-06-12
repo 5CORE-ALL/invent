@@ -3605,8 +3605,9 @@
                             }
                             const ebayStock = parseFloat(rowData['eBay Stock']) || 0;
                             const inv = parseFloat(rowData['INV']) || 0;
-                            if (inv > 0) {
-                                // Mapped (green) when within Amazon-style tolerance (3 units or 3%)
+                            // Same as /map-issues: both sides must have stock to be Map / N Map.
+                            if (inv > 0 && ebayStock > 0) {
+                                // Mapped (green) when within /map-issues tolerance (3 units or rounded 3%)
                                 if (ebayInvWithinMapTolerance(inv, ebayStock)) {
                                     return '<span style="color: #28a745; font-weight: bold;">MP</span>';
                                 }
@@ -5443,8 +5444,9 @@
             });
 
             /**
-             * Inventory mapping tolerance — same as amazon-tabulator-view (amazonInvWithinMapTolerance):
-             * mapped (green) when |inv - stock| is within 3 units OR within 3% of INV.
+             * Inventory mapping tolerance — same rule as /map-issues:
+             * when 3% of INV is below 3 units, require an absolute gap > 3 units to be a mismatch;
+             * otherwise apply the rounded 3% rule. Mapped (green) when within tolerance.
              */
             function ebayInvWithinMapTolerance(inv, stock) {
                 const invNum = parseFloat(inv) || 0;
@@ -5453,16 +5455,18 @@
                     return true;
                 }
                 const diff = Math.abs(invNum - stockNum);
-                if (diff <= 3 + 1e-9) {
-                    return true;
+                let isNotMap;
+                if (invNum * 0.03 < 3) {
+                    isNotMap = diff > 3;
+                } else {
+                    isNotMap = Math.round((diff / invNum) * 100) > 3;
                 }
-                const tolerance = invNum * 0.03;
-                return diff <= tolerance + 1e-9;
+                return !isNotMap;
             }
 
             /**
-             * Missing M (eBay) — same logic as amazon-tabulator-view Missing M (mapping mismatch):
-             * listed (has eBay item_id), REQ (not 'NR'), INV > 0, and INV vs eBay Stock is OUTSIDE the map tolerance.
+             * Missing M (eBay) — same logic as /map-issues N Map (mapping mismatch):
+             * listed (has eBay item_id), REQ, INV > 0, eBay Stock > 0, and INV vs eBay Stock is OUTSIDE the map tolerance.
              */
             function isEbayMissingM(data) {
                 var d = data || {};
@@ -5477,6 +5481,7 @@
                 var inv = parseFloat(d['INV'] || 0) || 0;
                 if (inv <= 0) return false;
                 var ebayStock = parseFloat(d['eBay Stock'] || 0) || 0;
+                if (ebayStock <= 0) return false; // same as /map-issues: both sides must have stock
                 return !ebayInvWithinMapTolerance(inv, ebayStock);
             }
 

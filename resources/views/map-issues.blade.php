@@ -74,7 +74,7 @@
                             title="eBay SKU Mismatch — eBay SKU does not exactly match the Product Master SKU">E SM: 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="missing-listing-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="eBay Missing Listing — not listed on eBay, marked REQ, INV > 0">E ML: 0</span>
+                            title="eBay Missing Listing — not listed on eBay, marked REQ, INV > 0">E NL: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="ebay2-not-map-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="eBay 2 Not Mapped — listed on eBay 2 but INV does not match eBay2 Inv">E2 NP: 0</span>
@@ -83,7 +83,7 @@
                             title="eBay 2 SKU Mismatch — eBay 2 SKU does not exactly match the Product Master SKU">E2 SM: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="ebay2-missing-listing-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="eBay 2 Missing Listing — not listed on eBay 2, marked REQ, INV > 0">E2 ML: 0</span>
+                            title="eBay 2 Missing Listing — not listed on eBay 2, marked REQ, INV > 0">E2 NL: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="ebay3-not-map-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="eBay 3 Not Mapped — listed on eBay 3 but INV does not match eBay3 Inv">E3 NP: 0</span>
@@ -92,7 +92,7 @@
                             title="eBay 3 SKU Mismatch — eBay 3 SKU does not exactly match the Product Master SKU">E3 SM: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="ebay3-missing-listing-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="eBay 3 Missing Listing — not listed on eBay 3, marked REQ, INV > 0">E3 ML: 0</span>
+                            title="eBay 3 Missing Listing — not listed on eBay 3, marked REQ, INV > 0">E3 NL: 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="amazon-not-map-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Amazon Not Mapped — listed on Amazon but INV does not match Amazon Inv">A NP: 0</span>
@@ -101,7 +101,7 @@
                             title="Amazon SKU Mismatch — Amazon SKU does not exactly match the Product Master SKU">A SM: 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="amazon-missing-listing-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Amazon Missing Listing — not listed on Amazon, marked REQ, INV > 0">A ML: 0</span>
+                            title="Amazon Missing Listing — not listed on Amazon, marked REQ, INV > 0">A NL: 0</span>
                         <span class="badge rv-off fs-6 p-2" id="reverb-not-map-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Reverb Not Mapped — listed on Reverb but INV does not match Reverb Inv">R NP: 0</span>
@@ -110,7 +110,7 @@
                             title="Reverb SKU Mismatch — Reverb SKU does not exactly match the Product Master SKU">R SM: 0</span>
                         <span class="badge rv-off fs-6 p-2" id="reverb-missing-listing-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Reverb Missing Listing — not listed on Reverb, marked REQ, INV > 0">R ML: 0</span>
+                            title="Reverb Missing Listing — not listed on Reverb, marked REQ, INV > 0">R NL: 0</span>
                         <span class="badge mc-off fs-6 p-2" id="macys-not-map-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Macy's Not Mapped — listed on Macy's but INV does not match Macy's Inv">M NP: 0</span>
@@ -119,7 +119,7 @@
                             title="Macy's SKU Mismatch — Macy's SKU does not exactly match the Product Master SKU">M SM: 0</span>
                         <span class="badge mc-off fs-6 p-2" id="macys-missing-listing-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Macy's Missing Listing — not listed on Macy's, marked REQ, INV > 0">M ML: 0</span>
+                            title="Macy's Missing Listing — not listed on Macy's, marked REQ, INV > 0">M NL: 0</span>
                         <span class="badge bb-off fs-6 p-2" id="bestbuy-not-map-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Best Buy Not Mapped — listed on Best Buy but INV does not match Best Buy Inv">BB NP: 0</span>
@@ -128,7 +128,7 @@
                             title="Best Buy SKU Mismatch — Best Buy SKU does not exactly match the Product Master SKU">BB SM: 0</span>
                         <span class="badge bb-off fs-6 p-2" id="bestbuy-missing-listing-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Best Buy Missing Listing — not listed on Best Buy, marked REQ, INV > 0">BB ML: 0</span>
+                            title="Best Buy Missing Listing — not listed on Best Buy, marked REQ, INV > 0">BB NL: 0</span>
                         <span class="badge tm-off fs-6 p-2" id="tiendamia-not-map-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Tiendamia Not Mapped — listed on Tiendamia but INV does not match Tiendamia Inv">T NP: 0</span>
@@ -137,7 +137,7 @@
                             title="Tiendamia SKU Mismatch — Tiendamia SKU does not exactly match the Product Master SKU">T SM: 0</span>
                         <span class="badge tm-off fs-6 p-2" id="tiendamia-missing-listing-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Tiendamia Missing Listing — not listed on Tiendamia, marked REQ, INV > 0">T ML: 0</span>
+                            title="Tiendamia Missing Listing — not listed on Tiendamia, marked REQ, INV > 0">T NL: 0</span>
                     </div>
                     <div class="mb-3 d-flex gap-4">
                         <div class="form-check form-switch">
@@ -309,49 +309,49 @@
                     document.getElementById('mismatch-count-badge').textContent =
                         'E SM: ' + (response.mismatch_count || 0).toLocaleString();
                     document.getElementById('missing-listing-count-badge').textContent =
-                        'E ML: ' + (response.missing_listing_count || 0).toLocaleString();
+                        'E NL: ' + (response.missing_listing_count || 0).toLocaleString();
                     document.getElementById('ebay2-not-map-count-badge').textContent =
                         'E2 NP: ' + (response.ebay2_not_map_count || 0).toLocaleString();
                     document.getElementById('ebay2-mismatch-count-badge').textContent =
                         'E2 SM: ' + (response.ebay2_mismatch_count || 0).toLocaleString();
                     document.getElementById('ebay2-missing-listing-count-badge').textContent =
-                        'E2 ML: ' + (response.ebay2_missing_listing_count || 0).toLocaleString();
+                        'E2 NL: ' + (response.ebay2_missing_listing_count || 0).toLocaleString();
                     document.getElementById('ebay3-not-map-count-badge').textContent =
                         'E3 NP: ' + (response.ebay3_not_map_count || 0).toLocaleString();
                     document.getElementById('ebay3-mismatch-count-badge').textContent =
                         'E3 SM: ' + (response.ebay3_mismatch_count || 0).toLocaleString();
                     document.getElementById('ebay3-missing-listing-count-badge').textContent =
-                        'E3 ML: ' + (response.ebay3_missing_listing_count || 0).toLocaleString();
+                        'E3 NL: ' + (response.ebay3_missing_listing_count || 0).toLocaleString();
                     document.getElementById('amazon-not-map-count-badge').textContent =
                         'A NP: ' + (response.amazon_not_map_count || 0).toLocaleString();
                     document.getElementById('amazon-mismatch-count-badge').textContent =
                         'A SM: ' + (response.amazon_mismatch_count || 0).toLocaleString();
                     document.getElementById('amazon-missing-listing-count-badge').textContent =
-                        'A ML: ' + (response.amazon_missing_listing_count || 0).toLocaleString();
+                        'A NL: ' + (response.amazon_missing_listing_count || 0).toLocaleString();
                     document.getElementById('reverb-not-map-count-badge').textContent =
                         'R NP: ' + (response.reverb_not_map_count || 0).toLocaleString();
                     document.getElementById('reverb-mismatch-count-badge').textContent =
                         'R SM: ' + (response.reverb_mismatch_count || 0).toLocaleString();
                     document.getElementById('reverb-missing-listing-count-badge').textContent =
-                        'R ML: ' + (response.reverb_missing_listing_count || 0).toLocaleString();
+                        'R NL: ' + (response.reverb_missing_listing_count || 0).toLocaleString();
                     document.getElementById('macys-not-map-count-badge').textContent =
                         'M NP: ' + (response.macys_not_map_count || 0).toLocaleString();
                     document.getElementById('macys-mismatch-count-badge').textContent =
                         'M SM: ' + (response.macys_mismatch_count || 0).toLocaleString();
                     document.getElementById('macys-missing-listing-count-badge').textContent =
-                        'M ML: ' + (response.macys_missing_listing_count || 0).toLocaleString();
+                        'M NL: ' + (response.macys_missing_listing_count || 0).toLocaleString();
                     document.getElementById('bestbuy-not-map-count-badge').textContent =
                         'BB NP: ' + (response.bestbuy_not_map_count || 0).toLocaleString();
                     document.getElementById('bestbuy-mismatch-count-badge').textContent =
                         'BB SM: ' + (response.bestbuy_mismatch_count || 0).toLocaleString();
                     document.getElementById('bestbuy-missing-listing-count-badge').textContent =
-                        'BB ML: ' + (response.bestbuy_missing_listing_count || 0).toLocaleString();
+                        'BB NL: ' + (response.bestbuy_missing_listing_count || 0).toLocaleString();
                     document.getElementById('tiendamia-not-map-count-badge').textContent =
                         'T NP: ' + (response.tiendamia_not_map_count || 0).toLocaleString();
                     document.getElementById('tiendamia-mismatch-count-badge').textContent =
                         'T SM: ' + (response.tiendamia_mismatch_count || 0).toLocaleString();
                     document.getElementById('tiendamia-missing-listing-count-badge').textContent =
-                        'T ML: ' + (response.tiendamia_missing_listing_count || 0).toLocaleString();
+                        'T NL: ' + (response.tiendamia_missing_listing_count || 0).toLocaleString();
                     document.getElementById('site-only-count').textContent =
                         response.pm_missing_count ? '(' + response.pm_missing_count.toLocaleString() + ')' : '';
                     return response.data || [];

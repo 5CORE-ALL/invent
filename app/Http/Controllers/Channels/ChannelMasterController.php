@@ -234,6 +234,148 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Live Amazon Map/Miss/NMap for the all-marketplace-master, computed exactly like
+     * OverallAmazonController::saveDailySummaryIfNeeded (the amazon-tabulator-view backend),
+     * so the master page never shows stale 0s from amazon_channel_summary_data.
+     *
+     *   Valid rows: non-parent, INV > 0, NR !== 'NR'.
+     *   Miss  (Missing L): REQ and (not in amazon_datsheets OR price <= 0), non-FBA.
+     *   Map / NMap:        REQ, listed (price > 0) AND INV_AMZ > 0 (both sides have stock, like /map-issues);
+     *                      N Map when |INV - INV_AMZ| > 3 (when 3% of INV < 3) else rounded % > 3, otherwise Map.
+     *                      A listed row with 0 Amazon stock is neither Map nor N Map. FBA excluded from Miss + NMap.
+     *   Listing match uses AmazonDatasheet::normalizeSkuForLookup (spaces removed + PCS/PC fold) and
+     *   NR resolves from amazon_data_view NRL then amazon_listing_statuses.nr_req (default REQ).
+     */
+    private function getAmazonLiveMapMissNMapCounts(): array
+    {
+        try {
+            $productMasters = ProductMaster::whereNull('deleted_at')->get();
+            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
+            $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+            $listingStatus = AmazonListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+            $stockMappings = ProductStockMapping::whereIn('sku', $skus)->get()->keyBy('sku');
+
+            // Datasheets keyed by the shared Amazon normalization (spaces removed + PCS/PC fold).
+            $datasheetsByNorm = AmazonDatasheet::query()->get()->keyBy(function ($item) {
+                return AmazonDatasheet::normalizeSkuForLookup($item->sku ?? '');
+            });
+
+            $map = 0;
+            $miss = 0;
+            $nmap = 0;
+            $views = 0;
+
+            foreach ($productMasters as $pm) {
+                $sku = (string) $pm->sku;
+                if (stripos($sku, 'PARENT') === 0 || stripos($sku, 'PARENT ') !== false) {
+                    continue;
+                }
+
+                $inv = (float) ($shopifyData[$sku]->inv ?? 0);
+                if ($inv <= 0) {
+                    continue;
+                }
+
+                $nr = $this->resolveAmazonChannelNrReq($nrValues, $listingStatus, $sku);
+                if ($nr === 'NR') {
+                    continue; // RL filter: exclude NR
+                }
+
+                $sheet = $datasheetsByNorm[AmazonDatasheet::normalizeSkuForLookup($sku)] ?? null;
+                $isMissingAmazon = ($sheet === null);
+                $price = (float) ($sheet->price ?? 0);
+
+                // Views: sessions over all valid rows (same scope as the page summary).
+                $views += (float) ($sheet->sessions_l30 ?? 0);
+
+                $childSku = strtoupper($sku);
+                $parentSku = strtoupper((string) ($pm->parent ?? ''));
+                $isFbaRow = ((int) ($pm->fba ?? 0) === 1)
+                    || str_contains($childSku, 'FBA')
+                    || str_contains($parentSku, 'FBA');
+
+                // Map/Miss/NMap only for REQ rows with INV > 0.
+                if ($nr !== 'REQ') {
+                    continue;
+                }
+
+                if (($isMissingAmazon || $price <= 0) && ! $isFbaRow) {
+                    $miss++;
+                } elseif (! $isMissingAmazon && $price > 0) {
+                    $invAmzRaw = $stockMappings[$sku]->inventory_amazon ?? 0;
+                    $invAmz = is_numeric($invAmzRaw) ? (float) $invAmzRaw : 0.0;
+                    // Map / N Map only when BOTH sides have stock (same as /map-issues);
+                    // a listed row with 0 Amazon stock is neither Map nor N Map.
+                    if ($invAmz > 0) {
+                        $diff = abs($inv - $invAmz);
+                        // /map-issues tolerance: < 3 units when 3% of INV < 3, else rounded % > 3.
+                        if ($inv * 0.03 < 3) {
+                            $isNotMap = $diff > 3;
+                        } else {
+                            $isNotMap = round(($diff / $inv) * 100) > 3;
+                        }
+                        if ($isNotMap) {
+                            if (! $isFbaRow) {
+                                $nmap++;
+                            }
+                        } else {
+                            $map++;
+                        }
+                    }
+                }
+            }
+
+            return [
+                'map' => $map,
+                'miss' => $miss,
+                'nmap' => $nmap,
+                'total_views' => (int) $views,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Amazon live map/miss fallback used: ' . $e->getMessage());
+            return $this->getMapAndMissCounts('amazon');
+        }
+    }
+
+    /**
+     * Resolve Amazon REQ/NR the same way OverallAmazonController does: amazon_data_view
+     * NRL flag first ('NRL' => NR, 'REQ' => REQ), then amazon_listing_statuses.nr_req,
+     * default REQ.
+     */
+    private function resolveAmazonChannelNrReq($nrValues, $listingStatus, string $sku): string
+    {
+        if (isset($nrValues[$sku])) {
+            $raw = $nrValues[$sku];
+            if (! is_array($raw)) {
+                $raw = json_decode((string) $raw, true) ?: [];
+            }
+            $nrl = is_array($raw) ? ($raw['NRL'] ?? null) : null;
+            if ($nrl === 'NRL') {
+                return 'NR';
+            }
+            if ($nrl === 'REQ') {
+                return 'REQ';
+            }
+        }
+
+        $ls = $listingStatus[$sku] ?? null;
+        if ($ls && $ls->value) {
+            $val = is_array($ls->value) ? $ls->value : (json_decode((string) $ls->value, true) ?: []);
+            $nrReq = strtoupper((string) ($val['nr_req'] ?? ''));
+            if ($nrReq === 'NR' || $nrReq === 'NRL') {
+                return 'NR';
+            }
+            if ($nrReq === 'REQ') {
+                return 'REQ';
+            }
+        }
+
+        return 'REQ';
+    }
+
+    /**
      * Map tolerance — matches amazon-tabulator-view / temu2_decrease:
      * |INV − stock| <= 3 units OR <= 3% of INV. INV <= 0 always counts as mapped.
      */
@@ -826,6 +968,7 @@ class ChannelMasterController extends Controller
     private function overlayLiveMapMissNMapOnChannelRows(array $rows): array
     {
         $liveByChannel = [
+            'Amazon' => fn () => $this->getAmazonLiveMapMissNMapCounts(),
             'Macys' => fn () => $this->getMacysLiveMapMissNMapFromPricingData(),
             'PLS' => fn () => $this->getPlsLiveMapMissNMapFromPricingData(),
             'Wayfair' => fn () => $this->getWayfairLiveMapMissNMapFromPricingData(),
@@ -1007,9 +1150,11 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Map / Miss / NMap for Reverb — same rules as reverb-pricing (Missing L badge + MAP / N MP column, |INV − R Stock| ≤ 3).
+     * Map / Miss / NMap for Reverb — same rules as reverb-pricing (Missing L badge + MAP / N MP column).
      * Miss: REQ + INV>0 + RV Price=0 (no live Reverb listing; same as Macys MC Price / Best Buy BB Price).
-     * Map / NMap: REQ + INV>0 + listed (RV Price>0) + |INV − R Stock| ≤ 3 (map) or > 3 (NMap). Total Views summed for those listed rows.
+     * Map / NMap: REQ + INV>0 + listed (RV Price>0) + R Stock>0, using the same 3% tolerance as /map-issues
+     *   (absolute gap > 3 units when 3% of INV is below 3 units, otherwise rounded % > 3). Map = within tolerance,
+     *   NMap = exceeds tolerance. Total Views summed for those listed rows.
      */
     private function getReverbLiveMapMissNMapFromPricingData(Request $request): array
     {
@@ -5256,8 +5401,9 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Amazon')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('amazon');
+        // Live Amazon Map/Miss/NMap (matches amazon-tabulator-view backend), with a
+        // fallback to the stored amazon_channel_summary_data inside the live method.
+        $mapMissCounts = $this->getAmazonLiveMapMissNMapCounts();
 
         $result[] = [
             'Channel '   => 'Amazon',
@@ -5973,8 +6119,8 @@ class ChannelMasterController extends Controller
      * (Missing L / Missing M), counted over the full dataset like the tabulator badges (allData),
      * not the default "E Stock > 0" view filter.
      *   Missing L (miss): not listed (no item_id), nr_req != 'NR', INV > 0, non-parent.
-     *   Map / N Map (Missing M): listed, nr_req != 'NR', INV > 0; mapped when |INV − eBay Stock|
-     *   <= 3 OR within 3% of INV (ebayInvWithinMapTolerance), otherwise N Map / Missing M.
+     *   Map / N Map (Missing M): listed, REQ, INV > 0, eBay Stock > 0; mapped within the same
+     *   /map-issues tolerance (abs gap > 3 units when 3% of INV < 3, else rounded % > 3 = N Map).
      */
     private function getEbayLiveMapMissCountsFromTabulator(Request $request): array
     {
@@ -6027,13 +6173,21 @@ class ChannelMasterController extends Controller
                     continue;
                 }
 
-                // Listed: Map vs N Map / Missing M (tolerance = |INV − eBay Stock| <= 3 OR <= 3% INV).
+                // Listed: Map vs N Map / Missing M — same rule as /map-issues. Both sides must
+                // have stock (eBay Stock > 0); otherwise the row is neither Map nor N Map.
+                if ($eStock <= 0) {
+                    continue;
+                }
                 $diff = abs($inv - $eStock);
-                $tolerance = max(3.0, $inv * 0.03);
-                if ($diff <= $tolerance + 1e-9) {
-                    $map++;
+                if ($inv * 0.03 < 3) {
+                    $isNotMap = $diff > 3;
                 } else {
+                    $isNotMap = round(($diff / $inv) * 100) > 3;
+                }
+                if ($isNotMap) {
                     $nmap++;
+                } else {
+                    $map++;
                 }
             }
 
@@ -6052,9 +6206,9 @@ class ChannelMasterController extends Controller
     /**
      * Keep all-marketplace-master eBay 2 Map/Miss/NMap aligned with the ebay2-tabulator-view badges
      * (Missing L / Missing M), counted over the full dataset like the tabulator badges.
-     *   Missing L (miss): not listed (no item_id), nr_req != 'NR', INV > 0, non-parent.
-     *   Map / N Map (Missing M): listed, nr_req != 'NR', INV > 0; mapped when |INV − eBay Stock|
-     *   <= 3 OR within 3% of INV, otherwise N Map / Missing M.
+     *   Missing L (miss): not listed (no item_id), REQ, INV > 0, non-parent.
+     *   Map / N Map (Missing M): listed, REQ, INV > 0, eBay Stock > 0; mapped within the same
+     *   /map-issues tolerance (abs gap > 3 units when 3% of INV < 3, else rounded % > 3 = N Map).
      */
     private function getEbay2LiveMapMissCountsFromTabulator(Request $request): array
     {
@@ -6110,13 +6264,21 @@ class ChannelMasterController extends Controller
                     continue;
                 }
 
-                // Listed: Map vs N Map / Missing M (tolerance = |INV − eBay Stock| <= 3 OR <= 3% INV).
+                // Listed: Map vs N Map / Missing M — same rule as /map-issues. Both sides must
+                // have stock (eBay Stock > 0); otherwise the row is neither Map nor N Map.
+                if ($eStock <= 0) {
+                    continue;
+                }
                 $diff = abs($inv - $eStock);
-                $tolerance = max(3.0, $inv * 0.03);
-                if ($diff <= $tolerance + 1e-9) {
-                    $map++;
+                if ($inv * 0.03 < 3) {
+                    $isNotMap = $diff > 3;
                 } else {
+                    $isNotMap = round(($diff / $inv) * 100) > 3;
+                }
+                if ($isNotMap) {
                     $nmap++;
+                } else {
+                    $map++;
                 }
             }
 

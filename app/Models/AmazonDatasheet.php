@@ -33,6 +33,25 @@ class AmazonDatasheet extends Model
     ];
 
     /**
+     * Normalize a SKU the same way the amazon-tabulator-view page does for its
+     * amazon_datsheets lookup: uppercase, NBSP -> space, trim, then remove ALL
+     * spaces (so "DP 200 1 Pcs" and "DP200 1Pcs" map to the same key). Used so
+     * /map-issues resolves the same listed/stock rows as the Amazon page.
+     */
+    public static function normalizeSkuForLookup(?string $sku): string
+    {
+        if ($sku === null) {
+            return '';
+        }
+        $clean = strtoupper(str_replace("\xC2\xA0", ' ', trim($sku)));
+        $clean = str_replace(' ', '', $clean);
+
+        // Fold trailing piece-count spelling drift so "2 PCS" / "2PCS" / "2PIECES"
+        // all match the datasheet's "2PC" (same idea as ReverbProduct::normalizeSkuForLookup).
+        return preg_replace('/(\d+)(PCS?|PIECES?)$/', '$1PC', $clean);
+    }
+
+    /**
      * Match Product Master / grid key to `amazon_datsheets.sku` (spaces + case insensitive)
      * and return the stored seller MSKU string for SP-API Listings calls.
      *

@@ -148,15 +148,11 @@ class OverallAmazonController extends Controller
         }, $skus))));
         $allSkusForLookup = array_values(array_unique(array_filter(array_merge($skus, $cleanedSkus, $noSpaceSkus))));
 
-        // Fetch by exact SKU match OR by normalized (space-removed) match so "SP12120 8OHM GTR" in DB matches product "SP 12120 8OHM GTR"
-        $amazonDatasheetsBySku = AmazonDatasheet::where(function ($q) use ($allSkusForLookup, $noSpaceSkus) {
-            $q->whereIn('sku', $allSkusForLookup);
-            if (!empty($noSpaceSkus)) {
-                $q->orWhereIn(DB::raw("UPPER(REPLACE(REPLACE(TRIM(COALESCE(sku,'')), UNHEX('C2A0'), ' '), ' ', ''))"), $noSpaceSkus);
-            }
-        })->get()->keyBy(function ($item) {
-            $norm = strtoupper(str_replace("\xC2\xA0", ' ', trim($item->sku ?? '')));
-            return str_replace(' ', '', $norm);
+        // Key every datasheet row by the shared Amazon normalization (spaces removed +
+        // PCS/PC piece-count fold) so product "SP 12120 8OHM GTR" matches "SP12120 8OHM GTR"
+        // and "MS 080 WH 2 PCS" matches the datasheet's "MS 080 WH 2PC". Only ~1k rows.
+        $amazonDatasheetsBySku = AmazonDatasheet::query()->get()->keyBy(function ($item) {
+            return AmazonDatasheet::normalizeSkuForLookup($item->sku ?? '');
         });
 
         $shopifyData = ShopifySku::mapByProductSkus($skus);
@@ -357,7 +353,9 @@ class OverallAmazonController extends Controller
 
             // Normalize parent: trim, collapse multiple spaces, so "10  FR" and "10 FR" group together and get one parent summary row
             $parent = preg_replace('/\s+/', ' ', trim((string) ($pm->parent ?? '')));
-            $amazonSheet = $amazonDatasheetsBySku[$skuLookupKey] ?? ($amazonDatasheetsBySku[$skuClean] ?? ($amazonDatasheetsBySku[$sku] ?? null));
+            // Amazon datasheet match uses the shared normalization (spaces removed + PCS/PC fold).
+            $amazonSheetKey = AmazonDatasheet::normalizeSkuForLookup($pm->sku);
+            $amazonSheet = $amazonDatasheetsBySku[$amazonSheetKey] ?? ($amazonDatasheetsBySku[$skuLookupKey] ?? ($amazonDatasheetsBySku[$skuClean] ?? ($amazonDatasheetsBySku[$sku] ?? null)));
             $shopify = $shopifyData[$pm->sku] ?? null;
 
             $row = [];
