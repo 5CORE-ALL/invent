@@ -14,8 +14,11 @@
             white-space: nowrap; height: 78px; display: flex; align-items: center;
             justify-content: center; font-size: 11px; font-weight: 600;
         }
-        .tabulator .tabulator-header .tabulator-col { height: 80px !important; }
-        .tabulator .tabulator-row { min-height: 50px; }
+        .tabulator .tabulator-tableholder { scrollbar-width: thin; scrollbar-color: #c1c1c1 transparent; }
+        .tabulator .tabulator-tableholder::-webkit-scrollbar { width: 8px; height: 8px; }
+        .tabulator .tabulator-tableholder::-webkit-scrollbar-track { background: transparent; }
+        .tabulator .tabulator-tableholder::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        .tabulator .tabulator-tableholder::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
 
         /* ── Parent row – identical to amazon_tabulator_view ── */
         .tabulator-row.ae-parent-row,
@@ -35,32 +38,9 @@
             background-color: #93c5fd !important;
         }
 
-        /* ── Modern pagination – identical to amazon_tabulator_view ── */
-        .tabulator .tabulator-footer {
-            background: #f8fafc !important; border-top: 1px solid #e2e8f0 !important;
-            padding: 10px 16px !important;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator {
-            display: flex; align-items: center; justify-content: center; gap: 4px;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
-            font-size: 14px !important; font-weight: 500 !important;
-            min-width: 36px !important; height: 36px !important; line-height: 36px !important;
-            padding: 0 10px !important; border-radius: 8px !important;
-            border: 1px solid #e2e8f0 !important; background: #fff !important;
-            color: #475569 !important; cursor: pointer; transition: all 0.15s ease !important;
-            text-align: center !important;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
-            background: #f1f5f9 !important; border-color: #cbd5e1 !important; color: #1e293b !important;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
-            background: #4361ee !important; border-color: #4361ee !important;
-            color: #fff !important; font-weight: 600 !important;
-            box-shadow: 0 2px 6px rgba(67,97,238,0.3) !important;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
-            opacity: 0.4 !important; cursor: not-allowed !important;
+        /* Custom pagination label (match ebay-tabulator-view) */
+        .tabulator-paginator label {
+            margin-right: 5px;
         }
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0 !important;
@@ -117,10 +97,9 @@
                     {{-- ── Filter bar (TikTok style) ── --}}
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
 
-                        {{-- Row type filter (All Rows / Parents / SKUs) – same as Amazon --}}
+                        {{-- Row type filter (All Rows / SKUs) — parent rows are hidden --}}
                     <select id="ae-row-type-filter" class="form-select form-select-sm" style="width:120px;">
                         <option value="all" selected>All Rows</option>
-                        <option value="parents">Parents</option>
                         <option value="skus">SKUs</option>
                     </select>
 
@@ -530,11 +509,19 @@
             return diff <= invNum * 0.03 + 1e-9;
         }
 
-        /** True when row counts as Missing L (Amazon: INV>0, NR=REQ, not on Shein price sheet). */
+        /** NR/REQ status — prefer editable nr_req (shein_listing_statuses), fall back to meta NR. Same source eBay uses. */
+        function sheinNrReq(row) {
+            return ((row && (row.nr_req || row.NR)) || '').toString().trim().toUpperCase();
+        }
+
+        /**
+         * Missing L — same logic as eBay isEbayMissingL:
+         * not listed (no Shein price / special offer), NR/REQ === 'REQ', INV > 0, not a parent row.
+         */
         function sheinRowIsMissingL(row) {
             if (!row || row.is_parent) return false;
             const inv = parseFloat(row.inv) || 0;
-            const nr = (row.NR || '').trim();
+            const nr = sheinNrReq(row);
             const isMissingShein = !!row.is_missing_shein || (String(row.missing || '').trim().toUpperCase() === 'M');
             const price = parseFloat(row.special_offer) || 0;
             return inv > 0 && nr === 'REQ' && (isMissingShein || price <= 0);
@@ -621,7 +608,7 @@
                 table.addFilter(d => {
                     if (d.is_parent) return false;
                     const inv = parseFloat(d.inv) || 0;
-                    const nr = (d.NR || '').trim();
+                    const nr = sheinNrReq(d);
                     if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return false;
                     return parseFloat(d.special_offer) > 0 && sheinInvWithinMapTolerance(inv, d.shein_stock);
                 });
@@ -629,7 +616,7 @@
                 table.addFilter(d => {
                     if (d.is_parent) return false;
                     const inv = parseFloat(d.inv) || 0;
-                    const nr = (d.NR || '').trim();
+                    const nr = sheinNrReq(d);
                     if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return false;
                     if (parseFloat(d.special_offer) <= 0) return false;
                     return !sheinInvWithinMapTolerance(inv, d.shein_stock);
@@ -658,7 +645,7 @@
                 table.addFilter(d => {
                     if (d.is_parent) return false;
                     const inv = parseFloat(d.inv) || 0;
-                    const nr = (d.NR || '').trim();
+                    const nr = sheinNrReq(d);
                     if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return false;
                     return parseFloat(d.special_offer) > 0 && sheinInvWithinMapTolerance(inv, d.shein_stock);
                 });
@@ -667,7 +654,7 @@
                 table.addFilter(d => {
                     if (d.is_parent) return false;
                     const inv = parseFloat(d.inv) || 0;
-                    const nr = (d.NR || '').trim();
+                    const nr = sheinNrReq(d);
                     if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return false;
                     const price = parseFloat(d.special_offer) || 0;
                     if (price <= 0) return false;
@@ -721,7 +708,7 @@
                 const al30   = parseFloat(row.al30)   || 0;
                 const inv    = parseFloat(row.inv)    || 0;
                 const ovL30  = parseFloat(row.ov_l30) || 0;
-                const nr     = (row.NR || '').trim();
+                const nr     = sheinNrReq(row);
                 const isMissingShein = !!row.is_missing_shein;
                 const rowPrice = parseFloat(row.special_offer) || 0;
                 const isMissingL = sheinRowIsMissingL(row);
@@ -741,15 +728,13 @@
                 if (al30 === 0) zeroSold++; else moreSold++;
                 if (inv > 0) { dilSum += (ovL30 / inv) * 100; dilCount++; }
 
-                if (inv > 0 && nr === 'REQ') {
-                    if (isMissingShein || rowPrice <= 0) {
-                        missingCount++;
-                    } else if (!isMissingShein && rowPrice > 0) {
-                        if (sheinInvWithinMapTolerance(inv, row.shein_stock)) {
-                            mapCount++;
-                        } else {
-                            nmapCount++;
-                        }
+                if (isMissingL) {
+                    missingCount++;
+                } else if (inv > 0 && nr === 'REQ' && !isMissingShein && rowPrice > 0) {
+                    if (sheinInvWithinMapTolerance(inv, row.shein_stock)) {
+                        mapCount++;
+                    } else {
+                        nmapCount++;
                     }
                 }
             });
@@ -778,14 +763,26 @@
             table = new Tabulator("#shein-pricing-table", {
                 ajaxURL: "/shein/pricing-data",
                 ajaxResponse: function(url, params, response) {
-                    summaryDataCache = normalizeRows(response);
+                    // Hide parent rows — drop them from the dataset entirely
+                    const rows = Array.isArray(response) ?
+                        response.filter(r => !(r && r.is_parent === true)) : response;
+                    summaryDataCache = normalizeRows(rows);
                     updateSummary(summaryDataCache);
                     setTimeout(aeApplyBadgeFilterFromUrl, 0);
-                    return response;
+                    return rows;
                 },
                 layout: "fitDataStretch",
+                height: "calc(100vh - 260px)",
                 pagination: true,
                 paginationSize: 100,
+                paginationSizeSelector: [10, 25, 50, 100, 200],
+                langs: {
+                    "default": {
+                        "pagination": {
+                            "page_size": "SKU Count"
+                        }
+                    }
+                },
                 initialSort: [],
                 rowFormatter: function(row) {
                     if (row.getData().is_parent === true) {
@@ -883,6 +880,28 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return;
                             openSheinEditLinksModal(cell.getRow());
+                        }
+                    },
+                    {
+                        title: "NR",
+                        field: "nr_req",
+                        width: 60,
+                        frozen: true,
+                        hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "Required (REQ) / Not Required (NR)",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const sku = String(d.sku || '').replace(/"/g, '&quot;');
+                            const value = cell.getValue() || 'REQ';
+                            return '<select class="form-select form-select-sm shein-nr-dropdown" data-sku="' + sku + '" style="width:52px;border:1px solid #adb5bd;padding:2px;font-size:16px;text-align:center;cursor:pointer;" onclick="event.stopPropagation();">' +
+                                '<option value="REQ"' + (value === 'REQ' ? ' selected' : '') + '>\uD83D\uDFE2</option>' +
+                                '<option value="NR"' + (value === 'NR' ? ' selected' : '') + '>\uD83D\uDD34</option>' +
+                                '</select>';
+                        },
+                        cellClick: function(e, cell) {
+                            e.stopPropagation();
                         }
                     },
                     {
@@ -986,7 +1005,7 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
                             const inv = parseFloat(d.inv) || 0;
-                            const nr = (d.NR || '').trim();
+                            const nr = sheinNrReq(d);
                             if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return '';
                             const rowPrice = parseFloat(d.special_offer) || 0;
                             if (rowPrice <= 0) return '';
@@ -1689,6 +1708,38 @@
                 },
                 complete: function() {
                     $btn.prop('disabled', false).text('Save');
+                }
+            });
+        });
+
+        // NR / REQ dropdown — saves to shein_listing_statuses (same source as listing-shein)
+        $(document).on('change', '.shein-nr-dropdown', function() {
+            const $select = $(this);
+            const sku = $select.data('sku');
+            const value = $select.val();
+
+            const rows = table ? table.searchRows('sku', '=', sku) : [];
+            if (rows.length) {
+                rows[0].update({ nr_req: value });
+            }
+
+            $.ajax({
+                url: '/listing_shein/save-status',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    sku: sku,
+                    nr_req: value
+                },
+                success: function(res) {
+                    if (res && res.status === 'success') {
+                        sheinLinksNotify(value === 'REQ' ? 'REQ updated' : 'NR updated', 'success');
+                    } else {
+                        sheinLinksNotify('Failed to save NR/REQ', 'error');
+                    }
+                },
+                error: function() {
+                    sheinLinksNotify('Failed to save NR/REQ for ' + sku, 'error');
                 }
             });
         });

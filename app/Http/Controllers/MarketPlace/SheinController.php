@@ -1344,6 +1344,9 @@ class SheinController extends Controller
                     : [];
                 $buyerLink  = $linkVal['buyer_link']  ?? '';
                 $sellerLink = $linkVal['seller_link'] ?? '';
+                // NR/REQ status — prefer shein_listing_statuses.nr_req (same source as listing-shein),
+                // fall back to meta-derived value, then INV-based default.
+                $nrReq = $linkVal['nr_req'] ?? $nr ?? ($inv > 0 ? 'REQ' : 'NR');
 
                 $rows[] = [
                     'sku'          => trim((string) $displaySku),
@@ -1353,6 +1356,7 @@ class SheinController extends Controller
                     'B Link'       => $buyerLink,
                     'S Link'       => $sellerLink,
                     'NR'           => $nr,
+                    'nr_req'       => $nrReq,
                     'is_missing_shein' => $isMissingShein,
                     'missing'      => $isMissingShein ? 'M' : '',
                     'map'          => $mapValue,

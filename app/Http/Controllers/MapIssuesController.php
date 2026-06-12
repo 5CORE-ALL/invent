@@ -20,6 +20,7 @@ use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
 use App\Models\ReverbListingStatus;
 use App\Models\ReverbProduct;
+use App\Models\SheinPricingPrice;
 use App\Models\ShopifySku;
 use App\Models\TemuListingStatus;
 use App\Models\TemuPricing;
@@ -91,6 +92,9 @@ class MapIssuesController extends Controller
                 'temu_not_map_count' => 0,
                 'temu_mismatch_count' => 0,
                 'temu_missing_listing_count' => 0,
+                'shein_not_map_count' => 0,
+                'shein_mismatch_count' => 0,
+                'shein_missing_listing_count' => 0,
             ]);
         }
 
@@ -148,6 +152,15 @@ class MapIssuesController extends Controller
         $temuByNorm     = $this->buildTemuLookupByNormalizedSku($skus);
         $nrStatusTemu   = $this->buildTemuNrReqStatusLookup($skus);
 
+        // Shein: stock (shein_stock), price (special_offer_price) and stored SKU come from
+        // shein_pricing_prices (listed = a pricing row with special offer > 0, same as the
+        // shein-pricing page). NR/REQ comes from shein_listing_statuses' "nr_req" key, falling
+        // back to shein_data_views meta — identical to the shein-pricing page, so Missing L /
+        // N Map gate on REQ exactly like that page.
+        $sheinByNorm        = $this->buildSheinLookupByNormalizedSku();
+        $sheinListingByNorm = $this->buildSheinListingStatusLookup();
+        $sheinMetaByNorm    = $this->buildSheinMetaLookup();
+
         // 4. Build rows
         $result = [];
         $notMapCount = 0;          // eBay:  INV != eBay Stock (same logic as eBay page)
@@ -177,6 +190,9 @@ class MapIssuesController extends Controller
         $temuNotMapCount = 0;          // Temu: INV != Temu Stock
         $temuMismatchCount = 0;        // Temu: SKU stored differently
         $temuMissingListingCount = 0;  // Temu: not listed, REQ, INV > 0
+        $sheinNotMapCount = 0;          // Shein: INV != Shein Stock
+        $sheinMismatchCount = 0;        // Shein: SKU stored differently
+        $sheinMissingListingCount = 0;  // Shein: not listed, REQ, INV > 0
         foreach ($productMasters as $pm) {
             $key = ShopifySku::normalizeSkuForShopifyLookup($pm->sku);
 
@@ -197,6 +213,9 @@ class MapIssuesController extends Controller
             // Temu uses its own normalization (PCS→PC + collapsed spaces), same as temu-decrease.
             $temuKey = $this->normalizeTemuSku($pm->sku);
             $temu    = $temuKey !== '' ? ($temuByNorm[$temuKey] ?? null) : null;
+            // Shein matches by uppercase+trim, same as the shein-pricing page.
+            $sheinKey = $this->normalizeSheinSku($pm->sku);
+            $shein   = $sheinKey !== '' ? ($sheinByNorm[$sheinKey] ?? null) : null;
 
             $inv = floatval($shopify->inv ?? 0);
 
@@ -483,6 +502,38 @@ class MapIssuesController extends Controller
                 $temuMissingListingCount++;
             }
 
+            // ---- Shein ----
+            $sheinStock = floatval($shein->shein_stock ?? 0);
+            $sheinSpOffer = floatval($shein->special_offer_price ?? 0);
+            // Listed = a pricing row with a special offer (same as the shein-pricing page).
+            $sheinListed = $shein !== null && $sheinSpOffer > 0;
+            $sheinSku = $shein->sku ?? null;
+            $sheinReason = $sheinSku !== null ? $this->skuDifferenceReason($pm->sku, $sheinSku, [$this, 'normalizeSheinSku']) : '';
+            $sheinHasIssue = $sheinReason !== '';
+            if ($sheinHasIssue) {
+                $sheinMismatchCount++;
+            }
+            // NR/REQ resolved exactly like the shein-pricing page: prefer shein_listing_statuses.nr_req,
+            // fall back to shein_data_views meta (which for a product-master SKU yields REQ unless flagged NR).
+            $sheinNrReq = $this->resolveSheinNrReq($sheinListingByNorm, $sheinMetaByNorm, $sheinKey, $inv);
+            $sheinIsNotMap = false;
+            $sheinWithin3 = false;
+            // N Map — same gate/tolerance as the shein-pricing page: listed, REQ, INV > 0,
+            // Map when diff ≤ 3 units OR diff ≤ 3% of INV (no Shein-stock > 0 gate).
+            if ($sheinListed && $sheinNrReq === 'REQ' && $inv > 0) {
+                $sheinDiffUnits = abs($inv - $sheinStock);
+                $sheinWithin3 = ($sheinDiffUnits <= 3.0) || ($sheinDiffUnits <= $inv * 0.03);
+                $sheinIsNotMap = ! $sheinWithin3;
+                if ($sheinIsNotMap) {
+                    $sheinNotMapCount++;
+                }
+            }
+            // Missing L — not listed, REQ, INV > 0 (same as the shein-pricing page).
+            $sheinMissingListing = ! $sheinListed && $inv > 0;
+            if ($sheinMissingListing && $sheinNrReq === 'REQ') {
+                $sheinMissingListingCount++;
+            }
+
             $result[] = [
                 '(Child) sku'    => $pm->sku,
                 'INV'            => $shopify->inv ?? 0,
@@ -570,6 +621,15 @@ class MapIssuesController extends Controller
                 'temu_missing_listing'  => $temuMissingListing,
                 'temu_nr_req'           => $temuNrReq,
 
+                'Shein Inv'             => $sheinStock,
+                'shein_sku'             => $sheinSku,
+                'shein_mismatch'        => $sheinHasIssue,
+                'shein_issue'           => $sheinReason,
+                'shein_not_map'         => $sheinIsNotMap,
+                'shein_within3'         => $sheinWithin3,
+                'shein_missing_listing' => $sheinMissingListing,
+                'shein_nr_req'          => $sheinNrReq,
+
                 'pm_missing'            => false,
             ];
         }
@@ -611,6 +671,9 @@ class MapIssuesController extends Controller
             'temu_not_map_count'  => $temuNotMapCount,
             'temu_mismatch_count' => $temuMismatchCount,
             'temu_missing_listing_count' => $temuMissingListingCount,
+            'shein_not_map_count'  => $sheinNotMapCount,
+            'shein_mismatch_count' => $sheinMismatchCount,
+            'shein_missing_listing_count' => $sheinMissingListingCount,
             'pm_missing_count'      => $pmMissingCount,
         ]);
     }
@@ -646,7 +709,7 @@ class MapIssuesController extends Controller
                             continue;
                         }
                         if (! isset($map[$k])) {
-                            $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null];
+                            $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null];
                         }
                         $map[$k][$field] = $r->ebay_stock ?? 0;
                     }
@@ -672,7 +735,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null];
                     }
                     $map[$k]['amazon'] = 0; // listed flag; real stock filled in below
                 }
@@ -692,7 +755,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null];
                     }
                     $map[$k]['reverb'] = floatval($r->remaining_inventory ?? 0);
                 }
@@ -712,7 +775,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null];
                     }
                     $map[$k]['macys'] = floatval($r->stock ?? 0);
                 }
@@ -732,7 +795,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null];
                     }
                     $map[$k]['bestbuy'] = floatval($r->stock ?? 0);
                 }
@@ -751,7 +814,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null];
                     }
                     $map[$k]['tiendamia'] = floatval($r->stock ?? 0);
                 }
@@ -771,9 +834,29 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null];
                     }
                     $map[$k]['temu'] = floatval($r->quantity ?? 0);
+                }
+
+                return true;
+            });
+
+        // Shein: a SKU is "listed" when it has a pricing row with a special offer > 0.
+        SheinPricingPrice::query()
+            ->select('sku', 'special_offer_price', 'shein_stock', 'id')
+            ->where('special_offer_price', '>', 0)
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$map, $pmKeys) {
+                foreach ($rows as $r) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $r->sku);
+                    if ($k === '' || isset($pmKeys[$k])) {
+                        continue;
+                    }
+                    if (! isset($map[$k])) {
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null];
+                    }
+                    $map[$k]['shein'] = floatval($r->shein_stock ?? 0);
                 }
 
                 return true;
@@ -827,6 +910,9 @@ class MapIssuesController extends Controller
             }
             if ($m['temu'] !== null) {
                 $listedOn[] = 'Temu';
+            }
+            if ($m['shein'] !== null) {
+                $listedOn[] = 'Shein';
             }
 
             $rows[] = [
@@ -915,6 +1001,15 @@ class MapIssuesController extends Controller
                 'temu_within3'          => false,
                 'temu_missing_listing'  => false,
                 'temu_nr_req'           => 'REQ',
+
+                'Shein Inv'             => $m['shein'] ?? 0,
+                'shein_sku'             => $m['shein'] !== null ? $m['sku'] : null,
+                'shein_mismatch'        => false,
+                'shein_issue'           => '',
+                'shein_not_map'         => false,
+                'shein_within3'         => false,
+                'shein_missing_listing' => false,
+                'shein_nr_req'          => 'REQ',
 
                 'pm_missing'            => true,
             ];
@@ -1493,6 +1588,129 @@ class MapIssuesController extends Controller
         }
 
         return $inv > 0 ? 'REQ' : 'NR';
+    }
+
+    /**
+     * Normalize a SKU the same way the shein-pricing page does (uppercase + trim) so
+     * listed/stock matching is identical.
+     */
+    private function normalizeSheinSku(string $sku): string
+    {
+        return strtoupper(trim($sku));
+    }
+
+    /**
+     * Build a normalized-SKU => shein_pricing_prices row (sku + special_offer_price + shein_stock)
+     * lookup. Loads every pricing row and keys by the shein-pricing normalization (first row wins).
+     *
+     * @return array<string, \Illuminate\Database\Eloquent\Model>
+     */
+    private function buildSheinLookupByNormalizedSku(): array
+    {
+        $byNorm = [];
+        foreach (SheinPricingPrice::select('sku', 'special_offer_price', 'shein_stock')->get() as $row) {
+            $k = $this->normalizeSheinSku((string) $row->sku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $byNorm[$k] = $row;
+            }
+        }
+
+        return $byNorm;
+    }
+
+    /**
+     * Build a normalized-SKU => shein_listing_statuses value (array) lookup. The shein-pricing
+     * page reads "nr_req" from this JSON value (same source as the listing-shein page).
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function buildSheinListingStatusLookup(): array
+    {
+        $byNorm = [];
+        foreach (\App\Models\SheinListingStatus::query()->get(['sku', 'value']) as $row) {
+            $k = $this->normalizeSheinSku((string) $row->sku);
+            if ($k === '' || isset($byNorm[$k])) {
+                continue;
+            }
+            $val = is_array($row->value) ? $row->value : (json_decode((string) $row->value, true) ?: []);
+            $byNorm[$k] = is_array($val) ? $val : [];
+        }
+
+        return $byNorm;
+    }
+
+    /**
+     * Build a normalized-SKU => shein_data_views meta (array) lookup used to derive NR/REQ
+     * when shein_listing_statuses has no explicit nr_req (same fallback as the shein-pricing page).
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function buildSheinMetaLookup(): array
+    {
+        $byNorm = [];
+        foreach (\App\Models\SheinDataView::query()->get(['sku', 'value']) as $row) {
+            $k = $this->normalizeSheinSku((string) $row->sku);
+            if ($k === '' || isset($byNorm[$k])) {
+                continue;
+            }
+            $val = is_array($row->value) ? $row->value : (json_decode((string) $row->value, true) ?: []);
+            $byNorm[$k] = is_array($val) ? $val : [];
+        }
+
+        return $byNorm;
+    }
+
+    /**
+     * Resolve Shein NR/REQ exactly like the shein-pricing page:
+     * prefer shein_listing_statuses.nr_req, then shein_data_views meta, then INV-based default.
+     *
+     * @param  array<string, array<string, mixed>>  $listingByNorm
+     * @param  array<string, array<string, mixed>>  $metaByNorm
+     */
+    private function resolveSheinNrReq(array $listingByNorm, array $metaByNorm, string $key, float $inv): string
+    {
+        if ($key !== '' && isset($listingByNorm[$key]['nr_req'])) {
+            $v = strtoupper(trim((string) $listingByNorm[$key]['nr_req']));
+            if ($v !== '') {
+                return $v;
+            }
+        }
+
+        $meta = $key !== '' ? ($metaByNorm[$key] ?? []) : [];
+        $metaNr = $this->resolveSheinNrFromMeta($meta);
+        if ($metaNr !== null) {
+            return $metaNr;
+        }
+
+        return $inv > 0 ? 'REQ' : 'NR';
+    }
+
+    /**
+     * Mirror of SheinController::resolveSheinNrFromMeta with hasProductMaster = true (map-issues
+     * only iterates product-master SKUs, so the page always passes true here).
+     *
+     * @param  array<string, mixed>  $meta
+     */
+    private function resolveSheinNrFromMeta(array $meta): ?string
+    {
+        $nrl = strtoupper(trim((string) ($meta['NRL'] ?? '')));
+        if ($nrl === 'NRL') {
+            return 'NR';
+        }
+        if ($nrl === 'REQ') {
+            return 'REQ';
+        }
+
+        $nr = $meta['NR'] ?? $meta['NRP'] ?? null;
+        if (is_bool($nr)) {
+            return $nr ? 'NR' : 'REQ';
+        }
+        $nrOut = strtoupper(trim((string) $nr));
+        if ($nrOut === 'NR' || $nrOut === 'NRL') {
+            return 'NR';
+        }
+
+        return 'REQ';
     }
 
     /**

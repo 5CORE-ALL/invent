@@ -58,6 +58,15 @@
             background-color: #a8430c !important;
         }
 
+        /* Shein badge colors (black) */
+        .badge.sh-off {
+            background-color: #333333 !important;
+        }
+
+        .badge.sh-on {
+            background-color: #000000 !important;
+        }
+
         /* Active badge outline */
         .badge.map-active {
             box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.55);
@@ -156,6 +165,15 @@
                         <span class="badge tu-off fs-6 p-2" id="temu-missing-listing-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Temu Missing Listing — not listed on Temu, marked REQ, INV > 0">TU NL: 0</span>
+                        <span class="badge sh-off fs-6 p-2" id="shein-not-map-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Shein Not Mapped — listed on Shein but INV does not match Shein Inv">SH NP: 0</span>
+                        <span class="badge sh-off fs-6 p-2" id="shein-mismatch-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Shein SKU Mismatch — Shein SKU does not exactly match the Product Master SKU">SH SM: 0</span>
+                        <span class="badge sh-off fs-6 p-2" id="shein-missing-listing-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Shein Missing Listing — not listed on Shein, INV > 0 (Shein has no NR status)">SH NL: 0</span>
                     </div>
                     <div class="mb-3 d-flex gap-4">
                         <div class="form-check form-switch">
@@ -221,9 +239,9 @@
             var showSiteOnly = false; // "Show SKUs not in Product Master" toggle
             var hideSmallDiff = false; // "Hide ≤3% diff rows" toggle
 
-            var invFieldByMarket = { ebay: 'Ebay Inv', ebay2: 'Ebay2 Inv', ebay3: 'Ebay3 Inv', amazon: 'Amazon Inv', reverb: 'Reverb Inv', macys: 'Macys Inv', bestbuy: 'Bestbuy Inv', tiendamia: 'Tiendamia Inv', temu: 'Temu Inv' };
-            var nrFieldByMarket  = { ebay: 'ebay_nr_req', ebay2: 'ebay2_nr_req', ebay3: 'ebay3_nr_req', amazon: 'amazon_nr_req', reverb: 'reverb_nr_req', macys: 'macys_nr_req', bestbuy: 'bestbuy_nr_req', tiendamia: 'tiendamia_nr_req', temu: 'temu_nr_req' };
-            var within3FieldByMarket = { ebay: 'ebay_within3', ebay2: 'ebay2_within3', ebay3: 'ebay3_within3', amazon: 'amazon_within3', reverb: 'reverb_within3', macys: 'macys_within3', bestbuy: 'bestbuy_within3', tiendamia: 'tiendamia_within3', temu: 'temu_within3' };
+            var invFieldByMarket = { ebay: 'Ebay Inv', ebay2: 'Ebay2 Inv', ebay3: 'Ebay3 Inv', amazon: 'Amazon Inv', reverb: 'Reverb Inv', macys: 'Macys Inv', bestbuy: 'Bestbuy Inv', tiendamia: 'Tiendamia Inv', temu: 'Temu Inv', shein: 'Shein Inv' };
+            var nrFieldByMarket  = { ebay: 'ebay_nr_req', ebay2: 'ebay2_nr_req', ebay3: 'ebay3_nr_req', amazon: 'amazon_nr_req', reverb: 'reverb_nr_req', macys: 'macys_nr_req', bestbuy: 'bestbuy_nr_req', tiendamia: 'tiendamia_nr_req', temu: 'temu_nr_req', shein: 'shein_nr_req' };
+            var within3FieldByMarket = { ebay: 'ebay_within3', ebay2: 'ebay2_within3', ebay3: 'ebay3_within3', amazon: 'amazon_within3', reverb: 'reverb_within3', macys: 'macys_within3', bestbuy: 'bestbuy_within3', tiendamia: 'tiendamia_within3', temu: 'temu_within3', shein: 'shein_within3' };
 
             // NR/REQ column: green "Req", red "Not Req" (anything other than REQ).
             function nrReqFormatter(cell) {
@@ -376,6 +394,12 @@
                         'TU SM: ' + (response.temu_mismatch_count || 0).toLocaleString();
                     document.getElementById('temu-missing-listing-count-badge').textContent =
                         'TU NL: ' + (response.temu_missing_listing_count || 0).toLocaleString();
+                    document.getElementById('shein-not-map-count-badge').textContent =
+                        'SH NP: ' + (response.shein_not_map_count || 0).toLocaleString();
+                    document.getElementById('shein-mismatch-count-badge').textContent =
+                        'SH SM: ' + (response.shein_mismatch_count || 0).toLocaleString();
+                    document.getElementById('shein-missing-listing-count-badge').textContent =
+                        'SH NL: ' + (response.shein_missing_listing_count || 0).toLocaleString();
                     document.getElementById('site-only-count').textContent =
                         response.pm_missing_count ? '(' + response.pm_missing_count.toLocaleString() + ')' : '';
                     return response.data || [];
@@ -407,6 +431,7 @@
                     { title: 'NR/REQ', field: 'bestbuy_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('bestbuy') },
                     { title: 'NR/REQ', field: 'tiendamia_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('tiendamia') },
                     { title: 'NR/REQ', field: 'temu_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('temu') },
+                    { title: 'NR/REQ', field: 'shein_nr_req', visible: false, formatter: nrReqFormatter },
                     { title: 'INV', field: 'INV', hozAlign: 'right', sorter: 'number' },
                     {
                         title: 'Ebay Inv', field: 'Ebay Inv', hozAlign: 'right', sorter: 'number',
@@ -498,6 +523,16 @@
                             }
                         },
                     },
+                    {
+                        title: 'Shein Inv', field: 'Shein Inv', hozAlign: 'right', sorter: 'number',
+                        formatter: invFormatter('shein_mismatch'),
+                        cellClick: function (e, cell) {
+                            if (e.target.classList.contains('map-info-icon')) {
+                                var d = cell.getRow().getData();
+                                showIssueModal('Shein', d['(Child) sku'], d.shein_sku, d.shein_issue);
+                            }
+                        },
+                    },
                     { title: 'Diff', field: 'diff', visible: false, hozAlign: 'right', formatter: diffFormatter, sorter: diffSorter },
                 ],
             });
@@ -532,6 +567,9 @@
                 tunp: { el: document.getElementById('temu-not-map-count-badge'),  field: 'temu_not_map', market: 'temu', off: 'tu-off',  on: 'tu-on' },
                 tusm: { el: document.getElementById('temu-mismatch-count-badge'), field: 'temu_mismatch',market: 'temu', off: 'tu-off',  on: 'tu-on' },
                 tuml: { el: document.getElementById('temu-missing-listing-count-badge'), field: 'temu_missing_listing', market: 'temu', off: 'tu-off', on: 'tu-on' },
+                shnp: { el: document.getElementById('shein-not-map-count-badge'),  field: 'shein_not_map', market: 'shein', off: 'sh-off',  on: 'sh-on' },
+                shsm: { el: document.getElementById('shein-mismatch-count-badge'), field: 'shein_mismatch',market: 'shein', off: 'sh-off',  on: 'sh-on' },
+                shml: { el: document.getElementById('shein-missing-listing-count-badge'), field: 'shein_missing_listing', market: 'shein', off: 'sh-off', on: 'sh-on' },
             };
 
             function applyFilters() {
