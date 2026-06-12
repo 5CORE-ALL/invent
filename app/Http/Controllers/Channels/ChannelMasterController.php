@@ -11621,7 +11621,9 @@ class ChannelMasterController extends Controller
         if (Schema::hasColumn('channel_master', 'missing_link')) {
             $channel->missing_link = $missingLink;
         }
-        if (Schema::hasColumn('channel_master', 'addition_sheet')) {
+        // Addition Sheet is no longer editable from the UI; only touch it when
+        // the request actually sends the field so existing values aren't wiped.
+        if (Schema::hasColumn('channel_master', 'addition_sheet') && $request->has('addition_sheet')) {
             $channel->addition_sheet = $additionSheet;
         }
 
@@ -11664,10 +11666,16 @@ class ChannelMasterController extends Controller
             $cachePayload = [
                 'sheet_link'     => $sheetUrl,
                 'type'           => $type,
-                'target'         => is_numeric($target) ? (float) $target : null,
                 'missing_link'   => $missingLink,
-                'addition_sheet' => $additionSheet,
             ];
+            // Only mirror Target / Addition Sheet into the cache when the form
+            // actually sent them (both fields were removed from the UI).
+            if ($request->has('target')) {
+                $cachePayload['target'] = is_numeric($target) ? (float) $target : null;
+            }
+            if ($request->has('addition_sheet')) {
+                $cachePayload['addition_sheet'] = $additionSheet;
+            }
             if (Schema::hasColumn('channel_master_calculated_data', 'update_flag')) {
                 $cachePayload['update_flag'] = ($updateFlag === 'A' || $updateFlag === 'S') ? $updateFlag : null;
             }

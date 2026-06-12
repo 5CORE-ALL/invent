@@ -521,10 +521,6 @@
                             <input type="url" class="form-control" id="channelUrl">
                         </div>
                         <div class="mb-3">
-                            <label for="additionSheet" class="form-label">Addition Sheet</label>
-                            <input type="url" class="form-control" id="additionSheet" placeholder="https://...">
-                        </div>
-                        <div class="mb-3">
                             <label for="type" class="form-label">Type</label>
                             <select class="form-control" id="type">
                                 <option value="">Select Type</option>
@@ -534,11 +530,11 @@
                             </select>
                         </div>
                         <div class="mb-3">
-                            <label for="channelUpdate" class="form-label">Update</label>
+                            <label for="channelUpdate" class="form-label">Data Source</label>
                             <select class="form-control" id="channelUpdate">
                                 <option value="">Select</option>
-                                <option value="A">A</option>
-                                <option value="S">S</option>
+                                <option value="A">API</option>
+                                <option value="S">GS</option>
                             </select>
                         </div>
                     </form>
@@ -615,16 +611,11 @@
                             <small class="text-muted">This link will open when clicking channel name</small>
                         </div>
                         <div class="mb-3">
-                            <label for="editAdditionSheet" class="form-label">Addition Sheet</label>
-                            <input type="url" class="form-control" id="editAdditionSheet" placeholder="https://...">
-                            <small class="text-muted">This link will open when clicking the Missing L column</small>
-                        </div>
-                        <div class="mb-3">
-                            <label for="editChannelUpdate" class="form-label">Update</label>
+                            <label for="editChannelUpdate" class="form-label">Data Source</label>
                             <select class="form-control" id="editChannelUpdate">
                                 <option value="">Select</option>
-                                <option value="A">A</option>
-                                <option value="S">S</option>
+                                <option value="A">API</option>
+                                <option value="S">GS</option>
                             </select>
                         </div>
                     </form>
@@ -1557,7 +1548,7 @@
                         // channel_master.update — see ChannelMasterController::update().
                         title: "Source",
                         field: "Update",
-                        headerTooltip: "Data source tag for this channel. A = Auto, S = Sheet. Set in the channel's Edit modal.",
+                        headerTooltip: "Data source tag for this channel. A = API, S = GS. Set in the channel's Edit modal.",
                         hozAlign: "center",
                         width: 80,
                         sorter: function(a, b) {
@@ -1574,8 +1565,8 @@
                             }
                             // Color-coded chip so the two values are scannable at a glance.
                             const bg    = v === 'A' ? '#198754' : '#fd7e14';
-                            const label = v === 'A' ? 'Auto'    : 'Sheet';
-                            return `<span class="badge" style="background-color:${bg};color:#fff;font-weight:600;min-width:24px;" title="${label}">${v}</span>`;
+                            const label = v === 'A' ? 'API'     : 'GS';
+                            return `<span class="badge" style="background-color:${bg};color:#fff;font-weight:600;min-width:24px;" title="${label}">${label}</span>`;
                         }
                     },
                     {
@@ -3191,7 +3182,6 @@
                                     const sheetUrl = rowData['sheet_link'] || '';
                                     const type = rowData['type'] || '';
                                     const missingLink = rowData['missing_link'] || '';
-                                    const additionSheet = rowData['addition_sheet'] || '';
                                     const logo = rowData['logo'] || '';
                                     const sellerLink = rowData['seller_link'] || '';
 
@@ -3200,7 +3190,6 @@
                                     $('#editChannelUrl').val(sheetUrl);
                                     $('#editType').val(type);
                                     $('#editMissingLink').val(missingLink);
-                                    $('#editAdditionSheet').val(additionSheet);
                                     $('#editChannelSellerLink').val(sellerLink);
                                     $('#originalChannel').val(channel);
 
@@ -4581,7 +4570,6 @@
                     const sheetUrl = rowData['sheet_link'] || '';
                     const type = rowData['type'] || '';
                     const missingLink = rowData['missing_link'] || '';
-                    const additionSheet = rowData['addition_sheet'] || '';
                     const logo = rowData['logo'] || '';
                     const sellerLink = rowData['seller_link'] || '';
                     // Row exposes the value as 'Update' (see per-channel data builders).
@@ -4595,7 +4583,6 @@
                     $('#editChannelUrl').val(sheetUrl);
                     $('#editType').val(type);
                     $('#editMissingLink').val(missingLink);
-                    $('#editAdditionSheet').val(additionSheet);
                     $('#editChannelSellerLink').val(sellerLink);
                     $('#editChannelUpdate').val(updateFlag);
                     $('#originalChannel').val(channel);
@@ -4685,7 +4672,6 @@
             $(document).on('click', '#saveChannelBtn', function() {
                 const channelName = $('#channelName').val().trim();
                 const channelUrl = $('#channelUrl').val().trim();
-                const additionSheet = $('#additionSheet').val().trim();
                 const type = $('#type').val().trim();
                 const sellerLink = $('#channelSellerLink').val().trim();
                 const updateFlag = $('#channelUpdate').val();
@@ -4699,7 +4685,6 @@
                 const formData = new FormData();
                 formData.append('channel', channelName);
                 formData.append('sheet_link', channelUrl);
-                formData.append('addition_sheet', additionSheet);
                 formData.append('type', type);
                 formData.append('seller_link', sellerLink);
                 formData.append('update', updateFlag);
@@ -4744,7 +4729,6 @@
                 const sheetUrl = $('#editChannelUrl').val().trim();
                 const type = $('#editType').val();
                 const missingLink = $('#editMissingLink').val().trim();
-                const additionSheet = $('#editAdditionSheet').val().trim();
                 const originalChannel = $('#originalChannel').val().trim();
                 const sellerLink = $('#editChannelSellerLink').val().trim();
                 const updateFlag = $('#editChannelUpdate').val();
@@ -4760,7 +4744,6 @@
                 formData.append('sheet_url', sheetUrl);
                 formData.append('type', type);
                 formData.append('missing_link', missingLink);
-                formData.append('addition_sheet', additionSheet);
                 formData.append('original_channel', originalChannel);
                 formData.append('seller_link', sellerLink);
                 formData.append('update', updateFlag);
