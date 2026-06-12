@@ -26,6 +26,7 @@
         .action-btn { padding:5px 10px; border:none; border-radius:6px; font-size:11px; font-weight:500; display:inline-flex; align-items:center; gap:4px; }
         .view-btn { background:#17a2b8; color:#fff; }
         .edit-btn { background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%); color:#fff; }
+        .shopify-row-pull-btn { background:#f59e0b; color:#fff; padding:5px 8px; }
         /* Title Master–style horizontal marketplace cells */
         .marketplaces-cell { vertical-align:middle!important; }
         .bp-mp-inline { display:flex; flex-wrap:wrap; align-items:flex-end; gap:6px; justify-content:flex-start; min-width:120px; }
@@ -95,8 +96,19 @@
                     <div class="mb-3 bp-master-toolbar">
                         <button id="exportBtn" class="btn btn-primary"><i class="fas fa-download"></i> Export</button>
                         <button id="importBtn" class="btn btn-info"><i class="fas fa-upload"></i> Import</button>
+                        <button id="pullShopifyBtn" class="btn btn-warning"><i class="fas fa-download"></i> Shopify Pull</button>
                         <button id="pushSelectedBtn" class="btn btn-secondary"><i class="fas fa-cloud-upload-alt"></i> Push Selected</button>
                         <button id="pushAllBtn" class="btn btn-push-all"><i class="fas fa-cloud-upload-alt"></i> Push ALL to All Marketplaces</button>
+                        <select id="tableBulletStatusFilter" class="form-select form-select-sm" style="width:auto; display:inline-block; min-width:190px;">
+                            <option value="all">All bullet status</option>
+                            <option value="master_has">Master bullets present</option>
+                            <option value="master_missing">Master bullets missing</option>
+                            <option value="count_1">1 bullet point</option>
+                            <option value="count_2">2 bullet points</option>
+                            <option value="count_3">3 bullet points</option>
+                            <option value="count_4">4 bullet points</option>
+                            <option value="count_5">5 bullet points</option>
+                        </select>
                         <span class="text-muted small" id="rowCountBadge">0 products</span>
                         <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
                     </div>
@@ -146,17 +158,13 @@
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
-                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Edit Marketplace Bullet Points</h5>
+                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Edit Bullet Points</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="modalSku">
                     <div class="mb-2"><strong>SKU:</strong> <span id="modalSkuLabel"></span></div>
                     <div class="mb-2"><strong>Product:</strong> <span id="modalProductLabel"></span></div>
-                    <div class="modal-market-wrap mb-3">
-                        <div class="fw-semibold mb-2">Select Marketplaces</div>
-                        <div id="modalMarketplaceChecks" class="row g-2"></div>
-                    </div>
                     <div class="ai-edit-panel mb-3">
                         <div class="d-flex align-items-center gap-2 mb-2">
                             <button class="btn btn-primary btn-sm" id="editModalAiGenerateBtn"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
@@ -164,11 +172,11 @@
                         </div>
                         <div id="editModalAiFields" class="row g-2"></div>
                     </div>
-                    <div class="small text-muted">Edit bullet fields and push to selected marketplaces. Empty slots are allowed.</div>
+                    <div class="small text-muted">Edit bullet fields and save them to the product master. Empty slots are allowed.</div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="saveModalBtn"><i class="fas fa-save"></i> Save Selected</button>
+                    <button type="button" class="btn btn-primary" id="saveModalBtn"><i class="fas fa-save"></i> Save Bullet Points</button>
                 </div>
             </div>
         </div>
@@ -187,6 +195,82 @@
                     <button type="button" class="btn btn-primary" id="viewCopyAllBtn" title="Copy all text below to clipboard">
                         <i class="fas fa-copy me-1"></i> Copy all
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="shopifyPullModal" tabindex="-1" aria-labelledby="shopifyPullModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title" id="shopifyPullModalTitle"><i class="fas fa-download me-2"></i>Shopify Bullet Pull</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning small mb-3">
+                        This imports bullet points from Shopify into Product Master only. It does not push anything back to Shopify.
+                    </div>
+                    <div class="small text-muted mb-2" id="shopifyPullScopeText">Scope: currently filtered SKUs.</div>
+                    <div id="shopifyPullPanel" class="border rounded bg-light p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <strong>Progress</strong>
+                            <span class="small text-muted" id="shopifyPullStatus">Ready</span>
+                        </div>
+                        <div class="progress mb-3" style="height: 12px;">
+                            <div id="shopifyPullProgress" class="progress-bar bg-warning" role="progressbar" style="width:0%"></div>
+                        </div>
+                        <div id="shopifyPullLog" class="small font-monospace bg-white border rounded p-2" style="max-height:280px; overflow:auto;"></div>
+                    </div>
+                </div>
+                <div class="modal-footer border-top bg-light">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" id="startShopifyPullBtn" class="btn btn-warning"><i class="fas fa-play"></i> Run in BG</button>
+                    <button type="button" id="pauseShopifyPullBtn" class="btn btn-outline-warning" style="display:none;"><i class="fas fa-pause"></i> Pause</button>
+                    <button type="button" id="resumeShopifyPullBtn" class="btn btn-outline-success" style="display:none;"><i class="fas fa-play"></i> Resume</button>
+                    <button type="button" id="stopShopifyPullBtn" class="btn btn-outline-danger" style="display:none;"><i class="fas fa-stop"></i> Stop</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="shopifyPullConfirmModal" tabindex="-1" aria-labelledby="shopifyPullConfirmTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-warning-subtle">
+                    <h5 class="modal-title" id="shopifyPullConfirmTitle"><i class="fas fa-triangle-exclamation me-2"></i>Confirm Shopify Pull</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2" id="shopifyPullConfirmScope">Do you want to pull bullet points from Shopify?</p>
+                    <div class="alert alert-warning small mb-0">
+                        This action will update the existing bullet points in Product Master. It will not update Shopify.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" id="shopifyPullConfirmCancelBtn" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-warning" id="shopifyPullConfirmBtn"><i class="fas fa-download"></i> Yes, Pull Bullets</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="marketplacePushConfirmModal" tabindex="-1" aria-labelledby="marketplacePushConfirmTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger-subtle">
+                    <h5 class="modal-title" id="marketplacePushConfirmTitle"><i class="fas fa-triangle-exclamation me-2"></i>Confirm Marketplace Push</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2" id="marketplacePushConfirmMessage">Do you want to push these bullet points?</p>
+                    <div class="alert alert-danger small mb-0" id="marketplacePushConfirmWarning">
+                        This action will update the selected marketplace listing. Please confirm before continuing.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="marketplacePushConfirmBtn"><i class="fas fa-cloud-upload-alt"></i> Yes, Push</button>
                 </div>
             </div>
         </div>
@@ -232,9 +316,12 @@ document.addEventListener('DOMContentLoaded', () => {
         shopify_pls: { cls: 'btn-shopify-pls', short: 'PLS' },
     };
     let tableData = [];
-    let editRowModal, viewRowModal;
-    let preselectedMarketplace = null;
+    let editRowModal, viewRowModal, shopifyPullModal, shopifyPullConfirmModal, marketplacePushConfirmModal;
     let lastViewModalPlainText = '';
+    let shopifyPullPollTimer = null;
+    let shopifyPullSelectedSkus = null;
+    let shopifyPullConfirmResolver = null;
+    let marketplacePushConfirmResolver = null;
 
     const bySku = new Map();
     const cssEsc = (s) => (window.CSS && typeof window.CSS.escape === 'function')
@@ -267,6 +354,43 @@ document.addEventListener('DOMContentLoaded', () => {
         const mps = Array.isArray(marketplaces) ? marketplaces : [];
         if (!mps.includes('ebay3')) return true;
         return window.confirm(EBAY3_WARNING);
+    }
+
+    function confirmMarketplacePush({ sku = '', marketplaces = [], mode = 'single' } = {}) {
+        const labels = (Array.isArray(marketplaces) ? marketplaces : [marketplaces])
+            .filter(Boolean)
+            .map(mp => LABELS[mp] || mp);
+        const messageEl = document.getElementById('marketplacePushConfirmMessage');
+        const warningEl = document.getElementById('marketplacePushConfirmWarning');
+        const confirmBtn = document.getElementById('marketplacePushConfirmBtn');
+        const labelText = labels.length ? labels.join(', ') : 'selected marketplaces';
+        const skuText = sku ? ` for SKU ${sku}` : '';
+        const scopeText = mode === 'all'
+            ? 'all visible products and all marketplaces'
+            : mode === 'selected'
+                ? 'selected products'
+                : `${labelText}${skuText}`;
+
+        if (messageEl) {
+            messageEl.textContent = `Do you want to push bullet points to ${scopeText}?`;
+        }
+        if (warningEl) {
+            warningEl.textContent = (Array.isArray(marketplaces) && marketplaces.includes('ebay3'))
+                ? EBAY3_WARNING
+                : 'This action will update the selected marketplace listing. Please confirm before continuing.';
+        }
+        if (confirmBtn) {
+            confirmBtn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Yes, Push';
+        }
+
+        if (!marketplacePushConfirmModal || !window.bootstrap) {
+            return Promise.resolve(window.confirm(`Do you want to push bullet points to ${scopeText}?`));
+        }
+
+        return new Promise(resolve => {
+            marketplacePushConfirmResolver = resolve;
+            marketplacePushConfirmModal.show();
+        });
     }
 
     function summarizeMarketplacePushRetries(results) {
@@ -352,6 +476,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="action-buttons-group">
                         <button type="button" class="action-btn view-btn" data-view="${esc(sku)}" title="View Bullet Points" aria-label="View Bullet Points"><i class="fas fa-eye" aria-hidden="true"></i></button>
                         <button type="button" class="action-btn edit-btn" data-edit="${esc(sku)}"><i class="fas fa-edit"></i> Edit</button>
+                        <button type="button" class="action-btn shopify-row-pull-btn" data-shopify-pull-sku="${esc(sku)}" title="Pull Shopify bullets for this SKU"><i class="fas fa-download"></i></button>
                     </div>
                 </td>
                 <td>${groupCell('gChannels', sku, bp)}</td>
@@ -365,6 +490,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function bindRowEvents() {
         document.querySelectorAll('.view-btn[data-view]').forEach(b => b.addEventListener('click', () => openViewModal(b.dataset.view)));
         document.querySelectorAll('.edit-btn[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
+        document.querySelectorAll('.shopify-row-pull-btn[data-shopify-pull-sku]').forEach(b => b.addEventListener('click', () => startSingleShopifyPull(b.dataset.shopifyPullSku, b)));
         document.querySelectorAll('.bp-mp-stack[data-push-mp]').forEach(b => b.addEventListener('click', () => {
             pushSingleMarketplace(b.dataset.sku, b.dataset.pushMp, b);
         }));
@@ -476,21 +602,16 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('modalSku').value = sku;
         document.getElementById('modalSkuLabel').textContent = sku;
         document.getElementById('modalProductLabel').textContent = row.Parent || sku;
-        document.getElementById('modalMarketplaceChecks').innerHTML = MARKETPLACES.map(mp => `
-            <div class="col-md-3 col-sm-4 col-6">
-                <label class="form-check">
-                    <input type="checkbox" class="form-check-input modal-mp-check" data-mp="${mp}" ${preselectedMarketplace ? (preselectedMarketplace === mp ? 'checked' : '') : ''}>
-                    <span>${esc(LABELS[mp])}</span>
-                </label>
-            </div>
-        `).join('');
         renderEditModalAiFields(row);
         if (editRowModal) editRowModal.show();
-        preselectedMarketplace = null;
     }
 
     function renderEditModalAiFields(row) {
-        const current = splitBulletsForModal((row.default_bullets || '').trim() !== '' ? row.default_bullets : [row.bullet1, row.bullet2, row.bullet3, row.bullet4, row.bullet5].filter(Boolean).join('\n'));
+        const savedBullets = [row.bullet1, row.bullet2, row.bullet3, row.bullet4, row.bullet5]
+            .map(v => (v == null ? '' : String(v).trim()));
+        const current = savedBullets.some(Boolean)
+            ? savedBullets
+            : splitBulletsForModal(row.default_bullets || '');
         document.getElementById('editModalAiFields').innerHTML = [1,2,3,4,5].map(i => `
             <div class="col-12">
                 <div class="d-flex justify-content-between align-items-center">
@@ -553,17 +674,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getBulletLinesForPush(sku, row) {
-        const fromModal = getBulletLinesFromModal();
-        if (fromModal.some(l => l.length)) {
-            return fromModal;
+        const savedBullets = [row.bullet1, row.bullet2, row.bullet3, row.bullet4, row.bullet5]
+            .map(v => (v == null ? '' : String(v).trim()));
+        if (savedBullets.some(Boolean)) {
+            return savedBullets;
         }
-        return splitBulletsForModal((row.default_bullets || '').trim() !== '' ? row.default_bullets : [row.bullet1, row.bullet2, row.bullet3, row.bullet4, row.bullet5].filter(Boolean).join('\n')).map(s => s.trim());
+
+        return splitBulletsForModal(row.default_bullets || '').map(s => s.trim());
     }
 
-    function pushSingleMarketplace(sku, mp, stackEl) {
+    async function pushSingleMarketplace(sku, mp, stackEl) {
         const row = bySku.get(String(sku));
         if (!row) return;
-        if (!confirmEbay3Push([mp])) return;
+        const confirmed = await confirmMarketplacePush({ sku, marketplaces: [mp], mode: 'single' });
+        if (!confirmed) return;
         const lines = getBulletLinesForPush(sku, row);
         const combined = bulletLinesToPayload(lines);
         const payload = { sku, updates: [{ marketplace: mp, bullet_points: combined }] };
@@ -573,7 +697,7 @@ document.addEventListener('DOMContentLoaded', () => {
             origStackHtml = stackEl.innerHTML;
             stackEl.disabled = true;
             retryLabelTimer = setTimeout(() => {
-                if (stackEl.disabled) stackEl.innerHTML = '<span class="small text-nowrap">Retrying...</span>';
+                if (stackEl.disabled) stackEl.innerHTML = '<span class="small text-nowrap">Updating...</span>';
             }, 2000);
         }
         fetch('/bullet-point-master/update', {
@@ -603,59 +727,413 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function bulkPush(mode) {
-        toast('Use Edit modal to push bullet points to selected marketplaces.', false);
+    async function bulkPush(mode) {
+        const confirmed = await confirmMarketplacePush({ marketplaces: MARKETPLACES, mode });
+        if (!confirmed) return;
+        toast('Use marketplace tiles to push saved bullet points.', false);
+    }
+
+    function appendShopifyPullLog(message, ok = true) {
+        const log = document.getElementById('shopifyPullLog');
+        if (!log) return;
+        const line = document.createElement('div');
+        line.className = ok ? 'text-success' : 'text-danger';
+        line.textContent = message;
+        log.appendChild(line);
+        log.scrollTop = log.scrollHeight;
+    }
+
+    function setShopifyPullProgress(done, total, text) {
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        const bar = document.getElementById('shopifyPullProgress');
+        const status = document.getElementById('shopifyPullStatus');
+        if (bar) bar.style.width = pct + '%';
+        if (status) status.textContent = text || `${done}/${total}`;
+    }
+
+    function currentFilteredRowsForPull() {
+        const skuQ = (document.getElementById('skuSearchBp') && document.getElementById('skuSearchBp').value.toLowerCase().trim()) || '';
+        const prevQ = (document.getElementById('previewSearchBp') && document.getElementById('previewSearchBp').value.toLowerCase().trim()) || '';
+        const statusFilter = (document.getElementById('tableBulletStatusFilter') && document.getElementById('tableBulletStatusFilter').value) || 'all';
+        let rows = tableData.filter(r => r && r.SKU && !String(r.SKU).toUpperCase().includes('PARENT'));
+        if (skuQ) rows = rows.filter(r => String(r.SKU || '').toLowerCase().includes(skuQ));
+        if (prevQ) {
+            rows = rows.filter(r => {
+                const preview = String(r.default_bullets || [r.bullet1, r.bullet2, r.bullet3, r.bullet4, r.bullet5].filter(Boolean).join(' ') || '').toLowerCase();
+                return preview.includes(prevQ) || String(r.Parent || '').toLowerCase().includes(prevQ);
+            });
+        }
+        rows = rows.filter(r => rowMatchesBulletStatusFilter(r, statusFilter));
+        return rows;
+    }
+
+    function productMasterBulletsForRow(row) {
+        return [row.bullet1, row.bullet2, row.bullet3, row.bullet4, row.bullet5]
+            .map(v => (v == null ? '' : String(v).trim()))
+            .filter(Boolean);
+    }
+
+    function rowMatchesBulletStatusFilter(row, filter) {
+        if (!filter || filter === 'all') return true;
+        const masterCount = productMasterBulletsForRow(row).length;
+        const masterHas = masterCount > 0;
+        if (filter === 'master_has') return masterHas;
+        if (filter === 'master_missing') return !masterHas;
+        if (filter.startsWith('count_')) return masterCount === Number(filter.replace('count_', ''));
+        return true;
+    }
+
+    function isShopifyPullActive(status) {
+        return ['running', 'paused', 'stopping'].includes(status);
+    }
+
+    function renderShopifyPullJob(job) {
+        job = job || {};
+        const panel = document.getElementById('shopifyPullPanel');
+        const log = document.getElementById('shopifyPullLog');
+        const pullBtn = document.getElementById('startShopifyPullBtn');
+        const pauseBtn = document.getElementById('pauseShopifyPullBtn');
+        const resumeBtn = document.getElementById('resumeShopifyPullBtn');
+        const stopBtn = document.getElementById('stopShopifyPullBtn');
+        const status = job.status || 'idle';
+        const total = Number(job.total || 0);
+        const done = Number(job.current_index || 0);
+        const active = isShopifyPullActive(status);
+
+        if (panel) panel.style.display = 'block';
+        if (pullBtn) pullBtn.disabled = active;
+        if (pauseBtn) pauseBtn.style.display = status === 'running' ? 'inline-block' : 'none';
+        if (resumeBtn) resumeBtn.style.display = status === 'paused' ? 'inline-block' : 'none';
+        if (stopBtn) stopBtn.style.display = active ? 'inline-block' : 'none';
+
+        let text = job.last_message || 'Ready';
+        if (status === 'running' && job.current_sku) text = `Running ${done + 1}/${total}: ${job.current_sku}`;
+        if (status === 'paused') text = `Paused ${done}/${total}`;
+        if (status === 'completed') text = `Done: ${job.ok_count || 0} ok, ${job.fail_count || 0} failed`;
+        if (status === 'stopped') text = `Stopped: ${job.ok_count || 0} ok, ${job.fail_count || 0} failed`;
+        setShopifyPullProgress(done, total, text);
+
+        if (log) {
+            log.innerHTML = '';
+            (job.messages || []).forEach(item => {
+                const line = document.createElement('div');
+                line.className = item.ok ? 'text-success' : 'text-danger';
+                line.textContent = `[${item.time || ''}] ${item.message || ''}`;
+                log.appendChild(line);
+            });
+            log.scrollTop = log.scrollHeight;
+        }
+    }
+
+    async function fetchShopifyPullStatus() {
+        const res = await fetch('/bullet-point-master/shopify-pull/status', {
+            headers: { 'Accept': 'application/json' }
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload.success) throw new Error(payload.message || 'Unable to load Shopify pull status');
+        return payload.job || {};
+    }
+
+    async function pollShopifyPullStatus() {
+        try {
+            const job = await fetchShopifyPullStatus();
+            const wasActive = shopifyPullPollTimer !== null;
+            renderShopifyPullJob(job);
+            if (isShopifyPullActive(job.status || 'idle')) {
+                startShopifyPullPolling();
+            } else {
+                stopShopifyPullPolling();
+                if (wasActive && ['completed', 'stopped'].includes(job.status || '')) {
+                    loadData();
+                }
+            }
+        } catch (e) {
+            appendShopifyPullLog('Status check failed: ' + e.message, false);
+        }
+    }
+
+    function startShopifyPullPolling() {
+        if (shopifyPullPollTimer !== null) return;
+        shopifyPullPollTimer = window.setInterval(pollShopifyPullStatus, 3000);
+    }
+
+    function stopShopifyPullPolling() {
+        if (shopifyPullPollTimer === null) return;
+        window.clearInterval(shopifyPullPollTimer);
+        shopifyPullPollTimer = null;
+    }
+
+    async function openShopifyPullModal(skus = null) {
+        shopifyPullSelectedSkus = Array.isArray(skus) && skus.length
+            ? skus.map(sku => String(sku || '').trim()).filter(Boolean)
+            : null;
+        const scope = document.getElementById('shopifyPullScopeText');
+        if (scope) {
+            scope.textContent = shopifyPullSelectedSkus
+                ? `Scope: selected SKU ${shopifyPullSelectedSkus.join(', ')}.`
+                : 'Scope: currently filtered SKUs.';
+        }
+        if (shopifyPullModal) shopifyPullModal.show();
+        await pollShopifyPullStatus();
+    }
+
+    function confirmShopifyPull(scopeText) {
+        const scope = document.getElementById('shopifyPullConfirmScope');
+        if (scope) {
+            scope.textContent = `Do you want to pull bullet points from Shopify for ${scopeText}?`;
+        }
+
+        return new Promise(resolve => {
+            shopifyPullConfirmResolver = resolve;
+            if (shopifyPullConfirmModal) {
+                shopifyPullConfirmModal.show();
+            } else {
+                resolve(false);
+            }
+        });
+    }
+
+    async function startShopifyPullJobForSkus(skus, options = {}) {
+        skus = (skus || []).map(sku => String(sku || '').trim()).filter(Boolean);
+        if (!skus.length) {
+            toast('No SKUs loaded to pull from Shopify.', false);
+            return false;
+        }
+
+        const scopeText = options.scopeText || `${skus.length} SKU(s)`;
+        if (!await confirmShopifyPull(scopeText)) {
+            return false;
+        }
+
+        try {
+            const res = await fetch('/bullet-point-master/shopify-pull/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: JSON.stringify({ skus })
+            });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok || !payload.success) throw new Error(payload.message || 'Unable to start Shopify pull');
+            renderShopifyPullJob(payload.job);
+            startShopifyPullPolling();
+            toast(options.successMessage || payload.message || 'Background Shopify pull started.');
+            return true;
+        } catch (e) {
+            toast('Shopify pull start failed: ' + e.message, false);
+            if (e.message.includes('already')) pollShopifyPullStatus();
+            return false;
+        }
+    }
+
+    async function startSingleShopifyPull(sku, btn) {
+        sku = String(sku || '').trim();
+        if (!sku) {
+            toast('SKU missing for Shopify pull.', false);
+            return;
+        }
+
+        const oldHtml = btn ? btn.innerHTML : '';
+        const oldTitle = btn ? btn.getAttribute('title') : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing';
+            btn.setAttribute('title', 'Syncing Shopify bullets...');
+        }
+
+        const started = await startShopifyPullJobForSkus([sku], {
+            scopeText: `SKU ${sku}`,
+            successMessage: `Shopify bullet sync started for ${sku}.`,
+        });
+
+        if (!started && btn) {
+            btn.disabled = false;
+            btn.innerHTML = oldHtml;
+            if (oldTitle) btn.setAttribute('title', oldTitle);
+        }
+    }
+
+    async function startShopifyPullToLocal() {
+        const rows = shopifyPullSelectedSkus
+            ? shopifyPullSelectedSkus.map(sku => ({ SKU: sku }))
+            : currentFilteredRowsForPull();
+        const skus = rows.map(row => String(row.SKU || '').trim()).filter(Boolean);
+        if (!skus.length) {
+            toast('No SKUs loaded to pull from Shopify.', false);
+            return;
+        }
+        const scopeText = shopifyPullSelectedSkus
+            ? `SKU: ${skus.join(', ')}`
+            : `${skus.length} currently filtered SKU(s)`;
+        await startShopifyPullJobForSkus(skus, { scopeText });
+    }
+
+    async function controlShopifyPull(action) {
+        try {
+            const res = await fetch(`/bullet-point-master/shopify-pull/${action}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: JSON.stringify({})
+            });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok || !payload.success) throw new Error(payload.message || `Unable to ${action} Shopify pull`);
+            renderShopifyPullJob(payload.job);
+            if (isShopifyPullActive((payload.job || {}).status || 'idle')) startShopifyPullPolling();
+            toast(`Shopify pull ${action} requested.`);
+        } catch (e) {
+            toast(`Shopify pull ${action} failed: ${e.message}`, false);
+        }
     }
 
     function exportData() {
-        const rows = tableData.map(row => {
-            const sku = String(row.SKU || '');
-            const bp = row.bullet_points || {};
-            const out = { SKU: sku, ProductName: row.Parent || sku, Preview: row.default_bullets || '' };
-            MARKETPLACES.forEach(mp => { out[LABELS[mp]] = bp[mp] || ''; });
-            return out;
-        });
+        const rows = tableData
+            .filter(row => row && row.SKU && !String(row.SKU).toUpperCase().includes('PARENT'))
+            .map(row => ({
+                Parent: row.Parent || '',
+                SKU: row.SKU || '',
+                'Product Name': row.Parent || row.SKU || '',
+                'Bullet 1': row.bullet1 || '',
+                'Bullet 2': row.bullet2 || '',
+                'Bullet 3': row.bullet3 || '',
+                'Bullet 4': row.bullet4 || '',
+                'Bullet 5': row.bullet5 || '',
+            }));
+        if (!rows.length) {
+            toast('No products available to export.', false);
+            return;
+        }
         const ws = XLSX.utils.json_to_sheet(rows);
+        ws['!cols'] = [
+            { wch: 24 },
+            { wch: 28 },
+            { wch: 36 },
+            { wch: 48 },
+            { wch: 48 },
+            { wch: 48 },
+            { wch: 48 },
+            { wch: 48 },
+        ];
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Bullet Points Master');
-        XLSX.writeFile(wb, 'bullet_points_master_' + new Date().toISOString().split('T')[0] + '.xlsx');
+        XLSX.utils.book_append_sheet(wb, ws, 'Bullet Points');
+        XLSX.writeFile(wb, 'bullet_points_' + new Date().toISOString().split('T')[0] + '.xlsx');
     }
 
     function importData(file) {
         const reader = new FileReader();
-        reader.onload = function(e) {
+        reader.onload = async function(e) {
             try {
                 const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
                 const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
                 if (!json.length) { toast('No rows in file', false); return; }
 
-                json.forEach(row => {
-                    const sku = String(row.SKU || '').trim();
-                    if (!sku) return;
-                    MARKETPLACES.forEach(mp => {
-                        const key = LABELS[mp];
-                        const v = row[key];
-                        if (typeof v === 'string') {
-                            const item = bySku.get(sku);
-                            if (item) {
-                                item.bullet_points = item.bullet_points || {};
-                                item.bullet_points[mp] = v;
-                            }
+                const importBtn = document.getElementById('importBtn');
+                const oldImportHtml = importBtn ? importBtn.innerHTML : '';
+                let successCount = 0;
+                let errorCount = 0;
+                const failedSkus = [];
+                if (importBtn) {
+                    importBtn.disabled = true;
+                    importBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing...';
+                }
+
+                for (let idx = 0; idx < json.length; idx++) {
+                    const row = json[idx];
+                    const sku = getImportedValue(row, ['SKU', 'sku', 'Sku', 'Seller SKU', 'SellerSKU', 'seller_sku']);
+                    if (importBtn) {
+                        importBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Importing ${idx + 1}/${json.length}`;
+                    }
+                    if (!sku) {
+                        errorCount++;
+                        continue;
+                    }
+
+                    const bullets = extractImportedBullets(row);
+                    const payload = { sku };
+                    [1,2,3,4,5].forEach((i) => { payload['bullet' + i] = bullets[i - 1] || ''; });
+
+                    try {
+                        const res = await fetch('/bullet-points/save', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                            body: JSON.stringify(payload),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok || !data.success) {
+                            throw new Error(data.message || 'Save failed');
                         }
-                    });
-                });
-                renderTable(tableData);
-                toast('Import loaded into table. Open Edit modal and save to push.');
+                        successCount++;
+                    } catch (err) {
+                        console.error('Bullet import row failed', { sku, error: err });
+                        errorCount++;
+                        failedSkus.push(sku);
+                    }
+                }
+
+                if (importBtn) {
+                    importBtn.disabled = false;
+                    importBtn.innerHTML = oldImportHtml;
+                }
+
+                const failedText = failedSkus.length ? ` Failed SKUs: ${failedSkus.slice(0, 5).join(', ')}${failedSkus.length > 5 ? '...' : ''}` : '';
+                toast(`Import completed: ${successCount} saved, ${errorCount} failed.${failedText}`, errorCount === 0);
+                loadData();
             } catch (err) {
                 toast('Import failed: ' + err.message, false);
+                const importBtn = document.getElementById('importBtn');
+                if (importBtn) {
+                    importBtn.disabled = false;
+                    importBtn.innerHTML = '<i class="fas fa-upload"></i> Import';
+                }
             }
         };
         reader.readAsArrayBuffer(file);
     }
 
+    function extractImportedBullets(row) {
+        const valueFor = (i) => {
+            return getImportedValue(row, [
+                'Bullet ' + i,
+                'bullet' + i,
+                'Bullet' + i,
+                'BULLET ' + i,
+                'BULLET' + i,
+                'bullet_' + i,
+                'bullet-' + i,
+            ]);
+        };
+
+        const bullets = [1,2,3,4,5].map(valueFor);
+        if (bullets.some(Boolean)) {
+            return bullets;
+        }
+
+        const preview = getImportedValue(row, ['Preview', 'preview', 'Current Bullets', 'Current Bullets Preview', 'default_bullets']);
+        return splitBulletsForModal(preview);
+    }
+
+    function getImportedValue(row, possibleKeys) {
+        const normalizedMap = {};
+        Object.keys(row || {}).forEach((key) => {
+            normalizedMap[normalizeImportKey(key)] = row[key];
+        });
+
+        for (const key of possibleKeys) {
+            const normalized = normalizeImportKey(key);
+            if (Object.prototype.hasOwnProperty.call(normalizedMap, normalized)) {
+                const value = normalizedMap[normalized];
+                return value == null ? '' : String(value).trim();
+            }
+        }
+
+        return '';
+    }
+
+    function normalizeImportKey(key) {
+        return String(key || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+
     function applyTableFilters() {
         const skuQ = (document.getElementById('skuSearchBp') && document.getElementById('skuSearchBp').value.toLowerCase().trim()) || '';
         const prevQ = (document.getElementById('previewSearchBp') && document.getElementById('previewSearchBp').value.toLowerCase().trim()) || '';
+        const statusFilter = (document.getElementById('tableBulletStatusFilter') && document.getElementById('tableBulletStatusFilter').value) || 'all';
         let rows = tableData;
         if (skuQ) {
             rows = rows.filter(r => String(r.SKU || '').toLowerCase().includes(skuQ));
@@ -666,45 +1144,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 return preview.includes(prevQ) || String(r.Parent || '').toLowerCase().includes(prevQ);
             });
         }
+        rows = rows.filter(r => rowMatchesBulletStatusFilter(r, statusFilter));
         renderTable(rows);
     }
     const skuSearchBp = document.getElementById('skuSearchBp');
     const previewSearchBp = document.getElementById('previewSearchBp');
+    const tableBulletStatusFilter = document.getElementById('tableBulletStatusFilter');
     if (skuSearchBp) skuSearchBp.addEventListener('input', applyTableFilters);
     if (previewSearchBp) previewSearchBp.addEventListener('input', applyTableFilters);
+    if (tableBulletStatusFilter) tableBulletStatusFilter.addEventListener('change', applyTableFilters);
 
     document.getElementById('saveModalBtn').addEventListener('click', function() {
         const sku = document.getElementById('modalSku').value;
         const lines = getBulletLinesFromModal();
-        const combined = bulletLinesToPayload(lines);
-        const selected = Array.from(document.querySelectorAll('.modal-mp-check:checked')).map(chk => chk.dataset.mp);
-        const updates = selected.map(mp => ({ marketplace: mp, bullet_points: combined }));
-        if (!updates.length) { toast('Select at least one marketplace.', false); return; }
-        if (!confirmEbay3Push(selected)) return;
+        const payload = { sku };
+        [1,2,3,4,5].forEach((i) => { payload['bullet' + i] = lines[i - 1] || ''; });
 
-        const btn = this; const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pushing...';
-        let retryLabelTimer = setTimeout(() => {
-            if (btn.disabled) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Retrying...';
-        }, 2000);
-        fetch('/bullet-point-master/update', {
+        const btn = this; const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        fetch('/bullet-points/save', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-            body: JSON.stringify({ sku, updates })
+            body: JSON.stringify(payload)
         })
-        .then(r => r.json())
-        .then(res => {
-            const detail = summarizeMarketplacePushRetries(res.results);
-            if (res.success) {
-                toast('Saved marketplace bullet points' + (detail ? ' — ' + detail : ''));
-                if (editRowModal) editRowModal.hide();
-                loadData();
-            } else {
-                toast((res.message || 'Save failed') + (detail ? ' — ' + detail : ''), false);
+        .then(async (r) => {
+            const payload = await r.json().catch(() => ({}));
+            if (!r.ok || !payload.success) {
+                throw new Error(payload.message || 'Save failed');
             }
+            return payload;
+        })
+        .then(res => {
+            toast(res.message || 'Bullet points saved');
+            if (editRowModal) editRowModal.hide();
+            loadData();
         })
         .catch(e => toast('Save failed: ' + e.message, false))
         .finally(() => {
-            if (retryLabelTimer) clearTimeout(retryLabelTimer);
             btn.disabled = false;
             btn.innerHTML = old;
         });
@@ -715,6 +1190,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('pushSelectedBtn').addEventListener('click', () => bulkPush('selected'));
     document.getElementById('pushAllBtn').addEventListener('click', () => bulkPush('all'));
+    document.getElementById('pullShopifyBtn').addEventListener('click', () => openShopifyPullModal());
+    document.getElementById('startShopifyPullBtn').addEventListener('click', startShopifyPullToLocal);
+    document.getElementById('pauseShopifyPullBtn').addEventListener('click', () => controlShopifyPull('pause'));
+    document.getElementById('resumeShopifyPullBtn').addEventListener('click', () => controlShopifyPull('resume'));
+    document.getElementById('stopShopifyPullBtn').addEventListener('click', () => controlShopifyPull('stop'));
+    document.getElementById('shopifyPullConfirmBtn').addEventListener('click', () => {
+        if (shopifyPullConfirmResolver) shopifyPullConfirmResolver(true);
+        shopifyPullConfirmResolver = null;
+        if (shopifyPullConfirmModal) shopifyPullConfirmModal.hide();
+    });
+    document.getElementById('shopifyPullConfirmModal').addEventListener('hidden.bs.modal', () => {
+        if (shopifyPullConfirmResolver) shopifyPullConfirmResolver(false);
+        shopifyPullConfirmResolver = null;
+    });
+    document.getElementById('marketplacePushConfirmBtn').addEventListener('click', () => {
+        if (marketplacePushConfirmResolver) marketplacePushConfirmResolver(true);
+        marketplacePushConfirmResolver = null;
+        if (marketplacePushConfirmModal) marketplacePushConfirmModal.hide();
+    });
+    document.getElementById('marketplacePushConfirmModal').addEventListener('hidden.bs.modal', () => {
+        if (marketplacePushConfirmResolver) marketplacePushConfirmResolver(false);
+        marketplacePushConfirmResolver = null;
+    });
     document.getElementById('exportBtn').addEventListener('click', exportData);
     document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
     document.getElementById('importFile').addEventListener('change', function(e) { if (e.target.files[0]) importData(e.target.files[0]); this.value = ''; });
@@ -778,10 +1276,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (window.bootstrap && window.bootstrap.Modal) {
             editRowModal = new bootstrap.Modal(document.getElementById('editRowModal'));
             viewRowModal = new bootstrap.Modal(document.getElementById('viewRowModal'));
+            shopifyPullModal = new bootstrap.Modal(document.getElementById('shopifyPullModal'));
+            shopifyPullConfirmModal = new bootstrap.Modal(document.getElementById('shopifyPullConfirmModal'));
+            marketplacePushConfirmModal = new bootstrap.Modal(document.getElementById('marketplacePushConfirmModal'));
         } else {
             console.warn('Bootstrap JS not available; modals/toasts will be degraded.');
         }
         loadData();
+        pollShopifyPullStatus();
     });
 });
 </script>

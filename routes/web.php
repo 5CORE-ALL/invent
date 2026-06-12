@@ -2813,6 +2813,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/bullet-point-master/update', [BulletPointMasterController::class, 'update'])->name('bullet.point.master.update');
     Route::post('/bullet-point-master/update-bulk', [BulletPointMasterController::class, 'updateBulk'])->name('bullet.point.master.update.bulk');
     Route::post('/bullet-point-master/generate', [BulletPointMasterController::class, 'generateBulletPoints'])->name('bullet.point.master.generate');
+    Route::post('/bullet-point-master/shopify-pull-one', [BulletPointMasterController::class, 'pullShopifyBulletsToMaster'])->name('bullet.point.master.shopify.pull.one');
+    Route::post('/bullet-point-master/shopify-pull/start', [BulletPointMasterController::class, 'startShopifyPullJob'])->name('bullet.point.master.shopify.pull.start');
+    Route::get('/bullet-point-master/shopify-pull/status', [BulletPointMasterController::class, 'shopifyPullJobStatus'])->name('bullet.point.master.shopify.pull.status');
+    Route::post('/bullet-point-master/shopify-pull/pause', [BulletPointMasterController::class, 'pauseShopifyPullJob'])->name('bullet.point.master.shopify.pull.pause');
+    Route::post('/bullet-point-master/shopify-pull/resume', [BulletPointMasterController::class, 'resumeShopifyPullJob'])->name('bullet.point.master.shopify.pull.resume');
+    Route::post('/bullet-point-master/shopify-pull/stop', [BulletPointMasterController::class, 'stopShopifyPullJob'])->name('bullet.point.master.shopify.pull.stop');
     Route::get('/title-master-data', [ProductMasterController::class, 'getTitleMasterData'])->name('title.master.data');
     Route::get('/title-master/sku-options', [ProductMasterController::class, 'getTitleMasterSkuOptions'])->name('title.master.sku.options');
     Route::post('/title-master/save', [ProductMasterController::class, 'saveTitleData'])->name('title.master.save');

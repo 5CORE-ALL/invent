@@ -181,8 +181,7 @@ class ShopifyApiService
     }
 
     /**
-     * Bullet Points Master: replace `body_html` with unified layout (About Item → Product Description → Features → Images)
-     * using bullets from this push plus Product Master long description and optional Values.shopify_feature_grid.
+     * Bullet Points Master: update only the bullet/About Item block in the current Shopify `body_html`.
      *
      * @return array{success: bool, message: string}
      */
@@ -270,45 +269,74 @@ class ShopifyApiService
                 'product_id' => $productId,
             ]);
 
-            usleep(1_000_000);
+            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+            $productRes = $this->retryOnRateLimit(function () use ($token, $productUrl) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->connectTimeout(25)->get($productUrl);
+            });
 
-            $title = $this->getProductTitle($domain, $token, $productId);
-            if ($title === '') {
-                return ['success' => false, 'message' => 'Could not load product title (Shopify rate limit or API error).'];
+            if (! $productRes->successful()) {
+                $msg = $productRes->status() === 429
+                    ? 'Product fetch rate limited after retries.'
+                    : 'Could not load product before bullet update: '.$productRes->body();
+
+                return ['success' => false, 'message' => $msg];
             }
 
-            $descriptionPlain = $this->resolveProductMasterLongDescription($trim);
-            $featureGrid = $this->loadShopifyFeatureGridForSku($trim);
-            $formattedHtml = DescriptionWithImagesFormatter::buildHtmlWithImages(
-                $descriptionPlain,
-                $trim,
-                $trim,
-                $title,
-                12,
-                [],
-                $bulletPoints,
-                $featureGrid,
-                true
-            )['html'];
+            $currentBody = (string) ($productRes->json('product.body_html') ?? '');
+            $formattedHtml = ShopifyBulletPointsFormatter::replaceAboutItemBlock($currentBody, $bulletPoints);
 
-            Log::info('Shopify updateBulletPoints unified layout built (replaces Key Features list)', [
+            $legacyBracketPattern = '/<p\b[^>]*>(?:(?!<\/p>)[\s\S])*?【(?:(?!<\/p>)[\s\S])*?<\/p>/is';
+            $legacyBracketListPattern = '/<(?:ol|ul)\b[^>]*>(?=[\s\S]*?【)[\s\S]*?<\/(?:ol|ul)>/is';
+            $legacyHighlightedFeaturesPattern = '/<h[1-6]\b[^>]*>(?=[\s\S]*?Highlighted\s+Features)[\s\S]*?<\/h[1-6]>\s*(?:<p\b[^>]*>(?:(?!<\/p>)[\s\S])*?【(?:(?!<\/p>)[\s\S])*?<\/p>\s*){1,8}/is';
+            $legacyAboutItemHeadingPattern = '/<p\b[^>]*>\s*(?:<[^>]+>\s*)*About\s+Item:?\s*(?:<\/[^>]+>\s*)*<\/p>\s*/is';
+            $emptyLegacyListPattern = '/<(?:ol|ul)\b[^>]*>\s*<\/(?:ol|ul)>\s*/is';
+            $safeLegacyHeadingPattern = '/<h[1-6]\b[^>]*>(?=[\s\S]*?(?:Key\s+Benefits|Product\s+Highlights|Main\s+Features|Bullet\s+Points))[\s\S]*?<\/h[1-6]>\s*(?:(?:<p\b[^>]*>(?:(?!<\/p>)[\s\S])*?(?:【|•|\*|-|\d+[.)])(?:(?!<\/p>)[\s\S])*?<\/p>\s*){1,8}|<(?:ul|ol)\b[^>]*>[\s\S]*?<\/(?:ul|ol)>)/is';
+            $leadingSymbolParagraphsPattern = '/^\s*(?:<p\b[^>]*>\s*(?:<[^>]+>\s*)*(?:•|\*|-|\d+[.)])[\s\S]*?<\/p>\s*){2,8}/is';
+            $leadingListPattern = '/^\s*<(?:ul|ol)\b[^>]*>[\s\S]*?<\/(?:ul|ol)>\s*/is';
+            $manualBeforeBulletPattern = '/\A\s*<p\b[^>]*>\s*<a\b[^>]*>[\s\S]*?Download\s+Product\s+Manual[\s\S]*?<\/a>\s*<\/p>\s*<!--\s*bullet-points-master:start\s*-->/is';
+            $legacyAplusBulletPattern = '/<div\b[^>]*class=(["\'])(?=[^"\']*\baplus-3p-center-content\b)[^"\']*\1[^>]*>(?=[\s\S]*?About\s+Item:)(?=[\s\S]*?【)[\s\S]*?<\/div>\s*/is';
+            $topBoldLabelBulletsPattern = '/(?:\A\s*<p\b[^>]*>\s*<a\b[^>]*>[\s\S]*?Download\s+Product\s+Manual[\s\S]*?<\/a>\s*<\/p>\s*)?\K(?:<p\b[^>]*>\s*(?:<[^>]+>\s*)*<strong\b[^>]*>[^<]{2,120}(?:-|:|–|—)\s*<\/strong>[\s\S]*?<\/p>\s*){2,8}/is';
+            Log::info('Shopify updateBulletPoints preserving existing description body_html', [
                 'identifier' => $identifier,
                 'mapped_sku' => $mappedSku ?? $trim,
                 'product_id' => $productId,
-                'description_from_pm_chars' => strlen($descriptionPlain),
-                'feature_box_count' => count($featureGrid),
-                'body_html_len' => strlen($formattedHtml),
+                'previous_body_html_chars' => strlen($currentBody),
+                'new_body_html_chars' => strlen($formattedHtml),
+                'previous_master_marker_count' => substr_count($currentBody, 'bullet-points-master-section'),
+                'new_master_marker_count' => substr_count($formattedHtml, 'bullet-points-master-section'),
+                'previous_legacy_bracket_bullets' => preg_match_all($legacyBracketPattern, $currentBody),
+                'new_legacy_bracket_bullets' => preg_match_all($legacyBracketPattern, $formattedHtml),
+                'previous_legacy_bracket_lists' => preg_match_all($legacyBracketListPattern, $currentBody),
+                'new_legacy_bracket_lists' => preg_match_all($legacyBracketListPattern, $formattedHtml),
+                'previous_legacy_highlighted_features' => preg_match_all($legacyHighlightedFeaturesPattern, $currentBody),
+                'new_legacy_highlighted_features' => preg_match_all($legacyHighlightedFeaturesPattern, $formattedHtml),
+                'previous_legacy_about_item_headings' => preg_match_all($legacyAboutItemHeadingPattern, $currentBody),
+                'new_legacy_about_item_headings' => preg_match_all($legacyAboutItemHeadingPattern, $formattedHtml),
+                'previous_empty_legacy_lists' => preg_match_all($emptyLegacyListPattern, $currentBody),
+                'new_empty_legacy_lists' => preg_match_all($emptyLegacyListPattern, $formattedHtml),
+                'previous_safe_legacy_headings' => preg_match_all($safeLegacyHeadingPattern, $currentBody),
+                'new_safe_legacy_headings' => preg_match_all($safeLegacyHeadingPattern, $formattedHtml),
+                'previous_leading_symbol_paragraphs' => preg_match_all($leadingSymbolParagraphsPattern, $currentBody),
+                'new_leading_symbol_paragraphs' => preg_match_all($leadingSymbolParagraphsPattern, $formattedHtml),
+                'previous_leading_lists' => preg_match_all($leadingListPattern, $currentBody),
+                'new_leading_lists' => preg_match_all($leadingListPattern, $formattedHtml),
+                'new_manual_link_before_bullets' => preg_match($manualBeforeBulletPattern, $formattedHtml) === 1,
+                'previous_legacy_aplus_bullet_blocks' => preg_match_all($legacyAplusBulletPattern, $currentBody),
+                'new_legacy_aplus_bullet_blocks' => preg_match_all($legacyAplusBulletPattern, $formattedHtml),
+                'previous_top_bold_label_bullets' => preg_match_all($topBoldLabelBulletsPattern, $currentBody),
+                'new_top_bold_label_bullets' => preg_match_all($topBoldLabelBulletsPattern, $formattedHtml),
             ]);
 
-            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
-            $updateRes = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $formattedHtml, $title) {
+            $updateRes = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $formattedHtml) {
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
                 ])->timeout(60)->connectTimeout(25)->put($productUrl, [
                     'product' => [
                         'id' => $productId,
-                        'title' => $title,
                         'body_html' => $formattedHtml,
                     ],
                 ]);

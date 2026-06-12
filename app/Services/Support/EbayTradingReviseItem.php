@@ -807,6 +807,40 @@ final class EbayTradingReviseItem
         return $html;
     }
 
+    public static function bulletsToOrderedDescriptionHtml(string $bulletPoints): string
+    {
+        $lines = preg_split('/\r\n|\r|\n/', trim($bulletPoints));
+        $html = '<ol>';
+        foreach ($lines as $line) {
+            $line = trim((string) $line);
+            if ($line === '') {
+                continue;
+            }
+            $html .= '<li>'.htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</li>';
+        }
+        $html .= '</ol>';
+
+        return $html;
+    }
+
+    public static function replaceFirstDescriptionBulletList(string $currentDescriptionHtml, string $bulletPoints): string
+    {
+        $replacement = self::bulletsToOrderedDescriptionHtml($bulletPoints);
+        $body = trim($currentDescriptionHtml);
+        if ($body === '') {
+            return $replacement;
+        }
+
+        foreach (['/<ol\b[^>]*>.*?<\/ol>/is', '/<ul\b[^>]*>.*?<\/ul>/is'] as $pattern) {
+            $updated = preg_replace($pattern, $replacement, $body, 1, $count);
+            if ($count > 0 && is_string($updated)) {
+                return $updated;
+            }
+        }
+
+        return $replacement."\n".$body;
+    }
+
     private static function escapeXmlElementText(string $s): string
     {
         return htmlspecialchars($s, ENT_XML1 | ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');

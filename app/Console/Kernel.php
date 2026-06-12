@@ -111,6 +111,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\AmazonDebugSku::class,
         \App\Console\Commands\AliExpressApiTestCommand::class,
         \App\Console\Commands\InventorySnapshot::class,
+        \App\Console\Commands\RunShopifyBulletPull::class,
     ];
 
     /**

@@ -1600,7 +1600,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
  }
 
     /**
-     * Push bullet points to eBay listing Description as HTML list.
+     * Push bullet points to the visible eBay seller Description while preserving the rest of the description HTML.
      *
      * @return array{success: bool, message: string}
      */
@@ -1622,7 +1622,16 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             return ['success' => false, 'message' => $e->getMessage()];
         }
 
-        $html = EbayTradingReviseItem::bulletsToDescriptionHtml($bulletPoints);
+        $getItemResponse = $this->getItem((string) $itemId);
+        if (! is_array($getItemResponse)) {
+            return ['success' => false, 'message' => 'Could not fetch current eBay item before bullet update.'];
+        }
+
+        $currentDescription = $getItemResponse['Item']['Description'] ?? '';
+        if (is_array($currentDescription)) {
+            $currentDescription = '';
+        }
+        $updatedDescription = EbayTradingReviseItem::replaceFirstDescriptionBulletList((string) $currentDescription, $bulletPoints);
 
         return EbayTradingReviseItem::reviseItemDescription(
             $this->endpoint,
@@ -1633,7 +1642,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             $this->siteId,
             $token,
             (string) $itemId,
-            $html
+            $updatedDescription
         );
     }
 

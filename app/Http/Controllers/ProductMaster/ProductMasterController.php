@@ -6023,11 +6023,11 @@ GRAPHQL;
         try {
             $validated = $request->validate([
                 'sku' => 'required|string',
-                'bullet1' => 'nullable|string|max:200',
-                'bullet2' => 'nullable|string|max:200',
-                'bullet3' => 'nullable|string|max:200',
-                'bullet4' => 'nullable|string|max:200',
-                'bullet5' => 'nullable|string|max:200',
+                'bullet1' => 'nullable|string',
+                'bullet2' => 'nullable|string',
+                'bullet3' => 'nullable|string',
+                'bullet4' => 'nullable|string',
+                'bullet5' => 'nullable|string',
             ]);
 
             $product = ProductMaster::where('sku', $validated['sku'])->first();

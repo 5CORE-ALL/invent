@@ -1003,11 +1003,6 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
         $includeSkuList = (bool) config('services.temu.bullet_update_include_sku_list', false);
 
-        $resolved = $this->resolveTemuGoodsAndSku($identifier);
-        $sku = trim((string) ($resolved['sku'] ?? $identifier));
-        $goodsId = (string) (($resolved['goods_id'] ?? '') ?: ($sku !== '' ? (string) ($this->getGoodsIdBySku($sku) ?? '') : ''));
-        $preservedGoodsDesc = $goodsId !== '' ? $this->fetchCurrentTemuGoodsDesc($goodsId, $sku) : '';
-
         $res = $this->pushTemuGoodsBasicField(
             $identifier,
             $value,
@@ -1016,17 +1011,16 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             'SKU (or goods_id) and bullet points are required.',
             'Temu updateBulletPoints',
             $includeSkuList,
-            $preservedGoodsDesc
+            null,
+            false
         );
         if (! ($res['success'] ?? false)) {
             return $res;
         }
 
-        $saved = $this->saveTemuBulletAndDescToMetrics(
-            $sku,
-            is_array($value) ? implode("\n", $value) : (string) $value,
-            $preservedGoodsDesc
-        );
+        $resolved = $this->resolveTemuGoodsAndSku($identifier);
+        $sku = trim((string) ($resolved['sku'] ?? $identifier));
+        $saved = $this->saveGoodsSummaryToTemuMetrics($sku, is_array($value) ? implode("\n", $value) : (string) $value);
         if (! $saved) {
             $res['message'] = ($res['message'] ?? 'Temu bullet points updated.').' Metrics save failed.';
         }
@@ -1049,6 +1043,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         string $logContext,
         bool $includeSkuList = true,
         ?string $preservedGoodsDesc = null,
+        bool $preserveGoodsDesc = true,
     ): array {
         if (trim($identifier) === '') {
             return ['success' => false, 'message' => $emptyIdentifierMessage];
@@ -1085,7 +1080,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
         // Preserve current goodsDesc when updating goodsSummary to avoid accidental description loss.
         $goodsDescField = (string) config('services.temu.goods_desc_field', 'goodsDesc');
-        if ($basicFieldKey !== $goodsDescField) {
+        if ($preserveGoodsDesc && $basicFieldKey !== $goodsDescField) {
             $currentDesc = $preservedGoodsDesc !== null
                 ? trim($preservedGoodsDesc)
                 : $this->fetchCurrentTemuGoodsDesc((string) $goodsId, $sku);
