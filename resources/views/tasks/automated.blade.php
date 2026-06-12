@@ -1167,7 +1167,7 @@
             function getEtcMonthlyMultiplier(scheduleType) {
                 var normalized = String(scheduleType || '').trim().toLowerCase();
                 if (normalized === 'daily' || normalized === 'd') return 25;
-                if (normalized === 'weekly' || normalized === 'w') return 6;
+                if (normalized === 'weekly' || normalized === 'w') return 4;
                 if (normalized === 'monthly' || normalized === 'm') return 1;
                 return 0;
             }
@@ -1419,7 +1419,7 @@
                     // ETC-M (ETC x frequency multiplier) — whole number
                     cols.push({
                         title: "ETC-M",
-                        headerTooltip: "ETC minutes × weight (Daily 25, Weekly 6, Monthly 1). Stat card ETC-M uses the same sum ÷ 60 (h).",
+                        headerTooltip: "ETC minutes × weight (Daily 25, Weekly 4, Monthly 1). Stat card ETC-M uses the same sum ÷ 60 (h).",
                         field: "etc_monthly",
                        
                         hozAlign: "center",

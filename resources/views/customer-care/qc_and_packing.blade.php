@@ -1394,6 +1394,7 @@
                                         <option value="Pricing">Pricing</option>
                                         <option value="QC">QC</option>
                                         <option value="Packaging">Packaging</option>
+                                        <option value="Chargeback">Chargeback</option>
                                         <option value="Orders on Hold">Orders on Hold</option>
                                     </select>
                                     @if (empty($lockedDepartment ?? null))

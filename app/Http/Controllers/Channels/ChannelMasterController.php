@@ -3128,15 +3128,21 @@ class ChannelMasterController extends Controller
             $logoMap = [];
             $sellerLinkMap = [];
             $aliasMap = [];
+            $promotionsMap = [];
+            $complianceCountMap = [];
             $hasLogo = Schema::hasColumn('channel_master', 'logo');
             $hasSellerLink = Schema::hasColumn('channel_master', 'seller_link');
             $hasAlias = Schema::hasColumn('channel_master', 'alias');
+            $hasPromotions = Schema::hasColumn('channel_master', 'promotions');
+            $hasComplianceCount = Schema::hasColumn('channel_master', 'compliance_count');
 
-            if ($hasLogo || $hasSellerLink || $hasAlias) {
+            if ($hasLogo || $hasSellerLink || $hasAlias || $hasPromotions || $hasComplianceCount) {
                 $select = ['channel', 'status'];
                 if ($hasLogo) $select[] = 'logo';
                 if ($hasSellerLink) $select[] = 'seller_link';
                 if ($hasAlias) $select[] = 'alias';
+                if ($hasPromotions) $select[] = 'promotions';
+                if ($hasComplianceCount) $select[] = 'compliance_count';
 
                 // Load every channel_master row and key by a canonical name so
                 // duplicate/aliased rows resolve correctly. Active rows are taken
@@ -3157,15 +3163,23 @@ class ChannelMasterController extends Controller
                     if ($hasAlias && !empty($r->alias) && empty($aliasMap[$key])) {
                         $aliasMap[$key] = $r->alias;
                     }
+                    if ($hasPromotions && $r->promotions !== null && !isset($promotionsMap[$key])) {
+                        $promotionsMap[$key] = $r->promotions;
+                    }
+                    if ($hasComplianceCount && $r->compliance_count !== null && !isset($complianceCountMap[$key])) {
+                        $complianceCountMap[$key] = $r->compliance_count;
+                    }
                 }
             }
 
             // Format data for frontend (match expected format)
-            $formattedData = $channels->map(function($channel) use ($logoMap, $sellerLinkMap, $aliasMap) {
+            $formattedData = $channels->map(function($channel) use ($logoMap, $sellerLinkMap, $aliasMap, $promotionsMap, $complianceCountMap) {
                 $canonicalKey = $this->canonicalChannelKey($channel->channel);
                 return [
                     'Channel ' => $channel->channel,
                     'alias' => $aliasMap[$canonicalKey] ?? null,
+                    'promotions' => $promotionsMap[$canonicalKey] ?? null,
+                    'compliance_count' => $complianceCountMap[$canonicalKey] ?? null,
                     'logo' => $logoMap[$canonicalKey] ?? null,
                     'seller_link' => $sellerLinkMap[$canonicalKey] ?? null,
                     'sheet_link' => $channel->sheet_link,
@@ -3308,6 +3322,12 @@ class ChannelMasterController extends Controller
         // Check optional columns before adding them
         if (Schema::hasColumn('channel_master', 'alias')) {
             $columns[] = 'alias';
+        }
+        if (Schema::hasColumn('channel_master', 'promotions')) {
+            $columns[] = 'promotions';
+        }
+        if (Schema::hasColumn('channel_master', 'compliance_count')) {
+            $columns[] = 'compliance_count';
         }
         if (Schema::hasColumn('channel_master', 'base')) {
             $columns[] = 'base';
@@ -3772,6 +3792,8 @@ class ChannelMasterController extends Controller
             $row = [
                 'Channel '       => ucfirst($channel),
                 'alias'          => $channelRow->alias ?? null,
+                'promotions'     => $channelRow->promotions ?? null,
+                'compliance_count' => $channelRow->compliance_count ?? null,
                 'logo'           => $channelRow->logo ?? null,
                 'seller_link'    => $channelRow->seller_link ?? null,
                 'Link'           => null,
@@ -11447,6 +11469,8 @@ class ChannelMasterController extends Controller
         $validatedData = $request->validate([
             'channel' => 'required|string',
             'alias' => 'nullable|string|max:190',
+            'promotions' => 'nullable|numeric',
+            'compliance_count' => 'nullable|integer',
             'sheet_link' => 'nullable|url',
             'addition_sheet' => 'nullable|url',
             'type' => 'nullable|string',
@@ -11473,6 +11497,16 @@ class ChannelMasterController extends Controller
             // alias column may not exist yet (pre-migration); strip if missing
             if (!Schema::hasColumn('channel_master', 'alias')) {
                 unset($validatedData['alias']);
+            }
+
+            // promotions column may not exist yet (pre-migration); strip if missing
+            if (!Schema::hasColumn('channel_master', 'promotions')) {
+                unset($validatedData['promotions']);
+            }
+
+            // compliance_count column may not exist yet (pre-migration); strip if missing
+            if (!Schema::hasColumn('channel_master', 'compliance_count')) {
+                unset($validatedData['compliance_count']);
             }
 
             // Logo column may not exist yet (pre-migration); strip if missing
@@ -11583,6 +11617,8 @@ class ChannelMasterController extends Controller
         $originalChannel = $request->input('original_channel');
         $updatedChannel = $request->input('channel');
         $alias = $request->input('alias');
+        $promotions = $request->input('promotions');
+        $complianceCount = $request->input('compliance_count');
         $sheetUrl = $request->input('sheet_url');
         $type = $request->input('type');
         $channelPercentage = $request->input('channel_percentage');
@@ -11638,6 +11674,20 @@ class ChannelMasterController extends Controller
         // Save alias if column exists (treat blank as NULL)
         if (Schema::hasColumn('channel_master', 'alias') && $request->has('alias')) {
             $channel->alias = ($alias !== '' && $alias !== null) ? $alias : null;
+        }
+
+        // Save manual Promotions % if column exists (treat blank as NULL)
+        if (Schema::hasColumn('channel_master', 'promotions') && $request->has('promotions')) {
+            $channel->promotions = ($promotions !== '' && $promotions !== null && is_numeric($promotions))
+                ? $promotions
+                : null;
+        }
+
+        // Save manual Compliance Count if column exists (treat blank as NULL)
+        if (Schema::hasColumn('channel_master', 'compliance_count') && $request->has('compliance_count')) {
+            $channel->compliance_count = ($complianceCount !== '' && $complianceCount !== null && is_numeric($complianceCount))
+                ? (int) $complianceCount
+                : null;
         }
 
         // Save missing_link if column exists

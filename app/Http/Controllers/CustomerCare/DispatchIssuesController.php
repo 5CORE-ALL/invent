@@ -41,6 +41,12 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return view('customer-care.carrier_issue', $this->issueBoardIndexData());
     }
 
+    /** Tabulator board: same data and APIs as All Issues (`dispatch_issue_issues`), filtered to the "Chargeback" department. */
+    public function chargebackBoard()
+    {
+        return view('customer-care.chargeback_issues', $this->issueBoardIndexData());
+    }
+
     protected function issuesTable(): string
     {
         return 'dispatch_issue_issues';

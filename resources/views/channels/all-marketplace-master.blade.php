@@ -504,6 +504,18 @@
                             <small class="text-muted">Shown in the Alias column; click it to open this channel's view.</small>
                         </div>
                         <div class="mb-3">
+                            <label for="channelPromotions" class="form-label">Promotions (%)</label>
+                            <input type="number" class="form-control" id="channelPromotions" step="0.01"
+                                min="0" placeholder="e.g. 10">
+                            <small class="text-muted">Manual promotions percentage for this channel.</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="channelComplianceCount" class="form-label">Compliance Count</label>
+                            <input type="number" class="form-control" id="channelComplianceCount" step="1"
+                                min="0" placeholder="e.g. 5">
+                            <small class="text-muted">Manual compliance count for this channel.</small>
+                        </div>
+                        <div class="mb-3">
                             <label for="channelLogo" class="form-label">Channel Logo</label>
                             <div class="d-flex align-items-center gap-2">
                                 <div id="channelLogoPreview" class="channel-logo-preview">
@@ -584,6 +596,18 @@
                             <input type="text" class="form-control" id="editChannelAlias" maxlength="190"
                                 placeholder="Short display name">
                             <small class="text-muted">Shown in the Alias column; click it to open this channel's view.</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editChannelPromotions" class="form-label">Promotions (%)</label>
+                            <input type="number" class="form-control" id="editChannelPromotions" step="0.01"
+                                min="0" placeholder="e.g. 10">
+                            <small class="text-muted">Manual promotions percentage for this channel.</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editChannelComplianceCount" class="form-label">Compliance Count</label>
+                            <input type="number" class="form-control" id="editChannelComplianceCount" step="1"
+                                min="0" placeholder="e.g. 5">
+                            <small class="text-muted">Manual compliance count for this channel.</small>
                         </div>
                         <div class="mb-3">
                             <label for="editChannelLogo" class="form-label">Channel Logo</label>
@@ -1609,6 +1633,23 @@
                             const bg    = v === 'A' ? '#198754' : '#fd7e14';
                             const label = v === 'A' ? 'API'     : 'GS';
                             return `<span class="badge" style="background-color:${bg};color:#fff;font-weight:600;min-width:24px;" title="${label}">${label}</span>`;
+                        }
+                    },
+                    {
+                        // Manual Promotions % entered per channel in the Edit modal.
+                        title: "Promotions",
+                        field: "promotions",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        headerTooltip: "Manual promotions percentage — set in the channel's Edit modal.",
+                        formatter: function(cell) {
+                            const raw = cell.getValue();
+                            if (raw === null || raw === undefined || raw === '' || isNaN(parseFloat(raw))) {
+                                return '<span style="color:#adb5bd;">-</span>';
+                            }
+                            const val = parseFloat(raw);
+                            return `<span style="font-weight:600;">${val.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 2})}%</span>`;
                         }
                     },
                     {
@@ -3230,6 +3271,8 @@
                                     // Populate modal
                                     $('#editChannelName').val(channel);
                                     $('#editChannelAlias').val(rowData['alias'] || '');
+                                    $('#editChannelPromotions').val(rowData['promotions'] ?? '');
+                                    $('#editChannelComplianceCount').val(rowData['compliance_count'] ?? '');
                                     $('#editChannelUrl').val(sheetUrl);
                                     $('#editType').val(type);
                                     $('#editMissingLink').val(missingLink);
@@ -3334,6 +3377,22 @@
                             const link = cell.getValue();
                             if (!link) return '-';
                             return `<a href="${link}" target="_blank" class="btn btn-sm btn-success">🔗</a>`;
+                        }
+                    },
+                    {
+                        // Manual Compliance Count entered per channel in the Edit modal.
+                        title: "Compliance Count",
+                        field: "compliance_count",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 110,
+                        headerTooltip: "Manual compliance count — set in the channel's Edit modal.",
+                        formatter: function(cell) {
+                            const raw = cell.getValue();
+                            if (raw === null || raw === undefined || raw === '' || isNaN(parseInt(raw))) {
+                                return '<span style="color:#adb5bd;">-</span>';
+                            }
+                            return `<span style="font-weight:600;">${parseInt(raw).toLocaleString('en-US')}</span>`;
                         }
                     },
                 ]
@@ -4627,6 +4686,8 @@
                     // Populate modal fields
                     $('#editChannelName').val(channel);
                     $('#editChannelAlias').val(rowData['alias'] || '');
+                    $('#editChannelPromotions').val(rowData['promotions'] ?? '');
+                    $('#editChannelComplianceCount').val(rowData['compliance_count'] ?? '');
                     $('#editChannelUrl').val(sheetUrl);
                     $('#editType').val(type);
                     $('#editMissingLink').val(missingLink);
@@ -4732,6 +4793,8 @@
                 const formData = new FormData();
                 formData.append('channel', channelName);
                 formData.append('alias', $('#channelAlias').val().trim());
+                formData.append('promotions', $('#channelPromotions').val().trim());
+                formData.append('compliance_count', $('#channelComplianceCount').val().trim());
                 formData.append('sheet_link', channelUrl);
                 formData.append('type', type);
                 formData.append('seller_link', sellerLink);
@@ -4775,6 +4838,8 @@
             $(document).on('click', '#updateChannelBtn', function() {
                 const channel = $('#editChannelName').val().trim();
                 const alias = $('#editChannelAlias').val().trim();
+                const promotions = $('#editChannelPromotions').val().trim();
+                const complianceCount = $('#editChannelComplianceCount').val().trim();
                 const sheetUrl = $('#editChannelUrl').val().trim();
                 const type = $('#editType').val();
                 const missingLink = $('#editMissingLink').val().trim();
@@ -4791,6 +4856,8 @@
                 const formData = new FormData();
                 formData.append('channel', channel);
                 formData.append('alias', alias);
+                formData.append('promotions', promotions);
+                formData.append('compliance_count', complianceCount);
                 formData.append('sheet_url', sheetUrl);
                 formData.append('type', type);
                 formData.append('missing_link', missingLink);
