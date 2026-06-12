@@ -354,12 +354,24 @@
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                            data-bs-auto-close="outside">
                             <i class="fas fa-columns"></i> Columns
                         </button>
-                        <ul class="dropdown-menu" id="column-dropdown-menu" aria-labelledby="columnVisibilityDropdown">
-                            <!-- Populated dynamically -->
-                        </ul>
+                        <div class="dropdown-menu p-0" id="column-dropdown-menu"
+                            aria-labelledby="columnVisibilityDropdown"
+                            style="max-height:none; overflow:visible;">
+                            <ul id="column-dropdown-list" class="list-unstyled mb-0 px-2 py-1"
+                                style="max-height:320px; overflow-y:auto;">
+                                <!-- Populated dynamically -->
+                            </ul>
+                            <div class="border-top px-2 py-2 bg-white"
+                                style="position:sticky; bottom:0;">
+                                <button type="button" id="save-columns-btn" class="btn btn-sm btn-primary w-100">
+                                    <i class="fas fa-save"></i> Save
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
@@ -551,9 +563,19 @@
                     <form id="editChannelForm" enctype="multipart/form-data">
                         <input type="hidden" id="originalChannel" name="original_channel">
                         <input type="hidden" id="editExistingLogo">
+                        @php
+                            $canEditChannelName = in_array(strtolower(trim((string) (auth()->user()->email ?? ''))), [
+                                'support@5core.com',
+                                'president@5core.com',
+                                'software5@5core.com',
+                            ], true);
+                        @endphp
                         <div class="mb-3">
                             <label for="editChannelName" class="form-label">Channel Name</label>
-                            <input type="text" class="form-control" id="editChannelName" readonly>
+                            <input type="text" class="form-control" id="editChannelName" {{ $canEditChannelName ? '' : 'readonly' }}>
+                            @unless ($canEditChannelName)
+                                <small class="text-muted">Channel name editing is restricted.</small>
+                            @endunless
                         </div>
                         <div class="mb-3">
                             <label for="editChannelLogo" class="form-label">Channel Logo</label>
@@ -586,10 +608,6 @@
                                 <option value="B2C">B2C</option>
                                 <option value="Dropship">Dropship</option>
                             </select>
-                        </div>
-                        <div class="mb-3">
-                            <label for="editTarget" class="form-label">Target</label>
-                            <input type="number" class="form-control" id="editTarget" step="0.01">
                         </div>
                         <div class="mb-3">
                             <label for="editMissingLink" class="form-label">Blade page link</label>
@@ -3172,7 +3190,6 @@
                                     const channel = rowData['Channel '] || rowData['Channel'] || '';
                                     const sheetUrl = rowData['sheet_link'] || '';
                                     const type = rowData['type'] || '';
-                                    const target = rowData['target'] || 0;
                                     const missingLink = rowData['missing_link'] || '';
                                     const additionSheet = rowData['addition_sheet'] || '';
                                     const logo = rowData['logo'] || '';
@@ -3182,7 +3199,6 @@
                                     $('#editChannelName').val(channel);
                                     $('#editChannelUrl').val(sheetUrl);
                                     $('#editType').val(type);
-                                    $('#editTarget').val(target);
                                     $('#editMissingLink').val(missingLink);
                                     $('#editAdditionSheet').val(additionSheet);
                                     $('#editChannelSellerLink').val(sellerLink);
@@ -3517,9 +3533,66 @@
                 applyMasterFilters();
             });
 
-            // Build Column Visibility Dropdown
+            // ---- Persisted column visibility (channel_tabulator_column_settings) ----
+            const COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+            const COLUMN_VISIBILITY_CHANNEL = 'all_marketplace_master';
+            const columnCsrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+            let savedColumnVisibility = {};
+
+            function fetchColumnVisibility() {
+                return fetch(`${COLUMN_VISIBILITY_URL}?channel=${encodeURIComponent(COLUMN_VISIBILITY_CHANNEL)}`, {
+                        credentials: 'same-origin'
+                    })
+                    .then(r => r.json())
+                    .then(map => {
+                        savedColumnVisibility = (map && typeof map === 'object' && !Array.isArray(map)) ? map : {};
+                        return savedColumnVisibility;
+                    })
+                    .catch(() => {
+                        savedColumnVisibility = {};
+                        return {};
+                    });
+            }
+
+            function applyColumnVisibility() {
+                if (!table || !savedColumnVisibility || !Object.keys(savedColumnVisibility).length) return;
+                table.getColumns().forEach(col => {
+                    const def = col.getDefinition();
+                    if (!def.field) return;
+                    if (savedColumnVisibility[def.field] === false) col.hide();
+                    else if (savedColumnVisibility[def.field] === true) col.show();
+                });
+            }
+
+            function saveColumnVisibility() {
+                if (!table) return Promise.resolve();
+                const visibility = {};
+                table.getColumns().forEach(col => {
+                    const def = col.getDefinition();
+                    if (def.field) visibility[def.field] = col.isVisible();
+                });
+                savedColumnVisibility = visibility;
+                return fetch(COLUMN_VISIBILITY_URL, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': columnCsrfToken,
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        channel: COLUMN_VISIBILITY_CHANNEL,
+                        visibility: visibility,
+                    }),
+                }).then(r => {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json().catch(() => ({}));
+                });
+            }
+
+            // Build Column Visibility Dropdown — lists every column with a field.
             function buildColumnDropdown() {
-                const menu = document.getElementById("column-dropdown-menu");
+                const menu = document.getElementById("column-dropdown-list");
                 if (!menu) return;
 
                 menu.innerHTML = '';
@@ -3536,6 +3609,29 @@
                     menu.appendChild(li);
                 });
             }
+
+            // Persist current selection (Save keeps the latest changes for everyone).
+            document.getElementById("save-columns-btn")?.addEventListener("click", function() {
+                const btn = this;
+                const original = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+                saveColumnVisibility()
+                    .then(() => {
+                        btn.innerHTML = '<i class="fas fa-check"></i> Saved';
+                        if (typeof showToast === 'function') showToast('success', 'Column settings saved.');
+                    })
+                    .catch(() => {
+                        btn.innerHTML = '<i class="fas fa-times"></i> Failed';
+                        if (typeof showToast === 'function') showToast('error', 'Failed to save column settings.');
+                    })
+                    .finally(() => {
+                        setTimeout(() => {
+                            btn.disabled = false;
+                            btn.innerHTML = original;
+                        }, 1200);
+                    });
+            });
 
             // Column visibility toggle
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
@@ -3637,9 +3733,12 @@
                 }
             });
 
-            // Table built event
+            // Table built event — load saved column visibility, apply it, then build the menu.
             table.on('tableBuilt', function() {
-                buildColumnDropdown();
+                fetchColumnVisibility().then(() => {
+                    applyColumnVisibility();
+                    buildColumnDropdown();
+                });
             });
 
             // Table data loaded: rebuild dropdown; dot colors are loaded from ajaxResponse on first data load.
@@ -4481,7 +4580,6 @@
                     const channel = rowData['Channel '] || rowData['Channel'] || '';
                     const sheetUrl = rowData['sheet_link'] || '';
                     const type = rowData['type'] || '';
-                    const target = rowData['target'] || 0;
                     const missingLink = rowData['missing_link'] || '';
                     const additionSheet = rowData['addition_sheet'] || '';
                     const logo = rowData['logo'] || '';
@@ -4496,7 +4594,6 @@
                     $('#editChannelName').val(channel);
                     $('#editChannelUrl').val(sheetUrl);
                     $('#editType').val(type);
-                    $('#editTarget').val(target);
                     $('#editMissingLink').val(missingLink);
                     $('#editAdditionSheet').val(additionSheet);
                     $('#editChannelSellerLink').val(sellerLink);
@@ -4646,7 +4743,6 @@
                 const channel = $('#editChannelName').val().trim();
                 const sheetUrl = $('#editChannelUrl').val().trim();
                 const type = $('#editType').val();
-                const target = $('#editTarget').val().trim();
                 const missingLink = $('#editMissingLink').val().trim();
                 const additionSheet = $('#editAdditionSheet').val().trim();
                 const originalChannel = $('#originalChannel').val().trim();
@@ -4663,7 +4759,6 @@
                 formData.append('channel', channel);
                 formData.append('sheet_url', sheetUrl);
                 formData.append('type', type);
-                formData.append('target', target);
                 formData.append('missing_link', missingLink);
                 formData.append('addition_sheet', additionSheet);
                 formData.append('original_channel', originalChannel);

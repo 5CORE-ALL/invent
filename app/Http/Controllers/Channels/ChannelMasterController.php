@@ -11589,12 +11589,33 @@ class ChannelMasterController extends Controller
             return response()->json(['success' => false, 'message' => 'Channel not found']);
         }
 
+        // Renaming a channel is restricted to a small allow-list of users. Any
+        // other user keeps the original name even if a different value was posted.
+        $channelRenameAllowed = [
+            'support@5core.com',
+            'president@5core.com',
+            'software5@5core.com',
+        ];
+        $currentEmail = strtolower(trim((string) (auth()->user()->email ?? '')));
+        $isRename = $updatedChannel !== null
+            && mb_strtolower(trim((string) $updatedChannel)) !== mb_strtolower(trim((string) $channel->channel));
+        if ($isRename && !in_array($currentEmail, $channelRenameAllowed, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to edit the channel name.',
+            ], 403);
+        }
+
         $channel->channel = $updatedChannel;
         $channel->sheet_link = $sheetUrl;
         $channel->type = $type;
         $channel->channel_percentage = $channelPercentage;
         $channel->base = $base;
-        $channel->target = $target;
+        // Target is no longer editable from the UI; only touch it when the
+        // request actually sends the field so existing values aren't wiped.
+        if ($request->has('target')) {
+            $channel->target = $target;
+        }
         
         // Save missing_link if column exists
         if (Schema::hasColumn('channel_master', 'missing_link')) {
