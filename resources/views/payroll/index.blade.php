@@ -186,6 +186,9 @@
             // Reflect recalculated amounts immediately, without a full reload.
             row.update({
                 hours_worked: fresh.hours_worked ?? value,
+                hours_overridden: true,
+                edited_by: fresh.edited_by ?? d.edited_by,
+                edited_at: fresh.edited_at ?? d.edited_at,
                 gross_amount: fresh.gross_amount ?? d.gross_amount,
                 amount_lm: fresh.gross_amount ?? d.amount_lm,
                 net_amount: fresh.net_amount ?? d.net_amount,
@@ -201,6 +204,9 @@
     let employeesTable = null;
     let employeesTableBuilt = false;
     let pendingEmployeesData = [];
+    // Hours overrides stay locked until the 2nd of the next month (set per month).
+    let hoursOverrideLocked = false;
+    let hoursOverrideUnlockDate = null;
     function renderEmployeesTable(emps, locked) {
         const data = (emps || []).map(e => Object.assign({}, e, { _locked: locked }));
         pendingEmployeesData = data;
@@ -212,13 +218,24 @@
             { title: 'Hours LM', field: 'hours_worked', hozAlign: 'center', width: 110,
                 editor: canManage ? 'number' : false,
                 editorParams: { min: 0, step: 1, selectContents: true },
-                editable: (cell) => canManage && !cell.getRow().getData()._locked,
+                editable: (cell) => canManage && !cell.getRow().getData()._locked && !hoursOverrideLocked,
                 cellEdited: onHoursEdited,
                 formatter: (c) => {
+                    const d = c.getRow().getData();
                     const v = parseFloat(c.getValue());
                     const txt = isNaN(v) ? '—' : (Math.round(v) + 'h');
-                    const editable = canManage && !c.getRow().getData()._locked;
-                    return editable ? (txt + ' <i class="ri-pencil-line text-muted small"></i>') : txt;
+                    // Pen tag shows ONLY when the hours were manually edited (overridden),
+                    // so live working hours stay clean and edited values stand out in bold.
+                    if (d.hours_overridden) {
+                        const who = d.edited_by ? ' title="Edited by ' + esc(d.edited_by) + '"' : '';
+                        return '<strong>' + txt + ' <i class="ri-pencil-fill text-primary"' + who + '></i></strong>';
+                    }
+                    // Until the override unlock date, show a lock hint instead of a pen.
+                    if (hoursOverrideLocked) {
+                        const tip = hoursOverrideUnlockDate ? ' title="Editable from ' + esc(hoursOverrideUnlockDate) + '"' : '';
+                        return txt + ' <i class="ri-lock-line text-muted small"' + tip + '></i>';
+                    }
+                    return txt;
                 } },
             { title: 'Salary PP', field: 'salary_pp', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
             { title: 'Incr', field: 'increment', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
@@ -317,6 +334,11 @@
         Object.keys(employeeRowsById).forEach(k => delete employeeRowsById[k]);
         emps.forEach(e => { employeeRowsById[e.id] = e; });
 
+        hoursOverrideLocked = !!data.hours_override_locked;
+        hoursOverrideUnlockDate = data.hours_override_unlock_date
+            ? new Date(data.hours_override_unlock_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+            : null;
+
         renderEmployeesTable(emps, !!m.is_locked);
 
         document.getElementById('btnDownloadPayoutSheet')?.setAttribute('href', `${base}/month/${id}/payout-sheet`);
@@ -348,6 +370,13 @@
             ['salary_pp','increment','other','adv_inc_other','incentive','hours_worked'].forEach(k => {
                 if (f[k]) f[k].value = row[k] ?? '';
             });
+            // Hours can't be overridden until the unlock date — lock the field too.
+            if (f.hours_worked) {
+                f.hours_worked.disabled = hoursOverrideLocked;
+                f.hours_worked.title = hoursOverrideLocked && hoursOverrideUnlockDate
+                    ? ('Editable from ' + hoursOverrideUnlockDate)
+                    : '';
+            }
             bootstrap.Modal.getOrCreateInstance(document.getElementById('editSalaryModal')).show();
         }
     });

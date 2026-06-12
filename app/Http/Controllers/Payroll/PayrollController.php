@@ -114,6 +114,7 @@ class PayrollController extends Controller
                 'incentive' => $r->incentive,
                 'salary_lm' => (float) $r->salary_pp + (float) $r->increment,
                 'hours_worked' => $r->hours_worked,
+                'hours_overridden' => (bool) $r->hours_overridden,
                 'amount_lm' => $r->gross_amount,
                 'amount_p' => $r->net_amount,
                 'gross_amount' => $r->gross_amount,
@@ -132,6 +133,8 @@ class PayrollController extends Controller
 
         return response()->json([
             'month' => $payrollMonth,
+            'hours_override_locked' => $payrollMonth->isOverrideLocked(),
+            'hours_override_unlock_date' => $payrollMonth->overrideUnlockDate()?->toIso8601String(),
             'employees' => $employees,
             'components' => PayrollSalaryComponent::with('user')->where('payroll_month_id', $payrollMonth->id)->get(),
             'payments' => PayrollPaymentDeduction::with('user')->where('payroll_month_id', $payrollMonth->id)->get(),
@@ -264,8 +267,21 @@ class PayrollController extends Controller
 
         // A manually edited Hours value is locked in too: flag it so the live
         // TeamLogger refresh stops overwriting it and the edited value persists.
+        // Overrides are blocked until the 2nd of the next month so last month's
+        // working hours can settle first; only an actual change counts as an edit.
         if (array_key_exists('hours_worked', $validated)) {
-            $validated['hours_overridden'] = true;
+            $hoursChanged = (float) $payrollEmployeeSalary->hours_worked !== (float) $validated['hours_worked'];
+
+            if ($hoursChanged) {
+                if ($month && $month->isOverrideLocked()) {
+                    $unlock = $month->overrideUnlockDate()?->format('d M Y');
+                    abort(422, "Hours can be edited only from {$unlock} (the 2nd of next month). Last month's working hours are still being finalised.");
+                }
+                $validated['hours_overridden'] = true;
+            } else {
+                // No real change — don't touch the value or flip the override flag.
+                unset($validated['hours_worked']);
+            }
         }
 
         $validated['edited_by'] = $request->user()?->name;

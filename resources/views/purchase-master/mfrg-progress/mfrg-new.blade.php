@@ -267,19 +267,33 @@
                 return rowCp(d) * qty;
             }
 
-            function postInline(sku, mipId, column, value) {
+            function postInline(sku, mipId, column, value, sourceTable) {
                 return fetch('/mfrg-progresses/inline-update-by-sku', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF },
-                    body: JSON.stringify({ sku: sku, mip_id: mipId, column: column, value: value })
-                }).then(r => r.json());
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': CSRF },
+                    body: JSON.stringify({ sku: sku, mip_id: mipId, column: column, value: value, source_table: sourceTable || '' })
+                }).then(function (r) {
+                    if (r.status === 419) { throw new Error('Session expired — please refresh the page and try again.'); }
+                    if (r.status === 401 || r.redirected) { throw new Error('Not logged in — please refresh the page.'); }
+                    return r.text().then(function (txt) {
+                        try { return JSON.parse(txt); }
+                        catch (e) { throw new Error('Unexpected server response (HTTP ' + r.status + ').'); }
+                    });
+                });
             }
             function postUpdateLink(sku, column, value) {
                 return fetch('/update-link', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF },
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': CSRF },
                     body: JSON.stringify({ sku: sku, row_id: 0, column: column, value: value })
-                }).then(r => r.json());
+                }).then(function (r) {
+                    if (r.status === 419) { throw new Error('Session expired — please refresh the page and try again.'); }
+                    if (r.status === 401 || r.redirected) { throw new Error('Not logged in — please refresh the page.'); }
+                    return r.text().then(function (txt) {
+                        try { return JSON.parse(txt); }
+                        catch (e) { throw new Error('Unexpected server response (HTTP ' + r.status + ').'); }
+                    });
+                });
             }
             function postStage(sku, parent, value) {
                 return $.post('/update-forecast-data', { sku: sku, parent: parent || '', column: 'Stage', value: value, _token: CSRF });
@@ -398,10 +412,10 @@
                     { title: "QTY", field: "qty", width: 90, hozAlign: "center", formatter: inputFormatter('qty', 'number', 70) },
                     { title: "O Date", field: "created_at", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,
                       editor: "date",
-                      cellEdited: function (cell) { const d = cell.getRow().getData(); postInline(d.sku || '', d.id || 0, 'created_at', cell.getValue()).then(r => { if (!r.success) alert(r.message || 'Save failed'); }); } },
+                      cellEdited: function (cell) { const d = cell.getRow().getData(); postInline(d.sku || '', d.id || 0, 'created_at', cell.getValue(), d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save date: ' + (err && err.message ? err.message : err))); } },
                     { title: "D Date", field: "delivery_date", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,
                       editor: "date",
-                      cellEdited: function (cell) { const d = cell.getRow().getData(); postInline(d.sku || '', d.id || 0, 'delivery_date', cell.getValue()).then(r => { if (!r.success) alert(r.message || 'Save failed'); }); } },
+                      cellEdited: function (cell) { const d = cell.getRow().getData(); postInline(d.sku || '', d.id || 0, 'delivery_date', cell.getValue(), d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save date: ' + (err && err.message ? err.message : err))); } },
                     { title: "Supplier", field: "supplier", width: 120, hozAlign: "center", headerFilter: "input", headerFilterPlaceholder: " Filter...", formatter: supplierFormatter },
                     { title: '<i class="fas fa-comments" title="Communication"></i>', field: "supplier_platform_links", width: 56, headerSort: false, formatter: commFormatter },
                     { title: "PO", field: "mip_po_number", width: 80, hozAlign: "center", formatter: function (c) { const v = c.getValue(); return v ? '<span class="badge bg-info">' + esc(v) + '</span>' : '<span class="mip-status-dot" style="background-color:#dc3545;" title="No PO"></span>'; } },
@@ -611,8 +625,14 @@
                     const v = t.value;
                     const c = EXEC_COLORS[v] || { bg: '#e5e7eb', text: '#6b7280' };
                     t.style.background = c.bg; t.style.color = c.text;
-                    row.update({ exec: v });
-                    postUpdateLink(sku, 'Exec', v || null).then(r => { if (!r.success) alert(r.message || 'Save failed'); });
+                    // Fire the save first so a later UI redraw can never prevent it, and
+                    // only commit the row data once the server confirms success.
+                    postUpdateLink(sku, 'Exec', v || null)
+                        .then(r => {
+                            if (r && r.success) { row.update({ exec: v }); }
+                            else { alert((r && r.message) || 'Could not save executive.'); }
+                        })
+                        .catch(err => { alert('Could not save executive: ' + (err && err.message ? err.message : err)); });
                 } else if (t.classList.contains('editable-stage')) {
                     const v = t.value;
                     postStage(sku, d.parent, v).done(function () {
@@ -625,13 +645,21 @@
                     }).fail(function () { alert('Failed to save stage.'); });
                 } else if (t.classList.contains('mip-supplier-select')) {
                     const v = t.value;
-                    row.update({ supplier: v });
-                    postInline(sku, mipId, 'supplier', v).then(r => { if (!r.success) alert(r.message || 'Save failed'); });
+                    postInline(sku, mipId, 'supplier', v, d.source_table)
+                        .then(r => {
+                            if (r && r.success) { row.update({ supplier: v }); }
+                            else { alert((r && r.message) || 'Could not save supplier.'); }
+                        })
+                        .catch(err => { alert('Could not save supplier: ' + (err && err.message ? err.message : err)); });
                 } else if (t.classList.contains('mip-inline-input')) {
                     const col = t.dataset.column;
                     const v = t.value;
-                    row.update({ [col === 'created_at' ? 'created_at' : col]: v });
-                    postInline(sku, mipId, col, v).then(r => { if (!r.success) alert(r.message || 'Save failed'); else updateStats(); });
+                    postInline(sku, mipId, col, v, d.source_table)
+                        .then(r => {
+                            if (r && r.success) { row.update({ [col === 'created_at' ? 'created_at' : col]: v }); updateStats(); }
+                            else { alert((r && r.message) || 'Save failed.'); }
+                        })
+                        .catch(err => { alert('Could not save: ' + (err && err.message ? err.message : err)); });
                 }
             });
 
@@ -674,7 +702,7 @@
                 const next = String(d[col] || '').toLowerCase() === 'yes' ? 'No' : 'Yes';
                 dot.style.backgroundColor = next === 'Yes' ? '#22c55e' : '#dc3545';
                 row.update({ [col]: next });
-                postInline(d.sku || '', d.id || 0, col, next).then(r => { if (!r.success) alert(r.message || 'Save failed'); });
+                postInline(d.sku || '', d.id || 0, col, next, d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save: ' + (err && err.message ? err.message : err)));
             });
 
             // Communication dropdown: move to body so it isn't clipped
@@ -873,7 +901,7 @@
                         tasks.push(Promise.resolve(postForecastData(sku, d.parent, 'CBM', newVal)));
                         updates.CBM = newVal;
                     } else {
-                        tasks.push(postInline(sku, mipId, key, newVal));
+                        tasks.push(postInline(sku, mipId, key, newVal, d.source_table));
                         updates[key] = newVal;
                     }
                 });

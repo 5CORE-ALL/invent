@@ -13,6 +13,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class MFRGInProgressController extends Controller
 {
@@ -632,6 +633,13 @@ class MFRGInProgressController extends Controller
             return response()->json(['success' => false, 'message' => 'Invalid column.']);
         }
 
+        // Ready-to-Ship rows live in their own table with an independent id space.
+        // Their mip_id is a ready_to_ship.id, so routing it through MfrgProgress::find()
+        // would match an unrelated SKU. Update the ready_to_ship row directly instead.
+        if ((string) $request->input('source_table') === 'ready_to_ship') {
+            return $this->inlineUpdateReadyToShip($request, $skuKey, $column);
+        }
+
         $columnsAllowCreate = ['supplier', 'supplier_sku'];
 
         $progress = null;
@@ -713,6 +721,53 @@ class MFRGInProgressController extends Controller
                 'success' => false,
                 'message' => 'Save failed: '.$e->getMessage(),
             ], 500);
+        }
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Inline update for a Ready-to-Ship row (its mip_id is a ready_to_ship.id, not a mfrg_progress.id).
+     */
+    private function inlineUpdateReadyToShip(Request $request, ?string $skuKey, string $column)
+    {
+        $rts = null;
+        $mipIdRaw = $request->input('mip_id');
+        if ($mipIdRaw !== null && $mipIdRaw !== '' && ctype_digit((string) $mipIdRaw)) {
+            $rts = ReadyToShip::query()->find((int) $mipIdRaw);
+        }
+        if (! $rts && $skuKey !== null && $skuKey !== '') {
+            $rts = ReadyToShip::query()
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($skuKey))])
+                ->first();
+        }
+        if (! $rts) {
+            return response()->json(['success' => false, 'message' => 'Ready-to-Ship row not found.']);
+        }
+
+        if (! Schema::hasColumn('ready_to_ship', $column)) {
+            return response()->json(['success' => false, 'message' => 'This field cannot be edited for a Ready-to-Ship row.']);
+        }
+
+        $value = $request->input('value');
+        if ($column === 'qty') {
+            $value = is_numeric($value) ? (float) $value : 0;
+        }
+        if (in_array($column, ['delivery_date', 'created_at'], true) && ($value === '' || $value === null)) {
+            $value = null;
+        }
+
+        try {
+            $rts->{$column} = $value;
+            $rts->save();
+        } catch (\Throwable $e) {
+            Log::warning('mip.inlineUpdateReadyToShip.save_failed', [
+                'sku' => $skuKey,
+                'column' => $column,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json(['success' => false, 'message' => 'Save failed: '.$e->getMessage()], 500);
         }
 
         return response()->json(['success' => true]);
