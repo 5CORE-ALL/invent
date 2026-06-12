@@ -50,6 +50,67 @@
             align-items: center;
             justify-content: space-between;
         }
+
+        .cb-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .cb-badge {
+            flex: 1 1 150px;
+            min-width: 150px;
+            border-radius: 0.6rem;
+            padding: 0.65rem 0.9rem;
+            border: 1px solid transparent;
+        }
+
+        .cb-badge .cb-badge-label {
+            display: block;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-weight: 600;
+            opacity: 0.85;
+        }
+
+        .cb-badge .cb-badge-value {
+            display: block;
+            font-size: 1.35rem;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .cb-badge--total {
+            background: #eef2ff;
+            border-color: #c7d2fe;
+            color: #3730a3;
+        }
+
+        .cb-badge--l30issues {
+            background: #fff7ed;
+            border-color: #fed7aa;
+            color: #9a3412;
+        }
+
+        .cb-badge--l30loss {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+
+        .cb-badge--loss {
+            background: #fdf4ff;
+            border-color: #f5d0fe;
+            color: #86198f;
+        }
+
+        .cb-badge--refund {
+            background: #ecfdf5;
+            border-color: #a7f3d0;
+            color: #065f46;
+        }
     </style>
 @endsection
 
@@ -63,6 +124,29 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
+                    <div class="cb-badges">
+                        <div class="cb-badge cb-badge--total" title="Total active chargeback issues">
+                            <span class="cb-badge-label">Total Issues</span>
+                            <span class="cb-badge-value" id="cb-stat-total">…</span>
+                        </div>
+                        <div class="cb-badge cb-badge--l30issues" title="Issues created in the last 30 days">
+                            <span class="cb-badge-label">L30 Issues</span>
+                            <span class="cb-badge-value" id="cb-stat-l30-issues">…</span>
+                        </div>
+                        <div class="cb-badge cb-badge--l30loss" title="Total loss in the last 30 days">
+                            <span class="cb-badge-label">L30 Loss</span>
+                            <span class="cb-badge-value" id="cb-stat-l30-loss">…</span>
+                        </div>
+                        <div class="cb-badge cb-badge--loss" title="Total loss across all chargeback issues">
+                            <span class="cb-badge-label">Total Loss</span>
+                            <span class="cb-badge-value" id="cb-stat-loss">…</span>
+                        </div>
+                        <div class="cb-badge cb-badge--refund" title="Total refund amount across all chargeback issues">
+                            <span class="cb-badge-label">Total Refund</span>
+                            <span class="cb-badge-value" id="cb-stat-refund">…</span>
+                        </div>
+                    </div>
+
                     <div class="cb-toolbar mb-3">
                         <div>
                             <h5 class="mb-0">Chargeback Issues</h5>
@@ -232,6 +316,13 @@
                 skuDetails: @json(route('customer.care.dispatch.issues.sku.details')),
                 archiveBase: @json(url('/customer-care/all-issues/issues')),
                 dropdownOptions: @json(route('customer.care.dispatch.issues.dropdown.options.index')),
+                l30Issues: @json(route('customer.care.dispatch.issues.l30.issues')),
+                l30Loss: @json(route('customer.care.dispatch.issues.l30.loss')),
+            };
+
+            const money = function (n) {
+                const v = Number(n) || 0;
+                return '$' + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             };
 
             const jsonHeaders = {
@@ -382,8 +473,48 @@
                     const json = await res.json();
                     const rows = Array.isArray(json && json.data) ? json.data : [];
                     table.replaceData(rows);
+                    updateDataBadges(rows);
                 } catch (e) {
                     console.error('Failed to load chargeback issues', e);
+                }
+            }
+
+            function setBadge(id, value) {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value;
+            }
+
+            function updateDataBadges(rows) {
+                let totalLoss = 0;
+                let totalRefund = 0;
+                rows.forEach(function (r) {
+                    totalLoss += Number(r.total_loss) || 0;
+                    totalRefund += Number(r.refund_amount) || 0;
+                });
+                setBadge('cb-stat-total', rows.length.toLocaleString());
+                setBadge('cb-stat-loss', money(totalLoss));
+                setBadge('cb-stat-refund', money(totalRefund));
+            }
+
+            async function loadL30Badges() {
+                const dept = '?department=' + encodeURIComponent(DEPARTMENT);
+                try {
+                    const res = await fetch(URLS.l30Issues + dept, {
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    });
+                    const json = await res.json();
+                    setBadge('cb-stat-l30-issues', (Number(json && json.total) || 0).toLocaleString());
+                } catch (e) {
+                    setBadge('cb-stat-l30-issues', '0');
+                }
+                try {
+                    const res = await fetch(URLS.l30Loss + dept, {
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    });
+                    const json = await res.json();
+                    setBadge('cb-stat-l30-loss', money(json && json.total));
+                } catch (e) {
+                    setBadge('cb-stat-l30-loss', money(0));
                 }
             }
 
@@ -399,7 +530,7 @@
                         const err = await res.json().catch(function () { return {}; });
                         throw new Error(err.message || 'Archive failed (' + res.status + ').');
                     }
-                    loadData();
+                    refreshAll();
                 } catch (e) {
                     alert(e.message || 'Archive failed.');
                 }
@@ -431,8 +562,13 @@
                 modal.show();
             }
 
+            function refreshAll() {
+                loadData();
+                loadL30Badges();
+            }
+
             document.getElementById('cb-add').addEventListener('click', function () { openModal(null); });
-            document.getElementById('cb-refresh').addEventListener('click', loadData);
+            document.getElementById('cb-refresh').addEventListener('click', refreshAll);
 
             document.getElementById('cb-search').addEventListener('input', function () {
                 const term = this.value.trim().toLowerCase();
@@ -462,7 +598,7 @@
                 try {
                     await persistRow(data);
                     modal.hide();
-                    loadData();
+                    refreshAll();
                 } catch (err) {
                     alert(err.message || 'Save failed.');
                 } finally {
@@ -508,6 +644,7 @@
 
             // Init
             loadData();
+            loadL30Badges();
             loadDropdownOptions('root_cause_found', 'cb-root-cause-found-datalist');
             loadDropdownOptions('root_cause_fixed', 'cb-root-cause-fixed-datalist');
         })();
