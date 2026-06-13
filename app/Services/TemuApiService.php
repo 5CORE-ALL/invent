@@ -15,6 +15,7 @@ use App\Models\ProductStockMapping;
 use App\Models\TemuPricing;
 use App\Models\TemuMetric;
 use App\Services\Support\DescriptionWithImagesFormatter;
+use App\Services\Support\ShopifyBulletPointsFormatter;
 use Carbon\Carbon;
 
 class TemuApiService
@@ -992,7 +993,10 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return ['success' => false, 'message' => 'SKU (or goods_id) is required.'];
         }
 
-        $lines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) $bulletPoints))));
+        $lines = array_values(array_filter(array_map(
+            fn ($line) => ShopifyBulletPointsFormatter::cleanBulletLine((string) $line),
+            preg_split('/\r\n|\r|\n/', (string) $bulletPoints) ?: []
+        )));
         if ($lines === []) {
             return ['success' => false, 'message' => 'SKU (or goods_id) and bullet points are required.'];
         }

@@ -38,6 +38,7 @@
         .bp-mp-stack:hover .marketplace-btn:not(:disabled) { transform:translateY(-1px); box-shadow:0 2px 6px rgba(0,0,0,.18); }
         .bp-mp-dot { width:10px; height:10px; border-radius:50%; border:2px solid #94a3b8; background:transparent; transition:background .15s,border-color .15s; flex-shrink:0; }
         .bp-mp-dot.pushed { background:#22c55e; border-color:#22c55e; }
+        .bp-mp-dot.failed { background:#ef4444; border-color:#ef4444; }
         .marketplace-btn { width:28px; height:28px; border:none; border-radius:4px; color:#fff; font-weight:600; font-size:11px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; transition:all .2s; padding:0; }
         .btn-ebay1 { background-color:#0d6efd; }
         .btn-ebay2 { background-color:#198754; }
@@ -59,6 +60,12 @@
         .rainbow-loader .loading-text { margin-top:16px; font-weight:600; color:#2c6ed5; }
         .modal-header-gradient { background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff; }
         .ai-edit-panel { border:1px solid #dee2e6; border-radius:8px; padding:10px; background:#f8fafc; }
+        #editRowModal { z-index: 1055; }
+        .modal-backdrop.edit-row-backdrop { z-index: 1050; }
+        #aiPromptRulesModal { z-index: 1075; }
+        .modal-backdrop.ai-prompt-rules-backdrop { z-index: 1070; }
+        #editBulletChangeModal { z-index: 1085; }
+        .modal-backdrop.edit-bullet-change-backdrop { z-index: 1080; }
         .modal-market-wrap { border:1px solid #dee2e6; border-radius:8px; padding:10px; background:#fff; }
         /* View-all bullet points modal */
         #viewRowModal .bp-view-section { margin-bottom:1.25rem; }
@@ -163,11 +170,26 @@
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="modalSku">
-                    <div class="mb-2"><strong>SKU:</strong> <span id="modalSkuLabel"></span></div>
-                    <div class="mb-2"><strong>Product:</strong> <span id="modalProductLabel"></span></div>
+                    <div class="mb-3 border-bottom pb-2">
+                        <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                            <div class="small text-muted text-uppercase fw-semibold">Title</div>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="editModalAiPromptRulesBtn">
+                                <i class="fas fa-sliders-h me-1"></i>AI Prompt Rules
+                            </button>
+                        </div>
+                        <div id="modalTitleLabel" class="fw-semibold fs-5 text-dark lh-sm"></div>
+                        <div class="small text-muted mt-2"><strong>Product:</strong> <span id="modalProductLabel"></span></div>
+                        <div class="small text-muted mt-1"><strong>SKU:</strong> <span id="modalSkuLabel"></span></div>
+                    </div>
                     <div class="ai-edit-panel mb-3">
+                        <div class="mb-2">
+                            <label for="editModalAiPromptDetails" class="form-label mb-1">AI Prompt Details / Keywords</label>
+                            <textarea class="form-control" id="editModalAiPromptDetails" rows="3" placeholder="Add product details, keywords, material, size, use cases, customer benefits, or anything AI should include."></textarea>
+                            <div class="form-text">Optional, but recommended when product name is short or unclear.</div>
+                        </div>
                         <div class="d-flex align-items-center gap-2 mb-2">
                             <button class="btn btn-primary btn-sm" id="editModalAiGenerateBtn"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
+                            <button class="btn btn-outline-primary btn-sm" id="editModalAiRegenerateBtn"><i class="fas fa-rotate"></i> Regenerate Existing Bullet Points with AI</button>
                             <span id="editModalAiLoading" style="display:none;"><i class="fas fa-spinner fa-spin"></i> Generating...</span>
                         </div>
                         <div id="editModalAiFields" class="row g-2"></div>
@@ -177,6 +199,53 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="saveModalBtn"><i class="fas fa-save"></i> Save Bullet Points</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="aiPromptRulesModal" tabindex="-1" aria-labelledby="aiPromptRulesModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title" id="aiPromptRulesModalTitle"><i class="fas fa-sliders-h me-2"></i>AI Prompt Rules</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info small">
+                        These rules are saved and used for future AI bullet generation instead of the default hardcoded prompt rules.
+                    </div>
+                    <label for="aiPromptRulesText" class="form-label">Prompt Rules</label>
+                    <textarea class="form-control font-monospace" id="aiPromptRulesText" rows="18"></textarea>
+                    <div class="form-text">Keep output format and marketplace compliance rules here so AI generation follows them consistently.</div>
+                </div>
+                <div class="modal-footer border-top bg-light">
+                    <span class="small text-muted me-auto" id="aiPromptRulesStatus"></span>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveAiPromptRulesBtn"><i class="fas fa-save me-1"></i>Save Rules</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="editBulletChangeModal" tabindex="-1" aria-labelledby="editBulletChangeTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title" id="editBulletChangeTitle"><i class="fas fa-wand-magic-sparkles me-2"></i>Change Bullet</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editBulletChangeIndex">
+                    <div class="small text-muted mb-1">Current bullet</div>
+                    <div id="editBulletChangePreview" class="border rounded bg-light p-2 small mb-3"></div>
+                    <label for="editBulletChangePrompt" class="form-label">What should AI change in this bullet?</label>
+                    <textarea class="form-control" id="editBulletChangePrompt" rows="4" placeholder="Example: make it shorter, focus on easy installation, include 4 inch car speaker keyword, remove repeated bass wording..."></textarea>
+                    <div class="form-text">AI will rewrite only this bullet and use the other bullets as context.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="editBulletChangeSubmitBtn"><i class="fas fa-wand-magic-sparkles"></i> Change Bullet</button>
                 </div>
             </div>
         </div>
@@ -316,7 +385,7 @@ document.addEventListener('DOMContentLoaded', () => {
         shopify_pls: { cls: 'btn-shopify-pls', short: 'PLS' },
     };
     let tableData = [];
-    let editRowModal, viewRowModal, shopifyPullModal, shopifyPullConfirmModal, marketplacePushConfirmModal;
+    let editRowModal, aiPromptRulesModal, editBulletChangeModal, viewRowModal, shopifyPullModal, shopifyPullConfirmModal, marketplacePushConfirmModal;
     let lastViewModalPlainText = '';
     let shopifyPullPollTimer = null;
     let shopifyPullSelectedSkus = null;
@@ -348,6 +417,64 @@ document.addEventListener('DOMContentLoaded', () => {
         const t = new bootstrap.Toast(el, { delay: 2400 });
         t.show();
         el.addEventListener('hidden.bs.toast', () => el.remove());
+    }
+
+    function setAiPromptRulesStatus(message, isError = false) {
+        const status = document.getElementById('aiPromptRulesStatus');
+        if (!status) return;
+        status.textContent = message || '';
+        status.classList.toggle('text-danger', !!isError);
+        status.classList.toggle('text-success', !!message && !isError);
+    }
+
+    async function loadAiPromptRules() {
+        const textarea = document.getElementById('aiPromptRulesText');
+        if (!textarea) return;
+
+        setAiPromptRulesStatus('Loading rules...');
+        const response = await fetch('/bullet-point-master/ai-prompt-rules', {
+            headers: { 'Accept': 'application/json' },
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Failed to load AI prompt rules.');
+        }
+
+        textarea.value = data.rules || '';
+        setAiPromptRulesStatus('Rules loaded.');
+    }
+
+    async function saveAiPromptRules() {
+        const textarea = document.getElementById('aiPromptRulesText');
+        const button = document.getElementById('saveAiPromptRulesBtn');
+
+        if (!textarea || !button) return;
+
+        button.disabled = true;
+        setAiPromptRulesStatus('Saving rules...');
+
+        try {
+            const response = await fetch('/bullet-point-master/ai-prompt-rules', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: JSON.stringify({ rules: textarea.value.trim() }),
+            });
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Failed to save AI prompt rules.');
+            }
+
+            textarea.value = data.rules || textarea.value;
+            setAiPromptRulesStatus('Saved.');
+            toast('AI prompt rules saved.');
+        } catch (error) {
+            setAiPromptRulesStatus(error.message || 'Failed to save rules.', true);
+            toast(error.message || 'Failed to save AI prompt rules.', false);
+        } finally {
+            button.disabled = false;
+        }
     }
 
     function confirmEbay3Push(marketplaces) {
@@ -430,23 +557,27 @@ document.addEventListener('DOMContentLoaded', () => {
             .finally(() => { document.getElementById('rainbow-loader').style.display = 'none'; });
     }
 
-    function mpStackHtml(sku, mp, val) {
-        const pushed = (val || '').trim() !== '';
+    function mpStackHtml(sku, mp, status = '') {
+        const normalizedStatus = String(status || '').toLowerCase();
+        const pushed = normalizedStatus === 'success';
+        const failed = normalizedStatus === 'failed';
         const tile = MP_TILE[mp] || { cls: 'btn-secondary', short: '?' };
-        const tip = `${LABELS[mp]}. ${pushed ? 'Pushed' : 'Not pushed'}. Click to push.`;
+        const stateText = pushed ? 'Pushed' : (failed ? 'Push failed' : 'Not pushed');
+        const dotClass = pushed ? 'pushed' : (failed ? 'failed' : '');
+        const tip = `${LABELS[mp]}. ${stateText}. Click to push.`;
         return `
             <button type="button" class="bp-mp-stack" data-push-mp="${mp}" data-sku="${esc(sku)}" title="${esc(tip)}">
-                <span class="bp-mp-dot ${pushed ? 'pushed' : ''}" aria-hidden="true"></span>
+                <span class="bp-mp-dot ${dotClass}" aria-hidden="true"></span>
                 <span class="marketplace-btn ${tile.cls}">${esc(tile.short)}</span>
             </button>`;
     }
 
-    function groupCell(groupKey, sku, bp) {
+    function groupCell(groupKey, sku, bp, statuses = {}) {
         const marketplaces = GROUPS[groupKey] || [];
         return `
             <div class="marketplaces-cell">
                 <div class="bp-mp-inline">
-                    ${marketplaces.map(mp => mpStackHtml(sku, mp, bp[mp] ?? '')).join('')}
+                    ${marketplaces.map(mp => mpStackHtml(sku, mp, statuses[mp] ?? '')).join('')}
                 </div>
             </div>`;
     }
@@ -468,6 +599,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const sku = String(r.SKU || '');
             const preview = r.default_bullets || [r.bullet1, r.bullet2, r.bullet3, r.bullet4, r.bullet5].filter(Boolean).join(' ');
             const bp = r.bullet_points || {};
+            const statuses = r.bullet_push_statuses || {};
             return `<tr data-sku="${esc(sku)}">
                 <td>${esc(sku)}</td>
                 <td>${esc(r.Parent || sku)}</td>
@@ -479,8 +611,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button type="button" class="action-btn shopify-row-pull-btn" data-shopify-pull-sku="${esc(sku)}" title="Pull Shopify bullets for this SKU"><i class="fas fa-download"></i></button>
                     </div>
                 </td>
-                <td>${groupCell('gChannels', sku, bp)}</td>
-                <td>${groupCell('gShopify', sku, bp)}</td>
+                <td>${groupCell('gChannels', sku, bp, statuses)}</td>
+                <td>${groupCell('gShopify', sku, bp, statuses)}</td>
             </tr>`;
         }).join('');
 
@@ -602,6 +734,14 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('modalSku').value = sku;
         document.getElementById('modalSkuLabel').textContent = sku;
         document.getElementById('modalProductLabel').textContent = row.Parent || sku;
+        const titleValue = row.shopify_product_title || row.title || row.Title || row.product_title || row.ProductTitle || row.product_name || row.ProductName || row.name || row.Name || row.Parent || sku;
+        const titleEl = document.getElementById('modalTitleLabel');
+        if (titleEl) titleEl.textContent = titleValue;
+        const detailsField = document.getElementById('editModalAiPromptDetails');
+        if (detailsField) {
+            detailsField.value = '';
+            detailsField.placeholder = `Add details for ${sku}: product type, keywords, material, size, benefits, use cases...`;
+        }
         renderEditModalAiFields(row);
         if (editRowModal) editRowModal.show();
     }
@@ -616,15 +756,15 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="col-12">
                 <div class="d-flex justify-content-between align-items-center">
                     <label class="form-label mb-1">Bullet ${i} <span id="editAiCount${i}" class="text-muted">0 chars</span></label>
-                    <div class="btn-group btn-group-sm" role="group" aria-label="Rating">
-                        <button type="button" class="btn btn-outline-success edit-ai-rate" data-idx="${i}" data-rating="good"><i class="fas fa-thumbs-up"></i></button>
-                        <button type="button" class="btn btn-outline-danger edit-ai-rate" data-idx="${i}" data-rating="bad"><i class="fas fa-thumbs-down"></i></button>
+                    <div class="btn-group btn-group-sm" role="group" aria-label="AI bullet actions">
+                        <button type="button" class="btn btn-outline-secondary edit-ai-revert d-none" data-idx="${i}"><i class="fas fa-rotate-left"></i> Revert</button>
+                        <button type="button" class="btn btn-outline-primary edit-ai-change" data-idx="${i}"><i class="fas fa-wand-magic-sparkles"></i> Change</button>
                     </div>
                 </div>
                 <textarea class="form-control edit-ai-bullet" data-idx="${i}" rows="4">${esc(current[i-1] || '')}</textarea>
             </div>
         `).join('');
-        bindEditAICountersAndRatings();
+        bindEditAICountersAndChanges();
     }
 
     function splitBulletsForModal(text) {
@@ -635,7 +775,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return out.map(v => v);
     }
 
-    function bindEditAICountersAndRatings() {
+    function bindEditAICountersAndChanges() {
         document.querySelectorAll('.edit-ai-bullet').forEach(t => {
             const idx = t.dataset.idx;
             const update = () => {
@@ -650,16 +790,96 @@ document.addEventListener('DOMContentLoaded', () => {
             update();
         });
 
-        document.querySelectorAll('.edit-ai-rate').forEach(btn => {
+        document.querySelectorAll('.edit-ai-change').forEach(btn => {
             btn.addEventListener('click', function() {
                 const idx = this.dataset.idx;
-                const rating = this.dataset.rating;
-                const groupButtons = document.querySelectorAll(`.edit-ai-rate[data-idx="${idx}"]`);
-                groupButtons.forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
                 const field = document.querySelector(`.edit-ai-bullet[data-idx="${idx}"]`);
-                if (field) field.dataset.rating = rating;
+                openEditBulletChangeModal(idx, field ? field.value : '');
             });
+        });
+
+        document.querySelectorAll('.edit-ai-revert').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const idx = this.dataset.idx;
+                const field = document.querySelector(`.edit-ai-bullet[data-idx="${idx}"]`);
+                if (!field || field.dataset.previousAiValue == null) {
+                    toast('No previous bullet text to restore.', false);
+                    return;
+                }
+                field.value = field.dataset.previousAiValue;
+                delete field.dataset.previousAiValue;
+                field.dispatchEvent(new Event('input'));
+                this.classList.add('d-none');
+                toast(`Bullet ${idx} reverted`);
+            });
+        });
+    }
+
+    function openEditBulletChangeModal(idx, currentText) {
+        const indexField = document.getElementById('editBulletChangeIndex');
+        const preview = document.getElementById('editBulletChangePreview');
+        const prompt = document.getElementById('editBulletChangePrompt');
+        const title = document.getElementById('editBulletChangeTitle');
+        if (indexField) indexField.value = idx;
+        if (preview) preview.textContent = currentText || 'This bullet is currently empty.';
+        if (prompt) prompt.value = '';
+        if (title) title.innerHTML = `<i class="fas fa-wand-magic-sparkles me-2"></i>Change Bullet ${idx}`;
+        if (editBulletChangeModal) editBulletChangeModal.show();
+        setTimeout(() => prompt && prompt.focus(), 200);
+    }
+
+    function rewriteBulletFromModal() {
+        const idx = parseInt(document.getElementById('editBulletChangeIndex').value || '0', 10);
+        const prompt = (document.getElementById('editBulletChangePrompt').value || '').trim();
+        if (!idx || !prompt) {
+            toast('Please enter what AI should change for this bullet.', false);
+            return;
+        }
+
+        const field = document.querySelector(`.edit-ai-bullet[data-idx="${idx}"]`);
+        const sku = document.getElementById('modalSku').value;
+        const productName = (document.getElementById('modalTitleLabel') && document.getElementById('modalTitleLabel').textContent)
+            || document.getElementById('modalProductLabel').textContent
+            || sku;
+        const promptDetails = (document.getElementById('editModalAiPromptDetails') && document.getElementById('editModalAiPromptDetails').value.trim()) || '';
+        const currentBullets = getBulletLinesFromModal();
+        const btn = document.getElementById('editBulletChangeSubmitBtn');
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Changing...';
+
+        fetch('/bullet-point-master/rewrite-bullet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+            body: JSON.stringify({
+                sku,
+                product_name: productName,
+                prompt_details: promptDetails,
+                change_prompt: prompt,
+                bullet_index: idx,
+                bullet_text: field ? field.value : '',
+                current_bullets: currentBullets,
+            })
+        }).then(async (r) => {
+            const payload = await r.json().catch(() => ({}));
+            if (!r.ok || !payload.success) {
+                throw new Error(payload.message || 'AI bullet change failed');
+            }
+            return payload;
+        }).then((res) => {
+            if (field) {
+                field.dataset.previousAiValue = field.value;
+                field.value = res.bullet || '';
+                field.dispatchEvent(new Event('input'));
+                const revertBtn = document.querySelector(`.edit-ai-revert[data-idx="${idx}"]`);
+                if (revertBtn) revertBtn.classList.remove('d-none');
+            }
+            if (editBulletChangeModal) editBulletChangeModal.hide();
+            toast(`Bullet ${idx} changed`);
+        }).catch(e => toast('AI bullet change failed: ' + e.message, false))
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
         });
     }
 
@@ -709,12 +929,39 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(res => {
             const detail = summarizeMarketplacePushRetries(res.results);
             const rmp = res.results && (res.results[mp] || res.results[String(mp).toLowerCase()]);
-            if (res.success && rmp && rmp.success) {
+            if (rmp && rmp.success) {
+                if (stackEl) {
+                    stackEl.innerHTML = origStackHtml || stackEl.innerHTML;
+                    const dot = stackEl.querySelector('.bp-mp-dot');
+                    if (dot) {
+                        dot.classList.remove('failed');
+                        dot.classList.add('pushed');
+                    }
+                    stackEl.title = `${LABELS[mp] || mp}. Pushed. Click to push.`;
+                    row.bullet_points = row.bullet_points || {};
+                    row.bullet_push_statuses = row.bullet_push_statuses || {};
+                    row.bullet_points[mp] = combined;
+                    row.bullet_push_statuses[mp] = 'success';
+                    origStackHtml = stackEl.innerHTML;
+                }
                 toast(`${LABELS[mp]} pushed` + (detail ? ' — ' + detail : ''));
-                loadData();
+                setTimeout(loadData, 900);
             } else {
+                if (stackEl) {
+                    stackEl.innerHTML = origStackHtml || stackEl.innerHTML;
+                    const dot = stackEl.querySelector('.bp-mp-dot');
+                    if (dot) {
+                        dot.classList.remove('pushed');
+                        dot.classList.add('failed');
+                    }
+                    stackEl.title = `${LABELS[mp] || mp}. Push failed. Click to push.`;
+                    row.bullet_push_statuses = row.bullet_push_statuses || {};
+                    row.bullet_push_statuses[mp] = 'failed';
+                    origStackHtml = stackEl.innerHTML;
+                }
                 const msg = (rmp ? rmp.message : (res.message || 'Push failed')) + (detail ? ' — ' + detail : '');
                 toast(msg, false);
+                loadData();
             }
         })
         .catch(e => toast('Push failed: ' + e.message, false))
@@ -1175,8 +1422,8 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         .then(res => {
             toast(res.message || 'Bullet points saved');
-            if (editRowModal) editRowModal.hide();
-            loadData();
+                if (editRowModal) editRowModal.hide();
+                loadData();
         })
         .catch(e => toast('Save failed: ' + e.message, false))
         .finally(() => {
@@ -1216,17 +1463,55 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('exportBtn').addEventListener('click', exportData);
     document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
     document.getElementById('importFile').addEventListener('change', function(e) { if (e.target.files[0]) importData(e.target.files[0]); this.value = ''; });
+    document.getElementById('editBulletChangeSubmitBtn').addEventListener('click', rewriteBulletFromModal);
 
-    document.getElementById('editModalAiGenerateBtn').addEventListener('click', function() {
+    function tagLatestModalBackdrop(className) {
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        const latestBackdrop = backdrops[backdrops.length - 1];
+        if (latestBackdrop) latestBackdrop.classList.add(className);
+    }
+
+    function keepModalOpenIfEditModalVisible() {
+        if (document.getElementById('editRowModal').classList.contains('show')) {
+            document.body.classList.add('modal-open');
+        }
+    }
+
+    document.getElementById('editRowModal').addEventListener('shown.bs.modal', () => {
+        tagLatestModalBackdrop('edit-row-backdrop');
+    });
+    document.getElementById('aiPromptRulesModal').addEventListener('shown.bs.modal', () => {
+        tagLatestModalBackdrop('ai-prompt-rules-backdrop');
+    });
+    document.getElementById('aiPromptRulesModal').addEventListener('hidden.bs.modal', keepModalOpenIfEditModalVisible);
+    document.getElementById('editBulletChangeModal').addEventListener('shown.bs.modal', () => {
+        tagLatestModalBackdrop('edit-bullet-change-backdrop');
+    });
+    document.getElementById('editBulletChangeModal').addEventListener('hidden.bs.modal', keepModalOpenIfEditModalVisible);
+
+    function runEditModalAiGenerate(sourceButton, options = {}) {
         const sku = document.getElementById('modalSku').value;
-        const productName = document.getElementById('modalProductLabel').textContent || sku;
-        const btn = this;
+        const productName = (document.getElementById('modalTitleLabel') && document.getElementById('modalTitleLabel').textContent)
+            || document.getElementById('modalProductLabel').textContent
+            || sku;
+        const promptDetails = (document.getElementById('editModalAiPromptDetails') && document.getElementById('editModalAiPromptDetails').value.trim()) || '';
+        const currentBullets = getBulletLinesFromModal();
+        const currentText = options.regenerate ? currentBullets.filter(Boolean).join('\n') : '';
+        if (options.regenerate && currentText === '') {
+            toast('No existing bullet points found to regenerate.', false);
+            return;
+        }
+        const btn = sourceButton;
+        const otherBtn = btn.id === 'editModalAiGenerateBtn'
+            ? document.getElementById('editModalAiRegenerateBtn')
+            : document.getElementById('editModalAiGenerateBtn');
         btn.disabled = true;
+        if (otherBtn) otherBtn.disabled = true;
         document.getElementById('editModalAiLoading').style.display = 'inline';
         fetch('/bullet-point-master/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-            body: JSON.stringify({ product_id: sku, sku, product_name: productName })
+            body: JSON.stringify({ product_id: sku, sku, product_name: productName, prompt_details: promptDetails, current_text: currentText })
         }).then(async (r) => {
             const payload = await r.json().catch(() => ({}));
             if (!r.ok || !payload.success) {
@@ -1236,18 +1521,45 @@ document.addEventListener('DOMContentLoaded', () => {
         }).then((res) => {
             const bullets = res.bullets || [];
             document.querySelectorAll('.edit-ai-bullet').forEach((t, i) => {
+                if (options.regenerate) {
+                    t.dataset.previousAiValue = currentBullets[i] || '';
+                    const revertBtn = document.querySelector(`.edit-ai-revert[data-idx="${i + 1}"]`);
+                    if (revertBtn) revertBtn.classList.remove('d-none');
+                }
                 t.value = (bullets[i] || '');
                 t.dispatchEvent(new Event('input'));
             });
             const lens = bullets.map(b => String(b || '').length);
             console.info('[BP AI] generated bullet lengths', lens);
-            toast('AI bullets generated');
+            toast(options.regenerate ? 'Existing bullets regenerated with AI' : 'AI bullets generated');
         }).catch(e => toast('AI generation failed: ' + e.message, false))
         .finally(() => {
             btn.disabled = false;
+            if (otherBtn) otherBtn.disabled = false;
             document.getElementById('editModalAiLoading').style.display = 'none';
         });
+    }
+
+    document.getElementById('editModalAiGenerateBtn').addEventListener('click', function() {
+        runEditModalAiGenerate(this);
     });
+
+    document.getElementById('editModalAiRegenerateBtn').addEventListener('click', function() {
+        runEditModalAiGenerate(this, { regenerate: true });
+    });
+
+    document.getElementById('editModalAiPromptRulesBtn')?.addEventListener('click', async function() {
+        try {
+            await loadAiPromptRules();
+            if (aiPromptRulesModal) {
+                aiPromptRulesModal.show();
+            }
+        } catch (error) {
+            toast(error.message || 'Failed to load AI prompt rules.', false);
+        }
+    });
+
+    document.getElementById('saveAiPromptRulesBtn')?.addEventListener('click', saveAiPromptRules);
 
     function waitForBootstrap() {
         if (window.bootstrap && window.bootstrap.Modal && window.bootstrap.Toast) {
@@ -1275,6 +1587,8 @@ document.addEventListener('DOMContentLoaded', () => {
     waitForBootstrap().then(() => {
         if (window.bootstrap && window.bootstrap.Modal) {
             editRowModal = new bootstrap.Modal(document.getElementById('editRowModal'));
+            aiPromptRulesModal = new bootstrap.Modal(document.getElementById('aiPromptRulesModal'));
+            editBulletChangeModal = new bootstrap.Modal(document.getElementById('editBulletChangeModal'));
             viewRowModal = new bootstrap.Modal(document.getElementById('viewRowModal'));
             shopifyPullModal = new bootstrap.Modal(document.getElementById('shopifyPullModal'));
             shopifyPullConfirmModal = new bootstrap.Modal(document.getElementById('shopifyPullConfirmModal'));

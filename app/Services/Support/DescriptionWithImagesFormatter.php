@@ -113,13 +113,7 @@ class DescriptionWithImagesFormatter
         $lines = preg_split('/\r\n|\r|\n/', $bulletPlain);
         $parts = [];
         foreach ($lines as $line) {
-            $line = trim($line);
-            if ($line === '') {
-                continue;
-            }
-            // Phase-1 checklist style: "✅ LABEL" or "✅ LABEL - rest"
-            $line = preg_replace('/^\s*✅\s*/u', '', $line);
-            $line = trim(preg_replace('/^[•\-\*]\s+/', '', $line));
+            $line = ShopifyBulletPointsFormatter::cleanBulletLine((string) $line);
             if ($line === '') {
                 continue;
             }

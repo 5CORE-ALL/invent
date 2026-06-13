@@ -2813,6 +2813,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/bullet-point-master/update', [BulletPointMasterController::class, 'update'])->name('bullet.point.master.update');
     Route::post('/bullet-point-master/update-bulk', [BulletPointMasterController::class, 'updateBulk'])->name('bullet.point.master.update.bulk');
     Route::post('/bullet-point-master/generate', [BulletPointMasterController::class, 'generateBulletPoints'])->name('bullet.point.master.generate');
+    Route::get('/bullet-point-master/ai-prompt-rules', [BulletPointMasterController::class, 'aiPromptRules'])->name('bullet.point.master.ai.prompt.rules');
+    Route::post('/bullet-point-master/ai-prompt-rules', [BulletPointMasterController::class, 'saveAiPromptRules'])->name('bullet.point.master.ai.prompt.rules.save');
+    Route::post('/bullet-point-master/rewrite-bullet', [BulletPointMasterController::class, 'rewriteBulletPoint'])->name('bullet.point.master.rewrite.bullet');
     Route::post('/bullet-point-master/shopify-pull-one', [BulletPointMasterController::class, 'pullShopifyBulletsToMaster'])->name('bullet.point.master.shopify.pull.one');
     Route::post('/bullet-point-master/shopify-pull/start', [BulletPointMasterController::class, 'startShopifyPullJob'])->name('bullet.point.master.shopify.pull.start');
     Route::get('/bullet-point-master/shopify-pull/status', [BulletPointMasterController::class, 'shopifyPullJobStatus'])->name('bullet.point.master.shopify.pull.status');

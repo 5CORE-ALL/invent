@@ -24,6 +24,10 @@ Last reviewed: 2026-06-11
   - Supplies base product data through `getViewProductData()` and still has `saveBulletData()` for the older save endpoint.
 - `app/Models/ProductMaster.php`
   - Stores master product fields including `bullet1` through `bullet5`.
+- `app/Models/BulletPointAiPromptRule.php`
+  - Stores editable AI prompt rules used by bullet generation.
+- `database/migrations/2026_06_13_220000_create_bullet_point_ai_prompt_rules_table.php`
+  - Creates `bullet_point_ai_prompt_rules` for saved AI prompt rules.
 - `database/migrations/2025_12_07_014500_add_bullet_columns_to_product_master_table.php`
   - Adds `bullet1` through `bullet5` to `product_master`.
 - `database/migrations/2026_03_15_100000_add_bullet_points_to_metrics_tables.php`
@@ -53,6 +57,8 @@ Bullet point master routes used by the active blade:
 - `POST /bullet-point-master/update` -> `BulletPointMasterController@update`
 - `POST /bullet-point-master/update-bulk` -> `BulletPointMasterController@updateBulk`
 - `POST /bullet-point-master/generate` -> `BulletPointMasterController@generateBulletPoints`
+- `GET /bullet-point-master/ai-prompt-rules` -> `BulletPointMasterController@aiPromptRules`
+- `POST /bullet-point-master/ai-prompt-rules` -> `BulletPointMasterController@saveAiPromptRules`
 
 Important: although the browser URL can be `/bullet-points`, the active blade fetches `/bullet-point-master-combined-data`, `/bullet-point-master/update`, and `/bullet-point-master/generate`.
 
@@ -92,7 +98,9 @@ Important: although the browser URL can be `/bullet-points`, the active blade fe
 - View modal shows all saved marketplace bullet text for one SKU and supports copy-all.
 - Edit modal shows five bullet textareas initialized from `product_master.bullet1` through `bullet5`; `default_bullets` is only a fallback.
 - Edit modal save posts `bullet1` through `bullet5` to `/bullet-points/save` and updates `product_master`.
-- AI Generate calls `/bullet-point-master/generate`, expects exactly five plain-text bullet lines, and only fills modal fields; it does not save until the user clicks Save.
+- Saved, pulled, and pushed bullet lines are normalized to remove decorative leading emojis or bullet symbols such as `🔊`, `✅`, `•`, `*`, or `-`, while keeping the actual feature title and description text.
+- AI Generate calls `/bullet-point-master/generate`, expects exactly five plain-text bullet lines, and only fills modal fields; it does not save until the user clicks Save. The edit modal includes an optional prompt details/keywords textarea that is sent as `prompt_details` so users can provide product context when names are short or unclear. The backend prompt is marketplace-focused for Amazon/Walmart/eBay/Shopify and uses the saved AI Prompt Rules from `bullet_point_ai_prompt_rules` instead of relying only on hardcoded rules. If no saved rules exist, it falls back to the default rule block. The generation still uses a repair pass if the model misses the required length or format.
+- The Edit Bullet Points modal has an `AI Prompt Rules` button beside the Title area. It opens an editable modal that loads rules from `/bullet-point-master/ai-prompt-rules` and saves changes to `/bullet-point-master/ai-prompt-rules`. Saved rules persist in the database and are applied to future AI Generate requests.
 - Clicking an individual marketplace tile pushes `product_master.bullet1` through `bullet5` to that marketplace through `/bullet-point-master/update`, falling back to `default_bullets` only if the individual columns are empty.
 - While a marketplace tile push is still running, the tile shows `Updating...`.
 - Export writes an XLSX master-bullets template with `Parent`, `SKU`, `Product Name`, and `Bullet 1` through `Bullet 5`.
@@ -129,7 +137,7 @@ Important: although the browser URL can be `/bullet-points`, the active blade fe
   - Calls the related marketplace service `updateBulletPoints()` through retry helper `RetriesMarketplacePush`.
   - Reports per-marketplace `success`, `message`, `local_saved`, `attempts`, and `retried`.
 - Marketplace push success is based on the external marketplace service result, not the local metrics-table save. Local table save can still succeed when the marketplace push fails.
-- Shopify Main (`SM`) resolves the product/variant, fetches the current Shopify `product.body_html`, and replaces only the existing `About Item` / `Key Features` bullet block.
+- Shopify Main (`SM`) resolves the product/variant, fetches the current Shopify `product.body_html`, and replaces only the existing `About Item` / `Key Features` bullet block. Shopify bullet formatting no longer adds checkmark emojis to pushed bullet list items.
 - Shopify PLS (`PLS`) resolves by SKU, variant ID, product ID, or GraphQL, fetches the current PLS `product.body_html`, and replaces only the existing bullet block.
 - Shopify bullet pushes preserve the existing Shopify product description HTML and do not rebuild it from Product Master description data.
 - Shopify pushes still write bullet text into `body_html`, not a separate Shopify bullet metafield.
@@ -168,4 +176,4 @@ Important: although the browser URL can be `/bullet-points`, the active blade fe
 - Shopify bullet pushes should not overwrite the product description section; they replace only the top bullet/About Item block and preserve the remaining current Shopify `body_html`.
 - eBay1 bullet pushes edit the listing Description field, but only by replacing the first visible bullet list and preserving the rest of the existing seller description HTML.
 - Storefront/theme caching may delay visible Shopify changes.
-- Current Anthropic AI model in `generateBulletPoints()` has logged `not_found_error` for `claude-3-haiku-20240307`; AI Generate may need a model update if that persists.
+- AI Generate uses `services.anthropic.model` with a Sonnet 4 default and strips common bullet/check symbols from generated lines before filling the edit modal fields. `Regenerate Existing Bullet Points with AI` sends the current five bullet fields as source content and asks AI to rewrite them using the saved prompt rules. Each bullet field also has a `Change` action that opens a prompt modal and rewrites only that one bullet via `/bullet-point-master/rewrite-bullet`, sending the product title, optional AI prompt details, target bullet, and all five current bullets as context so the rewrite stays related and does not randomize the remaining points. After an AI rewrite, the affected fields show `Revert` so the user can switch back to the previous text before saving.

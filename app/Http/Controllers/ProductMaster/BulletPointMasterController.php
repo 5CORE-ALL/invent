@@ -5,6 +5,7 @@ namespace App\Http\Controllers\ProductMaster;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\ProductMaster\Concerns\RetriesMarketplacePush;
 use App\Http\Controllers\ProductMaster\ProductMasterController as PMController;
+use App\Models\BulletPointAiPromptRule;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\ShopifyVariant;
@@ -43,6 +44,8 @@ class BulletPointMasterController extends Controller
             foreach ($marketTables as $marketplace => $table) {
                 $metricsByMarketplace[$marketplace] = $this->loadMetricsBySku($table);
             }
+            $pushStatusesBySku = $this->loadPushStatusesBySku();
+            $shopifyTitlesBySku = $this->loadShopifyTitlesBySku();
 
             foreach ($products as &$row) {
                 $sku = $this->normalizeSku($row['SKU'] ?? null);
@@ -61,7 +64,9 @@ class BulletPointMasterController extends Controller
                 }
 
                 $row['bullet_points'] = $bp;
+                $row['bullet_push_statuses'] = $pushStatusesBySku[$sku] ?? [];
                 $row['default_bullets'] = $defaultBullets;
+                $row['shopify_product_title'] = $shopifyTitlesBySku[mb_strtolower($sku)] ?? '';
             }
 
             return response()->json([
@@ -105,16 +110,15 @@ class BulletPointMasterController extends Controller
 
             foreach ($validated['updates'] as $u) {
                 $marketplace = strtolower(trim($u['marketplace']));
-            $requestText = trim((string) ($u['bullet_points'] ?? ''));
-            $masterText = $this->loadMasterBulletTextForSku($sku);
-            $text = $masterText ?? $requestText;
+                $requestText = $this->cleanBulletText((string) ($u['bullet_points'] ?? ''));
+                $masterText = $this->loadMasterBulletTextForSku($sku);
+                $text = $masterText ?? $requestText;
 
                 if (! in_array($marketplace, $allowedMarketplaces, true)) {
                     $results[$marketplace] = ['success' => false, 'message' => 'Unknown or unsupported marketplace'];
                     continue;
                 }
 
-                $tableSaved = $this->saveToMarketplaceTable($marketplace, $sku, $text);
                 $serviceResult = $this->invokeMarketplacePushWithRetries(
                     fn () => $this->callMarketplaceService($marketplace, $sku, $text),
                     'BulletPointMaster',
@@ -123,11 +127,19 @@ class BulletPointMasterController extends Controller
                 );
 
                 $success = (bool) ($serviceResult['success'] ?? false);
+                $tableSaved = $success
+                    ? $this->saveToMarketplaceTable($marketplace, $sku, $text)
+                    : false;
+                $pushStatus = $success ? 'success' : 'failed';
+                $pushMessage = $success
+                    ? ($serviceResult['message'] ?? 'Updated')
+                    : ($serviceResult['message'] ?? 'Unable to update this marketplace');
+                $this->savePushStatus($sku, $marketplace, $pushStatus, $pushMessage);
                 $results[$marketplace] = [
                     'success' => $success,
-                    'message' => $success
-                        ? ($serviceResult['message'] ?? 'Updated')
-                        : ($serviceResult['message'] ?? 'Unable to update this marketplace'),
+                    'marketplace_success' => $success,
+                    'push_status' => $pushStatus,
+                    'message' => $pushMessage,
                     'local_saved' => $tableSaved,
                     'attempts' => (int) ($serviceResult['attempts'] ?? 1),
                     'retried' => (bool) ($serviceResult['retried'] ?? false),
@@ -271,7 +283,10 @@ class BulletPointMasterController extends Controller
                     }
                 }
             }
-            $shopifyBullets = array_values(array_slice($extracted['bullets'] ?? [], 0, 5));
+            $shopifyBullets = array_values(array_filter(array_map(
+                fn ($line) => ShopifyBulletPointsFormatter::cleanBulletLine((string) $line),
+                array_slice($extracted['bullets'] ?? [], 0, 5)
+            ), fn ($line) => $line !== ''));
             if ($shopifyBullets === []) {
                 $pullLog->warning('No Shopify bullets detected', [
                     'sku' => $sku,
@@ -432,6 +447,39 @@ class BulletPointMasterController extends Controller
         return response()->json(['success' => true, 'job' => $job]);
     }
 
+    public function aiPromptRules()
+    {
+        return response()->json([
+            'success' => true,
+            'rules' => $this->bulletPointAiPromptRules(),
+        ]);
+    }
+
+    public function saveAiPromptRules(Request $request)
+    {
+        $validated = $request->validate([
+            'rules' => ['required', 'string', 'max:12000'],
+        ]);
+
+        if (! Schema::hasTable('bullet_point_ai_prompt_rules')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Prompt rules table is missing. Please run migrations.',
+            ], 422);
+        }
+
+        BulletPointAiPromptRule::query()->updateOrCreate(
+            ['id' => 1],
+            ['rules' => trim($validated['rules'])]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'AI prompt rules saved.',
+            'rules' => trim($validated['rules']),
+        ]);
+    }
+
     public function generateBulletPoints(Request $request)
     {
         try {
@@ -439,15 +487,29 @@ class BulletPointMasterController extends Controller
                 'product_name' => 'required|string',
                 'current_text' => 'nullable|string',
                 'product_id' => 'nullable|string',
+                'prompt_details' => 'nullable|string|max:4000',
             ]);
 
             $productId = (string) ($validated['product_id'] ?? $request->input('sku', ''));
             $productName = (string) $validated['product_name'];
-            Log::info('AI Generation Started', ['product_name' => $productName, 'product_id' => $productId]);
+            $promptDetails = trim((string) ($validated['prompt_details'] ?? ''));
+            $currentText = trim((string) ($validated['current_text'] ?? ''));
+            Log::info('AI Generation Started', [
+                'product_name' => $productName,
+                'product_id' => $productId,
+                'has_prompt_details' => $promptDetails !== '',
+                'has_current_text' => $currentText !== '',
+            ]);
+            $promptRules = $this->bulletPointAiPromptRules();
 
-            $prompt = "Generate exactly 5 detailed, benefit-focused bullet points for this product: {$productName}.\n" .
-                "Include specific features, benefits, use cases, and quality highlights. Be persuasive and comprehensive.\n" .
-                "Output format: exactly 5 lines, one bullet per line, plain text only (no numbering, no markdown).";
+            $prompt = ($currentText !== ''
+                ? "Regenerate the existing 5 product bullet points for this product: {$productName}.\n\n" .
+                    "CURRENT BULLET POINTS TO USE AS CONTENT:\n{$currentText}\n\n" .
+                    "Use the current bullets as the source content, preserve accurate product facts, remove repetition, and rewrite them according to the AI prompt rules below. Return exactly 5 regenerated bullet lines.\n\n"
+                : "Create 5 product bullet points optimized for Amazon, Walmart, eBay, Shopify, and other eCommerce marketplaces for this product: {$productName}.\n\n") .
+                ($promptDetails !== '' ? "USER PROVIDED PRODUCT DETAILS / KEYWORDS:\n{$promptDetails}\n\n" : '') .
+                "AI PROMPT RULES:\n" .
+                $promptRules;
             Log::info('AI Prompt:', ['prompt' => $prompt]);
 
             $apiKey = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
@@ -459,7 +521,7 @@ class BulletPointMasterController extends Controller
             }
 
             $url = 'https://api.anthropic.com/v1/messages';
-            $model = 'claude-3-haiku-20240307';
+            $model = (string) config('services.anthropic.model', 'claude-sonnet-4-20250514');
             $params = [
                 'model' => $model,
                 'max_tokens' => 2500,
@@ -478,15 +540,55 @@ class BulletPointMasterController extends Controller
             Log::info('AI API Response', ['response' => $resp->json()]);
 
             if (! $resp->successful()) {
+                $errorType = (string) data_get($resp->json(), 'error.type', '');
+                $errorMessage = (string) data_get($resp->json(), 'error.message', '');
                 Log::error('AI Generation Failed', [
                     'status' => $resp->status(),
                     'body' => $resp->body(),
+                    'model' => $model,
                 ]);
-                return response()->json(['success' => false, 'message' => 'AI request failed', 'error' => $resp->body()], 500);
+                $message = $errorType === 'not_found_error'
+                    ? "AI model '{$model}' is not available for this API key. Update ANTHROPIC_MODEL in .env."
+                    : ($errorMessage !== '' ? $errorMessage : 'AI request failed');
+
+                return response()->json(['success' => false, 'message' => $message, 'error' => $resp->body()], 500);
             }
 
             $text = data_get($resp->json(), 'content.0.text', '');
             $bullets = $this->parseBulletsFromText($text);
+            $validationIssues = $this->validateMarketplaceAiBullets($bullets);
+
+            if ($validationIssues !== []) {
+                Log::info('AI Generation Needs Repair', ['issues' => $validationIssues, 'bullets' => $bullets]);
+                $repairPrompt = $prompt."\n\nThe previous output did not follow the rules. Fix these issues:\n"
+                    .implode("\n", $validationIssues)
+                    ."\n\nPrevious output:\n".implode("\n", $bullets)
+                    ."\n\nReturn exactly 5 corrected bullet lines only.";
+
+                $repairParams = $params;
+                $repairParams['messages'] = [
+                    ['role' => 'user', 'content' => $repairPrompt],
+                ];
+
+                $repairResp = Http::withHeaders([
+                    'x-api-key' => $apiKey,
+                    'anthropic-version' => '2023-06-01',
+                    'content-type' => 'application/json',
+                ])->timeout(90)->post($url, $repairParams);
+
+                if ($repairResp->successful()) {
+                    $repairText = data_get($repairResp->json(), 'content.0.text', '');
+                    $repairBullets = $this->parseBulletsFromText($repairText);
+                    if (count($repairBullets) >= 5) {
+                        $bullets = $repairBullets;
+                    }
+                } else {
+                    Log::warning('AI Generation Repair Failed', [
+                        'status' => $repairResp->status(),
+                        'body' => $repairResp->body(),
+                    ]);
+                }
+            }
 
             if (count($bullets) < 5) {
                 $bullets = array_pad($bullets, 5, '');
@@ -512,6 +614,197 @@ class BulletPointMasterController extends Controller
         return $this->generateBulletPoints($request);
     }
 
+    public function rewriteBulletPoint(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'product_name' => 'required|string',
+                'sku' => 'nullable|string',
+                'prompt_details' => 'nullable|string|max:4000',
+                'change_prompt' => 'required|string|max:2000',
+                'bullet_index' => 'required|integer|min:1|max:5',
+                'bullet_text' => 'nullable|string',
+                'current_bullets' => 'required|array|size:5',
+                'current_bullets.*' => 'nullable|string',
+            ]);
+
+            $productName = (string) $validated['product_name'];
+            $sku = (string) ($validated['sku'] ?? '');
+            $promptDetails = trim((string) ($validated['prompt_details'] ?? ''));
+            $changePrompt = trim((string) $validated['change_prompt']);
+            $bulletIndex = (int) $validated['bullet_index'];
+            $bulletText = trim((string) $validated['bullet_text']);
+            $currentBullets = array_map(
+                fn ($value) => trim((string) $value),
+                array_slice($validated['current_bullets'], 0, 5)
+            );
+
+            $apiKey = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
+            if (! $apiKey) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anthropic API key is not configured.',
+                ], 422);
+            }
+
+            $formattedBullets = collect($currentBullets)
+                ->map(fn ($bullet, $index) => ($index + 1).'. '.$bullet)
+                ->implode("\n");
+
+            $prompt = "Rewrite only bullet {$bulletIndex} for this product: {$productName}.\n" .
+                ($sku !== '' ? "SKU: {$sku}\n" : '') .
+                ($promptDetails !== '' ? "\nUSER PROVIDED PRODUCT DETAILS / KEYWORDS:\n{$promptDetails}\n" : '') .
+                "\nCURRENT 5 BULLETS FOR CONTEXT:\n{$formattedBullets}\n\n" .
+                "CURRENT BULLET {$bulletIndex}:\n{$bulletText}\n\n" .
+                "USER CHANGE REQUEST FOR BULLET {$bulletIndex}:\n{$changePrompt}\n\n" .
+                "IMPORTANT:\n" .
+                "- Return only the rewritten bullet {$bulletIndex}; do not return the other bullets.\n" .
+                "- Keep the same product facts and use the other bullets only as context so this point stays unique.\n" .
+                "- Do not introduce random features, unsupported claims, pricing, shipping, warranty, or guarantees.\n" .
+                "- The rewritten bullet must be 90-100 characters only.\n" .
+                "- Start with an ALL-CAPS feature title followed by ' - '.\n" .
+                "- Avoid these phrases: best, perfect, ideal, great for, suitable for.\n" .
+                "- Plain text only. No numbering, no markdown, no bullet symbol.";
+
+            $url = 'https://api.anthropic.com/v1/messages';
+            $model = (string) config('services.anthropic.model', 'claude-sonnet-4-20250514');
+            $params = [
+                'model' => $model,
+                'max_tokens' => 800,
+                'messages' => [
+                    ['role' => 'user', 'content' => $prompt],
+                ],
+            ];
+
+            Log::info('AI Bullet Rewrite Request', [
+                'sku' => $sku,
+                'bullet_index' => $bulletIndex,
+                'model' => $model,
+                'has_prompt_details' => $promptDetails !== '',
+            ]);
+
+            $resp = Http::withHeaders([
+                'x-api-key' => $apiKey,
+                'anthropic-version' => '2023-06-01',
+                'content-type' => 'application/json',
+            ])->timeout(90)->post($url, $params);
+
+            if (! $resp->successful()) {
+                $errorMessage = (string) data_get($resp->json(), 'error.message', '');
+                Log::error('AI Bullet Rewrite Failed', [
+                    'status' => $resp->status(),
+                    'body' => $resp->body(),
+                    'model' => $model,
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $errorMessage !== '' ? $errorMessage : 'AI rewrite request failed',
+                ], 500);
+            }
+
+            $text = data_get($resp->json(), 'content.0.text', '');
+            $bullets = $this->parseBulletsFromText($text);
+            $rewritten = trim((string) ($bullets[0] ?? $text));
+            $rewritten = preg_replace('/^(?:[-*•●▪✅✔✓☑]+|\d+[.)])\s*/u', '', $rewritten) ?: $rewritten;
+            $rewritten = trim(preg_replace('/\s+/', ' ', $rewritten) ?: $rewritten);
+
+            $issues = $this->validateMarketplaceAiBullet($rewritten, $bulletIndex);
+            if ($issues !== []) {
+                $repairPrompt = $prompt."\n\nThe previous rewrite failed these rules:\n"
+                    .implode("\n", $issues)
+                    ."\n\nPrevious rewrite:\n{$rewritten}\n\nReturn one corrected bullet line only.";
+
+                $repairParams = $params;
+                $repairParams['messages'] = [
+                    ['role' => 'user', 'content' => $repairPrompt],
+                ];
+
+                $repairResp = Http::withHeaders([
+                    'x-api-key' => $apiKey,
+                    'anthropic-version' => '2023-06-01',
+                    'content-type' => 'application/json',
+                ])->timeout(90)->post($url, $repairParams);
+
+                if ($repairResp->successful()) {
+                    $repairText = data_get($repairResp->json(), 'content.0.text', '');
+                    $repairBullets = $this->parseBulletsFromText($repairText);
+                    $rewritten = trim((string) ($repairBullets[0] ?? $repairText));
+                    $rewritten = preg_replace('/^(?:[-*•●▪✅✔✓☑]+|\d+[.)])\s*/u', '', $rewritten) ?: $rewritten;
+                    $rewritten = trim(preg_replace('/\s+/', ' ', $rewritten) ?: $rewritten);
+                }
+            }
+
+            Log::info('AI Bullet Rewrite Success', [
+                'sku' => $sku,
+                'bullet_index' => $bulletIndex,
+                'length' => mb_strlen($rewritten),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'bullet' => $rewritten,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('AI Bullet Rewrite Exception', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    private function bulletPointAiPromptRules(): string
+    {
+        if (! Schema::hasTable('bullet_point_ai_prompt_rules')) {
+            return $this->defaultBulletPointAiPromptRules();
+        }
+
+        $savedRules = BulletPointAiPromptRule::query()->whereKey(1)->value('rules');
+
+        if (is_string($savedRules) && trim($savedRules) !== '') {
+            return trim($savedRules);
+        }
+
+        return $this->defaultBulletPointAiPromptRules();
+    }
+
+    private function defaultBulletPointAiPromptRules(): string
+    {
+        return trim(implode("\n", [
+            'REQUIREMENTS:',
+            '- Each bullet point must contain 90-100 characters only, including the feature title and hyphen.',
+            '- Start every bullet with an ALL-CAPS feature title followed by a hyphen.',
+            '- Example format: STURDY KEYBOARD STAND - Durable metal construction provides reliable support.',
+            '- Naturally incorporate relevant product keywords without keyword stuffing.',
+            '- Prioritize customer benefits first, then support them with relevant product features.',
+            '- Answer buyer questions: what problem it solves, what benefit they receive, why it is worth buying, and how it improves performance, comfort, convenience, or reliability.',
+            '- Every bullet must communicate a unique selling point.',
+            '- Distribute keywords naturally across all bullets for SEO coverage.',
+            '- Focus equally on search relevance, readability, and conversion.',
+            '- Use concise, persuasive, easy-to-understand language with a professional tone.',
+            '',
+            'STRICT RULES:',
+            '- Do not repeat features, specifications, benefits, keywords, or phrases.',
+            '- Do not mention pricing, discounts, promotions, shipping, guarantees, or warranty.',
+            '- Do not use competitor comparisons, unsupported claims, or subjective superlatives.',
+            '- Avoid filler words, generic marketing language, unnecessary adjectives, emojis, special characters, excessive punctuation, and keyword stuffing.',
+            '- Avoid phrases such as best, perfect, ideal, great for, suitable for, or similar promotional language.',
+            '- Return exactly 5 lines, one bullet per line, plain text only. No numbering, no markdown.',
+            '',
+            'OUTPUT FORMAT:',
+            'FEATURE TITLE IN ALL CAPS - Benefit-focused description with naturally integrated keyword',
+        ]));
+    }
+
+    private function cleanBulletText(string $text): string
+    {
+        $lines = preg_split('/\r\n|\r|\n/', $text) ?: [];
+        $cleaned = array_filter(array_map(
+            fn ($line) => ShopifyBulletPointsFormatter::cleanBulletLine((string) $line),
+            $lines
+        ), fn ($line) => $line !== '');
+
+        return implode("\n", $cleaned);
+    }
+
     private function marketplaceTableMap(): array
     {
         return [
@@ -525,6 +818,41 @@ class BulletPointMasterController extends Controller
             'shopify_main' => 'shopify_metrics',
             'shopify_pls' => 'shopify_pls_metrics',
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function loadShopifyTitlesBySku(): array
+    {
+        if (! Schema::hasTable('shopify_catalog_variants') || ! Schema::hasTable('shopify_catalog_products')) {
+            return [];
+        }
+
+        try {
+            $rows = DB::table('shopify_catalog_variants as v')
+                ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
+                ->whereNotNull('v.sku')
+                ->whereRaw('TRIM(COALESCE(v.sku, \'\')) <> \'\'')
+                ->orderByDesc('v.synced_at')
+                ->orderByDesc('v.id')
+                ->selectRaw('TRIM(v.sku) as sku, p.title')
+                ->get();
+        } catch (\Throwable $e) {
+            Log::warning('BulletPointMaster: unable to load Shopify titles', ['error' => $e->getMessage()]);
+            return [];
+        }
+
+        $titles = [];
+        foreach ($rows as $row) {
+            $sku = mb_strtolower($this->normalizeSku((string) ($row->sku ?? '')));
+            $title = trim((string) ($row->title ?? ''));
+            if ($sku !== '' && $title !== '' && ! isset($titles[$sku])) {
+                $titles[$sku] = $title;
+            }
+        }
+
+        return $titles;
     }
 
     private function loadMetricsBySku(string $table): array
@@ -553,8 +881,70 @@ class BulletPointMasterController extends Controller
         }
     }
 
+    private function loadPushStatusesBySku(): array
+    {
+        if (! Schema::hasTable('bullet_point_marketplace_push_statuses')) {
+            return [];
+        }
+
+        try {
+            $statuses = [];
+            DB::table('bullet_point_marketplace_push_statuses')
+                ->select('sku', 'marketplace', 'status')
+                ->whereNotNull('sku')
+                ->orderByDesc('attempted_at')
+                ->get()
+                ->each(function ($row) use (&$statuses) {
+                    $sku = $this->normalizeSku($row->sku);
+                    $marketplace = strtolower(trim((string) $row->marketplace));
+                    $status = strtolower(trim((string) $row->status));
+
+                    if ($sku !== '' && $marketplace !== '' && in_array($status, ['success', 'failed'], true)) {
+                        $statuses[$sku][$marketplace] = $status;
+                    }
+                });
+
+            return $statuses;
+        } catch (\Throwable $e) {
+            Log::warning('Unable to load bullet point push statuses', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    private function savePushStatus(string $sku, string $marketplace, string $status, string $message = ''): void
+    {
+        if (! Schema::hasTable('bullet_point_marketplace_push_statuses')) {
+            return;
+        }
+
+        try {
+            DB::table('bullet_point_marketplace_push_statuses')->updateOrInsert(
+                [
+                    'sku' => $this->normalizeSku($sku),
+                    'marketplace' => strtolower(trim($marketplace)),
+                ],
+                [
+                    'status' => in_array($status, ['success', 'failed'], true) ? $status : 'failed',
+                    'message' => $message !== '' ? mb_substr($message, 0, 1000) : null,
+                    'attempted_at' => now(),
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Unable to save bullet point push status', [
+                'sku' => $sku,
+                'marketplace' => $marketplace,
+                'status' => $status,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     private function saveToMarketplaceTable(string $marketplace, string $sku, string $text): bool
     {
+        $text = $this->cleanBulletText($text);
         $table = $this->marketplaceTableMap()[$marketplace] ?? null;
         if (! $table) {
             return false;
@@ -565,7 +955,10 @@ class BulletPointMasterController extends Controller
                 return false;
             }
 
-            $update = ['bullet_points' => $text, 'updated_at' => now()];
+            $update = ['bullet_points' => $text];
+            if (Schema::hasColumn($table, 'updated_at')) {
+                $update['updated_at'] = now();
+            }
             if ($table === 'temu_metrics' && Schema::hasColumn($table, 'goods_summary')) {
                 $update['goods_summary'] = $text;
             }
@@ -574,7 +967,13 @@ class BulletPointMasterController extends Controller
             if ($existing) {
                 DB::table($table)->where('sku', $sku)->update($update);
             } else {
-                $insert = ['sku' => $sku, 'bullet_points' => $text, 'created_at' => now(), 'updated_at' => now()];
+                $insert = ['sku' => $sku, 'bullet_points' => $text];
+                if (Schema::hasColumn($table, 'created_at')) {
+                    $insert['created_at'] = now();
+                }
+                if (Schema::hasColumn($table, 'updated_at')) {
+                    $insert['updated_at'] = now();
+                }
                 if ($table === 'temu_metrics' && Schema::hasColumn($table, 'goods_summary')) {
                     $insert['goods_summary'] = $text;
                 }
@@ -616,13 +1015,16 @@ class BulletPointMasterController extends Controller
                 return null;
             }
 
-            $parts = array_filter(array_map('trim', [
+            $parts = array_filter(array_map(
+                fn ($line) => ShopifyBulletPointsFormatter::cleanBulletLine((string) $line),
+                [
                 $product->bullet1 ?? '',
                 $product->bullet2 ?? '',
                 $product->bullet3 ?? '',
                 $product->bullet4 ?? '',
                 $product->bullet5 ?? '',
-            ]), fn ($line) => $line !== '');
+                ]
+            ), fn ($line) => $line !== '');
 
             return implode("\n", $parts);
         } catch (\Throwable $e) {
@@ -903,13 +1305,16 @@ class BulletPointMasterController extends Controller
             return [];
         }
 
-        return array_values(array_filter(array_map('trim', [
+        return array_values(array_filter(array_map(
+            fn ($line) => ShopifyBulletPointsFormatter::cleanBulletLine((string) $line),
+            [
             $product->bullet1 ?? '',
             $product->bullet2 ?? '',
             $product->bullet3 ?? '',
             $product->bullet4 ?? '',
             $product->bullet5 ?? '',
-        ]), fn ($line) => $line !== ''));
+            ]
+        ), fn ($line) => $line !== ''));
     }
 
     /**
@@ -920,6 +1325,7 @@ class BulletPointMasterController extends Controller
     {
         return array_values(array_map(function ($line) {
             $line = html_entity_decode((string) $line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $line = ShopifyBulletPointsFormatter::cleanBulletLine($line);
             $line = str_replace("\xc2\xa0", ' ', $line);
             $line = preg_replace('/\s+/u', ' ', $line) ?? $line;
 
@@ -1005,7 +1411,7 @@ class BulletPointMasterController extends Controller
         $lines = preg_split('/\r\n|\r|\n/', trim($text));
         $bullets = [];
         foreach ($lines as $line) {
-            $line = trim(preg_replace('/^[-*\d\.\)\s]+/', '', $line));
+            $line = trim(preg_replace('/^(?:[-*•●▪✅✔✓☑]+|\d+[.)])\s*/u', '', $line));
             if ($line !== '') {
                 $bullets[] = $line;
             }
@@ -1021,6 +1427,92 @@ class BulletPointMasterController extends Controller
         }
 
         return array_values(array_unique(array_slice($bullets, 0, 5)));
+    }
+
+    /**
+     * @param array<int, string> $bullets
+     * @return array<int, string>
+     */
+    private function validateMarketplaceAiBullets(array $bullets): array
+    {
+        $issues = [];
+        if (count($bullets) !== 5) {
+            $issues[] = 'Output must contain exactly 5 bullet points.';
+        }
+
+        $bannedPhrases = [
+            'best',
+            'perfect',
+            'ideal',
+            'great for',
+            'suitable for',
+            'warranty',
+            'guarantee',
+            'shipping',
+            'discount',
+            'promotion',
+        ];
+
+        foreach (array_slice($bullets, 0, 5) as $index => $bullet) {
+            $lineNo = $index + 1;
+            $length = mb_strlen($bullet);
+            if ($length < 90 || $length > 100) {
+                $issues[] = "Bullet {$lineNo} must be 90-100 characters; current length is {$length}.";
+            }
+
+            if (preg_match('/^[A-Z0-9][A-Z0-9 &\/+.]{2,60}\s-\s\S/u', $bullet) !== 1) {
+                $issues[] = "Bullet {$lineNo} must start with an ALL-CAPS feature title followed by ' - '.";
+            }
+
+            $lower = mb_strtolower($bullet);
+            foreach ($bannedPhrases as $phrase) {
+                if (str_contains($lower, $phrase)) {
+                    $issues[] = "Bullet {$lineNo} uses banned phrase '{$phrase}'.";
+                    break;
+                }
+            }
+        }
+
+        return $issues;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function validateMarketplaceAiBullet(string $bullet, int $lineNo): array
+    {
+        $issues = [];
+        $length = mb_strlen($bullet);
+        if ($length < 90 || $length > 100) {
+            $issues[] = "Bullet {$lineNo} must be 90-100 characters; current length is {$length}.";
+        }
+
+        if (preg_match('/^[A-Z0-9][A-Z0-9 &\/+.]{2,60}\s-\s\S/u', $bullet) !== 1) {
+            $issues[] = "Bullet {$lineNo} must start with an ALL-CAPS feature title followed by ' - '.";
+        }
+
+        $bannedPhrases = [
+            'best',
+            'perfect',
+            'ideal',
+            'great for',
+            'suitable for',
+            'warranty',
+            'guarantee',
+            'shipping',
+            'discount',
+            'promotion',
+        ];
+
+        $lower = mb_strtolower($bullet);
+        foreach ($bannedPhrases as $phrase) {
+            if (str_contains($lower, $phrase)) {
+                $issues[] = "Bullet {$lineNo} uses banned phrase '{$phrase}'.";
+                break;
+            }
+        }
+
+        return $issues;
     }
 
     private function normalizeSku(?string $sku): string

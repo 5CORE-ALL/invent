@@ -10,6 +10,19 @@ namespace App\Services\Support;
  */
 final class ShopifyBulletPointsFormatter
 {
+    public static function cleanBulletLine(string $line): string
+    {
+        $line = html_entity_decode($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $line = str_replace("\xc2\xa0", ' ', $line);
+        $line = preg_replace('/\s+/u', ' ', $line) ?? $line;
+        $line = trim($line);
+
+        // Remove decorative leading emoji/bullet markers while preserving the actual title text.
+        $line = preg_replace('/^(?:[\p{So}\p{Sk}\x{FE0F}\x{200D}]+|[•●◦▪▫■□◆◇★☆✓✔✅☑️🔊🔥⭐✨🎵🎶🎧]+|\s*[-*]+\s*)+\s*/u', '', $line) ?? $line;
+
+        return trim($line);
+    }
+
     /**
      * Build HTML for the product description: "Key Features" heading + checklist lines.
      * Replaces entire body in Phase 1; does not append to existing HTML.
@@ -19,7 +32,7 @@ final class ShopifyBulletPointsFormatter
         $lines = preg_split('/\r\n|\r|\n/', trim($bulletPoints));
         $points = [];
         foreach ($lines as $line) {
-            $line = trim($line);
+            $line = self::cleanBulletLine((string) $line);
             if ($line === '') {
                 continue;
             }
@@ -29,7 +42,7 @@ final class ShopifyBulletPointsFormatter
         $html = "<h3>Key Features:</h3>\n<ul class=\"shopify-bullet-points-phase1\">\n";
         foreach ($points as $point) {
             $escaped = htmlspecialchars($point, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            $html .= "  <li>✅ {$escaped}</li>\n";
+            $html .= "  <li>{$escaped}</li>\n";
         }
         $html .= '</ul>';
 
