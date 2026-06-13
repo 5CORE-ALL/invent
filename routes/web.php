@@ -1782,6 +1782,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::permanentRedirect('/customer-care/dispatch-issue', '/customer-care/all-issues');
     Route::get('/customer-care/all-issues/sku-details', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'skuDetails'])
         ->name('customer.care.dispatch.issues.sku.details');
+    Route::get('/customer-care/all-issues/replacement-sku-details', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'replacementSkuDetails'])
+        ->name('customer.care.dispatch.issues.replacement.sku.details');
     Route::get('/customer-care/all-issues/issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'issuesIndex'])
         ->name('customer.care.dispatch.issues.list.index');
     Route::get('/customer-care/all-issues/l30-loss', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'l30Loss'])

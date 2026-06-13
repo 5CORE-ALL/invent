@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\CustomerCare;
 
+use App\Http\Controllers\InventoryManagement\OutgoingController;
 use App\Support\CustomerCareDepartments;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,9 +13,47 @@ use Illuminate\Support\Str;
 
 class DispatchIssuesController extends IssueBoardControllerBase
 {
+    /**
+     * Per-request memoization of expensive Schema::hasTable / hasColumn lookups.
+     * Each Schema call hits INFORMATION_SCHEMA (~30-150 ms), so calling them
+     * inside the per-row mapping loop costs hundreds of redundant queries.
+     * @var array<string, bool>|null
+     */
+    private ?array $schemaFlags = null;
+
+    private function schemaFlags(): array
+    {
+        if ($this->schemaFlags !== null) {
+            return $this->schemaFlags;
+        }
+        $issues  = $this->issuesTable();
+        $history = $this->historyTable();
+        return $this->schemaFlags = [
+            'issues_has_image'   => Schema::hasTable($issues)  && Schema::hasColumn($issues,  'image_1_path'),
+            'issues_has_claim'   => Schema::hasTable($issues)  && Schema::hasColumn($issues,  'claim_filed'),
+            'history_has_image'  => Schema::hasTable($history) && Schema::hasColumn($history, 'image_1_path'),
+            'history_has_claim'  => Schema::hasTable($history) && Schema::hasColumn($history, 'claim_filed'),
+        ];
+    }
+
     protected function viewName(): string
     {
-        return 'customer-care.dispatch_issues';
+        return 'customer-care.all_issues';
+    }
+
+    /**
+     * Augment the shared view data with the list of warehouses so the All
+     * Issues modal can render a warehouse picker for the "Outgoing needed?"
+     * flow without an extra fetch.
+     */
+    protected function issueBoardIndexData(): array
+    {
+        $data = parent::issueBoardIndexData();
+        $data['outgoingWarehouses'] = DB::table('warehouses')
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get();
+        return $data;
     }
 
     /** Second entry point: same datatable and APIs as All Issues, alternate shell/titles. */
@@ -65,11 +104,26 @@ class DispatchIssuesController extends IssueBoardControllerBase
     protected function extraValidationRules(): array
     {
         return [
-            'order_number'      => 'nullable|string|max:255',
-            'refund_amount'    => 'nullable|numeric|min:0',
-            'total_loss'       => 'nullable|numeric',
-            'tracking_number'  => 'nullable|string|max:50',
-            'issue_link'       => 'nullable|string|max:500',
+            'order_number'           => 'required|string|max:255',
+            'refund_amount'          => 'nullable|numeric|min:0',
+            'total_loss'             => 'nullable|numeric',
+            'tracking_number'        => 'nullable|string|max:50',
+            'issue_link'             => 'nullable|string|max:500',
+            // Action sub-fields (see all_issues modal)
+            'refund_type'            => 'nullable|in:partial,full',
+            'replacement_sku'        => 'nullable|string|max:128',
+            'replacement_qty_sending' => 'nullable|numeric|min:0',
+            'outgoing_needed'        => 'nullable|boolean',
+            'outgoing_warehouse_id'  => 'nullable|integer|exists:warehouses,id',
+            // Replacement / Alternate Sent tracking input is capped at 30 chars in the UI;
+            // we reuse `replacement_tracking` (varchar 50 in DB) but enforce 30 here.
+            'replacement_tracking'   => 'nullable|string|max:30',
+            // Issue? sub-fields (driven by what_happened)
+            'wrong_sent_sku'         => 'nullable|string|max:128',
+            'issue_notes'            => 'nullable|string|max:200',
+            'qty_mismatch_type'      => 'nullable|in:less,more',
+            'qty_sent'               => 'nullable|numeric|min:0',
+            'qty_ordered'            => 'nullable|numeric|min:0',
         ];
     }
 
@@ -77,13 +131,42 @@ class DispatchIssuesController extends IssueBoardControllerBase
     {
         $tn = isset($validated['tracking_number']) ? trim((string) $validated['tracking_number']) : '';
         $il = isset($validated['issue_link']) ? trim((string) $validated['issue_link']) : '';
+        $rsku = isset($validated['replacement_sku']) ? trim((string) $validated['replacement_sku']) : '';
+        $rtype = isset($validated['refund_type']) ? trim((string) $validated['refund_type']) : '';
+
+        // Only persist sub-fields when the matching Action is selected; otherwise
+        // null them out so a previous Action's data doesn't linger after a switch.
+        $action = isset($validated['action_1']) ? trim((string) $validated['action_1']) : '';
+        $isRefund      = strcasecmp($action, 'Refund') === 0;
+        $isReplacement = strcasecmp($action, 'Replacement') === 0 || strcasecmp($action, 'Alternate Sent') === 0;
+
+        // Same idea for the "Issue?" sub-fields (column `what_happened`).
+        $whatHappened = isset($validated['what_happened']) ? trim((string) $validated['what_happened']) : '';
+        $isWrongItem  = strcasecmp($whatHappened, 'Wrong Item Sent') === 0;
+        $isWrongQty   = strcasecmp($whatHappened, 'Wrong Quantity Sent') === 0;
+        $wrongSku     = isset($validated['wrong_sent_sku']) ? trim((string) $validated['wrong_sent_sku']) : '';
+        $issueNotes   = isset($validated['issue_notes']) ? trim((string) $validated['issue_notes']) : '';
+        $qtyType      = isset($validated['qty_mismatch_type']) ? trim((string) $validated['qty_mismatch_type']) : '';
 
         return [
-            'order_number'     => isset($validated['order_number']) ? trim((string) $validated['order_number']) : null,
-            'refund_amount'    => isset($validated['refund_amount']) ? (float) $validated['refund_amount'] : null,
-            'total_loss'       => isset($validated['total_loss']) ? (float) $validated['total_loss'] : null,
-            'tracking_number'  => $tn !== '' ? $tn : null,
-            'issue_link'       => $il !== '' ? $il : null,
+            'order_number'            => isset($validated['order_number']) ? trim((string) $validated['order_number']) : null,
+            'refund_amount'           => $isRefund && isset($validated['refund_amount']) ? (float) $validated['refund_amount'] : null,
+            'refund_type'             => $isRefund && in_array($rtype, ['partial', 'full'], true) ? $rtype : null,
+            'total_loss'              => isset($validated['total_loss']) ? (float) $validated['total_loss'] : null,
+            'tracking_number'         => $tn !== '' ? $tn : null,
+            'issue_link'              => $il !== '' ? $il : null,
+            'replacement_sku'         => $isReplacement && $rsku !== '' ? $rsku : null,
+            'replacement_qty_sending' => $isReplacement && isset($validated['replacement_qty_sending']) ? (float) $validated['replacement_qty_sending'] : null,
+            'outgoing_needed'         => $isReplacement ? (bool) ($validated['outgoing_needed'] ?? false) : false,
+            'outgoing_warehouse_id'   => $isReplacement && (bool) ($validated['outgoing_needed'] ?? false) && isset($validated['outgoing_warehouse_id'])
+                ? (int) $validated['outgoing_warehouse_id']
+                : null,
+            // Issue? sub-fields:
+            'wrong_sent_sku'          => $isWrongItem && $wrongSku !== '' ? $wrongSku : null,
+            'issue_notes'             => $isWrongItem && $issueNotes !== '' ? $issueNotes : null,
+            'qty_mismatch_type'       => $isWrongQty && in_array($qtyType, ['less', 'more'], true) ? $qtyType : null,
+            'qty_sent'                => $isWrongQty && isset($validated['qty_sent']) && $validated['qty_sent'] !== '' ? (float) $validated['qty_sent'] : null,
+            'qty_ordered'             => $isWrongQty && isset($validated['qty_ordered']) && $validated['qty_ordered'] !== '' ? (float) $validated['qty_ordered'] : null,
         ];
     }
 
@@ -92,12 +175,25 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return array_merge(
             $this->dispatchImageSliceIfPresent($row, $this->issuesTable()),
             [
-                'order_number'      => $row->order_number ?? null,
-                'refund_amount'     => $row->refund_amount !== null ? (float) $row->refund_amount : null,
-                'total_loss'        => $row->total_loss !== null ? (float) $row->total_loss : null,
-                'tracking_number'   => $row->tracking_number ?? null,
-                'issue_link'        => $row->issue_link ?? null,
-                'group_id'          => $row->group_id ?? null,
+                'order_number'            => $row->order_number ?? null,
+                'refund_amount'           => $row->refund_amount !== null ? (float) $row->refund_amount : null,
+                'refund_type'             => $row->refund_type ?? null,
+                'total_loss'              => $row->total_loss !== null ? (float) $row->total_loss : null,
+                'tracking_number'         => $row->tracking_number ?? null,
+                'issue_link'              => $row->issue_link ?? null,
+                'group_id'                => $row->group_id ?? null,
+                'replacement_sku'         => $row->replacement_sku ?? null,
+                'replacement_qty_sending' => isset($row->replacement_qty_sending) && $row->replacement_qty_sending !== null ? (float) $row->replacement_qty_sending : null,
+                'outgoing_needed'         => (bool) ($row->outgoing_needed ?? false),
+                'outgoing_warehouse_id'   => isset($row->outgoing_warehouse_id) && $row->outgoing_warehouse_id !== null ? (int) $row->outgoing_warehouse_id : null,
+                'outgoing_processed_at'   => $row->outgoing_processed_at ?? null,
+                'outgoing_inventory_id'   => isset($row->outgoing_inventory_id) && $row->outgoing_inventory_id !== null ? (int) $row->outgoing_inventory_id : null,
+                // Issue? sub-fields:
+                'wrong_sent_sku'          => $row->wrong_sent_sku ?? null,
+                'issue_notes'             => $row->issue_notes ?? null,
+                'qty_mismatch_type'       => $row->qty_mismatch_type ?? null,
+                'qty_sent'                => isset($row->qty_sent) && $row->qty_sent !== null ? (float) $row->qty_sent : null,
+                'qty_ordered'             => isset($row->qty_ordered) && $row->qty_ordered !== null ? (float) $row->qty_ordered : null,
             ],
             $this->dispatchClaimCarrierRowSlice($row, $this->issuesTable())
         );
@@ -160,7 +256,9 @@ class DispatchIssuesController extends IssueBoardControllerBase
      */
     private function dispatchImageSliceIfPresent(object $row, string $table): array
     {
-        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'image_1_path')) {
+        $flags = $this->schemaFlags();
+        $key = $table === $this->historyTable() ? 'history_has_image' : 'issues_has_image';
+        if (empty($flags[$key])) {
             return [];
         }
 
@@ -249,7 +347,9 @@ class DispatchIssuesController extends IssueBoardControllerBase
      */
     private function dispatchClaimCarrierRowSlice(object $row, string $table): array
     {
-        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'claim_filed')) {
+        $flags = $this->schemaFlags();
+        $key = $table === $this->historyTable() ? 'history_has_claim' : 'issues_has_claim';
+        if (empty($flags[$key])) {
             return [];
         }
 
@@ -431,6 +531,114 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return response()->json(['message' => 'Updated.', 'issue_carrier' => $normalized]);
     }
 
+    /**
+     * Replacement / Alternate-Sent SKU lookup for the Action sub-section.
+     * Returns the SKU image (product_master) + the Shopify available qty.
+     * This is the one place the All Issues page is allowed to read inventory
+     * from `shopify_skus`, by explicit product decision.
+     */
+    public function replacementSkuDetails(Request $request): JsonResponse
+    {
+        $sku = trim((string) $request->query('sku', ''));
+        if ($sku === '') {
+            return response()->json(['found' => false, 'message' => 'SKU is required.'], 422);
+        }
+
+        $pm = DB::table('product_master')
+            ->select('sku', 'parent', 'main_image', 'image1', 'Values as values_json')
+            ->where('sku', $sku)
+            ->first();
+
+        $shopify = DB::table('shopify_skus')
+            ->select(DB::raw('COALESCE(inv, 0) as qty'), 'image_src')
+            ->where('sku', $sku)
+            ->first();
+
+        $normalizeImage = static function ($path) {
+            $p = trim((string) ($path ?? ''));
+            if ($p === '') return null;
+            if (preg_match('/^(https?:)?\/\//i', $p) || str_starts_with($p, 'data:')) return $p;
+            return '/' . ltrim($p, '/');
+        };
+
+        $values = [];
+        if ($pm && isset($pm->values_json) && is_string($pm->values_json) && trim($pm->values_json) !== '') {
+            $decoded = json_decode($pm->values_json, true);
+            if (is_array($decoded)) {
+                $values = $decoded;
+            }
+        }
+
+        $imageUrl = $normalizeImage($shopify?->image_src)
+            ?? $normalizeImage($values['image_path'] ?? null)
+            ?? $normalizeImage($pm?->main_image ?? null)
+            ?? $normalizeImage($pm?->image1 ?? null);
+
+        $found = (bool) ($pm || $shopify);
+
+        return response()->json([
+            'found'           => $found,
+            'sku'             => $sku,
+            'parent'          => $pm?->parent,
+            'qty_available'   => (float) ($shopify?->qty ?? 0),
+            'image_url'       => $imageUrl,
+        ]);
+    }
+
+    /**
+     * Override skuDetails so the All Issues modal autocomplete uses ONLY
+     * product_master — no shopify_skus inventory lookup. Returns parent and
+     * an image URL from the internal catalogue. qty is left at 0; the user
+     * enters Order QTY manually in the modal.
+     */
+    public function skuDetails(Request $request): JsonResponse
+    {
+        $sku = trim((string) $request->query('sku', ''));
+        if ($sku === '') {
+            return response()->json(['found' => false, 'message' => 'SKU is required.'], 422);
+        }
+
+        $row = DB::table('product_master')
+            ->select('sku', 'parent', 'Values as values_json', 'main_image', 'image1')
+            ->where('sku', $sku)
+            ->first();
+
+        if (! $row) {
+            return response()->json(['found' => false, 'message' => 'SKU not found.']);
+        }
+
+        $normalizeImage = static function ($path) {
+            $p = trim((string) ($path ?? ''));
+            if ($p === '') {
+                return null;
+            }
+            if (preg_match('/^(https?:)?\/\//i', $p) || str_starts_with($p, 'data:')) {
+                return $p;
+            }
+            return '/' . ltrim($p, '/');
+        };
+
+        $values = [];
+        if (isset($row->values_json) && is_string($row->values_json) && trim($row->values_json) !== '') {
+            $decoded = json_decode($row->values_json, true);
+            if (is_array($decoded)) {
+                $values = $decoded;
+            }
+        }
+
+        $imageUrl = $normalizeImage($values['image_path'] ?? null)
+            ?? $normalizeImage($row->main_image ?? null)
+            ?? $normalizeImage($row->image1 ?? null);
+
+        return response()->json([
+            'found'     => true,
+            'sku'       => $row->sku,
+            'parent'    => $row->parent,
+            'qty'       => 0,
+            'image_url' => $imageUrl,
+        ]);
+    }
+
     public function issuesIndex(): JsonResponse
     {
         $department = trim((string) request()->query('department', ''));
@@ -445,23 +653,29 @@ class DispatchIssuesController extends IssueBoardControllerBase
             ->limit(1000)
             ->get();
 
-        // Build image map: sku (lowercase) => image_url
-        $skus = $rows->pluck('sku')->map(fn ($s) => strtolower(trim((string) $s)))->unique()->values()->all();
-        if ($skus === []) {
-            $shopifyImages = collect();
-            $pmImages = collect();
-        } else {
-            $shopifyImages = DB::table('shopify_skus')
-                ->selectRaw('LOWER(TRIM(sku)) as sku_key, image_src')
-                ->whereRaw('LOWER(TRIM(sku)) IN (' . implode(',', array_fill(0, count($skus), '?')) . ')', $skus)
-                ->get()
-                ->keyBy('sku_key');
+        // Build image map from product_master only. We deliberately do NOT
+        // query shopify_skus here — All Issues uses the internal product
+        // catalogue as the single image source. Plain whereIn on the indexed
+        // `sku` column keeps this fast.
+        $rawSkus = $rows->pluck('sku')
+            ->map(fn ($s) => trim((string) $s))
+            ->filter(fn ($s) => $s !== '')
+            ->unique()
+            ->values()
+            ->all();
 
-            $pmImages = DB::table('product_master')
-                ->selectRaw('LOWER(TRIM(sku)) as sku_key, main_image, image1')
-                ->whereRaw('LOWER(TRIM(sku)) IN (' . implode(',', array_fill(0, count($skus), '?')) . ')', $skus)
+        $pmMap = [];
+        if ($rawSkus !== []) {
+            DB::table('product_master')
+                ->whereIn('sku', $rawSkus)
+                ->select('sku', 'main_image', 'image1')
                 ->get()
-                ->keyBy('sku_key');
+                ->each(function ($r) use (&$pmMap) {
+                    $pmMap[strtolower(trim((string) $r->sku))] = [
+                        'main' => $r->main_image ?? null,
+                        'alt'  => $r->image1 ?? null,
+                    ];
+                });
         }
 
         $normalizeImage = static function ($path) {
@@ -472,10 +686,9 @@ class DispatchIssuesController extends IssueBoardControllerBase
         };
 
         $imageMap = [];
-        foreach ($skus as $key) {
-            $imageMap[$key] = $normalizeImage($shopifyImages[$key]->image_src ?? null)
-                ?? $normalizeImage($pmImages[$key]->main_image ?? null)
-                ?? $normalizeImage($pmImages[$key]->image1 ?? null);
+        foreach ($pmMap as $key => $imgs) {
+            $imageMap[$key] = $normalizeImage($imgs['main'] ?? null)
+                ?? $normalizeImage($imgs['alt'] ?? null);
         }
 
         $tz = config('app.timezone');
@@ -636,26 +849,37 @@ class DispatchIssuesController extends IssueBoardControllerBase
     }
 
     /**
-     * Override store to support multi-SKU entries (single Order ID, multiple SKUs = 1 error group).
+     * Override store to support:
+     *   1. Multi-SKU entries (one Order Number, several SKUs).
+     *   2. Multi-Department entries: when N departments are selected we insert
+     *      a separate row per department so other dept-filtered pages each see
+     *      their own clean record. All sibling rows share one group_id.
+     *
+     * Total rows inserted = (number of SKUs) × (number of departments).
      */
     public function store(Request $request): JsonResponse
     {
         $skusPayload = $request->input('skus');
 
-        // Multi-SKU mode: array of {sku, qty, order_qty, parent}
-        if (is_array($skusPayload) && count($skusPayload) >= 1) {
-            return $this->storeMultiSku($request, $skusPayload);
+        // Normalise single-SKU mode to the same shape as multi-SKU mode so the
+        // dept-split loop below has a single code path.
+        if (! is_array($skusPayload) || count($skusPayload) === 0) {
+            $skusPayload = [[
+                'sku'       => $request->input('sku'),
+                'qty'       => $request->input('qty', 0),
+                'order_qty' => $request->input('order_qty'),
+                'parent'    => $request->input('parent'),
+            ]];
         }
 
-        // Single-SKU mode – use base behaviour
-        return parent::store($request);
+        return $this->storeMultiSku($request, $skusPayload);
     }
 
     private function storeMultiSku(Request $request, array $skusPayload): JsonResponse
     {
         $request->validate([
             'issue'              => 'nullable|string|max:255',
-            'order_number'       => 'nullable|string|max:255',
+            'order_number'       => 'required|string|max:255',
             'refund_amount'      => 'nullable|numeric|min:0',
             'total_loss'         => 'nullable|numeric',
             'marketplace_1'      => 'nullable|string|max:255',
@@ -683,7 +907,6 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 'errors'  => ['department' => ['Select at least one department.']],
             ], 422);
         }
-        $departmentEncoded = CustomerCareDepartments::encode($depts);
 
         $user      = auth()->user();
         $createdBy = trim((string) ($user?->name ?? 'System')) ?: 'System';
@@ -693,6 +916,8 @@ class DispatchIssuesController extends IssueBoardControllerBase
 
         $imagePaths = $this->persistDispatchImagesToDir($request, 'groups/'.$groupId, null);
 
+        // Shared fields for every (SKU x Dept) row in the group. The `department`
+        // column is set per row inside the loop below — one dept per row.
         $sharedPayload = array_merge([
             'group_id'             => $groupId,
             'order_number'         => $request->input('order_number') ? trim($request->input('order_number')) : null,
@@ -701,7 +926,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'marketplace_1'        => $request->input('marketplace_1') ? trim($request->input('marketplace_1')) : null,
             'marketplace_2'        => $request->input('marketplace_2') ? trim($request->input('marketplace_2')) : null,
             'what_happened'        => $request->input('what_happened') ? trim($request->input('what_happened')) : null,
-            'issue'                => trim($request->input('issue')),
+            'issue'                => $request->filled('issue') ? trim((string) $request->input('issue')) : null,
             'issue_remark'         => $request->input('issue_remark') ? trim($request->input('issue_remark')) : null,
             'action_1'             => $request->input('action_1') ? trim($request->input('action_1')) : null,
             'action_1_remark'      => $request->input('action_1_remark') ? trim($request->input('action_1_remark')) : null,
@@ -712,7 +937,6 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'c_action_1_remark'    => $request->input('c_action_1_remark') ? trim($request->input('c_action_1_remark')) : null,
             'close_note'           => null,
             'issue_date'           => $request->input('issue_date') ? trim($request->input('issue_date')) : null,
-            'department'           => $departmentEncoded,
             'created_by'           => $createdBy,
             'created_by_user_id'   => $user?->id,
             'created_at'           => $now,
@@ -721,30 +945,36 @@ class DispatchIssuesController extends IssueBoardControllerBase
 
         $insertedRows = [];
 
-        DB::transaction(function () use ($skusPayload, $sharedPayload, $now, $tz, &$insertedRows) {
+        DB::transaction(function () use ($skusPayload, $depts, $sharedPayload, $now, $tz, &$insertedRows) {
             foreach ($skusPayload as $skuEntry) {
                 $sku = trim((string) ($skuEntry['sku'] ?? ''));
                 if ($sku === '') {
                     continue;
                 }
 
-                $payload = array_merge($sharedPayload, [
+                $skuFields = [
                     'sku'       => $sku,
                     'qty'       => isset($skuEntry['qty']) && $skuEntry['qty'] !== '' ? (float) $skuEntry['qty'] : 0,
                     'order_qty' => isset($skuEntry['order_qty']) && $skuEntry['order_qty'] !== '' ? (float) $skuEntry['order_qty'] : null,
                     'parent'    => isset($skuEntry['parent']) ? trim((string) $skuEntry['parent']) : null,
-                ]);
+                ];
 
-                $issueId = DB::table($this->issuesTable())->insertGetId($payload);
-                DB::table($this->historyTable())->insert(array_merge($payload, [
-                    'orders_on_hold_issue_id' => $issueId,
-                    'event_type'              => 'created',
-                    'revision_no'             => 0,
-                    'logged_at'               => $now,
-                ]));
+                // One row per (SKU, department) so dept-filtered pages stay clean.
+                foreach ($depts as $dept) {
+                    $payload = array_merge($sharedPayload, $skuFields, [
+                        'department' => CustomerCareDepartments::encode([$dept]),
+                    ]);
 
-                $row = DB::table($this->issuesTable())->where('id', $issueId)->first();
-                $insertedRows[] = [
+                    $issueId = DB::table($this->issuesTable())->insertGetId($payload);
+                    DB::table($this->historyTable())->insert(array_merge($payload, [
+                        'orders_on_hold_issue_id' => $issueId,
+                        'event_type'              => 'created',
+                        'revision_no'             => 0,
+                        'logged_at'               => $now,
+                    ]));
+
+                    $row = DB::table($this->issuesTable())->where('id', $issueId)->first();
+                    $insertedRows[] = [
                     'id'                   => (int) $row->id,
                     'sku'                  => $row->sku,
                     'qty'                  => (float) $row->qty,
@@ -774,6 +1004,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
                         ? \Carbon\Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y H:i')
                         : '',
                 ] + $this->extraRowFields($row);
+                }
             }
         });
 
@@ -781,10 +1012,332 @@ class DispatchIssuesController extends IssueBoardControllerBase
             return response()->json(['message' => 'No valid SKUs provided.'], 422);
         }
 
+        // Outgoing trigger: when "Outgoing needed?" is checked on a Replacement /
+        // Alternate Sent issue, mirror the row to /outgoing-view by adjusting
+        // Shopify inventory and creating an `inventories` row. We pass every
+        // sibling row id from this group so they all get marked as processed.
+        $outgoingMsg     = null;
+        $outgoingWarning = null;
+        try {
+            $validatedFromRequest = [
+                'action_1'                => $request->input('action_1'),
+                'outgoing_needed'         => $request->boolean('outgoing_needed'),
+                'replacement_sku'         => $request->input('replacement_sku'),
+                'replacement_qty_sending' => $request->input('replacement_qty_sending'),
+                'outgoing_warehouse_id'   => $request->input('outgoing_warehouse_id'),
+                'replacement_tracking'    => $request->input('replacement_tracking'),
+            ];
+            $rowIds = array_map(fn ($r) => (int) $r['id'], $insertedRows);
+            $outgoing = $this->fireOutgoingForIssue(
+                $request,
+                $validatedFromRequest,
+                $rowIds,
+                $request->input('order_number')
+            );
+            if ($outgoing['success']) {
+                $outgoingMsg = 'Shopify inventory adjusted by -' . (int) $request->input('replacement_qty_sending') .
+                    ' and a row was added to /outgoing-view.';
+            } elseif ($outgoing['error'] && $request->boolean('outgoing_needed')) {
+                $outgoingWarning = 'Issue saved, but outgoing could NOT be processed: ' . $outgoing['error'];
+            }
+        } catch (\Throwable $e) {
+            $outgoingWarning = 'Issue saved, but outgoing failed: ' . $e->getMessage();
+        }
+
         return response()->json([
-            'message'  => count($insertedRows) . ' SKU(s) saved as 1 error group.',
-            'rows'     => $insertedRows,
-            'group_id' => $groupId,
+            'message'          => count($insertedRows) . ' record(s) saved as 1 error group.'
+                . ($outgoingMsg ? ' ' . $outgoingMsg : ''),
+            'rows'             => $insertedRows,
+            'group_id'         => $groupId,
+            'outgoing_warning' => $outgoingWarning,
         ], 201);
+    }
+
+    /**
+     * Override update so that changing the department selection on an existing
+     * issue is reconciled across the dept-split sibling rows:
+     *   - existing rows whose dept is still selected → updated with new field values
+     *   - existing rows whose dept was removed       → archived (soft-deleted)
+     *   - newly-added depts not yet represented     → inserted as new rows in the
+     *                                                 same group, sharing the SKU
+     */
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $existing = DB::table($this->issuesTable())->where('id', $id)->first();
+        if (! $existing) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        $validated = $this->validatePayload($request);
+        $newDepts  = CustomerCareDepartments::normalizeStringList($validated['department']);
+        if (count($newDepts) === 0) {
+            return response()->json([
+                'message' => 'Department is required.',
+                'errors'  => ['department' => ['Select at least one department.']],
+            ], 422);
+        }
+
+        $user      = auth()->user();
+        $actorName = trim((string) ($user?->name ?? 'System')) ?: 'System';
+
+        // Sibling set: every active row with the same group_id AND same SKU.
+        // If the row predates the dept-split refactor (no group_id) we treat it
+        // as a 1-row group so the same logic still applies.
+        $sku = trim((string) $validated['sku']);
+        $groupId = $existing->group_id ?: \Illuminate\Support\Str::uuid()->toString();
+        $siblingsQuery = DB::table($this->issuesTable())
+            ->where('sku', $sku)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            });
+        if ($existing->group_id) {
+            $siblingsQuery->where('group_id', $existing->group_id);
+        } else {
+            $siblingsQuery->where('id', $id);
+        }
+        $siblings = $siblingsQuery->get();
+
+        // Build the field-only payload that's identical for every sibling row
+        // (excludes sku/qty/order_qty/parent because those are stable per row,
+        // and excludes the department which is set per row below).
+        $fieldPayload = [
+            'qty'                  => (float) $validated['qty'],
+            'order_qty'            => isset($validated['order_qty']) ? (float) $validated['order_qty'] : null,
+            'parent'               => isset($validated['parent']) ? trim((string) $validated['parent']) : null,
+            'marketplace_1'        => isset($validated['marketplace_1']) ? trim((string) $validated['marketplace_1']) : null,
+            'marketplace_2'        => isset($validated['marketplace_2']) ? trim((string) $validated['marketplace_2']) : null,
+            'what_happened'        => isset($validated['what_happened']) ? trim((string) $validated['what_happened']) : null,
+            'issue'                => trim($validated['issue']),
+            'issue_remark'         => isset($validated['issue_remark']) ? trim((string) $validated['issue_remark']) : null,
+            'action_1'             => isset($validated['action_1']) ? trim((string) $validated['action_1']) : null,
+            'action_1_remark'      => isset($validated['action_1_remark']) ? trim((string) $validated['action_1_remark']) : null,
+            'replacement_tracking' => isset($validated['replacement_tracking']) ? trim((string) $validated['replacement_tracking']) : null,
+            'c_action_1'           => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
+            'c_action_1_remark'    => isset($validated['c_action_1_remark']) ? trim((string) $validated['c_action_1_remark']) : null,
+            'close_note'           => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
+            'issue_date'           => isset($validated['issue_date']) ? trim((string) $validated['issue_date']) : null,
+        ];
+        $fieldPayload = array_merge($fieldPayload, $this->buildExtraPayload($validated));
+
+        $now = now();
+
+        DB::transaction(function () use ($id, $siblings, $newDepts, $sku, $groupId, $existing, $fieldPayload, $actorName, $user, $request, $now) {
+            // Index existing siblings by their (single) department.
+            $existingByDept = [];
+            foreach ($siblings as $s) {
+                $deptList = CustomerCareDepartments::decode($s->department ?? null);
+                $deptKey = $deptList[0] ?? '';
+                if ($deptKey !== '' && ! isset($existingByDept[$deptKey])) {
+                    $existingByDept[$deptKey] = $s;
+                }
+            }
+
+            $newDeptSet = array_fill_keys($newDepts, true);
+
+            // 1. Update siblings whose dept is still selected; archive the rest.
+            foreach ($siblings as $s) {
+                $sDept = (CustomerCareDepartments::decode($s->department ?? null)[0] ?? '');
+                if ($sDept !== '' && isset($newDeptSet[$sDept])) {
+                    $payload = array_merge($fieldPayload, [
+                        'sku'        => $sku,
+                        'department' => CustomerCareDepartments::encode([$sDept]),
+                        'updated_at' => $now,
+                    ]);
+                    DB::table($this->issuesTable())->where('id', $s->id)->update($payload);
+
+                    $nextRevision = ((int) DB::table($this->historyTable())
+                        ->where('orders_on_hold_issue_id', $s->id)
+                        ->max('revision_no')) + 1;
+                    DB::table($this->historyTable())->insert(array_merge($payload, [
+                        'orders_on_hold_issue_id' => $s->id,
+                        'event_type'              => 'updated',
+                        'revision_no'             => $nextRevision,
+                        'created_by'              => $actorName,
+                        'created_by_user_id'      => $user?->id,
+                        'logged_at'               => $now,
+                        'created_at'              => $now,
+                    ]));
+
+                    $this->afterIssueUpdate((int) $s->id, $request, $s);
+                } else {
+                    // Department removed → archive this sibling.
+                    DB::table($this->issuesTable())->where('id', $s->id)->update([
+                        'is_archived' => true,
+                        'archived_at' => $now,
+                        'archived_by' => $actorName,
+                        'updated_at'  => $now,
+                    ]);
+
+                    $nextRevision = ((int) DB::table($this->historyTable())
+                        ->where('orders_on_hold_issue_id', $s->id)
+                        ->max('revision_no')) + 1;
+                    DB::table($this->historyTable())->insert([
+                        'orders_on_hold_issue_id' => $s->id,
+                        'event_type'              => 'archived',
+                        'revision_no'             => $nextRevision,
+                        'sku'                     => $s->sku,
+                        'qty'                     => (float) $s->qty,
+                        'order_qty'               => $s->order_qty !== null ? (float) $s->order_qty : null,
+                        'parent'                  => $s->parent,
+                        'marketplace_1'           => $s->marketplace_1 ?? null,
+                        'marketplace_2'           => $s->marketplace_2 ?? null,
+                        'what_happened'           => $s->what_happened ?? null,
+                        'issue'                   => $s->issue,
+                        'issue_remark'            => $s->issue_remark ?? null,
+                        'action_1'                => $s->action_1 ?? null,
+                        'action_1_remark'         => $s->action_1_remark ?? null,
+                        'replacement_tracking'    => $s->replacement_tracking ?? null,
+                        'c_action_1'              => $s->c_action_1 ?? null,
+                        'c_action_1_remark'       => $s->c_action_1_remark ?? null,
+                        'close_note'              => $s->close_note ?? null,
+                        'department'              => $s->department,
+                        'created_by'              => $actorName,
+                        'created_by_user_id'      => $user?->id,
+                        'logged_at'               => $now,
+                        'created_at'              => $now,
+                        'updated_at'              => $now,
+                    ]);
+                }
+            }
+
+            // 2. Insert rows for newly-added depts.
+            foreach ($newDepts as $newDept) {
+                if (isset($existingByDept[$newDept])) {
+                    continue;
+                }
+                $payload = array_merge($fieldPayload, [
+                    'sku'                => $sku,
+                    'group_id'           => $groupId,
+                    'department'         => CustomerCareDepartments::encode([$newDept]),
+                    'created_by'         => $actorName,
+                    'created_by_user_id' => $user?->id,
+                    'created_at'         => $now,
+                    'updated_at'         => $now,
+                ]);
+                $newId = DB::table($this->issuesTable())->insertGetId($payload);
+                DB::table($this->historyTable())->insert(array_merge($payload, [
+                    'orders_on_hold_issue_id' => $newId,
+                    'event_type'              => 'created',
+                    'revision_no'             => 0,
+                    'logged_at'               => $now,
+                ]));
+            }
+
+            // Backfill group_id on the original row if it was missing.
+            if (! $existing->group_id) {
+                DB::table($this->issuesTable())->where('id', $id)->update(['group_id' => $groupId]);
+            }
+        });
+
+        // Outgoing trigger on update — only fires if Outgoing needed is checked
+        // and the group hasn't already been processed (idempotent).
+        $outgoingMsg     = null;
+        $outgoingWarning = null;
+        if ($request->boolean('outgoing_needed')) {
+            try {
+                $rowIds = DB::table($this->issuesTable())
+                    ->where('group_id', $groupId)
+                    ->where('sku', $sku)
+                    ->where(function ($q) {
+                        $q->whereNull('is_archived')->orWhere('is_archived', false);
+                    })
+                    ->pluck('id')
+                    ->all();
+
+                $outgoing = $this->fireOutgoingForIssue($request, [
+                    'action_1'                => $request->input('action_1'),
+                    'outgoing_needed'         => true,
+                    'replacement_sku'         => $request->input('replacement_sku'),
+                    'replacement_qty_sending' => $request->input('replacement_qty_sending'),
+                    'outgoing_warehouse_id'   => $request->input('outgoing_warehouse_id'),
+                    'replacement_tracking'    => $request->input('replacement_tracking'),
+                ], array_map('intval', $rowIds), $request->input('order_number'));
+
+                if ($outgoing['success']) {
+                    $outgoingMsg = 'Shopify inventory adjusted by -' . (int) $request->input('replacement_qty_sending') .
+                        ' and a row was added to /outgoing-view.';
+                } elseif ($outgoing['error'] && stripos($outgoing['error'], 'already processed') === false) {
+                    $outgoingWarning = 'Issue updated, but outgoing could NOT be processed: ' . $outgoing['error'];
+                }
+            } catch (\Throwable $e) {
+                $outgoingWarning = 'Issue updated, but outgoing failed: ' . $e->getMessage();
+            }
+        }
+
+        return response()->json([
+            'message'          => 'Issue updated. Department changes have been reconciled across sibling rows.'
+                . ($outgoingMsg ? ' ' . $outgoingMsg : ''),
+            'group_id'         => $groupId,
+            'outgoing_warning' => $outgoingWarning,
+        ]);
+    }
+
+    /**
+     * Calls /outgoing-view's pipeline once for an issue (or a group of dept-split
+     * sibling rows that all share the same SKU/qty). Adjusts Shopify inventory
+     * by -$qty and writes an `inventories` row of type=outgoing. Marks every
+     * affected issue row with `outgoing_processed_at` + `outgoing_inventory_id`
+     * so re-saves are idempotent.
+     *
+     * @param  int[]  $issueRowIds  Issue row IDs to flag as processed on success.
+     * @return array{success: bool, error: string|null, inventory_id: int|null}
+     */
+    private function fireOutgoingForIssue(
+        Request $request,
+        array $validated,
+        array $issueRowIds,
+        ?string $orderNumber = null
+    ): array {
+        if (empty($issueRowIds)) {
+            return ['success' => false, 'error' => 'No issue rows to mark.', 'inventory_id' => null];
+        }
+
+        $action  = isset($validated['action_1']) ? trim((string) $validated['action_1']) : '';
+        $isReplacement = strcasecmp($action, 'Replacement') === 0 || strcasecmp($action, 'Alternate Sent') === 0;
+        $needed  = (bool) ($validated['outgoing_needed'] ?? false);
+        if (! $isReplacement || ! $needed) {
+            return ['success' => false, 'error' => 'Outgoing not requested.', 'inventory_id' => null];
+        }
+
+        $sku  = isset($validated['replacement_sku']) ? trim((string) $validated['replacement_sku']) : '';
+        $qty  = isset($validated['replacement_qty_sending']) ? (int) $validated['replacement_qty_sending'] : 0;
+        $whId = (int) ($validated['outgoing_warehouse_id'] ?? 0);
+        if ($sku === '' || $qty <= 0 || $whId <= 0) {
+            return ['success' => false, 'error' => 'Replacement SKU, qty and warehouse are required.', 'inventory_id' => null];
+        }
+
+        // Skip if any sibling has already been processed (idempotency guard).
+        $alreadyProcessed = DB::table($this->issuesTable())
+            ->whereIn('id', $issueRowIds)
+            ->whereNotNull('outgoing_processed_at')
+            ->exists();
+        if ($alreadyProcessed) {
+            return ['success' => false, 'error' => 'Outgoing already processed for this issue.', 'inventory_id' => null];
+        }
+
+        $tracking = isset($validated['replacement_tracking']) ? trim((string) $validated['replacement_tracking']) : null;
+        if ($tracking === '') {
+            $tracking = null;
+        }
+
+        $outgoing = app(OutgoingController::class)->processOutgoingFromIssue($sku, $qty, [
+            'warehouse_id'         => $whId,
+            'reason'               => 'Replacement (All Issues)',
+            'comment'              => 'Auto from All Issues #' . implode(',', $issueRowIds),
+            'replacement_tracking' => $tracking,
+            'order_id'             => $orderNumber,
+        ]);
+
+        if ($outgoing['success']) {
+            DB::table($this->issuesTable())
+                ->whereIn('id', $issueRowIds)
+                ->update([
+                    'outgoing_processed_at' => now(),
+                    'outgoing_inventory_id' => $outgoing['inventory_id'],
+                    'updated_at'            => now(),
+                ]);
+        }
+
+        return $outgoing;
     }
 }
