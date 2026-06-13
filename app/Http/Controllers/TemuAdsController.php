@@ -430,27 +430,39 @@ class TemuAdsController extends Controller
     {
         try {
             $request->validate([
-                'file' => 'required|file|mimes:xlsx,xls,csv',
+                'file' => 'required|file',
                 'report_range' => 'required|in:L7,L30,L60'
             ]);
 
             $file = $request->file('file');
             $reportRange = $request->input('report_range');
+            $ext = strtolower($file->getClientOriginalExtension());
 
-            $spreadsheet = IOFactory::load($file->getPathName());
-            $sheet = $spreadsheet->getActiveSheet();
-            $headerRow = $sheet->rangeToArray('A1:'.$sheet->getHighestColumn().'1', null, true, false)[0] ?? [];
-            $headers = array_map(function ($h) {
-                return is_string($h) ? trim($h) : $h;
-            }, $headerRow);
+            // ── Parse rows ────────────────────────────────────────────────────────
+            // Accept Excel (.xlsx/.xls), CSV, AND tab-separated text (.txt/.tsv).
+            // Temu exports its ads report as a tab-delimited .txt file; PhpSpreadsheet
+            // treats the whole row as one cell for that format, so we parse it manually.
+            $isTsv = in_array($ext, ['txt', 'tsv', ''])
+                || $this->detectTsv($file->getPathname());
+
+            if ($isTsv) {
+                [$headers, $dataRows] = $this->parseTsvFile($file->getPathname());
+            } else {
+                $spreadsheet = IOFactory::load($file->getPathname());
+                $sheet = $spreadsheet->getActiveSheet();
+                $rawHeaders = $sheet->rangeToArray('A1:'.$sheet->getHighestColumn().'1', null, true, false)[0] ?? [];
+                $headers = array_map(fn ($h) => is_string($h) ? trim($h) : $h, $rawHeaders);
+                $dataRows = null; // will iterate via $sheet
+            }
 
             $goodsIdColIdx = array_search('Goods ID', $headers, true);
             if ($goodsIdColIdx === false) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Excel must contain a column named exactly "Goods ID".',
+                    'message' => 'File must contain a column named exactly "Goods ID".',
                 ], 422);
             }
+            $skuColIdx = array_search('SKU', $headers, true);
 
             $normalizeCellValue = function ($value) {
                 if ($value instanceof RichText) {
@@ -490,77 +502,130 @@ class TemuAdsController extends Controller
                 return floatval(str_replace([',', '%', '$'], '', (string) $value));
             };
 
+            // Read a value by trying multiple header aliases. The new Temu export uses
+            // suffixed column names ("(Ad)" / "(Overall)"); older exports used the bare
+            // names. Prefer (Ad), fall back to (Overall), then to the legacy bare name.
+            $col = function (array $rowData, array $aliases) {
+                foreach ($aliases as $a) {
+                    if (array_key_exists($a, $rowData) && $rowData[$a] !== null && $rowData[$a] !== '') {
+                        return $rowData[$a];
+                    }
+                }
+                return null;
+            };
+
             $imported = 0;
             $skipped = 0;
             $rowErrors = 0;
             $firstRowError = null;
-            $highestRow = (int) $sheet->getHighestDataRow();
             $numCols = count($headers);
+
+            // Build the iterable list of raw rows regardless of source format
+            $highestRow = 0;
+            if ($isTsv) {
+                $allRows = $dataRows; // already an array of string arrays (0-indexed, no header row)
+            } else {
+                $highestRow = (int) $sheet->getHighestDataRow();
+                $allRows = null; // will iterate $sheet directly
+            }
 
             DB::beginTransaction();
             try {
                 TemuCampaignReport::where('report_range', $reportRange)->delete();
 
-                for ($rowNum = 2; $rowNum <= $highestRow; $rowNum++) {
-                    $firstCell = $normalizeCellValue($sheet->getCell(Coordinate::stringFromColumnIndex(1).$rowNum)->getValue());
-                    if ($firstCell !== null && $firstCell !== '' && stripos((string) $firstCell, 'Total') !== false) {
-                        $skipped++;
+                $iterateFn = function () use ($isTsv, $allRows, &$sheet, $highestRow, $normalizeCellValue, $numCols) {
+                    if ($isTsv) {
+                        foreach ($allRows as $row) {
+                            yield $row;
+                        }
+                    } else {
+                        for ($rowNum = 2; $rowNum <= $highestRow; $rowNum++) {
+                            $raw = [];
+                            for ($c = 1; $c <= $numCols; $c++) {
+                                $raw[] = $normalizeCellValue($sheet->getCell(Coordinate::stringFromColumnIndex($c).$rowNum)->getValue());
+                            }
+                            yield ['_rowNum' => $rowNum, '_raw' => $raw];
+                        }
+                    }
+                };
 
-                        continue;
+                foreach ($iterateFn() as $entry) {
+                    // Normalise to a flat string array
+                    if ($isTsv) {
+                        $row = $entry;
+                        // Skip "Total …" summary rows
+                        if (stripos((string) ($row[0] ?? ''), 'Total') !== false) {
+                            $skipped++;
+                            continue;
+                        }
+                    } else {
+                        $rowNum = $entry['_rowNum'];
+                        $row = $entry['_raw'];
+                        $firstCell = $row[0] ?? null;
+                        if ($firstCell !== null && $firstCell !== '' && stripos((string) $firstCell, 'Total') !== false) {
+                            $skipped++;
+                            continue;
+                        }
                     }
 
-                    $row = [];
-                    for ($c = 1; $c <= $numCols; $c++) {
-                        $row[] = $normalizeCellValue($sheet->getCell(Coordinate::stringFromColumnIndex($c).$rowNum)->getValue());
-                    }
                     if (empty(array_filter($row, fn ($v) => $v !== null && $v !== ''))) {
                         $skipped++;
-
                         continue;
                     }
 
                     $rowData = @array_combine($headers, array_pad(array_slice($row, 0, $numCols), $numCols, null));
                     if (! is_array($rowData)) {
                         $skipped++;
-
                         continue;
                     }
 
-                    $goodsCell = $sheet->getCell(Coordinate::stringFromColumnIndex($goodsIdColIdx + 1).$rowNum);
-                    $goodsIdNormalized = TemuGoodsIdHelper::fromSpreadsheetCell($goodsCell);
+                    // Extract Goods ID — for TSV it's plain text, for Excel use the cell helper
+                    if ($isTsv) {
+                        $rawGoodsId = trim((string) ($row[$goodsIdColIdx] ?? ''));
+                        $goodsIdNormalized = $rawGoodsId !== '' ? TemuGoodsIdHelper::normalizeKey($rawGoodsId) : null;
+                    } else {
+                        $goodsCell = $sheet->getCell(Coordinate::stringFromColumnIndex($goodsIdColIdx + 1).$rowNum);
+                        $goodsIdNormalized = TemuGoodsIdHelper::fromSpreadsheetCell($goodsCell);
+                    }
+
                     if (! $goodsIdNormalized) {
                         $skipped++;
-                        Log::warning("Temu campaign report upload ({$reportRange}): skipped row {$rowNum} — missing Goods ID");
-
+                        Log::warning("Temu campaign report upload ({$reportRange}): skipped row — missing Goods ID");
                         continue;
                     }
+
+                    // SKU from column "SKU" (col index 2 in the Temu export, col name "SKU")
+                    $skuValue = $skuColIdx !== false
+                        ? strtoupper(trim((string) ($row[$skuColIdx] ?? '')))
+                        : null;
 
                     try {
                         $campaignData = [
-                            'goods_name' => $rowData['Goods name'] ?? null,
-                            'goods_id' => $goodsIdNormalized,
+                            'goods_name'   => $rowData['Goods name'] ?? null,
+                            'goods_id'     => $goodsIdNormalized,
+                            'sku'          => $skuValue ?: null,
                             'report_range' => $reportRange,
-                            'spend' => $parseCurrency($rowData['Spend'] ?? null),
-                            'base_price_sales' => $parseCurrency($rowData['Base price sales'] ?? null),
-                            'roas' => $parseNumber($rowData['ROAS'] ?? 0),
-                            'acos_ad' => $parsePercent($rowData['ACOS(AD)'] ?? null),
-                            'cost_per_transaction' => $parseCurrency($rowData['Cost per transaction'] ?? null),
-                            'sub_orders' => ! empty($rowData['Sub-Orders']) ? (int) $rowData['Sub-Orders'] : 0,
-                            'items' => ! empty($rowData['Items']) ? (int) $rowData['Items'] : 0,
-                            'net_total_cost' => $parseCurrency($rowData['Net total cost'] ?? null),
-                            'net_declared_sales' => $parseCurrency($rowData['Net declared sales'] ?? null),
-                            'net_roas' => $parseNumber($rowData['Net advertising return on investment (ROAS)'] ?? 0),
-                            'net_acos_ad' => $parsePercent($rowData['Net advertising cost ratio (advertising)'] ?? null),
-                            'net_cost_per_transaction' => $parseCurrency($rowData['Net cost per transaction'] ?? null),
-                            'net_orders' => ! empty($rowData['Net Orders']) ? (int) $rowData['Net Orders'] : 0,
-                            'net_number_pieces' => ! empty($rowData['Net number of pieces']) ? (int) $rowData['Net number of pieces'] : 0,
-                            'impressions' => ! empty($rowData['Impressions']) ? (int) str_replace(',', '', $rowData['Impressions']) : 0,
-                            'clicks' => ! empty($rowData['Clicks']) ? (int) str_replace(',', '', $rowData['Clicks']) : 0,
-                            'ctr' => $parsePercent($rowData['CTR'] ?? null),
-                            'cvr' => $parsePercent($rowData['Conversion Rate (CVR)'] ?? null),
-                            'add_to_cart_number' => ! empty($rowData['Add-to-cart number']) ? (int) str_replace(',', '', $rowData['Add-to-cart number']) : 0,
-                            'weekly_roas' => $parseNumber($rowData['Weekly ROAS'] ?? 0),
-                            'target' => $parseNumber($rowData['Target'] ?? 0),
+                            'spend'        => $parseCurrency($col($rowData, ['Spend'])),
+                            'base_price_sales' => $parseCurrency($col($rowData, ['Base Price Sales (Ad)', 'Base Price Sales (Overall)', 'Base price sales'])),
+                            'roas'         => $parseNumber($col($rowData, ['ROAS (Ad)', 'ROAS (Overall)', 'ROAS']) ?? 0),
+                            'acos_ad'      => $parsePercent($col($rowData, ['ACOS (Ad)', 'ACOS (Overall)', 'ACOS(AD)'])),
+                            'cost_per_transaction' => $parseCurrency($col($rowData, ['Cost Per Order (Ad)', 'Cost Per Order (Overall)', 'Cost per transaction'])),
+                            'sub_orders'   => (int) str_replace(',', '', (string) ($col($rowData, ['Sub Order Count (Ad)', 'Sub Order Count (Overall)', 'Sub-Orders']) ?? 0)),
+                            'items'        => (int) str_replace(',', '', (string) ($col($rowData, ['Item Quantity (Ad)', 'Items (Overall)', 'Items']) ?? 0)),
+                            'net_total_cost' => $parseCurrency($col($rowData, ['Net total cost'])),
+                            'net_declared_sales' => $parseCurrency($col($rowData, ['Net Base Price Sales (Ad)', 'Net declared sales'])),
+                            'net_roas'     => $parseNumber($col($rowData, ['Net ROAS (Ad)', 'Net advertising return on investment (ROAS)']) ?? 0),
+                            'net_acos_ad'  => $parsePercent($col($rowData, ['Net ACOS (Ad)', 'Net advertising cost ratio (advertising)'])),
+                            'net_cost_per_transaction' => $parseCurrency($col($rowData, ['Net Cost Per Order (Ad)', 'Net cost per transaction'])),
+                            'net_orders'   => (int) str_replace(',', '', (string) ($col($rowData, ['Net Sub Order Count (Ad)', 'Net Orders']) ?? 0)),
+                            'net_number_pieces' => (int) str_replace(',', '', (string) ($col($rowData, ['Net Item Quantity (Ad)', 'Net number of pieces']) ?? 0)),
+                            'impressions'  => (int) str_replace(',', '', (string) ($col($rowData, ['Impressions (Ad)', 'Impressions (Overall)', 'Impressions']) ?? 0)),
+                            'clicks'       => (int) str_replace(',', '', (string) ($col($rowData, ['Clicks (Ad)', 'Clicks (Overall)', 'Clicks']) ?? 0)),
+                            'ctr'          => $parsePercent($col($rowData, ['Click Through Rate (Ad)', 'CTR (Overall)', 'CTR'])),
+                            'cvr'          => $parsePercent($col($rowData, ['Conversion Rate (Ad)', 'CVR (Overall)', 'Conversion Rate (CVR)'])),
+                            'add_to_cart_number' => (int) str_replace(',', '', (string) ($col($rowData, ['Add To Cart (Ad)', 'Add to cart count (Overall)', 'Add-to-cart number']) ?? 0)),
+                            'weekly_roas'  => $parseNumber($col($rowData, ['Natural Week ROAS (Ad)', 'Weekly ROAS']) ?? 0),
+                            'target'       => $parseNumber($col($rowData, ['Natural Week Target ROAS (Ad)', 'Target']) ?? 0),
                         ];
 
                         TemuCampaignReport::create($campaignData);
@@ -571,8 +636,7 @@ class TemuAdsController extends Controller
                         if ($firstRowError === null) {
                             $firstRowError = $e->getMessage();
                         }
-                        Log::warning("Failed to import campaign row {$rowNum}: ".$e->getMessage());
-
+                        Log::warning("Failed to import campaign row: ".$e->getMessage());
                         continue;
                     }
                 }
@@ -581,9 +645,7 @@ class TemuAdsController extends Controller
                 if ($imported === 0) {
                     DB::rollBack();
                     $msg = "Imported 0 rows for {$reportRange}. Existing {$reportRange} campaign data was kept.";
-                    if ($highestRow <= 1) {
-                        $msg .= " The sheet appears to contain only headers/no data rows.";
-                    } elseif ($firstRowError) {
+                    if ($firstRowError) {
                         $msg .= " First row error: {$firstRowError}";
                     } else {
                         $msg .= " All rows were skipped (check file format/headers).";
@@ -618,5 +680,53 @@ class TemuAdsController extends Controller
                 'message' => 'Error uploading file: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Return true if the file looks like a tab-delimited text file.
+     * We check: extension is .txt/.tsv OR the first line contains tabs.
+     */
+    private function detectTsv(string $path): bool
+    {
+        $handle = fopen($path, 'r');
+        if (!$handle) return false;
+        $line = fgets($handle);
+        fclose($handle);
+        return $line !== false && substr_count($line, "\t") >= 3;
+    }
+
+    /**
+     * Parse a tab-delimited text file into [$headers, $dataRows].
+     * Skips the first "Total …" summary row that Temu includes as row 2.
+     */
+    private function parseTsvFile(string $path): array
+    {
+        $headers  = [];
+        $dataRows = [];
+        $handle   = fopen($path, 'r');
+        if (!$handle) return [[], []];
+
+        $lineNum = 0;
+        while (($line = fgets($handle)) !== false) {
+            $line = rtrim($line, "\r\n");
+            if ($line === '') continue;
+
+            $cols = explode("\t", $line);
+            $cols = array_map('trim', $cols);
+
+            if ($lineNum === 0) {
+                $headers = $cols;
+            } else {
+                // Skip the "Total N item(s)" summary row Temu adds as row 2
+                if (stripos($cols[0] ?? '', 'Total') !== false && $lineNum === 1) {
+                    $lineNum++;
+                    continue;
+                }
+                $dataRows[] = $cols;
+            }
+            $lineNum++;
+        }
+        fclose($handle);
+        return [$headers, $dataRows];
     }
 }

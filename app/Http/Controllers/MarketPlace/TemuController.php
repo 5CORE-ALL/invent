@@ -3104,55 +3104,50 @@ class TemuController extends Controller
             $goodsIds = $pricingData->pluck('goods_id')->filter()->unique()->values()->all();
             $campaignRange = $isL7Period ? 'L7' : 'L30';
             if (!$isTemu2Pricing) {
-                // Fetch ad data (temu_ad_data) — period-agnostic snapshot from "Up Ad Data" upload
-                $adData = TemuAdData::select(
-                    'goods_id',
-                    'spend',
-                    'net_roas',
-                    'acos_ad',
-                    'clicks',
-                    'target',
-                    'impressions',
-                    'add_to_cart_number'
-                )
-                    ->get()
+                // Single source of truth for Temu ad metrics: temu_campaign_reports.
+                // Matched by goods_id (primary) OR by sku (fallback for rows that share
+                // a parent goods_id or were uploaded from a TSV where goods_id differs).
+                $campaignReportL30Raw = TemuCampaignReport::where('report_range', $campaignRange)
+                    ->selectRaw('goods_id, sku,
+                        SUM(spend) as spend_l30,
+                        SUM(clicks) as clicks_l30,
+                        AVG(roas) as roas_l30,
+                        AVG(net_roas) as net_roas_l30,
+                        AVG(in_roas) as in_roas_l30,
+                        AVG(acos_ad) as acos_ad_l30,
+                        MAX(status) as status_l30,
+                        SUM(COALESCE(base_price_sales, 0)) as ad_sales_l30,
+                        SUM(COALESCE(sub_orders, 0)) as ad_sold_l30,
+                        SUM(COALESCE(impressions, 0)) as impressions_l30,
+                        SUM(COALESCE(add_to_cart_number, 0)) as add_to_cart_l30,
+                        AVG(target) as target_l30')
+                    ->groupBy('goods_id', 'sku')
+                    ->get();
+
+                // Primary index: by normalized goods_id
+                $campaignReportL30 = $campaignReportL30Raw
                     ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
                     ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
 
-                // Fetch campaign report data (period-aware) for saved status, in_roas, out_roas, ad_sales, ad_sold
-                $campaignReportL30 = TemuCampaignReport::whereIn('goods_id', $goodsIds)
-                    ->where('report_range', $campaignRange)
-                    ->selectRaw('goods_id,
-                    SUM(spend) as spend_l30,
-                    SUM(clicks) as clicks_l30,
-                    AVG(roas) as roas_l30,
-                    AVG(in_roas) as in_roas_l30,
-                    AVG(acos_ad) as acos_ad_l30,
-                    MAX(status) as status_l30,
-                    SUM(COALESCE(base_price_sales, 0)) as ad_sales_l30,
-                    SUM(COALESCE(sub_orders, 0)) as ad_sold_l30,
-                    SUM(COALESCE(impressions, 0)) as impressions_l30,
-                    SUM(COALESCE(add_to_cart_number, 0)) as add_to_cart_l30')
-                    ->groupBy('goods_id')
-                    ->get()
-                    ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
-                    ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
+                // Fallback index: by normalized SKU (upper-trim, PCS fold)
+                $campaignReportL30BySku = $campaignReportL30Raw
+                    ->filter(fn ($r) => !empty(trim((string)($r->sku ?? ''))))
+                    ->keyBy(fn ($r) => $normalizeSku($r->sku));
 
-                // Fetch campaign report data (L60) for spend, ad sold, ad sales (use sub_orders like L30; ad_sales from base_price_sales with net_declared_sales fallback)
-                $campaignReportL60 = TemuCampaignReport::whereIn('goods_id', $goodsIds)
-                    ->where('report_range', 'L60')
+                // L60
+                $campaignReportL60 = TemuCampaignReport::where('report_range', 'L60')
                     ->selectRaw('goods_id,
-                    SUM(spend) as spend_l60,
-                    SUM(COALESCE(sub_orders, 0)) as ad_sold_l60,
-                    SUM(COALESCE(NULLIF(base_price_sales, 0), net_declared_sales, 0)) as ad_sales_l60')
+                        SUM(spend) as spend_l60,
+                        SUM(COALESCE(sub_orders, 0)) as ad_sold_l60,
+                        SUM(COALESCE(NULLIF(base_price_sales, 0), net_declared_sales, 0)) as ad_sales_l60')
                     ->groupBy('goods_id')
                     ->get()
                     ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
                     ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
             } else {
-                $adData = collect();
-                $campaignReportL30 = collect();
-                $campaignReportL60 = collect();
+                $campaignReportL30      = collect();
+                $campaignReportL30BySku = collect();
+                $campaignReportL60      = collect();
             }
 
             // Fetch saved SPRICE values (Temu 2 uses temu2_data_view)
@@ -3193,7 +3188,7 @@ class TemuController extends Controller
             }
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $viewData, $adData, $temuDataViewData, $amazonData, $ebayData, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL60, $temuLmpByNormalizedSku, $isTemu2Pricing) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $viewData, $temuDataViewData, $amazonData, $ebayData, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL60, $temuLmpByNormalizedSku, $isTemu2Pricing) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -3248,38 +3243,29 @@ class TemuController extends Controller
                 $productClicks = $viewDataItem ? $viewDataItem->product_clicks : 0;
                 $ctr = $viewDataItem ? $viewDataItem->ctr : 0;
                 
-                // Join keys: normalize goods_id so Temu ad data / campaign reports match temu_pricing (Excel float issues)
+                // Join keys: normalize goods_id so campaign reports match temu_pricing (Excel float issues)
                 $goodsIdKey = $goodsId ? TemuGoodsIdHelper::normalizeKey($goodsId) : null;
 
-                // Get ad data by goods_id (temu_ad_data — "Up Ad Data" snapshot)
-                $adDataItem = $goodsIdKey ? $adData->get($goodsIdKey) : null;
-                $spend = $adDataItem ? (float) $adDataItem->spend : 0.0;
-                $netRoas = $adDataItem ? (float) $adDataItem->net_roas : 0.0;
-                $acosAd = $adDataItem ? (float) $adDataItem->acos_ad : 0.0;
-                $adClicks = $adDataItem ? (int) $adDataItem->clicks : 0;
-                $target = $adDataItem ? (float) $adDataItem->target : 0.0;
-                $impressionsVal = $adDataItem ? (int) $adDataItem->impressions : 0;
-                $addToCartVal = $adDataItem ? (int) $adDataItem->add_to_cart_number : 0;
+                // Campaign report: primary match by goods_id, fallback by SKU.
+                // SKU fallback is essential when the file was uploaded as TSV with
+                // sku column, or when goods_id wasn't captured correctly.
+                $campaignReportItem = ($goodsIdKey ? $campaignReportL30->get($goodsIdKey) : null)
+                    ?? $campaignReportL30BySku->get($normalizeSku($sku));
 
-                // Campaign report (period = L7 or L30 from temu_campaign_reports — "L7/L30/L60" upload in Temu Ads)
-                $campaignReportItem = $goodsIdKey ? $campaignReportL30->get($goodsIdKey) : null;
-                $inRoasL30 = $campaignReportItem ? round((float) $campaignReportItem->in_roas_l30, 2) : 0;
-                $outRoasL30 = $campaignReportItem ? round((float) $campaignReportItem->roas_l30, 2) : ($netRoas > 0 ? round($netRoas, 2) : 0);
-                $spendL30 = $campaignReportItem ? round((float) ($campaignReportItem->spend_l30 ?? 0), 2) : 0;
-                $clicksL30 = $campaignReportItem ? (int) ($campaignReportItem->clicks_l30 ?? 0) : 0;
+                $spend         = $campaignReportItem ? round((float) ($campaignReportItem->spend_l30 ?? 0), 2)        : 0.0;
+                $adClicks      = $campaignReportItem ? (int) ($campaignReportItem->clicks_l30 ?? 0)                   : 0;
+                $acosAd        = $campaignReportItem ? round((float) ($campaignReportItem->acos_ad_l30 ?? 0), 2)      : 0.0;
+                $netRoas       = $campaignReportItem ? round((float) ($campaignReportItem->net_roas_l30 ?? $campaignReportItem->roas_l30 ?? 0), 2) : 0.0;
+                $impressionsVal= $campaignReportItem ? (int) ($campaignReportItem->impressions_l30 ?? 0)              : 0;
+                $addToCartVal  = $campaignReportItem ? (int) ($campaignReportItem->add_to_cart_l30 ?? 0)              : 0;
+                $target        = $campaignReportItem ? (float) ($campaignReportItem->target_l30 ?? 0)                 : 0.0;
+
+                $inRoasL30  = $campaignReportItem ? round((float) $campaignReportItem->in_roas_l30, 2) : 0;
+                $outRoasL30 = $campaignReportItem ? round((float) $campaignReportItem->roas_l30, 2)    : 0;
+                $spendL30   = $spend;
+                $clicksL30  = $adClicks;
                 $adSalesL30 = $campaignReportItem ? round((float) ($campaignReportItem->ad_sales_l30 ?? 0), 2) : 0;
-                $adSoldL30 = $campaignReportItem ? (int) ($campaignReportItem->ad_sold_l30 ?? 0) : 0;
-
-                // Primary Spend / ACOS / Clicks / Impressions: use period campaign report when present (matches L7/L30 Excel campaign upload)
-                if ($campaignReportItem !== null) {
-                    $spend = round((float) ($campaignReportItem->spend_l30 ?? 0), 2);
-                    $adClicks = (int) ($campaignReportItem->clicks_l30 ?? 0);
-                    $acosAd = round((float) ($campaignReportItem->acos_ad_l30 ?? 0), 2);
-                    $netRoas = round((float) ($campaignReportItem->roas_l30 ?? 0), 2);
-                    $outRoasL30 = $netRoas;
-                    $impressionsVal = (int) ($campaignReportItem->impressions_l30 ?? 0);
-                    $addToCartVal = (int) ($campaignReportItem->add_to_cart_l30 ?? 0);
-                }
+                $adSoldL30  = $campaignReportItem ? (int) ($campaignReportItem->ad_sold_l30 ?? 0)              : 0;
                 $campaignStatus = null;
                 // Get campaign report data (L60) for spend, ad sold, ad sales
                 $l60Item = $goodsIdKey ? $campaignReportL60->get($goodsIdKey) : null;
