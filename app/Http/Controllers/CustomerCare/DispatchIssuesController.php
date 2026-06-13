@@ -533,9 +533,10 @@ class DispatchIssuesController extends IssueBoardControllerBase
 
     /**
      * Replacement / Alternate-Sent SKU lookup for the Action sub-section.
-     * Returns the SKU image (product_master) + the Shopify available qty.
-     * This is the one place the All Issues page is allowed to read inventory
-     * from `shopify_skus`, by explicit product decision.
+     * Image is sourced from product_master (`Values.image_path` JSON, then
+     * main_image / image1 as fallbacks). The available quantity is the only
+     * field we read from `shopify_skus.inv` on this page — by explicit
+     * product decision.
      */
     public function replacementSkuDetails(Request $request): JsonResponse
     {
@@ -549,10 +550,9 @@ class DispatchIssuesController extends IssueBoardControllerBase
             ->where('sku', $sku)
             ->first();
 
-        $shopify = DB::table('shopify_skus')
-            ->select(DB::raw('COALESCE(inv, 0) as qty'), 'image_src')
+        $qtyAvailable = (float) DB::table('shopify_skus')
             ->where('sku', $sku)
-            ->first();
+            ->value(DB::raw('COALESCE(inv, 0)'));
 
         $normalizeImage = static function ($path) {
             $p = trim((string) ($path ?? ''));
@@ -561,27 +561,24 @@ class DispatchIssuesController extends IssueBoardControllerBase
             return '/' . ltrim($p, '/');
         };
 
-        $values = [];
+        $valuesImage = null;
         if ($pm && isset($pm->values_json) && is_string($pm->values_json) && trim($pm->values_json) !== '') {
             $decoded = json_decode($pm->values_json, true);
             if (is_array($decoded)) {
-                $values = $decoded;
+                $valuesImage = $decoded['image_path'] ?? null;
             }
         }
 
-        $imageUrl = $normalizeImage($shopify?->image_src)
-            ?? $normalizeImage($values['image_path'] ?? null)
+        $imageUrl = $normalizeImage($valuesImage)
             ?? $normalizeImage($pm?->main_image ?? null)
             ?? $normalizeImage($pm?->image1 ?? null);
 
-        $found = (bool) ($pm || $shopify);
-
         return response()->json([
-            'found'           => $found,
-            'sku'             => $sku,
-            'parent'          => $pm?->parent,
-            'qty_available'   => (float) ($shopify?->qty ?? 0),
-            'image_url'       => $imageUrl,
+            'found'         => (bool) $pm,
+            'sku'           => $sku,
+            'parent'        => $pm?->parent,
+            'qty_available' => $qtyAvailable,
+            'image_url'     => $imageUrl,
         ]);
     }
 
@@ -653,30 +650,17 @@ class DispatchIssuesController extends IssueBoardControllerBase
             ->limit(1000)
             ->get();
 
-        // Build image map from product_master only. We deliberately do NOT
-        // query shopify_skus here — All Issues uses the internal product
-        // catalogue as the single image source. Plain whereIn on the indexed
-        // `sku` column keeps this fast.
+        // Build image map straight from product_master. Most rows have NULL
+        // `main_image`/`image1`, so we primarily decode the `Values` JSON column
+        // and read its `image_path` key (which already contains the full
+        // Shopify CDN URL). main_image / image1 are kept as fallbacks for the
+        // few rows where Values has no image. No shopify_skus lookup here.
         $rawSkus = $rows->pluck('sku')
             ->map(fn ($s) => trim((string) $s))
             ->filter(fn ($s) => $s !== '')
             ->unique()
             ->values()
             ->all();
-
-        $pmMap = [];
-        if ($rawSkus !== []) {
-            DB::table('product_master')
-                ->whereIn('sku', $rawSkus)
-                ->select('sku', 'main_image', 'image1')
-                ->get()
-                ->each(function ($r) use (&$pmMap) {
-                    $pmMap[strtolower(trim((string) $r->sku))] = [
-                        'main' => $r->main_image ?? null,
-                        'alt'  => $r->image1 ?? null,
-                    ];
-                });
-        }
 
         $normalizeImage = static function ($path) {
             $p = trim((string) ($path ?? ''));
@@ -686,9 +670,25 @@ class DispatchIssuesController extends IssueBoardControllerBase
         };
 
         $imageMap = [];
-        foreach ($pmMap as $key => $imgs) {
-            $imageMap[$key] = $normalizeImage($imgs['main'] ?? null)
-                ?? $normalizeImage($imgs['alt'] ?? null);
+        if ($rawSkus !== []) {
+            DB::table('product_master')
+                ->whereIn('sku', $rawSkus)
+                ->select('sku', 'Values as values_json', 'main_image', 'image1')
+                ->get()
+                ->each(function ($r) use (&$imageMap, $normalizeImage) {
+                    $valuesImage = null;
+                    if (isset($r->values_json) && is_string($r->values_json) && trim($r->values_json) !== '') {
+                        $decoded = json_decode($r->values_json, true);
+                        if (is_array($decoded)) {
+                            $valuesImage = $decoded['image_path'] ?? null;
+                        }
+                    }
+
+                    $key = strtolower(trim((string) $r->sku));
+                    $imageMap[$key] = $normalizeImage($valuesImage)
+                        ?? $normalizeImage($r->main_image ?? null)
+                        ?? $normalizeImage($r->image1 ?? null);
+                });
         }
 
         $tz = config('app.timezone');
