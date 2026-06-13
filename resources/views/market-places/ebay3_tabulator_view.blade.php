@@ -286,13 +286,6 @@
                         <option value="more" selected>More than 0</option>
                     </select>
 
-                    <select id="ebay-stock-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">All E Stock</option>
-                        <option value="zero">0 E Stock</option>
-                        <option value="more" selected>E Stock &gt; 0</option>
-                    </select>
-
                     <select id="el30-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all" selected>All E L30</option>
@@ -786,7 +779,7 @@
 
                 <!-- Summary Stats — same badge set/order as Ebay 2 Analytics -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary (E Stock &gt; 0)</h6>
+                    <h6 class="mb-3">Summary</h6>
                     <div class="ebay2-summary-badge-row">
                         <span class="badge bg-danger fs-6 p-2 sold-filter-badge ebay3-hover-chart" data-filter="zero" data-metric="zero_sold_count" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for daily trend">0 Sold: <span id="zero-sold-count">0</span></span>
                         <span class="badge fs-6 p-2 sold-filter-badge ebay3-hover-chart" data-filter="sold" data-metric="sold_count" style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter · Hover for daily trend">&gt; 0 Sold: <span id="more-sold-count">0</span></span>
@@ -4662,7 +4655,6 @@
 
             const viewModeFilter = $('#view-mode-filter').val();
             const invFilter = $('#inv-filter').val() || 'more';
-            const ebayStockFilter = $('#ebay-stock-filter').val();
             const el30Filter = $('#el30-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();
@@ -4721,18 +4713,6 @@
                         return false;
                     }
                     return ebay3Qty(data.INV) > 0;
-                });
-            }
-
-            if (ebayStockFilter === 'zero') {
-                table.addFilter(function(data) {
-                    const estock = parseFloat(data['eBay Stock'] || data['E Stock'] || 0) || 0;
-                    return estock === 0;
-                });
-            } else if (ebayStockFilter === 'more') {
-                table.addFilter(function(data) {
-                    const estock = parseFloat(data['eBay Stock'] || data['E Stock'] || 0) || 0;
-                    return estock > 0;
                 });
             }
 
@@ -5172,7 +5152,7 @@
             }, 100);
         }
 
-        $('#view-mode-filter, #inv-filter, #ebay-stock-filter, #el30-filter, #variation-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter').on('change', function() {
+        $('#view-mode-filter, #inv-filter, #el30-filter, #variation-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter').on('change', function() {
             applyFilters();
             if ($('#section-filter').val() === 'kw_ads') {
                 updateKwAdsStats();
@@ -5391,33 +5371,52 @@
         }
 
         // Export button: download CSV for current section (visible columns + filtered data)
+        // Always build the CSV manually from table.getRows('active') so that all dropdown,
+        // column, and tree filters are honored consistently. Tabulator's built-in
+        // table.download('csv', { downloadRowRange: 'active' }) is unreliable with
+        // dataTree + dataTreeFilter and can emit unfiltered rows.
         $('#export-section-btn').on('click', function() {
             var sectionVal = $('#section-filter').val() || 'all';
             var dateStr = new Date().toISOString().slice(0, 10);
             var filename = 'ebay3_' + sectionVal + '_export_' + dateStr + '.csv';
             try {
-                var viewMode = $('#view-mode-filter').val();
-
-                // "Both (Parent + SKU)": Tabulator CSV only outputs displayed rows (collapsed tree = no SKUs).
-                // Also, parent rows use summed INV/metrics and pass filters while many child SKUs fail the same
-                // row-level filters — so filtering every descendant drops all SKU lines. Export from row data:
-                // one CSV row per parent, then all nested _children, for each table.getRows("active") root.
-                if (viewMode === 'both' && table) {
-                    var flatRows = [];
-                    table.getRows('active').forEach(function(rc) {
-                        ebay3FlattenTreeBranchForExport(rc.getData(), flatRows);
-                    });
-                    var exportCols = ebay3VisibleExportColumns();
-                    if (!exportCols.length) {
-                        throw new Error('No visible columns to export');
-                    }
-                    ebay3DownloadManualCsv(filename, flatRows, exportCols);
-                } else {
-                    table.download('csv', filename, { downloadRowRange: 'active' });
+                if (!table) {
+                    throw new Error('Table not ready');
                 }
 
+                var exportCols = ebay3VisibleExportColumns();
+                if (!exportCols.length) {
+                    throw new Error('No visible columns to export');
+                }
+
+                var viewMode = $('#view-mode-filter').val();
+                var activeRows = table.getRows('active');
+                var flatRows = [];
+
+                if (viewMode === 'both') {
+                    // Parent + SKU: emit each visible parent followed by all its descendants.
+                    activeRows.forEach(function(rc) {
+                        ebay3FlattenTreeBranchForExport(rc.getData(), flatRows);
+                    });
+                } else {
+                    // sku or parent: emit only the rows that pass the active filter set,
+                    // stripped of the _children reference so the CSV stays flat.
+                    activeRows.forEach(function(rc) {
+                        var d = rc.getData() || {};
+                        var copy = {};
+                        Object.keys(d).forEach(function(k) {
+                            if (k !== '_children') {
+                                copy[k] = d[k];
+                            }
+                        });
+                        flatRows.push(copy);
+                    });
+                }
+
+                ebay3DownloadManualCsv(filename, flatRows, exportCols);
+
                 if (typeof showToast === 'function') {
-                    showToast('success', 'Export started');
+                    showToast('success', 'Export started (' + flatRows.length + ' rows)');
                 }
             } catch (e) {
                 if (typeof showToast === 'function') {
@@ -5750,7 +5749,6 @@
             var processedSkusForZeroInv = new Set();
 
             var invFilterVal = $('#inv-filter').val() || 'more';
-            var ebayStockFilterVal = $('#ebay-stock-filter').val() || 'more';
             var el30FilterVal = $('#el30-filter').val() || 'all';
             var growthSignKw = $('#growth-sign-filter').val() || 'all';
 
@@ -5787,9 +5785,6 @@
                 var shopifyInv = typeof ebay3Qty === 'function' ? ebay3Qty(row['INV']) : (parseFloat(row['INV'] || 0) || 0);
                 if (invFilterVal === 'zero') { if (shopifyInv !== 0) return; }
                 else if (invFilterVal === 'more') { if (shopifyInv <= 0) return; }
-
-                if (ebayStockFilterVal === 'zero') { if (estock > 0) return; }
-                else if (ebayStockFilterVal === 'more') { if (estock <= 0) return; }
 
                 if (el30FilterVal === 'zero') {
                     if (ebayL30ForFilter !== 0) return;
