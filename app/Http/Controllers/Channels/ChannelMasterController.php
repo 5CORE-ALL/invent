@@ -941,6 +941,260 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Apply the same shopify_raw_orders exclusions as the /shopify page (ShopifyRawDataController):
+     * skips rows whose source_name/tags match a known marketplace and SKUs containing "XYZ".
+     *
+     * Note: we deliberately do NOT apply the page's "Hide Unknown" toggle (rows with empty tags).
+     * Those rows are legitimate Shopify direct sales that simply have no source tag, so they belong
+     * in the Active Channel Sales total. The /shopify page card matches this overlay when the user
+     * toggles "Show Unknown" on; with the default "Hide Unknown" toggle the page card will be lower.
+     */
+    private function applyShopifyDirectOrderExclusions($query)
+    {
+        foreach (\App\Http\Controllers\ShopifyRawDataController::EXCLUDE_SOURCES as $term) {
+            $query->whereRaw('LOWER(COALESCE(source_name,"")) NOT LIKE ?', ['%' . strtolower($term) . '%'])
+                  ->whereRaw('LOWER(COALESCE(tags,"")) NOT LIKE ?',        ['%' . strtolower($term) . '%']);
+        }
+
+        $query->where(function ($q) {
+            $q->whereNull('sku')->orWhere('sku', 'NOT LIKE', '%XYZ%');
+        });
+
+        return $query;
+    }
+
+    /**
+     * Sum net_sales (and order/qty counts) from shopify_raw_orders for a given window.
+     * Mirrors the /shopify page Net Sales card: same EXCLUDE_SOURCES + XYZ filter.
+     *
+     * Falls back to the legacy `shopify_orders` table for dates that pre-date the
+     * earliest record in `shopify_raw_orders` so L60 / longer-lookback windows still
+     * produce a meaningful total (the Shopify Admin API in this account refuses to
+     * return older `created_at` orders, so the new raw-orders table can't be
+     * backfilled past its current floor). The legacy table is per-order (not per
+     * line), stores source_name/tags inside `raw_payload`, and `total_price` is
+     * effectively the order-level net since `total_discounts` is empty there.
+     *
+     * @return array{sales: float, orders: int, qty: int}
+     */
+    private function computeShopifyDirectMetricsFromOrders(Carbon $start, Carbon $end): array
+    {
+        $startDate = $start->toDateString();
+        $endDate   = $end->toDateString();
+
+        $rawBase = DB::table('shopify_raw_orders')
+            ->where('order_date', '>=', $startDate)
+            ->where('order_date', '<=', $endDate);
+        $this->applyShopifyDirectOrderExclusions($rawBase);
+
+        $sales  = (float) (clone $rawBase)->sum('net_sales');
+        $orders = (int)   (clone $rawBase)->distinct('order_id')->count('order_id');
+        $qty    = (int)   (clone $rawBase)->sum('quantity');
+
+        // Legacy fallback for any dates in the window that pre-date
+        // shopify_raw_orders' earliest record (avoids double counting because the
+        // two tables don't currently overlap — legacy stops 2026-05-01, raw starts
+        // 2026-05-11; we still cut at raw_orders.min(order_date) - 1 day to stay
+        // safe if backfills add overlap in the future).
+        if (Schema::hasTable('shopify_orders')) {
+            try {
+                $rawMin = DB::table('shopify_raw_orders')->min('order_date');
+                if ($rawMin && Carbon::parse($rawMin)->gt($start)) {
+                    $legacyEnd = Carbon::parse($rawMin)->subDay()->endOfDay();
+                    if ($legacyEnd->gte($start)) {
+                        $legacyBase = DB::table('shopify_orders')
+                            ->where('order_date', '>=', $start->copy()->startOfDay())
+                            ->where('order_date', '<=', $legacyEnd);
+                        $this->applyShopifyDirectOrderExclusionsLegacy($legacyBase);
+                        $sales  += (float) (clone $legacyBase)->sum('total_price');
+                        $orders += (int)   (clone $legacyBase)->distinct('shopify_order_id')->count('shopify_order_id');
+                        // shopify_orders doesn't have a per-line quantity column,
+                        // so we approximate qty from line_items_count when present.
+                        $qty    += (int)   (clone $legacyBase)->sum('line_items_count');
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Shopify legacy-orders fallback failed: ' . $e->getMessage());
+            }
+        }
+
+        return [
+            'sales'  => round($sales, 2),
+            'orders' => $orders,
+            'qty'    => $qty,
+        ];
+    }
+
+    /**
+     * EXCLUDE_SOURCES filter for the legacy shopify_orders table. Standalone
+     * source_name/tags columns are empty on that table so we apply the same
+     * filter against `raw_payload->source_name` / `raw_payload->tags` JSON paths.
+     * SKU-level XYZ exclusion is skipped here because line items live inside
+     * raw_payload; the L60 fallback is small enough that this is acceptable.
+     */
+    private function applyShopifyDirectOrderExclusionsLegacy($query)
+    {
+        foreach (\App\Http\Controllers\ShopifyRawDataController::EXCLUDE_SOURCES as $term) {
+            $query->whereRaw('LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, "$.source_name")),"")) NOT LIKE ?', ['%' . strtolower($term) . '%'])
+                  ->whereRaw('LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, "$.tags")),"")) NOT LIKE ?',        ['%' . strtolower($term) . '%']);
+        }
+
+        return $query;
+    }
+
+    /**
+     * Live L30/L60 Shopify "Direct" metrics from shopify_raw_orders, matching the
+     * /shopify page Net Sales card. Used to overlay /all-marketplace-master so the
+     * "Shopify" channel Sales column reflects the same value the user sees on /shopify.
+     *
+     * Uses the server's configured timezone so the date window aligns with the
+     * /shopify page (the page's flatpickr sends date_from/date_to in the user's
+     * browser-local timezone; deploying the app in the user's timezone keeps the
+     * server-side overlay window in sync with that view).
+     *
+     * @return array{l30_sales: float, l30_orders: int, qty: int, l60_sales: float, l60_orders: int}|null
+     */
+    private function getShopifyDirectLiveMetricsSummary(): ?array
+    {
+        try {
+            $today = Carbon::now();
+
+            // L30 window matches the /shopify page default: today − 30 days … today.
+            $l30Start = $today->copy()->subDays(30)->startOfDay();
+            $l30End   = $today->copy()->endOfDay();
+
+            // L60 = prior period (days 31-60) so Growth on the Active Channel row works.
+            $l60Start = $today->copy()->subDays(60)->startOfDay();
+            $l60End   = $today->copy()->subDays(31)->endOfDay();
+
+            $l30 = $this->computeShopifyDirectMetricsFromOrders($l30Start, $l30End);
+            $l60 = $this->computeShopifyDirectMetricsFromOrders($l60Start, $l60End);
+
+            return [
+                'l30_sales'  => $l30['sales'],
+                'l30_orders' => $l30['orders'],
+                'qty'        => $l30['qty'],
+                'l60_sales'  => $l60['sales'],
+                'l60_orders' => $l60['orders'],
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Shopify Direct live metrics summary failed: ' . $e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * Y Sales for the "Shopify" Active Channel row — net_sales sum for the Pacific day
+     * before the latest order_date in shopify_raw_orders (same clock convention as
+     * other channels' Y Sales). Same exclusions as the /shopify Net Sales card.
+     */
+    private function computeShopifyDirectYSalesLikeAmazon(): ?float
+    {
+        try {
+            $latest = DB::table('shopify_raw_orders')
+                ->whereNotNull('order_date')
+                ->max('order_date');
+            if (! $latest) {
+                return null;
+            }
+
+            $pst = 'America/Los_Angeles';
+            $latestPacific = Carbon::parse($latest, $pst);
+            $yStart = $latestPacific->copy()->subDay()->startOfDay();
+            $yEnd   = $latestPacific->copy()->subDay()->endOfDay();
+
+            $q = DB::table('shopify_raw_orders')
+                ->where('order_date', '>=', $yStart->toDateString())
+                ->where('order_date', '<=', $yEnd->toDateString());
+            $this->applyShopifyDirectOrderExclusions($q);
+
+            return round((float) $q->sum('net_sales'), 2);
+        } catch (\Throwable $e) {
+            Log::warning('Shopify Direct Y Sales failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * L7 Sales for the "Shopify" Active Channel row — net_sales sum for the 7-day Pacific
+     * window ending on the same "yesterday" used by Y Sales. Same exclusions as /shopify.
+     */
+    private function computeShopifyDirectL7SalesLikeAmazon(): ?float
+    {
+        try {
+            $latest = DB::table('shopify_raw_orders')
+                ->whereNotNull('order_date')
+                ->max('order_date');
+            if (! $latest) {
+                return null;
+            }
+
+            $pst = 'America/Los_Angeles';
+            $latestPacific = Carbon::parse($latest, $pst);
+            [$l7Start, $l7End] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+            $q = DB::table('shopify_raw_orders')
+                ->where('order_date', '>=', $l7Start->toDateString())
+                ->where('order_date', '<=', $l7End->toDateString());
+            $this->applyShopifyDirectOrderExclusions($q);
+
+            return round((float) $q->sum('net_sales'), 2);
+        } catch (\Throwable $e) {
+            Log::warning('Shopify Direct L7 Sales failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Overlay live Shopify Net Sales (from /shopify shopify_raw_orders) onto the "Shopify"
+     * Active Channel row so /all-marketplace-master Sales column matches the /shopify page
+     * Net Sales card. Without this overlay the row shows 0 because channel_master only
+     * knows about "Shopify B2C" / "Shopify B2B" controllers.
+     */
+    private function overlayLiveShopifyDirectMetricsOnChannelRows(array $rows): array
+    {
+        $live = $this->getShopifyDirectLiveMetricsSummary();
+        if ($live === null) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            // Match the channel_master row literally named "Shopify" (id 60).
+            if (strcasecmp($name, 'Shopify') !== 0) {
+                continue;
+            }
+
+            $l30Sales = (float) $live['l30_sales'];
+            $l60Sales = (float) $live['l60_sales'];
+
+            $row['L30 Sales']  = (int) round($l30Sales);
+            $row['L30 Orders'] = (int) $live['l30_orders'];
+            $row['Qty']        = (int) $live['qty'];
+            $row['L-60 Sales'] = (int) round($l60Sales);
+            $row['L60 Orders'] = (int) $live['l60_orders'];
+
+            if ($l60Sales > 0) {
+                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2) . '%';
+            }
+
+            $ySales = $this->computeShopifyDirectYSalesLikeAmazon();
+            if ($ySales !== null) {
+                $row['Y Sales'] = $ySales;
+            }
+
+            $l7Sales = $this->computeShopifyDirectL7SalesLikeAmazon();
+            if ($l7Sales !== null) {
+                $row['L7 Sales'] = $l7Sales;
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
      * Map / Miss / NMap for Macys — same rules as macys-pricing badges.
      * Missing L: REQ + INV>0 + MC Price=0
      * Missing M: REQ + INV>0 + MC Price>0 + |INV-MC INV|>3 (macys-pricing default filters)
@@ -3279,6 +3533,8 @@ class ChannelMasterController extends Controller
             $formattedData = $this->overlayLiveEbayMetricsOnChannelRows($formattedData);
             // Purchasing Power: overlay live L30/L60 from Shopify (matches /purchasing-power-sales)
             $formattedData = $this->overlayLivePurchasingPowerMetricsOnChannelRows($formattedData);
+            // Shopify: overlay live Net Sales from shopify_raw_orders (matches /shopify Net Sales card)
+            $formattedData = $this->overlayLiveShopifyDirectMetricsOnChannelRows($formattedData);
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
             
             // Get summary data from cache
@@ -3973,6 +4229,11 @@ class ChannelMasterController extends Controller
 
             $finalData[] = $row;
         }
+
+        // Shopify: overlay live Net Sales from shopify_raw_orders (matches /shopify Net Sales card)
+        // so the "Shopify" Active Channel row Sales column reflects the same value the user sees
+        // on /shopify. Applied before daily snapshot + chart aggregation so both pick it up.
+        $finalData = $this->overlayLiveShopifyDirectMetricsOnChannelRows($finalData);
 
         // Sum of (inventory * Amazon price) for INV Val badge and TAT (save in first row for daily history)
         $inventoryValueAmazon = $this->getInventoryValueAmazon();
