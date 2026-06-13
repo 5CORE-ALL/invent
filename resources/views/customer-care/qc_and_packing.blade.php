@@ -617,57 +617,6 @@
             padding: 4px;
         }
 
-        /* Ensure modal body is scrollable - override Bootstrap defaults */
-        #ordersOnHoldIssueModal .modal-body {
-            max-height: calc(100vh - 240px) !important;
-            overflow-y: scroll !important;
-            overflow-x: hidden !important;
-            padding-right: 8px !important;
-        }
-
-        /* Override Bootstrap modal-dialog-scrollable behavior */
-        #ordersOnHoldIssueModal.modal .modal-dialog.modal-dialog-scrollable .modal-body {
-            max-height: calc(100vh - 240px) !important;
-            overflow-y: scroll !important;
-        }
-
-        /* Always show scrollbar for better visibility */
-        #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar {
-            width: 14px !important;
-            display: block !important;
-        }
-
-        #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar-track {
-            background: #e9ecef !important;
-            border-radius: 0 !important;
-            border-left: 1px solid #dee2e6 !important;
-        }
-
-        #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar-thumb {
-            background: #6c757d !important;
-            border-radius: 7px !important;
-            border: 2px solid #e9ecef !important;
-        }
-
-        #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar-thumb:hover {
-            background: #495057 !important;
-        }
-
-        /* For Firefox - always show scrollbar */
-        #ordersOnHoldIssueModal .modal-body {
-            scrollbar-width: thin !important;
-            scrollbar-color: #6c757d #e9ecef !important;
-        }
-
-        /* Ensure modal content doesn't hide scrollbar */
-        #ordersOnHoldIssueModal .modal-content {
-            overflow: visible !important;
-        }
-
-        #ordersOnHoldIssueModal .modal-dialog {
-            overflow: visible !important;
-        }
-
         .action-icon-hints {
             margin-top: 6px;
             display: flex;
@@ -1237,6 +1186,7 @@
                                     </div>
                                 @endif
                             </div>
+
                             @if ($showDispatchExtras ?? false)
                                 <div class="@if ($hideLossDollarInput ?? false) col-12 @else col-md-6 @endif">
                                     <label for="hold_issue_order_number" class="form-label">Order Number</label>
@@ -1266,6 +1216,11 @@
                                 <input type="text" class="form-control" id="hold_issue_marketplace_1"
                                     name="marketplace_1" list="hold_issue_marketplace_datalist"
                                     placeholder="Select Marketplace">
+                                <datalist id="hold_issue_marketplace_datalist">
+                                    @foreach ($marketplaces ?? collect() as $marketplace)
+                                        <option value="{{ $marketplace }}"></option>
+                                    @endforeach
+                                </datalist>
                             </div>
 
                             <div class="col-md-6">
@@ -1273,12 +1228,6 @@
                                 <input type="text" class="form-control" id="hold_issue_what_happened"
                                     name="what_happened" maxlength="100" placeholder="e.g. 0 Stock, Damaged">
                             </div>
-
-                            <datalist id="hold_issue_marketplace_datalist">
-                                @foreach ($marketplaces ?? collect() as $marketplace)
-                                    <option value="{{ $marketplace }}"></option>
-                                @endforeach
-                            </datalist>
 
                             <div class="col-md-6">
                                 <label for="hold_issue_action_1" class="form-label">Action</label>
@@ -1316,7 +1265,7 @@
                                     <input type="text" class="form-control" id="hold_issue_tracking_number"
                                         name="tracking_number" maxlength="50" placeholder="Optional tracking">
                                 </div>
-                                <div class="col-12">
+                                <div class="col-md-6">
                                     <label for="hold_issue_issue_link" class="form-label">Link</label>
                                     <input type="text" class="form-control" id="hold_issue_issue_link"
                                         name="issue_link" maxlength="500"
@@ -1330,6 +1279,22 @@
                                     Number</label>
                                 <input type="text" class="form-control" id="hold_issue_replacement_tracking"
                                     name="replacement_tracking" maxlength="50" placeholder="Optional tracking number">
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="hold_issue_text" class="form-label">Root Cause Found <span
+                                        class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="hold_issue_text" name="issue"
+                                    list="hold_issue_root_cause_found_datalist" placeholder="Type or select root cause..."
+                                    autocomplete="off" required>
+                                <datalist id="hold_issue_root_cause_found_datalist"></datalist>
+                            </div>
+
+                            <div class="col-12 d-none" id="rootCauseRemarkWrap">
+                                <label for="hold_issue_remark" class="form-label">Root Cause Remark <span
+                                        class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="hold_issue_remark" name="issue_remark"
+                                    placeholder="Write remark for Other">
                             </div>
 
                             @if ($showDispatchExtras ?? false)
@@ -1353,22 +1318,6 @@
                             @endif
 
                             <div class="col-md-6">
-                                <label for="hold_issue_text" class="form-label">Root Cause Found <span
-                                        class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="hold_issue_text" name="issue"
-                                    list="hold_issue_root_cause_found_datalist" placeholder="Type or select root cause..."
-                                    autocomplete="off" required>
-                                <datalist id="hold_issue_root_cause_found_datalist"></datalist>
-                            </div>
-
-                            <div class="col-12 d-none" id="rootCauseRemarkWrap">
-                                <label for="hold_issue_remark" class="form-label">Root Cause Remark <span
-                                        class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="hold_issue_remark" name="issue_remark"
-                                    placeholder="Write remark for Other">
-                            </div>
-
-                            <div class="col-md-6">
                                 <label for="hold_issue_c_action_1" class="form-label">Root Cause Fixed</label>
                                 <input type="text" class="form-control" id="hold_issue_c_action_1" name="c_action_1"
                                     list="hold_issue_root_cause_fixed_datalist" placeholder="Type or select fix..."
@@ -1383,7 +1332,23 @@
                                     @if (!empty($lockedDepartment ?? null))
                                         <input type="hidden" name="department[]" value="{{ $lockedDepartment }}">
                                     @endif
-                                    <select class="form-select" id="hold_issue_department"
+                                    @if (empty($lockedDepartment ?? null))
+                                        <div class="dropdown qc-dept-multiselect" id="hold_issue_department_ui">
+                                            <button
+                                                class="form-select text-start d-flex align-items-center justify-content-between"
+                                                type="button" id="hold_issue_department_toggle"
+                                                data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                                aria-expanded="false">
+                                                <span id="hold_issue_department_label"
+                                                    class="text-truncate text-muted">Select department(s)</span>
+                                            </button>
+                                            <div class="dropdown-menu p-2 w-100" id="hold_issue_department_menu"
+                                                style="max-height:240px;overflow:auto;"></div>
+                                        </div>
+                                    @endif
+                                    <select
+                                        class="form-select @if (empty($lockedDepartment ?? null)) d-none @endif"
+                                        id="hold_issue_department"
                                         @if (empty($lockedDepartment ?? null)) name="department[]" multiple size="5" @else disabled aria-readonly="true" @endif>
                                         <option value="Dispatch" @selected(!empty($lockedDepartment ?? null))>Dispatch</option>
                                         <option value="Shipping">Shipping</option>
@@ -1398,8 +1363,7 @@
                                         <option value="Orders on Hold">Orders on Hold</option>
                                     </select>
                                     @if (empty($lockedDepartment ?? null))
-                                        <div class="form-text">Select one or more. Hold <kbd>Ctrl</kbd> (Windows) or
-                                            <kbd>⌘</kbd> (Mac) for multiple.</div>
+                                        <div class="form-text">Click to select one or more departments.</div>
                                     @endif
                                 </div>
                             @endif
@@ -1678,6 +1642,7 @@
                 Array.from(departmentInput.options).forEach(o => {
                     o.selected = depts.includes(o.value);
                 });
+                syncDepartmentDropdown();
             }
 
             function clearDepartmentMultiSelect() {
@@ -1685,6 +1650,55 @@
                 Array.from(departmentInput.options).forEach(o => {
                     o.selected = false;
                 });
+                syncDepartmentDropdown();
+            }
+
+            function updateDepartmentLabel() {
+                const label = document.getElementById('hold_issue_department_label');
+                if (!label || !departmentInput) return;
+                const selected = Array.from(departmentInput.selectedOptions)
+                    .map(o => o.textContent.trim())
+                    .filter(Boolean);
+                if (!selected.length) {
+                    label.textContent = 'Select department(s)';
+                    label.classList.add('text-muted');
+                } else {
+                    label.textContent = selected.join(', ');
+                    label.classList.remove('text-muted');
+                }
+            }
+
+            function syncDepartmentDropdown() {
+                const menu = document.getElementById('hold_issue_department_menu');
+                if (!menu || !departmentInput) {
+                    updateDepartmentLabel();
+                    return;
+                }
+                const selected = Array.from(departmentInput.selectedOptions).map(o => o.value);
+                menu.querySelectorAll('.qc-dept-checkbox').forEach(cb => {
+                    cb.checked = selected.includes(cb.value);
+                });
+                updateDepartmentLabel();
+            }
+
+            function buildDepartmentDropdown() {
+                if (!departmentInput || lockedDepartment) return;
+                const menu = document.getElementById('hold_issue_department_menu');
+                if (!menu) return;
+                menu.innerHTML = Array.from(departmentInput.options).map(o =>
+                    '<label class="dropdown-item d-flex align-items-center gap-2 px-2 py-1 mb-0" style="cursor:pointer;">' +
+                    '<input type="checkbox" class="form-check-input m-0 qc-dept-checkbox" value="' + escAttr(o
+                        .value) + '">' +
+                    '<span>' + escapeHtml(o.textContent) + '</span></label>'
+                ).join('');
+                menu.querySelectorAll('.qc-dept-checkbox').forEach(cb => {
+                    cb.addEventListener('change', () => {
+                        const opt = Array.from(departmentInput.options).find(o => o.value === cb.value);
+                        if (opt) opt.selected = cb.checked;
+                        updateDepartmentLabel();
+                    });
+                });
+                syncDepartmentDropdown();
             }
 
             function rowMatchesActiveDeptFilter(r) {
@@ -3614,6 +3628,7 @@
             }
 
             modalEl.addEventListener('hidden.bs.modal', resetForm);
+            buildDepartmentDropdown();
             initializeDynamicRootCauseOptions();
             toggleRootCauseRemarkField();
             toggleAction1RemarkField();
