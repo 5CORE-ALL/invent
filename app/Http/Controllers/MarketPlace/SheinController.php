@@ -1505,7 +1505,8 @@ class SheinController extends Controller
             }
 
             $inv = (float) ($row['inv'] ?? 0);
-            $nrValue = (string) ($row['NR'] ?? '');
+            // NR/REQ — same source as the shein-pricing page badge (prefer nr_req, fall back to meta NR).
+            $nrValue = strtoupper(trim((string) (($row['nr_req'] ?? '') ?: ($row['NR'] ?? ''))));
             $isMissingShein = (bool) ($row['is_missing_shein'] ?? false);
             $rowPrice = (float) ($row['special_offer'] ?? 0);
 
@@ -1564,7 +1565,8 @@ class SheinController extends Controller
 
             foreach ($children as $row) {
                 $inv = (float) ($row['inv'] ?? 0);
-                $nrValue = (string) ($row['NR'] ?? '');
+                // NR/REQ — same source as the shein-pricing page badge (prefer nr_req, fall back to meta NR).
+                $nrValue = strtoupper(trim((string) (($row['nr_req'] ?? '') ?: ($row['NR'] ?? ''))));
                 $isMissingShein = (bool) ($row['is_missing_shein'] ?? false);
                 $rowPrice = (float) ($row['special_offer'] ?? 0);
                 $isMissingL = $inv > 0 && $nrValue === 'REQ' && ($isMissingShein || $rowPrice <= 0);
