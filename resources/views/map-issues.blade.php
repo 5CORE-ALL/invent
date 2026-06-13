@@ -67,6 +67,15 @@
             background-color: #000000 !important;
         }
 
+        /* Newegg badge colors (orange) */
+        .badge.ne-off {
+            background-color: #f59e0b !important;
+        }
+
+        .badge.ne-on {
+            background-color: #b45309 !important;
+        }
+
         /* Active badge outline */
         .badge.map-active {
             box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.55);
@@ -174,6 +183,15 @@
                         <span class="badge sh-off fs-6 p-2" id="shein-missing-listing-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Shein Missing Listing — not listed on Shein, INV > 0 (Shein has no NR status)">SH NL: 0</span>
+                        <span class="badge ne-off fs-6 p-2" id="newegg-not-map-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Newegg Not Mapped — listed on Newegg but INV does not match Newegg Inv">NE NP: 0</span>
+                        <span class="badge ne-off fs-6 p-2" id="newegg-mismatch-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Newegg SKU Mismatch — Newegg SKU does not exactly match the Product Master SKU">NE SM: 0</span>
+                        <span class="badge ne-off fs-6 p-2" id="newegg-missing-listing-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Newegg Missing Listing — not listed on Newegg, marked REQ, INV > 0">NE NL: 0</span>
                     </div>
                     <div class="mb-3 d-flex gap-4">
                         <div class="form-check form-switch">
@@ -239,9 +257,9 @@
             var showSiteOnly = false; // "Show SKUs not in Product Master" toggle
             var hideSmallDiff = false; // "Hide ≤3% diff rows" toggle
 
-            var invFieldByMarket = { ebay: 'Ebay Inv', ebay2: 'Ebay2 Inv', ebay3: 'Ebay3 Inv', amazon: 'Amazon Inv', reverb: 'Reverb Inv', macys: 'Macys Inv', bestbuy: 'Bestbuy Inv', tiendamia: 'Tiendamia Inv', temu: 'Temu Inv', shein: 'Shein Inv' };
-            var nrFieldByMarket  = { ebay: 'ebay_nr_req', ebay2: 'ebay2_nr_req', ebay3: 'ebay3_nr_req', amazon: 'amazon_nr_req', reverb: 'reverb_nr_req', macys: 'macys_nr_req', bestbuy: 'bestbuy_nr_req', tiendamia: 'tiendamia_nr_req', temu: 'temu_nr_req', shein: 'shein_nr_req' };
-            var within3FieldByMarket = { ebay: 'ebay_within3', ebay2: 'ebay2_within3', ebay3: 'ebay3_within3', amazon: 'amazon_within3', reverb: 'reverb_within3', macys: 'macys_within3', bestbuy: 'bestbuy_within3', tiendamia: 'tiendamia_within3', temu: 'temu_within3', shein: 'shein_within3' };
+            var invFieldByMarket = { ebay: 'Ebay Inv', ebay2: 'Ebay2 Inv', ebay3: 'Ebay3 Inv', amazon: 'Amazon Inv', reverb: 'Reverb Inv', macys: 'Macys Inv', bestbuy: 'Bestbuy Inv', tiendamia: 'Tiendamia Inv', temu: 'Temu Inv', shein: 'Shein Inv', newegg: 'Newegg Inv' };
+            var nrFieldByMarket  = { ebay: 'ebay_nr_req', ebay2: 'ebay2_nr_req', ebay3: 'ebay3_nr_req', amazon: 'amazon_nr_req', reverb: 'reverb_nr_req', macys: 'macys_nr_req', bestbuy: 'bestbuy_nr_req', tiendamia: 'tiendamia_nr_req', temu: 'temu_nr_req', shein: 'shein_nr_req', newegg: 'newegg_nr_req' };
+            var within3FieldByMarket = { ebay: 'ebay_within3', ebay2: 'ebay2_within3', ebay3: 'ebay3_within3', amazon: 'amazon_within3', reverb: 'reverb_within3', macys: 'macys_within3', bestbuy: 'bestbuy_within3', tiendamia: 'tiendamia_within3', temu: 'temu_within3', shein: 'shein_within3', newegg: 'newegg_within3' };
 
             // NR/REQ column: green "Req", red "Not Req" (anything other than REQ).
             function nrReqFormatter(cell) {
@@ -400,6 +418,12 @@
                         'SH SM: ' + (response.shein_mismatch_count || 0).toLocaleString();
                     document.getElementById('shein-missing-listing-count-badge').textContent =
                         'SH NL: ' + (response.shein_missing_listing_count || 0).toLocaleString();
+                    document.getElementById('newegg-not-map-count-badge').textContent =
+                        'NE NP: ' + (response.newegg_not_map_count || 0).toLocaleString();
+                    document.getElementById('newegg-mismatch-count-badge').textContent =
+                        'NE SM: ' + (response.newegg_mismatch_count || 0).toLocaleString();
+                    document.getElementById('newegg-missing-listing-count-badge').textContent =
+                        'NE NL: ' + (response.newegg_missing_listing_count || 0).toLocaleString();
                     document.getElementById('site-only-count').textContent =
                         response.pm_missing_count ? '(' + response.pm_missing_count.toLocaleString() + ')' : '';
                     return response.data || [];
@@ -432,6 +456,7 @@
                     { title: 'NR/REQ', field: 'tiendamia_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('tiendamia') },
                     { title: 'NR/REQ', field: 'temu_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('temu') },
                     { title: 'NR/REQ', field: 'shein_nr_req', visible: false, formatter: nrReqFormatter },
+                    { title: 'NR/REQ', field: 'newegg_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('newegg') },
                     { title: 'INV', field: 'INV', hozAlign: 'right', sorter: 'number' },
                     {
                         title: 'Ebay Inv', field: 'Ebay Inv', hozAlign: 'right', sorter: 'number',
@@ -533,6 +558,16 @@
                             }
                         },
                     },
+                    {
+                        title: 'Newegg Inv', field: 'Newegg Inv', hozAlign: 'right', sorter: 'number',
+                        formatter: invFormatter('newegg_mismatch'),
+                        cellClick: function (e, cell) {
+                            if (e.target.classList.contains('map-info-icon')) {
+                                var d = cell.getRow().getData();
+                                showIssueModal('Newegg', d['(Child) sku'], d.newegg_sku, d.newegg_issue);
+                            }
+                        },
+                    },
                     { title: 'Diff', field: 'diff', visible: false, hozAlign: 'right', formatter: diffFormatter, sorter: diffSorter },
                 ],
             });
@@ -570,6 +605,9 @@
                 shnp: { el: document.getElementById('shein-not-map-count-badge'),  field: 'shein_not_map', market: 'shein', off: 'sh-off',  on: 'sh-on' },
                 shsm: { el: document.getElementById('shein-mismatch-count-badge'), field: 'shein_mismatch',market: 'shein', off: 'sh-off',  on: 'sh-on' },
                 shml: { el: document.getElementById('shein-missing-listing-count-badge'), field: 'shein_missing_listing', market: 'shein', off: 'sh-off', on: 'sh-on' },
+                nenp: { el: document.getElementById('newegg-not-map-count-badge'),  field: 'newegg_not_map', market: 'newegg', off: 'ne-off',  on: 'ne-on' },
+                nesm: { el: document.getElementById('newegg-mismatch-count-badge'), field: 'newegg_mismatch',market: 'newegg', off: 'ne-off',  on: 'ne-on' },
+                neml: { el: document.getElementById('newegg-missing-listing-count-badge'), field: 'newegg_missing_listing', market: 'newegg', off: 'ne-off', on: 'ne-on' },
             };
 
             function applyFilters() {

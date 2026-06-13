@@ -16,6 +16,8 @@ use App\Models\EbayThreeListingStatus;
 use App\Models\EbayTwoListingStatus;
 use App\Models\MacyProduct;
 use App\Models\MacysListingStatus;
+use App\Models\NeweggDataView;
+use App\Models\NeweggPricing;
 use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
 use App\Models\ReverbListingStatus;
@@ -95,6 +97,9 @@ class MapIssuesController extends Controller
                 'shein_not_map_count' => 0,
                 'shein_mismatch_count' => 0,
                 'shein_missing_listing_count' => 0,
+                'newegg_not_map_count' => 0,
+                'newegg_mismatch_count' => 0,
+                'newegg_missing_listing_count' => 0,
             ]);
         }
 
@@ -161,6 +166,12 @@ class MapIssuesController extends Controller
         $sheinListingByNorm = $this->buildSheinListingStatusLookup();
         $sheinMetaByNorm    = $this->buildSheinMetaLookup();
 
+        // Newegg: stock (available_quantity), selling price and stored SKU come from newegg_pricing
+        // (listed = a pricing row exists, same as the newegg-pricing page). REQ/NR comes from
+        // newegg_data_views' "NR" key (default REQ), matching the newegg-pricing page.
+        $neweggByNorm   = $this->buildNeweggLookupByNormalizedSku();
+        $neweggNrByNorm = $this->buildNeweggNrLookup();
+
         // 4. Build rows
         $result = [];
         $notMapCount = 0;          // eBay:  INV != eBay Stock (same logic as eBay page)
@@ -193,6 +204,9 @@ class MapIssuesController extends Controller
         $sheinNotMapCount = 0;          // Shein: INV != Shein Stock
         $sheinMismatchCount = 0;        // Shein: SKU stored differently
         $sheinMissingListingCount = 0;  // Shein: not listed, REQ, INV > 0
+        $neweggNotMapCount = 0;          // Newegg: INV != Newegg Stock
+        $neweggMismatchCount = 0;        // Newegg: SKU stored differently
+        $neweggMissingListingCount = 0;  // Newegg: not listed, REQ, INV > 0
         foreach ($productMasters as $pm) {
             $key = ShopifySku::normalizeSkuForShopifyLookup($pm->sku);
 
@@ -216,6 +230,9 @@ class MapIssuesController extends Controller
             // Shein matches by uppercase+trim, same as the shein-pricing page.
             $sheinKey = $this->normalizeSheinSku($pm->sku);
             $shein   = $sheinKey !== '' ? ($sheinByNorm[$sheinKey] ?? null) : null;
+            // Newegg matches by alphanumeric-only key, same as the newegg-pricing page.
+            $neweggKey = $this->normalizeNeweggSku($pm->sku);
+            $newegg  = $neweggKey !== '' ? ($neweggByNorm[$neweggKey] ?? null) : null;
 
             $inv = floatval($shopify->inv ?? 0);
 
@@ -534,6 +551,39 @@ class MapIssuesController extends Controller
                 $sheinMissingListingCount++;
             }
 
+            // ---- Newegg ----
+            $neweggStock = floatval($newegg->available_quantity ?? 0);
+            // Listed = a newegg_pricing row exists (same as the newegg-pricing page's on_newegg flag).
+            $neweggListed = $newegg !== null;
+            $neweggSku = $newegg->seller_part_number ?? null;
+            $neweggReason = $neweggSku !== null ? $this->skuDifferenceReason($pm->sku, $neweggSku, [$this, 'normalizeNeweggSku']) : '';
+            $neweggHasIssue = $neweggReason !== '';
+            if ($neweggHasIssue) {
+                $neweggMismatchCount++;
+            }
+            $neweggNrReq = $this->resolveNeweggNrReq($neweggNrByNorm, $neweggKey);
+            $neweggIsNotMap = false;
+            $neweggWithin3 = false;
+            // N Map — listed, REQ, INV > 0, Newegg stock > 0; Map when diff ≤ 3 units (when 3% of INV < 3)
+            // else within rounded 3% (same rule as the newegg-pricing page).
+            if ($neweggListed && $neweggNrReq === 'REQ' && $inv > 0 && $neweggStock > 0) {
+                $neweggDiffUnits = abs($inv - $neweggStock);
+                if ($inv * 0.03 < 3) {
+                    $neweggIsNotMap = $neweggDiffUnits > 3;
+                } else {
+                    $neweggIsNotMap = round(($neweggDiffUnits / $inv) * 100) > 3;
+                }
+                if ($neweggIsNotMap) {
+                    $neweggNotMapCount++;
+                }
+                $neweggWithin3 = ! $neweggIsNotMap;
+            }
+            // Missing L — not listed, REQ, INV > 0 (same as the newegg-pricing page).
+            $neweggMissingListing = ! $neweggListed && $inv > 0;
+            if ($neweggMissingListing && $neweggNrReq === 'REQ') {
+                $neweggMissingListingCount++;
+            }
+
             $result[] = [
                 '(Child) sku'    => $pm->sku,
                 'INV'            => $shopify->inv ?? 0,
@@ -630,6 +680,15 @@ class MapIssuesController extends Controller
                 'shein_missing_listing' => $sheinMissingListing,
                 'shein_nr_req'          => $sheinNrReq,
 
+                'Newegg Inv'            => $neweggStock,
+                'newegg_sku'            => $neweggSku,
+                'newegg_mismatch'       => $neweggHasIssue,
+                'newegg_issue'          => $neweggReason,
+                'newegg_not_map'        => $neweggIsNotMap,
+                'newegg_within3'        => $neweggWithin3,
+                'newegg_missing_listing'=> $neweggMissingListing,
+                'newegg_nr_req'         => $neweggNrReq,
+
                 'pm_missing'            => false,
             ];
         }
@@ -674,6 +733,9 @@ class MapIssuesController extends Controller
             'shein_not_map_count'  => $sheinNotMapCount,
             'shein_mismatch_count' => $sheinMismatchCount,
             'shein_missing_listing_count' => $sheinMissingListingCount,
+            'newegg_not_map_count'  => $neweggNotMapCount,
+            'newegg_mismatch_count' => $neweggMismatchCount,
+            'newegg_missing_listing_count' => $neweggMissingListingCount,
             'pm_missing_count'      => $pmMissingCount,
         ]);
     }
@@ -709,7 +771,7 @@ class MapIssuesController extends Controller
                             continue;
                         }
                         if (! isset($map[$k])) {
-                            $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null];
+                            $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
                         }
                         $map[$k][$field] = $r->ebay_stock ?? 0;
                     }
@@ -735,7 +797,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
                     }
                     $map[$k]['amazon'] = 0; // listed flag; real stock filled in below
                 }
@@ -755,7 +817,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
                     }
                     $map[$k]['reverb'] = floatval($r->remaining_inventory ?? 0);
                 }
@@ -775,7 +837,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
                     }
                     $map[$k]['macys'] = floatval($r->stock ?? 0);
                 }
@@ -795,7 +857,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
                     }
                     $map[$k]['bestbuy'] = floatval($r->stock ?? 0);
                 }
@@ -814,7 +876,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
                     }
                     $map[$k]['tiendamia'] = floatval($r->stock ?? 0);
                 }
@@ -834,7 +896,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
                     }
                     $map[$k]['temu'] = floatval($r->quantity ?? 0);
                 }
@@ -854,9 +916,28 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
                     }
                     $map[$k]['shein'] = floatval($r->shein_stock ?? 0);
+                }
+
+                return true;
+            });
+
+        // Newegg: a SKU is "listed" when it has a row in newegg_pricing.
+        NeweggPricing::query()
+            ->select('seller_part_number', 'available_quantity', 'id')
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$map, $pmKeys) {
+                foreach ($rows as $r) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $r->seller_part_number);
+                    if ($k === '' || isset($pmKeys[$k])) {
+                        continue;
+                    }
+                    if (! isset($map[$k])) {
+                        $map[$k] = ['sku' => $r->seller_part_number, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
+                    }
+                    $map[$k]['newegg'] = floatval($r->available_quantity ?? 0);
                 }
 
                 return true;
@@ -913,6 +994,9 @@ class MapIssuesController extends Controller
             }
             if ($m['shein'] !== null) {
                 $listedOn[] = 'Shein';
+            }
+            if ($m['newegg'] !== null) {
+                $listedOn[] = 'Newegg';
             }
 
             $rows[] = [
@@ -1011,6 +1095,15 @@ class MapIssuesController extends Controller
                 'shein_missing_listing' => false,
                 'shein_nr_req'          => 'REQ',
 
+                'Newegg Inv'            => $m['newegg'] ?? 0,
+                'newegg_sku'            => $m['newegg'] !== null ? $m['sku'] : null,
+                'newegg_mismatch'       => false,
+                'newegg_issue'          => '',
+                'newegg_not_map'        => false,
+                'newegg_within3'        => false,
+                'newegg_missing_listing'=> false,
+                'newegg_nr_req'         => 'REQ',
+
                 'pm_missing'            => true,
             ];
         }
@@ -1041,6 +1134,7 @@ class MapIssuesController extends Controller
             'bestbuy'=> ['model' => BestbuyUSAListingStatus::class, 'key' => 'nr_req', 'notReq' => 'NR'],
             'tiendamia' => ['model' => TiendamiaDataView::class,   'key' => 'NRP',    'notReq' => 'NR', 'transform' => ['REQ' => 'RA', 'NR' => 'NRA']],
             'temu'   => ['model' => TemuListingStatus::class,      'key' => 'nr_req', 'notReq' => 'NR'],
+            'newegg' => ['model' => NeweggDataView::class,         'key' => 'NR',     'notReq' => 'NR'],
         ];
 
         if ($sku === '' || ! isset($config[$market])) {
@@ -1711,6 +1805,65 @@ class MapIssuesController extends Controller
         }
 
         return 'REQ';
+    }
+
+    /**
+     * Normalize a SKU the same way the newegg-pricing page does: drop everything that
+     * isn't a letter or digit and uppercase, so listed/stock matching is identical.
+     */
+    private function normalizeNeweggSku(string $sku): string
+    {
+        return strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $sku) ?? '');
+    }
+
+    /**
+     * Build a normalized-SKU => newegg_pricing row (seller_part_number + available_quantity)
+     * lookup, keyed by the newegg-pricing normalization (first row wins).
+     *
+     * @return array<string, \Illuminate\Database\Eloquent\Model>
+     */
+    private function buildNeweggLookupByNormalizedSku(): array
+    {
+        $byNorm = [];
+        foreach (NeweggPricing::select('seller_part_number', 'available_quantity')->get() as $row) {
+            $k = $this->normalizeNeweggSku((string) $row->seller_part_number);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $byNorm[$k] = $row;
+            }
+        }
+
+        return $byNorm;
+    }
+
+    /**
+     * Build a normalized-SKU => REQ/NR lookup from newegg_data_views.value JSON ("NR" key).
+     * Defaults to REQ when not explicitly set, matching the newegg-pricing page.
+     *
+     * @return array<string, string>
+     */
+    private function buildNeweggNrLookup(): array
+    {
+        $byNorm = [];
+        foreach (NeweggDataView::query()->get(['sku', 'value']) as $row) {
+            $k = $this->normalizeNeweggSku((string) $row->sku);
+            if ($k === '' || isset($byNorm[$k])) {
+                continue;
+            }
+            $val = is_array($row->value) ? $row->value : (json_decode((string) $row->value, true) ?: []);
+            $byNorm[$k] = strtoupper(trim((string) ($val['NR'] ?? 'REQ'))) === 'NR' ? 'NR' : 'REQ';
+        }
+
+        return $byNorm;
+    }
+
+    /**
+     * Resolve Newegg REQ/NR from the newegg_data_views lookup (default REQ).
+     *
+     * @param  array<string, string>  $nrByNorm
+     */
+    private function resolveNeweggNrReq(array $nrByNorm, string $key): string
+    {
+        return $key !== '' ? ($nrByNorm[$key] ?? 'REQ') : 'REQ';
     }
 
     /**

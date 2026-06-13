@@ -957,6 +957,24 @@ class Kernel extends ConsoleKernel
         // shopify:save-daily-inventory — crontab only (see scripts/cron-shopify-save-daily-inventory.sh).
         // shopify:sync-live-inventory — crontab only (see scripts/cron-shopify-sync-live-inventory.sh).
 
+        // shopify_raw_orders is the LIVE source for /faire-tabulator, /ebay-tabulator and the
+        // all-marketplace-master Faire L30/L60 + Y-sales. If shopify:sync-orders stops running
+        // the table freezes and those pages' sales stop updating. Thin hourly pass keeps the
+        // current day fresh; the daily 60-day pass backfills late edits / refunds for L60.
+        $ist($schedule->command('shopify:sync-orders --days=2')
+            ->hourly()
+            ->name('shopify-sync-orders-recent')
+            ->withoutOverlapping(self::HF_MUTEX_HOURLY)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('shopify:sync-orders --days=60')
+            ->dailyAt('09:08')
+            ->timezone('Asia/Kolkata')
+            ->name('shopify-sync-orders-backfill')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log));
 
         $ist($schedule->command('sync:shopify-quantity')
             ->twiceDaily(9, 18)
@@ -1198,6 +1216,17 @@ class Kernel extends ConsoleKernel
         $ist($schedule->command('sync:neweegg-sheet')
             ->twiceDaily(9, 18)
             ->name('sync-newegg-sheet')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // newegg_orders / newegg_order_items are the LIVE source for /newegg/daily-sales and
+        // the all-marketplace-master Newegg L60/L30/L7 + Y sales. Without this pull the table
+        // freezes and those pages stop updating. 60-day window keeps L60 fresh and captures
+        // late void/refund status changes. Must run from a Newegg-whitelisted server.
+        $ist($schedule->command('newegg:orders --days=60 --save')
+            ->twiceDaily(9, 18)
+            ->name('fetch-newegg-orders')
             ->withoutOverlapping(90)
             ->runInBackground()
             ->appendOutputTo($log));

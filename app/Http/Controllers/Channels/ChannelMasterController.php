@@ -3539,6 +3539,7 @@ class ChannelMasterController extends Controller
             [fn () => $this->computeMercariYSalesLikeAmazon(true), 'mercariwship', 'Mercari w ship Y Sales'],
             [fn () => $this->computeMercariYSalesLikeAmazon(false), 'mercariwoship', 'Mercari wo ship Y Sales'],
             [fn () => $this->computeTopDawgYSalesLikeAmazon(), 'topdawg', 'TopDawg Y Sales'],
+            [fn () => $this->computeNeweggYSalesLikeAmazon(), 'newegg', 'Newegg Y Sales'],
         ];
         foreach ($extendedYs as [$fn, $key, $label]) {
             try {
@@ -3681,6 +3682,7 @@ class ChannelMasterController extends Controller
             [fn () => $this->computeMercariL7SalesLikeAmazon(true), 'mercariwship', 'Mercari w ship L7 Sales'],
             [fn () => $this->computeMercariL7SalesLikeAmazon(false), 'mercariwoship', 'Mercari wo ship L7 Sales'],
             [fn () => $this->computeTopDawgL7SalesLikeAmazon(), 'topdawg', 'TopDawg L7 Sales'],
+            [fn () => $this->computeNeweggL7SalesLikeAmazon(), 'newegg', 'Newegg L7 Sales'],
         ];
         foreach ($extendedL7 as [$fn, $key, $label]) {
             try {
@@ -8140,6 +8142,76 @@ class ChannelMasterController extends Controller
         $ship = isset($values['ship']) ? (float) $values['ship'] : (float) ($pm->ship ?? 0);
 
         return [$lp, $ship];
+    }
+
+    /**
+     * Newegg Y Sales for /all-marketplace-master.
+     *
+     * Same clock as Amazon: revenue (unit_price × ordered_qty) for the Pacific calendar day
+     * before the latest newegg_orders.order_date. Voided orders (order_status 4) are excluded.
+     */
+    private function computeNeweggYSalesLikeAmazon(): ?float
+    {
+        $latestRaw = DB::table('newegg_orders')
+            ->whereNotNull('order_date')
+            ->where(function ($q) {
+                $q->whereNull('order_status')->orWhere('order_status', '!=', 4);
+            })
+            ->max('order_date');
+
+        if (!$latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
+        $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
+
+        return $this->sumNeweggRevenueBetween($yStartPacific, $yEndPacific);
+    }
+
+    /**
+     * Newegg L7 Sales for /all-marketplace-master.
+     *
+     * Seven-day window ending on the Y-Sales "yesterday" (day before latest order_date),
+     * revenue = unit_price × ordered_qty, voided orders excluded.
+     */
+    private function computeNeweggL7SalesLikeAmazon(): ?float
+    {
+        $latestRaw = DB::table('newegg_orders')
+            ->whereNotNull('order_date')
+            ->where(function ($q) {
+                $q->whereNull('order_status')->orWhere('order_status', '!=', 4);
+            })
+            ->max('order_date');
+
+        if (!$latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+        return $this->sumNeweggRevenueBetween($l7StartPacific, $l7EndPacific);
+    }
+
+    /**
+     * Sum Newegg order-item revenue (unit_price × ordered_qty) for a date window.
+     * Voided orders (order_status 4) are excluded.
+     */
+    private function sumNeweggRevenueBetween($from, $to): float
+    {
+        $sum = (float) DB::table('newegg_orders as o')
+            ->join('newegg_order_items as i', 'o.order_number', '=', 'i.order_number')
+            ->where('o.order_date', '>=', $from)
+            ->where('o.order_date', '<=', $to)
+            ->where(function ($q) {
+                $q->whereNull('o.order_status')->orWhere('o.order_status', '!=', 4);
+            })
+            ->selectRaw('COALESCE(SUM(i.unit_price * i.ordered_qty), 0) as revenue')
+            ->value('revenue');
+
+        return round($sum, 2);
     }
 
     /**

@@ -329,7 +329,7 @@ class NeweggPricingController extends Controller
                 'dil' => true, 'price' => true, 'l30' => true,
                 'lp' => false, 'ship' => false, 'pft' => true, 'pft_pct' => true, 'roi' => true,
                 'sprice' => true, 'spft' => true, 'sroi' => true, 'nr' => true, 'bs' => true,
-                'map' => true, 'available_quantity' => true, 'currency' => false, 'status' => true,
+                'map' => true, 'missing_l' => true, 'map_status' => true, 'available_quantity' => true, 'currency' => false, 'status' => true,
             ];
 
             if (file_exists($filePath)) {

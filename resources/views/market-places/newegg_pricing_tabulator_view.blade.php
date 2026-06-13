@@ -79,6 +79,9 @@
                         <span class="badge fs-6 p-2" id="avg-price-badge" style="background-color: purple; color: white; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="pft-badge" style="color: black; font-weight: bold;">PFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">ROI: 0%</span>
+                        <span class="badge fs-6 p-2" id="ne-missing-badge" style="background-color: #c0392b; color: white; font-weight: bold; cursor: pointer;" title="Not listed on Newegg, REQ, INV > 0 — click to filter">Missing L: 0</span>
+                        <span class="badge fs-6 p-2" id="ne-map-badge" style="background-color: #198754; color: white; font-weight: bold; cursor: pointer;" title="Listed, REQ, INV ≈ Newegg stock — click to filter">Map: 0</span>
+                        <span class="badge fs-6 p-2" id="ne-nmap-badge" style="background-color: #a71d2a; color: white; font-weight: bold; cursor: pointer;" title="Listed, REQ, INV ≠ Newegg stock — click to filter">N Map: 0</span>
                     </div>
                 </div>
             </div>
@@ -150,6 +153,39 @@
             else if (n < 50) color = '#28a745';
             else color = '#e83e8c';
             return `<span style="color:${color}; font-weight:bold;">${n.toFixed(0)}%</span>`;
+        }
+
+        // ── Missing-listing / mapping state + helpers (same rules as map-issues) ──
+        let neMissingActive = false, neMapActive = false, neNMapActive = false;
+
+        function neNr(row) {
+            return String((row && row.nr) || 'REQ').trim().toUpperCase();
+        }
+
+        // INV vs Newegg stock = Map when diff ≤ 3 units (when 3% of INV < 3) else within rounded 3%.
+        function neWithinMapTolerance(inv, neStock) {
+            const i = parseFloat(inv) || 0;
+            const s = parseFloat(neStock) || 0;
+            if (i <= 0) return true;
+            const diff = Math.abs(i - s);
+            if (i * 0.03 < 3) return diff <= 3;
+            return Math.round((diff / i) * 100) <= 3;
+        }
+
+        // Missing L — not listed on Newegg, REQ, INV > 0.
+        function neRowMissingL(row) {
+            if (!row) return false;
+            const inv = parseFloat(row.inv) || 0;
+            return !row.on_newegg && neNr(row) === 'REQ' && inv > 0;
+        }
+
+        // Map status — listed, REQ, INV > 0, Newegg stock > 0. Returns 'map' | 'nmap' | ''.
+        function neMapStatus(row) {
+            if (!row || !row.on_newegg) return '';
+            const inv = parseFloat(row.inv) || 0;
+            const neStock = parseFloat(row.available_quantity) || 0;
+            if (neNr(row) !== 'REQ' || inv <= 0 || neStock <= 0) return '';
+            return neWithinMapTolerance(inv, neStock) ? 'map' : 'nmap';
         }
 
         $(document).ready(function() {
@@ -302,6 +338,23 @@
                             return `<span title="${v}" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${color};color:#fff;font-weight:bold;font-size:12px;">${letter}</span>`;
                         }
                     },
+                    {
+                        title: "Missing L", field: "missing_l", hozAlign: "center", headerSort: false,
+                        formatter: function(cell) {
+                            return neRowMissingL(cell.getRow().getData())
+                                ? '<span style="color:#c0392b;font-weight:bold;">Missing L</span>'
+                                : '';
+                        }
+                    },
+                    {
+                        title: "Map", field: "map_status", hozAlign: "center", headerSort: false,
+                        formatter: function(cell) {
+                            const st = neMapStatus(cell.getRow().getData());
+                            if (st === 'map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
+                            if (st === 'nmap') return '<span style="color:#dc3545;font-weight:bold;">N Map</span>';
+                            return '';
+                        }
+                    },
                     moneyCol("LP", "lp", false),
                     moneyCol("Ship", "ship", false),
                     { title: "Currency", field: "currency", visible: false }
@@ -403,18 +456,46 @@
                 .catch(() => alert("Failed to save links"));
             });
 
-            $('#sku-search').on('keyup', function() {
-                const value = ($(this).val() || '').trim().toLowerCase();
-                if (value) {
-                    table.setFilter(function(row) {
+            // Combined filter: SKU/Title search + active Missing L / Map / N Map badge.
+            function applyNeFilters() {
+                const search = ($('#sku-search').val() || '').trim().toLowerCase();
+                table.setFilter(function(row) {
+                    if (search) {
                         const sku = String(row.sku || '').toLowerCase();
                         const title = String(row.title || '').toLowerCase();
-                        return sku.indexOf(value) !== -1 || title.indexOf(value) !== -1;
-                    });
-                } else {
-                    table.clearFilter();
-                }
+                        if (sku.indexOf(search) === -1 && title.indexOf(search) === -1) return false;
+                    }
+                    if (neMissingActive && !neRowMissingL(row)) return false;
+                    if (neMapActive && neMapStatus(row) !== 'map') return false;
+                    if (neNMapActive && neMapStatus(row) !== 'nmap') return false;
+                    return true;
+                });
+                updateBadgeStyles();
                 setTimeout(updateSummary, 100);
+            }
+
+            function updateBadgeStyles() {
+                $('#ne-missing-badge').css('outline', neMissingActive ? '3px solid #000' : 'none');
+                $('#ne-map-badge').css('outline', neMapActive ? '3px solid #000' : 'none');
+                $('#ne-nmap-badge').css('outline', neNMapActive ? '3px solid #000' : 'none');
+            }
+
+            $('#sku-search').on('keyup', applyNeFilters);
+
+            $('#ne-missing-badge').on('click', function() {
+                neMissingActive = !neMissingActive;
+                neMapActive = neNMapActive = false;
+                applyNeFilters();
+            });
+            $('#ne-map-badge').on('click', function() {
+                neMapActive = !neMapActive;
+                neMissingActive = neNMapActive = false;
+                applyNeFilters();
+            });
+            $('#ne-nmap-badge').on('click', function() {
+                neNMapActive = !neNMapActive;
+                neMissingActive = neMapActive = false;
+                applyNeFilters();
             });
 
             function updateSummary() {
@@ -455,6 +536,22 @@
                 $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
                 $('#pft-badge').text('PFT: ' + Math.round(pftPct) + '%');
                 $('#roi-badge').text('ROI: ' + Math.round(roiPct) + '%');
+
+                // Missing L / Map / N Map counted over the full dataset (stable regardless of active filter).
+                let missingCount = 0, mapCount = 0, nmapCount = 0;
+                table.getData().forEach(row => {
+                    if (!row.sku) return;
+                    if (neRowMissingL(row)) {
+                        missingCount++;
+                    } else {
+                        const st = neMapStatus(row);
+                        if (st === 'map') mapCount++;
+                        else if (st === 'nmap') nmapCount++;
+                    }
+                });
+                $('#ne-missing-badge').text('Missing L: ' + missingCount.toLocaleString());
+                $('#ne-map-badge').text('Map: ' + mapCount.toLocaleString());
+                $('#ne-nmap-badge').text('N Map: ' + nmapCount.toLocaleString());
             }
 
             const COL_URL = '/newegg-pricing-column-visibility';
