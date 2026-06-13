@@ -77,6 +77,6 @@
     </div>
     <div class="col-12">
         <label class="form-label">Messages <span class="text-muted">(max 200 characters)</span></label>
-        <textarea name="messages" class="form-control" rows="2" maxlength="200" placeholder="Enter a short message"></textarea>
+        <textarea name="messages" class="form-control" rows="2" placeholder="Enter a message"></textarea>
     </div>
 </div>

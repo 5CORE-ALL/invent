@@ -160,6 +160,7 @@ class HelpDeskFaqController extends Controller
 
         return view('help-desk-faqs.archived', [
             'faqs' => $faqs,
+            'departments' => $departments,
             'deptNames' => $deptNames,
         ]);
     }
@@ -219,7 +220,7 @@ class HelpDeskFaqController extends Controller
             'action' => ['nullable', 'string'],
             'ca' => ['nullable', 'string'],
             'plus_action' => ['nullable', 'string'],
-            'messages' => ['nullable', 'string', 'max:200'],
+            'messages' => ['nullable', 'string'],
         ]);
 
         $apply = $validated['apply'] ?? [];
@@ -388,7 +389,7 @@ class HelpDeskFaqController extends Controller
                 'action' => $get('action') ?: null,
                 'ca' => $get('ca') ?: null,
                 'plus_action' => $get('plus_action') ?: null,
-                'messages' => $get('messages') ? mb_substr($get('messages'), 0, 200) : null,
+                'messages' => $get('messages') ?: null,
             ];
 
             if ($existing) {
@@ -482,7 +483,7 @@ class HelpDeskFaqController extends Controller
             'action' => ['nullable', 'string'],
             'ca' => ['nullable', 'string'],
             'plus_action' => ['nullable', 'string'],
-            'messages' => ['nullable', 'string', 'max:200'],
+            'messages' => ['nullable', 'string'],
         ]);
 
         $dept = $validated['dept'] ?? [];

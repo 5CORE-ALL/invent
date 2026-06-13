@@ -646,7 +646,7 @@
                                 <input class="form-check-input bulk-apply" type="checkbox" name="apply[]" value="messages" id="bulk_apply_messages">
                                 <label class="form-check-label fw-semibold" for="bulk_apply_messages">Messages</label>
                             </div>
-                            <textarea name="messages" class="form-control bulk-field" data-field="messages" rows="2" maxlength="200" placeholder="New message (max 200 chars)"></textarea>
+                            <textarea name="messages" class="form-control bulk-field" data-field="messages" rows="2" placeholder="New message"></textarea>
                         </div>
                     </div>
                 </div>
