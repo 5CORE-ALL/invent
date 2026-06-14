@@ -199,6 +199,62 @@
             font-weight: 800;
             color: #000;
         }
+
+        /* Approval column badge styling */
+        .approval-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            min-width: 110px;
+            text-align: center;
+        }
+
+        .approval-Pending {
+            background-color: #f1f5f9;
+            color: #475569;
+            border: 1px solid #cbd5e1;
+        }
+
+        .approval-Approved {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #28a745;
+        }
+
+        .approval-Rejected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #dc3545;
+        }
+
+        .approval-NeedApproval {
+            background-color: #d4ff00;
+            color: #000;
+            border: 1px solid #b3d900;
+        }
+
+        /* Color the dropdown options in the approval editor */
+        .tabulator-edit-list-item[aria-label="Pending"] {
+            background-color: #f1f5f9;
+            color: #475569;
+        }
+
+        .tabulator-edit-list-item[aria-label="Approved"] {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .tabulator-edit-list-item[aria-label="Rejected"] {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .tabulator-edit-list-item[aria-label="Need Approval"] {
+            background-color: #d4ff00;
+            color: #000;
+        }
     </style>
 @endsection
 @section('content')
@@ -400,6 +456,51 @@
                         },
                         visible: false
                     },
+                    {
+                        title: "Approval",
+                        field: "approval",
+                        hozAlign: "center",
+                        width: 170,
+                        editor: "list",
+                        editorParams: {
+                            values: ["Pending", "Approved", "Rejected", "Need Approval"],
+                        },
+                        formatter: function(cell) {
+                            const value = cell.getValue() || "Pending";
+                            const cssClass = "approval-" + value.replace(/\s+/g, "");
+                            return `<span class="approval-badge ${cssClass}">${value}</span>`;
+                        },
+                        cellEdited: function(cell) {
+                            const sku = cell.getRow().getData().sku;
+                            const newValue = cell.getValue();
+                            const oldValue = cell.getOldValue();
+
+                            if (newValue === oldValue) {
+                                return;
+                            }
+
+                            $.ajax({
+                                url: "{{ route('tiktok.video.ad.update.approval') }}",
+                                type: "POST",
+                                data: {
+                                    sku: sku,
+                                    approval: newValue,
+                                    _token: "{{ csrf_token() }}",
+                                },
+                                success: function(response) {
+                                    showNotification('success', 'Approval updated for ' + sku);
+                                },
+                                error: function(xhr) {
+                                    let message = 'Failed to update approval';
+                                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                                        message = xhr.responseJSON.message;
+                                    }
+                                    showNotification('danger', message);
+                                    cell.setValue(oldValue, true);
+                                },
+                            });
+                        },
+                    },
                 ],
                 ajaxResponse: function(url, params, response) {
                     return response.data;
@@ -455,8 +556,7 @@
                     return;
                 }
 
-                // Create CSV content
-                const headers = ['Parent', 'SKU', 'INV', 'OV L30', 'DIL %'];
+                const headers = ['Parent', 'SKU', 'INV', 'OV L30', 'DIL %', 'Approval'];
                 let csvContent = headers.join(',') + '\n';
 
                 data.forEach(row => {
@@ -469,7 +569,8 @@
                         row.sku || '',
                         row.INV || 0,
                         row.L30 || 0,
-                        dilPercent + '%'
+                        dilPercent + '%',
+                        row.approval || 'Pending'
                     ];
                     csvContent += rowData.join(',') + '\n';
                 });

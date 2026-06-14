@@ -7342,23 +7342,52 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Doba L60 sales/orders/PFT/COGS from doba_daily_data (period = l60) — mirrors
-     * calculateDobaMetrics L30 math so Growth and gprofitL60 on /all-marketplace-master are accurate.
+     * Doba L60 sales/orders/PFT/COGS from doba_daily_data (period = l60).
+     *
+     * Mirrors the L60 badge on /doba/daily-sales (DobaSalesController::getData
+     * + the page's updateSummary JS):
+     *   1. Build the "active L30 SKU set" — distinct SKUs from rows where
+     *      period = 'l30' AND sku and order_no are both non-empty (this matches
+     *      the skip-condition in the doba page's updateSummary).
+     *   2. Sum total_price for every period = 'l60' row whose SKU is in that
+     *      active set. No order_status filter — the doba page badge does not
+     *      apply one.
+     *
+     * Restricting L60 to the active L30 SKU set is what makes this match the
+     * badge ($46,109.47 in the user's snapshot); without it /all-marketplace-master
+     * was inflating L60 by ~2x with L60-only SKUs that have no L30 activity.
      *
      * @return array{sales: float, orders: int, qty: int, pft: float, cogs: float}
      */
     private function computeDobaL60SummaryFromDailyData(): array
     {
+        $activeSkus = \App\Models\DobaDailyData::whereRaw('LOWER(period) = ?', ['l30'])
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereNotNull('order_no')
+            ->where('order_no', '!=', '')
+            ->pluck('sku')
+            ->map(fn ($s) => strtolower(trim((string) $s)))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($activeSkus)) {
+            return ['sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
+        }
+
+        $activeSkuSet = array_flip($activeSkus);
+
         $orders = \App\Models\DobaDailyData::whereRaw('LOWER(period) = ?', ['l60'])
-            ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'])
             ->get();
 
         if ($orders->isEmpty()) {
             return ['sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
         }
 
-        $skus = $orders->pluck('sku')->filter()->unique()->values()->toArray();
-        $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
+        $rawSkus = $orders->pluck('sku')->filter()->unique()->values()->toArray();
+        $productMasters = ProductMaster::whereIn('sku', $rawSkus)->get()->keyBy('sku');
 
         $margin = 0.95;
         $sales = 0.0;
@@ -7368,7 +7397,8 @@ class ChannelMasterController extends Controller
         $cogs = 0.0;
 
         foreach ($orders as $order) {
-            if (! $order->sku || $order->sku === '') {
+            $skuKey = strtolower(trim((string) ($order->sku ?? '')));
+            if ($skuKey === '' || ! isset($activeSkuSet[$skuKey])) {
                 continue;
             }
 

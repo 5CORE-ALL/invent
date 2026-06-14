@@ -110,6 +110,7 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">GPFT Total: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge" style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
+                        <span class="badge fs-6 p-2" id="l60-sales-badge" style="background-color: #6f42c1; color: white; font-weight: bold;">L60 Sales: $0.00</span>
                         <span class="badge fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
                     </div>
                 </div>
@@ -134,6 +135,8 @@
 <script>
     const COLUMN_VIS_KEY = "doba_sales_column_visibility";
     let table = null;
+    let l60SalesBySku = {};
+    let l60RangeDisplay = '';
     
     // Toast notification function
     function showToast(message, type = 'info') {
@@ -178,15 +181,25 @@
             ajaxResponse: function(url, params, response) {
                 console.log("AJAX Response received:", response);
                 console.log("Response type:", typeof response);
-                console.log("Is array:", Array.isArray(response));
-                if (Array.isArray(response)) {
-                    console.log("Number of records:", response.length);
-                    if (response.length > 0) {
-                        console.log("First record:", response[0]);
+
+                let rows = response;
+                if (response && typeof response === 'object' && !Array.isArray(response) && Array.isArray(response.data)) {
+                    rows = response.data;
+                    l60SalesBySku = response.l60_sales_by_sku || {};
+                    l60RangeDisplay = (response.l60_range && response.l60_range.display) ? response.l60_range.display : '';
+                } else {
+                    l60SalesBySku = {};
+                    l60RangeDisplay = '';
+                }
+
+                console.log("Is array:", Array.isArray(rows));
+                if (Array.isArray(rows)) {
+                    console.log("Number of records:", rows.length);
+                    if (rows.length > 0) {
+                        console.log("First record:", rows[0]);
                     }
                 }
-                // Return the response as-is (should be an array)
-                return response;
+                return rows;
             },
             ajaxError: function(error) {
                 console.error("AJAX Error:", error);
@@ -455,6 +468,7 @@
             let totalWeightedPrice = 0;
             let totalQuantityForPrice = 0;
             let totalCogs = 0;
+            const activeSkus = new Set();
 
             data.forEach(row => {
                 // Skip rows with empty SKU or order_id
@@ -465,6 +479,10 @@
                 totalOrders++;
                 const quantity = parseInt(row.quantity) || 0;
                 const basePrice = parseFloat(row.price) || 0;
+
+                if (row.sku) {
+                    activeSkus.add(String(row.sku).toLowerCase());
+                }
                 
                 // Skip if quantity is 0
                 if (quantity === 0) {
@@ -535,6 +553,23 @@
             }
             
             $('#l30-sales-badge').text('L30 Sales: $' + totalL30Sales.toFixed(2));
+
+            // L60 Sales: sum the L60 totals only for SKUs visible in the current (filtered) view.
+            // l60SalesBySku is keyed by the original SKU casing from DB; compare case-insensitively.
+            let totalL60Sales = 0;
+            const l60Lookup = {};
+            Object.keys(l60SalesBySku || {}).forEach(k => {
+                l60Lookup[String(k).toLowerCase()] = parseFloat(l60SalesBySku[k]) || 0;
+            });
+            activeSkus.forEach(sku => {
+                if (l60Lookup[sku] !== undefined) {
+                    totalL60Sales += l60Lookup[sku];
+                }
+            });
+            const l60Formatted = totalL60Sales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            $('#l60-sales-badge').text('L60 Sales: $' + l60Formatted);
+            $('#l60-sales-badge').attr('title', l60RangeDisplay ? ('L60 window: ' + l60RangeDisplay) : '');
+
             $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
         }
 

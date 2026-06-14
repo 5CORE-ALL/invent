@@ -1423,7 +1423,7 @@
                     {
                         title: "L60 Sales",
                         field: "L-60 Sales",
-                        headerTooltip: "Sales from days 31-60 (previous 30-day period). Used for Growth calculation.",
+                        headerTooltip: "Sales from days 31-60 (previous 30-day period: {{ \Carbon\Carbon::now()->subDays(60)->format('M d, Y') }} – {{ \Carbon\Carbon::now()->subDays(31)->format('M d, Y') }}). Used for Growth calculation.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,

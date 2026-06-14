@@ -5173,6 +5173,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/tiktok-gmv-max-data', 'tiktokGmvMaxData')->name('tiktok.gmv.max.data');
         Route::get('/tiktok-video-ad-analytics', 'tiktokVideoAd')->name('tiktok.video.ad.analytics');
         Route::get('/tiktok-video-ad-analytics-data', 'tiktokVideoAdData')->name('tiktok.video.ad.analytics.data');
+        Route::post('/tiktok-video-ad-analytics/update-approval', 'updateVideoAdApproval')->name('tiktok.video.ad.update.approval');
         Route::post('/tiktok/import', 'import')->name('tiktok.import');
         Route::post('/tiktok-gmv-ad/update-status', 'updateGMVAdStatus')->name('tiktok.gmv.ad.update.status');
     });
