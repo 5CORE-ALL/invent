@@ -282,11 +282,25 @@ class MacysApiService
                 return ['success' => false, 'message' => 'SKU (or marketplace product id) and bullet points are required.'];
             }
 
-            $attributes = [
-                'bulletPoints' => $bulletPoints,
-            ];
+            $product = $this->fetchMacyMiraklProduct($sku);
+            $currentDescription = $this->firstLocalizedValue($product['descriptions'] ?? []);
+            $updatedDescription = $currentDescription !== ''
+                ? $this->replaceMacyAboutItemText($currentDescription, $bulletPoints)
+                : $this->formatMacyAboutItemText($bulletPoints);
 
-            return $this->pushMacyMiraklProductAttributes($sku, $attributes, 'Macy bullet points updated', 'Macy bullet update failed');
+            return $this->pushMacyMiraklProductAttributes(
+                $sku,
+                [],
+                'Macy bullet points updated',
+                'Macy bullet update failed',
+                $updatedDescription !== '' ? [['locale' => 'en_US', 'value' => $updatedDescription]] : null,
+                [
+                    'current_description_length' => strlen($currentDescription),
+                    'updated_description_length' => strlen($updatedDescription),
+                    'description_changed' => sha1($currentDescription) !== sha1($updatedDescription),
+                    'target_section' => 'leading About Item text before Product Description',
+                ]
+            );
         } catch (\Throwable $e) {
             Log::error('Macy bullet update failed', ['identifier' => $identifier, 'error' => $e->getMessage()]);
 
@@ -300,7 +314,7 @@ class MacysApiService
      * @param  array<string, string>  $attributes
      * @return array{success: bool, message: string, response?: mixed}
      */
-    private function pushMacyMiraklProductAttributes(string $sku, array $attributes, string $successMessage, string $failurePrefix): array
+    private function pushMacyMiraklProductAttributes(string $sku, array $attributes, string $successMessage, string $failurePrefix, ?array $descriptions = null, array $context = []): array
     {
         $token = $this->getAccessToken();
         if (! $token) {
@@ -310,8 +324,13 @@ class MacysApiService
         $baseUrl = 'https://miraklconnect.com/api/products';
         $productPayload = [
             'id' => $sku,
-            'attributes' => $attributes,
         ];
+        if ($attributes !== []) {
+            $productPayload['attributes'] = $this->formatMiraklAttributes($attributes);
+        }
+        if ($descriptions !== null) {
+            $productPayload['descriptions'] = $descriptions;
+        }
 
         $headers = [
             'Accept' => 'application/json',
@@ -324,19 +343,142 @@ class MacysApiService
 
         $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(60);
 
+        $method = 'POST';
         $response = $request->post($baseUrl, ['products' => [$productPayload]]);
-        if (! $response->successful()) {
-            $response = $request->patch("{$baseUrl}/{$sku}", $productPayload);
-        }
-        if (! $response->successful()) {
-            $response = $request->put("{$baseUrl}/{$sku}", $productPayload);
-        }
 
         if (! $response->successful()) {
+            Log::warning($failurePrefix, [
+                'sku' => $sku,
+                'method' => $method,
+                'status' => $response->status(),
+                'response' => mb_substr($response->body(), 0, 2000),
+            ] + $context);
+
             return ['success' => false, 'message' => $failurePrefix.': '.$response->body()];
         }
 
-        return ['success' => true, 'message' => $successMessage, 'response' => $response->json()];
+        $json = $response->json();
+        $hasApiError = is_array($json) && (
+            ! empty($json['errors'])
+            || ! empty($json['error'])
+            || ! empty($json['error_message'])
+            || (isset($json['success']) && $json['success'] === false)
+            || ((isset($json['status']) && is_string($json['status'])) && strtolower($json['status']) === 'error')
+        );
+
+        Log::info('Macy Mirakl product update response', [
+            'sku' => $sku,
+            'method' => $method,
+            'status' => $response->status(),
+            'has_api_error' => $hasApiError,
+            'response' => is_array($json) ? $json : mb_substr($response->body(), 0, 2000),
+        ] + $context);
+
+        if ($hasApiError) {
+            return ['success' => false, 'message' => $failurePrefix.': '.json_encode($json), 'response' => $json];
+        }
+
+        return ['success' => true, 'message' => $successMessage, 'response' => $json];
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @return list<array{id: string, name: string, type: string, value: mixed}>
+     */
+    private function formatMiraklAttributes(array $attributes): array
+    {
+        $formatted = [];
+        foreach ($attributes as $id => $value) {
+            $id = trim((string) $id);
+            if ($id === '') {
+                continue;
+            }
+
+            $formatted[] = [
+                'id' => $id,
+                'name' => $id,
+                'type' => is_numeric($value) ? 'NUMERIC' : (is_bool($value) ? 'BOOLEAN' : 'STRING'),
+                'value' => $value,
+            ];
+        }
+
+        return $formatted;
+    }
+
+    private function fetchMacyMiraklProduct(string $sku): array
+    {
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return [];
+        }
+
+        $pageToken = null;
+        do {
+            $query = ['limit' => 1000, 'channel_code' => 'macys'];
+            if ($pageToken) {
+                $query['page_token'] = $pageToken;
+            }
+
+            $response = Http::withoutVerifying()
+                ->withToken($token)
+                ->acceptJson()
+                ->timeout(60)
+                ->get('https://miraklconnect.com/api/products', $query);
+
+            if (! $response->successful()) {
+                Log::warning('Macy product lookup failed', [
+                    'sku' => $sku,
+                    'status' => $response->status(),
+                    'response' => mb_substr($response->body(), 0, 1000),
+                ]);
+
+                return [];
+            }
+
+            foreach (($response->json('data') ?? []) as $product) {
+                if (isset($product['id']) && strcasecmp((string) $product['id'], $sku) === 0) {
+                    return is_array($product) ? $product : [];
+                }
+            }
+
+            $pageToken = $response->json('next_page_token');
+        } while ($pageToken);
+
+        return [];
+    }
+
+    private function firstLocalizedValue(array $localizedRows): string
+    {
+        foreach ($localizedRows as $row) {
+            if (is_array($row) && trim((string) ($row['value'] ?? '')) !== '') {
+                return trim((string) $row['value']);
+            }
+        }
+
+        return '';
+    }
+
+    private function replaceMacyAboutItemText(string $currentDescription, string $bulletPoints): string
+    {
+        $replacement = $this->formatMacyAboutItemText($bulletPoints);
+        $description = trim(preg_replace('/\s+/u', ' ', $currentDescription) ?? $currentDescription);
+        if ($description === '') {
+            return $replacement;
+        }
+
+        $productDescriptionPos = mb_stripos($description, 'Product Description');
+        if ($productDescriptionPos !== false) {
+            return trim($replacement.' '.mb_substr($description, $productDescriptionPos));
+        }
+
+        return trim($replacement.' '.$description);
+    }
+
+    private function formatMacyAboutItemText(string $bulletPoints): string
+    {
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', trim($bulletPoints)) ?: []), fn ($line) => $line !== ''));
+
+        return trim('About Item '.implode(' ', array_slice($lines, 0, 5)));
     }
 
     /**

@@ -38,7 +38,7 @@ class TemuApiService
      * @param array $requestBody API-specific params only (e.g. type, outGoodsSn, goodsName)
      * @return array Full request with access_token, app_key, timestamp, data_type, sign, and requestBody keys
      */
-    private function generateSignValue($requestBody)
+    protected function generateSignValue($requestBody)
     {
         $appKey = trim((string) (config('services.temu.app_key') ?? ''));
         $appSecret = trim((string) (config('services.temu.secret_key') ?? ''));
@@ -555,7 +555,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
      * instead of paginating the goods/sku list API again. List-API pagination is the source of
      * the intermittent "goodsId not found" failures on title-master pushes.
      */
-    private function persistTemuMapping(string $sku, ?string $goodsId, ?string $skuId): void
+    protected function persistTemuMapping(string $sku, ?string $goodsId, ?string $skuId): void
     {
         $sku = trim($sku);
         if ($sku === '') {
@@ -955,7 +955,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
      *
      * @return array{sku: string, goods_id: ?string}
      */
-    private function resolveTemuGoodsAndSku(string $identifier): array
+    protected function resolveTemuGoodsAndSku(string $identifier): array
     {
         $id = trim($identifier);
         if ($id === '') {
@@ -1038,7 +1038,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
      * @param  string|array<int, string>  $text  Scalar string or list of lines (e.g. goodsSummary as array)
      * @return array{success: bool, message: string}
      */
-    private function pushTemuGoodsBasicField(
+    protected function pushTemuGoodsBasicField(
         string $identifier,
         string|array $text,
         string $basicFieldKey,
@@ -1156,7 +1156,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
     }
 
-    private function fetchCurrentTemuGoodsDesc(string $goodsId, string $sku = ''): string
+    protected function fetchCurrentTemuGoodsDesc(string $goodsId, string $sku = ''): string
     {
         // 1) Database first (requested): prefer persisted copy to avoid API gaps.
         try {
@@ -1267,7 +1267,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         return '';
     }
 
-    private function saveGoodsSummaryToTemuMetrics(string $sku, string $goodsSummary): bool
+    protected function saveGoodsSummaryToTemuMetrics(string $sku, string $goodsSummary): bool
     {
         try {
             if ($sku === '' || ! Schema::hasTable('temu_metrics') || ! Schema::hasColumn('temu_metrics', 'sku')) {

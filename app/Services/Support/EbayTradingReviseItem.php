@@ -881,9 +881,24 @@ final class EbayTradingReviseItem
             return $replacement;
         }
 
+        $updatedMarkedBlock = self::replaceMarkedShopifyBulletBlock($body, $replacement, $meta);
+        if ($updatedMarkedBlock !== null) {
+            return self::removeAdditionalTopListsBeforeDescription($updatedMarkedBlock, (int) ($meta['offset'] ?? 0) + strlen($replacement), $meta);
+        }
+
+        $updatedHeadingSection = self::replaceLeadingHeadingBulletSection($body, $replacement, $meta);
+        if ($updatedHeadingSection !== null) {
+            return self::removeAdditionalTopListsBeforeDescription($updatedHeadingSection, (int) ($meta['offset'] ?? 0) + strlen($replacement), $meta);
+        }
+
         $updatedBracketParagraphs = self::replaceLeadingBracketBulletParagraphs($body, $replacement, $meta);
         if ($updatedBracketParagraphs !== null) {
             return self::removeAdditionalTopListsBeforeDescription($updatedBracketParagraphs, (int) ($meta['offset'] ?? 0) + strlen($replacement), $meta);
+        }
+
+        $updatedStrongLabelParagraphs = self::replaceLeadingStrongLabelBulletParagraphs($body, $replacement, $meta);
+        if ($updatedStrongLabelParagraphs !== null) {
+            return self::removeAdditionalTopListsBeforeDescription($updatedStrongLabelParagraphs, (int) ($meta['offset'] ?? 0) + strlen($replacement), $meta);
         }
 
         $updatedHighlightedParagraphs = self::replaceLeadingHighlightedFeatureParagraphs($body, $replacement, $meta);
@@ -894,6 +909,11 @@ final class EbayTradingReviseItem
         $updatedTopParagraph = self::replaceLeadingBoldLabelBulletParagraph($body, $replacement, $meta);
         if ($updatedTopParagraph !== null) {
             return self::removeAdditionalTopListsBeforeDescription($updatedTopParagraph, (int) ($meta['offset'] ?? 0) + strlen($replacement), $meta);
+        }
+
+        $updatedSymbolParagraphs = self::replaceLeadingSymbolBulletParagraphs($body, $replacement, $meta);
+        if ($updatedSymbolParagraphs !== null) {
+            return self::removeAdditionalTopListsBeforeDescription($updatedSymbolParagraphs, (int) ($meta['offset'] ?? 0) + strlen($replacement), $meta);
         }
 
         $descriptionOffset = self::findProductDescriptionSectionOffset($body);
@@ -927,6 +947,117 @@ final class EbayTradingReviseItem
         $meta['offset'] = 0;
 
         return $replacement."\n".$body;
+    }
+
+    private static function replaceMarkedShopifyBulletBlock(string $body, string $replacement, ?array &$meta = null): ?string
+    {
+        $patterns = [
+            '/<!--\s*bullet-points-master:start\s*-->.*?<!--\s*bullet-points-master:end\s*-->/is',
+            '/<div\b(?=[^>]*\bdata-bullet-points-master\s*=\s*(["\'])1\1)[^>]*>[\s\S]*?<\/div>\s*/is',
+            '/<div\b[^>]*class=(["\'])(?=[^"\']*\baplus-3p-center-content\b)[^"\']*\1[^>]*>(?=[\s\S]*?About\s+Item:)(?=[\s\S]*?【)[\s\S]*?<\/div>\s*/is',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (! preg_match($pattern, $body, $match, PREG_OFFSET_CAPTURE)) {
+                continue;
+            }
+
+            $offset = (int) $match[0][1];
+            if (! self::isBeforeProductDescription($body, $offset)) {
+                continue;
+            }
+
+            if (is_array($meta)) {
+                $meta['strategy'] = 'marked_shopify_bullet_block';
+                $meta['offset'] = $offset;
+                $meta['replaced_length'] = strlen((string) $match[0][0]);
+            }
+
+            return substr_replace($body, $replacement, $offset, strlen((string) $match[0][0]));
+        }
+
+        return null;
+    }
+
+    private static function replaceLeadingHeadingBulletSection(string $body, string $replacement, ?array &$meta = null): ?string
+    {
+        if (! preg_match_all('/<(?:h[1-6]|p)\b[^>]*>.*?<\/(?:h[1-6]|p)>/is', $body, $matches, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        $blocks = $matches[0];
+        foreach ($blocks as $i => [$headingHtml, $headingOffset]) {
+            $headingOffset = (int) $headingOffset;
+            if (! self::isBeforeProductDescription($body, $headingOffset)) {
+                return null;
+            }
+            if (! self::isBulletSectionHeadingParagraph((string) $headingHtml)) {
+                continue;
+            }
+
+            $headingEnd = $headingOffset + strlen((string) $headingHtml);
+            $nextBlock = $blocks[$i + 1] ?? null;
+            if ($nextBlock === null) {
+                return null;
+            }
+
+            $between = substr($body, $headingEnd, (int) $nextBlock[1] - $headingEnd);
+            if (preg_match('/<(?:img|table)\b/i', $between)) {
+                return null;
+            }
+
+            $listMatch = null;
+            if (preg_match('/\G\s*<(?:ul|ol)\b[^>]*>.*?<\/(?:ul|ol)>/is', substr($body, $headingEnd), $listMatch, PREG_OFFSET_CAPTURE)) {
+                $replaceOffset = $headingOffset;
+                $replaceLength = strlen((string) $headingHtml) + (int) $listMatch[0][1] + strlen((string) $listMatch[0][0]);
+                if (is_array($meta)) {
+                    $meta['strategy'] = 'heading_list_section';
+                    $meta['offset'] = $replaceOffset;
+                    $meta['replaced_length'] = $replaceLength;
+                }
+
+                return substr_replace($body, $replacement, $replaceOffset, $replaceLength);
+            }
+
+            $firstBulletOffset = null;
+            $lastBulletEnd = null;
+            $bulletCount = 0;
+            $previousEnd = $headingEnd;
+
+            for ($j = $i + 1; $j < count($blocks); $j++) {
+                [$blockHtml, $blockOffset] = $blocks[$j];
+                $blockOffset = (int) $blockOffset;
+                $between = substr($body, $previousEnd, $blockOffset - $previousEnd);
+                if (preg_match('/<(?:div|h[1-6]|img|table|ol|ul)\b/i', $between)) {
+                    break;
+                }
+                if (
+                    ! self::looksLikeBracketBulletParagraph((string) $blockHtml)
+                    && ! self::looksLikeStrongLabelBulletParagraph((string) $blockHtml)
+                    && ! self::looksLikeSymbolBulletParagraph((string) $blockHtml)
+                ) {
+                    break;
+                }
+
+                $firstBulletOffset ??= $blockOffset;
+                $lastBulletEnd = $blockOffset + strlen((string) $blockHtml);
+                $bulletCount++;
+                $previousEnd = $lastBulletEnd;
+            }
+
+            if ($bulletCount >= 2 && $firstBulletOffset !== null && $lastBulletEnd !== null) {
+                if (is_array($meta)) {
+                    $meta['strategy'] = 'heading_bullet_paragraphs';
+                    $meta['offset'] = $headingOffset;
+                    $meta['replaced_length'] = $lastBulletEnd - $headingOffset;
+                    $meta['bullet_paragraph_count'] = $bulletCount;
+                }
+
+                return substr_replace($body, $replacement, $headingOffset, $lastBulletEnd - $headingOffset);
+            }
+        }
+
+        return null;
     }
 
     private static function removeAdditionalTopListsBeforeDescription(string $body, int $afterOffset, ?array &$meta = null): string
@@ -1034,6 +1165,107 @@ final class EbayTradingReviseItem
         return null;
     }
 
+    private static function replaceLeadingStrongLabelBulletParagraphs(string $body, string $replacement, ?array &$meta = null): ?string
+    {
+        if (! preg_match_all('/<p\b[^>]*>.*?<\/p>/is', $body, $matches, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        $paragraphs = $matches[0];
+        $firstBulletOffset = null;
+        $lastBulletEnd = null;
+        $bulletCount = 0;
+        $previousEnd = null;
+
+        foreach ($paragraphs as [$paragraphHtml, $offset]) {
+            $offset = (int) $offset;
+            $beforeParagraph = substr($body, 0, $offset);
+            if ($firstBulletOffset === null && preg_match('/<(?:h[1-6]|img|table|ol|ul|div)\b/i', $beforeParagraph)) {
+                return null;
+            }
+
+            if ($previousEnd !== null) {
+                $between = substr($body, $previousEnd, $offset - $previousEnd);
+                if (preg_match('/<(?:div|h[1-6]|img|table|ol|ul)\b/i', $between)) {
+                    break;
+                }
+            }
+
+            if ($firstBulletOffset === null && self::isBulletSectionHeadingParagraph((string) $paragraphHtml)) {
+                $previousEnd = $offset + strlen((string) $paragraphHtml);
+                continue;
+            }
+
+            if (! self::looksLikeStrongLabelBulletParagraph((string) $paragraphHtml)) {
+                break;
+            }
+
+            $firstBulletOffset ??= $offset;
+            $lastBulletEnd = $offset + strlen((string) $paragraphHtml);
+            $bulletCount++;
+            $previousEnd = $lastBulletEnd;
+        }
+
+        if ($bulletCount < 3 || $firstBulletOffset === null || $lastBulletEnd === null) {
+            return null;
+        }
+
+        if (is_array($meta)) {
+            $meta['strategy'] = 'strong_label_paragraphs';
+            $meta['offset'] = $firstBulletOffset;
+            $meta['replaced_length'] = $lastBulletEnd - $firstBulletOffset;
+            $meta['bullet_paragraph_count'] = $bulletCount;
+        }
+
+        return substr_replace($body, $replacement, $firstBulletOffset, $lastBulletEnd - $firstBulletOffset);
+    }
+
+    private static function replaceLeadingSymbolBulletParagraphs(string $body, string $replacement, ?array &$meta = null): ?string
+    {
+        if (! preg_match_all('/<p\b[^>]*>.*?<\/p>/is', $body, $matches, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        $firstBulletOffset = null;
+        $lastBulletEnd = null;
+        $bulletCount = 0;
+        $previousEnd = null;
+
+        foreach ($matches[0] as [$paragraphHtml, $offset]) {
+            $offset = (int) $offset;
+            if ($firstBulletOffset === null && preg_match('/<(?:h[1-6]|img|table|ol|ul|div)\b/i', substr($body, 0, $offset))) {
+                return null;
+            }
+            if ($previousEnd !== null) {
+                $between = substr($body, $previousEnd, $offset - $previousEnd);
+                if (preg_match('/<(?:div|h[1-6]|img|table|ol|ul)\b/i', $between)) {
+                    break;
+                }
+            }
+            if (! self::looksLikeSymbolBulletParagraph((string) $paragraphHtml)) {
+                break;
+            }
+
+            $firstBulletOffset ??= $offset;
+            $lastBulletEnd = $offset + strlen((string) $paragraphHtml);
+            $bulletCount++;
+            $previousEnd = $lastBulletEnd;
+        }
+
+        if ($bulletCount < 2 || $firstBulletOffset === null || $lastBulletEnd === null) {
+            return null;
+        }
+
+        if (is_array($meta)) {
+            $meta['strategy'] = 'symbol_bullet_paragraphs';
+            $meta['offset'] = $firstBulletOffset;
+            $meta['replaced_length'] = $lastBulletEnd - $firstBulletOffset;
+            $meta['bullet_paragraph_count'] = $bulletCount;
+        }
+
+        return substr_replace($body, $replacement, $firstBulletOffset, $lastBulletEnd - $firstBulletOffset);
+    }
+
     private static function replaceLeadingHighlightedFeatureParagraphs(string $body, string $replacement, ?array &$meta = null): ?string
     {
         if (! preg_match_all('/<p\b[^>]*>.*?<\/p>/is', $body, $matches, PREG_OFFSET_CAPTURE)) {
@@ -1133,6 +1365,48 @@ final class EbayTradingReviseItem
         return strlen($text) > strlen($label) + 20;
     }
 
+    private static function looksLikeStrongLabelBulletParagraph(string $paragraphHtml): bool
+    {
+        if (stripos($paragraphHtml, '<strong') === false) {
+            return false;
+        }
+
+        $text = self::normalizedParagraphText($paragraphHtml);
+        if ($text === '' || self::isBulletSectionHeadingParagraph($paragraphHtml) || self::looksLikeProductDescriptionHeading($text)) {
+            return false;
+        }
+
+        preg_match_all('/<strong\b[^>]*>(.*?)<\/strong>/is', $paragraphHtml, $strongMatches);
+        $labelParts = [];
+        foreach ($strongMatches[1] ?? [] as $strongHtml) {
+            $labelPart = self::normalizedParagraphText((string) $strongHtml);
+            if ($labelPart !== '') {
+                $labelParts[] = $labelPart;
+            }
+        }
+
+        if ($labelParts === []) {
+            return false;
+        }
+
+        $label = trim(implode(' ', $labelParts), " \t\n\r\0\x0B:-");
+        if ($label === '' || mb_strlen($text) <= mb_strlen($label) + 20) {
+            return false;
+        }
+
+        return preg_match('/[a-z0-9]/u', $label) === 1;
+    }
+
+    private static function looksLikeSymbolBulletParagraph(string $paragraphHtml): bool
+    {
+        $text = self::normalizedParagraphText($paragraphHtml);
+        if ($text === '' || self::looksLikeProductDescriptionHeading($text)) {
+            return false;
+        }
+
+        return preg_match('/^(?:[•*]|-|\d+[.)])\s*\S/u', $text) === 1;
+    }
+
     private static function looksLikeBracketBulletParagraph(string $paragraphHtml): bool
     {
         if (self::countBracketLabels($paragraphHtml) < 1) {
@@ -1179,6 +1453,13 @@ final class EbayTradingReviseItem
         }
 
         return null;
+    }
+
+    private static function isBeforeProductDescription(string $body, int $offset): bool
+    {
+        $descriptionOffset = self::findProductDescriptionSectionOffset($body);
+
+        return $descriptionOffset === null || $offset < $descriptionOffset;
     }
 
     private static function looksLikeProductDescriptionHeading(string $text): bool

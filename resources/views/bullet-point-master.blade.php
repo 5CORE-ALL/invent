@@ -136,10 +136,10 @@
                                         <input type="text" id="previewSearchBp" class="th-sub" placeholder="Search preview">
                                     </th>
                                     <th>Action</th>
-                                    <th title="eBay1–3, Macy's, Amazon, Temu, Reverb, Wayfair, Best Buy">
+                                    <th title="eBay1–3, Macy's, Amazon, Temu1, Temu2, Reverb, Wayfair, Best Buy">
                                         <div class="bp-mp-th-title">MARKET PLACES</div>
                                         <div class="bp-mp-th-icons">
-                                            <span class="bp-mp-th-pill btn-ebay1">E1</span><span class="bp-mp-th-pill btn-ebay2">E2</span><span class="bp-mp-th-pill btn-ebay3">E3</span><span class="bp-mp-th-pill btn-macy">M</span><span class="bp-mp-th-pill btn-amazon">A</span><span class="bp-mp-th-pill btn-temu">T</span><span class="bp-mp-th-pill btn-reverb">R</span><span class="bp-mp-th-pill btn-wayfair">W</span><span class="bp-mp-th-pill btn-bestbuy">B</span>
+                                            <span class="bp-mp-th-pill btn-ebay1">E1</span><span class="bp-mp-th-pill btn-ebay2">E2</span><span class="bp-mp-th-pill btn-ebay3">E3</span><span class="bp-mp-th-pill btn-macy">M</span><span class="bp-mp-th-pill btn-amazon">A</span><span class="bp-mp-th-pill btn-temu">T1</span><span class="bp-mp-th-pill btn-temu">T2</span><span class="bp-mp-th-pill btn-reverb">R</span><span class="bp-mp-th-pill btn-wayfair">W</span><span class="bp-mp-th-pill btn-bestbuy">B</span>
                                         </div>
                                     </th>
                                     <th title="Shopify Main, Shopify PLS">
@@ -356,22 +356,22 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    const MARKETPLACES = ['ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'temu', 'reverb', 'wayfair', 'bestbuy', 'shopify_main', 'shopify_pls'];
+    const MARKETPLACES = ['ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'bestbuy', 'shopify_main', 'shopify_pls'];
     const EBAY3_WARNING = 'eBay3 has different listing structure. Please verify bullet points format before pushing.';
     const LABELS = {
-        ebay: 'eBay 1', ebay2: 'eBay 2', ebay3: 'eBay 3', macy: "Macy's", amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb', wayfair: 'Wayfair', bestbuy: 'Best Buy',
+        ebay: 'eBay 1', ebay2: 'eBay 2', ebay3: 'eBay 3', macy: "Macy's", amazon: 'Amazon', temu: 'Temu 1', temu2: 'Temu 2', reverb: 'Reverb', wayfair: 'Wayfair', bestbuy: 'Best Buy',
         shopify_main: 'Shopify Main', shopify_pls: 'Shopify PLS',
     };
     /** Labels in view modal (eBay1-style names) */
     const VIEW_LABELS = {
-        ebay: 'eBay1', ebay2: 'eBay2', ebay3: 'eBay3', macy: "Macy's", amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb', wayfair: 'Wayfair', bestbuy: 'Best Buy',
+        ebay: 'eBay1', ebay2: 'eBay2', ebay3: 'eBay3', macy: "Macy's", amazon: 'Amazon', temu: 'Temu1', temu2: 'Temu2', reverb: 'Reverb', wayfair: 'Wayfair', bestbuy: 'Best Buy',
         shopify_main: 'Shopify Main', shopify_pls: 'Shopify PLS',
     };
     const VIEW_SECTIONS = [
         { banner: '========== Marketplaces ==========', keys: MARKETPLACES },
     ];
     const GROUPS = {
-        gChannels: ['ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'temu', 'reverb', 'wayfair', 'bestbuy'],
+        gChannels: ['ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'bestbuy'],
         gShopify: ['shopify_main', 'shopify_pls'],
     };
     /** Short labels on tiles (horizontal row, Title Master style) */
@@ -381,7 +381,8 @@ document.addEventListener('DOMContentLoaded', () => {
         ebay3: { cls: 'btn-ebay3', short: 'E3' },
         macy: { cls: 'btn-macy', short: 'M' },
         amazon: { cls: 'btn-amazon', short: 'A' },
-        temu: { cls: 'btn-temu', short: 'T' },
+        temu: { cls: 'btn-temu', short: 'T1' },
+        temu2: { cls: 'btn-temu', short: 'T2' },
         reverb: { cls: 'btn-reverb', short: 'R' },
         wayfair: { cls: 'btn-wayfair', short: 'W' },
         bestbuy: { cls: 'btn-bestbuy', short: 'B' },

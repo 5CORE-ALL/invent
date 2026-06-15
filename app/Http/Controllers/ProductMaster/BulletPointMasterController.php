@@ -837,6 +837,7 @@ class BulletPointMasterController extends Controller
             'macy' => 'macy_metrics',
             'amazon' => 'amazon_metrics',
             'temu' => 'temu_metrics',
+            'temu2' => 'temu2_metrics',
             'reverb' => 'reverb_metrics',
             'wayfair' => 'wayfair_metrics',
             'bestbuy' => 'bestbuy_metrics',
@@ -984,7 +985,7 @@ class BulletPointMasterController extends Controller
             if (Schema::hasColumn($table, 'updated_at')) {
                 $update['updated_at'] = now();
             }
-            if ($table === 'temu_metrics' && Schema::hasColumn($table, 'goods_summary')) {
+            if (in_array($table, ['temu_metrics', 'temu2_metrics'], true) && Schema::hasColumn($table, 'goods_summary')) {
                 $update['goods_summary'] = $text;
             }
 
@@ -999,7 +1000,7 @@ class BulletPointMasterController extends Controller
                 if (Schema::hasColumn($table, 'updated_at')) {
                     $insert['updated_at'] = now();
                 }
-                if ($table === 'temu_metrics' && Schema::hasColumn($table, 'goods_summary')) {
+                if (in_array($table, ['temu_metrics', 'temu2_metrics'], true) && Schema::hasColumn($table, 'goods_summary')) {
                     $insert['goods_summary'] = $text;
                 }
                 DB::table($table)->insert($insert);
@@ -1367,6 +1368,7 @@ class BulletPointMasterController extends Controller
             'macy' => \App\Services\MacysApiService::class,
             'amazon' => \App\Services\AmazonSpApiService::class,
             'temu' => \App\Services\TemuApiService::class,
+            'temu2' => \App\Services\Temu2ApiService::class,
             'reverb' => \App\Services\ReverbApiService::class,
             'wayfair' => \App\Services\WayfairApiService::class,
             'bestbuy' => \App\Services\BestBuyApiService::class,
