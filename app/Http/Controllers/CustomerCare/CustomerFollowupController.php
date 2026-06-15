@@ -245,6 +245,42 @@ class CustomerFollowupController extends Controller
             $notes = $f->comments;
             $notesStr = $notes !== null && $notes !== '' ? (string) $notes : '';
 
+            // Display the original creator so the column doesn't flip when
+            // someone else edits. Fall back to assigned_executive for legacy
+            // rows that pre-date the original_executive column.
+            $original = trim((string) ($f->original_executive ?? ''));
+            $executiveDisplay = $original !== ''
+                ? $original
+                : trim((string) ($f->assigned_executive ?? ''));
+            if ($executiveDisplay === '') {
+                $executiveDisplay = '—';
+            }
+
+            // Pre-format history entries server-side so the timezone matches
+            // every other date in the grid. The view just renders these.
+            $rawHistory = is_array($f->executive_history) ? $f->executive_history : [];
+            $historyDisplay = [];
+            foreach ($rawHistory as $entry) {
+                $name = trim((string) ($entry['name'] ?? ''));
+                if ($name === '') {
+                    continue;
+                }
+                $atIso = (string) ($entry['at'] ?? '');
+                $atLabel = '';
+                if ($atIso !== '') {
+                    try {
+                        $atLabel = Carbon::parse($atIso)->timezone($tz)->format('d M Y H:i');
+                    } catch (\Throwable $e) {
+                        $atLabel = '';
+                    }
+                }
+                $historyDisplay[] = [
+                    'name'      => $name,
+                    'action'    => (string) ($entry['action'] ?? ''),
+                    'at_label'  => $atLabel,
+                ];
+            }
+
             return [
                 'id' => $f->id,
                 'ticket_id' => $f->ticket_id,
@@ -258,7 +294,9 @@ class CustomerFollowupController extends Controller
                 'resolved_display' => $resolvedDisplay,
                 'next_followup' => $next,
                 'next_followup_at' => self::toDatetimeLocalString($f->next_followup_at, $tz),
-                'executive' => $f->assigned_executive ?? '—',
+                'executive' => $executiveDisplay,
+                'executive_current' => trim((string) ($f->assigned_executive ?? '')),
+                'executive_history' => $historyDisplay,
                 'reference_link' => $f->reference_link,
                 'overdue' => $f->isOverdue(),
             ];
@@ -361,7 +399,12 @@ class CustomerFollowupController extends Controller
         }
 
         $validated['priority'] = 'Medium';
-        $validated['assigned_executive'] = $this->executiveNameFromAuth();
+        $executiveName = $this->executiveNameFromAuth();
+        $validated['assigned_executive'] = $executiveName;
+        // Stamp the original creator. This is intentionally never overwritten
+        // on later edits — the grid keeps showing this name; the tooltip on
+        // hover shows the executive_history audit trail instead.
+        $validated['original_executive'] = $executiveName !== '' ? $executiveName : null;
 
         $validated['resolved_at'] = $validated['status'] === 'Resolved'
             ? Carbon::now(config('app.timezone'))
@@ -369,6 +412,10 @@ class CustomerFollowupController extends Controller
 
         $validated['ticket_id'] = CustomerFollowup::temporaryTicketId();
         $followup = CustomerFollowup::create($validated);
+        if ($executiveName !== '') {
+            $followup->appendExecutiveHistoryEntry($executiveName, 'created');
+            $followup->saveQuietly();
+        }
         $ticketId = CustomerFollowup::assignTicketIdFromPrimaryKey($followup);
 
         return response()->json([
@@ -440,7 +487,12 @@ class CustomerFollowupController extends Controller
                 ?? Carbon::today(config('app.timezone'))->toDateString();
         }
 
-        $validated['assigned_executive'] = $this->executiveNameFromAuth();
+        $executiveName = $this->executiveNameFromAuth();
+        $validated['assigned_executive'] = $executiveName;
+        // Don't touch original_executive on edit — that column intentionally
+        // sticks to whoever created the ticket so the grid keeps showing the
+        // first responsible person. Audit lives in executive_history.
+        unset($validated['original_executive']);
 
         if ($validated['status'] === 'Resolved') {
             if ($customer_followup->status !== 'Resolved') {
@@ -453,6 +505,17 @@ class CustomerFollowupController extends Controller
         unset($validated['ticket_id']);
 
         $customer_followup->update($validated);
+        if ($executiveName !== '') {
+            // Backfill original_executive for tickets that pre-date this
+            // column (they have no creator stamped). Picking the first
+            // editor we see is the safest fallback — the same person who
+            // would have shown in the column before this change.
+            if (trim((string) $customer_followup->original_executive) === '') {
+                $customer_followup->original_executive = $executiveName;
+            }
+            $customer_followup->appendExecutiveHistoryEntry($executiveName, 'updated');
+            $customer_followup->saveQuietly();
+        }
 
         return response()->json(['success' => true, 'message' => 'Updated.']);
     }
@@ -508,7 +571,16 @@ class CustomerFollowupController extends Controller
         }
 
         $customer_followup->status = $newStatus;
-        $customer_followup->assigned_executive = $this->executiveNameFromAuth();
+        $executiveName = $this->executiveNameFromAuth();
+        $customer_followup->assigned_executive = $executiveName;
+        if ($executiveName !== '') {
+            // See update() — backfill original_executive only for legacy rows
+            // that were never stamped, so the grid still has a name to show.
+            if (trim((string) $customer_followup->original_executive) === '') {
+                $customer_followup->original_executive = $executiveName;
+            }
+            $customer_followup->appendExecutiveHistoryEntry($executiveName, 'status_changed');
+        }
         $customer_followup->save();
 
         return response()->json(['success' => true, 'message' => 'Saved.']);

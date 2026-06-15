@@ -93,6 +93,27 @@
         .faas-stat-badge--acos  { background: #ea580c; }   /* orange  */
         .faas-stat-badge--ctr   { background: #0891b2; }   /* cyan    */
         .faas-stat-badge--cvr   { background: #db2777; }   /* pink    */
+
+        /* ── Badge trend chart modal — full screen width, pinned to top
+           (same look & sizing as /all-marketplace-master adBreakdownChartModal).
+           Theme uses --tz-modal-* CSS variables, so we override those *and*
+           the dialog/content widths directly to be safe across themes. */
+        #badgeChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #badgeChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #badgeChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
     </style>
 @endsection
 
@@ -657,12 +678,12 @@
      and Chart.js draws a 32-day rolling line with dots (green = up,
      red = down, grey = flat), a dashed median line, and a side panel
      showing HIGHEST / MEDIAN / LOWEST. --}}
-<div class="modal fade"
+<div class="modal fade p-0"
      id="badgeChartModal"
      tabindex="-1"
      aria-labelledby="badgeChartModalLabel"
      aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-dialog shadow-none m-0 mx-0">
         <div class="modal-content">
             <div class="modal-header py-2" style="background:#0d6efd;color:#fff;">
                 <h6 class="modal-title fw-bold" id="badgeChartModalLabel">

@@ -315,6 +315,52 @@
             background: #e9ecef;
             border-color: #adb5bd;
         }
+
+        /*
+         * Executive column: shows the *original* assignee (the user who
+         * created the ticket); the full edit history is exposed only via
+         * the hover tooltip. The dotted underline + cursor:help signals
+         * that there's more info on hover, similar to native abbr UX.
+         */
+        .followup-executive-cell .followup-executive-name {
+            cursor: help;
+            border-bottom: 1px dotted #6c757d;
+            padding-bottom: 1px;
+        }
+        .followup-executive-cell .followup-executive-history-icon {
+            margin-left: 0.25rem;
+            color: #6c757d;
+            font-size: 0.85em;
+            vertical-align: middle;
+        }
+        /* Bootstrap tooltip override for the history popup: left-align rows
+           and give it a bit more breathing room than the default. */
+        .tooltip.followup-executive-tooltip .tooltip-inner {
+            text-align: left;
+            max-width: 320px;
+            padding: 8px 10px;
+            font-size: 0.78rem;
+            line-height: 1.4;
+        }
+        .tooltip.followup-executive-tooltip .followup-executive-history-title {
+            font-weight: 600;
+            margin-bottom: 4px;
+            display: block;
+        }
+        .tooltip.followup-executive-tooltip .followup-executive-history-row {
+            display: block;
+        }
+        .tooltip.followup-executive-tooltip .followup-executive-history-row + .followup-executive-history-row {
+            margin-top: 2px;
+        }
+        .tooltip.followup-executive-tooltip .followup-executive-history-action {
+            text-transform: capitalize;
+            font-weight: 600;
+        }
+        .tooltip.followup-executive-tooltip .followup-executive-history-when {
+            color: #cfd4da;
+            font-size: 0.72rem;
+        }
     </style>
 @endsection
 
@@ -621,6 +667,63 @@
                     '" title="Change status" aria-label="Change status">' + dot + '</button></td>';
             }
 
+            /**
+             * Executive cell.
+             *
+             * Shows the original creator (`row.executive`) and, when the
+             * ticket has been touched by anyone, attaches a Bootstrap
+             * tooltip listing every saved entry: who, what action, and
+             * when. The tooltip is HTML so we can format the rows; we
+             * therefore have to escape every untrusted string ourselves.
+             *
+             * Action labels are friendly copy ("Created", "Edited",
+             * "Status changed"); unknown actions fall through unchanged.
+             */
+            function executiveActionLabel(action) {
+                switch (String(action || '').toLowerCase()) {
+                    case 'created':        return 'Created';
+                    case 'updated':        return 'Edited';
+                    case 'status_changed': return 'Status changed';
+                    default:               return action ? String(action) : '';
+                }
+            }
+
+            function executiveCellHtml(row) {
+                const name = row && row.executive != null && String(row.executive).trim() !== ''
+                    ? String(row.executive)
+                    : '—';
+                const history = Array.isArray(row?.executive_history) ? row.executive_history : [];
+
+                if (!history.length) {
+                    return '<td class="followup-executive-cell">' + escapeHtml(name) + '</td>';
+                }
+
+                const rows = history.map(function (h) {
+                    const who   = escapeHtml(h?.name || '');
+                    const what  = escapeHtml(executiveActionLabel(h?.action));
+                    const when  = h?.at_label ? escapeHtml(h.at_label) : '';
+                    return '<span class="followup-executive-history-row">' +
+                        '<span class="followup-executive-history-action">' + (what || 'Edit') + '</span>' +
+                        ' by ' + (who || '<em>unknown</em>') +
+                        (when ? ' <span class="followup-executive-history-when">' + when + '</span>' : '') +
+                        '</span>';
+                }).join('');
+
+                const tooltipHtml = '<span class="followup-executive-history-title">Edit history</span>' + rows;
+                const titleAttr = escapeAttr(tooltipHtml);
+
+                return '<td class="followup-executive-cell">' +
+                    '<span class="followup-executive-name" ' +
+                    'data-bs-toggle="tooltip" data-bs-html="true" ' +
+                    'data-bs-custom-class="followup-executive-tooltip" ' +
+                    'data-bs-placement="left" ' +
+                    'title="' + titleAttr + '">' +
+                    escapeHtml(name) +
+                    '</span>' +
+                    '<i class="mdi mdi-history followup-executive-history-icon" aria-hidden="true"></i>' +
+                    '</td>';
+            }
+
             function buildQuery() {
                 const p = new URLSearchParams();
                 const s = document.getElementById('filterSearch').value.trim();
@@ -666,7 +769,7 @@
                             followupDateDisplayCellHtml(row) +
                             nextFollowupAtCellHtml(row) +
                             resolvedDateCellHtml(row) +
-                            '<td>' + escapeHtml(row.executive) + '</td>' +
+                            executiveCellHtml(row) +
                             referenceLinkCellHtml(row) +
                             '<td class="text-nowrap text-center followup-actions-col">' +
                             '<div class="followup-actions-btns">' +

@@ -110,6 +110,27 @@
         #shopify-ads-master-wrap .tabulator .tabulator-row .tabulator-cell.sam-metric-cell:hover {
             background: #e0f7fa;
         }
+
+        /* ── Badge trend chart modal — full screen width, pinned to top
+           (same look & sizing as /all-marketplace-master adBreakdownChartModal).
+           Theme uses --tz-modal-* CSS variables, so we override those *and*
+           the dialog/content widths directly to be safe across themes. */
+        #samTrendsModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #samTrendsModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #samTrendsModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
     </style>
 @endsection
 
@@ -159,8 +180,8 @@
          grey = flat), a dashed median line, value labels, and a side panel
          showing HIGHEST / MEDIAN / LOWEST. A channel selector lenses the
          series to the rolled-up total or one channel. --}}
-    <div class="modal fade" id="samTrendsModal" tabindex="-1" aria-labelledby="samTrendsLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal fade p-0" id="samTrendsModal" tabindex="-1" aria-labelledby="samTrendsLabel" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
             <div class="modal-content">
                 <div class="modal-header py-2" style="background:#0d6efd;color:#fff;">
                     <h6 class="modal-title fw-bold" id="samTrendsLabel">
