@@ -3,27 +3,27 @@
 namespace App\Services;
 
 use Google\Auth\Credentials\UserRefreshCredentials;
-use Google\Ads\GoogleAds\Lib\V20\GoogleAdsClientBuilder;
-use Google\Ads\GoogleAds\V20\Services\AdGroupOperation;
-use Google\Ads\GoogleAds\V20\Services\AdGroupCriterionOperation;
-use Google\Ads\GoogleAds\V20\Resources\AdGroup;
-use Google\Ads\GoogleAds\V20\Resources\AdGroupCriterion;
+use Google\Ads\GoogleAds\Lib\V22\GoogleAdsClientBuilder;
+use Google\Ads\GoogleAds\V22\Services\AdGroupOperation;
+use Google\Ads\GoogleAds\V22\Services\AdGroupCriterionOperation;
+use Google\Ads\GoogleAds\V22\Resources\AdGroup;
+use Google\Ads\GoogleAds\V22\Resources\AdGroupCriterion;
 use Google\Protobuf\FieldMask;
-use Google\Ads\GoogleAds\V20\Services\SearchGoogleAdsStreamRequest;
-use Google\Ads\GoogleAds\V20\Services\MutateAdGroupsRequest;
+use Google\Ads\GoogleAds\V22\Services\SearchGoogleAdsStreamRequest;
+use Google\Ads\GoogleAds\V22\Services\MutateAdGroupsRequest;
 use Illuminate\Support\Facades\Log;
-use Google\Ads\GoogleAds\V20\Services\MutateAdGroupCriteriaRequest;
-use Google\Ads\GoogleAds\V20\Services\CampaignBudgetOperation;
-use Google\Ads\GoogleAds\V20\Services\MutateCampaignBudgetsRequest;
-use Google\Ads\GoogleAds\V20\Resources\CampaignBudget;
-use Google\Ads\GoogleAds\V20\Services\AdGroupAdOperation;
-use Google\Ads\GoogleAds\V20\Services\MutateAdGroupAdsRequest;
-use Google\Ads\GoogleAds\V20\Resources\AdGroupAd;
-use Google\Ads\GoogleAds\V20\Enums\AdGroupAdStatusEnum\AdGroupAdStatus;
-use Google\Ads\GoogleAds\V20\Services\CampaignOperation;
-use Google\Ads\GoogleAds\V20\Services\MutateCampaignsRequest;
-use Google\Ads\GoogleAds\V20\Resources\Campaign;
-use Google\Ads\GoogleAds\V20\Enums\CampaignStatusEnum\CampaignStatus;
+use Google\Ads\GoogleAds\V22\Services\MutateAdGroupCriteriaRequest;
+use Google\Ads\GoogleAds\V22\Services\CampaignBudgetOperation;
+use Google\Ads\GoogleAds\V22\Services\MutateCampaignBudgetsRequest;
+use Google\Ads\GoogleAds\V22\Resources\CampaignBudget;
+use Google\Ads\GoogleAds\V22\Services\AdGroupAdOperation;
+use Google\Ads\GoogleAds\V22\Services\MutateAdGroupAdsRequest;
+use Google\Ads\GoogleAds\V22\Resources\AdGroupAd;
+use Google\Ads\GoogleAds\V22\Enums\AdGroupAdStatusEnum\AdGroupAdStatus;
+use Google\Ads\GoogleAds\V22\Services\CampaignOperation;
+use Google\Ads\GoogleAds\V22\Services\MutateCampaignsRequest;
+use Google\Ads\GoogleAds\V22\Resources\Campaign;
+use Google\Ads\GoogleAds\V22\Enums\CampaignStatusEnum\CampaignStatus;
 
 class GoogleAdsSbidService
 {
