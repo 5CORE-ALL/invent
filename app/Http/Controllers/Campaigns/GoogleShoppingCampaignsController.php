@@ -28,14 +28,19 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
-     * Hook for subclasses to scope the raw grid by campaign_name (e.g. SERP filter).
-     * Default is a no-op so the parent controller behaves unchanged.
+     * Scope the raw grid to non-SERP Shopping campaigns: exclude names containing
+     * the word "SEARCH" (e.g. "DRUM THRONES SEARCH" or "PARENT GS REST SEARCH.").
+     * Those rows live on the dedicated /google/shopping/google-serp page via
+     * {@see GoogleSerpCampaignsController::applyCampaignNameScope()}.
+     *
+     * Leading space gives word-boundary matching so substrings like "RESEARCH" are
+     * not affected. Subclasses (SERP) override this to flip the condition.
      *
      * @param  \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder  $query
      */
     protected function applyCampaignNameScope($query, string $columnExpression = 'campaign_name'): void
     {
-        // no-op by default
+        $query->whereRaw("UPPER({$columnExpression}) NOT LIKE ?", ['% SEARCH%']);
     }
 
     public function getRule(): JsonResponse
@@ -71,8 +76,8 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
-     * Run `budget:update-shopping` — writes daily Shopping budgets from the persisted SBGT rule (same as cron).
-     * Request JSON: `{ "campaign_ids": ["…"] }` — when sent from the raw grid, only those SHOPPING campaigns are updated (max 1000).
+     * Run `budget:update-shopping` — writes daily Shopping budgets from the persisted SBGT rule   (same as cron).
+     * Request JSON: `{ "campaign_ids": ["…"] }` — when sent from the raw grid, only those SHOPPING  campaigns are updated (max 1000).
      */
     public function pushSbgtShoppingBudgets(Request $request): JsonResponse
     {
@@ -89,8 +94,8 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
-     * Run `sbid:update` — updates Shopping campaign SBIDs from the persisted SBID rule (same as cron).
-     * Request JSON: `{ "campaign_ids": ["…"] }` — when sent from the raw grid, only those campaigns are considered (max 1000).
+     * Run `sbid:update` — updates Shopping campaign SBIDs from the persisted SBID rule (same as cron). 
+     * Request JSON: `{ "campaign_ids": ["…"] }` — when sent from the raw grid, only those campaigns  are considered (max 1000).
      */
     public function pushSbidShopping(Request $request): JsonResponse
     {

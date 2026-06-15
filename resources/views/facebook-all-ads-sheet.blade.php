@@ -2849,9 +2849,12 @@
         }
 
         function faasExportFilename(ext) {
-            const pageSlug = CH_FILTER
-                ? `${CH_FILTER.toLowerCase()}_ads`
-                : (PAGE_TYPE === 'all' ? 'all_ads' : `${PAGE_TYPE}_ads`);
+            // Compose CH lens + PAGE_TYPE so the export filename reflects the exact view
+            // (e.g. /facebook-ads/video → facebook_fb_video_ads_…csv,
+            //       /facebook-ads      → facebook_fb_ads_…csv).
+            const chSlug   = CH_FILTER ? `${CH_FILTER.toLowerCase()}_` : '';
+            const typeSlug = PAGE_TYPE === 'all' ? (CH_FILTER ? '' : 'all_') : `${PAGE_TYPE}_`;
+            const pageSlug = (chSlug + typeSlug + 'ads').replace(/_+/g, '_').replace(/^_|_$/g, '');
             const dateStr  = new Date().toISOString().slice(0, 10);
             return `facebook_${pageSlug}_${dateStr}.${ext}`;
         }

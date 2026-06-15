@@ -659,11 +659,57 @@
                         <li>
                             <a href="{{ route('facebook.all.ads.sheet') }}">Meta Ads All</a>
                         </li>
-                        <li>
-                            <a href="{{ route('facebook.ads.channel') }}">Facebook</a>
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarFacebookAdsTypes" aria-expanded="false"
+                                aria-controls="sidebarFacebookAdsTypes">
+                                <span>Facebook</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarFacebookAdsTypes">
+                                <ul class="side-nav-third-level">
+                                    <li>
+                                        <a href="{{ route('facebook.ads.channel') }}">All</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('facebook.ads.channel.group.video') }}">G Video</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('facebook.ads.channel.group.carousal') }}">G Carousal</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('facebook.ads.channel.parent.video') }}">P Video</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('facebook.ads.channel.parent.carousal') }}">P Carousal</a>
+                                    </li>
+                                </ul>
+                            </div>
                         </li>
-                        <li>
-                            <a href="{{ route('instagram.ads.channel') }}">Instagram</a>
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarInstagramAdsTypes" aria-expanded="false"
+                                aria-controls="sidebarInstagramAdsTypes">
+                                <span>Instagram</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarInstagramAdsTypes">
+                                <ul class="side-nav-third-level">
+                                    <li>
+                                        <a href="{{ route('instagram.ads.channel') }}">All</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('instagram.ads.channel.group.video') }}">G Video</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('instagram.ads.channel.group.carousal') }}">G Carousal</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('instagram.ads.channel.parent.video') }}">P Video</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('instagram.ads.channel.parent.carousal') }}">P Carousal</a>
+                                    </li>
+                                </ul>
+                            </div>
                         </li>
                         <li>
                             <a href="{{ route('facebook.video.ads.sheet') }}">Facebook Video Ads Sheet</a>

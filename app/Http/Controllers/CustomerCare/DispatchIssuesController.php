@@ -141,6 +141,10 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $isReplacement = strcasecmp($action, 'Replacement') === 0 || strcasecmp($action, 'Alternate Sent') === 0;
 
         // Same idea for the "Issue?" sub-fields (column `what_happened`).
+        // `issue_notes` is shared free-text used by both the Wrong Item Sent
+        // sub-form AND the generic notes box shown for Damaged / 0 Stock /
+        // custom user-added issues. Only Wrong Quantity Sent suppresses it
+        // (that variant has its own structured radio + qty fields).
         $whatHappened = isset($validated['what_happened']) ? trim((string) $validated['what_happened']) : '';
         $isWrongItem  = strcasecmp($whatHappened, 'Wrong Item Sent') === 0;
         $isWrongQty   = strcasecmp($whatHappened, 'Wrong Quantity Sent') === 0;
@@ -163,7 +167,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 : null,
             // Issue? sub-fields:
             'wrong_sent_sku'          => $isWrongItem && $wrongSku !== '' ? $wrongSku : null,
-            'issue_notes'             => $isWrongItem && $issueNotes !== '' ? $issueNotes : null,
+            'issue_notes'             => (! $isWrongQty && $issueNotes !== '') ? $issueNotes : null,
             'qty_mismatch_type'       => $isWrongQty && in_array($qtyType, ['less', 'more'], true) ? $qtyType : null,
             'qty_sent'                => $isWrongQty && isset($validated['qty_sent']) && $validated['qty_sent'] !== '' ? (float) $validated['qty_sent'] : null,
             'qty_ordered'             => $isWrongQty && isset($validated['qty_ordered']) && $validated['qty_ordered'] !== '' ? (float) $validated['qty_ordered'] : null,

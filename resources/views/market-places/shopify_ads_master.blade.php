@@ -171,8 +171,17 @@
                         <select id="sam-trend-channel" class="form-select form-select-sm" style="width:auto;">
                             <option value="__total__">All channels</option>
                             <option value="Google Shopping">Google Shopping</option>
+                            <option value="Google SERP">Google SERP</option>
                             <option value="Facebook">Facebook</option>
+                            <option value="Facebook · G Video">Facebook · G Video</option>
+                            <option value="Facebook · G Carousal">Facebook · G Carousal</option>
+                            <option value="Facebook · P Video">Facebook · P Video</option>
+                            <option value="Facebook · P Carousal">Facebook · P Carousal</option>
                             <option value="Instagram">Instagram</option>
+                            <option value="Instagram · G Video">Instagram · G Video</option>
+                            <option value="Instagram · G Carousal">Instagram · G Carousal</option>
+                            <option value="Instagram · P Video">Instagram · P Video</option>
+                            <option value="Instagram · P Carousal">Instagram · P Carousal</option>
                         </select>
                         <select id="sam-trend-days" class="form-select form-select-sm" style="width:110px;">
                             <option value="7">7 Days</option>
@@ -235,8 +244,12 @@
             }
 
             function updateBadges(rows) {
+                // Skip "sub-row" channels (Facebook · G Video, etc.) when summing — they're
+                // typed slices of the parent Facebook / Instagram rows, not separate channels,
+                // so including them would double-count the rolled-up totals.
                 let spend = 0, clicks = 0, sold = 0, sales = 0;
                 rows.forEach(function (r) {
+                    if (r && r.is_sub_row) return;
                     spend  += Number(r.spend  || 0);
                     clicks += Number(r.clicks || 0);
                     sold   += Number(r.sold   || 0);
@@ -258,17 +271,31 @@
 
             const channelLinks = {
                 'Google Shopping': "{{ route('google.shopping.campaigns') }}",
+                'Google SERP':     "{{ route('google.serp.campaigns') }}",
                 'Facebook':        "{{ route('facebook.ads.channel') }}",
+                'Facebook · G Video':    "{{ route('facebook.ads.channel.group.video') }}",
+                'Facebook · G Carousal': "{{ route('facebook.ads.channel.group.carousal') }}",
+                'Facebook · P Video':    "{{ route('facebook.ads.channel.parent.video') }}",
+                'Facebook · P Carousal': "{{ route('facebook.ads.channel.parent.carousal') }}",
                 'Instagram':       "{{ route('instagram.ads.channel') }}",
+                'Instagram · G Video':    "{{ route('instagram.ads.channel.group.video') }}",
+                'Instagram · G Carousal': "{{ route('instagram.ads.channel.group.carousal') }}",
+                'Instagram · P Video':    "{{ route('instagram.ads.channel.parent.video') }}",
+                'Instagram · P Carousal': "{{ route('instagram.ads.channel.parent.carousal') }}",
             };
 
             function channelFormatter(cell) {
                 const name = cell.getValue() || '';
                 const url  = channelLinks[name];
+                const row  = cell.getRow().getData() || {};
+                // Sub-rows ("Facebook · G Video", etc.) indent + lighten so they read
+                // visually as children of the parent channel above them in the table.
+                const indent = row.is_sub_row ? 'padding-left:18px;color:#475569;' : '';
+                const weight = row.is_sub_row ? 'font-weight:500;' : 'font-weight:600;';
                 if (url) {
-                    return '<a href="' + url + '" target="_blank" style="color:inherit;text-decoration:underline;font-weight:600;">' + name + '</a>';
+                    return '<a href="' + url + '" target="_blank" style="color:inherit;text-decoration:underline;' + weight + indent + '">' + name + '</a>';
                 }
-                return name;
+                return '<span style="' + weight + indent + '">' + name + '</span>';
             }
 
             const dataUrl = "{{ route('shopify.ads.master.data') }}";

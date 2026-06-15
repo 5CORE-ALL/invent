@@ -1082,6 +1082,13 @@
                 if (!isNaN(s) && s > 0) {
                     return s;
                 }
+                // Lbid fallback — when a low-traffic day has no fresh sbid recommendation, the
+                // grid still shows the most recent non-zero recommendation in `last_sbid` (the
+                // "Lbid" column). Honour that so the row isn't silently skipped on push.
+                var l = parseFloat(row.last_sbid);
+                if (!isNaN(l) && l > 0) {
+                    return l;
+                }
                 return null;
             }
 

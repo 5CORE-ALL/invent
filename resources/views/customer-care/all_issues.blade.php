@@ -673,6 +673,27 @@
                                         </div>
                                     </div>
                                 </div>
+
+                                {{-- 3. Generic notes — shown for any other issue (built-in like
+                                     0 Stock / Damaged, or any custom user-added issue). --}}
+                                <div class="border rounded p-3 d-none" id="customIssueSubsection" data-issue-key="generic">
+                                    <div class="fw-semibold mb-2 small text-uppercase text-muted" id="customIssueSubsectionTitle">
+                                        Issue details
+                                    </div>
+                                    <div class="row g-2 align-items-end">
+                                        <div class="col-12">
+                                            <label for="hold_issue_custom_issue_notes" class="form-label small mb-1">
+                                                Notes <span class="text-muted">(max 200 chars)</span>
+                                            </label>
+                                            <textarea class="form-control" id="hold_issue_custom_issue_notes"
+                                                maxlength="200" rows="3"
+                                                placeholder="Describe what happened for this issue..."></textarea>
+                                            <div class="form-text text-end small">
+                                                <span id="customIssueNotesCharCount">0</span> / 200
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <div class="col-md-6">
@@ -2350,12 +2371,16 @@
                 }
             }
 
-            // ── Issue? sub-sections (Wrong Item Sent / Wrong Quantity Sent) ──
+            // ── Issue? sub-sections (Wrong Item Sent / Wrong Quantity Sent / Generic) ──
+            // Built-ins with their own structured forms get specific keys; everything
+            // else (other built-ins like Damaged / 0 Stock, plus any custom user-added
+            // issue) falls through to 'generic' so we can show a free-text Notes box.
             function whatHappenedSubsectionKey(value) {
                 const v = String(value || '').trim().toLowerCase();
+                if (!v)                          return '';
                 if (v === 'wrong item sent')     return 'wrong_item';
                 if (v === 'wrong quantity sent') return 'wrong_qty';
-                return '';
+                return 'generic';
             }
 
             function clearWrongItemSubsection() {
@@ -2383,18 +2408,35 @@
                 document.getElementById('qtyOrderedWrap')?.classList.add('d-none');
             }
 
+            function clearCustomIssueSubsection() {
+                const ta  = document.getElementById('hold_issue_custom_issue_notes');
+                const cnt = document.getElementById('customIssueNotesCharCount');
+                if (ta)  ta.value = '';
+                if (cnt) cnt.textContent = '0';
+            }
+
             function toggleWhatHappenedSubsection() {
                 const sel = document.getElementById('hold_issue_what_happened');
                 const key = whatHappenedSubsectionKey(sel?.value);
                 const wrap = document.getElementById('whatHappenedSubsection');
                 const wi = document.getElementById('wrongItemSubsection');
                 const wq = document.getElementById('wrongQtySubsection');
+                const cs = document.getElementById('customIssueSubsection');
                 if (!wrap) return;
                 wrap.classList.toggle('d-none', !key);
                 wi?.classList.toggle('d-none', key !== 'wrong_item');
                 wq?.classList.toggle('d-none', key !== 'wrong_qty');
+                cs?.classList.toggle('d-none', key !== 'generic');
+                // Use the actual selected label as the section title so users
+                // see e.g. "Damaged details" / "<custom> details".
+                if (key === 'generic') {
+                    const t = document.getElementById('customIssueSubsectionTitle');
+                    const label = String(sel?.value || '').trim();
+                    if (t) t.textContent = (label ? label + ' details' : 'Issue details');
+                }
                 if (key !== 'wrong_item') clearWrongItemSubsection();
                 if (key !== 'wrong_qty')  clearWrongQtySubsection();
+                if (key !== 'generic')    clearCustomIssueSubsection();
             }
 
             // Reveal qty-sent + qty-ordered inputs when either Less/More radio is chosen.
@@ -2674,6 +2716,7 @@
                 clearOtherSubsection();
                 clearWrongItemSubsection();
                 clearWrongQtySubsection();
+                clearCustomIssueSubsection();
                 toggleRootCauseRemarkField();
                 toggleAction1RemarkField();
                 toggleActionSubsection();
@@ -2712,6 +2755,11 @@
                     document.getElementById('hold_issue_qty_ordered').value =
                         (record.qty_ordered != null && record.qty_ordered !== '') ? record.qty_ordered : '';
                     refreshQtyMismatchVisibility();
+                } else if (whKey === 'generic') {
+                    const ta = document.getElementById('hold_issue_custom_issue_notes');
+                    if (ta) ta.value = record.issue_notes || '';
+                    const cnt = document.getElementById('customIssueNotesCharCount');
+                    if (cnt) cnt.textContent = String((record.issue_notes || '').length);
                 }
                 issueInput.value = record.issue || '';
                 document.getElementById('hold_issue_order_number').value = record.order_number || '';
@@ -3000,6 +3048,17 @@
                     qtyMismatchType = r;
                     qtySentVal = qs;
                     qtyOrderedVal = qo;
+                } else if (whSubKey === 'generic') {
+                    // Free-text notes for any other built-in (Damaged / 0 Stock)
+                    // or custom user-added issue. Empty is allowed; only enforce
+                    // the 200-char cap that matches the DB column.
+                    const n = (document.getElementById('hold_issue_custom_issue_notes')?.value || '').trim();
+                    if (n.length > 200) {
+                        showAlert('Notes must be at most 200 characters.');
+                        document.getElementById('hold_issue_custom_issue_notes')?.focus();
+                        return;
+                    }
+                    issueNotesVal = n;
                 }
 
                 try {
@@ -3718,6 +3777,15 @@
                     const cnt = document.getElementById('issueNotesCharCount');
                     issueNotesEl.addEventListener('input', function () {
                         if (cnt) cnt.textContent = String(issueNotesEl.value.length);
+                    });
+                }
+
+                // Generic issue notes (Damaged / 0 Stock / custom): same live counter.
+                const customIssueNotesEl = document.getElementById('hold_issue_custom_issue_notes');
+                if (customIssueNotesEl) {
+                    const cnt = document.getElementById('customIssueNotesCharCount');
+                    customIssueNotesEl.addEventListener('input', function () {
+                        if (cnt) cnt.textContent = String(customIssueNotesEl.value.length);
                     });
                 }
 

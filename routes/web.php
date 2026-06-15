@@ -3360,7 +3360,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Instagram (CH=Insta). Both reuse the /facebook-all-ads-sheet/* data
     // + action endpoints; only the CH filter differs.
     Route::get('/facebook-ads',                            [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'facebookIndex'])->name('facebook.ads.channel');
+    // Facebook channel → one child page per ad_type (CH=FB intersected with that single ad_type).
+    Route::get('/facebook-ads/group-video',                [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'facebookGroupVideoIndex'])->name('facebook.ads.channel.group.video');
+    Route::get('/facebook-ads/group-carousal',             [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'facebookGroupCarousalIndex'])->name('facebook.ads.channel.group.carousal');
+    Route::get('/facebook-ads/parent-video',               [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'facebookParentVideoIndex'])->name('facebook.ads.channel.parent.video');
+    Route::get('/facebook-ads/parent-carousal',            [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'facebookParentCarousalIndex'])->name('facebook.ads.channel.parent.carousal');
+
     Route::get('/instagram-ads',                           [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramIndex'])->name('instagram.ads.channel');
+    // Instagram channel → one child page per ad_type (CH=Insta intersected with that single ad_type).
+    Route::get('/instagram-ads/group-video',               [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramGroupVideoIndex'])->name('instagram.ads.channel.group.video');
+    Route::get('/instagram-ads/group-carousal',            [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramGroupCarousalIndex'])->name('instagram.ads.channel.group.carousal');
+    Route::get('/instagram-ads/parent-video',              [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramParentVideoIndex'])->name('instagram.ads.channel.parent.video');
+    Route::get('/instagram-ads/parent-carousal',           [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramParentCarousalIndex'])->name('instagram.ads.channel.parent.carousal');
 
     // ── TikTok Video Ads — fully independent module (own tables, own
     // controller). Same page layout / filters as the Meta sheet but a

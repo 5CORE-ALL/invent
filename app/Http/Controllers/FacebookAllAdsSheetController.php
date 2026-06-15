@@ -20,10 +20,20 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
  */
 class FacebookAllAdsSheetController extends Controller
 {
-    /** Allowed ad-type values for each page-type filter. */
+    /**
+     * Allowed ad-type values for each page-type filter. The first two keys
+     * (`video` / `carousal`) are the legacy combined buckets that back the
+     * standalone `/facebook-video-ads-sheet` + `/facebook-carousal-ads-sheet`
+     * pages. The four single-type keys back the per-ad_type child pages
+     * under `/facebook-ads/*` and `/instagram-ads/*`.
+     */
     private const TYPE_FILTERS = [
-        'video'    => ['GROUP VIDEO',    'PARENT VIDEO'],
-        'carousal' => ['GROUP CAROUSAL', 'PARENT CAROUSAL'],
+        'video'           => ['GROUP VIDEO',    'PARENT VIDEO'],
+        'carousal'        => ['GROUP CAROUSAL', 'PARENT CAROUSAL'],
+        'group-video'     => ['GROUP VIDEO'],
+        'group-carousal'  => ['GROUP CAROUSAL'],
+        'parent-video'    => ['PARENT VIDEO'],
+        'parent-carousal' => ['PARENT CAROUSAL'],
     ];
 
     /** All-ads page (no ad_type filter, full dropdown). */
@@ -63,6 +73,50 @@ class FacebookAllAdsSheetController extends Controller
         ]);
     }
 
+    /**
+     * Render a child page lensed to a single (CH, ad_type) pair. Backs the eight
+     * `/facebook-ads/*` and `/instagram-ads/*` single-type children. The shared
+     * blade only needs `pageType` + `chFilter` + an `allowedAdTypes` whitelist.
+     */
+    private function renderTypedChannelChild(string $chFilter, string $typeKey, string $shortLabel): \Illuminate\View\View
+    {
+        $allowed = self::TYPE_FILTERS[$typeKey] ?? FacebookAllAdsSheet::AD_TYPES;
+        $channelLabel = $chFilter === 'FB' ? 'Facebook' : 'Instagram';
+
+        return view('facebook-all-ads-sheet', [
+            'pageType'       => $typeKey,
+            'pageTitle'      => $channelLabel.' — '.$shortLabel,
+            'pageSubtitle'   => 'CH = '.$chFilter.' · '.implode(' / ', $allowed).' rows',
+            'allowedAdTypes' => $allowed,
+            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
+            'chFilter'       => $chFilter,
+        ]);
+    }
+
+    /** Facebook → G VIDEO child page: CH = "FB" + ad_type = "GROUP VIDEO". */
+    public function facebookGroupVideoIndex(): \Illuminate\View\View
+    {
+        return $this->renderTypedChannelChild('FB', 'group-video', 'G Video');
+    }
+
+    /** Facebook → G CAROUSAL child page: CH = "FB" + ad_type = "GROUP CAROUSAL". */
+    public function facebookGroupCarousalIndex(): \Illuminate\View\View
+    {
+        return $this->renderTypedChannelChild('FB', 'group-carousal', 'G Carousal');
+    }
+
+    /** Facebook → P VIDEO child page: CH = "FB" + ad_type = "PARENT VIDEO". */
+    public function facebookParentVideoIndex(): \Illuminate\View\View
+    {
+        return $this->renderTypedChannelChild('FB', 'parent-video', 'P Video');
+    }
+
+    /** Facebook → P CAROUSAL child page: CH = "FB" + ad_type = "PARENT CAROUSAL". */
+    public function facebookParentCarousalIndex(): \Illuminate\View\View
+    {
+        return $this->renderTypedChannelChild('FB', 'parent-carousal', 'P Carousal');
+    }
+
     /** Instagram channel page — same sheet, lensed to CH = "Insta" rows. */
     public function instagramIndex()
     {
@@ -74,6 +128,30 @@ class FacebookAllAdsSheetController extends Controller
             'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
             'chFilter'       => 'Insta',
         ]);
+    }
+
+    /** Instagram → G VIDEO child page: CH = "Insta" + ad_type = "GROUP VIDEO". */
+    public function instagramGroupVideoIndex(): \Illuminate\View\View
+    {
+        return $this->renderTypedChannelChild('Insta', 'group-video', 'G Video');
+    }
+
+    /** Instagram → G CAROUSAL child page: CH = "Insta" + ad_type = "GROUP CAROUSAL". */
+    public function instagramGroupCarousalIndex(): \Illuminate\View\View
+    {
+        return $this->renderTypedChannelChild('Insta', 'group-carousal', 'G Carousal');
+    }
+
+    /** Instagram → P VIDEO child page: CH = "Insta" + ad_type = "PARENT VIDEO". */
+    public function instagramParentVideoIndex(): \Illuminate\View\View
+    {
+        return $this->renderTypedChannelChild('Insta', 'parent-video', 'P Video');
+    }
+
+    /** Instagram → P CAROUSAL child page: CH = "Insta" + ad_type = "PARENT CAROUSAL". */
+    public function instagramParentCarousalIndex(): \Illuminate\View\View
+    {
+        return $this->renderTypedChannelChild('Insta', 'parent-carousal', 'P Carousal');
     }
 
     /** Carousal-only page — shows GROUP CAROUSAL + PARENT CAROUSAL rows. */
