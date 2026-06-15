@@ -182,13 +182,18 @@ class Kernel extends ConsoleKernel
         $ist = fn ($event) => $this->istBusinessWindow($event);
 
         // Proof cron + schedule:run work: check storage/logs/scheduler-activity-*.log (one line/minute).
+        // withoutOverlapping(2) guards against the rare case where logging is slow enough that two ticks
+        // would otherwise stack — keeps the heartbeat truly one-per-minute.
         $schedule->call(function () {
             Log::info('Scheduler heartbeat at ' . now());
             Log::channel('scheduler_activity')->info('schedule:run_heartbeat', [
                 'at' => now()->toIso8601String(),
                 'app_tz' => config('app.timezone'),
             ]);
-        })->everyMinute()->name('scheduler-heartbeat');
+        })
+            ->everyMinute()
+            ->name('scheduler-heartbeat')
+            ->withoutOverlapping(2);
 
         /*
         |--------------------------------------------------------------------------
@@ -255,13 +260,17 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Clear Laravel log periodically
+        // Clear Laravel log periodically. withoutOverlapping prevents a slow truncate
+        // (50MB+ rewrite on disk) from stacking ticks while the file lock is held.
         $schedule->call(function () {
             $logPath = storage_path('logs/laravel.log');
             if (file_exists($logPath) && filesize($logPath) > 50 * 1024 * 1024) { // Only if > 50MB
                 file_put_contents($logPath, '');
             }
-        })->everyFiveMinutes()->name('clear-laravel-log');
+        })
+            ->everyFiveMinutes()
+            ->name('clear-laravel-log')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE);
 
         /*
         |--------------------------------------------------------------------------
@@ -883,7 +892,8 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Reset SBID status daily
+        // Reset SBID status daily — must complete before sbid:update at 09:18 IST.
+        // withoutOverlapping(2) keeps the daily reset single-fire even if a tick is delayed.
         $schedule->call(function () {
             try {
                 DB::connection('apicentral')
@@ -893,7 +903,11 @@ class Kernel extends ConsoleKernel
             } catch (\Throwable $e) {
                 Log::error('Scheduler: Failed to reset sbid_status - ' . $e->getMessage());
             }
-        })->dailyAt('09:17')->timezone('Asia/Kolkata')->name('reset-sbid-status');
+        })
+            ->dailyAt('09:17')
+            ->timezone('Asia/Kolkata')
+            ->name('reset-sbid-status')
+            ->withoutOverlapping(2);
 
         /*
         |--------------------------------------------------------------------------
