@@ -78,6 +78,8 @@ Important: although the browser URL can be `/bullet-points`, the active blade fe
    - `amazon_metrics`
    - `temu_metrics`
    - `reverb_metrics`
+   - `wayfair_metrics`
+   - `bestbuy_metrics`
    - `shopify_metrics`
    - `shopify_pls_metrics`
 8. Each product row receives:
@@ -129,6 +131,8 @@ Important: although the browser URL can be `/bullet-points`, the active blade fe
   - `amazon`
   - `temu`
   - `reverb`
+  - `wayfair`
+  - `bestbuy`
   - `shopify_main`
   - `shopify_pls`
 - For each update:
@@ -146,11 +150,13 @@ Important: although the browser URL can be `/bullet-points`, the active blade fe
 - Shopify manual download links (`Download Product Manual`) are preserved above the generated bullet block when they exist near the top of the product HTML.
 - Shopify-to-local pull is available from the Bullet Points page via the `Shopify Pull` toolbar button, which opens a modal for filtered-SKU/background monitoring. The modal contains Run in BG, Pause, Resume, Stop, progress, and recent log messages. Individual SKU pulls use the row action download icon directly: it opens a Bootstrap confirmation modal, changes the row button to Syncing after confirmation, starts the same background worker, and shows a toast without opening the progress modal. Before starting, the UI confirms that Shopify bullet points will update the existing Product Master bullet fields. Refresh does not stop the pull. Progress is stored in `storage/app/shopify-bullet-pull/job.json`, the page polls status after refresh, and the worker saves only to `product_master.bullet1` through `bullet5`, waits 6s between SKUs, uses backend 429 retry/backoff, reuses catalog product IDs when possible, and writes persistent details to `storage/logs/shopify-bullet-pull.log`. It does not write to Shopify or push marketplaces. Pull mapping is store-aware: if `shopify_catalog_variants` has a SKU row, its `store` decides whether to use Main or PLS Shopify before falling back to legacy `shopify_skus`. For each SKU, pull checks the public storefront product JSON first (`www.5core.com/products/{handle}.js`) so it imports the user-served product description. If storefront content is unavailable or has no bullets, it falls back to Shopify Admin API `body_html`; if live sources return only 0-1 bullets and cached catalog HTML has a richer bullet block, it uses cached catalog as the last fallback. Extraction fallbacks include checkmark/emoji `Key Features` lines, plain `About Item` line bullets, colon-label bullets such as `Feature: description`, spreadsheet-pasted bracket bullets separated by `<br>` inside one paragraph, inline `About Item:【...】【...】` bracket bullets collapsed into one paragraph, top bracket paragraphs/headings separated by blank/non-breaking-space spacer paragraphs, multiple bold-label bullets inside one paragraph, plain colon-label paragraphs after bold-label bullets, mixed `About Item` bracket bullets followed by bold-label paragraphs, and leading `About Item` plus bold-label paragraphs/headings with non-breaking spaces/extra attributes and separators either inside or outside `<strong>`. `About Item` bracket paragraphs are prioritized before broad bold-label extraction so specification tables are not mistaken for bullet points. The spaced bracket fallback requires a real bracket marker so bold-label paragraphs that only contain non-breaking spaces are not mistaken for bracket bullets. Bold-label cleanup stops before adjacent description headings even when tags/images remove spacing. Bracket bullet cleanup stops before later description/features/spec/package/about-brand sections so long-form content is not appended to the last bullet, while normal sentence text like `This product features...` is not treated as a section heading.
 - The Bullet Points table toolbar includes a bullet-status filter for Product Master bullets present/missing and exact bullet counts from 1 to 5. This filter also controls which SKUs are included when running the filtered Shopify pull.
-- eBay1 (`E1`) fetches the current seller Description HTML and replaces only the first visible bullet list (`ol`/`ul`), preserving the rest of the description.
-- E1 preserves the exact user-entered bullet text inside each list item; it does not strip leading numbers or symbols.
-- eBay item-specific bullet fields may be category-limited (observed max 65 chars for one category), so E1 intentionally updates visible seller-description bullets instead of item-specific bullet fields.
+- eBay1 (`E1`) and eBay2 (`E2`) fetch the current seller Description HTML and replace only the first visible bullet block above the product description, preserving the rest of the description. They handle normal top list blocks (`ol`/`ul`), top Google Sheets-style bold-label paragraphs separated by `<br>` tags, top bracket-label paragraphs such as `【Feature】 benefit`, and Shopify/eBay `Highlighted Features` sections made from multiple rich-text `<p>` bullet paragraphs before the product description. When a rich top bullet block and duplicate top list both exist before the product description, the duplicate top list is removed. Lists after a product-description heading are treated as lower/spec/package content and are not replaced.
+- E1/E2 preserve exact user-entered bullet text inside seller-description list items.
+- eBay3 (`E3`) fetches the current item and updates Item Specifics `Bullet Point 1` through `Bullet Point 5`, preserving existing non-bullet specifics and leaving seller Description HTML unchanged. E3 bullet lines are trimmed to the configured eBay item-specific max length (`EBAY_ITEM_SPECIFIC_BULLET_MAX_LENGTH`, default 65), and E3 adds a configurable `Type` fallback (`EBAY_TYPE_FALLBACK_VALUE`, default `Audio Connector`) when the listing has no existing `Type`.
 - Temu (`T`) updates only the configured bullet/summary field (`goodsSummary` by default) and local `temu_metrics.goods_summary`; it does not send or save `goodsDesc` during bullet pushes.
 - Reverb (`R`) updates the visible `Highlighted Features` block in the listing description because Reverb's public page/API did not expose the separate `features` field for the tested listing. It preserves the rest of the description, logs request/response details, and preserves exact user-entered feature text.
+- Wayfair (`W`) updates Product Catalog `keyFeatures` through `WayfairApiService::updateBulletPoints()`, sending the current bullet lines as Wayfair key features.
+- Best Buy (`B`) updates only Mirakl `bulletPoints` for channel `bestbuyusa` through `BestBuyApiService::updateBulletPoints()`; it no longer writes bullet pushes to `longDescription` or `productDescription`.
 
 ## Marketplace Service Map
 
@@ -161,6 +167,8 @@ Important: although the browser URL can be `/bullet-points`, the active blade fe
 - `amazon` -> `App\Services\AmazonSpApiService`
 - `temu` -> `App\Services\TemuApiService`
 - `reverb` -> `App\Services\ReverbApiService`
+- `wayfair` -> `App\Services\WayfairApiService`
+- `bestbuy` -> `App\Services\BestBuyApiService`
 - `shopify_main` -> `App\Services\ShopifyApiService`
 - `shopify_pls` -> `App\Services\ShopifyPLSApiService`
 
@@ -174,6 +182,6 @@ Important: although the browser URL can be `/bullet-points`, the active blade fe
 - Empty bullet text can still be saved locally, but many services reject empty bullet text.
 - `temu_metrics` also updates `goods_summary` when that column exists.
 - Shopify bullet pushes should not overwrite the product description section; they replace only the top bullet/About Item block and preserve the remaining current Shopify `body_html`.
-- eBay1 bullet pushes edit the listing Description field, but only by replacing the first visible bullet list and preserving the rest of the existing seller description HTML.
+- eBay1/eBay2 bullet pushes edit the listing Description field, but only by replacing the first visible bullet block and preserving the rest of the existing seller description HTML. E3 bullet pushes update item-specific bullet fields instead.
 - Storefront/theme caching may delay visible Shopify changes.
 - AI Generate uses `services.anthropic.model` with a Sonnet 4 default and strips common bullet/check symbols from generated lines before filling the edit modal fields. `Regenerate Existing Bullet Points with AI` sends the current five bullet fields as source content and asks AI to rewrite them using the saved prompt rules. Each bullet field also has a `Change` action that opens a prompt modal and rewrites only that one bullet via `/bullet-point-master/rewrite-bullet`, sending the product title, optional AI prompt details, target bullet, and all five current bullets as context so the rewrite stays related and does not randomize the remaining points. After an AI rewrite, the affected fields show `Revert` so the user can switch back to the previous text before saving.

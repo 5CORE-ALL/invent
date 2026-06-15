@@ -112,12 +112,20 @@ class BulletPointMasterController extends Controller
                 $marketplace = strtolower(trim($u['marketplace']));
                 $requestText = $this->cleanBulletText((string) ($u['bullet_points'] ?? ''));
                 $masterText = $this->loadMasterBulletTextForSku($sku);
-                $text = $masterText ?? $requestText;
+                $text = $requestText !== '' ? $requestText : ($masterText ?? '');
 
                 if (! in_array($marketplace, $allowedMarketplaces, true)) {
                     $results[$marketplace] = ['success' => false, 'message' => 'Unknown or unsupported marketplace'];
                     continue;
                 }
+
+                Log::info('BulletPointMaster marketplace push started', [
+                    'sku' => $sku,
+                    'marketplace' => $marketplace,
+                    'request_bullet_count' => $this->countBulletLines($requestText),
+                    'master_bullet_count' => $this->countBulletLines($masterText ?? ''),
+                    'using_master_bullets' => $requestText === '' && $masterText !== null,
+                ]);
 
                 $serviceResult = $this->invokeMarketplacePushWithRetries(
                     fn () => $this->callMarketplaceService($marketplace, $sku, $text),
@@ -135,6 +143,16 @@ class BulletPointMasterController extends Controller
                     ? ($serviceResult['message'] ?? 'Updated')
                     : ($serviceResult['message'] ?? 'Unable to update this marketplace');
                 $this->savePushStatus($sku, $marketplace, $pushStatus, $pushMessage);
+                Log::info('BulletPointMaster marketplace push finished', [
+                    'sku' => $sku,
+                    'marketplace' => $marketplace,
+                    'success' => $success,
+                    'local_saved' => $tableSaved,
+                    'push_status' => $pushStatus,
+                    'message' => $pushMessage,
+                    'attempts' => (int) ($serviceResult['attempts'] ?? 1),
+                    'retried' => (bool) ($serviceResult['retried'] ?? false),
+                ]);
                 $results[$marketplace] = [
                     'success' => $success,
                     'marketplace_success' => $success,
@@ -805,6 +823,11 @@ class BulletPointMasterController extends Controller
         return implode("\n", $cleaned);
     }
 
+    private function countBulletLines(string $text): int
+    {
+        return count(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', trim($text)) ?: []), fn ($line) => $line !== ''));
+    }
+
     private function marketplaceTableMap(): array
     {
         return [
@@ -815,6 +838,8 @@ class BulletPointMasterController extends Controller
             'amazon' => 'amazon_metrics',
             'temu' => 'temu_metrics',
             'reverb' => 'reverb_metrics',
+            'wayfair' => 'wayfair_metrics',
+            'bestbuy' => 'bestbuy_metrics',
             'shopify_main' => 'shopify_metrics',
             'shopify_pls' => 'shopify_pls_metrics',
         ];
@@ -1343,6 +1368,8 @@ class BulletPointMasterController extends Controller
             'amazon' => \App\Services\AmazonSpApiService::class,
             'temu' => \App\Services\TemuApiService::class,
             'reverb' => \App\Services\ReverbApiService::class,
+            'wayfair' => \App\Services\WayfairApiService::class,
+            'bestbuy' => \App\Services\BestBuyApiService::class,
             'shopify_main' => \App\Services\ShopifyApiService::class,
             'shopify_pls' => \App\Services\ShopifyPLSApiService::class,
         ];

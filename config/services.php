@@ -295,6 +295,10 @@ return [
         'mpn_fallback_value' => env('EBAY_MPN_FALLBACK_VALUE', ''),
         /** If Brand is required but missing from ItemSpecifics, use this (override with EBAY_BRAND_FALLBACK_VALUE). */
         'brand_fallback_value' => env('EBAY_BRAND_FALLBACK_VALUE', '5 Core'),
+        /** Max chars eBay accepts for item-specific Bullet Point values in common categories. */
+        'item_specific_bullet_max_length' => (int) env('EBAY_ITEM_SPECIFIC_BULLET_MAX_LENGTH', 65),
+        /** Required by some categories when revising item specifics. Override with EBAY_TYPE_FALLBACK_VALUE if needed. */
+        'type_fallback_value' => env('EBAY_TYPE_FALLBACK_VALUE', 'Audio Connector'),
     ],
     'ebay1' => [
         'app_id' => env('EBAY_APP_ID'),

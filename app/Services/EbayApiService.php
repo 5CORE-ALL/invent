@@ -1631,9 +1631,30 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         if (is_array($currentDescription)) {
             $currentDescription = '';
         }
-        $updatedDescription = EbayTradingReviseItem::replaceFirstDescriptionBulletList((string) $currentDescription, $bulletPoints);
+        $replacementMeta = [];
+        $updatedDescription = EbayTradingReviseItem::replaceFirstDescriptionBulletList((string) $currentDescription, $bulletPoints, $replacementMeta);
+        $bulletCount = count(array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', trim($bulletPoints)) ?: []), fn ($line) => $line !== '')));
 
-        return EbayTradingReviseItem::reviseItemDescription(
+        Log::info('eBay1 bullet description prepared', [
+            'sku_or_identifier' => $identifier,
+            'item_id' => (string) $itemId,
+            'strategy' => $replacementMeta['strategy'] ?? null,
+            'offset' => $replacementMeta['offset'] ?? null,
+            'replaced_length' => $replacementMeta['replaced_length'] ?? null,
+            'removed_extra_top_list_count' => $replacementMeta['removed_extra_top_list_count'] ?? 0,
+            'removed_extra_top_list_length' => $replacementMeta['removed_extra_top_list_length'] ?? 0,
+            'description_offset' => $replacementMeta['description_offset'] ?? null,
+            'bullet_count' => $bulletCount,
+            'target_api_field' => 'Item.Description',
+            'target_section' => 'top bullet block before product description',
+            'seller_html_changed_for_bullet_section' => sha1((string) $currentDescription) !== sha1($updatedDescription),
+            'current_seller_html_length' => strlen((string) $currentDescription),
+            'updated_seller_html_length' => strlen($updatedDescription),
+            'current_seller_html_sha1' => sha1((string) $currentDescription),
+            'updated_seller_html_sha1' => sha1($updatedDescription),
+        ]);
+
+        $result = EbayTradingReviseItem::reviseItemDescription(
             $this->endpoint,
             $this->compatLevel,
             $this->devId,
@@ -1642,8 +1663,19 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             $this->siteId,
             $token,
             (string) $itemId,
-            $updatedDescription
+            $updatedDescription,
+            'seller description bullet section'
         );
+
+        Log::info('eBay1 bullet description push result', [
+            'sku_or_identifier' => $identifier,
+            'item_id' => (string) $itemId,
+            'success' => (bool) ($result['success'] ?? false),
+            'message' => $result['message'] ?? null,
+            'strategy' => $replacementMeta['strategy'] ?? null,
+        ]);
+
+        return $result;
     }
 
     /**
