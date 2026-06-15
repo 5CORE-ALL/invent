@@ -1220,6 +1220,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+
+            $ist($schedule->command('shopify-pls:sync')
+            ->cron('55 8,17 * * *')
+            ->name('sync-shopify-pls-catalog')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
         $ist($schedule->command('app:fetch-pls-data')
             ->twiceDaily(9, 18)
             ->name('fetch-pls-data')
