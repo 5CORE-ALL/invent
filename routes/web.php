@@ -44,6 +44,7 @@ use App\Http\Controllers\Campaigns\EbayPMPAdsController;
 use App\Http\Controllers\Campaigns\EbayCampaignAdsController;
 use App\Http\Controllers\Campaigns\Ebay2CampaignAdsController;
 use App\Http\Controllers\Campaigns\EbayRunningAdsController;
+use App\Http\Controllers\Campaigns\GoogleSerpCampaignsController;
 use App\Http\Controllers\Campaigns\GoogleShoppingCampaignsController;
 use App\Http\Controllers\Campaigns\GoogleAdsController;
 use App\Http\Controllers\Campaigns\TiktokAdsController;
@@ -5494,6 +5495,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/google-shopping/badge-history', 'badgeHistory')->name('google.shopping.campaigns.badge.history');
         Route::post('/google/shopping/google-shopping/u7-distribution', 'u7Distribution')->name('google.shopping.campaigns.u7.distribution');
         Route::post('/google/shopping/google-shopping/u7-distribution-history', 'u7DistributionHistory')->name('google.shopping.campaigns.u7.history');
+    });
+
+    // Google SERP campaigns — same grid + rule storage as Google Shopping above, but filtered to
+    // campaigns whose name contains the word "SEARCH" (e.g. "DRUM THRONES SEARCH").
+    Route::controller(GoogleSerpCampaignsController::class)->group(function () {
+        Route::get('/google/shopping/google-serp', 'index')->name('google.serp.campaigns');
+        Route::get('/google/shopping/google-serp/data', 'data')->name('google.serp.campaigns.data');
+        Route::post('/google/shopping/google-serp/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.serp.campaigns.push.sbgt');
+        Route::post('/google/shopping/google-serp/push-sbid', 'pushSbidShopping')->name('google.serp.campaigns.push.sbid');
+        Route::get('/google/shopping/google-serp/badge-history', 'badgeHistory')->name('google.serp.campaigns.badge.history');
+        Route::post('/google/shopping/google-serp/u7-distribution', 'u7Distribution')->name('google.serp.campaigns.u7.distribution');
+        Route::post('/google/shopping/google-serp/u7-distribution-history', 'u7DistributionHistory')->name('google.serp.campaigns.u7.history');
     });
 
     Route::controller(GoogleAdsController::class)->group(function () {

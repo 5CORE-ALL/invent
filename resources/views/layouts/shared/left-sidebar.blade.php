@@ -1998,6 +1998,9 @@
                             <a href="{{ route('google.shopping.campaigns') }}">Google Shopping</a>
                         </li>
                         <li>
+                            <a href="{{ route('google.serp.campaigns') }}">Google SERP Campaigns</a>
+                        </li>
+                        <li>
                             <a href="{{ route('google.serp.list') }}">Google SERP</a>
                         </li>
                         <li>

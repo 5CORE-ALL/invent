@@ -9081,9 +9081,9 @@ class ChannelMasterController extends Controller
      * (apicentral.shopify_order_items). Identification mirrors the shopify-orders page
      * so the all-marketplace-master row stays in sync with the Shopify dashboard.
      *
-     * Profit per line = (price × pct) − LP − ship, where pct comes from
-     * marketplace_percentages.marketplace = 'Purchase' (default 65%) — same formula as
-     * UpdateMarketplaceDailyMetrics::calculatePurchasingPowerMetrics().
+     * Profit per line = (price × pct) − LP, where pct comes from
+     * marketplace_percentages.marketplace = 'Purchase' (default 65%).
+     * Note: Ship is intentionally excluded from PP profit (matches /purchasing-power-pricing).
      *
      * @return array{sales:float, orders:int, qty:int, pft:float, cogs:float}
      */
@@ -9124,8 +9124,7 @@ class ChannelMasterController extends Controller
             $quantity = (int)   ($r->quantity ?? 0);
             if ($quantity <= 0) continue;
 
-            $lp   = 0.0;
-            $ship = 0.0;
+            $lp = 0.0;
             if ($sku !== null && $sku !== '' && isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
                 $values = is_array($pm->Values)
@@ -9138,23 +9137,17 @@ class ChannelMasterController extends Controller
                             break;
                         }
                     }
-                    if (isset($values['ship'])) {
-                        $ship = (float) $values['ship'];
-                    }
                 }
                 if ($lp === 0.0 && isset($pm->lp)) {
                     $lp = (float) $pm->lp;
-                }
-                if ($ship === 0.0 && isset($pm->ship)) {
-                    $ship = (float) $pm->ship;
                 }
             }
 
             $totalSales += $price * $quantity;
             $totalQty   += $quantity;
             $totalCogs  += $lp * $quantity;
-            // Same per-line profit as calculatePurchasingPowerMetrics()
-            $totalPft   += (($price * $pct) - $lp - $ship) * $quantity;
+            // Ship intentionally excluded to match /purchasing-power-pricing.
+            $totalPft   += (($price * $pct) - $lp) * $quantity;
             if (!empty($r->order_number)) {
                 $orderSet[$r->order_number] = true;
             }

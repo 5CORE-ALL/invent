@@ -3138,7 +3138,8 @@ class UpdateMarketplaceDailyMetrics extends Command
     /**
      * Purchasing Power — purchasing_power_sales (same upload as /purchasing-power-sales).
      * Excludes canceled rows; margin from marketplace_percentages.marketplace = Purchase (default 65%).
-     * PFT per line matches Purchasing Power pricing: (unit_price × margin) − LP − ship, × quantity.
+     * PFT per line matches Purchasing Power pricing: (unit_price × margin) − LP, × quantity.
+     * Note: Ship is intentionally excluded from PP profit (matches /purchasing-power-pricing).
      */
     private function calculatePurchasingPowerMetrics($date)
     {
@@ -3204,7 +3205,6 @@ class UpdateMarketplaceDailyMetrics extends Command
 
             $sku = strtoupper(trim((string) ($row->offer_sku ?? '')));
             $lp = 0.0;
-            $ship = 0.0;
             $pm = $sku !== '' ? ($productMasters[$sku] ?? null) : null;
             if ($pm) {
                 $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
@@ -3217,10 +3217,10 @@ class UpdateMarketplaceDailyMetrics extends Command
                 if ($lp === 0.0 && isset($pm->lp)) {
                     $lp = (float) $pm->lp;
                 }
-                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0.0);
             }
 
-            $profitPerUnit = ($unit * $pct) - $lp - $ship;
+            // Ship intentionally excluded to match /purchasing-power-pricing.
+            $profitPerUnit = ($unit * $pct) - $lp;
             $totalPft += $profitPerUnit * $qty;
             $totalCogs += $lp * $qty;
         }

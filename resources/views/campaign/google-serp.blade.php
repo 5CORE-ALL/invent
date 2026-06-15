@@ -1,5 +1,5 @@
 @php
-    $pageTitle = 'Google Shopping';
+    $pageTitle = 'Google SERP';
     $pageSubtitle = 'Google Ads';
 @endphp
 
@@ -578,14 +578,14 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const dataUrl = @json(route('google.shopping.campaigns.data'));
+            const dataUrl = @json(route('google.serp.campaigns.data'));
             const gacRawRuleGetUrl = @json(route('google.shopping.campaigns.rule'));
             const gacRawRuleSaveUrl = @json(route('google.shopping.campaigns.rule.save'));
-            const gacRawPushSbgtUrl = @json(route('google.shopping.campaigns.push.sbgt'));
-            const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
-            const gacRawBadgeHistoryUrl = @json(route('google.shopping.campaigns.badge.history'));
-            const gacRawU7PieDistribUrl = @json(route('google.shopping.campaigns.u7.distribution'));
-            const gacRawU7PieHistoryUrl = @json(route('google.shopping.campaigns.u7.history'));
+            const gacRawPushSbgtUrl = @json(route('google.serp.campaigns.push.sbgt'));
+            const gacRawPushSbidUrl = @json(route('google.serp.campaigns.push.sbid'));
+            const gacRawBadgeHistoryUrl = @json(route('google.serp.campaigns.badge.history'));
+            const gacRawU7PieDistribUrl = @json(route('google.serp.campaigns.u7.distribution'));
+            const gacRawU7PieHistoryUrl = @json(route('google.serp.campaigns.u7.history'));
             window.gacRawRule = @json($googleShoppingRule);
             let table;
             let gacRawU7PieChart = null;
@@ -1339,7 +1339,7 @@
             });
 
             document.getElementById('gac-raw-export').addEventListener('click', function() {
-                table.download('csv', 'google_ads_campaigns_page.csv');
+                table.download('csv', 'google_ads_serp_campaigns_page.csv');
             });
 
             function gacShowPushResult(title, body, variant) {
