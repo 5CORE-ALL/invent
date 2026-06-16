@@ -298,6 +298,23 @@
                         <option value="blank">Blank S PRC only</option>
                     </select>
 
+                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%. --}}
+                    {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin  (margin = take-home %, e.g. 0.80 for Amazon) --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-roi-controls"
+                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (accounts for Amazon fees + shipping)">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target ROI%:
+                        </label>
+                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP \u00d7 (1 + Target ROI%/100) + Ship) / margin for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
+
                     <!-- Selected Rows Count -->
                     <span class="badge bg-primary fs-6 p-2 ms-2" id="selected-rows-count" style="display: none;">
                         0 selected
@@ -687,6 +704,9 @@
 @section('script-bottom')
     <script>
         const COLUMN_VIS_KEY = "amazon_tabulator_column_visibility";
+        /** Stored in DB table channel_tabulator_column_settings (shared across all users — same pattern as ebay2/ebay3/mfrg tabulators). */
+        const TABULATOR_COLUMN_CHANNEL = 'amazon_tabulator';
+        const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
         let skuMetricsChart = null;
         let skuChartFirstSeriesStats = null; // { values, median, dataMin, dataMax, dotColors, labelColors } for ref panel & plugins
         let currentSkuChartMetric = 'price';  // 'price' | 'cvr' - which metric the SKU chart modal shows
@@ -2552,6 +2572,134 @@
                 if (e.which === 13) { // Enter key
                     $('#apply-discount-btn').click();
                 }
+            });
+
+            /*
+             * Target ROI% bulk apply
+             * -----------------------
+             * For every selected row with a usable LP, back-solve the sale price so that the
+             * resulting SROI column matches Target ROI% after Amazon takes its margin and
+             * after shipping is paid out:
+             *     sprice = (LP * (1 + targetRoi% / 100) + Ship) / margin
+             * `margin` is the row's take-home rate (row.percentage, e.g. 0.80 for Amazon),
+             * with a 0.80 fallback matching the backend's hard-coded SROI rate. The save
+             * goes through the existing /save-amazon-sprice endpoint so SGPFT / SPFT / SROI
+             * get recomputed server-side exactly like an inline S PRC edit. Rounding is
+             * plain 2-decimal — no .99 / .49 retail snapping.
+             */
+            $('#apply-target-roi-btn').on('click', function() {
+                const $btn = $(this);
+                const rawInput = $('#target-roi-input').val();
+                const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                if (rawInput === '' || rawInput == null) {
+                    showToast('error', 'Please enter a Target ROI%');
+                    return;
+                }
+                if (!isFinite(targetRoiPct)) {
+                    showToast('error', 'Target ROI% must be a number');
+                    return;
+                }
+
+                // This view tracks selections in TWO parallel Sets:
+                //   - selectedSkus  ← .sku-select-checkbox (Apply Discount / Clear SPRICE flow)
+                //   - selectedRows  ← .row-select-checkbox (leftmost header checkbox / Bulk Actions)
+                // Honor the union so the Target-ROI button works regardless of which checkbox the user clicked.
+                const effectiveSelected = new Set();
+                if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.forEach) {
+                    selectedSkus.forEach(function(s) { if (s) effectiveSelected.add(s); });
+                }
+                if (typeof selectedRows !== 'undefined' && selectedRows && selectedRows.forEach) {
+                    selectedRows.forEach(function(s) { if (s) effectiveSelected.add(s); });
+                }
+
+                if (effectiveSelected.size === 0) {
+                    showToast('error', 'Please select at least one SKU');
+                    return;
+                }
+
+                const roiMultiplier = 1 + (targetRoiPct / 100);
+
+                // Pre-collect targets so we know the batch size up front (drives the
+                // success/error progress callback) and we never iterate the table twice.
+                //
+                // We back-solve sprice so the resulting SROI column matches Target ROI%:
+                //     ROI% = ((sprice * margin - ship - lp) / lp) * 100   (same formula the
+                //     backend uses in saveSpriceToDatabase)
+                //   -> sprice = (lp * (1 + ROI%/100) + ship) / margin
+                // `margin` is the take-home rate on the row (row.percentage, e.g. 0.80 for
+                // Amazon). Falls back to 0.80 if the row didn't carry the field, matching
+                // the hard-coded backend value used for SROI/SGPFT.
+                const rowsToProcess = [];
+                table.getRows().forEach(function(r) {
+                    const rd = r.getData();
+                    const sku = rd['(Child) sku'];
+                    if (!effectiveSelected.has(sku) || rd.is_parent_summary) return;
+                    const lp = parseFloat(rd.LP_productmaster) || 0;
+                    if (lp <= 0) return; // skip rows without a usable cost
+                    const ship = parseFloat(rd.Ship_productmaster) || 0;
+                    const marginRaw = parseFloat(rd.percentage);
+                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
+                    const candidate = (lp * roiMultiplier + ship) / margin;
+                    const sprice = +candidate.toFixed(2);
+                    if (!isFinite(sprice) || sprice <= 0) return;
+                    rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
+                });
+
+                if (rowsToProcess.length === 0) {
+                    showToast('warning', 'No selected rows have a usable LP > 0');
+                    return;
+                }
+
+                if (!confirm(`Compute & save S PRC for ${rowsToProcess.length} selected SKU(s) using (LP \u00d7 (1 + ${targetRoiPct}%/100) + Ship) / margin?`)) {
+                    return;
+                }
+
+                let successCount = 0;
+                let errorCount = 0;
+                const total = rowsToProcess.length;
+
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+
+                rowsToProcess.forEach(function(item) {
+                    $.ajax({
+                        url: '/save-amazon-sprice',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        data: { sku: item.sku, sprice: item.sprice },
+                        success: function(response) {
+                            successCount++;
+                            const updateData = {
+                                'SPRICE': response.data || item.sprice,
+                                'has_custom_sprice': true,
+                                'SPRICE_STATUS': response.SPRICE_STATUS != null ? response.SPRICE_STATUS : null
+                            };
+                            if (response.sgpft_percent !== undefined) updateData['SGPFT'] = response.sgpft_percent;
+                            if (response.spft_percent !== undefined) updateData['Spft%'] = response.spft_percent;
+                            if (response.sroi_percent !== undefined) updateData['SROI'] = response.sroi_percent;
+                            item.row.update(updateData);
+                            item.row.reformat();
+                        },
+                        error: function() {
+                            errorCount++;
+                        },
+                        complete: function() {
+                            if (successCount + errorCount === total) {
+                                $btn.prop('disabled', false).html('<i class="fas fa-calculator"></i> Apply S PRC');
+                                if (errorCount === 0) {
+                                    showToast('success', `S PRC saved for ${successCount} SKU(s) @ Target ROI ${targetRoiPct}%`);
+                                } else {
+                                    showToast('error', `Saved ${successCount} of ${total} (${errorCount} failed)`);
+                                }
+                            }
+                        }
+                    });
+                });
+            });
+
+            // Enter inside the Target ROI% input triggers Apply S PRC
+            $('#target-roi-input').on('keypress', function(e) {
+                if (e.which === 13) $('#apply-target-roi-btn').click();
             });
 
             // Apply Price to Amazon button - delegated event handler
@@ -5317,25 +5465,35 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 }
             }
 
-            // Build Column Visibility Dropdown
+            /*
+             * Column visibility (every column for this page) persists in the shared DB table
+             * `channel_tabulator_column_settings` under channel = 'amazon_tabulator'. We hit the
+             * same /tabulator-column-visibility endpoint used by the ebay2/ebay3/mfrg tabulators
+             * so a single row owns the show/hide map for everyone on this view.
+             */
             function buildColumnDropdown() {
                 const menu = document.getElementById("column-dropdown-menu");
+                if (!menu) return;
                 menu.innerHTML = '';
 
-                fetch('/amazon-column-visibility', {
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                         method: 'GET',
                         headers: {
+                            'Content-Type': 'application/json',
                             'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                         }
                     })
                     .then(res => res.json())
-                    .then(visibility => {
+                    .then(savedVisibility => {
+                        const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
                         table.getColumns().forEach(col => {
                             const def = col.getDefinition();
                             const field = def.field;
                             if (!field) return;
 
-                            const isVisible = col.isVisible();
+                            // Prefer the saved value; fall back to the column's current visibility.
+                            // Anything explicitly set to false in the table = hidden.
+                            const isVisible = map.hasOwnProperty(field) ? (map[field] !== false) : col.isVisible();
                             const li = document.createElement("li");
                             li.innerHTML =
                                 `<label class="dropdown-item"><input type="checkbox" ${isVisible ? 'checked' : ''} data-field="${field}"> ${def.title}</label>`;
@@ -5354,31 +5512,34 @@ $('#nmap-count').text(missingCount.toLocaleString());
                     }
                 });
 
-                fetch('/amazon-column-visibility', {
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
                     method: 'POST',
                     headers: {
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                     },
                     body: JSON.stringify({
-                        visibility
+                        channel: TABULATOR_COLUMN_CHANNEL,
+                        visibility: visibility
                     })
                 }).catch(err => console.error('Error saving column visibility:', err));
             }
 
             function applyColumnVisibilityFromServer() {
-                fetch('/amazon-column-visibility', {
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                         method: 'GET',
                         headers: {
+                            'Content-Type': 'application/json',
                             'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                         }
                     })
                     .then(res => res.json())
-                    .then(visibility => {
+                    .then(savedVisibility => {
+                        if (!savedVisibility || typeof savedVisibility !== 'object') return;
                         table.getColumns().forEach(col => {
                             const field = col.getDefinition().field;
-                            if (field && visibility.hasOwnProperty(field)) {
-                                if (visibility[field]) {
+                            if (field && savedVisibility.hasOwnProperty(field)) {
+                                if (savedVisibility[field]) {
                                     col.show();
                                 } else {
                                     col.hide();
