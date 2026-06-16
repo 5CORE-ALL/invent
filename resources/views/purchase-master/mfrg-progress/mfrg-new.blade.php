@@ -120,9 +120,39 @@
         }
         .mip-summary-badge .label { opacity: 0.95; font-weight: 500; }
         .mip-summary-badge .value { font-weight: 700; }
-        .mip-badge--amount { background: #2563eb; }   /* blue */
-        .mip-badge--cbm    { background: #14b8a6; }   /* teal */
-        .mip-badge--items  { background: #0f172a; }   /* dark */
+        .mip-badge--amount    { background: #2563eb; }   /* blue */
+        .mip-badge--cbm       { background: #14b8a6; }   /* teal */
+        .mip-badge--items     { background: #0f172a; }   /* dark */
+        .mip-badge--suppliers { background: #7c3aed; }   /* purple */
+
+        /* "Show archived" toggle — rendered as an icon badge (eye + trash) that
+           visibly switches between off (outlined / muted) and on (solid amber).
+           The underlying <input type="checkbox"> is visually-hidden but still gets
+           toggled via the <label for=…> association, so the existing JS change
+           handler runs unchanged. */
+        .mip-archive-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 12px; border-radius: 999px;
+            font-size: 0.9rem; line-height: 1; white-space: nowrap;
+            cursor: pointer; user-select: none;
+            background: #f1f5f9; color: #475569;
+            border: 1px solid #cbd5e1;
+            transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+        }
+        .mip-archive-badge:hover { background: #e2e8f0; border-color: #94a3b8; }
+        .mip-archive-badge:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
+        /* When the hidden checkbox is checked, the adjacent label "lights up"
+           amber to indicate archived rows are visible. */
+        #show-archived-toggle:checked + .mip-archive-badge {
+            background: #f59e0b;
+            color: #fff;
+            border-color: #d97706;
+            box-shadow: 0 1px 4px rgba(245, 158, 11, 0.35);
+        }
+        #show-archived-toggle:checked + .mip-archive-badge:hover {
+            background: #d97706;
+            border-color: #b45309;
+        }
     </style>
 @endsection
 @section('content')
@@ -147,69 +177,60 @@
                                 </select>
                             </div>
 
+                            {{-- ── Supplier Play/Pause (mirrors /forecast.analysis Supplier play) ── --}}
                             <div class="mip-field">
-                                <label>Bulk Stage</label>
-                                <div class="d-flex gap-1">
-                                    <select id="mip-bulk-stage-select" class="form-select form-select-sm" style="width: 120px;">
-                                        <option value="">— Choose —</option>
-                                        <option value="appr_req">Appr. Req</option>
-                                        <option value="mip">MIP</option>
-                                        <option value="r2s">R2S</option>
-                                        <option value="transit">Transit</option>
-                                        <option value="all_good">😊 All Good</option>
-                                        <option value="to_order_analysis">2 Order</option>
-                                    </select>
-                                    <button type="button" class="btn btn-sm btn-primary" id="mip-bulk-stage-apply">Apply</button>
+                                <label title="Step through rows one supplier at a time">▶ Supplier Play</label>
+                                <div class="d-flex align-items-center gap-1 border rounded px-2 py-1 bg-light">
+                                    <button type="button" id="mip-supplier-play-backward" class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;" title="Prev supplier">
+                                        <i class="fas fa-step-backward" style="font-size:10px;"></i>
+                                    </button>
+                                    <button type="button" id="mip-supplier-play-pause" class="btn btn-warning btn-sm rounded-circle p-0" style="width:28px;height:28px;display:none;" title="Stop supplier">
+                                        <i class="fas fa-pause" style="font-size:10px;"></i>
+                                    </button>
+                                    <button type="button" id="mip-supplier-play-auto" class="btn btn-outline-warning btn-sm rounded-circle p-0 fw-bold" style="width:28px;height:28px;font-size:11px;" title="Play by supplier">S</button>
+                                    <button type="button" id="mip-supplier-play-forward" class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;" title="Next supplier">
+                                        <i class="fas fa-step-forward" style="font-size:10px;"></i>
+                                    </button>
+                                    <span class="badge bg-warning text-dark" id="mip-supplier-play-label" style="font-size:0.65rem;display:none;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
                                 </div>
                             </div>
 
                             <div class="mip-field">
-                                <label>👤 Bulk Exec</label>
-                                <div class="d-flex gap-1">
-                                    <select id="mip-bulk-exec-select" class="form-select form-select-sm" style="width: 130px;">
-                                        <option value="">— Select exec —</option>
-                                        <option value="">— Unassigned —</option>
-                                        <option value="Atin">Atin</option>
-                                        <option value="Jack">Jack</option>
-                                        <option value="Nitish">Nitish</option>
-                                        <option value="Ajay">Ajay</option>
-                                        <option value="Candy">Candy</option>
-                                        <option value="Sruti">Sruti</option>
-                                    </select>
-                                    <button type="button" class="btn btn-sm" style="background:#4db6ac;color:#fff;" id="mip-bulk-exec-apply">Apply</button>
-                                </div>
-                            </div>
-
-                            <div class="mip-field">
-                                <label for="search-input">🔍 Search All</label>
-                                <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search..." style="width: 170px;">
+                                <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search..." title="Search all columns" aria-label="Search all columns" style="width: 170px;">
                             </div>
 
                             <div class="mip-field mip-columns-wrap">
-                                <label>Columns</label>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="mip-columns-btn">
-                                    <i class="fas fa-table-columns me-1"></i> Show / Hide
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="mip-columns-btn" title="Show / hide columns" aria-label="Show / hide columns">
+                                    <i class="fas fa-table-columns"></i>
                                 </button>
                                 <div id="mip-columns-menu" class="mip-columns-menu" style="display:none;"></div>
                             </div>
 
                             <div class="d-flex align-items-end ms-auto gap-2">
-                                <div class="form-check mb-0">
-                                    <input class="form-check-input" type="checkbox" id="show-archived-toggle">
-                                    <label class="form-check-label fw-semibold small" for="show-archived-toggle">Show archived</label>
-                                </div>
-                                <button type="button" class="btn btn-sm btn-info text-white" id="mip-followup-btn"><i class="fas fa-comment-dots me-1"></i> Follow-Up</button>
-                                <button type="button" class="btn btn-sm btn-warning d-none" id="archive-selected-btn"><i class="fas fa-archive me-1"></i> Archive</button>
-                                <button type="button" class="btn btn-sm btn-success d-none" id="restore-selected-btn"><i class="fas fa-undo me-1"></i> Restore</button>
+                                {{-- "Show archived" — rendered as a tinted icon badge (eye + trash)
+                                     that toggles a hidden checkbox underneath, so the existing
+                                     `change` handler keeps working unchanged. --}}
+                                <input class="visually-hidden" type="checkbox" id="show-archived-toggle">
+                                <label for="show-archived-toggle"
+                                       id="show-archived-badge"
+                                       class="mip-archive-badge"
+                                       title="Show archived rows"
+                                       role="button"
+                                       tabindex="0">
+                                    <i class="fas fa-eye"></i>
+                                    <i class="fas fa-trash-alt"></i>
+                                </label>
+                                <button type="button" class="btn btn-sm btn-info text-white" id="mip-followup-btn" title="Follow-Up"><i class="fas fa-comment-dots"></i></button>
+                                <button type="button" class="btn btn-sm btn-warning d-none" id="archive-selected-btn" title="Archive selected"><i class="fas fa-archive"></i></button>
+                                <button type="button" class="btn btn-sm btn-success d-none" id="restore-selected-btn" title="Restore selected"><i class="fas fa-undo"></i></button>
                             </div>
                         </div>
                     </div>
 
                     {{-- ===== Summary strip: colored badge pills (matches Amazon Analytics styling) ===== --}}
                     <div class="mip-summary" aria-label="Summary">
-                        <span class="mip-summary-title">Summary</span>
-                        <span class="mip-summary-badge mip-badge--amount">
-                            <span class="label">💰 Amount</span>
+                        <span class="mip-summary-badge mip-badge--amount" title="Amount">
+                            <span class="label">💰</span>
                             <span class="value" id="totalAmount">0</span>
                         </span>
                         <span class="mip-summary-badge mip-badge--cbm">
@@ -219,6 +240,10 @@
                         <span class="mip-summary-badge mip-badge--items">
                             <span class="label">🔢 Items</span>
                             <span class="value" id="totalItems">0</span>
+                        </span>
+                        <span class="mip-summary-badge mip-badge--suppliers" title="Unique suppliers in current view">
+                            <span class="label">👥 Suppliers</span>
+                            <span class="value" id="totalSuppliers">0</span>
                         </span>
                     </div>
 
@@ -785,7 +810,14 @@
                 return active.slice(start, start + size);
             }
 
-            // ---- combined filtering (stage dropdown + global search) ----
+            // Supplier-play state. When the user activates "▶ Supplier Play" we set
+            // `currentSupplierFilter` to the supplier currently being focused on; the
+            // filter callback below restricts the table to that supplier's rows only.
+            // null means no play filter is active (all suppliers shown). Mirrors the
+            // same pattern used by /forecast.analysis page.
+            let currentSupplierFilter = null;
+
+            // ---- combined filtering (stage dropdown + global search + supplier play) ----
             function applyFilters() {
                 const stage = (document.getElementById('mip-stage-filter').value || 'both').toLowerCase();
                 const search = (document.getElementById('search-input').value || '').trim().toLowerCase();
@@ -796,6 +828,11 @@
                     if (stage === 'mip') keep = keep && rs === 'mip';
                     else if (stage === 'r2s') keep = keep && rs === 'r2s';
                     if (search) keep = keep && Object.values(row).some(v => v && v.toString().toLowerCase().includes(search));
+                    // Supplier play filter: restrict to a single supplier when active.
+                    if (currentSupplierFilter) {
+                        const rowSupplier = String(row.supplier || '').trim();
+                        if (rowSupplier !== currentSupplierFilter) keep = false;
+                    }
                     return keep;
                 });
                 setTimeout(updateStats, 0);
@@ -806,14 +843,21 @@
                 let amount = 0, cbm = 0;
                 const activeData = table.getData("active");
                 const items = activeData.length;
+                // Track unique, non-empty supplier names (case-insensitive after trim)
+                // so the Suppliers badge always reflects the count for whatever rows
+                // the user currently sees (after stage/search/supplier-play filters).
+                const supplierSet = new Set();
                 activeData.forEach(function (d) {
                     const qty = parseFloat(d.qty) || 0;
                     cbm += (parseFloat(d.CBM) || 0) * qty;
                     amount += rowAmount(d);
+                    const sup = String(d.supplier || '').trim();
+                    if (sup && sup !== '-') supplierSet.add(sup.toLowerCase());
                 });
                 document.getElementById('totalAmount').textContent = Math.round(amount).toLocaleString();
                 document.getElementById('totalCBM').textContent = Math.round(cbm).toLocaleString();
                 document.getElementById('totalItems').textContent = items;
+                document.getElementById('totalSuppliers').textContent = supplierSet.size;
             }
 
             table.on("dataLoaded", function () { applyFilters(); updateMfrgArchiveButtons(); });
@@ -885,15 +929,60 @@
                 }
             });
 
-            tableEl.addEventListener('click', function (e) {
-                const actBtn = e.target.closest('.mip-action-btn');
-                if (actBtn) {
-                    const tr = actBtn.closest('.tabulator-row');
-                    const row = tr ? table.getRow(tr) : null;
-                    if (row) openEditModal(row);
-                    return;
+            // ── Pencil (Edit) click — DOCUMENT-LEVEL CAPTURE-PHASE handler ────────
+            // Tabulator v6's `selectableRows: true` toggles row selection on any
+            // click (and in some builds, on `mousedown`) inside the row body. The
+            // earlier capture-phase listener on `tableEl` wasn't enough because:
+            //   • Tabulator may bind its handlers on the same `tableEl` element,
+            //     and registration order beats our capture listener; or
+            //   • Selection actually fires on `mousedown`, which we never blocked.
+            //
+            // We now hook BOTH `mousedown` and `click` in capture phase on
+            // `document`, which is guaranteed to fire before any handler bound on
+            // a descendant element (regardless of registration order). When the
+            // event target is inside `.mip-action-btn`, we kill it dead — Tabulator
+            // never sees it, so the underlying row's selection state is untouched.
+            //
+            // Bulk-edit rule (unchanged):
+            //   • 2+ rows selected → modal saves to ALL selected rows
+            //   • 0 or 1 row selected → modal saves to just the clicked row
+            document.addEventListener('mousedown', function (e) {
+                if (e.target.closest('.mip-action-btn')) {
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
                 }
+            }, true /* capture */);
 
+            document.addEventListener('click', function (e) {
+                const actBtn = e.target.closest('.mip-action-btn');
+                if (!actBtn) return;
+
+                // Only handle pencils that actually live inside THIS page's table —
+                // a document-level listener could otherwise fire on any unrelated
+                // future .mip-action-btn elsewhere.
+                if (!tableEl.contains(actBtn)) return;
+
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                e.preventDefault();
+
+                const tr = actBtn.closest('.tabulator-row');
+                const row = tr ? table.getRow(tr) : null;
+                if (!row) return;
+
+                const selected = table.getSelectedRows() || [];
+                let targetRows, baselineRow;
+                if (selected.length >= 2) {
+                    targetRows = selected;
+                    baselineRow = (selected.indexOf(row) !== -1) ? row : selected[0];
+                } else {
+                    targetRows = [row];
+                    baselineRow = row;
+                }
+                openEditModal(baselineRow, targetRows);
+            }, true /* capture */);
+
+            tableEl.addEventListener('click', function (e) {
                 const copyIcon = e.target.closest('.mip-sku-copy');
                 if (copyIcon) {
                     const sku = copyIcon.dataset.sku || '';
@@ -949,104 +1038,83 @@
                 if (menu._home) menu._home.appendChild(menu);
             });
 
-            // Run an async task for each item with a bounded concurrency pool so bulk operations
-            // don't sit on a strict one-at-a-time `await` chain (which made ~100+ row selections
-            // appear "broken" — the success alert only fired after ~10 minutes of serial requests).
-            // onProgress is called after every completed task so the caller can refresh the UI.
-            async function runWithConcurrency(items, worker, concurrency, onProgress) {
-                let cursor = 0;
-                let done = 0;
-                const total = items.length;
-                async function pull() {
-                    while (true) {
-                        const i = cursor++;
-                        if (i >= total) return;
-                        try { await worker(items[i], i); } catch (_) {}
-                        done++;
-                        if (onProgress) onProgress(done, total);
+            // ── Supplier Play / Pause ───────────────────────────────────────────
+            // Same pattern as /forecast.analysis "Play by Supplier" control: cycles
+            // through the unique supplier names currently in the table, isolating one
+            // supplier's rows at a time. Useful when a buyer wants to focus-walk
+            // through every supplier's open MIP/R2S items one at a time without
+            // typing into the search box for each.
+            let isSupplierPlaying = false;
+            let supplierPlayIndex = 0;
+
+            function getMipSupplierList() {
+                if (!table) return [];
+                const seen = new Set();
+                const list = [];
+                // Walk every row (not just current page) so the play loop covers all
+                // suppliers represented in the loaded dataset.
+                table.getRows().forEach(function (row) {
+                    const d = row.getData();
+                    const s = String(d.supplier || '').trim();
+                    if (s && s !== '-' && !seen.has(s)) {
+                        seen.add(s);
+                        list.push(s);
                     }
-                }
-                const n = Math.max(1, Math.min(concurrency, total));
-                await Promise.all(Array.from({ length: n }, pull));
+                });
+                return list.sort((a, b) => a.localeCompare(b));
             }
 
-            // ---- Bulk Stage ----
-            const bulkStageApplyBtn = document.getElementById('mip-bulk-stage-apply');
-            bulkStageApplyBtn.addEventListener('click', async function () {
-                const stageVal = document.getElementById('mip-bulk-stage-select').value.trim();
-                if (!stageVal) { alert('Choose a stage.'); return; }
-                const rows = table.getSelectedRows();
-                if (!rows.length) { alert('Select at least one row.'); return; }
-
-                const targets = rows.filter(row => {
-                    const d = row.getData();
-                    return d.sku && (parseInt(d.qty, 10) || 0) !== 0;
-                });
-                if (!targets.length) { alert('No eligible rows to apply stage to.'); return; }
-
-                const originalLabel = bulkStageApplyBtn.innerHTML;
-                bulkStageApplyBtn.disabled = true;
-                let ok = 0;
-                const renderProgress = (done, total) => {
-                    bulkStageApplyBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Applying ' + done + '/' + total + '…';
-                };
-                renderProgress(0, targets.length);
-
-                await runWithConcurrency(targets, async (row) => {
-                    const d = row.getData();
-                    await postStage(d.sku, d.parent, stageVal);
-                    row.update({ stage: stageVal });
-                    // Mirror inline stage editor: when switching to MIP, also seed mfrg_progress.
-                    if (stageVal === 'mip') {
-                        try {
-                            await fetch('/mfrg-progresses/insert', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
-                                body: JSON.stringify({ parent: d.parent || '', sku: d.sku, order_qty: d.qty || '', supplier: d.supplier || '', adv_date: '' })
-                            });
-                        } catch (_) { /* non-fatal */ }
-                    }
-                    ok++;
-                }, 8, renderProgress);
-
-                bulkStageApplyBtn.disabled = false;
-                bulkStageApplyBtn.innerHTML = originalLabel;
-                table.deselectRow();
+            function renderMipSupplierGroup(supplier) {
+                currentSupplierFilter = supplier;
                 applyFilters();
-                alert('Stage applied to ' + ok + ' / ' + targets.length + ' row(s).');
+                const lbl = document.getElementById('mip-supplier-play-label');
+                if (lbl) { lbl.textContent = supplier; lbl.title = supplier; lbl.style.display = 'inline-block'; }
+                if (table && table.rowManager && table.rowManager.element) {
+                    table.rowManager.element.scrollTop = 0;
+                }
+            }
+
+            function stopSupplierPlay() {
+                isSupplierPlaying = false;
+                currentSupplierFilter = null;
+                applyFilters();
+                document.getElementById('mip-supplier-play-pause').style.display = 'none';
+                document.getElementById('mip-supplier-play-auto').style.display  = 'inline-block';
+                const lbl = document.getElementById('mip-supplier-play-label');
+                if (lbl) lbl.style.display = 'none';
+            }
+
+            document.getElementById('mip-supplier-play-auto').addEventListener('click', function () {
+                const list = getMipSupplierList();
+                if (!list.length) { alert('No supplier data available to play through.'); return; }
+                isSupplierPlaying = true;
+                supplierPlayIndex = 0;
+                renderMipSupplierGroup(list[supplierPlayIndex]);
+                document.getElementById('mip-supplier-play-pause').style.display = 'inline-block';
+                document.getElementById('mip-supplier-play-auto').style.display  = 'none';
             });
 
-            // ---- Bulk Exec ----
-            const bulkExecApplyBtn = document.getElementById('mip-bulk-exec-apply');
-            bulkExecApplyBtn.addEventListener('click', async function () {
-                const sel = document.getElementById('mip-bulk-exec-select');
-                if (sel.selectedIndex === 0) { alert('Select an executive.'); return; }
-                const v = sel.value;
-                const rows = table.getSelectedRows();
-                if (!rows.length) { alert('Select at least one row.'); return; }
-
-                const targets = rows.filter(row => !!row.getData().sku);
-                if (!targets.length) { alert('No eligible rows to update.'); return; }
-
-                const originalLabel = bulkExecApplyBtn.innerHTML;
-                bulkExecApplyBtn.disabled = true;
-                let ok = 0;
-                const renderProgress = (done, total) => {
-                    bulkExecApplyBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Updating ' + done + '/' + total + '…';
-                };
-                renderProgress(0, targets.length);
-
-                await runWithConcurrency(targets, async (row) => {
-                    const d = row.getData();
-                    const r = await postUpdateLink(d.sku, 'Exec', v || null);
-                    if (r && r.success) { row.update({ exec: v }); ok++; }
-                }, 8, renderProgress);
-
-                bulkExecApplyBtn.disabled = false;
-                bulkExecApplyBtn.innerHTML = originalLabel;
-                table.deselectRow();
-                alert('Updated ' + ok + ' / ' + targets.length + ' row(s) to "' + (v || 'Unassigned') + '".');
+            document.getElementById('mip-supplier-play-forward').addEventListener('click', function () {
+                if (!isSupplierPlaying) return;
+                const list = getMipSupplierList();
+                if (!list.length) return;
+                supplierPlayIndex = (supplierPlayIndex + 1) % list.length;
+                renderMipSupplierGroup(list[supplierPlayIndex]);
             });
+
+            document.getElementById('mip-supplier-play-backward').addEventListener('click', function () {
+                if (!isSupplierPlaying) return;
+                const list = getMipSupplierList();
+                if (!list.length) return;
+                supplierPlayIndex = (supplierPlayIndex - 1 + list.length) % list.length;
+                renderMipSupplierGroup(list[supplierPlayIndex]);
+            });
+
+            document.getElementById('mip-supplier-play-pause').addEventListener('click', stopSupplierPlay);
+
+            // Auto-stop play mode if the underlying dataset gets replaced (page reload,
+            // Show-archived toggle, etc.) so the badge doesn't lie about its filter.
+            table.on('dataLoaded', function () { if (isSupplierPlaying) stopSupplierPlay(); });
 
             // ---- Archive / Restore ----
             function updateMfrgArchiveButtons() {
@@ -1131,10 +1199,22 @@
                     return [['', 'Select'], ['appr_req', 'Appr. Req'], ['mip', 'MIP'], ['r2s', 'R2S'], ['transit', 'Transit'], ['all_good', 'All Good'], ['to_order_analysis', '2 Order']];
                 } },
             ];
-            function openEditModal(row) {
+            function openEditModal(row, targetRows) {
                 window._mipEditRow = row;
+                // targetRows = the rows the save will be applied to. Either just [row]
+                // (single-row mode) or the user's multi-selection (bulk mode).
+                window._mipEditTargets = Array.isArray(targetRows) && targetRows.length ? targetRows : [row];
+                const isBulk = window._mipEditTargets.length > 1;
                 const d = row.getData();
-                document.getElementById('mip-edit-sku').textContent = d.sku || '';
+                // Modal header: show "N rows" pill in bulk mode so the user knows the
+                // save will fan out, otherwise show the row's SKU like before.
+                const skuEl = document.getElementById('mip-edit-sku');
+                if (isBulk) {
+                    skuEl.innerHTML = '<span class="badge bg-warning text-dark">'
+                                    + window._mipEditTargets.length + ' rows selected — bulk edit</span>';
+                } else {
+                    skuEl.textContent = d.sku || '';
+                }
                 let html = '';
                 EDIT_FIELDS.forEach(function (f) {
                     const id = 'medit-' + f.key;
@@ -1163,52 +1243,95 @@
             document.getElementById('mip-edit-save').addEventListener('click', async function () {
                 const row = window._mipEditRow;
                 if (!row) return;
-                const d = row.getData();
-                const sku = d.sku || '';
-                const mipId = d.id || 0;
+                const targets = (Array.isArray(window._mipEditTargets) && window._mipEditTargets.length)
+                    ? window._mipEditTargets
+                    : [row];
+                const isBulk = targets.length > 1;
                 const btn = this;
-                btn.disabled = true;
-                const updates = {};
-                const tasks = [];
+                const originalLabel = btn.innerHTML;
+                const baseline = row.getData();
+
+                // Collect the set of changes the user made in the modal. Each entry is
+                // { key, newVal, kind } where kind tells us which backend endpoint to call.
+                // In bulk mode we deliberately compare each field against the BASELINE row
+                // (the row the modal was opened from); any field equal to the baseline is
+                // treated as "user didn't touch it" and skipped — i.e. only fields the
+                // user explicitly typed/picked get overwritten on the other selected rows.
+                const changes = [];
                 document.querySelectorAll('#mip-edit-form [data-key]').forEach(function (el) {
                     const key = el.dataset.key;
                     const field = EDIT_FIELDS.find(function (f) { return f.key === key; });
                     if (!field || field.readonly) return;
                     let newVal = el.value;
-                    let oldVal = d[key] == null ? '' : d[key];
+                    let oldVal = baseline[key] == null ? '' : baseline[key];
                     if (field.type === 'date') oldVal = toDateInput(oldVal);
-                    if (String(newVal) === String(oldVal)) return; // unchanged
-                    if (key === 'exec') {
-                        tasks.push(postUpdateLink(sku, 'Exec', newVal || null));
-                        updates.exec = newVal;
-                    } else if (key === 'stage') {
-                        tasks.push(Promise.resolve(postStage(sku, d.parent, newVal)));
-                        updates.stage = newVal;
-                    } else if (key === 'CBM') {
-                        tasks.push(Promise.resolve(postForecastData(sku, d.parent, 'CBM', newVal)));
-                        updates.CBM = newVal;
-                    } else {
-                        tasks.push(postInline(sku, mipId, key, newVal, d.source_table));
-                        updates[key] = newVal;
-                    }
+                    if (String(newVal) === String(oldVal)) return; // unchanged for the baseline row
+                    let kind;
+                    if (key === 'exec')      kind = 'exec';
+                    else if (key === 'stage') kind = 'stage';
+                    else if (key === 'CBM')   kind = 'cbm';
+                    else                       kind = 'inline';
+                    changes.push({ key, newVal, kind });
                 });
-                if (tasks.length === 0) {
-                    btn.disabled = false;
+
+                if (changes.length === 0) {
                     bootstrap.Modal.getInstance(document.getElementById('mipEditModal')).hide();
                     return;
                 }
-                // Reflect changes in the grid immediately (optimistic), then persist.
-                try { row.update(updates); row.reformat(); } catch (e) {}
-                updateStats();
-                try {
-                    await Promise.all(tasks);
-                    // Re-apply + reformat after server confirms, so computed columns are accurate.
-                    row.update(updates); row.reformat();
-                    updateStats();
-                } catch (err) {
-                    alert('Some changes could not be saved. Please retry.');
+
+                btn.disabled = true;
+                let savedCount = 0;
+                const failed = [];
+                const renderProgress = () => {
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Saving ' + savedCount + '/' + targets.length + '…';
+                };
+                if (isBulk) renderProgress();
+
+                // Save each target row in sequence — kept sequential rather than fully
+                // parallel so per-row endpoints (postStage, postUpdateLink, postInline)
+                // can't trample each other on the SAME row, and so the user sees a
+                // monotonically increasing "N/M saved" counter.
+                for (const targetRow of targets) {
+                    const td = targetRow.getData();
+                    const tSku   = td.sku || '';
+                    const tMipId = td.id  || 0;
+
+                    // Per-row optimistic update — collapse all the user's changes into
+                    // a single row.update so the grid reflects them instantly even if
+                    // the network is slow.
+                    const optimistic = {};
+                    changes.forEach(c => { optimistic[c.key] = c.newVal; });
+                    try { targetRow.update(optimistic); targetRow.reformat(); } catch (e) {}
+
+                    try {
+                        for (const c of changes) {
+                            if (c.kind === 'exec') {
+                                await postUpdateLink(tSku, 'Exec', c.newVal || null);
+                            } else if (c.kind === 'stage') {
+                                await Promise.resolve(postStage(tSku, td.parent, c.newVal));
+                            } else if (c.kind === 'cbm') {
+                                await Promise.resolve(postForecastData(tSku, td.parent, 'CBM', c.newVal));
+                            } else {
+                                await postInline(tSku, tMipId, c.key, c.newVal, td.source_table);
+                            }
+                        }
+                    } catch (err) {
+                        failed.push({ sku: tSku, error: err && err.message ? err.message : err });
+                    }
+                    savedCount++;
+                    if (isBulk) renderProgress();
                 }
+
+                updateStats();
+
                 btn.disabled = false;
+                btn.innerHTML = originalLabel;
+
+                if (failed.length) {
+                    alert('Some changes could not be saved (' + failed.length + ' row(s)). '
+                          + 'Affected SKUs: ' + failed.slice(0, 8).map(f => f.sku).join(', ')
+                          + (failed.length > 8 ? ', …' : ''));
+                }
                 bootstrap.Modal.getInstance(document.getElementById('mipEditModal')).hide();
             });
 
