@@ -213,8 +213,7 @@
                         <option value="10-20">10-20%</option>
                         <option value="20-30">20-30%</option>
                         <option value="30-40">30-40%</option>
-                        <option value="40-50">40-50%</option>
-                        <option value="50plus">Above 50%</option>
+                        <option value="40plus">Above 40%</option>
                     </select>
                     <select id="cvr-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -232,8 +231,7 @@
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
-                        <option value="125-175">125–175%</option>
-                        <option value="gt175">175+%</option>
+                        <option value="gt125">&gt; 125%</option>
                     </select>
 
                     <select id="diff-filter" class="form-select form-select-sm"
@@ -311,6 +309,23 @@
                             title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
                             title="Compute & save S PRC = (LP \u00d7 (1 + Target ROI%/100) + Ship) / margin for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%. --}}
+                    {{-- Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100 (else denominator ≤ 0). --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-gpft-controls"
+                        title="Target GPFT% — sets S PRC = (LP + Ship) / (margin − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target GPFT%:
+                        </label>
+                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Amazon take-home margin (e.g. < 80%).">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP + Ship) / (margin \u2212 Target GPFT%/100) for every selected row">
                             <i class="fas fa-calculator"></i> Apply S PRC
                         </button>
                     </div>
@@ -2691,6 +2706,26 @@
                                 } else {
                                     showToast('error', `Saved ${successCount} of ${total} (${errorCount} failed)`);
                                 }
+
+                                // Clear BOTH selection systems + every visible checkbox so the
+                                // next batch starts fresh. Without this, the previous run's SKUs
+                                // stay in the Sets (Tabulator re-renders checkboxes on paging /
+                                // filter changes, so the UI looked unchecked but the underlying
+                                // Set still held them — re-running the button would re-apply to
+                                // the old rows too).
+                                if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.clear) {
+                                    selectedSkus.clear();
+                                }
+                                if (typeof selectedRows !== 'undefined' && selectedRows && selectedRows.clear) {
+                                    selectedRows.clear();
+                                }
+                                $('.sku-select-checkbox').prop('checked', false);
+                                $('.row-select-checkbox').prop('checked', false);
+                                $('#select-all-checkbox').prop('checked', false);
+                                $('#select-all-rows').prop('checked', false).prop('indeterminate', false);
+                                if (typeof updateSelectedCount === 'function') {
+                                    updateSelectedCount();
+                                }
                             }
                         }
                     });
@@ -2700,6 +2735,151 @@
             // Enter inside the Target ROI% input triggers Apply S PRC
             $('#target-roi-input').on('keypress', function(e) {
                 if (e.which === 13) $('#apply-target-roi-btn').click();
+            });
+
+            /*
+             * Target GPFT% bulk apply
+             * ------------------------
+             * Mirrors the Target-ROI flow but back-solves so the resulting SGPFT column equals
+             * Target GPFT% after Amazon takes its margin and after shipping is paid out:
+             *     GPFT% = ((sprice * margin - ship - lp) / sprice) * 100   (same formula the
+             *     backend uses in saveSpriceToDatabase for SGPFT)
+             *   -> sprice = (lp + ship) / (margin - GPFT%/100)
+             * Constraint: the denominator (margin − target/100) must be > 0. With an Amazon
+             * take-home of 0.80 that means Target GPFT% must be strictly < 80; anything ≥ the
+             * margin would require an infinite/negative price, so those targets are rejected
+             * up-front instead of silently producing absurd values.
+             */
+            $('#apply-target-gpft-btn').on('click', function() {
+                const $btn = $(this);
+                const rawInput = $('#target-gpft-input').val();
+                const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                if (rawInput === '' || rawInput == null) {
+                    showToast('error', 'Please enter a Target GPFT%');
+                    return;
+                }
+                if (!isFinite(targetGpftPct)) {
+                    showToast('error', 'Target GPFT% must be a number');
+                    return;
+                }
+
+                // Honor BOTH selection systems (same union as the Target-ROI handler).
+                const effectiveSelected = new Set();
+                if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.forEach) {
+                    selectedSkus.forEach(function(s) { if (s) effectiveSelected.add(s); });
+                }
+                if (typeof selectedRows !== 'undefined' && selectedRows && selectedRows.forEach) {
+                    selectedRows.forEach(function(s) { if (s) effectiveSelected.add(s); });
+                }
+
+                if (effectiveSelected.size === 0) {
+                    showToast('error', 'Please select at least one SKU');
+                    return;
+                }
+
+                const targetFraction = targetGpftPct / 100;
+
+                const rowsToProcess = [];
+                const skippedHighGpft = []; // rows where target >= margin (denominator <= 0)
+                table.getRows().forEach(function(r) {
+                    const rd = r.getData();
+                    const sku = rd['(Child) sku'];
+                    if (!effectiveSelected.has(sku) || rd.is_parent_summary) return;
+                    const lp = parseFloat(rd.LP_productmaster) || 0;
+                    if (lp <= 0) return; // need a cost to back-solve
+                    const ship = parseFloat(rd.Ship_productmaster) || 0;
+                    const marginRaw = parseFloat(rd.percentage);
+                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
+                    const denom = margin - targetFraction;
+                    if (denom <= 0) {
+                        skippedHighGpft.push(sku);
+                        return;
+                    }
+                    const candidate = (lp + ship) / denom;
+                    const sprice = +candidate.toFixed(2);
+                    if (!isFinite(sprice) || sprice <= 0) return;
+                    rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
+                });
+
+                if (rowsToProcess.length === 0) {
+                    if (skippedHighGpft.length > 0) {
+                        showToast('error', `Target GPFT% ${targetGpftPct}% is too high \u2014 must be less than the Amazon take-home margin (e.g. < 80%).`);
+                    } else {
+                        showToast('warning', 'No selected rows have a usable LP > 0');
+                    }
+                    return;
+                }
+
+                let confirmMsg = `Compute & save S PRC for ${rowsToProcess.length} selected SKU(s) using (LP + Ship) / (margin \u2212 ${targetGpftPct}%/100)?`;
+                if (skippedHighGpft.length > 0) {
+                    confirmMsg += `\n\nNote: ${skippedHighGpft.length} row(s) will be skipped because Target GPFT% ${targetGpftPct}% \u2265 their take-home margin.`;
+                }
+                if (!confirm(confirmMsg)) {
+                    return;
+                }
+
+                let successCount = 0;
+                let errorCount = 0;
+                const total = rowsToProcess.length;
+
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+
+                rowsToProcess.forEach(function(item) {
+                    $.ajax({
+                        url: '/save-amazon-sprice',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        data: { sku: item.sku, sprice: item.sprice },
+                        success: function(response) {
+                            successCount++;
+                            const updateData = {
+                                'SPRICE': response.data || item.sprice,
+                                'has_custom_sprice': true,
+                                'SPRICE_STATUS': response.SPRICE_STATUS != null ? response.SPRICE_STATUS : null
+                            };
+                            if (response.sgpft_percent !== undefined) updateData['SGPFT'] = response.sgpft_percent;
+                            if (response.spft_percent !== undefined) updateData['Spft%'] = response.spft_percent;
+                            if (response.sroi_percent !== undefined) updateData['SROI'] = response.sroi_percent;
+                            item.row.update(updateData);
+                            item.row.reformat();
+                        },
+                        error: function() {
+                            errorCount++;
+                        },
+                        complete: function() {
+                            if (successCount + errorCount === total) {
+                                $btn.prop('disabled', false).html('<i class="fas fa-calculator"></i> Apply S PRC');
+                                if (errorCount === 0) {
+                                    showToast('success', `S PRC saved for ${successCount} SKU(s) @ Target GPFT ${targetGpftPct}%`);
+                                } else {
+                                    showToast('error', `Saved ${successCount} of ${total} (${errorCount} failed)`);
+                                }
+
+                                // Same cleanup as the Target-ROI handler: wipe BOTH selection
+                                // Sets and every visible checkbox so the next batch starts clean.
+                                if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.clear) {
+                                    selectedSkus.clear();
+                                }
+                                if (typeof selectedRows !== 'undefined' && selectedRows && selectedRows.clear) {
+                                    selectedRows.clear();
+                                }
+                                $('.sku-select-checkbox').prop('checked', false);
+                                $('.row-select-checkbox').prop('checked', false);
+                                $('#select-all-checkbox').prop('checked', false);
+                                $('#select-all-rows').prop('checked', false).prop('indeterminate', false);
+                                if (typeof updateSelectedCount === 'function') {
+                                    updateSelectedCount();
+                                }
+                            }
+                        }
+                    });
+                });
+            });
+
+            // Enter inside the Target GPFT% input triggers Apply S PRC
+            $('#target-gpft-input').on('keypress', function(e) {
+                if (e.which === 13) $('#apply-target-gpft-btn').click();
             });
 
             // Apply Price to Amazon button - delegated event handler
@@ -4900,8 +5080,7 @@
                         if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
                         if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
                         if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
-                        if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
-                        if (gpftFilter === '50plus') return gpft >= 50;
+                        if (gpftFilter === '40plus') return gpft >= 40;
                         return true;
                     });
                 }
@@ -4911,7 +5090,7 @@
                         if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         const roiVal = parseFloat(data['GROI%']) || 0;
                         if (roiFilter === 'lt40') return roiVal < 40;
-                        if (roiFilter === 'gt175') return roiVal >= 175;
+                        if (roiFilter === 'gt125') return roiVal > 125;
                         const [min, max] = roiFilter.split('-').map(Number);
                         return roiVal >= min && roiVal <= max;
                     });
