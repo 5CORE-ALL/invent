@@ -34,9 +34,13 @@ class MFRGInProgressController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
-        // Mark RTS items simply
+        // Mark RTS items simply.
+        // NOTE: stage MUST be the canonical 'r2s' (with the digit 2), not 'rts'. The dropdown
+        // editor saves 'r2s', the page's stage filter / color map / label map all key on 'r2s',
+        // so emitting 'rts' here previously made every Ready-to-Ship row render with the gray
+        // "Not set" dot and be invisible to the "R2S only" filter.
         foreach ($readyToShipData as $item) {
-            $item->stage = 'rts';
+            $item->stage = 'r2s';
             $item->source_table = 'ready_to_ship';
             $item->nr = 'RTS';
             $item->order_qty = $item->qty ?? 0;
@@ -119,9 +123,9 @@ class MFRGInProgressController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get();
             
-            // Mark RTS items simply
+            // Mark RTS items simply. See note on canonical 'r2s' value above.
             foreach ($readyToShipData as $item) {
-                $item->stage = 'rts';
+                $item->stage = 'r2s';
                 $item->source_table = 'ready_to_ship';
                 $item->nr = 'RTS';
                 $item->order_qty = $item->qty ?? 0;
@@ -139,7 +143,7 @@ class MFRGInProgressController extends Controller
                 ->get();
 
             foreach ($trashedRts as $item) {
-                $item->stage = 'rts';
+                $item->stage = 'r2s';
                 $item->source_table = 'ready_to_ship';
                 $item->nr = 'RTS';
                 $item->order_qty = $item->qty ?? 0;
@@ -1456,8 +1460,9 @@ class MFRGInProgressController extends Controller
         $platformsByName = $supplierCache['platformsByName'] ?? [];
 
         foreach ($rtsData as $row) {
-            // Mark as RTS FIRST
-            $row->stage = 'rts';
+            // Mark as RTS FIRST (canonical stage = 'r2s' so the front-end color map,
+            // tooltip label and "R2S only" filter all match — see note above).
+            $row->stage = 'r2s';
             $row->source_table = 'ready_to_ship';
             $row->order_qty = $row->qty ?? 0;
             $row->nr = 'RTS';

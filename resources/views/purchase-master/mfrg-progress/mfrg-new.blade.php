@@ -306,6 +306,17 @@
                 'appr_req': '#facc15', 'mip': '#2563eb', 'to_order_analysis': '#c2410c',
                 'r2s': '#16a34a', 'all_good': '#22c55e', '': '#94a3b8',
             };
+            // Human-readable labels for the Stage column tooltip (shown on hover over the
+            // colored dot). Kept in lockstep with the <option>s rendered inside stageFormatter.
+            const STAGE_LABELS = {
+                'appr_req': 'Appr. Req',
+                'mip': 'MIP',
+                'r2s': 'R2S',
+                'transit': 'Transit',
+                'all_good': 'All Good',
+                'to_order_analysis': '2 Order',
+                '': 'Not set',
+            };
             const PLAT_ICON = { 'Website': 'fas fa-globe', 'Email': 'fas fa-envelope', 'WhatsApp': 'fab fa-whatsapp', 'WeChat': 'fab fa-weixin', 'Alibaba': 'fas fa-store' };
             const PLAT_COLOR = { 'Website': '#2563eb', 'Email': '#dc3545', 'WhatsApp': '#25d366', 'WeChat': '#09b83e', 'Alibaba': '#ff6a00' };
 
@@ -373,12 +384,15 @@
                 }
                 const v = (cell.getValue() || '').toLowerCase().trim();
                 const color = STAGE_COLORS[v] !== undefined ? STAGE_COLORS[v] : '#94a3b8';
+                // Show the human-readable stage name on hover (e.g. "MIP", "Appr. Req",
+                // "Transit") instead of leaving the user to decode the color/icon.
+                const stageLabel = STAGE_LABELS[v] !== undefined ? STAGE_LABELS[v] : (v || 'Not set');
                 const marker = v === 'transit'
                     ? '<i class="fas fa-truck stage-transit-icon"></i>'
                     : '<span class="stage-status-dot" style="background-color:' + color + ';"></span>';
                 const mk = function (val, label) { return '<option value="' + val + '"' + (v === val ? ' selected' : '') + '>' + label + '</option>'; };
-                return '<div class="mip-stage-dot"><span class="mip-stage-marker">' + marker + '</span>' +
-                    '<select class="stage-stage-select editable-stage">' +
+                return '<div class="mip-stage-dot" title="' + esc(stageLabel) + '"><span class="mip-stage-marker">' + marker + '</span>' +
+                    '<select class="stage-stage-select editable-stage" title="' + esc(stageLabel) + '">' +
                     '<option value="">Select</option>' + mk('appr_req', 'Appr. Req') + mk('mip', 'MIP') + mk('r2s', 'R2S') +
                     mk('transit', 'Transit') + mk('all_good', '😊 All Good') + mk('to_order_analysis', '2 Order') +
                     '</select></div>';
