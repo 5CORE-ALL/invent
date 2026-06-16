@@ -5,30 +5,29 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
-        /* Toolbar: keep every filter / button on a single horizontal row, scroll if needed. */
+        /* Toolbar: compact controls, wrap to next row if needed.
+           NOTE: do NOT use overflow-x on this row — it clips Bootstrap dropdown menus
+           (Columns, DIL%, etc.) so they wouldn't open. */
         .ebay2-toolbar-row {
-            overflow-x: auto;
-            overflow-y: visible;
-            white-space: nowrap;
-            padding-bottom: 4px;     /* leave room for the scrollbar so controls don't get cropped */
-            scrollbar-width: thin;
+            row-gap: 4px;
         }
-        .ebay2-toolbar-row::-webkit-scrollbar {
-            height: 6px;
-        }
-        .ebay2-toolbar-row::-webkit-scrollbar-thumb {
-            background: #ced4da;
-            border-radius: 3px;
-        }
-        /* Compact every interactive control in the toolbar so more fits per row. */
+        /* Compact every interactive control in the toolbar so more fits per row,
+           but keep enough padding for the native select arrow + full label text. */
         .ebay2-toolbar-row > .form-select,
+        .ebay2-toolbar-row .form-select.pricing-filter-item,
+        .ebay2-toolbar-row .form-select.kw-ads-filter-item,
         .ebay2-toolbar-row > .btn,
         .ebay2-toolbar-row > .dropdown > .btn,
         .ebay2-toolbar-row > .manual-dropdown-container > .btn {
-            padding: 2px 6px;
-            font-size: 0.75rem;
-            line-height: 1.2;
-            min-height: 28px;
+            padding: 3px 10px;
+            font-size: 0.8125rem;
+            line-height: 1.3;
+            min-height: 30px;
+        }
+        /* Selects need a touch more right-side room so the native ▼ arrow doesn't overlap the label. */
+        .ebay2-toolbar-row .form-select {
+            padding-right: 24px;
+            background-position: right 6px center;
         }
         .ebay2-toolbar-row .dropdown-menu {
             font-size: 0.8125rem;
@@ -266,7 +265,7 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <div class="d-flex align-items-center flex-nowrap gap-1 ebay2-toolbar-row">
+                <div class="d-flex align-items-center flex-wrap gap-2 ebay2-toolbar-row">
                     <select id="section-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all" selected>Section Filter</option>
