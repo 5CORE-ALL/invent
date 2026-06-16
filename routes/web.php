@@ -5320,6 +5320,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay2/campaign-ads/data', 'getData')->name('ebay2.campaign.ads.data');
         Route::get('/ebay2/campaign-ads/rule', 'getRule')->name('ebay2.campaign.ads.rule');
         Route::post('/ebay2/campaign-ads/rule', 'saveRule')->name('ebay2.campaign.ads.rule.save');
+        Route::get('/ebay2/campaign-ads/dil-rule', 'getDilRule')->name('ebay2.campaign.ads.dil.rule');
+        Route::post('/ebay2/campaign-ads/dil-rule', 'saveDilRule')->name('ebay2.campaign.ads.dil.rule.save');
         Route::post('/ebay2/campaign-ads/push-sbid', 'pushSbid')->name('ebay2.campaign.ads.push.sbid');
         Route::post('/ebay2/campaign-ads/push-selected', 'pushSelected')->name('ebay2.campaign.ads.push.selected');
         Route::get('/ebay2/campaign-ads/campaigns', 'getCampaignList')->name('ebay2.campaign.ads.campaigns');

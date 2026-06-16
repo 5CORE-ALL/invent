@@ -5,6 +5,35 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
+        /* Toolbar: keep every filter / button on a single horizontal row, scroll if needed. */
+        .ebay2-toolbar-row {
+            overflow-x: auto;
+            overflow-y: visible;
+            white-space: nowrap;
+            padding-bottom: 4px;     /* leave room for the scrollbar so controls don't get cropped */
+            scrollbar-width: thin;
+        }
+        .ebay2-toolbar-row::-webkit-scrollbar {
+            height: 6px;
+        }
+        .ebay2-toolbar-row::-webkit-scrollbar-thumb {
+            background: #ced4da;
+            border-radius: 3px;
+        }
+        /* Compact every interactive control in the toolbar so more fits per row. */
+        .ebay2-toolbar-row > .form-select,
+        .ebay2-toolbar-row > .btn,
+        .ebay2-toolbar-row > .dropdown > .btn,
+        .ebay2-toolbar-row > .manual-dropdown-container > .btn {
+            padding: 2px 6px;
+            font-size: 0.75rem;
+            line-height: 1.2;
+            min-height: 28px;
+        }
+        .ebay2-toolbar-row .dropdown-menu {
+            font-size: 0.8125rem;
+        }
+
         /* Image column hover preview (forecast.analysis) */
         #image-hover-preview {
             transition: opacity 0.2s ease;
@@ -237,7 +266,7 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <div class="d-flex align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center flex-nowrap gap-1 ebay2-toolbar-row">
                     <select id="section-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all" selected>Section Filter</option>
@@ -336,28 +365,26 @@
                         <option value="NR">NR Only</option>
                     </select>
 
-                    <div class="d-flex flex-column gap-1 pricing-filter-item" style="width: auto;">
-                        <select id="gpft-filter" class="form-select form-select-sm"
-                            style="width: auto; display: inline-block;">
-                            <option value="all">GPFT%</option>
-                            <option value="negative">Negative</option>
-                            <option value="0-10">0-10%</option>
-                            <option value="10-20">10-20%</option>
-                            <option value="20-30">20-30%</option>
-                            <option value="30-40">30-40%</option>
-                            <option value="40-50">40-50%</option>
-                            <option value="50plus">Above 50%</option>
-                        </select>
-                        <select id="cvr-filter" class="form-select form-select-sm"
-                            style="width: auto; display: inline-block;">
-                            <option value="all">All CVR%</option>
-                            <option value="0-0">0%</option>
-                            <option value="0-3">0-3%</option>
-                            <option value="3-7">3-7%</option>
-                            <option value="7-13">7-13%</option>
-                            <option value="13plus">13%+</option>
-                        </select>
-                    </div>
+                    <select id="gpft-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40-50">40-50%</option>
+                        <option value="50plus">Above 50%</option>
+                    </select>
+                    <select id="cvr-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">All CVR%</option>
+                        <option value="0-0">0%</option>
+                        <option value="0-3">0-3%</option>
+                        <option value="3-7">3-7%</option>
+                        <option value="7-13">7-13%</option>
+                        <option value="13plus">13%+</option>
+                    </select>
 
                     <select id="roi-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
@@ -380,6 +407,15 @@
                         style="width: auto; display: inline-block;">
                         <option value="all">SPRICE</option>
                         <option value="blank">Blank SPRICE only</option>
+                    </select>
+
+                    <select id="temu-price-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;"
+                        title="Filter rows by Temu Price color (vs eBay Prc × 0.90)">
+                        <option value="all">Temu vs Prc</option>
+                        <option value="red">🔴 Red (Temu &gt; Prc × 0.90)</option>
+                        <option value="yellow">🟡 Yellow (Temu = Prc × 0.90)</option>
+                        <option value="green">🟢 Green (Temu &lt; Prc × 0.90)</option>
                     </select>
 
                     <!-- DIL Filter -->
@@ -542,10 +578,6 @@
                             <!-- Columns will be populated by JavaScript -->
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary pricing-filter-item">
-                        <i class="fa fa-eye"></i> Show All
-                    </button>
-
                     <button id="ebay2-price-mode-btn" type="button" class="btn btn-sm btn-secondary pricing-filter-item"
                             title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         <i class="fas fa-exchange-alt"></i> Price %
@@ -554,14 +586,6 @@
                     <button type="button" class="btn btn-sm btn-success pricing-filter-item" data-bs-toggle="modal" data-bs-target="#exportModal">
                         <i class="fa fa-file-excel"></i> Export
                     </button>
-
-                    <button type="button" class="btn btn-sm btn-primary pricing-filter-item" data-bs-toggle="modal" data-bs-target="#importModal">
-                        <i class="fas fa-upload"></i> Import Ratings
-                    </button>
-
-                    <a href="{{ url('/ebay-ratings-sample') }}" class="btn btn-sm btn-info pricing-filter-item">
-                        <i class="fas fa-download"></i> Sample CSV
-                    </a>
                 </div>
 
                 <!-- KW Ads Statistics (shown only when KW Ads is selected) -->
@@ -610,8 +634,7 @@
                         <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: white; font-weight: bold;">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="ebay2-missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: not listed (no eBay item id), REQ, INV &gt; 0 (Missing L) — same as /map-issues">Missing: 0</span>
-                        <span class="badge fs-6 p-2" id="ebay2-map-count-badge" style="background-color: #198754; color: #fff; font-weight: bold; cursor: pointer;" title="Click to filter: |INV − E Stock| ≤ 3 (MP rows)">Map: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="ebay2-missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: not listed (no eBay item id), REQ, INV &gt; 0 (Missing L) — same as /map-issues">Missing L: 0</span>
                         <span class="badge fs-6 p-2" id="ebay2-nmap-count-badge" style="color: white; font-weight: bold; cursor: pointer; background-color: #a71d2a;" title="Click to filter: N Map rows (same as MAP column)">N Map: 0</span>
                         
                     </div>
@@ -991,7 +1014,9 @@
     @section('script-bottom')
     <script>
         // Cache bust: v2.1 - OPEN BOX items now included with base SKU lookup
-        const COLUMN_VIS_KEY = "ebay2_tabulator_column_visibility";
+        /** Stored in DB table channel_tabulator_column_settings (shared for all users). */
+        const TABULATOR_COLUMN_CHANNEL = 'ebay2_tabulator';
+        const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
         /** Same as AD% column — getEbaytwoMasterAdsPercent() / all-marketplace-master */
         const EBAY2_CHANNEL_ADS_PCT = {{ number_format((float) ($channelAdsPercent ?? 0), 4, '.', '') }};
         let skuMetricsChart = null;
@@ -2662,9 +2687,13 @@
                         headerFilter: "input",
                         headerFilterPlaceholder: "Search SKU...",
                         cssClass: "text-primary fw-bold",
-                        tooltip: true,
+                        // Full SKU tooltip on hover — explicit so it works even when the SKU text
+                        // is truncated by the narrower column width.
+                        tooltip: function(e, cell) {
+                            return cell.getValue() || '';
+                        },
                         frozen: true,
-                        width: 250,
+                        width: 175,
                         formatter: function(cell) {
                             const sku = cell.getValue();
                             const rowData = cell.getRow().getData();
@@ -2674,16 +2703,18 @@
                                 ? ` <i class="fa fa-star" style="color: orange;"></i> ${rowData.rating}` 
                                 : '';
                             
-                            let html = `<span>${sku}${ratingDisplay}</span>`;
+                            // Truncate the SKU text with ellipsis when it exceeds the narrower column
+                            // width; full text remains visible via the column's tooltip on hover.
+                            let html = `<span style="display: inline-block; max-width: 105px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;" title="${sku}">${sku}${ratingDisplay}</span>`;
                             
                             // Copy button
                             html += `<i class="fa fa-copy text-secondary copy-sku-btn" 
-                                       style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
+                                       style="cursor: pointer; margin-left: 6px; font-size: 14px; vertical-align: middle;" 
                                        data-sku="${sku}"
                                        title="Copy SKU"></i>`;
                             
                             // Metrics chart button
-                            html += `<button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;">
+                            html += `<button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 4px; vertical-align: middle;">
                                         <i class="fa fa-info-circle"></i>
                                      </button>`;
                             
@@ -2936,19 +2967,8 @@
                             let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
                             return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
                         },
-                        width: 60
-                    },
-                    {
-                        title: "CVR 45",
-                        field: "CVR_45",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const val = parseFloat(cell.getValue()) || 0;
-                            let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
-                            return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
-                        },
-                        width: 60
+                        width: 60,
+                        visible: false
                     },
                     {
                         title: "CVR 30",
@@ -3094,6 +3114,47 @@
                             return `$${value.toFixed(2)}`;
                         },
                         width: 70
+                    },
+
+                    {
+                        title: "Temu Price",
+                        field: "Temu Price",
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerTooltip: "Temu Price = base_price + 2.99 if ≤ $26.99, else base_price.\nBackground: vs (eBay Prc × 0.90) — Red > threshold, Yellow ≈, Green < threshold.",
+                        formatter: function(cell) {
+                            const el = cell.getElement();
+                            const value = parseFloat(cell.getValue() || 0);
+                            // Always reset (Tabulator reuses cell elements between data reloads).
+                            el.style.backgroundColor = '';
+                            el.style.color = '';
+                            el.style.fontWeight = '';
+
+                            if (!value) {
+                                return `<span style="color: #adb5bd;">—</span>`;
+                            }
+                            const ebayPrice = parseFloat(cell.getRow().getData()['eBay Price'] || 0);
+                            if (ebayPrice > 0) {
+                                const threshold = Math.round(ebayPrice * 0.90 * 100) / 100; // round to cents
+                                const diff = Math.round((value - threshold) * 100) / 100;
+                                if (diff > 0) {
+                                    // Temu Price > 90% of Prc → red
+                                    el.style.backgroundColor = '#f8d7da';
+                                    el.style.color = '#721c24';
+                                } else if (diff === 0) {
+                                    // Temu Price ≈ 90% of Prc (within 1¢) → yellow
+                                    el.style.backgroundColor = '#fff3cd';
+                                    el.style.color = '#856404';
+                                } else {
+                                    // Temu Price < 90% of Prc → green
+                                    el.style.backgroundColor = '#d4edda';
+                                    el.style.color = '#155724';
+                                }
+                                el.style.fontWeight = '600';
+                            }
+                            return `$${value.toFixed(2)}`;
+                        },
+                        width: 80
                     },
 
                       {
@@ -3399,13 +3460,62 @@
                         width: 80
                     },
                     {
+                        title: "Temu Price",
+                        // Pseudo-field — same value as `Temu Price` but a unique key so this column's
+                        // visibility/filter/save state stays independent from the first Temu Price column.
+                        field: "Temu Price S",
+                        hozAlign: "center",
+                        headerTooltip: "Temu Price vs (S PRC × 0.90) — Red > threshold, Yellow ≈, Green < threshold.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const aVal = parseFloat(aRow.getData()['Temu Price']) || 0;
+                            const bVal = parseFloat(bRow.getData()['Temu Price']) || 0;
+                            return aVal - bVal;
+                        },
+                        formatter: function(cell) {
+                            const el = cell.getElement();
+                            el.style.backgroundColor = '';
+                            el.style.color = '';
+                            el.style.fontWeight = '';
+
+                            const rowData = cell.getRow().getData();
+                            const value = parseFloat(rowData['Temu Price']) || 0;
+                            if (!value) {
+                                return `<span style="color: #adb5bd;">—</span>`;
+                            }
+                            const sprice = parseFloat(rowData.SPRICE) || 0;
+                            if (sprice > 0) {
+                                const threshold = Math.round(sprice * 0.90 * 100) / 100;
+                                const diff = Math.round((value - threshold) * 100) / 100;
+                                if (diff > 0) {
+                                    // Temu Price > 90% of S PRC → red
+                                    el.style.backgroundColor = '#f8d7da';
+                                    el.style.color = '#721c24';
+                                } else if (diff === 0) {
+                                    // Temu Price ≈ 90% of S PRC → yellow
+                                    el.style.backgroundColor = '#fff3cd';
+                                    el.style.color = '#856404';
+                                } else {
+                                    // Temu Price < 90% of S PRC → green
+                                    el.style.backgroundColor = '#d4edda';
+                                    el.style.color = '#155724';
+                                }
+                                el.style.fontWeight = '600';
+                            }
+                            return `$${value.toFixed(2)}`;
+                        },
+                        width: 80
+                    },
+                    {
                         field: "_accept",
                         hozAlign: "center",
                         headerSort: false,
+                        width: 60,
                         titleFormatter: function(column) {
-                            return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px; flex-direction: column;">
+                            // Bulk-apply button is kept in the DOM (hidden) so existing #apply-all-btn
+                            // click handlers and programmatic triggers continue to work.
+                            return `<div style="display: flex; align-items: center; justify-content: center;">
                                 <span>Accept</span>
-                                <button type="button" class="btn btn-sm" id="apply-all-btn" title="Apply All Selected Prices to eBay" style="border: none; background: none; padding: 0; cursor: pointer; color: #28a745;">
+                                <button type="button" class="btn btn-sm" id="apply-all-btn" title="Apply All Selected Prices to eBay" style="display: none; border: none; background: none; padding: 0; cursor: pointer; color: #28a745;">
                                     <i class="fas fa-check-double" style="font-size: 1.2em;"></i>
                                 </button>
                             </div>`;
@@ -3571,10 +3681,11 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
-                        width: 80
+                        width: 80,
+                        visible: false
                     },
                     {
-                        title: "SROI",
+                        title: "SGROI",
                         field: "SROI",
                         hozAlign: "center",
                         sorter: "number",
@@ -4541,6 +4652,7 @@
                 const cvrFilter = $('#cvr-filter').val();
                 const cvrTrendFilter = $('#cvr-trend-filter').val();
                 const spriceFilter = $('#sprice-filter').val();
+                const temuPriceFilter = $('#temu-price-filter').val();
                 const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
 
                 table.clearFilter(true);
@@ -4673,6 +4785,24 @@
                         if (sprice == null || sprice === '') return true;
                         const num = parseFloat(sprice);
                         return isNaN(num) || num <= 0;
+                    });
+                }
+
+                // Temu Price color filter (matches the Temu Price column formatter):
+                //   red    → Temu Price > (eBay Price × 0.90)
+                //   yellow → Temu Price ≈ (eBay Price × 0.90)   (within 1¢)
+                //   green  → Temu Price < (eBay Price × 0.90)
+                if (temuPriceFilter === 'red' || temuPriceFilter === 'green' || temuPriceFilter === 'yellow') {
+                    table.addFilter(function(data) {
+                        if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT')) return false;
+                        const temu = parseFloat(data['Temu Price'] || 0) || 0;
+                        const ebay = parseFloat(data['eBay Price'] || 0) || 0;
+                        if (temu <= 0 || ebay <= 0) return false;
+                        const threshold = Math.round(ebay * 0.90 * 100) / 100;
+                        const diff = Math.round((temu - threshold) * 100) / 100;
+                        if (temuPriceFilter === 'red')    return diff > 0;
+                        if (temuPriceFilter === 'yellow') return diff === 0;
+                        return diff < 0; // green
                     });
                 }
 
@@ -4891,7 +5021,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #el30-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter').on('change', function() {
+            $('#inventory-filter, #el30-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #temu-price-filter').on('change', function() {
                 applyFilters();
             });
 
@@ -4964,12 +5094,12 @@
 
             // Section Filter: column visibility groups
             var pricingOnlyColumns = [
-                'image_path', 'E Stock', 'Missing', 'MAP', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
-                'GPFT%', 'AD%', 'PFT %', 'ROI%',
+                'image_path', 'E Stock', 'Missing', 'MAP', 'nr_req', 'SCVR',
+                'GPFT%', 'AD%', 'PFT %', 'ROI%', 'Temu Price', 'Temu Price S',
                 'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI'
             ];
             var kwAdsOnlyColumns = [
-                'kw_hasCampaign', 'NRL', 'l7_views', 'kw_cvr',
+                'kw_hasCampaign', 'NRL', 'kw_cvr',
                 'kw_campaignBudgetAmount', 'kw_sbgt', 'kw_acos', 'kw_clicks',
                 'kw_spend_L30', 'kw_ad_sold', 'kw_l7_spend', 'kw_l1_spend', 'kw_l7_cpc', 'kw_l1_cpc',
                 'kw_last_sbid', 'kw_sbid_calc', 'kw_sbid_m', 'kw_apr_bid', 'kw_campaignStatus'
@@ -5409,7 +5539,7 @@
                 $('#avg-cvr-badge').text('CVR: ' + Math.round(avgCVR) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                 $('#total-inv-badge').text('E Stock: ' + Math.round(totalFbaInv).toLocaleString());
-                $('#ebay2-missing-count-badge').text('Missing: ' + missingCount.toLocaleString());
+                $('#ebay2-missing-count-badge').text('Missing L: ' + missingCount.toLocaleString());
                 $('#ebay2-map-count-badge').text('Map: ' + mapCount.toLocaleString());
                 $('#ebay2-nmap-count-badge').text('N Map: ' + nmapCount.toLocaleString());
             }
@@ -5417,9 +5547,10 @@
             // Build Column Visibility Dropdown
             function buildColumnDropdown() {
                 const menu = document.getElementById("column-dropdown-menu");
+                if (!menu) return;
                 menu.innerHTML = '';
 
-                fetch('/get-ebay2-column-visibility', {
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
@@ -5461,20 +5592,21 @@
                     }
                 });
 
-                fetch('/set-ebay2-column-visibility', {
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                     },
                     body: JSON.stringify({
+                        channel: TABULATOR_COLUMN_CHANNEL,
                         visibility: visibility
                     })
                 });
             }
 
             function applyColumnVisibilityFromServer() {
-                fetch('/get-ebay2-column-visibility', {
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
@@ -5553,14 +5685,6 @@
                 }
             });
 
-            // Show All Columns button
-            document.getElementById("show-all-columns-btn").addEventListener("click", function() {
-                table.getColumns().forEach(col => {
-                    col.show();
-                });
-                buildColumnDropdown();
-                saveColumnVisibilityToServer();
-            });
 
             // Toggle functionality removed - only PMT Spend L30 shown now
             document.addEventListener("click", function(e) {

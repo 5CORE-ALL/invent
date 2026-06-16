@@ -222,21 +222,21 @@ class PayrollService
 
         $count = 0;
         foreach ($query->get() as $user) {
-            $exists = PayrollEmployeeSalary::where('payroll_month_id', $month->id)
+            $existingRow = PayrollEmployeeSalary::where('payroll_month_id', $month->id)
                 ->where('user_id', $user->id)
-                ->exists();
+                ->first();
 
-            if ($exists && $newHiresOnly) {
+            if ($existingRow && $newHiresOnly) {
                 continue;
             }
 
             // Carry the salary forward only for rows we are creating; existing
             // rows keep whatever salary is already on the sheet (manual edits or a
             // previously carried-forward value) so re-syncing never clobbers them.
-            $attributes = $exists
-                ? $this->liveCalcAttributes($user, $teamLogger)
+            $attributes = $existingRow
+                ? $this->liveCalcAttributes($user, $teamLogger, $existingRow)
                 : $this->newRowAttributes($month, $user, $teamLogger);
-            $attributes['is_new_hire'] = $newHiresOnly || ! $exists;
+            $attributes['is_new_hire'] = $newHiresOnly || ! $existingRow;
 
             PayrollEmployeeSalary::updateOrCreate(
                 ['payroll_month_id' => $month->id, 'user_id' => $user->id],
@@ -251,13 +251,18 @@ class PayrollService
     /**
      * Attributes computed straight from the user's stored salary + live hours,
      * without carry-forward. Used when refreshing an existing row.
+     *
+     * When an existing row is supplied, manually edited fields are honoured:
+     * a row with `hours_overridden` keeps its edited Hours, and a row with
+     * `salary_pp_overridden` keeps its edited Salary PP — so re-syncing from
+     * Users / TeamLogger never wipes a manual edit.
      */
-    protected function liveCalcAttributes(User $user, array $teamLogger): array
+    protected function liveCalcAttributes(User $user, array $teamLogger, ?PayrollEmployeeSalary $existingRow = null): array
     {
         $calc = $this->teamSalary->calculateForUser($user, $teamLogger);
         $salary = $user->userSalary;
 
-        return [
+        $attributes = [
             'salary_pp' => $calc['salary_pp'],
             'increment' => $calc['increment'],
             'other' => $calc['other'],
@@ -269,6 +274,17 @@ class PayrollService
             'bank_2' => $salary?->bank_2,
             'upi_id' => $salary?->upi_id,
         ];
+
+        if ($existingRow) {
+            if ($existingRow->hours_overridden) {
+                unset($attributes['hours_worked']);
+            }
+            if ($existingRow->salary_pp_overridden) {
+                unset($attributes['salary_pp']);
+            }
+        }
+
+        return $attributes;
     }
 
     /**

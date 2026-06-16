@@ -1850,6 +1850,9 @@
                                         <a href="{{ route('ebay2.pmt.ads') }}">PMT Ads</a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('ebay2.campaign.ads') }}">eBay 2 Campaign Ads (Raw)</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('ebay2.running.ads') }}">Running Ads</a>
                                     </li>
                                     <li>
