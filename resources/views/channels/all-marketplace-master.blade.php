@@ -432,7 +432,7 @@
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
                             views: <span id="total-views-badge">0</span>
                         </span>
-                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="Listing CVR (all channels): (sum of L30 Orders) ÷ (sum of Total Views) × 100. Total Views = listing/Map traffic (e.g. ov_l30, eBay Views) — not ad clicks. Not the same as column &quot;AD CVR&quot; (ad sold ÷ ad clicks). The ratio can move sharply if views jump (new SKUs, sync) or order windows differ by channel (e.g. Amazon 32-day orders vs views from live tabulator).">
+                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="Listing CVR (all channels): (sum of L30 Orders) ÷ (sum of Total Views) × 100. Total Views = listing/Map traffic (e.g. ov_l30, eBay Views) — not ad clicks. Not the same as column &quot;AD CVR&quot; (ad sold ÷ ad clicks). The ratio can move sharply if views jump (new SKUs, sync) or order windows differ by channel (e.g. Amazon {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day orders vs views from live tabulator).">
                             CVR: <span id="cvr-pct-badge">0%</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="pft" style="color: black; font-weight: bold; cursor:pointer;" title="Net profit $ = sum(rolling Sales×Gprofit% − Ad spend); same as Sales × (G% − Ad Spend/Sales) per channel">
@@ -874,9 +874,9 @@
                     <div class="d-flex align-items-center gap-2">
                         <select id="adChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
                             <option value="7">7 Days</option>
-                            <option value="30">30 Days</option>
-                            <option value="31">31 Days</option>
-                            <option value="32" selected>32 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="31" >31 Days</option>
+                            <option value="32">32 Days</option>
                             <option value="35">35 Days</option>
                             <option value="60">60 Days</option>
                             <option value="90">90 Days</option>
@@ -1771,7 +1771,8 @@
                             const pct = (orders / views) * 100;
                             const dotColor = getMetricDotColor(channel, 'cvr');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="cvr" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View CVR trend"></i>`;
-                            return `<span style="font-weight:600;color:${dotColor};">${pct.toFixed(1)}%</span>${chartIcon}`;
+                            // 2 decimals so day-to-day movement on a rolling window is visible (matches chart precision).
+                            return `<span style="font-weight:600;color:${dotColor};">${pct.toFixed(2)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -1788,7 +1789,7 @@
                                 totalViews += parseNumber(row['Total Views'] || 0);
                             });
                             if (totalViews === 0) return '-';
-                            return '<strong>' + ((totalOrders / totalViews) * 100).toFixed(1) + '%</strong>';
+                            return '<strong>' + ((totalOrders / totalViews) * 100).toFixed(2) + '%</strong>';
                         }
                     },
                     {
@@ -3590,9 +3591,11 @@
                 $('#total-ad-spend').text('$' + Math.round(totalAdSpend).toLocaleString('en-US'));
                 $('#avg-ads-percent').text(avgAdsPercent.toFixed(1) + '%');
                 $('#total-views-badge').text(Math.round(totalViews).toLocaleString('en-US'));
-                // Listing CVR (overall): Σ L30 Orders / Σ Total Views — not ad conversion; see badge title
+                // Listing CVR (overall): Σ L30 Orders / Σ Total Views — not ad conversion; see badge title.
+                // 2 decimals so the badge value shifts day-over-day instead of holding the same
+                // rounded number for 3+ days (rolling-window CVR moves <0.05% per day).
                 const cvrPct = totalViews > 0 ? (totalL30Orders / totalViews) * 100 : null;
-                $('#cvr-pct-badge').text(cvrPct !== null ? cvrPct.toFixed(1) + '%' : '-');
+                $('#cvr-pct-badge').text(cvrPct !== null ? cvrPct.toFixed(2) + '%' : '-');
                 // NPFT $ = gross profit $ − total ad spend (= L30 × (G% − Ad Spend/Sales) in aggregate)
                 $('#total-pft').text('$' + Math.round(netProfit).toLocaleString('en-US'));
                 $('#avg-npft').text(avgNpft.toFixed(1) + '%');
@@ -4215,7 +4218,8 @@
             let currentChartChannel = '';
             let currentChartAdType = '';
             let currentChartMetric = 'spend';
-            let currentChartDays = 32;
+            // Trend chart default range — fixed at 30 days (matches the modal dropdown's pre-selected option).
+            let currentChartDays = 30;
             let adChartAjax = null; // track in-flight request
             let currentChartMode = 'ad'; // 'ad' = ad breakdown, 'metric' = channel metric
             let currentMetricKey = ''; // metric key for channel metric mode
@@ -4422,10 +4426,11 @@
                 currentChartChannel = channel.toLowerCase().replace(/[^a-z0-9]/g, '');
                 currentMetricKey = metricKey;
                 currentChartMetric = metricKey; // for fmtVal formatting
-                currentChartDays = 32; // align with Amazon Daily Sales / channel rolling window
+                // Trend chart default range — always opens at 30 days regardless of any other window.
+                currentChartDays = 30;
                 currentCellValue = (cellValue !== undefined && cellValue !== null && !isNaN(cellValue)) ? cellValue : null;
 
-                $('#adChartRangeSelect').val('32');
+                $('#adChartRangeSelect').val('30');
 
                 // Set title
                 const label = metricLabels[metricKey] || metricKey;
@@ -4521,7 +4526,12 @@
                     if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp') {
                         return '$' + Math.round(v).toLocaleString('en-US');
                     }
-                    if (m === 'acos' || m === 'cvr' || m === 'ads_cvr' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'nroi') {
+                    // Listing CVR / Ads CVR shift slowly inside a rolling window — show 2 decimals
+                    // so adjacent days don't display as the same number (avoids a flat trend).
+                    if (m === 'cvr' || m === 'ads_cvr') {
+                        return v.toFixed(2) + '%';
+                    }
+                    if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'nroi') {
                         return v.toFixed(1) + '%';
                     }
                     if (m === 'tat') return v.toFixed(2);

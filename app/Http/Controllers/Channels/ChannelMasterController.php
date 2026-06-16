@@ -13144,12 +13144,11 @@ class ChannelMasterController extends Controller
             $avgMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos', 'ads_cvr', 'cvr'];
             $shouldAvg = in_array($metric, $avgMetrics);
 
-            // Determine date range. Exclude today's California snapshot — the current PT day
-            // is still in progress, so its rolling-window totals haven't stabilised. We only
-            // chart fully completed California days (so the latest point on screen is yesterday PT).
-            $todayCa = now('America/Los_Angeles')->toDateString();
-            $query = \App\Models\ChannelMasterSummary::orderBy('snapshot_date', 'asc')
-                ->where('snapshot_date', '<', $todayCa);
+            // Determine date range. Today's California snapshot IS included so the chart's
+            // last point matches the live table value (which is also "today, in progress").
+            // The day-over-day dot color (see getChannelMetricDotTrends) still uses only
+            // completed PT days, so an in-progress today doesn't flatten that signal.
+            $query = \App\Models\ChannelMasterSummary::orderBy('snapshot_date', 'asc');
 
             if (!$isAll) {
                 $query->where('channel', $channel);
@@ -13255,7 +13254,10 @@ class ChannelMasterController extends Controller
                     } elseif ($metric === 'ads_cvr') {
                         $value = $totalClicks > 0 ? round(($totalAdSold / $totalClicks) * 100, 1) : 0;
                     } elseif ($metric === 'cvr') {
-                        $value = $totalViewsCvr > 0 ? round(($totalOrdersCvr / $totalViewsCvr) * 100, 1) : 0;
+                        // 2 decimals: rolling-window CVR moves <0.05% per day, so 1-decimal
+                        // rounding collapsed multiple consecutive days into the same value
+                        // and the trend looked flat for ~3 days at a time.
+                        $value = $totalViewsCvr > 0 ? round(($totalOrdersCvr / $totalViewsCvr) * 100, 2) : 0;
                     } elseif ($metric === 'ad_sold') {
                         $value = round($totalAdSold);
                     } elseif ($metric === 'gprofit') {
@@ -13326,7 +13328,10 @@ class ChannelMasterController extends Controller
                     } elseif ($metric === 'cvr') {
                         $orders = floatval($summaryData['l30_orders'] ?? 0);
                         $views = floatval($summaryData['total_views'] ?? 0);
-                        $value = $views > 0 ? round(($orders / $views) * 100, 1) : 0;
+                        // 2 decimals: rolling-window CVR moves <0.05% per day, so 1-decimal
+                        // rounding collapsed multiple consecutive days into the same value
+                        // and the trend looked flat for ~3 days at a time.
+                        $value = $views > 0 ? round(($orders / $views) * 100, 2) : 0;
                     } elseif ($metric === 'pft') {
                         $gprofitPercent = floatval($summaryData['gprofit_percent'] ?? 0);
                         $sales = floatval($summaryData['l30_sales'] ?? 0);
@@ -13530,12 +13535,18 @@ class ChannelMasterController extends Controller
             if ($adSold <= 0 && $clicks > 0) {
                 $adSold = $clicks * $this->getAdCvrRatio($channel);
             }
-            return $clicks > 0 ? round(($adSold / $clicks) * 100, 1) : null;
+            // 2 decimals: must match the chart endpoint's precision (round to 2) so the
+            // table dot doesn't show grey while the chart shows a green/red trend point
+            // for the same two snapshots.
+            return $clicks > 0 ? round(($adSold / $clicks) * 100, 2) : null;
         }
         if ($metric === 'cvr') {
             $orders = floatval($summaryData['l30_orders'] ?? 0);
             $views = floatval($summaryData['total_views'] ?? 0);
-            return $views > 0 ? round(($orders / $views) * 100, 1) : null;
+            // 2 decimals: must match the chart endpoint's precision (round to 2). At
+            // 1 decimal, consecutive days like 5.22% and 5.24% both round to 5.2 →
+            // v1 === v2 → grey dot, even though the chart shows the CVR moved.
+            return $views > 0 ? round(($orders / $views) * 100, 2) : null;
         }
         if ($metric === 'nroi') {
             $groi = floatval($summaryData['groi_percent'] ?? 0);
