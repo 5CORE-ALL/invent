@@ -592,6 +592,9 @@
                                 <button type="button" class="btn btn-warning" id="bulkEditBtn" disabled title="Edit selected SKUs in bulk">
                                     <i class="fas fa-edit me-1"></i> Bulk Edit
                                 </button>
+                                <button type="button" class="btn btn-dark" id="slabRatesBtn" title="Apply GOFO rate to every SKU in a weight slab">
+                                    <i class="fas fa-layer-group me-1"></i> Slab Rates
+                                </button>
                                 <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#importExcelModal">
                                     <i class="fas fa-file-upload me-1"></i> Import
                                 </button>
@@ -1083,6 +1086,78 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-success" id="pushDataOkBtn" data-bs-dismiss="modal">
                         <i class="fas fa-check me-2"></i>OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slab Rates Modal -->
+    <div class="modal fade" id="slabRatesModal" tabindex="-1" aria-labelledby="slabRatesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #1f2937 0%, #111827 100%); color: white;">
+                    <h5 class="modal-title" id="slabRatesModalLabel">
+                        <i class="fas fa-layer-group me-2"></i>Slab Rates &mdash; GOFO
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info py-2 mb-3" style="font-size: 13px;">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Enter a GOFO rate for one or more weight slabs. On <strong>Apply</strong>, that rate
+                        will be written to the <strong>GOFO</strong> column for every non-parent SKU in the slab.
+                        Leave a slab blank to skip it.
+                        <div class="text-muted mt-1">
+                            Slabs use <strong>Item WT ACT (LB)</strong> &mdash; same bands as the column filter.
+                        </div>
+                    </div>
+
+                    <div class="d-flex align-items-center justify-content-between mb-2 gap-2 flex-wrap">
+                        <div class="d-flex align-items-center gap-2">
+                            <label class="form-label mb-0 small fw-semibold" for="slabRatesScope">SKU scope:</label>
+                            <select id="slabRatesScope" class="form-select form-select-sm" style="width: auto; min-width: 180px;" title="Which SKUs to update inside each slab">
+                                <option value="all" selected>All SKUs in slab</option>
+                                <option value="missing">Only SKUs with missing GOFO</option>
+                            </select>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="slabRatesClearBtn" title="Clear all rate inputs">
+                                <i class="fas fa-eraser me-1"></i> Clear inputs
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive" style="max-height: 60vh; border: 1px solid #e9ecef; border-radius: 8px;">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead style="position: sticky; top: 0; background: #f1f5f9; z-index: 2;">
+                                <tr>
+                                    <th style="font-size: 12px;">Weight Slab</th>
+                                    <th class="text-center" style="font-size: 12px; width: 90px;"># SKUs</th>
+                                    <th class="text-center" style="font-size: 12px; width: 110px;">Missing GOFO</th>
+                                    <th class="text-center" style="font-size: 12px; width: 160px;">GOFO Rate&nbsp;($)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="slabRatesBody">
+                                <tr><td colspan="4" class="text-center text-muted py-3">Loading slabs&hellip;</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div id="slabRatesProgress" class="mt-3" style="display: none;">
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span id="slabRatesProgressLabel">Applying&hellip;</span>
+                            <span id="slabRatesProgressCount">0 / 0</span>
+                        </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-dark" role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-dark" id="slabRatesApplyBtn">
+                        <i class="fas fa-check me-2"></i> Apply Rates
                     </button>
                 </div>
             </div>
@@ -3241,11 +3316,180 @@
             setupSelectAll();
             setupBulkEdit();
             setupPushData();
+            setupSlabRates();
             // Reset bulk edit state when edit modal is closed (e.g. without saving)
             document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
                 bulkEditList = null;
                 document.getElementById('editDimWtModalLabel').textContent = 'Edit Shipping Master';
             });
+
+            // Slab Rates: apply GOFO rate to all SKUs in a weight slab.
+            // Uses the same Item WT ACT (LB) bands as the filter dropdown so
+            // "what you filter" matches "what gets the rate".
+            function getSlabDefinitions() {
+                const slabs = [{ key: 'lb_0', label: '0 lb' }];
+                WT_ACT_OZ_FILTER_OPTIONS.forEach(oz => {
+                    slabs.push({ key: `oz_${oz}`, label: wtActOzFilterSlabLabel(oz) });
+                });
+                slabs.push({ key: 'oz_1599', label: wtActOz1599SlabLabel() });
+                WT_ACT_UPWARD_LB_BANDS.forEach((b, i) => {
+                    slabs.push({ key: b.key, label: wtActUpwardBandLabel(b, i) });
+                });
+                return slabs;
+            }
+
+            function getNonParentItemsInSlab(slabKey) {
+                if (!Array.isArray(tableData)) return [];
+                return tableData.filter(item =>
+                    item && !isParentSkuItem(item) && matchesWtActLbBand(item, slabKey)
+                );
+            }
+
+            function hasMissingGofo(item) {
+                const v = item.gofo;
+                if (v === null || v === undefined || v === '') return true;
+                const n = parseFloat(v);
+                return !Number.isFinite(n);
+            }
+
+            function buildSlabRatesTable() {
+                const body = document.getElementById('slabRatesBody');
+                if (!body) return;
+                const slabs = getSlabDefinitions();
+                body.innerHTML = '';
+                slabs.forEach(slab => {
+                    const items = getNonParentItemsInSlab(slab.key);
+                    const total = items.length;
+                    const missing = items.filter(hasMissingGofo).length;
+                    const tr = document.createElement('tr');
+                    tr.setAttribute('data-slab-key', slab.key);
+                    tr.innerHTML = `
+                        <td style="font-size: 12px;">${escapeHtml(slab.label)}</td>
+                        <td class="text-center" style="font-size: 12px;">
+                            <span class="badge bg-secondary">${total}</span>
+                        </td>
+                        <td class="text-center" style="font-size: 12px;">
+                            <span class="badge ${missing > 0 ? 'bg-warning text-dark' : 'bg-light text-muted'}">${missing}</span>
+                        </td>
+                        <td class="text-center">
+                            <input type="number" step="0.01" min="0" class="form-control form-control-sm slab-rate-input text-end"
+                                data-slab-key="${escapeHtml(slab.key)}" placeholder="—"
+                                ${total === 0 ? 'disabled title="No SKUs in this slab"' : ''}>
+                        </td>
+                    `;
+                    body.appendChild(tr);
+                });
+            }
+
+            function openSlabRatesModal() {
+                if (!Array.isArray(tableData) || tableData.length === 0) {
+                    showToast('warning', 'Data is still loading. Please try again in a moment.');
+                    return;
+                }
+                buildSlabRatesTable();
+                const progress = document.getElementById('slabRatesProgress');
+                if (progress) progress.style.display = 'none';
+                const modalEl = document.getElementById('slabRatesModal');
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
+            }
+
+            async function applySlabRates() {
+                const inputs = document.querySelectorAll('#slabRatesBody .slab-rate-input');
+                const scope = (document.getElementById('slabRatesScope') || {}).value || 'all';
+
+                const updates = [];
+                inputs.forEach(inp => {
+                    const raw = String(inp.value || '').trim();
+                    if (raw === '') return;
+                    const rate = parseFloat(raw);
+                    if (!Number.isFinite(rate) || rate < 0) return;
+                    const slabKey = inp.getAttribute('data-slab-key');
+                    let items = getNonParentItemsInSlab(slabKey);
+                    if (scope === 'missing') items = items.filter(hasMissingGofo);
+                    items.forEach(item => updates.push({ item, rate, slabKey }));
+                });
+
+                if (updates.length === 0) {
+                    showToast('warning', 'Enter a GOFO rate for at least one slab that has matching SKUs.');
+                    return;
+                }
+
+                const skuPreview = updates.slice(0, 5).map(u => u.item.SKU).join(', ');
+                const more = updates.length > 5 ? `, +${updates.length - 5} more` : '';
+                if (!confirm(`Apply GOFO rates to ${updates.length} SKU(s)?\n\nSample: ${skuPreview}${more}\n\nThis will overwrite the existing GOFO value on each matching row.`)) {
+                    return;
+                }
+
+                const applyBtn = document.getElementById('slabRatesApplyBtn');
+                const progressWrap = document.getElementById('slabRatesProgress');
+                const progressBar = progressWrap ? progressWrap.querySelector('.progress-bar') : null;
+                const progressCount = document.getElementById('slabRatesProgressCount');
+                const progressLabel = document.getElementById('slabRatesProgressLabel');
+                const originalText = applyBtn ? applyBtn.innerHTML : '';
+
+                if (applyBtn) { applyBtn.disabled = true; applyBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Applying…'; }
+                if (progressWrap) progressWrap.style.display = 'block';
+                if (progressLabel) progressLabel.textContent = 'Applying GOFO rates…';
+
+                let success = 0;
+                let failed = 0;
+
+                for (let i = 0; i < updates.length; i++) {
+                    const { item, rate } = updates[i];
+                    const payload = {
+                        product_id: item.id,
+                        sku: item.SKU,
+                        parent: item.Parent || '',
+                        gofo: rate
+                    };
+                    try {
+                        const response = await fetch('/dim-wt-master/update', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: JSON.stringify(payload)
+                        });
+                        if (response.ok) success++; else failed++;
+                    } catch (e) {
+                        failed++;
+                    }
+
+                    const done = i + 1;
+                    const pct = Math.round((done / updates.length) * 100);
+                    if (progressBar) progressBar.style.width = pct + '%';
+                    if (progressCount) progressCount.textContent = `${done} / ${updates.length}`;
+                }
+
+                if (applyBtn) { applyBtn.disabled = false; applyBtn.innerHTML = originalText; }
+
+                if (failed === 0) {
+                    showToast('success', `GOFO rate applied to ${success} SKU(s).`);
+                } else {
+                    showToast('warning', `${success} updated, ${failed} failed.`);
+                }
+
+                const modalEl = document.getElementById('slabRatesModal');
+                const modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) modal.hide();
+
+                loadData();
+            }
+
+            function setupSlabRates() {
+                const openBtn = document.getElementById('slabRatesBtn');
+                if (openBtn) openBtn.addEventListener('click', openSlabRatesModal);
+
+                const applyBtn = document.getElementById('slabRatesApplyBtn');
+                if (applyBtn) applyBtn.addEventListener('click', applySlabRates);
+
+                const clearBtn = document.getElementById('slabRatesClearBtn');
+                if (clearBtn) clearBtn.addEventListener('click', function () {
+                    document.querySelectorAll('#slabRatesBody .slab-rate-input').forEach(i => { i.value = ''; });
+                });
+            }
         });
     </script>
     <script>

@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 class HelpDeskFaqController extends Controller
 {
     /** Emails that can manage the Guru list and delete FAQs. */
-    private const GURU_MANAGERS = ['president@5core.com', 'software5@5core.com'];
+    private const GURU_MANAGERS = ['president@5core.com', 'software5@5core.com', 'mgr-advertisement@5core.com'];
 
     private function userEmail(Request $request): string
     {

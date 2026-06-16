@@ -462,7 +462,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted">Guru users can <strong>add and edit</strong> all data in this sheet (no delete). Managed by <code>president@5core.com</code> and <code>software5@5core.com</code>.</p>
+                    <p class="text-muted">Guru users can <strong>add and edit</strong> all data in this sheet (no delete). Managed by <code>president@5core.com</code>, <code>software5@5core.com</code> and <code>mgr-advertisement@5core.com</code>.</p>
 
                     @if ($isGuruManager)
                         <form action="{{ route('help-desk-faqs.gurus.store') }}" method="POST" class="row g-2 align-items-end mb-3">
