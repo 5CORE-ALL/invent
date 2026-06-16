@@ -6,8 +6,8 @@
     {{-- Header --}}
     <div class="d-flex align-items-center justify-content-between mb-3">
         <div>
-            <h4 class="mb-0 fw-bold">eBay 2 Campaign Ads</h4>
-            <small class="text-muted">Raw data from <code>ebay2_campaign_ads</code> table · synced daily</small>
+            <h4 class="mb-0 fw-bold">eBay 3 Campaign Ads</h4>
+            <small class="text-muted">Raw data from <code>ebay3_campaign_ads</code> table · synced daily</small>
         </div>
         <div class="d-flex gap-2 align-items-center">
             <span class="badge bg-primary fs-6" id="total-count">Loading…</span>
@@ -23,10 +23,10 @@
             <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#dilRuleModal">
                 <i class="fas fa-tint me-1"></i>Dil Rule
             </button>
-            <button class="btn btn-sm btn-warning text-dark" id="push-sbid-btn" title="Run ebay2:update-suggestedbid now">
+            <button class="btn btn-sm btn-warning text-dark" id="push-sbid-btn" title="Run ebay3:update-suggestedbid now">
                 <i class="fas fa-cloud-upload-alt me-1"></i>Push SBID
             </button>
-            <button class="btn btn-sm btn-outline-secondary" onclick="table.download('csv','ebay2_campaign_ads.csv')">
+            <button class="btn btn-sm btn-outline-secondary" onclick="table.download('csv','ebay3_campaign_ads.csv')">
                 <i class="fas fa-download me-1"></i>CSV
             </button>
         </div>
@@ -79,7 +79,7 @@
     {{-- Tabulator --}}
     <div class="card border-0 shadow-sm">
         <div class="card-body p-0">
-            <div id="ebay2-campaign-ads-table"></div>
+            <div id="ebay3-campaign-ads-table"></div>
         </div>
     </div>
 
@@ -122,7 +122,7 @@
         <div class="modal-content">
             <div class="modal-header py-2">
                 <h5 class="modal-title" id="sbidRuleModalLabel">
-                    <i class="fas fa-sliders-h me-2 text-primary"></i>eBay 2 SBID Rule — SCVR % → Bid %
+                    <i class="fas fa-sliders-h me-2 text-primary"></i>eBay 3 SBID Rule — SCVR % → Bid %
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -152,7 +152,7 @@
                     Set SCVR Max to <code>9999</code> for the last band (catches everything above previous threshold).
                     Tick <strong>Dynamic by metric</strong> on any band (e.g. Pink) to decide its bid from
                     Price / L30 Sold / Views / SCVR tiers instead of a single flat bid.
-                    Changes apply next time <strong>ebay2:update-suggestedbid</strong> runs.
+                    Changes apply next time <strong>ebay3:update-suggestedbid</strong> runs.
                 </div>
                 <p class="small text-danger mb-0 mt-2 d-none" id="sbid-rule-err"></p>
             </div>
@@ -172,7 +172,7 @@
         <div class="modal-content">
             <div class="modal-header py-2">
                 <h5 class="modal-title" id="dilRuleModalLabel">
-                    <i class="fas fa-tint me-2 text-danger"></i>eBay 2 Dilution Rule — DIL % → Color
+                    <i class="fas fa-tint me-2 text-danger"></i>eBay 3 Dilution Rule — DIL % → Color
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -224,7 +224,7 @@
 @section('css')
 <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@6.2.1/dist/css/tabulator_bootstrap5.min.css">
 <style>
-    #ebay2-campaign-ads-table .tabulator-row:hover { background: #f0f7ff !important; }
+    #ebay3-campaign-ads-table .tabulator-row:hover { background: #f0f7ff !important; }
     .badge-cps  { background: #198754; color:#fff; padding:2px 7px; border-radius:4px; font-size:11px; }
     .badge-cpc  { background: #0d6efd; color:#fff; padding:2px 7px; border-radius:4px; font-size:11px; }
     .badge-run  { background: #198754; color:#fff; padding:2px 7px; border-radius:4px; font-size:11px; }
@@ -244,7 +244,7 @@ function loadData() {
     const status  = $('#status-filter').val();
     const promote = $('#promote-filter').val();
 
-    $.get('/ebay2/campaign-ads/data', { search, funding_strategy: funding, campaign_status: status, promote_with_ad: promote })
+    $.get('/ebay3/campaign-ads/data', { search, funding_strategy: funding, campaign_status: status, promote_with_ad: promote })
         .done(function(resp) {
             if (resp && resp.data) {
                 $('#total-count').text(resp.total.toLocaleString() + ' rows');
@@ -272,7 +272,7 @@ function clearFilters() {
 
 $(document).ready(function () {
 
-    table = new Tabulator('#ebay2-campaign-ads-table', {
+    table = new Tabulator('#ebay3-campaign-ads-table', {
         data: [],
         layout: 'fitDataFill',
         height: 'calc(100vh - 260px)',
@@ -281,7 +281,7 @@ $(document).ready(function () {
         paginationSize: 100,
         paginationSizeSelector: [50, 100, 200, 500],
         movableColumns: true,
-        placeholder: 'No data — run php artisan ebay2:sync-campaign-listings',
+        placeholder: 'No data — run php artisan ebay3:sync-campaign-listings',
         columns: [
             {
                 title: '<input type="checkbox" id="select-all-cb" style="cursor:pointer;">',
@@ -516,7 +516,7 @@ function updateSelectedCount() {
 
 // Load campaigns when enroll modal opens
 document.getElementById('enrollModal').addEventListener('show.bs.modal', function() {
-    $.get('/ebay2/campaign-ads/campaigns', function(data) {
+    $.get('/ebay3/campaign-ads/campaigns', function(data) {
         const sel = $('#enroll-campaign-select');
         sel.empty().append('<option value="">— Select a campaign —</option>');
         data.forEach(c => sel.append(`<option value="${c.campaign_id}">${c.campaign_name}</option>`));
@@ -548,7 +548,7 @@ document.getElementById('enroll-confirm-btn').addEventListener('click', function
     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Enrolling…';
 
     $.ajax({
-        url: '/ebay2/campaign-ads/enroll',
+        url: '/ebay3/campaign-ads/enroll',
         method: 'POST',
         headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
         contentType: 'application/json',
@@ -614,7 +614,7 @@ document.getElementById('push-selected-btn').addEventListener('click', function(
     btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i>Pushing ${selectedIds.size}…`;
 
     $.ajax({
-        url: '/ebay2/campaign-ads/push-selected',
+        url: '/ebay3/campaign-ads/push-selected',
         method: 'POST',
         headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
         contentType: 'application/json',
@@ -683,9 +683,9 @@ function resolveBandBid(band, ctx) {
 }
 
 // ── SBID Rule ──────────────────────────────────────
-const ruleGetUrl  = '/ebay2/campaign-ads/rule';
-const ruleSaveUrl = '/ebay2/campaign-ads/rule';
-const pushSbidUrl = '/ebay2/campaign-ads/push-sbid';
+const ruleGetUrl  = '/ebay3/campaign-ads/rule';
+const ruleSaveUrl = '/ebay3/campaign-ads/rule';
+const pushSbidUrl = '/ebay3/campaign-ads/push-sbid';
 let currentRule = @json($sbidRule ?? ['bands' => []]);
 
 // Metric options available for a band's dynamic sub-rule
@@ -911,7 +911,7 @@ document.getElementById('sbid-rule-save-btn').addEventListener('click', function
 
 // Push SBID button
 document.getElementById('push-sbid-btn').addEventListener('click', function() {
-    if (!confirm('Run ebay2:update-suggestedbid now?\nThis will push bids to eBay for all campaign listings.')) return;
+    if (!confirm('Run ebay3:update-suggestedbid now?\nThis will push bids to eBay for all campaign listings.')) return;
     const btn = this;
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Pushing…';
@@ -937,8 +937,8 @@ document.getElementById('push-sbid-btn').addEventListener('click', function() {
 
 // ── Dilution Rule ───────────────────────────────────
 // DIL = (L30 sold / Inventory) × 100. Bands evaluated top-to-bottom, first DIL ≤ max wins.
-const dilGetUrl  = '/ebay2/campaign-ads/dil-rule';
-const dilSaveUrl = '/ebay2/campaign-ads/dil-rule';
+const dilGetUrl  = '/ebay3/campaign-ads/dil-rule';
+const dilSaveUrl = '/ebay3/campaign-ads/dil-rule';
 let currentDilRule = @json($dilRule ?? ['bands' => []]);
 
 // DIL value for a row (0 when inventory is 0 — treated as the lowest/worst band)

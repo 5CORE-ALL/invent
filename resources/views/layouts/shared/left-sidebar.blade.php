@@ -1957,6 +1957,9 @@
                                     <li>
                                         <a href="{{ route('ebay3.pmt.ads') }}">Ebay 3 PMT Ads</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('ebay3.campaign.ads') }}">eBay 3 Campaign Ads (Raw)</a>
+                                    </li>
                                     {{-- <li>
                                         <a href="{{ route('ebay3.keywords.ads') }}">Ebay 3 Keywords Ads</a>
                                     </li>

@@ -43,6 +43,7 @@ use App\Http\Controllers\Campaigns\EbayPinkDilAdController;
 use App\Http\Controllers\Campaigns\EbayPMPAdsController;
 use App\Http\Controllers\Campaigns\EbayCampaignAdsController;
 use App\Http\Controllers\Campaigns\Ebay2CampaignAdsController;
+use App\Http\Controllers\Campaigns\Ebay3CampaignAdsController;
 use App\Http\Controllers\Campaigns\EbayRunningAdsController;
 use App\Http\Controllers\Campaigns\GoogleSerpCampaignsController;
 use App\Http\Controllers\Campaigns\GoogleShoppingCampaignsController;
@@ -5326,6 +5327,19 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/ebay2/campaign-ads/push-selected', 'pushSelected')->name('ebay2.campaign.ads.push.selected');
         Route::get('/ebay2/campaign-ads/campaigns', 'getCampaignList')->name('ebay2.campaign.ads.campaigns');
         Route::post('/ebay2/campaign-ads/enroll', 'enrollInCampaign')->name('ebay2.campaign.ads.enroll');
+    });
+
+    Route::controller(Ebay3CampaignAdsController::class)->group(function () {
+        Route::get('/ebay3/campaign-ads', 'index')->name('ebay3.campaign.ads');
+        Route::get('/ebay3/campaign-ads/data', 'getData')->name('ebay3.campaign.ads.data');
+        Route::get('/ebay3/campaign-ads/rule', 'getRule')->name('ebay3.campaign.ads.rule');
+        Route::post('/ebay3/campaign-ads/rule', 'saveRule')->name('ebay3.campaign.ads.rule.save');
+        Route::get('/ebay3/campaign-ads/dil-rule', 'getDilRule')->name('ebay3.campaign.ads.dil.rule');
+        Route::post('/ebay3/campaign-ads/dil-rule', 'saveDilRule')->name('ebay3.campaign.ads.dil.rule.save');
+        Route::post('/ebay3/campaign-ads/push-sbid', 'pushSbid')->name('ebay3.campaign.ads.push.sbid');
+        Route::post('/ebay3/campaign-ads/push-selected', 'pushSelected')->name('ebay3.campaign.ads.push.selected');
+        Route::get('/ebay3/campaign-ads/campaigns', 'getCampaignList')->name('ebay3.campaign.ads.campaigns');
+        Route::post('/ebay3/campaign-ads/enroll', 'enrollInCampaign')->name('ebay3.campaign.ads.enroll');
     });
 
     Route::controller(EbayPMPAdsController::class)->group(function () {
