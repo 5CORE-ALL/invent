@@ -731,6 +731,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Same as eBay 1 but for account 2 → fills ebay2_campaign_ads before the
+        // 13:25 ebay2:update-suggestedbid job consumes it.
+        $ist($schedule->command('ebay2:sync-campaign-listings')
+            ->dailyAt('11:32')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay2-sync-campaign-listings')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('ebay:update-suggestedbid')
             ->dailyAt('13:23')
             ->timezone('Asia/Kolkata')
@@ -759,6 +769,14 @@ class Kernel extends ConsoleKernel
             ->dailyAt('13:29')
             ->timezone('Asia/Kolkata')
             ->name('ebay1-budget')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('ebay2:update-budget')
+            ->dailyAt('13:31')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay2-budget')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));
