@@ -290,7 +290,7 @@ class MacysApiService
 
             return $this->pushMacyMiraklProductAttributes(
                 $sku,
-                [],
+                $this->macyBulletAttributes($bulletPoints),
                 'Macy bullet points updated',
                 'Macy bullet update failed',
                 $updatedDescription !== '' ? [['locale' => 'en_US', 'value' => $updatedDescription]] : null,
@@ -298,6 +298,7 @@ class MacysApiService
                     'current_description_length' => strlen($currentDescription),
                     'updated_description_length' => strlen($updatedDescription),
                     'description_changed' => sha1($currentDescription) !== sha1($updatedDescription),
+                    'attribute_ids' => ['bulletPoints'],
                     'target_section' => 'leading About Item text before Product Description',
                 ]
             );
@@ -405,6 +406,24 @@ class MacysApiService
         return $formatted;
     }
 
+    /**
+     * Macy's public PDP can render bullets from a dedicated Mirakl attribute
+     * instead of the localized description, so keep both fields in sync.
+     *
+     * @return array<string, string>
+     */
+    private function macyBulletAttributes(string $bulletPoints): array
+    {
+        $lines = array_values(array_filter(array_map(
+            fn ($line) => trim((string) $line),
+            preg_split('/\r\n|\r|\n/', trim($bulletPoints)) ?: []
+        ), fn ($line) => $line !== ''));
+
+        return [
+            'bulletPoints' => implode("\n", array_slice($lines, 0, 5)),
+        ];
+    }
+
     private function fetchMacyMiraklProduct(string $sku): array
     {
         $token = $this->getAccessToken();
@@ -466,12 +485,33 @@ class MacysApiService
             return $replacement;
         }
 
-        $productDescriptionPos = mb_stripos($description, 'Product Description');
-        if ($productDescriptionPos !== false) {
-            return trim($replacement.' '.mb_substr($description, $productDescriptionPos));
+        $descriptionBody = $this->findMacyDescriptionBodyText($description);
+        if ($descriptionBody !== null) {
+            return trim($replacement.' '.$descriptionBody);
+        }
+
+        if (preg_match('/^\s*About Item:?\s*/iu', $description) === 1) {
+            return $replacement;
         }
 
         return trim($replacement.' '.$description);
+    }
+
+    private function findMacyDescriptionBodyText(string $description): ?string
+    {
+        $productDescriptionPos = mb_stripos($description, 'Product Description');
+        if ($productDescriptionPos !== false) {
+            return mb_substr($description, $productDescriptionPos);
+        }
+
+        if (preg_match('/\b[A-Z][A-Za-z0-9&,\-\/ ]{2,80}\s+Description\b/u', $description, $matches, PREG_OFFSET_CAPTURE) === 1) {
+            $offset = (int) ($matches[0][1] ?? -1);
+            if ($offset > 0) {
+                return substr($description, $offset);
+            }
+        }
+
+        return null;
     }
 
     private function formatMacyAboutItemText(string $bulletPoints): string

@@ -355,7 +355,14 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const getCsrfToken = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const csrfHeaders = () => ({
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': getCsrfToken(),
+        'X-Requested-With': 'XMLHttpRequest',
+        'Accept': 'application/json',
+    });
+    const csrfToken = getCsrfToken();
     const MARKETPLACES = ['ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'bestbuy', 'shopify_main', 'shopify_pls'];
     const EBAY3_WARNING = 'eBay3 has different listing structure. Please verify bullet points format before pushing.';
     const LABELS = {
@@ -1304,12 +1311,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     try {
                         const res = await fetch('/bullet-points/save', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                            credentials: 'same-origin',
+                            headers: csrfHeaders(),
                             body: JSON.stringify(payload),
                         });
                         const data = await res.json().catch(() => ({}));
                         if (!res.ok || !data.success) {
-                            throw new Error(data.message || 'Save failed');
+                            throw new Error(res.status === 419 ? 'Session expired. Refresh the page and try again.' : (data.message || 'Save failed'));
                         }
                         successCount++;
                     } catch (err) {
@@ -1415,13 +1423,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const btn = this; const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
         fetch('/bullet-points/save', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+            credentials: 'same-origin',
+            headers: csrfHeaders(),
             body: JSON.stringify(payload)
         })
         .then(async (r) => {
             const payload = await r.json().catch(() => ({}));
             if (!r.ok || !payload.success) {
-                throw new Error(payload.message || 'Save failed');
+                throw new Error(r.status === 419 ? 'Session expired. Refresh the page and try again.' : (payload.message || 'Save failed'));
             }
             return payload;
         })
