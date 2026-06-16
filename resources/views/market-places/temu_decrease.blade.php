@@ -157,8 +157,7 @@
                             <option value="10-20">10-20%</option>
                             <option value="20-30">20-30%</option>
                             <option value="30-40">30-40%</option>
-                            <option value="40-50">40-50%</option>
-                            <option value="50plus">Above 50%</option>
+                            <option value="40plus">Above 40%</option>
                         </select>
                         <select id="cvr-filter" class="form-select form-select-sm">
                             <option value="all">All CVR%</option>
@@ -241,6 +240,40 @@
                             <option value="lt27">&lt; $27</option>
                             <option value="gt31">&gt; $31</option>
                         </select>
+                    </div>
+
+                    {{-- Target ROI% bulk control — back-solves SPRICE for selected rows so SROI = Target ROI%. --}}
+                    {{-- stemuPrice = (LP × (1 + ROI%/100) + temu_ship) / margin; then sprice = stemuPrice or stemuPrice − 2.99 (Temu adds a $2.99 ship bumper when sprice ≤ $26.99). --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-roi-controls"
+                        title="Target ROI% — sets SPRICE so the on-page SROI column equals the target (accounts for Temu fees, temu_ship, and the $2.99 ship bumper on prices ≤ $26.99)">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target ROI%:
+                        </label>
+                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply SPRICE'">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save SPRICE so SROI column = Target ROI% for every selected row">
+                            <i class="fas fa-calculator"></i> Apply SPRICE
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves SPRICE for selected rows so SGPRFT = Target GPFT%. --}}
+                    {{-- Formula: stemuPrice = (LP + temu_ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100 (else denominator ≤ 0). --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-gpft-controls"
+                        title="Target GPFT% — sets SPRICE so the on-page SGPRFT column equals the target (accounts for Temu fees, temu_ship, and the $2.99 ship bumper on prices ≤ $26.99)">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target GPFT%:
+                        </label>
+                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply SPRICE'. Must be less than the Temu take-home margin (e.g. < 96%).">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save SPRICE so SGPRFT column = Target GPFT% for every selected row">
+                            <i class="fas fa-calculator"></i> Apply SPRICE
+                        </button>
                     </div>
 
                     <!-- Ads Req Filter -->
@@ -902,6 +935,9 @@
 @section('script-bottom')
 <script>
     const COLUMN_VIS_KEY = "temu_decrease_column_visibility";
+    /** Stored in DB table channel_tabulator_column_settings (shared across all users — same pattern as amazon/ebay1/ebay2/ebay3/mfrg tabulators). */
+    const TABULATOR_COLUMN_CHANNEL = 'temu_decrease';
+    const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
     let table = null;
     let decreaseModeActive = false;
     let increaseModeActive = false;
@@ -1819,6 +1855,197 @@
             if (e.which === 13) {
                 applyDiscount();
             }
+        });
+
+        /*
+         * ============================================================================
+         * Target ROI% / Target GPFT% bulk apply for SPRICE  (Temu Decrease)
+         * ----------------------------------------------------------------------------
+         * Same UX as amazon-tabulator-view / ebay-tabulator-view: pick rows, type a
+         * target %, click Apply SPRICE → back-solve a sale price that makes the on-page
+         * SROI / SGPRFT column equal the target after Temu margin + temu_ship + the
+         * $2.99 ship bumper on low prices are paid out.
+         *
+         * Temu twist: the backend (TemuController@saveTemuSprice) computes
+         *   stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice
+         * and then runs all profit math on stemuPrice, NOT sprice. So we back-solve
+         * the desired stemuPrice from the target %, then derive what sprice to send:
+         *   - stemuPrice ≤ 29.98  →  sprice = stemuPrice − 2.99  (backend will add it back)
+         *   - stemuPrice >  29.98  →  sprice = stemuPrice          (backend leaves it alone)
+         *
+         * Backend math (mirrors saveTemuSprice):
+         *   SROI%   = ((stemuPrice * margin − lp − temu_ship) / lp)         * 100
+         *      -> stemuPrice = (lp * (1 + roi%/100) + temu_ship) / margin
+         *   SGPRFT% = ((stemuPrice * margin − lp − temu_ship) / stemuPrice) * 100
+         *      -> stemuPrice = (lp + temu_ship) / (margin − gpft%/100)
+         *      Constraint: (margin − gpft%/100) must be > 0 (else infinite/neg price).
+         *
+         * `margin` falls back to 0.96 (the same fallback the backend uses when
+         * MarketplacePercentage 'TemuTwo' isn't configured). All POSTs go through the
+         * existing /temu-pricing/save-sprice endpoint so SGPRFT/SROI get recomputed
+         * server-side exactly like an inline SPRICE edit.
+         *
+         * Selection cleanup: after each batch we wipe selectedSkus + every visible
+         * checkbox so the next batch starts fresh (no carryover between runs).
+         * ============================================================================
+         */
+        // Temu margin fallback used both for back-solve and skip-decisions. 0.96 matches
+        // the backend default when MarketplacePercentage 'TemuTwo' has no row.
+        const TEMU_MARGIN_FALLBACK = 0.96;
+
+        // Inverse of the backend's `stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice`
+        // transformation: returns the sprice that would produce `desiredStemuPrice`
+        // after the backend applies its bumper.
+        function temuStemuPriceToSprice(desiredStemuPrice) {
+            if (!isFinite(desiredStemuPrice) || desiredStemuPrice <= 0) return null;
+            // For low stemuPrices (≤ 29.98) we have to send sprice = stemuPrice − 2.99
+            // so the backend adds the $2.99 bumper back and lands on the desired stemuPrice.
+            if (desiredStemuPrice <= 29.98) {
+                const sprice = +(desiredStemuPrice - 2.99).toFixed(2);
+                if (sprice <= 0) return null;
+                return sprice;
+            }
+            return +desiredStemuPrice.toFixed(2);
+        }
+
+        function temuApplyTargetSpriceBatch(opts) {
+            // opts: { label, $btn, btnHtml, computeStemuPrice(rd) -> {stemuPrice, skipReason?} }
+            const $btn = opts.$btn;
+            if (typeof selectedSkus === 'undefined' || selectedSkus.size === 0) {
+                showToast('Please select at least one SKU', 'error');
+                return;
+            }
+
+            const rowsToProcess = [];
+            const skipped = [];
+            table.getRows().forEach(function(r) {
+                const rd = r.getData();
+                const sku = rd['sku'];
+                if (!sku || !selectedSkus.has(sku)) return;
+                const res = opts.computeStemuPrice(rd);
+                if (!res || res.skipReason) {
+                    if (res && res.skipReason) skipped.push({ sku: sku, reason: res.skipReason });
+                    return;
+                }
+                const sprice = temuStemuPriceToSprice(res.stemuPrice);
+                if (sprice == null || !isFinite(sprice) || sprice <= 0) return;
+                rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
+            });
+
+            if (rowsToProcess.length === 0) {
+                if (skipped.length > 0) {
+                    showToast(`Cannot apply: ${skipped[0].reason}`, 'error');
+                } else {
+                    showToast('No selected rows have a usable LP > 0', 'warning');
+                }
+                return;
+            }
+
+            let confirmMsg = `Compute & save SPRICE for ${rowsToProcess.length} selected SKU(s) using ${opts.label}?`;
+            if (skipped.length > 0) {
+                confirmMsg += `\n\nNote: ${skipped.length} row(s) will be skipped (${skipped[0].reason}).`;
+            }
+            if (!confirm(confirmMsg)) return;
+
+            let successCount = 0;
+            let errorCount = 0;
+            const total = rowsToProcess.length;
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+
+            rowsToProcess.forEach(function(item) {
+                $.ajax({
+                    url: '/temu-pricing/save-sprice',
+                    method: 'POST',
+                    data: {
+                        sku: item.sku,
+                        sprice: item.sprice,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        successCount++;
+                        // Field names match the existing saveSpriceWithRetry update payload.
+                        item.row.update({
+                            sprice: item.sprice,
+                            sgprft_percent: response.sgprft_percent,
+                            sroi_percent: response.sroi_percent,
+                            sprice_status: 'saved'
+                        });
+                        item.row.reformat();
+                    },
+                    error: function() { errorCount++; },
+                    complete: function() {
+                        if (successCount + errorCount === total) {
+                            $btn.prop('disabled', false).html(opts.btnHtml);
+                            if (errorCount === 0) {
+                                showToast(`SPRICE saved for ${successCount} SKU(s) @ ${opts.label}`, 'success');
+                            } else {
+                                showToast(`Saved ${successCount} of ${total} (${errorCount} failed)`, 'error');
+                            }
+                            // Wipe selection so the next batch starts clean.
+                            selectedSkus.clear();
+                            $('.sku-select-checkbox').prop('checked', false);
+                            $('#select-all-checkbox').prop('checked', false);
+                            if (typeof updateSelectedCount === 'function') {
+                                updateSelectedCount();
+                            }
+                        }
+                    }
+                });
+            });
+        }
+
+        // Target ROI%
+        $('#apply-target-roi-btn').on('click', function() {
+            const $btn = $(this);
+            const raw = $('#target-roi-input').val();
+            const targetRoiPct = parseFloat(String(raw).replace(',', '.'));
+            if (raw === '' || raw == null) { showToast('Please enter a Target ROI%', 'error'); return; }
+            if (!isFinite(targetRoiPct)) { showToast('Target ROI% must be a number', 'error'); return; }
+            const roiMultiplier = 1 + (targetRoiPct / 100);
+            temuApplyTargetSpriceBatch({
+                label: `Target ROI ${targetRoiPct}%`,
+                $btn: $btn,
+                btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
+                computeStemuPrice: function(rd) {
+                    const lp = parseFloat(rd.lp) || 0;
+                    if (lp <= 0) return null;
+                    const temuShip = parseFloat(rd.temu_ship) || 0;
+                    const margin = TEMU_MARGIN_FALLBACK;
+                    return { stemuPrice: (lp * roiMultiplier + temuShip) / margin };
+                }
+            });
+        });
+        $('#target-roi-input').on('keypress', function(e) {
+            if (e.which === 13) $('#apply-target-roi-btn').click();
+        });
+
+        // Target GPFT%
+        $('#apply-target-gpft-btn').on('click', function() {
+            const $btn = $(this);
+            const raw = $('#target-gpft-input').val();
+            const targetGpftPct = parseFloat(String(raw).replace(',', '.'));
+            if (raw === '' || raw == null) { showToast('Please enter a Target GPFT%', 'error'); return; }
+            if (!isFinite(targetGpftPct)) { showToast('Target GPFT% must be a number', 'error'); return; }
+            const targetFraction = targetGpftPct / 100;
+            temuApplyTargetSpriceBatch({
+                label: `Target GPFT ${targetGpftPct}%`,
+                $btn: $btn,
+                btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
+                computeStemuPrice: function(rd) {
+                    const lp = parseFloat(rd.lp) || 0;
+                    if (lp <= 0) return null;
+                    const temuShip = parseFloat(rd.temu_ship) || 0;
+                    const margin = TEMU_MARGIN_FALLBACK;
+                    const denom = margin - targetFraction;
+                    if (denom <= 0) {
+                        return { skipReason: `Target GPFT% ${targetGpftPct}% \u2265 Temu take-home margin (~${Math.round(margin * 100)}%)` };
+                    }
+                    return { stemuPrice: (lp + temuShip) / denom };
+                }
+            });
+        });
+        $('#target-gpft-input').on('keypress', function(e) {
+            if (e.which === 13) $('#apply-target-gpft-btn').click();
         });
 
         // Badge click handlers for filtering
@@ -4012,8 +4239,7 @@
                     if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
                     if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
                     if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
-                    if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
-                    if (gpftFilter === '50plus') return gpft >= 50;
+                    if (gpftFilter === '40plus') return gpft >= 40;
                     return true;
                 });
             }
@@ -4821,22 +5047,34 @@
         // Initialize iconClicked flag for IN ROAS
         window.iconClicked = false;
 
+        /*
+         * Column visibility (every column for this page) persists in the shared DB table
+         * `channel_tabulator_column_settings` under channel = 'temu_decrease'. We hit the
+         * same /tabulator-column-visibility endpoint used by the amazon / ebay1 / ebay2 /
+         * ebay3 / mfrg tabulators so a single row owns the show/hide map for everyone
+         * on this view.
+         */
         function buildColumnDropdown() {
             const menu = document.getElementById("column-dropdown-menu");
+            if (!menu) return;
             menu.innerHTML = '';
 
-            fetch('/temu-decrease-column-visibility', {
+            fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                 method: 'GET',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 }
             })
             .then(response => response.json())
             .then(savedVisibility => {
+                const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
                 table.getColumns().forEach(col => {
                     const def = col.getDefinition();
                     if (def.field && def.field !== '_select') {
-                        const visible = savedVisibility[def.field] !== undefined ? savedVisibility[def.field] : def.visible !== false;
+                        // Prefer saved value; anything explicitly false in the DB map = hidden.
+                        // Otherwise fall back to the column's natural visibility flag.
+                        const visible = map.hasOwnProperty(def.field) ? (map[def.field] !== false) : (def.visible !== false);
                         const li = document.createElement('li');
                         li.className = 'dropdown-item';
                         li.innerHTML = `
@@ -4851,7 +5089,8 @@
                         menu.appendChild(li);
                     }
                 });
-            });
+            })
+            .catch(err => console.error('Error loading column visibility:', err));
         }
 
         function saveColumnVisibilityToServer() {
@@ -4863,30 +5102,33 @@
                 }
             });
 
-            fetch('/temu-decrease-column-visibility', {
+            fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 },
                 body: JSON.stringify({
+                    channel: TABULATOR_COLUMN_CHANNEL,
                     visibility: visibility
                 })
-            });
+            }).catch(err => console.error('Error saving column visibility:', err));
         }
 
         function applyColumnVisibilityFromServer() {
-            fetch('/temu-decrease-column-visibility', {
+            fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                 method: 'GET',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 }
             })
             .then(response => response.json())
             .then(savedVisibility => {
+                if (!savedVisibility || typeof savedVisibility !== 'object') return;
                 table.getColumns().forEach(col => {
                     const field = col.getField();
-                    if (field && savedVisibility[field] !== undefined) {
+                    if (field && savedVisibility.hasOwnProperty(field)) {
                         if (savedVisibility[field]) {
                             col.show();
                         } else {
@@ -4894,7 +5136,8 @@
                         }
                     }
                 });
-            });
+            })
+            .catch(err => console.error('Error applying column visibility:', err));
         }
 
         table.on('tableBuilt', function() {
