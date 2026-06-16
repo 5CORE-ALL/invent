@@ -292,6 +292,56 @@
             color: #b02a37 !important;
         }
 
+        /* Missing data indicator (same look + behaviour as Product Master,
+           sized for the compact shipping-master cells). Used on every
+           child-SKU cell whose value is null / empty / NaN. Clicking the
+           badge opens the row's edit modal and focuses the missing field. */
+        .missing-data-indicator {
+            display: inline-block;
+            color: #dc3545;
+            font-weight: bold;
+            font-size: 11px;
+            line-height: 1;
+            background-color: #ffebee;
+            padding: 3px 7px;
+            border-radius: 4px;
+            border: 1px solid #dc3545;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 22px;
+            text-align: center;
+            user-select: none;
+        }
+        .missing-data-indicator:hover {
+            background-color: #dc3545;
+            color: #fff;
+            transform: scale(1.08);
+            box-shadow: 0 2px 6px rgba(220, 53, 69, 0.3);
+        }
+        .missing-data-indicator:active {
+            transform: scale(0.96);
+        }
+        .table-responsive tbody tr:hover td .missing-data-indicator {
+            background-color: #dc3545;
+            color: #fff;
+        }
+        /* Field highlight when the modal opens via an M click — lets the user
+           immediately see which field they jumped to. */
+        .form-control.missing-field-highlight,
+        .form-select.missing-field-highlight {
+            border-color: #dc3545 !important;
+            box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.2) !important;
+            background-color: #fff5f5 !important;
+            transition: all 0.25s ease;
+        }
+        /* Cells holding only the M badge shouldn't inherit the red "alert"
+           text color or the yellow ship-col background — the badge speaks for
+           itself. */
+        .table-responsive tbody td.shipping-rate-cell.has-missing-indicator,
+        .table-responsive tbody td.shipping-ship-col.has-missing-indicator {
+            color: inherit !important;
+        }
+
         /* Highlight selected item dimension headers */
         .table-responsive thead th.item-dim-header {
             background-color: #fff9c4 !important; /* light yellow */
@@ -562,6 +612,22 @@
         #slabRatesTable td.slab-count-cell .badge { font-size: 11px; }
         #slabRatesTable tbody tr.slab-row-empty td.slab-rates-carrier-cell input.slab-rate-input {
             background-color: #f1f5f9;
+        }
+        /* "Prefilled from table" hint: input shows the current value with a
+           subtle background so the user can tell it isn't a fresh edit yet,
+           but the digits themselves stay upright and readable. */
+        #slabRatesTable input.slab-rate-input.slab-rate-prefilled {
+            color: #212529;
+            background-color: #f8fafc;
+            border-color: #e2e8f0;
+        }
+        #slabRatesTable input.slab-rate-input.slab-rate-prefilled:focus {
+            background-color: #fff;
+            border-color: #86b7fe;
+        }
+        #slabRatesTable input.slab-rate-input.slab-rate-mixed {
+            background-color: #fffbeb;
+            border-color: #fde68a;
         }
     </style>
 @endsection
@@ -1121,6 +1187,44 @@
         </div>
     </div>
 
+    <!-- Missing Data Modal (small, single-field) — mirrors Product Master's
+         "Enter Missing Data" dialog so clicking an M badge lets the user edit
+         just that one value instead of opening the full edit modal. -->
+    <div class="modal fade" id="missingDataModal" tabindex="-1" aria-labelledby="missingDataModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white;">
+                    <h5 class="modal-title" id="missingDataModalLabel">
+                        <i class="fas fa-edit me-2"></i>Enter Missing Data
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">SKU:</label>
+                        <p class="form-control-plaintext mb-0" id="missingDataSku"></p>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Field:</label>
+                        <p class="form-control-plaintext mb-0" id="missingDataField"></p>
+                    </div>
+                    <div class="mb-3">
+                        <label for="missingDataValue" class="form-label fw-bold">Enter Value:</label>
+                        <input type="number" step="0.01" min="0" class="form-control" id="missingDataValue" placeholder="Enter value here&hellip;" autocomplete="off">
+                        <small class="form-text text-muted" id="missingDataHint">Enter a numeric value.</small>
+                    </div>
+                    <div id="missingDataError" class="alert alert-danger" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="saveMissingDataBtn">
+                        <i class="fas fa-save me-1"></i>Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Slab Rates Modal -->
     <div class="modal fade" id="slabRatesModal" tabindex="-1" aria-labelledby="slabRatesModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-fullscreen-lg-down modal-xl modal-dialog-scrollable">
@@ -1136,6 +1240,12 @@
                         <i class="fas fa-info-circle me-2"></i>
                         Enter a rate in any <em>(slab &times; carrier)</em> cell. On <strong>Apply</strong>, each rate is
                         written to its carrier column for every non-parent SKU in that slab. Empty cells are skipped.
+                        <div class="text-muted mt-1">
+                            <span class="badge bg-light text-dark border me-1" style="background-color: #f8fafc;">5.49</span>
+                            <span class="me-2">= current value already shared by every SKU in the slab (kept as-is unless you edit it).</span>
+                            <span class="badge bg-warning-subtle text-dark border me-1" style="background-color: #fffbeb;">mixed</span>
+                            <span>= SKUs in this slab have different values; type a number to override them all.</span>
+                        </div>
                         <div class="text-muted mt-1">
                             Slabs use <strong>Item WT ACT (LB)</strong> &mdash; same bands as the column filter.
                             Carriers: Ship, Ship BB, TT 1 Ship, Temu ship, Temu GOFO, Ebay2 ship, GOFO, Fedex, UPS, USPS, UNI.
@@ -1333,7 +1443,22 @@
                     const row = document.createElement('tr');
                     const isParentRow = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
                     if (isParentRow) row.classList.add('shipping-parent-row');
-                    const cellVal = (val, decimals) => isParentRow ? '--' : formatNumber(val || 0, decimals);
+                    // Returns:
+                    //   '--' for parent rows (aggregate placeholder)
+                    //   '-'  for missing values on child rows (post-pass turns
+                    //        these into the red "M" indicator, same as Product
+                    //        Master)
+                    //   formatted number otherwise (explicit 0 stays as "0").
+                    const cellVal = (val, decimals) => {
+                        if (isParentRow) return '--';
+                        if (val === null || val === undefined || val === '' ||
+                            (typeof val === 'string' && val.trim() === '')) {
+                            return '-';
+                        }
+                        const n = parseFloat(val);
+                        if (!Number.isFinite(n)) return '-';
+                        return formatNumber(n, decimals);
+                    };
 
                     // Checkbox column
                     const checkboxCell = document.createElement('td');
@@ -1654,9 +1779,332 @@
                         }
                     });
 
+                    if (!isParentRow) convertMissingDashesToIndicator(row);
                     tbody.appendChild(row);
                 });
                 applyDimWtSectionFilter();
+            }
+
+            /** Cell column index → field key on `item` (and on the
+             *  /dim-wt-master/update payload). Used by the missing-indicator
+             *  click handler to focus the right input. */
+            const SHIPPING_COLUMN_INDEX_TO_FIELD = {
+                5:  'inv',
+                6:  'ship',
+                7:  'ship_bb',
+                8:  'tt_ship',
+                9:  'temu_ship',
+                10: 'temu_gofo',
+                11: 'ebay2_ship',
+                12: 'gofo',
+                13: 'fedex',
+                14: 'ups',
+                15: 'usps',
+                16: 'uni',
+                19: 'fba_sku',
+                20: 'fba_ship',
+                21: 'fba_manual_ship',
+                22: 'wt_act_kg',
+                23: 'wt_act',
+                24: 'wt_act',          // Item Weight (OZ) is derived from wt_act — focus the LB input
+                25: 'wt_decl',
+                26: 'l',
+                27: 'w',
+                28: 'h',
+                29: 'l_cm',
+                30: 'w_cm',
+                31: 'h_cm',
+                32: 'ctn_l',
+                33: 'ctn_w',
+                34: 'ctn_h',
+                36: 'ctn_qty'
+            };
+
+            /** Human-readable field labels used by the small "Enter Missing
+             *  Data" modal title. */
+            const SHIPPING_FIELD_LABELS = {
+                wt_act_kg:       'Item Weight ACT (Kg)',
+                wt_act:          'Item WT ACT (LB)',
+                wt_decl:         'Item WT DECL (LB)',
+                l:               'Item Length (inch)',
+                w:               'Item Width (inch)',
+                h:               'Item Height (inch)',
+                l_cm:            'Item Length (CM)',
+                w_cm:            'Item Width (CM)',
+                h_cm:            'Item Height (CM)',
+                ctn_l:           'CTN L (CM)',
+                ctn_w:           'CTN W (CM)',
+                ctn_h:           'CTN H (CM)',
+                ctn_qty:         'CTN (QTY)',
+                ship:            'Ship',
+                ship_bb:         'Ship BB',
+                tt_ship:         'TT 1 Ship',
+                temu_ship:       'Temu ship',
+                temu_gofo:       'Temu GOFO',
+                ebay2_ship:      'Ebay2 ship',
+                gofo:            'GOFO',
+                fedex:           'Fedex',
+                ups:             'UPS',
+                usps:            'USPS',
+                uni:             'UNI',
+                fba_ship:        'FBA ship',
+                fba_manual_ship: 'FBA manual ship',
+                inv:             'INV (Shopify)',
+                fba_sku:         'FBA SKU'
+            };
+
+            /** Per-field input step (most fields are dollars / cm, so 0.01;
+             *  ctn_qty is a whole-number count). */
+            const SHIPPING_FIELD_STEP = {
+                ctn_qty: '1'
+            };
+
+            /** Fields that the small modal cannot save: they live outside the
+             *  ProductMaster.Values JSON. On M click we explain that instead
+             *  of opening the editor. */
+            const SHIPPING_READONLY_FIELDS = {
+                inv:     'INV comes from Shopify and is not editable here. Update inventory in Shopify (or in the Inventory Master).',
+                fba_sku: 'FBA SKU lives in the FBA calculation table. Update it from the FBA module.'
+            };
+
+            /** Markup for the red "M" missing-data badge — identical look to
+             *  Product Master so the two pages stay visually consistent. */
+            function missingDataIndicatorHtml(field) {
+                const f = field ? ` data-field="${field}"` : '';
+                return `<span class="missing-data-indicator" title="Missing Data — click to edit"${f}>M</span>`;
+            }
+
+            /** Walk a non-parent row and replace any cell that shows only "-"
+             *  (single dash, set by cellVal / itemWeight*Display / setShipping*)
+             *  with the M badge. Cells containing form controls, links, the
+             *  status dot, etc. are skipped because they have child elements.
+             *  The badge gets a `data-field` matching the cell's column so the
+             *  click handler can focus the right input in the edit modal. */
+            function convertMissingDashesToIndicator(row) {
+                if (!row) return;
+                row.querySelectorAll('td').forEach(td => {
+                    if (td.children.length > 0) return;
+                    const text = (td.textContent || '').trim();
+                    if (text !== '-') return;
+                    const field = SHIPPING_COLUMN_INDEX_TO_FIELD[td.cellIndex] || '';
+                    td.innerHTML = missingDataIndicatorHtml(field);
+                    td.classList.add('has-missing-indicator');
+                });
+            }
+
+            /** Reference to the M badge that triggered the small modal, so we
+             *  can update the cell in place after a successful save. */
+            let currentMissingDataButton = null;
+
+            /** Click handler for M badges: open the small "Enter Missing Data"
+             *  modal so the user can edit ONLY that one field — same UX as
+             *  Product Master. The full edit modal is reachable from the
+             *  pencil icon in the Action column if the user needs broader
+             *  edits. */
+            function setupMissingIndicatorClicks() {
+                const tableEl = document.getElementById('dim-wt-master-datatable');
+                if (!tableEl) return;
+                tableEl.addEventListener('click', function (e) {
+                    const indicator = e.target.closest('.missing-data-indicator');
+                    if (!indicator) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const row = indicator.closest('tr');
+                    if (!row) return;
+                    const checkbox = row.querySelector('.row-checkbox');
+                    if (!checkbox) return;
+                    const product = findProductByRowRef(checkbox);
+                    if (!product) {
+                        showToast('warning', 'Could not find the matching SKU for that row.');
+                        return;
+                    }
+
+                    const fieldKey = indicator.getAttribute('data-field') || '';
+                    if (SHIPPING_READONLY_FIELDS[fieldKey]) {
+                        showToast('info', SHIPPING_READONLY_FIELDS[fieldKey]);
+                        return;
+                    }
+                    if (!fieldKey || !SHIPPING_FIELD_LABELS[fieldKey]) {
+                        // Calculated columns (avg, ctn_cbm, ctn_cbm_each) — no
+                        // single field to edit. Fall back to the full modal.
+                        bulkEditList = null;
+                        editDimWt(product);
+                        return;
+                    }
+
+                    openMissingDataModal({
+                        product,
+                        field: fieldKey,
+                        indicator
+                    });
+                });
+
+                // Save handler for the small modal
+                const saveBtn = document.getElementById('saveMissingDataBtn');
+                if (saveBtn) {
+                    saveBtn.addEventListener('click', saveMissingData);
+                }
+
+                // Reset state when the small modal is dismissed
+                const missingModalEl = document.getElementById('missingDataModal');
+                if (missingModalEl) {
+                    missingModalEl.addEventListener('hidden.bs.modal', function () {
+                        currentMissingDataButton = null;
+                        const valEl = document.getElementById('missingDataValue');
+                        if (valEl) valEl.value = '';
+                        const errEl = document.getElementById('missingDataError');
+                        if (errEl) errEl.style.display = 'none';
+                    });
+
+                    // Submit on Enter inside the value input
+                    const valEl = document.getElementById('missingDataValue');
+                    if (valEl) {
+                        valEl.addEventListener('keydown', function (e) {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                saveMissingData();
+                            }
+                        });
+                    }
+                }
+            }
+
+            /** Open the small modal pre-configured for one field on one SKU. */
+            function openMissingDataModal({ product, field, indicator }) {
+                const label = SHIPPING_FIELD_LABELS[field] || field;
+                const step = SHIPPING_FIELD_STEP[field] || '0.01';
+
+                currentMissingDataButton = indicator;
+
+                document.getElementById('missingDataSku').textContent = product.SKU || '';
+                document.getElementById('missingDataField').textContent = label;
+                document.getElementById('missingDataModalLabel').innerHTML =
+                    '<i class="fas fa-edit me-2"></i>Enter Missing ' + escapeHtml(label);
+
+                const valEl = document.getElementById('missingDataValue');
+                valEl.value = '';
+                valEl.step = step;
+                valEl.placeholder = 'Enter ' + label + '…';
+                valEl.setAttribute('data-sku', product.SKU || '');
+                valEl.setAttribute('data-product-id', product.id != null ? String(product.id) : '');
+                valEl.setAttribute('data-parent', product.Parent || '');
+                valEl.setAttribute('data-field', field);
+
+                const hintEl = document.getElementById('missingDataHint');
+                if (hintEl) {
+                    hintEl.textContent = step === '1'
+                        ? 'Enter a whole-number value.'
+                        : 'Enter a numeric value (decimals allowed).';
+                }
+
+                const errEl = document.getElementById('missingDataError');
+                if (errEl) errEl.style.display = 'none';
+
+                const modalEl = document.getElementById('missingDataModal');
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
+
+                setTimeout(() => valEl.focus(), 250);
+            }
+
+            /** Persist a single field via the existing /dim-wt-master/update
+             *  endpoint, then update the cell in place so the M badge becomes
+             *  the new value without a full table reload. */
+            async function saveMissingData() {
+                if (!currentMissingDataButton) {
+                    showToast('danger', 'Lost reference to the cell. Please re-open the row.');
+                    return;
+                }
+
+                const valEl = document.getElementById('missingDataValue');
+                const errEl = document.getElementById('missingDataError');
+                const saveBtn = document.getElementById('saveMissingDataBtn');
+                const originalSaveHtml = saveBtn ? saveBtn.innerHTML : '';
+
+                const raw = String(valEl.value || '').trim();
+                const productId = valEl.getAttribute('data-product-id');
+                const sku = valEl.getAttribute('data-sku');
+                const parent = valEl.getAttribute('data-parent') || '';
+                const field = valEl.getAttribute('data-field');
+
+                if (!sku || !field) {
+                    errEl.textContent = 'SKU or field is missing — please close and try again.';
+                    errEl.style.display = 'block';
+                    return;
+                }
+                if (raw === '') {
+                    errEl.textContent = 'Please enter a value.';
+                    errEl.style.display = 'block';
+                    return;
+                }
+                const numValue = parseFloat(raw);
+                if (!Number.isFinite(numValue) || numValue < 0) {
+                    errEl.textContent = 'Please enter a valid non-negative number.';
+                    errEl.style.display = 'block';
+                    return;
+                }
+
+                if (saveBtn) {
+                    saveBtn.disabled = true;
+                    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+                }
+
+                try {
+                    const payload = {
+                        product_id: productId ? Number(productId) : undefined,
+                        sku: sku,
+                        parent: parent,
+                        [field]: numValue
+                    };
+
+                    const response = await fetch('/dim-wt-master/update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok || data.success === false) {
+                        throw new Error(data.message || ('Failed to save (HTTP ' + response.status + ')'));
+                    }
+
+                    // Mirror the saved value into the in-memory table data so
+                    // subsequent renders / slab summaries reflect the change
+                    // without a full reload.
+                    if (Array.isArray(tableData)) {
+                        const matchId = productId ? String(productId) : null;
+                        const target = tableData.find(d =>
+                            (matchId && String(d.id) === matchId) ||
+                            (d.SKU && sku && String(d.SKU) === String(sku))
+                        );
+                        if (target) target[field] = numValue;
+                    }
+
+                    // Swap the M badge with the formatted value in place.
+                    const cell = currentMissingDataButton.closest('td');
+                    if (cell) {
+                        cell.classList.remove('has-missing-indicator');
+                        const display = (field === 'ctn_qty') ? String(Math.round(numValue)) : formatNumber(numValue, 2);
+                        cell.innerHTML = '';
+                        cell.textContent = display;
+                    }
+
+                    showToast('success', (SHIPPING_FIELD_LABELS[field] || field) + ' saved.');
+
+                    bootstrap.Modal.getInstance(document.getElementById('missingDataModal')).hide();
+                } catch (err) {
+                    console.error('Missing data save failed:', err);
+                    errEl.textContent = err.message || 'Failed to save data.';
+                    errEl.style.display = 'block';
+                } finally {
+                    if (saveBtn) {
+                        saveBtn.disabled = false;
+                        saveBtn.innerHTML = originalSaveHtml || '<i class="fas fa-save me-1"></i>Save';
+                    }
+                }
             }
 
             // Section filter: controls visibility of item vs carton metrics
@@ -3353,6 +3801,7 @@
             setupBulkEdit();
             setupPushData();
             setupSlabRates();
+            setupMissingIndicatorClicks();
             // Reset bulk edit state when edit modal is closed (e.g. without saving)
             document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
                 bulkEditList = null;
@@ -3403,6 +3852,44 @@
                 if (v === null || v === undefined || v === '') return true;
                 const n = parseFloat(v);
                 return !Number.isFinite(n);
+            }
+
+            // Round to 2 decimals so 5.4900 and 5.49 are treated as equal when
+            // deciding whether all SKUs in a slab share the same carrier rate.
+            function normalizeSlabRate(n) {
+                if (!Number.isFinite(n)) return null;
+                return Math.round(n * 100) / 100;
+            }
+
+            /** Summarize what the table currently holds for one (slab, carrier).
+             *  - uniformValue: the single numeric value if every non-missing SKU
+             *    in the slab shares it (and at least one SKU is non-missing),
+             *    otherwise null.
+             *  - distinctValues: sorted list of distinct rounded numeric values.
+             *  - filled / missing: counts. */
+            function computeSlabCarrierSummary(items, carrierKey) {
+                const distinctSet = new Map(); // rounded -> count
+                let filled = 0;
+                let missing = 0;
+                items.forEach(it => {
+                    const raw = it ? it[carrierKey] : null;
+                    if (raw === null || raw === undefined || raw === '') { missing++; return; }
+                    const n = parseFloat(raw);
+                    if (!Number.isFinite(n)) { missing++; return; }
+                    filled++;
+                    const r = normalizeSlabRate(n);
+                    distinctSet.set(r, (distinctSet.get(r) || 0) + 1);
+                });
+                const distinctValues = Array.from(distinctSet.keys()).sort((a, b) => a - b);
+                const uniformValue = (filled > 0 && distinctValues.length === 1 && missing === 0)
+                    ? distinctValues[0]
+                    : null;
+                return { uniformValue, distinctValues, filled, missing };
+            }
+
+            function formatSlabRate(n) {
+                if (!Number.isFinite(n)) return '';
+                return (Math.round(n * 100) / 100).toFixed(2);
             }
 
             function buildSlabRatesTableHead() {
@@ -3462,7 +3949,9 @@
                     SLAB_RATE_CARRIERS.forEach(c => {
                         const td = document.createElement('td');
                         td.className = 'slab-rates-carrier-cell';
-                        const missing = items.filter(it => isCarrierValueMissing(it, c.key)).length;
+                        const summary = total === 0
+                            ? { uniformValue: null, distinctValues: [], filled: 0, missing: 0 }
+                            : computeSlabCarrierSummary(items, c.key);
                         const inp = document.createElement('input');
                         inp.type = 'number';
                         inp.step = '0.01';
@@ -3471,10 +3960,47 @@
                         inp.setAttribute('data-slab-key', slab.key);
                         inp.setAttribute('data-carrier-key', c.key);
                         inp.placeholder = '—';
-                        inp.title = total === 0
+
+                        const baseInfo = total === 0
                             ? 'No SKUs in this slab'
-                            : `${c.label} — ${total} SKU(s) in slab, ${missing} missing this value`;
+                            : `${c.label} — ${total} SKU(s) in slab, ${summary.missing} missing this value`;
+
+                        if (summary.uniformValue !== null) {
+                            // Every SKU in the slab already shares the same value.
+                            // Pre-fill so the user can see "what's currently in the table".
+                            const formatted = formatSlabRate(summary.uniformValue);
+                            inp.value = formatted;
+                            inp.setAttribute('data-original', formatted);
+                            inp.classList.add('slab-rate-prefilled');
+                            inp.title = `${baseInfo}\nAll ${total} SKU(s) currently have ${c.label} = $${formatted}.\nEdit the value to overwrite; leave as-is to skip.`;
+                        } else if (summary.distinctValues.length > 0) {
+                            // Mixed: at least two different non-missing values OR
+                            // some missing + some filled. Don't pre-fill (it would
+                            // be misleading) but tell the user what's in there.
+                            const sample = summary.distinctValues
+                                .slice(0, 6)
+                                .map(v => '$' + formatSlabRate(v))
+                                .join(', ');
+                            const moreCount = summary.distinctValues.length - 6;
+                            const more = moreCount > 0 ? ` +${moreCount} more` : '';
+                            inp.placeholder = 'mixed';
+                            inp.classList.add('slab-rate-mixed');
+                            inp.setAttribute('data-original', '');
+                            inp.title = `${baseInfo}\nCurrent values: ${sample}${more}\n${summary.filled} filled, ${summary.missing} missing.\nType a value to set it for every SKU in this slab.`;
+                        } else {
+                            inp.setAttribute('data-original', '');
+                            inp.title = baseInfo;
+                        }
+
                         if (total === 0) inp.disabled = true;
+
+                        // Remove "prefilled" hint as soon as the user actually
+                        // edits the cell so they can see their input is recognised.
+                        inp.addEventListener('input', function () {
+                            inp.classList.remove('slab-rate-prefilled');
+                            inp.classList.remove('slab-rate-mixed');
+                        });
+
                         td.appendChild(inp);
                         tr.appendChild(td);
                     });
@@ -3521,6 +4047,16 @@
                     const carrierKey = inp.getAttribute('data-carrier-key');
                     if (!slabKey || !carrierKey) return;
 
+                    // Skip prefilled values the user didn't touch — opening the
+                    // modal and hitting Apply without edits should be a no-op.
+                    const original = inp.getAttribute('data-original') || '';
+                    if (original !== '' && !inp.classList.contains('slab-rate-mixed')) {
+                        const origNum = parseFloat(original);
+                        if (Number.isFinite(origNum) && normalizeSlabRate(origNum) === normalizeSlabRate(rate)) {
+                            return;
+                        }
+                    }
+
                     let items = getNonParentItemsInSlab(slabKey);
                     if (scope === 'missing') items = items.filter(it => isCarrierValueMissing(it, carrierKey));
                     if (items.length === 0) return;
@@ -3538,7 +4074,7 @@
                 });
 
                 if (perSku.size === 0) {
-                    showToast('warning', 'Enter a rate in at least one (slab × carrier) cell that has matching SKUs.');
+                    showToast('warning', 'Nothing to apply. Type a new rate (or change a prefilled one) in at least one (slab × carrier) cell that has matching SKUs.');
                     return;
                 }
 
