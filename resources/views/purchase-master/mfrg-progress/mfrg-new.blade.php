@@ -44,10 +44,10 @@
         /* Status dot toggles (Pkg/U-Manual/Compliance) */
         .mip-status-dot { display: inline-block; width: 16px; height: 16px; border-radius: 50%; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); }
 
-        /* Supplier cell — searchable dropdown trigger */
-        .mip-supplier-display { display: flex; align-items: center; justify-content: space-between; gap: 4px; width: 100%; padding: 3px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer; font-size: 12px; line-height: 1.3; min-height: 26px; }
-        .mip-supplier-display:hover { border-color: #4db6ac; background: #f0fdfa; }
-        .mip-supplier-display .mip-supplier-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        /* Supplier cell — plain text display, click to edit (Tabulator's `editor: "list"`
+           opens a searchable picker on click). Kept very subtle so the cell looks like
+           regular data, not a permanently-open form control. */
+        .mip-supplier-text { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
         /* Make the autocomplete edit list comfortably readable */
         .tabulator-edit-list { max-height: 260px; }
         .tabulator-edit-list .tabulator-edit-list-item { font-size: 12px; padding: 5px 8px; }
@@ -61,7 +61,12 @@
         .tabulator .tabulator-footer { background: #f4f7fa; border-top: 1px solid #cbd5e1; padding: 6px; }
         .tabulator .tabulator-footer .tabulator-page { padding: 6px 12px; margin: 0 3px; border-radius: 6px; }
         .tabulator .tabulator-footer .tabulator-page.active { background: #3bc0c3; color: #fff; }
+        /* Default to ellipsis-truncation so cells don't blow up vertically, but the
+           tooltip set in columnDefaults lets users hover to read the full value. */
         .tabulator .tabulator-cell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        /* When the table fits to data and there's room, let it use the full
+           card width so columns can stretch instead of leaving a gap on the right. */
+        #mfrg-table { width: 100%; }
 
         /* Column show/hide menu */
         .mip-columns-wrap { position: relative; }
@@ -98,20 +103,20 @@
         }
 
         .mip-summary {
-            display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-            background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
-            padding: 10px 12px; margin-bottom: 12px;
+            display: flex; flex-wrap: wrap; align-items: center; gap: 16px;
+            background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px;
+            padding: 16px 20px; margin-bottom: 16px;
         }
         .mip-summary-title {
-            font-weight: 700; font-size: 0.85rem; color: #334155;
-            margin-right: 6px; white-space: nowrap;
+            font-weight: 700; font-size: 1.05rem; color: #334155;
+            margin-right: 8px; white-space: nowrap;
         }
         .mip-summary-badge {
-            display: inline-flex; align-items: center; gap: 6px;
-            padding: 6px 10px; border-radius: 6px;
-            font-size: 0.8rem; font-weight: 600;
+            display: inline-flex; align-items: center; gap: 10px;
+            padding: 12px 18px; border-radius: 10px;
+            font-size: 1.05rem; font-weight: 600;
             color: #fff; line-height: 1; white-space: nowrap;
-            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+            box-shadow: 0 2px 4px rgba(15, 23, 42, 0.15);
         }
         .mip-summary-badge .label { opacity: 0.95; font-weight: 500; }
         .mip-summary-badge .value { font-weight: 700; }
@@ -439,11 +444,17 @@
                 return '<span title="' + full + '">' + short + '</span>';
             }
             function supplierFormatter(cell) {
+                // Plain-text display by default — no border, no caret, no "dropdown" affordance.
+                // The cell becomes a searchable supplier picker only when clicked (via the
+                // `editor: "list"` on this column), matching the click-to-edit pattern used
+                // by QTY / O Date / D Date. Previously this rendered a styled <div> with a
+                // border + caret on every row, which made every supplier cell look editable
+                // from outside before the user even clicked.
                 const val = (cell.getValue() || '').trim();
-                const txt = val ? esc(val) : '<span class="text-muted">— Select —</span>';
-                return '<div class="mip-supplier-display" title="Click to search & change supplier">' +
-                    '<span class="mip-supplier-name">' + txt + '</span>' +
-                    '<i class="fas fa-caret-down ms-1 text-muted"></i></div>';
+                if (!val) {
+                    return '<span class="text-muted" title="Click to set supplier">—</span>';
+                }
+                return '<span class="mip-supplier-text" title="' + esc(val) + '">' + esc(val) + '</span>';
             }
 
             table = new Tabulator("#mfrg-table", {
@@ -526,8 +537,15 @@
                     },
                     headerSort: false, frozen: true, hozAlign: "center", width: 45
                 },
-                layout: "fitColumns",
-                columnDefaults: { minWidth: 60, resizable: true },
+                // Autofit columns to the actual data they hold instead of stretching the
+                // fixed `width:` value on each column proportionally across the page —
+                // that was making short columns waste space and long columns truncate
+                // their content (the "data doesn't fit" look). With fitDataStretch each
+                // column sizes itself to its widest cell, then all columns are stretched
+                // proportionally to fill the page width.
+                layout: "fitDataStretch",
+                layoutColumnsOnNewData: true,
+                columnDefaults: { minWidth: 60, resizable: true, tooltip: true },
                 height: "70vh",
                 pagination: true,
                 paginationSize: 50,
@@ -578,7 +596,7 @@
                     { title: "D Date", field: "delivery_date", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,
                       editor: "date",
                       cellEdited: function (cell) { const d = cell.getRow().getData(); postInline(d.sku || '', d.id || 0, 'delivery_date', cell.getValue(), d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save date: ' + (err && err.message ? err.message : err))); } },
-                    { title: "Supplier", field: "supplier", width: 140, hozAlign: "left",
+                    { title: "Supplier", field: "supplier", width: 140, hozAlign: "center",
                       headerFilter: "input", headerFilterPlaceholder: " Filter...",
                       formatter: supplierFormatter,
                       editor: "list",
@@ -818,16 +836,33 @@
 
                 if (t.classList.contains('toa-exec-select')) {
                     const v = t.value;
+                    const prevExec = (d.exec == null) ? null : d.exec;
                     const c = EXEC_COLORS[v] || { bg: '#e5e7eb', text: '#6b7280' };
                     t.style.background = c.bg; t.style.color = c.text;
-                    // Fire the save first so a later UI redraw can never prevent it, and
-                    // only commit the row data once the server confirms success.
+                    // OPTIMISTIC update: commit the new exec to the row data immediately.
+                    //
+                    // The old code waited for the server response before calling
+                    // row.update({ exec: v }), which left the new value sitting only in
+                    // the raw <select> DOM. If Tabulator re-rendered the cell during the
+                    // async save (page change, filter, another row update, dataLoaded,
+                    // header-checkbox sync, etc.), it regenerated the dropdown from the
+                    // OLD row data — so the user saw their just-picked executive snap
+                    // back to "Unassigned" intermittently.
+                    //
+                    // Now we update the row first; on save failure we roll back and
+                    // alert. This eliminates the visual race entirely.
+                    row.update({ exec: v });
                     postUpdateLink(sku, 'Exec', v || null)
                         .then(r => {
-                            if (r && r.success) { row.update({ exec: v }); }
-                            else { alert((r && r.message) || 'Could not save executive.'); }
+                            if (!r || !r.success) {
+                                row.update({ exec: prevExec });
+                                alert((r && r.message) || 'Could not save executive.');
+                            }
                         })
-                        .catch(err => { alert('Could not save executive: ' + (err && err.message ? err.message : err)); });
+                        .catch(err => {
+                            row.update({ exec: prevExec });
+                            alert('Could not save executive: ' + (err && err.message ? err.message : err));
+                        });
                 } else if (t.classList.contains('editable-stage')) {
                     const v = t.value;
                     postStage(sku, d.parent, v).done(function () {

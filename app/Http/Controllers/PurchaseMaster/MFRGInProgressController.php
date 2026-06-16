@@ -329,14 +329,25 @@ class MFRGInProgressController extends Controller
         }
 
         $execBySku = [];
+        // The same SKU can appear in multiple to_order_analysis rows (different parent
+        // variants, normalization history, etc.). Without an explicit ORDER BY, MySQL
+        // returned rows in storage order, so the "winning" exec was non-deterministic
+        // and the page would intermittently show a freshly-saved exec as "Unassigned"
+        // (or revert to a stale value) on the very next refresh.
+        //
+        // We now order by latest write first and skip blanks; the first non-empty exec
+        // we see for a given SKU is what the user just saved, so it always wins.
         $execRows = DB::table('to_order_analysis')
             ->whereNull('deleted_at')
             ->whereNotNull('exec')
+            ->where('exec', '!=', '')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
             ->select(['sku', 'exec'])
             ->get();
         foreach ($execRows as $r) {
             $k = strtoupper(trim((string) ($r->sku ?? '')));
-            if ($k !== '') {
+            if ($k !== '' && !isset($execBySku[$k])) {
                 $execBySku[$k] = $r->exec;
             }
         }
