@@ -999,6 +999,33 @@
             const cleaned = String(value).replace(/[^0-9.-]/g, '');
             return parseFloat(cleaned) || 0;
         }
+
+        // Yesterday's date formatted in America/Los_Angeles (e.g. "Jun 14"). The current PT
+        // day is still in progress so its rolling-window data isn't final yet — every "data
+        // through …" label we surface points at the last COMPLETED Pacific day instead.
+        function caLastCompletedMdy() {
+            try {
+                const fmt = new Intl.DateTimeFormat('en-US', {
+                    timeZone: 'America/Los_Angeles',
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+                const parts = fmt.formatToParts(new Date());
+                const y = parseInt(parts.find(p => p.type === 'year').value, 10);
+                const mShort = parts.find(p => p.type === 'month').value;
+                const d = parseInt(parts.find(p => p.type === 'day').value, 10);
+                // Build a UTC date at PT midnight today, subtract one day, then format short.
+                const monthIdx = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(mShort);
+                const dt = new Date(Date.UTC(y, monthIdx, d));
+                dt.setUTCDate(dt.getUTCDate() - 1);
+                return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(dt);
+            } catch (e) {
+                const d = new Date();
+                d.setDate(d.getDate() - 1);
+                return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            }
+        }
         // Normalize percentage for display: backend may send 0.15 or 15; always show as 0-100 scale with %
         function asPercent(value) {
             const n = parseNumber(value);
@@ -1663,7 +1690,12 @@
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             if (totalSpent === 0) return '-';
                             const dotColor = getMetricDotColor(channel, 'ad_spend');
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="ad_spend" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            // Trend dot compares the last two COMPLETED Pacific days — today's
+                            // PT date is excluded because its rolling-window value is still
+                            // accruing. The tooltip surfaces that date so the value is read
+                            // correctly across timezones.
+                            const dotTitle = `Data through ${caLastCompletedMdy()} PT. Click to view chart.`;
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="ad_spend" style="cursor:pointer;color:${dotColor};font-size:8px;" title="${dotTitle}"></i>`;
                             const infoIcon =
                                 `<i class="fas fa-chevron-right ad-spend-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle Spend Breakdown"></i>`;
                             return `<span style="font-weight:600;">$${Math.round(totalSpent).toLocaleString('en-US')}</span>${chartIcon}${infoIcon}`;

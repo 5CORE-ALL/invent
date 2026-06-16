@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'PLS Pricing', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'PLS - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -46,14 +46,13 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'PLS Pricing',
+        'page_title' => 'PLS - Analytics',
         'sub_title' => '',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>PLS Data</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <select id="inventory-filter" class="form-select form-select-sm" style="width: auto;">
                         <option value="all">All Inventory</option>

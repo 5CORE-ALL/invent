@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Aliexpress Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Aliexpress - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -125,8 +125,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Aliexpress Analytics',
-        'sub_title'  => 'Upload AE export (sku, price, stock) — exact SKU match only; AL30 from daily order upload',
+        'page_title' => 'Aliexpress - Analytics',
+        'sub_title'  => '',
     ])
 
     <div class="row">
@@ -256,22 +256,25 @@
                             <i class="fas fa-table"></i> LMP sheet
                         </a>
 
-                        {{-- Price Mode (Increase / Decrease) – identical to TikTok --}}
-                        <button id="ae-price-mode-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase">
+                        {{-- Price Mode (Increase / Decrease / Same Price) --}}
+                        <button id="ae-price-mode-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same Price → Off">
                             <i class="fas fa-exchange-alt"></i> Price Mode
                         </button>
                     </div>
 
-                    {{-- Discount input (shown when Price Mode is active) – identical to TikTok --}}
+                    {{-- Discount input (shown when Price Mode is active) --}}
                     <div id="ae-discount-container" class="p-2 bg-light border rounded mb-2" style="display:none;">
-                        <div class="d-flex align-items-center gap-2">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
                             <span id="ae-selected-skus-count" class="fw-bold text-secondary"></span>
+                            <span id="ae-discount-input-label" class="text-muted small d-none">Same Price ($):</span>
+                            <span id="ae-discount-type-wrap">
                             <select id="ae-discount-type" class="form-select form-select-sm" style="width:120px;">
                                 <option value="percentage">Percentage</option>
                                 <option value="value">Value ($)</option>
                             </select>
+                            </span>
                             <input type="number" id="ae-discount-input" class="form-control form-control-sm"
-                                placeholder="Enter %" step="0.01" style="width:110px;">
+                                placeholder="Enter %" step="0.01" style="width:140px;">
                             <button id="ae-apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
                             <button id="ae-clear-sprice-btn" class="btn btn-danger btn-sm">
                                 <i class="fas fa-eraser"></i> Clear SPRICE
@@ -536,9 +539,10 @@
             applyFilters();
         }
 
-        // Price Mode (mirrors TikTok exactly)
+        // Price Mode (Decrease / Increase / Same Price)
         let decreaseModeActive = false;
         let increaseModeActive = false;
+        let samePriceModeActive = false;
         let selectedSkus = new Set();
 
         function roundToRetailPrice(price) {
@@ -548,32 +552,58 @@
             return Math.ceil(price) - 0.01;
         }
 
+        function syncAeDiscountInputUi() {
+            const $input = $('#ae-discount-input');
+            if (samePriceModeActive) {
+                $('#ae-discount-type-wrap').hide();
+                $('#ae-discount-input-label').removeClass('d-none');
+                $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
+                $('#ae-apply-discount-btn').text('Apply Same Price');
+            } else {
+                $('#ae-discount-type-wrap').show();
+                $('#ae-discount-input-label').addClass('d-none');
+                const t = $('#ae-discount-type').val();
+                $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
+                $('#ae-apply-discount-btn').text('Apply');
+            }
+        }
+
         function syncPriceModeUi() {
             const $btn = $('#ae-price-mode-btn');
             const selectCol = table ? table.getColumn('_ae_select') : null;
             if (decreaseModeActive) {
-                $btn.removeClass('btn-secondary btn-primary').addClass('btn-danger')
+                $btn.removeClass('btn-secondary btn-primary btn-info').addClass('btn-danger')
                     .html('<i class="fas fa-arrow-down"></i> Decrease ON');
                 if (selectCol) selectCol.show();
+                syncAeDiscountInputUi();
                 return;
             }
             if (increaseModeActive) {
-                $btn.removeClass('btn-secondary btn-danger').addClass('btn-primary')
+                $btn.removeClass('btn-secondary btn-danger btn-info').addClass('btn-primary')
                     .html('<i class="fas fa-arrow-up"></i> Increase ON');
                 if (selectCol) selectCol.show();
+                syncAeDiscountInputUi();
                 return;
             }
-            $btn.removeClass('btn-danger btn-primary').addClass('btn-secondary')
+            if (samePriceModeActive) {
+                $btn.removeClass('btn-secondary btn-danger btn-primary').addClass('btn-info')
+                    .html('<i class="fas fa-equals"></i> Same Price ON');
+                if (selectCol) selectCol.show();
+                syncAeDiscountInputUi();
+                return;
+            }
+            $btn.removeClass('btn-danger btn-primary btn-info').addClass('btn-secondary')
                 .html('<i class="fas fa-exchange-alt"></i> Price Mode');
             if (selectCol) selectCol.hide();
             selectedSkus.clear();
             updateSelectedCount();
+            syncAeDiscountInputUi();
         }
 
         function updateSelectedCount() {
             const cnt = selectedSkus.size;
             $('#ae-selected-skus-count').text(`${cnt} SKU${cnt !== 1 ? 's' : ''} selected`);
-            $('#ae-discount-container').toggle(cnt > 0 && (decreaseModeActive || increaseModeActive));
+            $('#ae-discount-container').toggle(cnt > 0 && (decreaseModeActive || increaseModeActive || samePriceModeActive));
         }
 
         function saveSpriceUpdates(updates) {
@@ -594,7 +624,8 @@
         function applyAeDiscount() {
             const discountType = $('#ae-discount-type').val();
             const discountVal  = parseFloat($('#ae-discount-input').val());
-            if (isNaN(discountVal) || discountVal === 0 || selectedSkus.size === 0) return;
+            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) return;
+            if (isNaN(discountVal) || discountVal <= 0 || selectedSkus.size === 0) return;
 
             let updatedCount = 0;
             const updates = [];
@@ -605,10 +636,14 @@
                 const row     = rows[0];
                 const rowData = row.getData();
                 const currentPrice = parseFloat(rowData.price) || 0;
-                if (currentPrice <= 0) return;
+                // Same Price applies even when current price is empty;
+                // Decrease / Increase still need a positive price to compute against.
+                if (!samePriceModeActive && currentPrice <= 0) return;
 
                 let newSprice;
-                if (discountType === 'percentage') {
+                if (samePriceModeActive) {
+                    newSprice = Math.max(0.99, discountVal);
+                } else if (discountType === 'percentage') {
                     newSprice = increaseModeActive
                         ? currentPrice * (1 + discountVal / 100)
                         : currentPrice * (1 - discountVal / 100);
@@ -1413,21 +1448,21 @@
                 $('.ae-manual-dropdown').removeClass('show');
             });
 
-            // ── Price Mode (Increase / Decrease) ─────────────────────
+            // ── Price Mode (Decrease / Increase / Same Price) ─────────────
             $('#ae-price-mode-btn').on('click', function() {
-                if (!decreaseModeActive && !increaseModeActive) {
-                    decreaseModeActive = true; increaseModeActive = false;
+                if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                    decreaseModeActive = true; increaseModeActive = false; samePriceModeActive = false;
                 } else if (decreaseModeActive) {
-                    decreaseModeActive = false; increaseModeActive = true;
+                    decreaseModeActive = false; increaseModeActive = true;  samePriceModeActive = false;
+                } else if (increaseModeActive) {
+                    decreaseModeActive = false; increaseModeActive = false; samePriceModeActive = true;
                 } else {
-                    decreaseModeActive = false; increaseModeActive = false;
+                    decreaseModeActive = false; increaseModeActive = false; samePriceModeActive = false;
                 }
                 syncPriceModeUi();
             });
 
-            $('#ae-discount-type').on('change', function() {
-                $('#ae-discount-input').attr('placeholder', $(this).val() === 'percentage' ? 'Enter %' : 'Enter $');
-            });
+            $('#ae-discount-type').on('change', function() { syncAeDiscountInputUi(); });
             $('#ae-apply-discount-btn').on('click', function() { applyAeDiscount(); });
             $('#ae-discount-input').on('keypress', function(e) { if (e.which === 13) applyAeDiscount(); });
             $('#ae-clear-sprice-btn').on('click', function() { clearSpriceForSelected(); });

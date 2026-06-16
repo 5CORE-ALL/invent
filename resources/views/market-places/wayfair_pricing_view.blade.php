@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Wayfair Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Wayfair - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -87,8 +87,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Wayfair Analytics',
-        'sub_title'  => 'Base-cost upload, SPRICE, and L30 sales from Wayfair daily; margin from Marketplace % (Wayfair)',
+        'page_title' => 'Wayfair - Analytics',
+        'sub_title'  => '',
     ])
 
     <div class="row">
@@ -202,7 +202,7 @@
                         <button type="button" id="wf-show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
                             <i class="fa fa-eye"></i> Show all
                         </button>
-                        <button id="wf-price-mode-btn" type="button" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same SPRICE (all rows)">
+                        <button id="wf-price-mode-btn" type="button" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same SPRICE (enter one price, applies to all selected rows)">
                             <i class="fas fa-exchange-alt"></i> Pricing mode
                         </button>
                     </div>
@@ -575,7 +575,7 @@
                 $btn.removeClass('btn-secondary btn-danger btn-primary').addClass('btn-warning')
                     .html('<i class="fas fa-equals"></i> Same SPRICE');
                 if (selectCol) selectCol.show();
-                $('#wf-discount-input').attr('placeholder', 'SPRICE $');
+                $('#wf-discount-input').attr('placeholder', 'Enter price (e.g. 19.99)');
                 wfUpdateSelectedCount();
                 return;
             }
@@ -606,10 +606,10 @@
                 const cnt = wfSelectedSkus.size;
                 if (cnt > 0) {
                     $('#wf-selected-skus-count').text(
-                        cnt + ' SKU' + (cnt !== 1 ? 's' : '') + ' selected — Apply uses these rows only (clear checks for all SKUs).'
+                        'Same SPRICE: ' + cnt + ' SKU' + (cnt !== 1 ? 's' : '') + ' selected — enter a price and click Apply to set the SAME SPRICE on these rows.'
                     );
                 } else {
-                    $('#wf-selected-skus-count').text('Same SPRICE: no rows checked — Apply updates every SKU (not parent summaries).');
+                    $('#wf-selected-skus-count').text('Same SPRICE: check the rows you want to update, enter a price, then click Apply.');
                 }
             } else {
                 const cnt = wfSelectedSkus.size;
@@ -635,14 +635,21 @@
             const discountVal = parseFloat($('#wf-discount-input').val());
 
             if (wfUniformPriceModeActive) {
-                if (isNaN(discountVal) || discountVal <= 0 || !table) return;
+                if (!table) return;
+                if (isNaN(discountVal) || discountVal <= 0) {
+                    if (window.toastr) toastr.warning('Enter a price first (e.g. 19.99)');
+                    return;
+                }
+                if (wfSelectedSkus.size === 0) {
+                    if (window.toastr) toastr.warning('Check the rows you want to apply this price to first.');
+                    return;
+                }
                 const newSprice = wfRoundToRetailPrice(Math.max(0.99, discountVal));
                 const updates = [];
-                const limitToSelection = wfSelectedSkus.size > 0;
                 table.getRows('active').forEach(function(row) {
                     const d = row.getData();
                     if (d.is_parent) return;
-                    if (limitToSelection && !wfSelectedSkus.has(d.sku)) return;
+                    if (!wfSelectedSkus.has(String(d.sku))) return;
                     const margin = wayfairMarginFromRow(d);
                     const lp = parseFloat(d.lp) || 0;
                     const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp) / newSprice) * 100) : 0;
@@ -650,7 +657,12 @@
                     row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
                     updates.push({ sku: d.sku, sprice: newSprice });
                 });
-                if (updates.length) saveWayfairSpriceUpdates(updates);
+                if (updates.length) {
+                    saveWayfairSpriceUpdates(updates);
+                    if (window.toastr) toastr.success('SPRICE set to $' + newSprice.toFixed(2) + ' for ' + updates.length + ' SKU(s)');
+                } else if (window.toastr) {
+                    toastr.warning('No matching SKU rows in the current view.');
+                }
                 $('#wf-discount-input').val('');
                 return;
             }
@@ -729,7 +741,7 @@
                 table.getRows('active').forEach(function(row) {
                     const d = row.getData();
                     if (d.is_parent) return;
-                    if (limitToSelection && !wfSelectedSkus.has(d.sku)) return;
+                    if (limitToSelection && !wfSelectedSkus.has(String(d.sku))) return;
                     row.update({ sprice: 0, sgpft: 0, sroi: 0 });
                     updates.push({ sku: d.sku, sprice: 0 });
                 });
@@ -741,7 +753,7 @@
             const updates = [];
             table.getRows('active').forEach(function(row) {
                 const d = row.getData();
-                if (wfSelectedSkus.has(d.sku) && !d.is_parent) {
+                if (wfSelectedSkus.has(String(d.sku)) && !d.is_parent) {
                     row.update({ sprice: 0, sgpft: 0, sroi: 0 });
                     updates.push({ sku: d.sku, sprice: 0 });
                 }

@@ -518,6 +518,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/topdawg-pricing', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'pricingView'])->name('topdawg.pricing');
     Route::get('/topdawg-data-json', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'dataJson'])->name('topdawg.data.json');
     Route::post('/topdawg-save-links', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'saveLinks'])->name('topdawg.save.links');
+    Route::post('/topdawg-save-sprice', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'saveSprice'])->name('topdawg.save.sprice');
 
     // Route::get('/get-channel-sales-data', [ChannelMasterController::class, 'getChannelSalesData']);
     Route::get('/sales-trend-data', [ChannelMasterController::class, 'getSalesTrendData']);
@@ -3193,6 +3194,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/depop/pricing/data',    [\App\Http\Controllers\MarketPlace\DepopController::class, 'getPricingData'])->name('depop.pricing.data');
     Route::get('/depop/pricing/export',  [\App\Http\Controllers\MarketPlace\DepopController::class, 'exportCsv'])->name('depop.pricing.export');
     Route::post('/depop/pricing/import', [\App\Http\Controllers\MarketPlace\DepopController::class, 'importCsv'])->name('depop.pricing.import');
+    Route::post('/depop/pricing/save-sprice', [\App\Http\Controllers\MarketPlace\DepopController::class, 'saveSprice'])->name('depop.pricing.save.sprice');
 
     // Missing Listing — channel_master rows (image + channel) plus DAR submissions
     Route::get('/missing-listing',              [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'index'])->name('missing.listing');

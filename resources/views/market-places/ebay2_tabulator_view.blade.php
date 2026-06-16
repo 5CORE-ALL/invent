@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Ebay 2 Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Ebay 2 - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -230,14 +230,13 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Ebay 2 Analytics',
-        'sub_title' => 'Ebay 2 Analytics',
+        'page_title' => 'Ebay 2 - Analytics',
+        'sub_title' => '',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Ebay 2 Analytics</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <select id="section-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">

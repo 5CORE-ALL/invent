@@ -144,11 +144,15 @@ class TopDawgPricingController extends Controller
             ];
 
             $dvRecord = $dataViews->get($sku);
+            $row['SPRICE'] = null;
             if ($dvRecord) {
                 $dvValue = is_array($dvRecord->value) ? $dvRecord->value : (json_decode($dvRecord->value, true) ?? []);
                 if (is_array($dvValue)) {
                     $row['B Link'] = $dvValue['buyer_link'] ?? '';
                     $row['S Link'] = $dvValue['seller_link'] ?? '';
+                    if (array_key_exists('sprice', $dvValue) && $dvValue['sprice'] !== null && $dvValue['sprice'] !== '') {
+                        $row['SPRICE'] = round((float) $dvValue['sprice'], 2);
+                    }
                 }
             }
 
@@ -176,6 +180,16 @@ class TopDawgPricingController extends Controller
 
             $row['PFT %'] = $row['GPFT%'];
             $row['Profit'] = ($price * $percentageValue) - $lp - $ship;
+
+            // SPRICE-based S* metrics (recomputed live in JS too — kept in sync here for fresh page loads).
+            $sprice = (float) ($row['SPRICE'] ?? 0);
+            if ($sprice > 0) {
+                $row['SGPFT'] = round((($sprice * $percentageValue - $lp - $ship) / $sprice) * 100, 0);
+                $row['SROI']  = $lp > 0 ? round((($sprice * $percentageValue - $lp - $ship) / $lp) * 100, 0) : 0;
+            } else {
+                $row['SGPFT'] = null;
+                $row['SROI']  = null;
+            }
 
             $processedData[] = $row;
         }
@@ -322,5 +336,58 @@ class TopDawgPricingController extends Controller
     private function normalizeSkuKey(?string $sku): string
     {
         return ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+    }
+
+    /**
+     * Persist SPRICE updates from the TopDawg Analytics page pricing modes
+     * (Decrease / Increase / Same Price). Accepts an array of { sku, sprice }
+     * pairs and upserts each into topdawg_data_views.value JSON keyed by sku.
+     * A null/blank `sprice` clears the saved value for that SKU.
+     */
+    public function saveSprice(Request $request): JsonResponse
+    {
+        $request->validate([
+            'updates'           => 'required|array|min:1',
+            'updates.*.sku'     => 'required|string|max:255',
+            'updates.*.sprice'  => 'nullable|numeric',
+        ]);
+
+        $updates = $request->input('updates', []);
+        $saved   = 0;
+
+        try {
+            foreach ($updates as $u) {
+                $sku = trim((string) ($u['sku'] ?? ''));
+                if ($sku === '' || stripos($sku, 'PARENT') === 0) {
+                    continue;
+                }
+
+                $raw    = $u['sprice'] ?? null;
+                $sprice = ($raw === null || $raw === '') ? null : round((float) $raw, 2);
+
+                $dv       = TopDawgDataView::firstOrNew(['sku' => $sku]);
+                $existing = is_array($dv->value)
+                    ? $dv->value
+                    : (json_decode((string) $dv->value, true) ?: []);
+                if ($sprice === null) {
+                    unset($existing['sprice']);
+                } else {
+                    $existing['sprice'] = $sprice;
+                }
+                $dv->value = $existing;
+                $dv->save();
+
+                $saved++;
+            }
+
+            return response()->json([
+                'success' => true,
+                'updated' => $saved,
+                'message' => "Saved SPRICE for {$saved} SKU(s)",
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('TopDawg saveSprice failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 }

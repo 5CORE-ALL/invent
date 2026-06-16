@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Walmart Pricing', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Walmart - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -313,14 +313,13 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Walmart Pricing',
-        'sub_title' => 'Walmart Pricing',
+        'page_title' => 'Walmart - Analytics',
+        'sub_title' => '',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Walmart Pricing</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Inventory Filter -->
                     <div>
@@ -418,6 +417,10 @@
                     <button id="increase-btn" class="btn btn-sm btn-success">
                         <i class="fas fa-arrow-up"></i> Increase Mode
                     </button>
+
+                    <button id="same-price-btn" class="btn btn-sm btn-info" title="Apply ONE price (entered in the box) to every selected SKU">
+                        <i class="fas fa-equals"></i> Same Price Mode
+                    </button>
                     
                     <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadPriceModal">
                         <i class="fa fa-dollar-sign"></i> Upload Price
@@ -470,12 +473,15 @@
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span id="selected-skus-count" class="badge bg-primary">0 SKUs selected</span>
+                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
+                        <span id="discount-type-select-wrap">
                         <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
                             <option value="percentage">Percentage</option>
                             <option value="dollar">Dollar</option>
                         </select>
+                        </span>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
                                placeholder="Enter %" style="width: 150px;" step="0.01" min="0">
                         <button id="apply-discount-btn" class="btn btn-sm btn-warning">
@@ -672,6 +678,7 @@
     let table = null;
     let decreaseModeActive = false;
     let increaseModeActive = false;
+    let samePriceModeActive = false;
     let selectedSkus = new Set();
     
     // Badge filter states
@@ -1201,57 +1208,105 @@
             $('#skuMetricsModal').modal('show');
         });
 
-        // Discount type dropdown change handler
-        $('#discount-type-select').on('change', function() {
-            const discountType = $(this).val();
+        // Mode button visual resets — keep each in their idle styling.
+        function resetDecreaseBtn() {
+            $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning')
+                .html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+        }
+        function resetIncreaseBtn() {
+            $('#increase-btn').removeClass('btn-danger').addClass('btn-success')
+                .html('<i class="fas fa-arrow-up"></i> Increase Mode');
+        }
+        function resetSamePriceBtn() {
+            $('#same-price-btn').removeClass('btn-danger').addClass('btn-info')
+                .html('<i class="fas fa-equals"></i> Same Price Mode');
+        }
+        // Swap the discount-input panel between %/$ and Same Price modes.
+        function syncDiscountInputUi() {
             const $input = $('#discount-percentage-input');
-            
-            if (discountType === 'percentage') {
-                $input.attr('placeholder', 'Enter %');
+            if (samePriceModeActive) {
+                $('#discount-type-select-wrap').hide();
+                $('#discount-input-label').removeClass('d-none');
+                $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
+                $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Same Price');
             } else {
-                $input.attr('placeholder', 'Enter $');
+                $('#discount-type-select-wrap').show();
+                $('#discount-input-label').addClass('d-none');
+                const t = $('#discount-type-select').val();
+                $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
+                $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply');
             }
-        });
+        }
+
+        // Discount type dropdown change handler
+        $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
 
         $('#decrease-btn').on('click', function() {
             decreaseModeActive = !decreaseModeActive;
             increaseModeActive = false;
+            samePriceModeActive = false;
             const selectColumn = table.getColumn('_select');
-            
+
+            resetIncreaseBtn();
+            resetSamePriceBtn();
             if (decreaseModeActive) {
                 selectColumn.show();
-                $(this).removeClass('btn-warning').addClass('btn-danger');
-                $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
-                $('#increase-btn').removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> Increase Mode');
+                $(this).removeClass('btn-warning').addClass('btn-danger')
+                    .html('<i class="fas fa-times"></i> Cancel Decrease');
             } else {
+                resetDecreaseBtn();
                 selectColumn.hide();
-                $(this).removeClass('btn-danger').addClass('btn-warning');
-                $(this).html('<i class="fas fa-arrow-down"></i> Decrease Mode');
                 selectedSkus.clear();
                 updateSelectedCount();
                 updateSelectAllCheckbox();
             }
+            syncDiscountInputUi();
         });
-        
+
         // Increase Mode Toggle
         $('#increase-btn').on('click', function() {
             increaseModeActive = !increaseModeActive;
             decreaseModeActive = false;
+            samePriceModeActive = false;
             const selectColumn = table.getColumn('_select');
-            
+
+            resetDecreaseBtn();
+            resetSamePriceBtn();
             if (increaseModeActive) {
                 selectColumn.show();
-                $(this).removeClass('btn-success').addClass('btn-danger');
-                $(this).html('<i class="fas fa-times"></i> Cancel Increase');
-                $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning').html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+                $(this).removeClass('btn-success').addClass('btn-danger')
+                    .html('<i class="fas fa-times"></i> Cancel Increase');
             } else {
+                resetIncreaseBtn();
                 selectColumn.hide();
                 selectedSkus.clear();
-                $(this).removeClass('btn-danger').addClass('btn-success');
-                $(this).html('<i class="fas fa-arrow-up"></i> Increase Mode');
                 updateSelectedCount();
                 updateSelectAllCheckbox();
             }
+            syncDiscountInputUi();
+        });
+
+        // Same Price Mode Toggle — entered price applies to ALL selected SKUs.
+        $('#same-price-btn').on('click', function() {
+            samePriceModeActive = !samePriceModeActive;
+            decreaseModeActive = false;
+            increaseModeActive = false;
+            const selectColumn = table.getColumn('_select');
+
+            resetDecreaseBtn();
+            resetIncreaseBtn();
+            if (samePriceModeActive) {
+                selectColumn.show();
+                $(this).removeClass('btn-info').addClass('btn-danger')
+                    .html('<i class="fas fa-equals"></i> Same Price ON');
+            } else {
+                resetSamePriceBtn();
+                selectColumn.hide();
+                selectedSkus.clear();
+                updateSelectedCount();
+                updateSelectAllCheckbox();
+            }
+            syncDiscountInputUi();
         });
 
         $(document).on('change', '#select-all-checkbox', function() {
@@ -1342,34 +1397,41 @@
         function applyDiscount() {
             const discountValue = parseFloat($('#discount-percentage-input').val());
             const discountType = $('#discount-type-select').val();
-            
-            if (isNaN(discountValue) || discountValue <= 0) {
-                showToast('Please enter a valid discount value', 'error');
+
+            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                showToast('Turn on Decrease, Increase, or Same Price mode first', 'error');
                 return;
             }
-
+            if (isNaN(discountValue) || discountValue <= 0) {
+                showToast(samePriceModeActive ? 'Please enter a price (e.g. 19.99)' : 'Please enter a valid discount value', 'error');
+                return;
+            }
             if (selectedSkus.size === 0) {
                 showToast('Please select at least one SKU', 'error');
                 return;
             }
 
             let updatedCount = 0;
-            
+
             // Loop through selected SKUs using the same approach as applySuggestAmazonPrice
             selectedSkus.forEach(sku => {
                 // Find the row using Tabulator's searchRows method
                 const rows = table.searchRows("sku", "=", sku);
-                
+
                 if (rows.length > 0) {
                     const row = rows[0]; // Get the first matching row
                     const rowData = row.getData();
                     // Use API Price for increase/decrease mode (from Walmart API)
                     const currentPrice = parseFloat(rowData['api_price']) || 0;
-                    
-                    if (currentPrice > 0) {
+
+                    // Same Price applies even when API Price is empty;
+                    // Decrease / Increase modes still need a positive API Price to compute.
+                    if (samePriceModeActive || currentPrice > 0) {
                         let newSPrice;
-                        
-                        if (discountType === 'percentage') {
+
+                        if (samePriceModeActive) {
+                            newSPrice = Math.max(0.99, discountValue);
+                        } else if (discountType === 'percentage') {
                             if (increaseModeActive) {
                                 newSPrice = currentPrice * (1 + discountValue / 100);
                             } else {
@@ -1382,24 +1444,26 @@
                                 newSPrice = currentPrice - discountValue;
                             }
                         }
-                        
+
                         // Apply retail price rounding (round to .99 endings)
                         newSPrice = roundToRetailPrice(newSPrice);
-                        
+
                         // Ensure minimum price
                         newSPrice = Math.max(0.99, newSPrice);
-                        
+
                         // Update only sprice (don't change w_price)
                         row.update({
                             sprice: newSPrice
                         });
-                        
+
                         updatedCount++;
                     }
                 }
             });
-            
-            showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s) based on API Price`, 'success');
+
+            const action = samePriceModeActive ? 'Same Price' : (increaseModeActive ? 'Increase' : 'Discount');
+            const suffix = samePriceModeActive ? '' : ' based on API Price';
+            showToast(`${action} applied to ${updatedCount} SKU(s)${suffix}`, 'success');
             $('#discount-percentage-input').val('');
         }
 

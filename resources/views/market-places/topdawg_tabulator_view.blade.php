@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'TopDawg Pricing', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'TopDawg - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -26,13 +26,13 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'TopDawg Pricing',
-        'sub_title' => 'TopDawg Pricing & Inventory Mapping',
+        'page_title' => 'TopDawg - Analytics',
+        'sub_title' => '',
     ])
+    <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>TopDawg Pricing</h4>
                 <p class="text-muted small mb-2">Price &amp; stock from <code>topdawg_products</code> (API). L30/L60 from order metrics. Run <code>php artisan topdawg:fetch</code> on server to refresh.</p>
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <select id="inventory-filter" class="form-select form-select-sm" style="width:130px;">
@@ -62,6 +62,16 @@
                         <i class="fas fa-th-large"></i> All Marketplace Master
                     </a>
                     <button id="export-btn" class="btn btn-sm btn-info"><i class="fas fa-file-csv"></i> Export CSV</button>
+
+                    <button id="decrease-btn" class="btn btn-sm btn-warning">
+                        <i class="fas fa-arrow-down"></i> Decrease Mode
+                    </button>
+                    <button id="increase-btn" class="btn btn-sm btn-success">
+                        <i class="fas fa-arrow-up"></i> Increase Mode
+                    </button>
+                    <button id="same-price-btn" class="btn btn-sm btn-info" title="Apply ONE price (entered in the box) to every selected SKU">
+                        <i class="fas fa-equals"></i> Same Price Mode
+                    </button>
                 </div>
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary ({{ $topdawgPercentage ?? 95 }}% Margin)</h6>
@@ -76,6 +86,25 @@
                 </div>
             </div>
             <div class="card-body p-0">
+                <!-- Pricing-mode input bar (shown when a mode is active + SKUs selected) -->
+                <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display:none;">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span id="selected-skus-count" class="fw-bold"></span>
+                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
+                        <span id="discount-type-select-wrap">
+                            <select id="discount-type-select" class="form-select form-select-sm" style="width:120px;">
+                                <option value="percentage">Percentage</option>
+                                <option value="value">Value ($)</option>
+                            </select>
+                        </span>
+                        <input type="number" id="discount-percentage-input" class="form-control form-control-sm"
+                            placeholder="Enter %" step="0.01" style="width:140px;">
+                        <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
+                        <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
+                            <i class="fas fa-eraser"></i> Clear SPRICE
+                        </button>
+                    </div>
+                </div>
                 <div id="topdawg-table-wrapper" style="height:calc(100vh - 240px);display:flex;flex-direction:column;">
                     <div class="p-2 bg-light border-bottom">
                         <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
@@ -119,9 +148,189 @@
 @section('script-bottom')
 <script>
     const TD_MAP_TOLERANCE = 3;
+    const TD_PERCENTAGE    = {{ $topdawgPercentage ?? 95 }} / 100;
     let table = null;
     let zeroSoldFilter = false, moreSoldFilter = false;
     let missingFilter = false, mapFilter = false, nmapFilter = false;
+
+    // Pricing-mode state
+    let tdDecreaseModeActive = false;
+    let tdIncreaseModeActive = false;
+    let tdSamePriceModeActive = false;
+    let tdSelectedSkus = new Set();
+
+    function tdAnyModeActive() {
+        return tdDecreaseModeActive || tdIncreaseModeActive || tdSamePriceModeActive;
+    }
+
+    function tdResetDecreaseBtn() {
+        $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning')
+            .html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+    }
+    function tdResetIncreaseBtn() {
+        $('#increase-btn').removeClass('btn-danger').addClass('btn-success')
+            .html('<i class="fas fa-arrow-up"></i> Increase Mode');
+    }
+    function tdResetSamePriceBtn() {
+        $('#same-price-btn').removeClass('btn-danger').addClass('btn-info')
+            .html('<i class="fas fa-equals"></i> Same Price Mode');
+    }
+
+    function tdSyncDiscountInputUi() {
+        const $input = $('#discount-percentage-input');
+        if (tdSamePriceModeActive) {
+            $('#discount-type-select-wrap').hide();
+            $('#discount-input-label').removeClass('d-none');
+            $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
+            $('#apply-discount-btn').text('Apply Same Price');
+        } else {
+            $('#discount-type-select-wrap').show();
+            $('#discount-input-label').addClass('d-none');
+            const t = $('#discount-type-select').val();
+            $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
+            $('#apply-discount-btn').text('Apply');
+        }
+    }
+
+    function tdShowSelectColumn(show) {
+        if (!table) return;
+        const col = table.getColumn('_select');
+        if (col) {
+            if (show) col.show(); else col.hide();
+        }
+    }
+
+    function tdUpdateSelectedCount() {
+        const count = tdSelectedSkus.size;
+        $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
+        $('#discount-input-container').toggle(tdAnyModeActive() && count > 0);
+    }
+
+    function tdUpdateSelectAllHeaderCheckbox() {
+        const el = document.getElementById('td-select-all');
+        if (!el || !table) return;
+        const rows = table.getRows('active').filter(r => {
+            const p = (r.getData().Parent || '');
+            return !(p && String(p).toUpperCase().startsWith('PARENT'));
+        });
+        if (!rows.length) { el.checked = false; el.indeterminate = false; return; }
+        let selected = 0;
+        rows.forEach(r => {
+            const sku = String(r.getData()['(Child) sku'] || '');
+            if (sku && tdSelectedSkus.has(sku)) selected++;
+        });
+        el.checked = selected === rows.length && rows.length > 0;
+        el.indeterminate = selected > 0 && selected < rows.length;
+    }
+
+    function tdRoundToRetailPrice(price) {
+        const p = parseFloat(price) || 0;
+        if (p < 20.99) return +p.toFixed(2);
+        return +(Math.ceil(p) - 0.01).toFixed(2);
+    }
+
+    function tdShowToast(msg, type) {
+        type = type || 'success';
+        if (window.toastr) { toastr[type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'success'](msg); return; }
+        let c = document.querySelector('.toast-container');
+        if (!c) { c = document.createElement('div'); c.className = 'toast-container'; document.body.appendChild(c); }
+        const bg = type === 'error' ? '#dc3545' : type === 'warning' ? '#ffc107' : '#198754';
+        const t = document.createElement('div');
+        t.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;min-width:240px;color:#fff;background:' + bg + ';padding:12px 16px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.18);font-size:14px;';
+        t.textContent = msg;
+        document.body.appendChild(t);
+        setTimeout(() => t.remove(), 3500);
+    }
+
+    function tdSaveSpriceUpdates(updates) {
+        $.ajax({
+            url: "{{ route('topdawg.save.sprice') }}",
+            method: 'POST',
+            data: { _token: '{{ csrf_token() }}', updates: updates },
+            success: function(res) {
+                if (!res || res.success !== true) {
+                    tdShowToast((res && res.message) || 'Failed to save SPRICE', 'error');
+                }
+            },
+            error: function(xhr) {
+                const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Failed to save SPRICE';
+                tdShowToast(msg, 'error');
+            }
+        });
+    }
+
+    function tdApplyDiscount() {
+        const discountType = $('#discount-type-select').val();
+        const discountValue = parseFloat($('#discount-percentage-input').val());
+
+        if (!tdAnyModeActive()) { tdShowToast('Turn on Decrease, Increase, or Same Price mode first', 'error'); return; }
+        if (isNaN(discountValue) || discountValue <= 0) {
+            tdShowToast(tdSamePriceModeActive ? 'Please enter a price (e.g. 19.99)' : 'Please enter a valid value', 'error');
+            return;
+        }
+        if (tdSelectedSkus.size === 0) { tdShowToast('Please select at least one SKU', 'error'); return; }
+
+        const updates = [];
+        let updatedCount = 0;
+
+        table.getRows('active').forEach(function(row) {
+            const d = row.getData();
+            const sku = d && d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
+            if (!sku || !tdSelectedSkus.has(sku)) return;
+
+            const currentPrice = parseFloat(d['TD Price']) || 0;
+            if (!tdSamePriceModeActive && currentPrice <= 0) return;
+
+            let newSprice;
+            if (tdSamePriceModeActive) {
+                newSprice = Math.max(0.99, discountValue);
+            } else if (discountType === 'percentage') {
+                newSprice = tdIncreaseModeActive
+                    ? currentPrice * (1 + discountValue / 100)
+                    : currentPrice * (1 - discountValue / 100);
+            } else {
+                newSprice = tdIncreaseModeActive
+                    ? currentPrice + discountValue
+                    : currentPrice - discountValue;
+            }
+
+            newSprice = Math.max(0.99, tdRoundToRetailPrice(newSprice));
+
+            const lp   = parseFloat(d.LP_productmaster) || 0;
+            const ship = parseFloat(d.Ship_productmaster) || 0;
+            const sgpft = newSprice > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp - ship) / newSprice) * 100) : 0;
+            const sroi  = lp > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp - ship) / lp) * 100) : 0;
+
+            row.update({ SPRICE: newSprice, SGPFT: sgpft, SROI: sroi });
+            updates.push({ sku: sku, sprice: newSprice });
+            updatedCount++;
+        });
+
+        if (!updates.length) { tdShowToast('No matching selected rows in the current view.', 'warning'); return; }
+
+        tdSaveSpriceUpdates(updates);
+        const action = tdSamePriceModeActive ? 'Same Price' : (tdIncreaseModeActive ? 'Increase' : 'Decrease');
+        tdShowToast(`${action} applied to ${updatedCount} SKU(s)`, 'success');
+        $('#discount-percentage-input').val('');
+    }
+
+    function tdClearSpriceForSelected() {
+        if (tdSelectedSkus.size === 0) { tdShowToast('Select SKUs first', 'error'); return; }
+        if (!confirm(`Clear SPRICE for ${tdSelectedSkus.size} SKU(s)?`)) return;
+
+        const updates = [];
+        table.getRows('active').forEach(function(row) {
+            const d = row.getData();
+            const sku = d && d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
+            if (!sku || !tdSelectedSkus.has(sku)) return;
+            row.update({ SPRICE: null, SGPFT: null, SROI: null });
+            updates.push({ sku: sku, sprice: null });
+        });
+
+        if (!updates.length) return;
+        tdSaveSpriceUpdates(updates);
+        tdShowToast(`Cleared SPRICE for ${updates.length} SKU(s)`, 'success');
+    }
 
     function applyUrlBadgeFilter() {
         const p = new URLSearchParams(window.location.search).get('badge');
@@ -228,6 +437,23 @@
             paginationSizeSelector: [50, 100, 200, 500],
             initialSort: [{ column: 'TD L30', dir: 'desc' }],
             columns: [
+                {
+                    // Selection column (hidden until a pricing mode is active).
+                    title: '<div style="display:flex;align-items:center;justify-content:center;"><input type="checkbox" id="td-select-all" title="Select / clear all filtered SKUs"></div>',
+                    field: '_select',
+                    width: 50,
+                    frozen: true,
+                    headerSort: false,
+                    visible: false,
+                    hozAlign: 'center',
+                    formatter: function(cell) {
+                        const sku = cell.getRow().getData()['(Child) sku'];
+                        if (!sku) return '';
+                        const safe = String(sku).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+                        const checked = tdSelectedSkus.has(String(sku)) ? 'checked' : '';
+                        return `<input type="checkbox" class="td-sku-chk" data-sku="${safe}" ${checked}>`;
+                    }
+                },
                 { title: 'Parent', field: 'Parent', frozen: true, width: 150, visible: false },
                 { title: 'Image', field: 'image_path', width: 80, headerSort: false,
                     formatter: c => {
@@ -322,6 +548,12 @@
                         }
                         return `$${v.toFixed(2)}`;
                     }},
+                { title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', width: 80, sorter: 'number',
+                    formatter: c => {
+                        const v = c.getValue();
+                        if (v === null || v === undefined || v === '') return '<span class="text-muted">-</span>';
+                        return `<strong>$${Number(v).toFixed(2)}</strong>`;
+                    }},
                 { title: 'GPFT%', field: 'GPFT%', hozAlign: 'center', width: 50, sorter: 'number',
                     formatter: c => {
                         const percent = parseFloat(c.getValue());
@@ -399,6 +631,102 @@
         $('#nmap-badge').on('click', function() { nmapFilter = !nmapFilter; missingFilter = mapFilter = false; applyFilters(); });
 
         $('#export-btn').on('click', () => table.download('csv', 'topdawg_pricing.csv'));
+
+        // ─── Pricing-mode toggles ─────────────────────────────────────────
+        $('#discount-type-select').on('change', function() { tdSyncDiscountInputUi(); });
+
+        $('#decrease-btn').on('click', function() {
+            tdDecreaseModeActive = !tdDecreaseModeActive;
+            tdIncreaseModeActive = false;
+            tdSamePriceModeActive = false;
+            tdResetIncreaseBtn();
+            tdResetSamePriceBtn();
+            if (tdDecreaseModeActive) {
+                $(this).removeClass('btn-warning').addClass('btn-danger')
+                    .html('<i class="fas fa-arrow-down"></i> Decrease ON');
+                tdShowSelectColumn(true);
+            } else {
+                tdResetDecreaseBtn();
+                tdShowSelectColumn(false);
+                tdSelectedSkus.clear();
+            }
+            tdUpdateSelectedCount();
+            tdSyncDiscountInputUi();
+        });
+
+        $('#increase-btn').on('click', function() {
+            tdIncreaseModeActive = !tdIncreaseModeActive;
+            tdDecreaseModeActive = false;
+            tdSamePriceModeActive = false;
+            tdResetDecreaseBtn();
+            tdResetSamePriceBtn();
+            if (tdIncreaseModeActive) {
+                $(this).removeClass('btn-success').addClass('btn-danger')
+                    .html('<i class="fas fa-arrow-up"></i> Increase ON');
+                tdShowSelectColumn(true);
+            } else {
+                tdResetIncreaseBtn();
+                tdShowSelectColumn(false);
+                tdSelectedSkus.clear();
+            }
+            tdUpdateSelectedCount();
+            tdSyncDiscountInputUi();
+        });
+
+        $('#same-price-btn').on('click', function() {
+            tdSamePriceModeActive = !tdSamePriceModeActive;
+            tdDecreaseModeActive = false;
+            tdIncreaseModeActive = false;
+            tdResetDecreaseBtn();
+            tdResetIncreaseBtn();
+            if (tdSamePriceModeActive) {
+                $(this).removeClass('btn-info').addClass('btn-danger')
+                    .html('<i class="fas fa-equals"></i> Same Price ON');
+                tdShowSelectColumn(true);
+            } else {
+                tdResetSamePriceBtn();
+                tdShowSelectColumn(false);
+                tdSelectedSkus.clear();
+            }
+            tdUpdateSelectedCount();
+            tdSyncDiscountInputUi();
+        });
+
+        // ─── Selection handlers ───────────────────────────────────────────
+        $(document).on('change', '#td-select-all', function() {
+            const checked = $(this).prop('checked');
+            const rows = table.getRows('active').filter(r => {
+                const p = (r.getData().Parent || '');
+                return !(p && String(p).toUpperCase().startsWith('PARENT'));
+            });
+            rows.forEach(r => {
+                const sku = String(r.getData()['(Child) sku'] || '');
+                if (!sku) return;
+                if (checked) tdSelectedSkus.add(sku); else tdSelectedSkus.delete(sku);
+            });
+            $('.td-sku-chk').each(function() {
+                const sku = String($(this).attr('data-sku'));
+                $(this).prop('checked', tdSelectedSkus.has(sku));
+            });
+            tdUpdateSelectedCount();
+        });
+
+        $(document).on('change', '.td-sku-chk', function() {
+            const sku = String($(this).attr('data-sku'));
+            if (!sku) return;
+            if ($(this).prop('checked')) tdSelectedSkus.add(sku); else tdSelectedSkus.delete(sku);
+            tdUpdateSelectedCount();
+            tdUpdateSelectAllHeaderCheckbox();
+        });
+
+        // ─── Apply / Clear handlers ───────────────────────────────────────
+        $('#apply-discount-btn').on('click', tdApplyDiscount);
+        $('#discount-percentage-input').on('keypress', function(e) {
+            if (e.which === 13) tdApplyDiscount();
+        });
+        $('#clear-sprice-btn').on('click', tdClearSpriceForSelected);
+
+        table.on('renderComplete', tdUpdateSelectAllHeaderCheckbox);
 
         // ---- Edit B/S Links (double-click on Links cell) ----
         let tdEditLinksRow = null;

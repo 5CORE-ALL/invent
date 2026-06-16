@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => $tiktokPageTitle ?? 'TikTok Shop Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => $tiktokPageTitle ?? 'TikTok Shop - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -153,8 +153,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => $tiktokPageTitle ?? 'TikTok Shop Analytics',
-        'sub_title' => $tiktokPageTitle ?? 'TikTok Shop Analytics',
+        'page_title' => $tiktokPageTitle ?? 'TikTok Shop - Analytics',
+        'sub_title' => '',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -300,7 +300,7 @@
                     </button>
 
                     <button id="price-mode-btn" class="btn btn-sm btn-secondary"
-                        title="Cycle mode: Off → Decrease → Increase">
+                        title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         <i class="fas fa-exchange-alt"></i> Price Mode
                     </button>
 
@@ -436,14 +436,17 @@
             <div class="card-body" style="padding: 0;">
                 <!-- Discount Input Box -->
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span id="selected-skus-count" class="fw-bold"></span>
+                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
+                        <span id="discount-type-select-wrap">
                         <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
                             <option value="percentage">Percentage</option>
                             <option value="value">Value ($)</option>
                         </select>
+                        </span>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm"
-                            placeholder="Enter %" step="0.01" style="width: 100px;">
+                            placeholder="Enter %" step="0.01" style="width: 140px;">
                         <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
                         <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
                             <i class="fas fa-eraser"></i> Clear SPRICE
@@ -580,6 +583,7 @@
         let totalDistinctCampaigns = 0; // from API: COUNT(DISTINCT campaign_name) in tiktok_campaign_reports
         let decreaseModeActive = false;
         let increaseModeActive = false;
+        let samePriceModeActive = false;
         let selectedSkus = new Set();
 
         // Toast notification function
@@ -999,51 +1003,68 @@
                 loadTtBadgeChart();
             });
 
-            // Discount type dropdown change handler
-            $('#discount-type-select').on('change', function() {
-                const discountType = $(this).val();
+            // Swap the discount-input panel between %/$ and Same Price modes.
+            function syncDiscountInputUi() {
                 const $input = $('#discount-percentage-input');
-
-                if (discountType === 'percentage') {
-                    $input.attr('placeholder', 'Enter %');
+                if (samePriceModeActive) {
+                    $('#discount-type-select-wrap').hide();
+                    $('#discount-input-label').removeClass('d-none');
+                    $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
+                    $('#apply-discount-btn').text('Apply Same Price');
                 } else {
-                    $input.attr('placeholder', 'Enter $');
+                    $('#discount-type-select-wrap').show();
+                    $('#discount-input-label').addClass('d-none');
+                    const t = $('#discount-type-select').val();
+                    $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
+                    $('#apply-discount-btn').text('Apply');
                 }
-            });
+            }
 
-            // Single Price Mode button: Off -> Decrease ON -> Increase ON -> Off
+            // Discount type dropdown change handler
+            $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
+
+            // Single Price Mode cycle: Off → Decrease → Increase → Same Price → Off
             function syncPriceModeUi() {
                 const $btn = $('#price-mode-btn');
                 const selectColumn = table.getColumn('_select');
                 if (decreaseModeActive) {
-                    $btn.removeClass('btn-secondary btn-primary').addClass('btn-danger')
+                    $btn.removeClass('btn-secondary btn-primary btn-info').addClass('btn-danger')
                         .html('<i class="fas fa-arrow-down"></i> Decrease ON');
                     selectColumn.show();
+                    syncDiscountInputUi();
                     return;
                 }
                 if (increaseModeActive) {
-                    $btn.removeClass('btn-secondary btn-danger').addClass('btn-primary')
+                    $btn.removeClass('btn-secondary btn-danger btn-info').addClass('btn-primary')
                         .html('<i class="fas fa-arrow-up"></i> Increase ON');
                     selectColumn.show();
+                    syncDiscountInputUi();
                     return;
                 }
-                $btn.removeClass('btn-danger btn-primary').addClass('btn-secondary')
+                if (samePriceModeActive) {
+                    $btn.removeClass('btn-secondary btn-danger btn-primary').addClass('btn-info')
+                        .html('<i class="fas fa-equals"></i> Same Price ON');
+                    selectColumn.show();
+                    syncDiscountInputUi();
+                    return;
+                }
+                $btn.removeClass('btn-danger btn-primary btn-info').addClass('btn-secondary')
                     .html('<i class="fas fa-exchange-alt"></i> Price Mode');
                 selectColumn.hide();
                 selectedSkus.clear();
                 updateSelectedCount();
+                syncDiscountInputUi();
             }
 
             $('#price-mode-btn').on('click', function() {
-                if (!decreaseModeActive && !increaseModeActive) {
-                    decreaseModeActive = true;
-                    increaseModeActive = false;
+                if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                    decreaseModeActive = true;  increaseModeActive = false; samePriceModeActive = false;
                 } else if (decreaseModeActive) {
-                    decreaseModeActive = false;
-                    increaseModeActive = true;
+                    decreaseModeActive = false; increaseModeActive = true;  samePriceModeActive = false;
+                } else if (increaseModeActive) {
+                    decreaseModeActive = false; increaseModeActive = false; samePriceModeActive = true;
                 } else {
-                    decreaseModeActive = false;
-                    increaseModeActive = false;
+                    decreaseModeActive = false; increaseModeActive = false; samePriceModeActive = false;
                 }
                 syncPriceModeUi();
             });
@@ -1369,8 +1390,12 @@
                 const discountType = $('#discount-type-select').val();
                 const discountValue = parseFloat($('#discount-percentage-input').val());
 
-                if (isNaN(discountValue) || discountValue === 0) {
-                    showToast('Please enter a valid discount value', 'error');
+                if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                    showToast('Turn on Decrease, Increase, or Same Price mode first', 'error');
+                    return;
+                }
+                if (isNaN(discountValue) || discountValue <= 0) {
+                    showToast(samePriceModeActive ? 'Please enter a price (e.g. 19.99)' : 'Please enter a valid discount value', 'error');
                     return;
                 }
 
@@ -1390,10 +1415,14 @@
                         const rowData = row.getData();
                         const currentPrice = parseFloat(rowData['TT Price']) || 0;
 
-                        if (currentPrice > 0) {
+                        // Same Price applies even when TT Price is empty;
+                        // Decrease / Increase still need a positive TT Price to compute.
+                        if (samePriceModeActive || currentPrice > 0) {
                             let newSprice;
 
-                            if (discountType === 'percentage') {
+                            if (samePriceModeActive) {
+                                newSprice = Math.max(0.99, discountValue);
+                            } else if (discountType === 'percentage') {
                                 if (increaseModeActive) {
                                     newSprice = currentPrice * (1 + discountValue / 100);
                                 } else {
@@ -1442,9 +1471,9 @@
                     saveSpriceUpdates(updates);
                 }
 
-                showToast(
-                    `${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s) based on TT Price`,
-                    'success');
+                const action = samePriceModeActive ? 'Same Price' : (increaseModeActive ? 'Increase' : 'Discount');
+                const suffix = samePriceModeActive ? '' : ' based on TT Price';
+                showToast(`${action} applied to ${updatedCount} SKU(s)${suffix}`, 'success');
                 $('#discount-percentage-input').val('');
             }
 

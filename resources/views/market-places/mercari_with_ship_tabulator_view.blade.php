@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Mercari With Ship', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Mercari w Ship - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -19,8 +19,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Mercari With Ship',
-        'sub_title' => 'Mercari With Ship',
+        'page_title' => 'Mercari w Ship - Analytics',
+        'sub_title' => '',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -40,18 +40,21 @@
                 @endif
 
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
-                    <!-- Increase / Decrease S Price controls (eBay-style Price % toggle) -->
+                    <!-- Increase / Decrease / Same Price S Price controls -->
                     <button id="price-mode-btn" type="button" class="btn btn-sm btn-secondary"
-                        title="Cycle: Off → Decrease → Increase → Off">
+                        title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         <i class="fas fa-exchange-alt"></i> Price %
                     </button>
                     <div id="discount-input-container" class="align-items-center gap-2" style="display: none;">
+                        <span id="adjust-input-label" class="text-muted small d-none">Same Price ($):</span>
+                        <span id="adjust-type-select-wrap">
                         <select id="adjust-type-select" class="form-select form-select-sm" style="width: 130px;">
                             <option value="percentage">Percentage (%)</option>
                             <option value="value">Value ($)</option>
                         </select>
+                        </span>
                         <input type="number" id="adjust-amount-input" class="form-control form-control-sm"
-                            placeholder="e.g. 10 or 2.50" step="0.1" min="0" style="width: 140px;">
+                            placeholder="e.g. 10 or 2.50" step="0.1" min="0" style="width: 160px;">
                         <button id="apply-adjust-btn" class="btn btn-sm btn-success">
                             <i class="fas fa-check"></i> Apply
                         </button>
@@ -404,27 +407,28 @@
                 });
             }
 
-            // Price % toggle — cycle Off → Decrease → Increase → Off
+            // Price % toggle — cycle Off → Decrease → Increase → Same Price → Off
             const priceModeBtn = document.getElementById('price-mode-btn');
             if (priceModeBtn) {
                 priceModeBtn.addEventListener('click', function() {
-                    if (!decreaseModeActive && !increaseModeActive) {
-                        decreaseModeActive = true;
+                    if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                        decreaseModeActive = true;  increaseModeActive = false; samePriceModeActive = false;
                     } else if (decreaseModeActive) {
-                        decreaseModeActive = false;
-                        increaseModeActive = true;
+                        decreaseModeActive = false; increaseModeActive = true;  samePriceModeActive = false;
+                    } else if (increaseModeActive) {
+                        decreaseModeActive = false; increaseModeActive = false; samePriceModeActive = true;
                     } else {
-                        increaseModeActive = false;
+                        decreaseModeActive = false; increaseModeActive = false; samePriceModeActive = false;
                     }
                     syncPriceModeUi();
                 });
             }
 
-            // Increase / Decrease S Price — apply to selected rows
+            // Increase / Decrease / Same Price S Price — apply to selected rows
             const applyBtn = document.getElementById('apply-adjust-btn');
             if (applyBtn) {
                 applyBtn.addEventListener('click', function() {
-                    const mode = increaseModeActive ? 'increase' : 'decrease';
+                    const mode = samePriceModeActive ? 'same' : (increaseModeActive ? 'increase' : 'decrease');
                     const type = document.getElementById('adjust-type-select').value;
                     const amount = parseFloat(document.getElementById('adjust-amount-input').value);
 
@@ -433,18 +437,22 @@
                         alert('Please select at least one row.');
                         return;
                     }
-                    if (isNaN(amount) || amount < 0) {
-                        alert('Please enter a valid amount.');
+                    if (isNaN(amount) || amount <= 0) {
+                        alert(samePriceModeActive ? 'Please enter a valid price.' : 'Please enter a valid amount.');
                         return;
                     }
 
                     selectedRows.forEach(function(row) {
                         const d = row.getData();
                         const basePrice = parseFloat(d.price) || 0;
-                        if (basePrice <= 0) return; // need a base price to adjust from
+
+                        // Decrease / Increase need a positive base Price; Same Price applies regardless.
+                        if (mode !== 'same' && basePrice <= 0) return;
 
                         let newPrice;
-                        if (type === 'percentage') {
+                        if (mode === 'same') {
+                            newPrice = Math.max(0.01, amount);
+                        } else if (type === 'percentage') {
                             const decimal = amount / 100;
                             newPrice = mode === 'decrease' ? basePrice * (1 - decimal) : basePrice * (1 + decimal);
                         } else {
@@ -452,7 +460,9 @@
                         }
                         newPrice = Math.max(0.01, newPrice);
                         newPrice = roundToRetailPrice(newPrice);
-                        if (newPrice.toFixed(2) === basePrice.toFixed(2)) {
+                        // Auto-bump to .49 only when Decrease/Increase would equal the source.
+                        // Same Price honors the typed value exactly.
+                        if (mode !== 'same' && newPrice.toFixed(2) === basePrice.toFixed(2)) {
                             newPrice = roundToRetailPrice49(newPrice);
                         }
                         newPrice = parseFloat(newPrice.toFixed(2));
@@ -517,6 +527,7 @@
         let missingLFilterActive = false;
         let decreaseModeActive = false;
         let increaseModeActive = false;
+        let samePriceModeActive = false;
 
         // Show the adjust panel only when a mode is active AND rows are selected
         function updateAdjustPanel() {
@@ -525,16 +536,41 @@
             const selectedCount = (typeof table !== 'undefined' && table.getSelectedRows)
                 ? table.getSelectedRows().length
                 : 0;
-            const modeOn = decreaseModeActive || increaseModeActive;
+            const modeOn = decreaseModeActive || increaseModeActive || samePriceModeActive;
             if (countEl) countEl.textContent = selectedCount ? (selectedCount + ' selected') : '';
             if (container) container.style.display = (modeOn && selectedCount > 0) ? 'flex' : 'none';
+        }
+
+        // Swap the adjust-input panel between %/$ and Same Price modes.
+        function syncAdjustInputUi() {
+            const wrap = document.getElementById('adjust-type-select-wrap');
+            const label = document.getElementById('adjust-input-label');
+            const input = document.getElementById('adjust-amount-input');
+            const applyBtn = document.getElementById('apply-adjust-btn');
+            if (samePriceModeActive) {
+                if (wrap) wrap.style.display = 'none';
+                if (label) label.classList.remove('d-none');
+                if (input) {
+                    input.setAttribute('placeholder', 'Enter price (e.g. 19.99)');
+                    input.setAttribute('step', '0.01');
+                }
+                if (applyBtn) applyBtn.innerHTML = '<i class="fas fa-check"></i> Apply Same Price';
+            } else {
+                if (wrap) wrap.style.display = '';
+                if (label) label.classList.add('d-none');
+                if (input) {
+                    input.setAttribute('placeholder', 'e.g. 10 or 2.50');
+                    input.setAttribute('step', '0.1');
+                }
+                if (applyBtn) applyBtn.innerHTML = '<i class="fas fa-check"></i> Apply';
+            }
         }
 
         function syncPriceModeUi() {
             const btn = document.getElementById('price-mode-btn');
             const selectCol = (typeof table !== 'undefined' && table.getColumn) ? table.getColumn('_select') : null;
 
-            btn.classList.remove('btn-secondary', 'btn-danger', 'btn-success');
+            btn.classList.remove('btn-secondary', 'btn-danger', 'btn-success', 'btn-info');
 
             if (decreaseModeActive) {
                 btn.classList.add('btn-danger');
@@ -544,12 +580,17 @@
                 btn.classList.add('btn-success');
                 btn.innerHTML = '<i class="fas fa-arrow-up"></i> Increase ON';
                 if (selectCol) selectCol.show();
+            } else if (samePriceModeActive) {
+                btn.classList.add('btn-info');
+                btn.innerHTML = '<i class="fas fa-equals"></i> Same Price ON';
+                if (selectCol) selectCol.show();
             } else {
                 btn.classList.add('btn-secondary');
                 btn.innerHTML = '<i class="fas fa-exchange-alt"></i> Price %';
                 if (selectCol) selectCol.hide();
                 if (typeof table !== 'undefined' && table.deselectRow) table.deselectRow();
             }
+            syncAdjustInputUi();
             updateAdjustPanel();
         }
 

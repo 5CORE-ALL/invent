@@ -1227,7 +1227,7 @@
 
                                     <li>
 
-                                        <a href="{{ url('/amazon-tabulator-view') }}">Amz FBM
+                                        <a href="{{ url('/amazon-tabulator-view') }}">Amazon Analytics
                                         </a>
                                     </li>
                                     <li>
@@ -1446,7 +1446,7 @@
                                     </li>
 
                                     <li>
-                                        <a href="{{ url('ebay-tabulator-view') }}">Ebay Pricing
+                                        <a href="{{ url('ebay-tabulator-view') }}">Ebay - Analytics
                                         </a>
                                     </li>
 
@@ -1566,7 +1566,7 @@
 
                                     <li>
                                         <a href="{{ url('/shopify-b2c-pricing') }}">
-                                            Shopify Pricing - CVR</a>
+                                            Shopify B2C - Analytics</a>
                                     </li>
 
                                     <li>
@@ -1600,7 +1600,7 @@
                                         <a href="{{ route('listing.audit.macy') }}">Listing Audit Macy's</a>
                                     </li>
                                     <li>
-                                        <a href="{{ url('/macys-pricing') }}">Macy's Pricing </a>
+                                        <a href="{{ url('/macys-pricing') }}">Macys - Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('macy.low.visibility.view') }}">Macy's
@@ -1623,7 +1623,7 @@
                             <div class="collapse" id="sidebarDepop">
                                 <ul class="side-nav-third-level">
                                     <li>
-                                        <a href="{{ route('depop.pricing') }}">Depop Pricing</a>
+                                        <a href="{{ route('depop.pricing') }}">Depop - Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('depop.sheet') }}">Depop Sales Data</a>
@@ -1641,7 +1641,7 @@
                             <div class="collapse" id="sidebarPurchasingPower">
                                 <ul class="side-nav-third-level">
                                     <li>
-                                        <a href="{{ url('/purchasing-power-pricing') }}">Purchasing Power Pricing</a>
+                                        <a href="{{ url('/purchasing-power-pricing') }}">Purchasing Power - Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ url('/purchasing-power-sales') }}">Purchasing Power Sales</a>
@@ -1660,7 +1660,7 @@
                                 <ul class="side-nav-third-level">
                                    
                                     <li>
-                                        <a href="{{ route('wayfair.pricing.view') }}">Wayfair Analytics</a>
+                                        <a href="{{ route('wayfair.pricing.view') }}">Wayfair - Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('wayfair.zero.view') }}">Wayfair 0 View</a>
@@ -1688,7 +1688,7 @@
                             <div class="collapse" id="sidebarReverb">
                                 <ul class="side-nav-third-level">
                                     <li>
-                                        <a href="{{ url('reverb-pricing') }}">Reverb Analytics</a>
+                                        <a href="{{ url('reverb-pricing') }}">Reverb - Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ url('reverb-sales') }}">Reverb Sales Data</a>
@@ -1709,7 +1709,7 @@
                             <div class="collapse" id="sidebarTopDawg">
                                 <ul class="side-nav-third-level">
                                     <li>
-                                        <a href="{{ route('topdawg.pricing') }}">TopDawg Analytics</a>
+                                        <a href="{{ route('topdawg.pricing') }}">TopDawg - Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('topdawg.sales.dashboard') }}">TopDawg Sales Data</a>
@@ -1734,7 +1734,7 @@
                                         <a href="{{ route('listing.temu') }}">Listing Temu</a>
                                     </li>
                                     <li>
-                                        <a href="{{ url('temu-decrease') }}">Temu Analytics </a>
+                                        <a href="{{ url('temu-decrease') }}">Temu - Analytics</a>
                                     </li>
 
 
@@ -1757,7 +1757,7 @@
                             <div class="collapse" id="sidebarTemu2Analytics">
                                 <ul class="side-nav-third-level">
                                     <li>
-                                        <a href="{{ url('temu2-decrease') }}">Temu 2 Pricing</a>
+                                        <a href="{{ url('temu2-decrease') }}">Temu 2 - Analytics</a>
                                     </li>
                                 </ul>
                             </div>
@@ -1789,7 +1789,7 @@
                                     </li>
 
                                     <li>
-                                        <a href="{{ url('doba-tabulator') }}">Doba pricing</a>
+                                        <a href="{{ url('doba-tabulator') }}">Doba - Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('doba.withoutship') }}">Doba without ship</a>
@@ -1837,7 +1837,7 @@
                                             </ul>
                                         </div>
                                     </li>
-                                    <li> <a href="{{ url('ebay2-tabulator-view') }}">Ebay 2 Analytics</a>
+                                    <li> <a href="{{ url('ebay2-tabulator-view') }}">Ebay 2 - Analytics</a>
                                     </li>
                                     <li> <a href="{{ url('ebay2op-tabulator-view') }}">Ebay 2 Open Box </a>
                                     </li>
@@ -1894,7 +1894,7 @@
                                         </div>
                                     </li>
                                     <li>
-                                        <a href="{{ url('ebay3-tabulator-view') }}">Ebay 3 Analytics</a>
+                                        <a href="{{ url('ebay3-tabulator-view') }}">Ebay 3 - Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('listing.ebayThree') }}">Listing Ebay 3</a>
@@ -2003,7 +2003,7 @@
                                             <span class="menu-arrow"></span>
                                         </a>
                                     <li>
-                                        <a href="{{ route('walmart.sheet.upload') }}">Walmart Pricing</a>
+                                        <a href="{{ route('walmart.sheet.upload') }}">Walmart - Analytics</a>
                                     </li>
                                     <div class="collapse" id="walmartSubmenu">
                                         <ul class="side-nav-fourth-level">
@@ -2095,7 +2095,7 @@
                         <li><a href="{{ route('listing.aliexpress') }}">Listing Aliexpress</a>
                         </li>
 
-                        <li><a href="{{ route('aliexpress.pricing.view') }}">Aliexpress Analytics</a>
+                        <li><a href="{{ route('aliexpress.pricing.view') }}">Aliexpress - Analytics</a>
                         </li>
                         <li><a href="{{ route('aliexpress.lmp') }}">Aliexpress LMP</a></li>
                     </ul>
@@ -2132,7 +2132,7 @@
                 </a>
                 <div class="collapse" id="sidebarFaire">
                     <ul class="side-nav-third-level">
-                        <li><a href="{{ route('faire.pricing.view') }}">Faire Analytics</a></li>
+                        <li><a href="{{ route('faire.pricing.view') }}">Faire - Analytics</a></li>
                         <li><a href="{{ route('zero.faire') }}">Faire 0 view</a></li>
                         <li><a href="{{ route('listing.faire') }}">Listing Faire</a></li>
                     </ul>
@@ -2155,9 +2155,9 @@
                         </li>
                         {{-- <li><a href="{{ route('tiktokshop.ads') }}">Tiktok Shop Ads</a>
                                     </li> --}}
-                        <li><a href="{{ route('tiktok.pricing') }}">TikTok Shop Analytics</a>
+                        <li><a href="{{ route('tiktok.pricing') }}">TikTok Shop - Analytics</a>
                         </li>
-                        <li><a href="{{ route('tiktok2.pricing') }}">TikTok 2 Shop Analytics</a>
+                        <li><a href="{{ route('tiktok2.pricing') }}">TikTok 2 Shop - Analytics</a>
                         </li>
                         <li><a href="{{ route('tiktok.utilized') }}">TikTok Shop Ads</a>
                         </li>
@@ -2173,7 +2173,7 @@
                 </a>
                 <div class="collapse" id="sidebarMercariWShip">
                     <ul class="side-nav-third-level">
-                        <li><a href="{{ route('mercari.wship.tabulator.view') }}">Mercari w Ship Analytics</a></li>
+                        <li><a href="{{ route('mercari.wship.tabulator.view') }}">Mercari w Ship - Analytics</a></li>
 
 
                         <li>
@@ -2240,7 +2240,7 @@
                     <ul class="side-nav-third-level">
                         <li><a href="{{ url('plsAnalysis') }}">PLS Analytics</a></li>
 
-                        <li><a href="{{ route('pls.pricing') }}">PLS Pricing</a></li>
+                        <li><a href="{{ route('pls.pricing') }}">PLS - Analytics</a></li>
 
                         <li><a href="{{ route('pls.sales') }}">PLS Sales (30 Days)</a></li>
 
@@ -2263,7 +2263,7 @@
                 </a>
                 <div class="collapse" id="sidebarMercariWoShip">
                     <ul class="side-nav-third-level">
-                        <li><a href="{{ route('mercari.woship.tabulator.view') }}">Mercari w/o Ship Analytics</a></li>
+                        <li><a href="{{ route('mercari.woship.tabulator.view') }}">Mercari w/o Ship - Analytics</a></li>
 
                         <li>
                             <a href="{{ route('zero.mercariwoship') }}">Mercari w/o Ship 0
@@ -2292,7 +2292,7 @@
 
                         <li><a href="{{ route('listing.tiendamia') }}">Listing Tiendamia</a>
                         </li>
-                        <li><a href="{{ route('tiendamia.pricing') }}">Tiendamia Pricing</a></li>
+                        <li><a href="{{ route('tiendamia.pricing') }}">Tiendamia - Analytics</a></li>
                     </ul>
                 </div>
             </li>

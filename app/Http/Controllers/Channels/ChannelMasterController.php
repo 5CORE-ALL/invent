@@ -13144,8 +13144,12 @@ class ChannelMasterController extends Controller
             $avgMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos', 'ads_cvr', 'cvr'];
             $shouldAvg = in_array($metric, $avgMetrics);
 
-            // Determine date range
-            $query = \App\Models\ChannelMasterSummary::orderBy('snapshot_date', 'asc');
+            // Determine date range. Exclude today's California snapshot — the current PT day
+            // is still in progress, so its rolling-window totals haven't stabilised. We only
+            // chart fully completed California days (so the latest point on screen is yesterday PT).
+            $todayCa = now('America/Los_Angeles')->toDateString();
+            $query = \App\Models\ChannelMasterSummary::orderBy('snapshot_date', 'asc')
+                ->where('snapshot_date', '<', $todayCa);
 
             if (!$isAll) {
                 $query->where('channel', $channel);
@@ -13162,14 +13166,17 @@ class ChannelMasterController extends Controller
                 return response()->json(['success' => true, 'data' => []]);
             }
 
-            // Group by snapshot_date for "all" aggregation
+            // Group by snapshot_date for "all" aggregation.
+            // Snapshots are saved with America/Los_Angeles dates (see saveChannelDailySummaries),
+            // so we parse and format in that zone to ensure the chart's X-axis labels (Jun 14,
+            // Jun 15, …) are California/Pacific dates regardless of the app/server timezone.
             $grouped = $history->groupBy(function ($row) {
-                return Carbon::parse($row->snapshot_date)->format('Y-m-d');
+                return Carbon::parse($row->snapshot_date, 'America/Los_Angeles')->format('Y-m-d');
             })->sortKeys();
 
             $chartData = [];
             foreach ($grouped as $dateKey => $rows) {
-                $date = Carbon::parse($dateKey)->format('M d');
+                $date = Carbon::parse($dateKey, 'America/Los_Angeles')->format('M d');
 
                 if ($isAll) {
                     // Aggregate across all channels for this date
@@ -13415,6 +13422,11 @@ class ChannelMasterController extends Controller
             $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp'];
             $out = [];
 
+            // Today's California date — excluded from dot comparisons because the current PT day
+            // is still in progress. Comparing today (partial) vs yesterday (complete) yields
+            // a misleading "no change" / grey dot. We compare the two latest COMPLETED PT days.
+            $todayCa = now('America/Los_Angeles')->toDateString();
+
             foreach ($channelKeys as $channel) {
                 foreach ($metrics as $metric) {
                     $out[$channel][$metric] = [null, null];
@@ -13422,6 +13434,7 @@ class ChannelMasterController extends Controller
 
                 // Same source as chart: ChannelMasterSummary. Same key: normalized channel (table saves with this key in saveChannelDailySummaries).
                 $cmsRows = \App\Models\ChannelMasterSummary::where('channel', $channel)
+                    ->where('snapshot_date', '<', $todayCa)
                     ->orderBy('snapshot_date', 'desc')
                     ->take(2)
                     ->get();

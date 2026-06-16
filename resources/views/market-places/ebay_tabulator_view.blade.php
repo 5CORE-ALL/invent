@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'eBay Data', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Ebay - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -291,7 +291,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'eBay Data',
+        'page_title' => 'Ebay - Analytics',
         'sub_title' => 'Tabulator view — pricing, ads, and inventory',
     ])
     <div class="ebay-tabulator-page">
@@ -299,7 +299,6 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>eBay Data</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <select id="section-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">

@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Temu 2 Pricing', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Temu 2 - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -131,14 +131,13 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Temu 2 Pricing',
-        'sub_title' => 'Temu 2 (temu2_daily_data)',
+        'page_title' => 'Temu 2 - Analytics',
+        'sub_title' => '',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Temu 2 Pricing</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Inventory Filter -->
                     <div>
@@ -287,7 +286,7 @@
                         <i class="fa fa-link"></i> Temu LMP
                     </a>
 
-                    <button id="inc-dec-btn" class="btn btn-sm btn-secondary" title="Cycle: INC / DEC → Decrease → Increase → INC / DEC">
+                    <button id="inc-dec-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         INC / DEC
                     </button>
                     
@@ -335,12 +334,15 @@
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span id="selected-skus-count" class="badge bg-primary">0 SKUs selected</span>
+                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
+                        <span id="discount-type-select-wrap">
                         <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
                             <option value="percentage">Percentage</option>
                             <option value="dollar">Dollar</option>
                         </select>
+                        </span>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
                                placeholder="Enter %" style="width: 150px;" step="0.01" min="0">
                         <button id="apply-discount-btn" class="btn btn-sm btn-warning">
@@ -838,6 +840,7 @@
     let table = null;
     let decreaseModeActive = false;
     let increaseModeActive = false;
+    let samePriceModeActive = false;
     let selectedSkus = new Set();
     let soldSpriceBlankFilterActive = false;
     let latestAvgViews = 0;
@@ -1626,41 +1629,68 @@
             if (typeof showToast === 'function') showToast('Goods ID copied', 'success');
         });
 
-        // Discount type dropdown change handler
-        $('#discount-type-select').on('change', function() {
-            const discountType = $(this).val();
+        // Swap the discount-input panel between %/$ and Same Price modes.
+        function syncDiscountInputUi() {
             const $input = $('#discount-percentage-input');
-            
-            if (discountType === 'percentage') {
-                $input.attr('placeholder', 'Enter %');
+            if (samePriceModeActive) {
+                $('#discount-type-select-wrap').hide();
+                $('#discount-input-label').removeClass('d-none');
+                $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
+                $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Same Price');
             } else {
-                $input.attr('placeholder', 'Enter $');
+                $('#discount-type-select-wrap').show();
+                $('#discount-input-label').addClass('d-none');
+                const t = $('#discount-type-select').val();
+                $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
+                $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply');
             }
-        });
+        }
 
-        // INC / DEC: one button, cycle neutral → decrease → increase → neutral
+        // Discount type dropdown change handler
+        $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
+
+        // INC / DEC: one button, cycle Off → DEC → INC → SAME → Off
         $('#inc-dec-btn').on('click', function() {
             const selectColumn = table.getColumn('_select');
             const $btn = $(this);
 
-            if (!decreaseModeActive && !increaseModeActive) {
+            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                // Off → DEC
                 decreaseModeActive = true;
+                increaseModeActive = false;
+                samePriceModeActive = false;
                 selectColumn.show();
-                $btn.removeClass('btn-secondary').addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
+                $btn.removeClass('btn-secondary btn-success btn-info').addClass('btn-danger')
+                    .html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
             } else if (decreaseModeActive) {
+                // DEC → INC
                 decreaseModeActive = false;
                 increaseModeActive = true;
-                $btn.removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> INC <i class="fas fa-times ms-1" title="Click again to reset"></i>');
-            } else {
+                samePriceModeActive = false;
+                $btn.removeClass('btn-danger btn-info btn-secondary').addClass('btn-success')
+                    .html('<i class="fas fa-arrow-up"></i> INC <i class="fas fa-times ms-1" title="Click again for SAME"></i>');
+            } else if (increaseModeActive) {
+                // INC → SAME PRICE
+                decreaseModeActive = false;
                 increaseModeActive = false;
+                samePriceModeActive = true;
+                $btn.removeClass('btn-danger btn-success btn-secondary').addClass('btn-info')
+                    .html('<i class="fas fa-equals"></i> SAME <i class="fas fa-times ms-1" title="Click again to reset"></i>');
+            } else {
+                // SAME → Off
+                decreaseModeActive = false;
+                increaseModeActive = false;
+                samePriceModeActive = false;
                 selectColumn.hide();
                 selectedSkus.clear();
                 soldSpriceBlankFilterActive = false;
                 updateSelectedCount();
                 updateSelectAllCheckbox();
                 applyFilters();
-                $btn.removeClass('btn-danger btn-success').addClass('btn-secondary').html('INC / DEC');
+                $btn.removeClass('btn-danger btn-success btn-info').addClass('btn-secondary')
+                    .html('INC / DEC');
             }
+            syncDiscountInputUi();
         });
 
         $(document).on('change', '#select-all-checkbox', function() {
@@ -1867,12 +1897,16 @@
             const rawInput = $('#discount-percentage-input').val();
             const discountValue = parseFloat(String(rawInput).replace(',', '.')) || 0;
             const discountType = $('#discount-type-select').val();
-            
-            if (isNaN(discountValue) || discountValue <= 0) {
-                showToast('Please enter a valid discount value', 'error');
+
+            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                showToast('Turn on Decrease, Increase, or Same Price mode first', 'error');
                 return;
             }
-            if (discountType === 'percentage' && discountValue > 100 && !increaseModeActive) {
+            if (isNaN(discountValue) || discountValue <= 0) {
+                showToast(samePriceModeActive ? 'Please enter a price (e.g. 19.99)' : 'Please enter a valid discount value', 'error');
+                return;
+            }
+            if (!samePriceModeActive && discountType === 'percentage' && discountValue > 100 && !increaseModeActive) {
                 showToast('Discount percentage cannot exceed 100%', 'error');
                 return;
             }
@@ -1891,10 +1925,15 @@
                 const sku = row['sku'];
                 if (selectedSkus.has(sku)) {
                     const currentPrice = parseFloat(row['base_price']) || 0;
-                    if (currentPrice > 0) {
+                    // Same Price applies even when base_price is empty;
+                    // Decrease / Increase modes still need a positive base price to compute.
+                    if (samePriceModeActive || currentPrice > 0) {
                         let newSPrice;
-                        
-                        if (discountType === 'percentage') {
+
+                        if (samePriceModeActive) {
+                            // The ONE price the user typed, applied verbatim to every selected SKU.
+                            newSPrice = Math.max(0.01, discountValue);
+                        } else if (discountType === 'percentage') {
                             if (increaseModeActive) {
                                 newSPrice = currentPrice * (1 + discountValue / 100);
                             } else {
@@ -1907,11 +1946,13 @@
                                 newSPrice = currentPrice - discountValue;
                             }
                         }
-                        
+
                         newSPrice = Math.max(0.01, newSPrice);
                         const originalPrice = currentPrice;
                         newSPrice = roundToRetailPrice(newSPrice);
-                        if (newSPrice.toFixed(2) === originalPrice.toFixed(2)) {
+                        // Only auto-bump to .49 when Decrease/Increase would produce an
+                        // unchanged price. Same Price honors the typed value exactly.
+                        if (!samePriceModeActive && newSPrice.toFixed(2) === originalPrice.toFixed(2)) {
                             newSPrice = roundToRetailPrice49(newSPrice);
                         }
                         const newPriceNum = parseFloat(newSPrice.toFixed(2));
@@ -1931,14 +1972,15 @@
                             tableRow.reformat();
                         }
                         
+                        const actionLabel = samePriceModeActive ? 'Same Price' : (increaseModeActive ? 'Increase' : 'Discount');
                         saveSpriceWithRetry(sku, newPriceNum, tableRow)
                             .then((response) => {
                                 updatedCount++;
                                 if (updatedCount + errorCount === totalSkus) {
                                     if (errorCount === 0) {
-                                        showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s)`, 'success');
+                                        showToast(`${actionLabel} applied to ${updatedCount} SKU(s)`, 'success');
                                     } else {
-                                        showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
+                                        showToast(`${actionLabel} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
                                     }
                                 }
                             })
@@ -1949,7 +1991,7 @@
                                     tableRow.reformat();
                                 }
                                 if (updatedCount + errorCount === totalSkus) {
-                                    showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
+                                    showToast(`${actionLabel} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
                                 }
                             });
                     }
@@ -2224,9 +2266,9 @@
                 const selectColumn = table.getColumn('_select');
                 selectColumn.show();
                 
-                if (!decreaseModeActive && !increaseModeActive) {
+                if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
                     decreaseModeActive = true;
-                    $('#inc-dec-btn').removeClass('btn-secondary').addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
+                    $('#inc-dec-btn').removeClass('btn-secondary btn-info btn-success').addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
                 }
                 
                 if (newlySelectedCount > 0) {

@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon FBM', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Amazon Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -180,8 +180,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Amazon FBM',
-        'sub_title' => 'Amazon FBM',
+        'page_title' => 'Amazon Analytics',
+        'sub_title' => 'Amazon Analytics',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -386,6 +386,7 @@
                         <ul class="dropdown-menu dropdown-menu-end" id="price-pct-dropdown">
                             <li><a class="dropdown-item" href="#" data-mode="decrease"><i class="fas fa-minus-circle text-warning"></i> Decrease</a></li>
                             <li><a class="dropdown-item" href="#" data-mode="increase"><i class="fas fa-plus-circle text-success"></i> Increase</a></li>
+                            <li><a class="dropdown-item" href="#" data-mode="same"><i class="fas fa-equals text-info"></i> Same Price</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="#" data-mode="cancel"><i class="fas fa-times"></i> Cancel</a></li>
                         </ul>
@@ -455,11 +456,13 @@
                 <!-- Price % input: how much to decrease or increase (shown when Decrease/Increase is active) -->
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
                     <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <span class="text-muted fw-bold me-1">By how much:</span>
+                        <span id="discount-input-label" class="text-muted fw-bold me-1">By how much:</span>
+                        <span id="discount-type-select-wrap">
                         <select id="discount-type-select" class="form-select form-select-sm" style="width: 140px;">
                             <option value="percentage">Percentage (%)</option>
                             <option value="value">Value ($)</option>
                         </select>
+                        </span>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
                             placeholder="e.g. 10 or 2.50" step="0.1" min="0" 
                             style="width: 140px;" title="Enter % or $ amount to decrease/increase price">
@@ -691,6 +694,7 @@
         let table = null; // Global table reference
         let decreaseModeActive = false; // Track decrease mode state
         let increaseModeActive = false; // Track increase mode state
+        let samePriceModeActive = false; // Track Same Price mode (one price for all selected rows)
         let selectedSkus = new Set(); // Track selected SKUs across all pages
         let soldFilterActive = 'all'; // Track sold filter state: 'all', 'sold', 'zero'
         let priceFilterActive = false; // Track price filter state: true = show only Prc > LMP
@@ -1711,10 +1715,11 @@
                 }
             });
 
-            // Price % (Decrease / Increase) — single dropdown
+            // Price % (Decrease / Increase / Same Price) — single dropdown
             function exitPricePctMode() {
                 decreaseModeActive = false;
                 increaseModeActive = false;
+                samePriceModeActive = false;
                 if (table) {
                     const col = table.getColumn('_select');
                     if (col) col.hide();
@@ -1724,9 +1729,14 @@
                 if ($('#select-all-checkbox').length) $('#select-all-checkbox').prop('checked', false);
                 $('#discount-input-container').hide();
                 $('#clear-sprice-btn').hide();
-                $('#price-pct-btn').removeClass('btn-danger btn-warning btn-success').addClass('btn-primary')
+                $('#price-pct-btn').removeClass('btn-danger btn-warning btn-success btn-info').addClass('btn-primary')
                     .html('<i class="fas fa-percent"></i> Price %');
                 $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply');
+                $('#discount-type-select-wrap').show();
+                $('#discount-input-label').text('By how much:');
+                $('#discount-percentage-input')
+                    .attr('placeholder', 'e.g. 10 or 2.50')
+                    .attr('title', 'Enter % or $ amount to decrease/increase price');
             }
 
             function setPricePctMode(mode) {
@@ -1741,18 +1751,39 @@
 
                 decreaseModeActive = (mode === 'decrease');
                 increaseModeActive = (mode === 'increase');
+                samePriceModeActive  = (mode === 'same');
                 selectColumn.show();
                 $('#clear-sprice-btn').show();
                 $('#discount-input-container').show();
                 $('#discount-percentage-input').val('');
+
                 if (mode === 'decrease') {
-                    $('#price-pct-btn').removeClass('btn-primary btn-success').addClass('btn-warning')
+                    $('#discount-type-select-wrap').show();
+                    $('#discount-input-label').text('By how much:');
+                    $('#discount-percentage-input')
+                        .attr('placeholder', 'e.g. 10 or 2.50')
+                        .attr('title', 'Enter % or $ amount to decrease price');
+                    $('#price-pct-btn').removeClass('btn-primary btn-success btn-info').addClass('btn-warning')
                         .html('<i class="fas fa-minus-circle"></i> Decrease');
                     $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Decrease');
-                } else {
-                    $('#price-pct-btn').removeClass('btn-primary btn-warning').addClass('btn-success')
+                } else if (mode === 'increase') {
+                    $('#discount-type-select-wrap').show();
+                    $('#discount-input-label').text('By how much:');
+                    $('#discount-percentage-input')
+                        .attr('placeholder', 'e.g. 10 or 2.50')
+                        .attr('title', 'Enter % or $ amount to increase price');
+                    $('#price-pct-btn').removeClass('btn-primary btn-warning btn-info').addClass('btn-success')
                         .html('<i class="fas fa-plus-circle"></i> Increase');
                     $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Increase');
+                } else if (mode === 'same') {
+                    $('#discount-type-select-wrap').hide();
+                    $('#discount-input-label').text('Same Price ($):');
+                    $('#discount-percentage-input')
+                        .attr('placeholder', 'Enter price (e.g. 19.99)')
+                        .attr('title', 'This single price will be applied to every selected SKU');
+                    $('#price-pct-btn').removeClass('btn-primary btn-warning btn-success').addClass('btn-info')
+                        .html('<i class="fas fa-equals"></i> Same Price');
+                    $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Same Price');
                 }
             }
 
@@ -1781,7 +1812,7 @@
             function updateSelectedCount() {
                 const selectedCount = selectedSkus.size;
                 // Keep input container visible when in Price % mode; only hide when exiting mode
-                if (decreaseModeActive || increaseModeActive) {
+                if (decreaseModeActive || increaseModeActive || samePriceModeActive) {
                     $('#discount-input-container').show();
                 }
                 $('#selected-skus-count').text(selectedCount > 0 ? `(${selectedCount} SKU${selectedCount > 1 ? 's' : ''} selected)` : '(select SKUs in table)');
@@ -2361,13 +2392,13 @@
                 return +(roundedDollar - 0.51).toFixed(2);
             }
 
-            // Apply Discount/Increase Button
+            // Apply Discount/Increase/Same-Price Button
             $('#apply-discount-btn').on('click', function() {
                 const rawInput = $('#discount-percentage-input').val();
                 const inputValue = parseFloat(String(rawInput).replace(',', '.'));
                 
                 if (rawInput === '' || rawInput == null) {
-                    showToast('error', 'Please enter a value (% or $)');
+                    showToast('error', samePriceModeActive ? 'Please enter a price' : 'Please enter a value (% or $)');
                     return;
                 }
                 if (isNaN(inputValue) || inputValue < 0) {
@@ -2376,7 +2407,7 @@
                 }
                 
                 const discountType = $('#discount-type-select').val();
-                if (discountType === 'percentage' && inputValue > 100) {
+                if (!samePriceModeActive && discountType === 'percentage' && inputValue > 100) {
                     showToast('error', 'Percentage cannot exceed 100');
                     return;
                 }
@@ -2386,12 +2417,12 @@
                     return;
                 }
                 
-                if (!decreaseModeActive && !increaseModeActive) {
-                    showToast('error', 'Please activate Decrease or Increase mode first');
+                if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                    showToast('error', 'Please activate Decrease, Increase, or Same Price mode first');
                     return;
                 }
                 
-                const mode = increaseModeActive ? 'increase' : 'decrease';
+                const mode = samePriceModeActive ? 'same' : (increaseModeActive ? 'increase' : 'decrease');
                 let successCount = 0;
                 let errorCount = 0;
                 let totalToProcess = selectedSkus.size;
@@ -2413,11 +2444,14 @@
                         const rowData = row.getData();
                         const originalPrice = parseFloat(rowData.price) || 0;
                         
-                        if (originalPrice > 0) {
+                        // Same Price mode applies even when the live price column is empty.
+                        if (mode === 'same' || originalPrice > 0) {
                             let newPrice;
-                            
-                            // Use selected type (percentage or value)
-                            if (discountType === 'percentage') {
+
+                            if (mode === 'same') {
+                                // One fixed price for every selected row, regardless of current price.
+                                newPrice = Math.max(0.01, inputValue);
+                            } else if (discountType === 'percentage') {
                                 // Treat as percentage
                                 const decimal = inputValue / 100;
                                 if (mode === 'decrease') {
@@ -2436,7 +2470,7 @@
 
                             // Round to retail .99; when that would match current price, use .49 so S PRC doesn’t show blank
                             newPrice = roundToRetailPrice(newPrice);
-                            if (newPrice.toFixed(2) === originalPrice.toFixed(2)) {
+                            if (mode !== 'same' && newPrice.toFixed(2) === originalPrice.toFixed(2)) {
                                 newPrice = roundToRetailPrice49(newPrice);
                             }
                             const newPriceNum = parseFloat(newPrice.toFixed(2));
@@ -2476,7 +2510,7 @@
                                     
                                     // Check if all requests are complete
                                     if (successCount + errorCount === totalToProcess) {
-                                        const actionText = mode === 'increase' ? 'Increase' : 'Discount';
+                                        const actionText = mode === 'same' ? 'Same Price' : (mode === 'increase' ? 'Increase' : 'Discount');
                                         $('#apply-discount-btn').prop('disabled', false).html(`<i class="fas fa-check"></i> Apply ${actionText}`);
                                         if (errorCount === 0) {
                                             showToast('success', `${actionText} applied successfully to ${successCount} SKU${successCount > 1 ? 's' : ''}`);
@@ -2488,7 +2522,7 @@
                                 error: function(xhr) {
                                     errorCount++;
                                     if (successCount + errorCount === totalToProcess) {
-                                        const actionText = mode === 'increase' ? 'Increase' : 'Discount';
+                                        const actionText = mode === 'same' ? 'Same Price' : (mode === 'increase' ? 'Increase' : 'Discount');
                                         $('#apply-discount-btn').prop('disabled', false).html(`<i class="fas fa-check"></i> Apply ${actionText}`);
                                         showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
                                     }
@@ -2497,7 +2531,7 @@
                         } else {
                             errorCount++;
                             if (successCount + errorCount === totalToProcess) {
-                                const actionText = mode === 'increase' ? 'Increase' : 'Discount';
+                                const actionText = mode === 'same' ? 'Same Price' : (mode === 'increase' ? 'Increase' : 'Discount');
                                 $('#apply-discount-btn').prop('disabled', false).html(`<i class="fas fa-check"></i> Apply ${actionText}`);
                                 showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
                             }
@@ -2505,7 +2539,7 @@
                     } else {
                         errorCount++;
                         if (successCount + errorCount === totalToProcess) {
-                            const actionText = mode === 'increase' ? 'Increase' : 'Discount';
+                            const actionText = mode === 'same' ? 'Same Price' : (mode === 'increase' ? 'Increase' : 'Discount');
                             $('#apply-discount-btn').prop('disabled', false).html(`<i class="fas fa-check"></i> Apply ${actionText}`);
                             showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
                         }

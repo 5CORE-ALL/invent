@@ -84,7 +84,7 @@ class TikTokPricingController extends Controller
             'mode' => $mode,
             'demo' => $demo,
             'tiktokPercentage' => $percentage,
-            'tiktokPageTitle' => 'TikTok 2 Shop Analytics',
+            'tiktokPageTitle' => 'TikTok 2 Shop - Analytics',
             'tiktokUploadPath' => '/tiktok-2-upload-csv',
             'tiktokDownloadSamplePath' => '/tiktok-download-sample-csv',
             'tiktokPricingClientConfig' => [

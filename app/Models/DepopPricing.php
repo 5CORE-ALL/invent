@@ -11,11 +11,13 @@ class DepopPricing extends Model
     protected $fillable = [
         'sku',
         'price',
+        'sprice',
         'l30',
     ];
 
     protected $casts = [
-        'price' => 'decimal:2',
-        'l30'   => 'integer',
+        'price'  => 'decimal:2',
+        'sprice' => 'decimal:2',
+        'l30'    => 'integer',
     ];
 }

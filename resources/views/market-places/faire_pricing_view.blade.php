@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Faire Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Faire - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -99,8 +99,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Faire Analytics',
-        'sub_title'  => 'List-price upload, SPRICE, and sales merge from Faire daily data (same source as Faire Sales Data)',
+        'page_title' => 'Faire - Analytics',
+        'sub_title'  => '',
     ])
 
     <div class="row">
