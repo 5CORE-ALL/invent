@@ -534,6 +534,44 @@
                 min-width: 0;
             }
         }
+
+        /* Slab Rates modal — sticky first column + compact carrier inputs */
+        #slabRatesTable .slab-rates-sticky-col {
+            position: sticky;
+            left: 0;
+            background: #f1f5f9;
+            z-index: 2;
+            box-shadow: 2px 0 4px -2px rgba(0,0,0,0.08);
+        }
+        #slabRatesTable tbody tr.slab-row-empty .slab-rates-sticky-col {
+            color: #94a3b8;
+        }
+        #slabRatesTable tbody tr:nth-child(even) .slab-rates-sticky-col {
+            background: #f8fafc;
+        }
+        #slabRatesTable tbody tr:nth-child(odd) .slab-rates-sticky-col {
+            background: #ffffff;
+        }
+        #slabRatesTable thead th {
+            white-space: nowrap;
+        }
+        #slabRatesTable th.slab-rates-carrier-col,
+        #slabRatesTable td.slab-rates-carrier-cell {
+            min-width: 86px;
+            width: 86px;
+            text-align: center;
+        }
+        #slabRatesTable td.slab-rates-carrier-cell input.slab-rate-input {
+            width: 78px;
+            text-align: right;
+            font-size: 12px;
+            padding: 2px 6px;
+            height: 28px;
+        }
+        #slabRatesTable td.slab-count-cell .badge { font-size: 11px; }
+        #slabRatesTable tbody tr.slab-row-empty td.slab-rates-carrier-cell input.slab-rate-input {
+            background-color: #f1f5f9;
+        }
     </style>
 @endsection
 
@@ -1094,52 +1132,59 @@
 
     <!-- Slab Rates Modal -->
     <div class="modal fade" id="slabRatesModal" tabindex="-1" aria-labelledby="slabRatesModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-dialog modal-fullscreen-lg-down modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header" style="background: linear-gradient(135deg, #1f2937 0%, #111827 100%); color: white;">
                     <h5 class="modal-title" id="slabRatesModalLabel">
-                        <i class="fas fa-layer-group me-2"></i>Slab Rates &mdash; GOFO
+                        <i class="fas fa-layer-group me-2"></i>Slab Rates &mdash; Shipping Carriers
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="alert alert-info py-2 mb-3" style="font-size: 13px;">
                         <i class="fas fa-info-circle me-2"></i>
-                        Enter a GOFO rate for one or more weight slabs. On <strong>Apply</strong>, that rate
-                        will be written to the <strong>GOFO</strong> column for every non-parent SKU in the slab.
-                        Leave a slab blank to skip it.
+                        Enter a rate in any <em>(slab &times; carrier)</em> cell. On <strong>Apply</strong>, each rate is
+                        written to its carrier column for every non-parent SKU in that slab. Empty cells are skipped.
                         <div class="text-muted mt-1">
                             Slabs use <strong>Item WT ACT (LB)</strong> &mdash; same bands as the column filter.
+                            Carriers: Ship, Ship BB, TT 1 Ship, Temu ship, Temu GOFO, Ebay2 ship, GOFO, Fedex, UPS, USPS, UNI.
                         </div>
                     </div>
 
                     <div class="d-flex align-items-center justify-content-between mb-2 gap-2 flex-wrap">
-                        <div class="d-flex align-items-center gap-2">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
                             <label class="form-label mb-0 small fw-semibold" for="slabRatesScope">SKU scope:</label>
-                            <select id="slabRatesScope" class="form-select form-select-sm" style="width: auto; min-width: 180px;" title="Which SKUs to update inside each slab">
-                                <option value="all" selected>All SKUs in slab</option>
-                                <option value="missing">Only SKUs with missing GOFO</option>
+                            <select id="slabRatesScope" class="form-select form-select-sm" style="width: auto; min-width: 220px;" title="Which SKUs to update inside each slab">
+                                <option value="all" selected>All SKUs in slab (overwrite)</option>
+                                <option value="missing">Only SKUs missing that carrier's value</option>
                             </select>
                         </div>
-                        <div class="d-flex align-items-center gap-2">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <div class="d-flex align-items-center gap-1">
+                                <label class="form-label mb-0 small fw-semibold" for="slabRatesFillRow">Fill row:</label>
+                                <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="slabRatesFillRow" placeholder="$" style="width: 90px;" title="Type a value and click Fill row to copy it into every empty carrier cell of one slab">
+                                <select id="slabRatesFillRowTarget" class="form-select form-select-sm" style="width: auto; min-width: 160px;" title="Pick the slab to fill">
+                                    <option value="">— pick slab —</option>
+                                </select>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="slabRatesFillRowBtn" title="Copy the value into every empty carrier cell of the selected slab">Fill</button>
+                            </div>
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="slabRatesClearBtn" title="Clear all rate inputs">
                                 <i class="fas fa-eraser me-1"></i> Clear inputs
                             </button>
                         </div>
                     </div>
 
-                    <div class="table-responsive" style="max-height: 60vh; border: 1px solid #e9ecef; border-radius: 8px;">
-                        <table class="table table-sm mb-0 align-middle">
-                            <thead style="position: sticky; top: 0; background: #f1f5f9; z-index: 2;">
-                                <tr>
-                                    <th style="font-size: 12px;">Weight Slab</th>
-                                    <th class="text-center" style="font-size: 12px; width: 90px;"># SKUs</th>
-                                    <th class="text-center" style="font-size: 12px; width: 110px;">Missing GOFO</th>
-                                    <th class="text-center" style="font-size: 12px; width: 160px;">GOFO Rate&nbsp;($)</th>
+                    <div class="table-responsive" style="max-height: 62vh; border: 1px solid #e9ecef; border-radius: 8px;">
+                        <table class="table table-sm mb-0 align-middle" id="slabRatesTable">
+                            <thead style="position: sticky; top: 0; background: #f1f5f9; z-index: 3;">
+                                <tr id="slabRatesHeadRow">
+                                    <th class="slab-rates-sticky-col" style="font-size: 12px; min-width: 220px;">Weight Slab</th>
+                                    <th class="text-center" style="font-size: 12px; width: 70px;"># SKUs</th>
+                                    <!-- carrier <th>s injected here -->
                                 </tr>
                             </thead>
                             <tbody id="slabRatesBody">
-                                <tr><td colspan="4" class="text-center text-muted py-3">Loading slabs&hellip;</td></tr>
+                                <tr><td colspan="13" class="text-center text-muted py-3">Loading slabs&hellip;</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -3323,9 +3368,26 @@
                 document.getElementById('editDimWtModalLabel').textContent = 'Edit Shipping Master';
             });
 
-            // Slab Rates: apply GOFO rate to all SKUs in a weight slab.
+            // Slab Rates: apply per-carrier rates to all SKUs in a weight slab.
             // Uses the same Item WT ACT (LB) bands as the filter dropdown so
             // "what you filter" matches "what gets the rate".
+
+            // Carriers shown as columns in the slab matrix. Keys match the
+            // backend /dim-wt-master/update payload fields (and Values keys).
+            const SLAB_RATE_CARRIERS = [
+                { key: 'ship',       label: 'Ship' },
+                { key: 'ship_bb',    label: 'Ship BB' },
+                { key: 'tt_ship',    label: 'TT 1 Ship' },
+                { key: 'temu_ship',  label: 'Temu ship' },
+                { key: 'temu_gofo',  label: 'Temu GOFO' },
+                { key: 'ebay2_ship', label: 'Ebay2 ship' },
+                { key: 'gofo',       label: 'GOFO' },
+                { key: 'fedex',      label: 'Fedex' },
+                { key: 'ups',        label: 'UPS' },
+                { key: 'usps',       label: 'USPS' },
+                { key: 'uni',        label: 'UNI' }
+            ];
+
             function getSlabDefinitions() {
                 const slabs = [{ key: 'lb_0', label: '0 lb' }];
                 WT_ACT_OZ_FILTER_OPTIONS.forEach(oz => {
@@ -3345,40 +3407,93 @@
                 );
             }
 
-            function hasMissingGofo(item) {
-                const v = item.gofo;
+            function isCarrierValueMissing(item, carrierKey) {
+                const v = item ? item[carrierKey] : null;
                 if (v === null || v === undefined || v === '') return true;
                 const n = parseFloat(v);
                 return !Number.isFinite(n);
             }
 
+            function buildSlabRatesTableHead() {
+                const headRow = document.getElementById('slabRatesHeadRow');
+                if (!headRow) return;
+                // Remove any previously injected carrier headers (keep first two columns)
+                while (headRow.children.length > 2) headRow.removeChild(headRow.lastChild);
+                SLAB_RATE_CARRIERS.forEach(c => {
+                    const th = document.createElement('th');
+                    th.className = 'text-center slab-rates-carrier-col';
+                    th.style.fontSize = '12px';
+                    th.title = `${c.label} rate ($)`;
+                    th.textContent = c.label;
+                    headRow.appendChild(th);
+                });
+            }
+
+            function populateFillRowSlabTarget(slabs) {
+                const sel = document.getElementById('slabRatesFillRowTarget');
+                if (!sel) return;
+                while (sel.options.length > 1) sel.remove(1);
+                slabs.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.key;
+                    opt.textContent = s.label;
+                    sel.appendChild(opt);
+                });
+            }
+
             function buildSlabRatesTable() {
+                buildSlabRatesTableHead();
                 const body = document.getElementById('slabRatesBody');
                 if (!body) return;
                 const slabs = getSlabDefinitions();
+                populateFillRowSlabTarget(slabs);
                 body.innerHTML = '';
+                const carrierCols = SLAB_RATE_CARRIERS.length;
                 slabs.forEach(slab => {
                     const items = getNonParentItemsInSlab(slab.key);
                     const total = items.length;
-                    const missing = items.filter(hasMissingGofo).length;
                     const tr = document.createElement('tr');
                     tr.setAttribute('data-slab-key', slab.key);
-                    tr.innerHTML = `
-                        <td style="font-size: 12px;">${escapeHtml(slab.label)}</td>
-                        <td class="text-center" style="font-size: 12px;">
-                            <span class="badge bg-secondary">${total}</span>
-                        </td>
-                        <td class="text-center" style="font-size: 12px;">
-                            <span class="badge ${missing > 0 ? 'bg-warning text-dark' : 'bg-light text-muted'}">${missing}</span>
-                        </td>
-                        <td class="text-center">
-                            <input type="number" step="0.01" min="0" class="form-control form-control-sm slab-rate-input text-end"
-                                data-slab-key="${escapeHtml(slab.key)}" placeholder="—"
-                                ${total === 0 ? 'disabled title="No SKUs in this slab"' : ''}>
-                        </td>
-                    `;
+                    if (total === 0) tr.classList.add('slab-row-empty');
+
+                    const tdSlab = document.createElement('td');
+                    tdSlab.className = 'slab-rates-sticky-col';
+                    tdSlab.style.fontSize = '12px';
+                    tdSlab.textContent = slab.label;
+                    tr.appendChild(tdSlab);
+
+                    const tdCount = document.createElement('td');
+                    tdCount.className = 'text-center slab-count-cell';
+                    tdCount.style.fontSize = '12px';
+                    tdCount.innerHTML = `<span class="badge bg-secondary" title="${total} non-parent SKU(s) match this slab">${total}</span>`;
+                    tr.appendChild(tdCount);
+
+                    SLAB_RATE_CARRIERS.forEach(c => {
+                        const td = document.createElement('td');
+                        td.className = 'slab-rates-carrier-cell';
+                        const missing = items.filter(it => isCarrierValueMissing(it, c.key)).length;
+                        const inp = document.createElement('input');
+                        inp.type = 'number';
+                        inp.step = '0.01';
+                        inp.min = '0';
+                        inp.className = 'form-control form-control-sm slab-rate-input';
+                        inp.setAttribute('data-slab-key', slab.key);
+                        inp.setAttribute('data-carrier-key', c.key);
+                        inp.placeholder = '—';
+                        inp.title = total === 0
+                            ? 'No SKUs in this slab'
+                            : `${c.label} — ${total} SKU(s) in slab, ${missing} missing this value`;
+                        if (total === 0) inp.disabled = true;
+                        td.appendChild(inp);
+                        tr.appendChild(td);
+                    });
+
                     body.appendChild(tr);
                 });
+
+                // Adjust the loading-placeholder colspan (now 2 + N carriers)
+                const placeholder = body.querySelector('td[colspan]');
+                if (placeholder) placeholder.setAttribute('colspan', String(2 + carrierCols));
             }
 
             function openSlabRatesModal() {
@@ -3398,28 +3513,59 @@
                 const inputs = document.querySelectorAll('#slabRatesBody .slab-rate-input');
                 const scope = (document.getElementById('slabRatesScope') || {}).value || 'all';
 
-                const updates = [];
+                // Group writes by SKU so each SKU is sent once with every relevant carrier.
+                // perSku[id] = { item, fields: { carrierKey: rate, ... } }
+                const perSku = new Map();
+                let totalCellsApplied = 0;
+                let totalWritesPlanned = 0;
+                const carriersTouched = new Set();
+                const slabsTouched = new Set();
+
                 inputs.forEach(inp => {
                     const raw = String(inp.value || '').trim();
                     if (raw === '') return;
                     const rate = parseFloat(raw);
                     if (!Number.isFinite(rate) || rate < 0) return;
                     const slabKey = inp.getAttribute('data-slab-key');
+                    const carrierKey = inp.getAttribute('data-carrier-key');
+                    if (!slabKey || !carrierKey) return;
+
                     let items = getNonParentItemsInSlab(slabKey);
-                    if (scope === 'missing') items = items.filter(hasMissingGofo);
-                    items.forEach(item => updates.push({ item, rate, slabKey }));
+                    if (scope === 'missing') items = items.filter(it => isCarrierValueMissing(it, carrierKey));
+                    if (items.length === 0) return;
+
+                    totalCellsApplied++;
+                    carriersTouched.add(carrierKey);
+                    slabsTouched.add(slabKey);
+
+                    items.forEach(item => {
+                        const id = String(item.id);
+                        if (!perSku.has(id)) perSku.set(id, { item, fields: {} });
+                        perSku.get(id).fields[carrierKey] = rate;
+                        totalWritesPlanned++;
+                    });
                 });
 
-                if (updates.length === 0) {
-                    showToast('warning', 'Enter a GOFO rate for at least one slab that has matching SKUs.');
+                if (perSku.size === 0) {
+                    showToast('warning', 'Enter a rate in at least one (slab × carrier) cell that has matching SKUs.');
                     return;
                 }
 
-                const skuPreview = updates.slice(0, 5).map(u => u.item.SKU).join(', ');
-                const more = updates.length > 5 ? `, +${updates.length - 5} more` : '';
-                if (!confirm(`Apply GOFO rates to ${updates.length} SKU(s)?\n\nSample: ${skuPreview}${more}\n\nThis will overwrite the existing GOFO value on each matching row.`)) {
-                    return;
-                }
+                const skuList = Array.from(perSku.values()).map(v => v.item.SKU);
+                const previewSkus = skuList.slice(0, 5).join(', ');
+                const moreSkus = skuList.length > 5 ? `, +${skuList.length - 5} more` : '';
+                const carrierLabel = Array.from(carriersTouched)
+                    .map(k => (SLAB_RATE_CARRIERS.find(c => c.key === k) || {}).label || k)
+                    .join(', ');
+                const confirmMsg =
+                    `Apply rates to ${perSku.size} SKU(s) across ${slabsTouched.size} slab(s)?\n\n` +
+                    `Carriers updated: ${carrierLabel}\n` +
+                    `Total cell writes: ${totalWritesPlanned}\n\n` +
+                    `Sample SKUs: ${previewSkus}${moreSkus}\n\n` +
+                    (scope === 'missing'
+                        ? 'Scope: only SKUs missing that carrier value will be updated.'
+                        : 'Scope: existing carrier values will be overwritten.');
+                if (!confirm(confirmMsg)) return;
 
                 const applyBtn = document.getElementById('slabRatesApplyBtn');
                 const progressWrap = document.getElementById('slabRatesProgress');
@@ -3430,18 +3576,19 @@
 
                 if (applyBtn) { applyBtn.disabled = true; applyBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Applying…'; }
                 if (progressWrap) progressWrap.style.display = 'block';
-                if (progressLabel) progressLabel.textContent = 'Applying GOFO rates…';
+                if (progressLabel) progressLabel.textContent = 'Applying slab rates…';
 
+                const entries = Array.from(perSku.values());
                 let success = 0;
                 let failed = 0;
 
-                for (let i = 0; i < updates.length; i++) {
-                    const { item, rate } = updates[i];
+                for (let i = 0; i < entries.length; i++) {
+                    const { item, fields } = entries[i];
                     const payload = {
                         product_id: item.id,
                         sku: item.SKU,
                         parent: item.Parent || '',
-                        gofo: rate
+                        ...fields
                     };
                     try {
                         const response = await fetch('/dim-wt-master/update', {
@@ -3458,15 +3605,15 @@
                     }
 
                     const done = i + 1;
-                    const pct = Math.round((done / updates.length) * 100);
+                    const pct = Math.round((done / entries.length) * 100);
                     if (progressBar) progressBar.style.width = pct + '%';
-                    if (progressCount) progressCount.textContent = `${done} / ${updates.length}`;
+                    if (progressCount) progressCount.textContent = `${done} / ${entries.length}`;
                 }
 
                 if (applyBtn) { applyBtn.disabled = false; applyBtn.innerHTML = originalText; }
 
                 if (failed === 0) {
-                    showToast('success', `GOFO rate applied to ${success} SKU(s).`);
+                    showToast('success', `Applied to ${success} SKU(s) across ${slabsTouched.size} slab(s).`);
                 } else {
                     showToast('warning', `${success} updated, ${failed} failed.`);
                 }
@@ -3476,6 +3623,34 @@
                 if (modal) modal.hide();
 
                 loadData();
+            }
+
+            function fillSlabRow() {
+                const valueEl = document.getElementById('slabRatesFillRow');
+                const slabSel = document.getElementById('slabRatesFillRowTarget');
+                if (!valueEl || !slabSel) return;
+                const raw = String(valueEl.value || '').trim();
+                const slabKey = slabSel.value;
+                if (raw === '' || !slabKey) {
+                    showToast('warning', 'Enter a value and pick a slab to fill.');
+                    return;
+                }
+                const n = parseFloat(raw);
+                if (!Number.isFinite(n) || n < 0) {
+                    showToast('warning', 'Enter a valid non-negative number to fill.');
+                    return;
+                }
+                const row = document.querySelector(`#slabRatesBody tr[data-slab-key="${CSS.escape(slabKey)}"]`);
+                if (!row) return;
+                let filled = 0;
+                row.querySelectorAll('.slab-rate-input').forEach(inp => {
+                    if (inp.disabled) return;
+                    if (String(inp.value || '').trim() === '') {
+                        inp.value = String(n);
+                        filled++;
+                    }
+                });
+                if (filled === 0) showToast('info', 'No empty carrier cells were filled (all already had values).');
             }
 
             function setupSlabRates() {
@@ -3489,6 +3664,9 @@
                 if (clearBtn) clearBtn.addEventListener('click', function () {
                     document.querySelectorAll('#slabRatesBody .slab-rate-input').forEach(i => { i.value = ''; });
                 });
+
+                const fillBtn = document.getElementById('slabRatesFillRowBtn');
+                if (fillBtn) fillBtn.addEventListener('click', fillSlabRow);
             }
         });
     </script>
