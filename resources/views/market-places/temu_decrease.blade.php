@@ -3382,6 +3382,23 @@
                     }
                 },
                 {
+                    // Sibling to "E Prc" — eBay 2 listing price from ebay_2_metrics.ebay_price,
+                    // surfaced here so Temu pricing can be compared against both eBay stores
+                    // alongside Amazon (A Prc) in one row.
+                    title: "E2 Prc",
+                    field: "e2_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 70,
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue());
+                        if (value === null || value === 0 || isNaN(value)) {
+                            return '<span style="color: #6c757d;">-</span>';
+                        }
+                        return `$${value.toFixed(2)}`;
+                    }
+                },
+                {
                     title: "PRFT AMT",
                     field: "profit",
                     hozAlign: "center",

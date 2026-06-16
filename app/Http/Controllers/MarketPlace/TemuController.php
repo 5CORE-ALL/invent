@@ -31,6 +31,7 @@ use App\Models\TemuCampaignReport;
 use App\Services\TemuShopifySalesService;
 use App\Models\TemuBadgeDailyData;
 use App\Models\EbayMetric;
+use App\Models\Ebay2Metric;
 use App\Models\MarketplaceDailyMetric;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -3171,7 +3172,14 @@ class TemuController extends Controller
             $ebayData = $isTemu2Pricing
                 ? collect()
                 : EbayMetric::whereIn('sku', $skus)->select('sku', 'ebay_price')->get()->keyBy('sku');
-            
+
+            // eBay 2 listing price (from ebay_2_metrics.ebay_price). Same shape as $ebayData so
+            // the per-row lookup mirrors the eBay 1 path; loaded for Temu 1 only (Temu 2 pricing
+            // intentionally hides marketplace comparison columns, same as a_price / e_price).
+            $ebay2Data = $isTemu2Pricing
+                ? collect()
+                : Ebay2Metric::whereIn('sku', $skus)->select('sku', 'ebay_price')->get()->keyBy('sku');
+
             // Temu 1: temu_listing_statuses. Temu 2: same keys live in temu2_data_view JSON (value).
             $statusData = $isTemu2Pricing
                 ? collect()
@@ -3188,7 +3196,7 @@ class TemuController extends Controller
             }
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $viewData, $temuDataViewData, $amazonData, $ebayData, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL60, $temuLmpByNormalizedSku, $isTemu2Pricing) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $viewData, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL60, $temuLmpByNormalizedSku, $isTemu2Pricing) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -3357,6 +3365,10 @@ class TemuController extends Controller
                 // Get eBay price from EbayMetric (same as EbayController / ebay tabulator Prc column)
                 $ebayMetric = $ebayData->get($sku);
                 $ebayPrice = $ebayMetric ? floatval($ebayMetric->ebay_price ?? 0) : 0;
+
+                // Get eBay 2 price from Ebay2Metric (mirrors eBay 1 lookup; same `ebay_price` column).
+                $ebay2Metric = $ebay2Data->get($sku);
+                $ebay2Price = $ebay2Metric ? floatval($ebay2Metric->ebay_price ?? 0) : 0;
                 
                 // Get recommended_base_price from R Pricing by SKU
                 $rPricingItem = $rPricingData->get($sku);
@@ -3453,6 +3465,7 @@ class TemuController extends Controller
                     'temu_price' => round($temuPrice, 2),
                     'a_price' => $amazonPrice,
                     'e_price' => $ebayPrice,
+                    'e2_price' => $ebay2Price,
                     'profit' => round($profit, 2),
                     'profit_percent' => round($profitPercent, 2),
                     'roi_percent' => round($roiPercent, 2),
