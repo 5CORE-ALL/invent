@@ -535,22 +535,13 @@
             }
         }
 
-        /* Slab Rates modal — sticky first column + compact carrier inputs */
+        /* Slab Rates modal — compact carrier inputs (slab column scrolls with table) */
         #slabRatesTable .slab-rates-sticky-col {
-            position: sticky;
-            left: 0;
-            background: #f1f5f9;
-            z-index: 2;
-            box-shadow: 2px 0 4px -2px rgba(0,0,0,0.08);
+            background: transparent;
+            white-space: nowrap;
         }
         #slabRatesTable tbody tr.slab-row-empty .slab-rates-sticky-col {
             color: #94a3b8;
-        }
-        #slabRatesTable tbody tr:nth-child(even) .slab-rates-sticky-col {
-            background: #f8fafc;
-        }
-        #slabRatesTable tbody tr:nth-child(odd) .slab-rates-sticky-col {
-            background: #ffffff;
         }
         #slabRatesTable thead th {
             white-space: nowrap;
