@@ -129,7 +129,11 @@
                     <div class="col-6"><label class="form-label small">Other</label><input type="number" name="other" class="form-control form-control-sm" step="0.01"></div>
                     <div class="col-6"><label class="form-label small">Advance</label><input type="number" name="adv_inc_other" class="form-control form-control-sm" step="0.01"></div>
                     <div class="col-6"><label class="form-label small">Incentive</label><input type="number" name="incentive" class="form-control form-control-sm" step="0.01"></div>
-                    <div class="col-6"><label class="form-label small">Hours worked</label><input type="number" name="hours_worked" class="form-control form-control-sm" step="0.01"></div>
+                    <div class="col-6">
+                        <label class="form-label small">Hours worked</label>
+                        <input type="number" name="hours_worked" class="form-control form-control-sm bg-light" step="0.01" disabled title="Edit hours from the table row (pen icon). This field is read-only here so saving other fields does not affect live API hours.">
+                        <small class="text-muted" style="font-size: 11px;">Edit from table row</small>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="submit" class="btn btn-primary btn-sm">Save</button>
@@ -370,12 +374,16 @@
             ['salary_pp','increment','other','adv_inc_other','incentive','hours_worked'].forEach(k => {
                 if (f[k]) f[k].value = row[k] ?? '';
             });
-            // Hours can't be overridden until the unlock date — lock the field too.
+            // Hours field is intentionally read-only in this modal so saving
+            // other salary fields never carries the current hours value to the
+            // server (which would mark the row as a manual override and stop
+            // the live TeamLogger refresh). Hours editing lives on the table
+            // row's pen icon — that flow already toggles override correctly.
             if (f.hours_worked) {
-                f.hours_worked.disabled = hoursOverrideLocked;
+                f.hours_worked.disabled = true;
                 f.hours_worked.title = hoursOverrideLocked && hoursOverrideUnlockDate
-                    ? ('Editable from ' + hoursOverrideUnlockDate)
-                    : '';
+                    ? ('Locked until ' + hoursOverrideUnlockDate + ' — edit from table row after that.')
+                    : 'Edit hours from the table row (pen icon).';
             }
             bootstrap.Modal.getOrCreateInstance(document.getElementById('editSalaryModal')).show();
         }

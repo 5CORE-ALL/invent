@@ -556,6 +556,10 @@ TAB_NAMES.forEach((tabName, index) => {
         rowHeight: 55,
         index: "id",
         selectable: true,
+        // Default sort: surface "Not pushed" rows first so users can act on them.
+        initialSort: [
+            { column: "push_status", dir: "asc" }
+        ],
         rowFormatter: function(row) {
             const rowData = row.getData();
             const status  = rowData.push_status || 'pending';
@@ -695,8 +699,13 @@ TAB_NAMES.forEach((tabName, index) => {
               formatter: function(cell) {
                 const sku = cell.getValue() || '';
                 const shopifyDomain = '{{ config("services.shopify.store_url") }}';
-                const shopifyUrl = shopifyDomain ? `https://${shopifyDomain}/admin/products/inventory?query=${encodeURIComponent(sku)}` : '#';
-                const shopifyLink = sku ? `<a href="${shopifyUrl}" target="_blank" title="View in Shopify" style="color: #28a745; text-decoration: none; font-size: 0.9rem;" onclick="event.stopPropagation();"><i class="fas fa-external-link-alt"></i></a>` : '';
+                // Use exact-SKU filter (`sku:"..."`) so Shopify Admin returns only the
+                // specific variant being worked on, not every variant whose SKU contains
+                // this string (e.g. "ABC" was previously also matching "ABC 2P").
+                const shopifyUrl = shopifyDomain && sku
+                    ? `https://${shopifyDomain}/admin/products/inventory?query=${encodeURIComponent('sku:"' + sku + '"')}`
+                    : '#';
+                const shopifyLink = sku ? `<a href="${shopifyUrl}" target="_blank" title="View exact SKU in Shopify" style="color: #28a745; text-decoration: none; font-size: 0.9rem;" onclick="event.stopPropagation();"><i class="fas fa-external-link-alt"></i></a>` : '';
                 return `
                   <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
                     <span>${sku}</span>
@@ -713,9 +722,17 @@ TAB_NAMES.forEach((tabName, index) => {
             {
               title: "Status",
               field: "push_status",
-              headerSort: false,
+              headerSort: true,
               hozAlign: "center",
               width: 80,
+              // Sort order (ascending): not pushed → failed → processing → success
+              // so user can immediately see what still needs attention at the top.
+              sorter: function(a, b) {
+                const order = { pending: 0, failed: 1, processing: 2, success: 3 };
+                const av = order[a || 'pending'] ?? 0;
+                const bv = order[b || 'pending'] ?? 0;
+                return av - bv;
+              },
               formatter: function(cell) {
                 const status = cell.getValue() || 'pending';
 
@@ -1362,6 +1379,69 @@ TAB_NAMES.forEach((tabName, index) => {
 //     });
 // });
 
+// Retry configuration for failed pushes — keeps retrying until success or until
+// the safety cap is reached, so the user does not have to manually re-push.
+const PUSH_MAX_ATTEMPTS = 8;     // hard safety cap to avoid an infinite loop
+const PUSH_RETRY_BASE_MS = 800;  // initial backoff (doubles each attempt, capped)
+const PUSH_RETRY_MAX_MS  = 5000; // max backoff between retries
+
+async function pushSingleWithRetry(row, tableRow, table, tabName, forceRepush) {
+    const rowId = row.id;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= PUSH_MAX_ATTEMPTS; attempt++) {
+        tableRow.update({ push_status: 'processing' });
+        table.redraw();
+
+        try {
+            const res = await fetch("/inventory-warehouse/push-single", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify({
+                    tab_name: tabName,
+                    force: forceRepush,
+                    data: {
+                        ...row,
+                        our_sku: row.our_sku ? row.our_sku.trim().toUpperCase() : '',
+                        id: rowId
+                    }
+                })
+            });
+
+            const response = await res.json();
+
+            if (response.status === 'success') {
+                tableRow.update({ push_status: 'success', pushed: 1 });
+                tableRow.deselect();
+                return { status: 'success', attempts: attempt };
+            }
+
+            if (response.status === 'skipped') {
+                tableRow.update({ push_status: 'success' });
+                return { status: 'skipped', attempts: attempt };
+            }
+
+            lastError = response.message || 'Push failed';
+        } catch (err) {
+            console.error(`Error pushing SKU ${row.our_sku} (attempt ${attempt}):`, err);
+            lastError = err && err.message ? err.message : 'Network error';
+        }
+
+        if (attempt < PUSH_MAX_ATTEMPTS) {
+            const delay = Math.min(PUSH_RETRY_BASE_MS * Math.pow(2, attempt - 1), PUSH_RETRY_MAX_MS);
+            console.warn(`Retrying SKU ${row.our_sku} in ${delay}ms (attempt ${attempt + 1}/${PUSH_MAX_ATTEMPTS})...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+
+    tableRow.update({ push_status: 'failed' });
+    table.redraw();
+    return { status: 'failed', attempts: PUSH_MAX_ATTEMPTS, error: lastError };
+}
+
 document.getElementById("push-inventory-btn").addEventListener("click", async function () {
     const activeTab = document.querySelector(".nav-link.active");
     if (!activeTab) {
@@ -1423,6 +1503,7 @@ document.getElementById("push-inventory-btn").addEventListener("click", async fu
     let successCount = 0;
     let failedCount  = 0;
     let skippedCount = 0;
+    const stillFailed = [];
 
     for (let i = 0; i < rowsToPush.length; i++) {
         const row    = rowsToPush[i];
@@ -1431,51 +1512,46 @@ document.getElementById("push-inventory-btn").addEventListener("click", async fu
 
         if (!tableRow) continue;
 
-        tableRow.update({ push_status: 'processing' });
-        table.redraw();
+        const result = await pushSingleWithRetry(row, tableRow, table, tabName, forceRepush);
 
-        try {
-            const res = await fetch("/inventory-warehouse/push-single", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
-                },
-                body: JSON.stringify({
-                    tab_name: tabName,
-                    force: forceRepush,
-                    data: {
-                        ...row,
-                        our_sku: row.our_sku ? row.our_sku.trim().toUpperCase() : '',
-                        id: rowId
-                    }
-                })
-            });
-
-            const response = await res.json();
-
-            if (response.status === 'success') {
-                tableRow.update({ push_status: 'success', pushed: 1 });
-                tableRow.deselect();
-                successCount++;
-            } else if (response.status === 'skipped') {
-                tableRow.update({ push_status: 'success' });
-                skippedCount++;
-            } else {
-                tableRow.update({ push_status: 'failed' });
-                failedCount++;
-            }
-
-            table.redraw();
-
-        } catch (err) {
-            console.error(`Error pushing SKU ${row.our_sku}:`, err);
-            tableRow.update({ push_status: 'failed' });
+        if (result.status === 'success') {
+            successCount++;
+        } else if (result.status === 'skipped') {
+            skippedCount++;
+        } else {
             failedCount++;
-            table.redraw();
+            stillFailed.push({ row, tableRow, error: result.error });
         }
 
+        table.redraw();
+
         if (i < rowsToPush.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+
+    // Final sweep: if anything is still failed after the per-row retry budget,
+    // give the user an option to keep retrying so the column eventually clears.
+    while (stillFailed.length > 0) {
+        const proceed = confirm(
+            `${stillFailed.length} item(s) are still failing after ${PUSH_MAX_ATTEMPTS} attempts each.\n\n` +
+            `Click OK to keep retrying these items, or Cancel to stop.`
+        );
+        if (!proceed) break;
+
+        const retryQueue = stillFailed.splice(0, stillFailed.length);
+        for (const item of retryQueue) {
+            const result = await pushSingleWithRetry(item.row, item.tableRow, table, tabName, forceRepush);
+            if (result.status === 'success') {
+                successCount++;
+                failedCount--;
+            } else if (result.status === 'skipped') {
+                skippedCount++;
+                failedCount--;
+            } else {
+                stillFailed.push(item);
+            }
+            table.redraw();
             await new Promise(resolve => setTimeout(resolve, 100));
         }
     }

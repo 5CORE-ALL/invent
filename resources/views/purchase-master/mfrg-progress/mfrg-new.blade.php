@@ -395,7 +395,61 @@
                 ajaxParams: function () { return { archived: showArchived ? 1 : 0 }; },
                 ajaxConfig: "GET",
                 selectableRows: true,
-                rowHeader: { formatter: "rowSelection", titleFormatter: "rowSelection", headerSort: false, frozen: true, hozAlign: "center", width: 45 },
+                // Header checkbox: only toggle rows on the CURRENT page after the active
+                // filter — never the whole dataset, and never just the rows that happen
+                // to be rendered in the scroll viewport. We can't use
+                // `getRows("visible")` because in Tabulator v6 that only returns rows
+                // currently rendered (virtual scroll), so on a 50/page list with ~10
+                // rows in view, ticking the header only selected those ~10.
+                rowHeader: {
+                    formatter: "rowSelection",
+                    titleFormatter: function (cell, formatterParams, onRendered) {
+                        const box = document.createElement('input');
+                        box.type = 'checkbox';
+                        box.title = 'Select rows on this page only (respects filter + pagination)';
+                        box.style.cursor = 'pointer';
+
+                        const syncCheckbox = () => {
+                            const pageRows = getCurrentPageActiveRows();
+                            if (!pageRows.length) {
+                                box.checked = false; box.indeterminate = false; return;
+                            }
+                            let selectedCount = 0;
+                            for (const r of pageRows) if (r.isSelected()) selectedCount++;
+                            box.indeterminate = selectedCount > 0 && selectedCount < pageRows.length;
+                            box.checked = selectedCount === pageRows.length;
+                        };
+
+                        box.addEventListener('click', function (e) {
+                            e.stopPropagation();
+                            const pageRows = getCurrentPageActiveRows();
+                            // Only act on the current page after the active filter.
+                            // Selection on OTHER pages is intentionally left untouched so users
+                            // can multi-page-select by paging and re-toggling.
+                            if (this.checked) pageRows.forEach(r => r.select());
+                            else pageRows.forEach(r => r.deselect());
+                        });
+
+                        onRendered(syncCheckbox);
+
+                        // Subscribe ONCE across redraws — Tabulator may rebuild the header
+                        // and call titleFormatter again, so we guard against piling up
+                        // duplicate listeners which would cause stale checkbox state.
+                        if (!table._mipHeaderSelectBound) {
+                            table._mipHeaderSelectBound = true;
+                            ["dataLoaded", "dataFiltered", "dataSorted", "pageLoaded", "rowSelectionChanged", "renderComplete"].forEach(evt => {
+                                table.on(evt, () => {
+                                    // The `box` captured here can become detached if Tabulator
+                                    // re-rendered the header; guard before mutating.
+                                    if (box.isConnected) syncCheckbox();
+                                });
+                            });
+                        }
+
+                        return box;
+                    },
+                    headerSort: false, frozen: true, hozAlign: "center", width: 45
+                },
                 layout: "fitColumns",
                 columnDefaults: { minWidth: 60, resizable: true },
                 height: "70vh",
@@ -422,7 +476,26 @@
                           return '<span class="mip-sku-text">' + esc(v) + '</span>' +
                               '<i class="far fa-copy mip-sku-copy" data-sku="' + esc(v) + '" title="Copy SKU"></i>';
                       } },
-                    { title: "QTY", field: "qty", width: 90, hozAlign: "center", formatter: inputFormatter('qty', 'number', 70) },
+                    { title: "QTY", field: "qty", width: 90, hozAlign: "center",
+                      // Read-only display by default; click to open a number editor.
+                      // Previously rendered an always-open <input> so the value looked editable
+                      // straight away (with spinner arrows) — confusing for users who only want
+                      // to read, and easy to mis-edit while scrolling.
+                      editor: "number", editorParams: { min: 0 },
+                      formatter: function (cell) {
+                          const v = cell.getValue();
+                          return (v == null || v === '') ? '' : esc(String(v));
+                      },
+                      cellEdited: function (cell) {
+                          const d = cell.getRow().getData();
+                          postInline(d.sku || '', d.id || 0, 'qty', cell.getValue(), d.source_table)
+                              .then(r => {
+                                  if (r && r.success) { updateStats(); }
+                                  else { alert((r && r.message) || 'Save failed'); }
+                              })
+                              .catch(err => alert('Could not save QTY: ' + (err && err.message ? err.message : err)));
+                      }
+                    },
                     { title: "O Date", field: "created_at", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,
                       editor: "date",
                       cellEdited: function (cell) { const d = cell.getRow().getData(); postInline(d.sku || '', d.id || 0, 'created_at', cell.getValue(), d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save date: ' + (err && err.message ? err.message : err))); } },
@@ -604,6 +677,20 @@
                 }
             });
 
+            // Return the rows that are on the CURRENT pagination page after the active
+            // filter. We can't use Tabulator's "visible" range here because that returns
+            // only rows currently rendered in the scroll viewport (virtual scrolling).
+            // Used by the header "select all" checkbox so it scopes selection exactly to
+            // what the user sees on this page.
+            function getCurrentPageActiveRows() {
+                const active = table.getRows("active");
+                const page = (typeof table.getPage === 'function') ? table.getPage() : false;
+                const size = (typeof table.getPageSize === 'function') ? table.getPageSize() : 0;
+                if (!page || !size) return active;
+                const start = (page - 1) * size;
+                return active.slice(start, start + size);
+            }
+
             // ---- combined filtering (stage dropdown + global search) ----
             function applyFilters() {
                 const stage = (document.getElementById('mip-stage-filter').value || 'both').toLowerCase();
@@ -751,38 +838,103 @@
                 if (menu._home) menu._home.appendChild(menu);
             });
 
+            // Run an async task for each item with a bounded concurrency pool so bulk operations
+            // don't sit on a strict one-at-a-time `await` chain (which made ~100+ row selections
+            // appear "broken" — the success alert only fired after ~10 minutes of serial requests).
+            // onProgress is called after every completed task so the caller can refresh the UI.
+            async function runWithConcurrency(items, worker, concurrency, onProgress) {
+                let cursor = 0;
+                let done = 0;
+                const total = items.length;
+                async function pull() {
+                    while (true) {
+                        const i = cursor++;
+                        if (i >= total) return;
+                        try { await worker(items[i], i); } catch (_) {}
+                        done++;
+                        if (onProgress) onProgress(done, total);
+                    }
+                }
+                const n = Math.max(1, Math.min(concurrency, total));
+                await Promise.all(Array.from({ length: n }, pull));
+            }
+
             // ---- Bulk Stage ----
-            document.getElementById('mip-bulk-stage-apply').addEventListener('click', async function () {
+            const bulkStageApplyBtn = document.getElementById('mip-bulk-stage-apply');
+            bulkStageApplyBtn.addEventListener('click', async function () {
                 const stageVal = document.getElementById('mip-bulk-stage-select').value.trim();
                 if (!stageVal) { alert('Choose a stage.'); return; }
                 const rows = table.getSelectedRows();
                 if (!rows.length) { alert('Select at least one row.'); return; }
-                let ok = 0;
-                for (const row of rows) {
+
+                const targets = rows.filter(row => {
                     const d = row.getData();
-                    if (!d.sku || (parseInt(d.qty, 10) || 0) === 0) continue;
-                    try { await postStage(d.sku, d.parent, stageVal); row.update({ stage: stageVal }); ok++; } catch (e) {}
-                }
+                    return d.sku && (parseInt(d.qty, 10) || 0) !== 0;
+                });
+                if (!targets.length) { alert('No eligible rows to apply stage to.'); return; }
+
+                const originalLabel = bulkStageApplyBtn.innerHTML;
+                bulkStageApplyBtn.disabled = true;
+                let ok = 0;
+                const renderProgress = (done, total) => {
+                    bulkStageApplyBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Applying ' + done + '/' + total + '…';
+                };
+                renderProgress(0, targets.length);
+
+                await runWithConcurrency(targets, async (row) => {
+                    const d = row.getData();
+                    await postStage(d.sku, d.parent, stageVal);
+                    row.update({ stage: stageVal });
+                    // Mirror inline stage editor: when switching to MIP, also seed mfrg_progress.
+                    if (stageVal === 'mip') {
+                        try {
+                            await fetch('/mfrg-progresses/insert', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+                                body: JSON.stringify({ parent: d.parent || '', sku: d.sku, order_qty: d.qty || '', supplier: d.supplier || '', adv_date: '' })
+                            });
+                        } catch (_) { /* non-fatal */ }
+                    }
+                    ok++;
+                }, 8, renderProgress);
+
+                bulkStageApplyBtn.disabled = false;
+                bulkStageApplyBtn.innerHTML = originalLabel;
                 table.deselectRow();
                 applyFilters();
-                alert('Stage applied to ' + ok + ' row(s).');
+                alert('Stage applied to ' + ok + ' / ' + targets.length + ' row(s).');
             });
 
             // ---- Bulk Exec ----
-            document.getElementById('mip-bulk-exec-apply').addEventListener('click', async function () {
+            const bulkExecApplyBtn = document.getElementById('mip-bulk-exec-apply');
+            bulkExecApplyBtn.addEventListener('click', async function () {
                 const sel = document.getElementById('mip-bulk-exec-select');
                 if (sel.selectedIndex === 0) { alert('Select an executive.'); return; }
                 const v = sel.value;
                 const rows = table.getSelectedRows();
                 if (!rows.length) { alert('Select at least one row.'); return; }
+
+                const targets = rows.filter(row => !!row.getData().sku);
+                if (!targets.length) { alert('No eligible rows to update.'); return; }
+
+                const originalLabel = bulkExecApplyBtn.innerHTML;
+                bulkExecApplyBtn.disabled = true;
                 let ok = 0;
-                for (const row of rows) {
+                const renderProgress = (done, total) => {
+                    bulkExecApplyBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Updating ' + done + '/' + total + '…';
+                };
+                renderProgress(0, targets.length);
+
+                await runWithConcurrency(targets, async (row) => {
                     const d = row.getData();
-                    if (!d.sku) continue;
-                    try { const r = await postUpdateLink(d.sku, 'Exec', v || null); if (r.success) { row.update({ exec: v }); ok++; } } catch (e) {}
-                }
+                    const r = await postUpdateLink(d.sku, 'Exec', v || null);
+                    if (r && r.success) { row.update({ exec: v }); ok++; }
+                }, 8, renderProgress);
+
+                bulkExecApplyBtn.disabled = false;
+                bulkExecApplyBtn.innerHTML = originalLabel;
                 table.deselectRow();
-                alert('Updated ' + ok + ' row(s) to "' + (v || 'Unassigned') + '".');
+                alert('Updated ' + ok + ' / ' + targets.length + ' row(s) to "' + (v || 'Unassigned') + '".');
             });
 
             // ---- Archive / Restore ----
