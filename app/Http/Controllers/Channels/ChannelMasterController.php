@@ -3649,41 +3649,30 @@ class ChannelMasterController extends Controller
         }
         // ─────────────────────────────────────────────────────────────────────
 
-        // Amazon Y Sales: single-day revenue for the day before the latest order date in amazon_orders.
-        // "Yesterday" is relative to the latest date present in the table (not wall-clock yesterday),
-        // so if the latest order date is April 2, Y Sales shows April 1 revenue.
+        // Amazon Y Sales & L7 Sales — anchored to WALL-CLOCK yesterday in America/Los_Angeles.
+        // Definition: if California "today" is Jun 15 (still in progress), Y Sales = full
+        // Pacific Jun 14 — independent of whether today's orders have been synced yet.
+        // Previously we used (latest order_date − 1 day), which slipped a day back whenever
+        // the Amazon order sync lagged: with no Jun 15 rows yet, "yesterday" became Jun 13
+        // instead of Jun 14, and the badge showed a too-small number (e.g. $1,358).
+        //
+        // Uses AmazonOrder::badgeTotalSalesByOrderDate so the formula and status filter
+        // match the Amazon Daily Sales badge exactly (AMAZON_SALES_TOTAL_MODE; both
+        // 'Canceled' and 'Cancelled' excluded).
         try {
-            $amazonLatestOrderDate = DB::table('amazon_orders')
-                ->where(function ($q) {
-                    $q->whereNull('status')->orWhere('status', '!=', 'Canceled');
-                })
-                ->max('order_date');
+            // Today PT (start of day) — passed to pacificL7WindowEndingYesterday which subtracts
+            // a day internally. Y Sales uses the explicit start/end-of-day for yesterday PT.
+            $todayPacific = Carbon::now('America/Los_Angeles')->startOfDay();
+            $yesterdayPacific = $todayPacific->copy()->subDay();
+            $yStartPacific = $yesterdayPacific->copy()->startOfDay();
+            $yEndPacific   = $yesterdayPacific->copy()->endOfDay();
 
-            if ($amazonLatestOrderDate) {
-                $latestPacific = Carbon::parse($amazonLatestOrderDate)->setTimezone('America/Los_Angeles');
-                $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
-                $yEndPacific   = $latestPacific->copy()->subDay()->endOfDay();
+            $amazonYSales = AmazonOrder::badgeTotalSalesByOrderDate($yStartPacific, $yEndPacific);
+            $yesterdaySummaries['amazon'] = round($amazonYSales, 2);
 
-                $amazonYSales = (float) DB::table('amazon_orders')
-                    ->where('order_date', '>=', $yStartPacific)
-                    ->where('order_date', '<=', $yEndPacific)
-                    ->where(function ($q) {
-                        $q->whereNull('status')->orWhere('status', '!=', 'Canceled');
-                    })
-                    ->sum('total_amount');
-
-                $yesterdaySummaries['amazon'] = round($amazonYSales, 2);
-
-                [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
-                $amazonL7Sales = (float) DB::table('amazon_orders')
-                    ->where('order_date', '>=', $l7StartPacific)
-                    ->where('order_date', '<=', $l7EndPacific)
-                    ->where(function ($q) {
-                        $q->whereNull('status')->orWhere('status', '!=', 'Canceled');
-                    })
-                    ->sum('total_amount');
-                $l7Summaries['amazon'] = round($amazonL7Sales, 2);
-            }
+            [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($todayPacific);
+            $amazonL7Sales = AmazonOrder::badgeTotalSalesByOrderDate($l7StartPacific, $l7EndPacific);
+            $l7Summaries['amazon'] = round($amazonL7Sales, 2);
         } catch (\Throwable $e) {
             Log::warning('Amazon Y Sales calculation failed: ' . $e->getMessage());
         }
