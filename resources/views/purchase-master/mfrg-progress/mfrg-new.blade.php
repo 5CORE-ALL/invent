@@ -82,6 +82,42 @@
         .mip-sku-copy { margin-left: 6px; cursor: pointer; color: #3bc0c3; font-size: 0.8rem; opacity: 0.75; transition: opacity 0.12s, color 0.12s; }
         .mip-sku-copy:hover { opacity: 1; color: #2563eb; }
         .mip-sku-copy.copied { color: #16a34a; opacity: 1; }
+
+        /* ---- Toolbar + Summary strip (Amazon Analytics-style layout) ---- */
+        .mip-toolbar {
+            display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px;
+            margin-bottom: 10px;
+        }
+        .mip-toolbar-row {
+            display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px;
+            width: 100%;
+        }
+        .mip-toolbar .mip-field { display: flex; flex-direction: column; gap: 2px; }
+        .mip-toolbar .mip-field > label {
+            font-size: 11px; font-weight: 600; color: #475569; margin: 0;
+        }
+
+        .mip-summary {
+            display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+            background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+            padding: 10px 12px; margin-bottom: 12px;
+        }
+        .mip-summary-title {
+            font-weight: 700; font-size: 0.85rem; color: #334155;
+            margin-right: 6px; white-space: nowrap;
+        }
+        .mip-summary-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 10px; border-radius: 6px;
+            font-size: 0.8rem; font-weight: 600;
+            color: #fff; line-height: 1; white-space: nowrap;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+        }
+        .mip-summary-badge .label { opacity: 0.95; font-weight: 500; }
+        .mip-summary-badge .value { font-weight: 700; }
+        .mip-badge--amount { background: #2563eb; }   /* blue */
+        .mip-badge--cbm    { background: #14b8a6; }   /* teal */
+        .mip-badge--items  { background: #0f172a; }   /* dark */
     </style>
 @endsection
 @section('content')
@@ -91,88 +127,94 @@
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-body">
-                    <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
-                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'mip'])
+                    {{-- ===== Toolbar: filters row + actions row (Amazon-Analytics-style layout) ===== --}}
+                    <div class="mip-toolbar">
+                        {{-- Row 1: filters & search --}}
+                        <div class="mip-toolbar-row">
+                            @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'mip'])
 
-                        <div>
-                            <label class="form-label small fw-semibold mb-1 d-block">Stage</label>
-                            <select id="mip-stage-filter" class="form-select form-select-sm" style="width: 130px;">
-                                <option value="both">MIP + R2S</option>
-                                <option value="mip">MIP only</option>
-                                <option value="r2s">R2S only</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="form-label small fw-semibold mb-1 d-block">Bulk Stage</label>
-                            <div class="d-flex gap-1">
-                                <select id="mip-bulk-stage-select" class="form-select form-select-sm" style="width: 120px;">
-                                    <option value="">— Choose —</option>
-                                    <option value="appr_req">Appr. Req</option>
-                                    <option value="mip">MIP</option>
-                                    <option value="r2s">R2S</option>
-                                    <option value="transit">Transit</option>
-                                    <option value="all_good">😊 All Good</option>
-                                    <option value="to_order_analysis">2 Order</option>
+                            <div class="mip-field">
+                                <label>Stage</label>
+                                <select id="mip-stage-filter" class="form-select form-select-sm" style="width: 130px;">
+                                    <option value="both">MIP + R2S</option>
+                                    <option value="mip">MIP only</option>
+                                    <option value="r2s">R2S only</option>
                                 </select>
-                                <button type="button" class="btn btn-sm btn-primary" id="mip-bulk-stage-apply">Apply</button>
+                            </div>
+
+                            <div class="mip-field">
+                                <label>Bulk Stage</label>
+                                <div class="d-flex gap-1">
+                                    <select id="mip-bulk-stage-select" class="form-select form-select-sm" style="width: 120px;">
+                                        <option value="">— Choose —</option>
+                                        <option value="appr_req">Appr. Req</option>
+                                        <option value="mip">MIP</option>
+                                        <option value="r2s">R2S</option>
+                                        <option value="transit">Transit</option>
+                                        <option value="all_good">😊 All Good</option>
+                                        <option value="to_order_analysis">2 Order</option>
+                                    </select>
+                                    <button type="button" class="btn btn-sm btn-primary" id="mip-bulk-stage-apply">Apply</button>
+                                </div>
+                            </div>
+
+                            <div class="mip-field">
+                                <label>👤 Bulk Exec</label>
+                                <div class="d-flex gap-1">
+                                    <select id="mip-bulk-exec-select" class="form-select form-select-sm" style="width: 130px;">
+                                        <option value="">— Select exec —</option>
+                                        <option value="">— Unassigned —</option>
+                                        <option value="Atin">Atin</option>
+                                        <option value="Jack">Jack</option>
+                                        <option value="Nitish">Nitish</option>
+                                        <option value="Ajay">Ajay</option>
+                                        <option value="Candy">Candy</option>
+                                        <option value="Sruti">Sruti</option>
+                                    </select>
+                                    <button type="button" class="btn btn-sm" style="background:#4db6ac;color:#fff;" id="mip-bulk-exec-apply">Apply</button>
+                                </div>
+                            </div>
+
+                            <div class="mip-field">
+                                <label for="search-input">🔍 Search All</label>
+                                <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search..." style="width: 170px;">
+                            </div>
+
+                            <div class="mip-field mip-columns-wrap">
+                                <label>Columns</label>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="mip-columns-btn">
+                                    <i class="fas fa-table-columns me-1"></i> Show / Hide
+                                </button>
+                                <div id="mip-columns-menu" class="mip-columns-menu" style="display:none;"></div>
+                            </div>
+
+                            <div class="d-flex align-items-end ms-auto gap-2">
+                                <div class="form-check mb-0">
+                                    <input class="form-check-input" type="checkbox" id="show-archived-toggle">
+                                    <label class="form-check-label fw-semibold small" for="show-archived-toggle">Show archived</label>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-info text-white" id="mip-followup-btn"><i class="fas fa-comment-dots me-1"></i> Follow-Up</button>
+                                <button type="button" class="btn btn-sm btn-warning d-none" id="archive-selected-btn"><i class="fas fa-archive me-1"></i> Archive</button>
+                                <button type="button" class="btn btn-sm btn-success d-none" id="restore-selected-btn"><i class="fas fa-undo me-1"></i> Restore</button>
                             </div>
                         </div>
+                    </div>
 
-                        <div>
-                            <label class="form-label small fw-semibold mb-1 d-block">👤 Bulk Exec</label>
-                            <div class="d-flex gap-1">
-                                <select id="mip-bulk-exec-select" class="form-select form-select-sm" style="width: 130px;">
-                                    <option value="">— Select exec —</option>
-                                    <option value="">— Unassigned —</option>
-                                    <option value="Atin">Atin</option>
-                                    <option value="Jack">Jack</option>
-                                    <option value="Nitish">Nitish</option>
-                                    <option value="Ajay">Ajay</option>
-                                    <option value="Candy">Candy</option>
-                                    <option value="Sruti">Sruti</option>
-                                </select>
-                                <button type="button" class="btn btn-sm" style="background:#4db6ac;color:#fff;" id="mip-bulk-exec-apply">Apply</button>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label class="form-label small fw-semibold mb-1 d-block">💰 Amount</label>
-                            <div id="totalAmount" class="fw-bold text-primary">0</div>
-                        </div>
-                        <div>
-                            <label class="form-label small fw-semibold mb-1 d-block">📦 CBM</label>
-                            <div id="totalCBM" class="fw-bold text-success">0</div>
-                        </div>
-                        <div>
-                            <label class="form-label small fw-semibold mb-1 d-block">🔢 Items</label>
-                            <div id="totalItems" class="fw-bold">0</div>
-                        </div>
-
-                        <div>
-                            <label for="search-input" class="form-label small fw-semibold mb-1 d-block">🔍 Search All</label>
-                            <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search..." style="width: 150px;">
-                        </div>
-
-                        <div class="mip-columns-wrap">
-                            <label class="form-label small fw-semibold mb-1 d-block">Columns</label>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" id="mip-columns-btn">
-                                <i class="fas fa-table-columns me-1"></i> Show / Hide
-                            </button>
-                            <div id="mip-columns-menu" class="mip-columns-menu" style="display:none;"></div>
-                        </div>
-
-                        <div class="d-flex align-items-end">
-                            <div class="form-check mb-0">
-                                <input class="form-check-input" type="checkbox" id="show-archived-toggle">
-                                <label class="form-check-label fw-semibold small" for="show-archived-toggle">Show archived</label>
-                            </div>
-                        </div>
-                        <div class="d-flex align-items-end gap-1">
-                            <button type="button" class="btn btn-sm btn-info text-white" id="mip-followup-btn"><i class="fas fa-comment-dots me-1"></i> Follow-Up</button>
-                            <button type="button" class="btn btn-sm btn-warning d-none" id="archive-selected-btn"><i class="fas fa-archive me-1"></i> Archive</button>
-                            <button type="button" class="btn btn-sm btn-success d-none" id="restore-selected-btn"><i class="fas fa-undo me-1"></i> Restore</button>
-                        </div>
+                    {{-- ===== Summary strip: colored badge pills (matches Amazon Analytics styling) ===== --}}
+                    <div class="mip-summary" aria-label="Summary">
+                        <span class="mip-summary-title">Summary</span>
+                        <span class="mip-summary-badge mip-badge--amount">
+                            <span class="label">💰 Amount</span>
+                            <span class="value" id="totalAmount">0</span>
+                        </span>
+                        <span class="mip-summary-badge mip-badge--cbm">
+                            <span class="label">📦 CBM</span>
+                            <span class="value" id="totalCBM">0</span>
+                        </span>
+                        <span class="mip-summary-badge mip-badge--items">
+                            <span class="label">🔢 Items</span>
+                            <span class="value" id="totalItems">0</span>
+                        </span>
                     </div>
 
                     <div id="mfrg-table"></div>
@@ -393,7 +435,27 @@
             table = new Tabulator("#mfrg-table", {
                 ajaxURL: "/mfrg-in-progress/data",
                 ajaxParams: function () { return { archived: showArchived ? 1 : 0 }; },
-                ajaxConfig: "GET",
+                // IMPORTANT — bypass every cache layer between the table and the DB.
+                //
+                // Without this, two users could see DIFFERENT data after one of them edits a row:
+                //   1) Browser HTTP cache treats /mfrg-in-progress/data?archived=0 as a normal GET
+                //      and may serve a stale 200 from disk on the next page refresh, because the
+                //      backend response carries no Cache-Control header.
+                //   2) The PWA service worker (public/sw.js) only skips requests whose Accept
+                //      contains "application/json" or that set X-Requested-With: XMLHttpRequest.
+                //      Tabulator's built-in fetch sets neither by default, so the SW intercepted
+                //      this request and could return a stale response from its cache-first path.
+                //
+                // Setting the headers explicitly makes the SW bypass us; cache:"no-store" makes
+                // the browser & SW fetch go straight to the network every time.
+                ajaxConfig: {
+                    method: "GET",
+                    headers: {
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    cache: "no-store"
+                },
                 selectableRows: true,
                 // Header checkbox: only toggle rows on the CURRENT page after the active
                 // filter — never the whole dataset, and never just the rows that happen

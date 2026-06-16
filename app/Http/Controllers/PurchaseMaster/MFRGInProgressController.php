@@ -163,8 +163,18 @@ class MFRGInProgressController extends Controller
             ]);
         }
 
+        // Explicitly forbid caching at every layer (browser HTTP cache, the PWA service
+        // worker in public/sw.js, any proxy). This endpoint is the live source of truth
+        // shared across users — User A's edit must be visible to User B on the next
+        // refresh. Without these headers the browser was free to reuse a prior 200 from
+        // disk because Laravel returns no Cache-Control by default on JSON responses,
+        // which manifested as "two users seeing different data after a refresh".
         return response()->json([
             'data' => $mfrgData->values()->all(),
+        ])->withHeaders([
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma'        => 'no-cache',
+            'Expires'       => '0',
         ]);
     }
 
