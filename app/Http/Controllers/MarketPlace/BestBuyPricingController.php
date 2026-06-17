@@ -79,9 +79,15 @@ class BestBuyPricingController extends Controller
             ->keyBy('sku');
 
         // Fetch price data from BestbuyPriceData table
+        // Key by UPPERCASE sku because uploadPriceData() stores SKUs uppercased,
+        // while ProductMaster keeps original casing. Without this, mixed-case
+        // SKUs (e.g. "SS ECO 1PK BLK WoB") fail the lookup and fall back to
+        // the stale BestbuyUsaProduct price instead of the uploaded price.
         $priceDataCollection = BestbuyPriceData::whereIn('sku', $skus)
             ->get()
-            ->keyBy('sku');
+            ->keyBy(function ($item) {
+                return strtoupper($item->sku);
+            });
 
         // Fetch Amazon pricing data
         $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -110,7 +116,7 @@ class BestBuyPricingController extends Controller
             $shopify = $shopifyData->get($pm->sku);
             $bestbuyMetric = $bestbuyMetrics[$pm->sku] ?? null;
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
-            $priceData = $priceDataCollection[$pm->sku] ?? null;
+            $priceData = $priceDataCollection[strtoupper($pm->sku)] ?? null;
             $amazon = $amazonData[$pm->sku] ?? null;
 
             $row = [];
