@@ -36,6 +36,15 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ProductMasterController extends Controller
 {
+    /**
+     * Emails that are granted full access to the Product Master (CP Masters)
+     * page regardless of the role-based Permission table. Their entries are
+     * also forced to "no hidden columns" in the email/column visibility map.
+     */
+    private const FULL_ACCESS_EMAILS = [
+        'mgr-content@5core.com',
+    ];
+
     protected $apiController;
 
     public function __construct(ApiController $apiController)
@@ -96,12 +105,25 @@ class ProductMasterController extends Controller
             $emailColumnMap[$email] = $columns;
         }
 
+        // Force full visibility (no hidden columns) for explicitly allowlisted emails.
+        foreach (self::FULL_ACCESS_EMAILS as $allowedEmail) {
+            $emailColumnMap[$allowedEmail] = [];
+        }
+
         // Get current user permissions based on role
         $userPermissions = [];
         if (auth()->check()) {
             $userRole = auth()->user()->role;
             $rolePermission = Permission::where('role', $userRole)->first();
             $userPermissions = $rolePermission ? $rolePermission->permissions : [];
+
+            // Grant full CP Master (view/create/edit/delete) access to allowlisted emails,
+            // regardless of what their role's Permission row contains.
+            if (in_array(auth()->user()->email, self::FULL_ACCESS_EMAILS, true)) {
+                $userPermissions = is_array($userPermissions) ? $userPermissions : [];
+                $userPermissions['cp_masters'] = ['view', 'create', 'edit', 'delete'];
+                $userPermissions['product_lists'] = [];
+            }
         }
 
         return view('productmaster', [
