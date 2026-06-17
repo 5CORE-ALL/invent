@@ -3466,6 +3466,10 @@ class TemuController extends Controller
                     'a_price' => $amazonPrice,
                     'e_price' => $ebayPrice,
                     'e2_price' => $ebay2Price,
+                    // Pass the live marketplace take-home % (decimal, e.g. 0.96) on every row
+                    // so the front-end SROI formatter can use the SAME margin the backend
+                    // GROI calc uses. Prevents GROI / SROI from disagreeing on the rate.
+                    'percentage' => (float) $percentage,
                     'profit' => round($profit, 2),
                     'profit_percent' => round($profitPercent, 2),
                     'roi_percent' => round($roiPercent, 2),

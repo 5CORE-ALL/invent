@@ -6,6 +6,20 @@
         <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 
     <style>
+        /* Summary Statistics badges — bumped to 1.2x size for readability.
+           Targets every .badge inside #summary-stats so new badges added later
+           pick the size up automatically. fs-6 = 1rem default → 1.2rem here.
+           Padding is also bumped by the same 1.2x to keep proportions, and the
+           container gap is widened slightly so the larger badges don't touch. */
+        #summary-stats .badge {
+            font-size: 1.2rem !important;
+            padding: 0.6rem 0.72rem !important; /* p-2 (.5rem) × 1.2 */
+            line-height: 1.2;
+        }
+        #summary-stats .d-flex.gap-2 {
+            gap: 0.6rem !important; /* matches 1.2× the default gap-2 */
+        }
+
         .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
@@ -330,9 +344,6 @@
                     <button type="button" class="btn btn-sm btn-success" id="export-btn">
                         <i class="fa fa-download"></i> Export L30
                     </button>
-                    <button type="button" class="btn btn-sm btn-info" id="export-l7-btn">
-                        <i class="fa fa-download"></i> Export L7
-                    </button>
                     <a href="{{ route('temu.tabulator') }}" class="btn btn-sm btn-outline-primary" title="View order-level sales data (Order ID, status, line items)">
                         <i class="fa fa-list-alt"></i> Order Data
                     </a>
@@ -351,18 +362,46 @@
                         INC / DEC
                     </button>
                     
-                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
-                        <i class="fa fa-eye"></i> Up View Data
-                    </button>
-                    <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#uploadAdDataModal">
-                        <i class="fa fa-chart-line"></i> Up Ad Data
-                    </button>
-                    <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#uploadRPricingModal">
-                        <i class="fa fa-tags"></i> Up R Pricing
-                    </button>
-                    <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
-                        <i class="fa fa-dollar-sign"></i> Up Pricing
-                    </button>
+                    {{-- All four upload flows merged into a single dropdown.
+                         Each item still opens its own modal via data-bs-toggle="modal";
+                         the modals themselves were not touched. --}}
+                    <div class="dropdown d-inline-block">
+                        <button type="button" class="btn btn-sm btn-primary dropdown-toggle"
+                            id="temuUploadDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Upload Temu data files">
+                            <i class="fa fa-upload"></i> Upload
+                        </button>
+                        <ul class="dropdown-menu shadow-sm" aria-labelledby="temuUploadDropdown">
+                            <li>
+                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                    data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
+                                    <i class="fa fa-eye text-success" style="width: 18px;"></i>
+                                    <span>Up View Data</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                    data-bs-toggle="modal" data-bs-target="#uploadAdDataModal">
+                                    <i class="fa fa-chart-line text-warning" style="width: 18px;"></i>
+                                    <span>Up Ad Data</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                    data-bs-toggle="modal" data-bs-target="#uploadRPricingModal">
+                                    <i class="fa fa-tags text-danger" style="width: 18px;"></i>
+                                    <span>Up R Pricing</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                    data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
+                                    <i class="fa fa-dollar-sign text-info" style="width: 18px;"></i>
+                                    <span>Up Pricing</span>
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
                     <button type="button" id="toggle-ads-columns-btn" class="btn btn-sm btn-secondary">
                         <i class="fa fa-filter"></i> Ads Section
                     </button>
@@ -399,14 +438,15 @@
                         <!-- Basic Counts (sales summary = same as tabulator sales page) -->
                         <span class="badge bg-success fs-6 p-2 temu-badge-history" id="total-revenue-badge" data-badge-metric="total_sales" data-badge-label="Sales" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">Sales: $0</span>
                         <span class="badge bg-primary fs-6 p-2 temu-badge-history" id="total-orders-badge" data-badge-metric="total_orders" data-badge-label="Orders" style="color: white; font-weight: bold; cursor: pointer;" title="Click to view history">Orders: 0</span>
-                        <span class="badge bg-primary fs-6 p-2 temu-badge-history" id="total-products-badge" data-badge-metric="sku_count" data-badge-label="SKU" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">SKU: 0</span>
                         <span class="badge bg-success fs-6 p-2 temu-badge-history" id="total-quantity-badge" data-badge-metric="total_quantity" data-badge-label="QTY" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">QTY: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items (INV>0)">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; background-color: #dc3545; cursor: pointer;" title="Click to filter missing SKUs (INV>0)">Missing L: 0</span>
                         <span class="badge fs-6 p-2" id="not-mapped-count-badge" style="color: white; font-weight: bold; background-color: #dc3545; cursor: pointer;" title="Click to filter not mapped SKUs (INV>0)">Missing M: 0</span>
+                        {{-- Red Alert badge: rows where Temu Price < Amazon × 0.85 OR Temu Price < eBay × 0.90.
+                             Click to toggle filtering to just those rows. Computed via temuIsRedAlert(rd). --}}
+                        <span class="badge fs-6 p-2" id="temu-red-alert-badge" style="color: white; font-weight: bold; background-color: #a00211; cursor: pointer;" title="Click to filter Red Alert rows: Temu Price &lt; Amazon × 0.85 OR &lt; eBay 1 × 0.90 OR &lt; eBay 2 × 0.90">Red Alert: 0</span>
                         
                         <!-- Pricing & Performance -->
-                        <span class="badge bg-info fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">AVG: $0.00</span>
                         <span class="badge bg-warning fs-6 p-2 temu-badge-history" id="avg-cvr-badge" data-badge-metric="avg_cvr_pct" data-badge-label="CVR %" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">CVR: 0.0%</span>
                         
                         <!-- Financial Totals -->
@@ -1893,6 +1933,35 @@
         // the backend default when MarketplacePercentage 'TemuTwo' has no row.
         const TEMU_MARGIN_FALLBACK = 0.96;
 
+        /**
+         * Red Alert rule — flag rows where the live Temu price is unprofitably below
+         * the comparison prices on Amazon / eBay 1 / eBay 2. Used both by the Temu
+         * Price column formatter (to color the cell red) and the Red Alert toolbar
+         * badge filter so the two surfaces never disagree.
+         *
+         *   Red when:  temuPrice  <  Amazon × 0.85
+         *         OR   temuPrice  <  eBay 1 × 0.90
+         *         OR   temuPrice  <  eBay 2 × 0.90
+         *
+         * `temuPrice` mirrors the same $2.99-bumper rule used elsewhere in this view
+         * (basePrice ≤ 26.99 ? basePrice + 2.99 : basePrice). Rows without a base
+         * price, or without any Amazon / eBay reference price to compare against,
+         * are never red.
+         */
+        function temuIsRedAlert(rd) {
+            if (!rd) return false;
+            const base = parseFloat(rd['base_price']) || 0;
+            if (base <= 0) return false;
+            const temuPrice = base <= 26.99 ? base + 2.99 : base;
+            const amz = parseFloat(rd['a_price']) || 0;
+            const e   = parseFloat(rd['e_price']) || 0;
+            const e2  = parseFloat(rd['e2_price']) || 0;
+            const underAmz = amz > 0 && temuPrice < amz * 0.85;
+            const underE   = e   > 0 && temuPrice < e   * 0.90;
+            const underE2  = e2  > 0 && temuPrice < e2  * 0.90;
+            return underAmz || underE || underE2;
+        }
+
         // Inverse of the backend's `stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice`
         // transformation: returns the sprice that would produce `desiredStemuPrice`
         // after the backend applies its bumper.
@@ -1908,11 +1977,34 @@
             return +desiredStemuPrice.toFixed(2);
         }
 
+        // Reveal the row-select checkbox column on demand. It's `visible: false` in the
+        // Tabulator config and the INC/DEC button is what normally shows it — but the
+        // Target ROI% / Target GPFT% flow needs the same checkboxes, so we call this from
+        // input focus + the Apply handler to make sure users can actually pick rows.
+        function temuEnsureSelectColumnVisible() {
+            if (!table) return;
+            const selectCol = table.getColumn('_select');
+            if (selectCol && !selectCol.isVisible()) {
+                selectCol.show();
+            }
+        }
+
+        // Show the select column as soon as the user interacts with either Target input
+        // (clicking, focusing, or typing), so checkboxes are already visible by the time
+        // they want to pick rows.
+        $('#target-roi-input, #target-gpft-input, #apply-target-roi-btn, #apply-target-gpft-btn')
+            .on('focus click', temuEnsureSelectColumnVisible);
+
         function temuApplyTargetSpriceBatch(opts) {
             // opts: { label, $btn, btnHtml, computeStemuPrice(rd) -> {stemuPrice, skipReason?} }
             const $btn = opts.$btn;
+
+            // Safety net: ensure the select column is visible even if the focus listeners
+            // above didn't fire (e.g. button focused programmatically).
+            temuEnsureSelectColumnVisible();
+
             if (typeof selectedSkus === 'undefined' || selectedSkus.size === 0) {
-                showToast('Please select at least one SKU', 'error');
+                showToast('Tick the checkboxes on the left to select SKUs first', 'error');
                 return;
             }
 
@@ -2055,9 +2147,20 @@
         let missingBadgeFilterActive = false;
         let mapBadgeFilterActive = false;
         let notMapBadgeFilterActive = false;
+        let redAlertFilterActive = false;
 
         $('#zero-sold-count-badge').on('click', function() {
             zeroSoldFilterActive = !zeroSoldFilterActive;
+            applyFilters();
+        });
+
+        // Red Alert badge toggle — filters to only rows where temuIsRedAlert(rd) is true.
+        // Highlights the badge with a yellow outline while active so users see at a glance
+        // that a filter is on (matches the visual cue used elsewhere on this page).
+        $('#temu-red-alert-badge').on('click', function() {
+            redAlertFilterActive = !redAlertFilterActive;
+            $(this).css('outline', redAlertFilterActive ? '3px solid #ffc107' : '');
+            $(this).css('outline-offset', redAlertFilterActive ? '2px' : '');
             applyFilters();
         });
 
@@ -2609,8 +2712,6 @@
             
             let totalProducts = data.length;
             let totalQuantity = 0;
-            let totalPriceWeighted = 0;
-            let totalQty = 0;
             let totalRevenue = 0;
             let totalProfit = 0;
             let totalLp = 0;
@@ -2634,6 +2735,7 @@
             let notMappedCount = 0;
             let lessAmzCount = 0;
             let moreAmzCount = 0;
+            let redAlertCount = 0;
             
             data.forEach(row => {
                 const temuL30 = parseInt(row['temu_l30']) || 0;
@@ -2643,8 +2745,6 @@
                 const temuShip = parseFloat(row['temu_ship']) || 0;
 
                 totalQuantity += temuL30;
-                totalPriceWeighted += price * temuL30;
-                totalQty += temuL30;
 
                 // Only include rows with sales (Temu L30 > 0 and basePrice > 0) in PFT/revenue/COGS
                 // Match marketplace_daily_metrics calculation: fbPrice = (basePrice * quantity < 27) ? basePrice + 2.99 : basePrice
@@ -2707,6 +2807,12 @@
                 if (missing === 'M' && inventory > 0 && nrReq === 'REQ') {
                     missingCount++;
                 }
+
+                // Red Alert: same rule the formatter uses (Temu Price < Amazon × 0.85
+                // or < eBay × 0.90). Count drives the toolbar badge.
+                if (temuIsRedAlert(row)) {
+                    redAlertCount++;
+                }
                 
                 // Map / Missing M (N Map): listed, REQ, both sides with stock — same rule as /map-issues.
                 // Tolerance: < 3 units when 3% of INV < 3, else rounded % > 3.
@@ -2739,7 +2845,6 @@
             });
             
             // Calculate averages
-            const avgPrice = totalQty > 0 ? totalPriceWeighted / totalQty : 0;
             // Avg GPRFT% = (Total Profit / Total Revenue) * 100 — profit from PFT formula (Temu Price * 0.96 - lp - temuship) / Temu Price
             const avgGprft = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : (totalProducts > 0 ? totalGprft / totalProducts : 0);
             // Weighted GROI% = (Total Profit / Total LP/COGS) × 100
@@ -2800,24 +2905,23 @@
                 $('#total-quantity-badge').text('QTY: ' + totalQuantity.toLocaleString());
                 $('#total-revenue-badge').text('Sales: $' + Math.round(totalRevenue).toLocaleString());
             }
-            $('#total-products-badge').text('SKU: ' + totalProducts.toLocaleString());
             $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
             $('#missing-count-badge').text('Missing L: ' + missingCount.toLocaleString());
             $('#not-mapped-count-badge').text('Missing M: ' + notMappedCount.toLocaleString());
-            $('#avg-price-badge').text('AVG: $' + avgPrice.toFixed(2));
+            $('#temu-red-alert-badge').text('Red Alert: ' + redAlertCount.toLocaleString());
             $('#avg-cvr-badge').text('CVR: ' + qtyPerViews.toFixed(1) + '%');
             $('#avg-dil-badge').text('Avg DIL: ' + Math.round(avgDil) + '%');
             // Total Revenue badge set above from sales_summary or table
             $('#total-profit-badge').text('PFT: $' + Math.round(totalProfit).toLocaleString());
             $('#total-lp-badge').text('Total LP: $' + Math.round(totalLp).toLocaleString());
-            $('#avg-gprft-badge').text('GPFT: ' + avgGprft.toFixed(1) + '%');
+            $('#avg-gprft-badge').text('GPFT: ' + Math.round(avgGprft) + '%');
             $('#avg-groi-badge').text('GROI: ' + Math.round(avgGroi) + '%');
-            $('#total-spend-badge').text('Spend: $' + totalSpend.toFixed(2));
+            $('#total-spend-badge').text('Spend: $' + Math.round(totalSpend).toLocaleString());
             // Use badgeAvgAds (aggregate Ads% from backend) for badge display (matches all-marketplace-master)
             const displayAdsPercent = (badgeAvgAds != null) ? badgeAvgAds : adsPercentForNpft;
             $('#avg-ads-badge').text('Ads: ' + displayAdsPercent.toFixed(1) + '%');
-            $('#avg-npft-badge').text('NPFT: ' + avgNpft.toFixed(1) + '%');
-            $('#avg-nroi-badge').text('NROI: ' + avgNroi.toFixed(1) + '%');
+            $('#avg-npft-badge').text('NPFT: ' + Math.round(avgNpft) + '%');
+            $('#avg-nroi-badge').text('NROI: ' + Math.round(avgNroi) + '%');
             $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
             $('#avg-views-badge').text('AVG views: ' + Math.round(avgViews));
         }
@@ -3024,6 +3128,9 @@
                     hozAlign: "left",
                     sorter: "string",
                     width: 120,
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    visible: false,
                     accessorDownload: function(value, data) {
                         const g = (data && data.goods_id != null && data.goods_id !== '') ? String(data.goods_id) : '';
                         // Leading tab forces Excel to treat as text (avoids scientific notation)
@@ -3077,6 +3184,9 @@
                     hozAlign: "center",
                     sorter: "number",
                     width: 60,
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    visible: false,
                     formatter: function(cell) {
                         const val = parseFloat(cell.getValue()) || 0;
                         let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
@@ -3089,6 +3199,8 @@
                     hozAlign: "center",
                     sorter: "number",
                     width: 60,
+                    // Hidden by default — users can re-enable via the Col dropdown.
+                    visible: false,
                     formatter: function(cell) {
                         const val = parseFloat(cell.getValue()) || 0;
                         let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
@@ -3137,6 +3249,9 @@
                     hozAlign: "center",
                     width: 50,
                     sorter: "number",
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    visible: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         return Math.round(parseFloat(value) || 0);
@@ -3148,6 +3263,8 @@
                     hozAlign: "center",
                     width: 50,
                     sorter: "number",
+                    // Hidden by default — users can re-enable via the Col dropdown.
+                    visible: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         return Math.round(parseFloat(value) || 0);
@@ -3255,6 +3372,11 @@
                     title: "NRL/REQ",
                     field: "nr_req",
                     hozAlign: "center",
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    // The NRL/REQ filter dropdown in the toolbar still works since it
+                    // reads row.nr_req from the data, not from the visible column.
+                    visible: false,
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const nrl = row['nr_req'] || '';
@@ -3330,26 +3452,21 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const basePrice = parseFloat(cell.getRow().getData()['base_price']) || 0;
                         const rowData = cell.getRow().getData();
-                        const amazonPrice = parseFloat(rowData['a_price']) || 0;
-                        const ePrice = parseFloat(rowData['e_price']) || 0;
-                        
+                        const basePrice = parseFloat(rowData['base_price']) || 0;
+
                         // Only calculate Temu Price if base_price > 0 (item exists in Temu)
                         if (basePrice === 0) {
                             return '$0.00';
                         }
                         const temuPrice = basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
-                        
-                        // Red only when Temu price exceeds (Amz price × 0.85) OR (E price × 0.90)
-                        const amzThreshold = amazonPrice * 0.85;
-                        const eThreshold = ePrice * 0.90;
-                        const overAmz = amazonPrice > 0 && temuPrice > amzThreshold;
-                        const overE = ePrice > 0 && temuPrice > eThreshold;
-                        if (overAmz || overE) {
-                            return `<span style="color: #a00211; font-weight: 600;">$${temuPrice.toFixed(2)}</span>`;
+
+                        // Red Alert: Temu Price < Amazon × 0.85 OR < eBay × 0.90.
+                        // Driven by temuIsRedAlert(rd) so the toolbar filter + summary
+                        // count + cell color always agree on which rows count.
+                        if (temuIsRedAlert(rowData)) {
+                            return `<span style="color: #a00211; font-weight: 600;" title="Red Alert: Temu price is below 85% of Amazon or 90% of eBay 1 / eBay 2">$${temuPrice.toFixed(2)}</span>`;
                         }
-                        
                         return '$' + temuPrice.toFixed(2);
                     }
                 },
@@ -3414,6 +3531,10 @@
                     title: "GPRFT %",
                     field: "profit_percent",
                     hozAlign: "center",
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    // GPRFT badge in the summary stats still reflects the underlying data.
+                    visible: false,
                     sorter: function(a, b, aRow, bRow) {
                         const calc = (row) => {
                             const price = parseFloat(row['temu_price']) || 0;
@@ -3441,6 +3562,10 @@
                     title: "ADS%",
                     field: "ads_percent",
                     hozAlign: "center",
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    // Ads% data still loads and drives the NPFT/NROI calcs + the Ads summary badge.
+                    visible: false,
                     sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
                         // Custom sorter to handle the 100% case properly
                         const aData = aRow.getData();
@@ -3509,6 +3634,10 @@
                     field: "npft_percent",
                     hozAlign: "center",
                     sorter: "number",
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    // NPFT badge in the summary stats still reflects the underlying data.
+                    visible: false,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku || '';
@@ -3640,6 +3769,9 @@
                     field: "sgprft_percent",
                     hozAlign: "center",
                     sorter: "number",
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    visible: false,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = parseFloat(rowData['sprice']) || 0;
@@ -3666,6 +3798,9 @@
                     field: "spft_percent",
                     hozAlign: "center",
                     sorter: "number",
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    visible: false,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = parseFloat(rowData['sprice']) || 0;
@@ -3729,7 +3864,14 @@
                         const stemuPrice = isSameAsCurrentTemuPrice
                             ? sprice
                             : (sprice <= 26.99 ? sprice + 2.99 : sprice);
-                        const sroi = ((stemuPrice * 0.96 - lp - temuShip) / lp) * 100;
+                        // Use the SAME marketplace take-home % the backend GROI calc used
+                        // (delivered with each row as `percentage`). Falls back to 0.96 only
+                        // when the field is missing, matching the backend default. This keeps
+                        // SROI and GROI on identical margins so the only legit difference is
+                        // sprice vs current temu_price — not a margin mismatch.
+                        const marginRaw = parseFloat(rowData['percentage']);
+                        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.96;
+                        const sroi = ((stemuPrice * margin - lp - temuShip) / lp) * 100;
                         const colorClass = getRoiColor(sroi);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(sroi)}%</span>`;
                     }
@@ -4430,6 +4572,15 @@
                         isNotMap = Math.round((diffUnits / inv) * 100) > 3;
                     }
                     return !isNotMap;
+                });
+            }
+
+            // Red Alert badge filter — rows where Temu Price falls below Amazon × 0.85
+            // or eBay × 0.90 (driven by temuIsRedAlert so cell color, filter, and badge
+            // count never get out of sync).
+            if (redAlertFilterActive) {
+                table.addFilter(function(data) {
+                    return temuIsRedAlert(data);
                 });
             }
 
@@ -5216,7 +5367,6 @@
         function updateCampaignPeriodUi() {
             const isL7 = currentCampaignPeriod === 'L7';
             $('#export-btn').prop('disabled', isL7).toggleClass('disabled', isL7);
-            $('#export-l7-btn').prop('disabled', !isL7).toggleClass('disabled', !isL7);
 
             const temuSalesCol = table.getColumn('temu_l30');
             if (temuSalesCol) {
@@ -5273,50 +5423,6 @@
             }
             table.download("csv", "temu_decrease_data_l30.csv");
         });
-
-        // Export L7: current table rows only (respects filters, column visibility, Ads Section) — same as L30 export pattern
-        $('#export-l7-btn').on('click', function() {
-            if (currentCampaignPeriod !== 'L7') {
-                showToast('Switch Campaign Data to L7 to export L7 data', 'warning');
-                return;
-            }
-            table.download('csv', 'temu_l7_data.csv');
-        });
-
-        // Export L7 — same JSON + columns as L30; load L7 endpoint, then Tabulator CSV (respects Ads Section toggle)
-        $('#export-l7-btn').on('click', function() {
-            console.log('Export L7: /temu-decrease-data-l7, adsSection=' + (typeof adsColumnsVisible !== 'undefined' && adsColumnsVisible));
-            const $btn = $(this);
-            const originalHtml = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Loading...');
-
-            suppressDataLoadedHandler = true;
-            table.setData('/temu-decrease-data-l7').then(function() {
-                applyFilters();
-                table.download("csv", "temu_l7_data.csv");
-                // Allow full dataLoaded on L30 restore so fullDataset and summary refresh
-                suppressDataLoadedHandler = false;
-                return table.setData('/temu-decrease-data');
-            }).then(function() {
-                applyFilters();
-                if (typeof showToast === 'function') {
-                    showToast('L7 export completed (same format as L30)', 'success');
-                }
-            }).catch(function(err) {
-                console.error('Export L7 error', err);
-                suppressDataLoadedHandler = false;
-                return table.setData('/temu-decrease-data').then(function() {
-                    applyFilters();
-                }).then(function() {
-                    if (typeof showToast === 'function') {
-                        showToast('Failed to export L7 data', 'error');
-                    }
-                });
-            }).finally(function() {
-                $btn.prop('disabled', false).html(originalHtml);
-            });
-        });
-
 
         // Single-badge history modal: click on a badge opens history for that metric
         var currentBadgeHistoryMetric = null;
