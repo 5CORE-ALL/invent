@@ -36,15 +36,6 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ProductMasterController extends Controller
 {
-    /**
-     * Emails that are granted full access to the Product Master (CP Masters)
-     * page regardless of the role-based Permission table. Their entries are
-     * also forced to "no hidden columns" in the email/column visibility map.
-     */
-    private const FULL_ACCESS_EMAILS = [
-        'mgr-content@5core.com',
-    ];
-
     protected $apiController;
 
     public function __construct(ApiController $apiController)
@@ -105,9 +96,14 @@ class ProductMasterController extends Controller
             $emailColumnMap[$email] = $columns;
         }
 
-        // Force full visibility (no hidden columns) for explicitly allowlisted emails.
-        foreach (self::FULL_ACCESS_EMAILS as $allowedEmail) {
-            $emailColumnMap[$allowedEmail] = [];
+        // Hardcoded full-access overrides for Product Master (treated like president).
+        // These emails always see every column regardless of their role.
+        $productMasterFullAccessEmails = [
+            'president@5core.com',
+            'mgr-content@5core.com',
+        ];
+        foreach ($productMasterFullAccessEmails as $fullAccessEmail) {
+            $emailColumnMap[$fullAccessEmail] = [];
         }
 
         // Get current user permissions based on role
@@ -117,12 +113,13 @@ class ProductMasterController extends Controller
             $rolePermission = Permission::where('role', $userRole)->first();
             $userPermissions = $rolePermission ? $rolePermission->permissions : [];
 
-            // Grant full CP Master (view/create/edit/delete) access to allowlisted emails,
-            // regardless of what their role's Permission row contains.
-            if (in_array(auth()->user()->email, self::FULL_ACCESS_EMAILS, true)) {
+            // Hardcoded full-access overrides for Product Master (same as president).
+            // Grant every CRUD capability on cp_masters so edit/delete buttons render
+            // and the user is never gated by their role's product permissions here.
+            $currentEmail = strtolower((string) (auth()->user()->email ?? ''));
+            if (in_array($currentEmail, $productMasterFullAccessEmails, true)) {
                 $userPermissions = is_array($userPermissions) ? $userPermissions : [];
-                $userPermissions['cp_masters'] = ['view', 'create', 'edit', 'delete'];
-                $userPermissions['product_lists'] = [];
+                $userPermissions['cp_masters'] = ['create', 'edit', 'delete', 'view'];
             }
         }
 

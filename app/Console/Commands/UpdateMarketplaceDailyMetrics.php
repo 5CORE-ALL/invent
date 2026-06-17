@@ -2326,11 +2326,12 @@ class UpdateMarketplaceDailyMetrics extends Command
                     $lp = floatval($pm->lp);
                 }
                 
-                // Get Ship
-                if (isset($values['ship'])) {
-                    $ship = (float) $values['ship'];
-                } elseif (isset($pm->ship)) {
-                    $ship = floatval($pm->ship);
+                // Get Ship — BestBuy uses channel-specific Ship BB (Values['ship_bb']),
+                // matching /bestbuy-pricing. Falls back to pm->ship_bb column, then 0.
+                if (isset($values['ship_bb'])) {
+                    $ship = (float) $values['ship_bb'];
+                } elseif (isset($pm->ship_bb)) {
+                    $ship = floatval($pm->ship_bb);
                 }
                 
                 // Get Weight Act

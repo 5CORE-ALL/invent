@@ -59,7 +59,11 @@ class BestBuySalesController extends Controller
                 if ($lp === 0 && isset($pm->lp)) {
                     $lp = floatval($pm->lp);
                 }
-                $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+                // BestBuy uses channel-specific Ship BB (Values['ship_bb']), matching /bestbuy-pricing
+                // and the marketplace_daily_metrics calculation. Falls back to pm->ship_bb column, then 0.
+                $ship = isset($values["ship_bb"])
+                    ? floatval($values["ship_bb"])
+                    : (isset($pm->ship_bb) ? floatval($pm->ship_bb) : 0);
                 $weightAct = isset($values["wt_act"]) ? floatval($values["wt_act"]) : 0;
             }
 

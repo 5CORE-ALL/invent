@@ -17,6 +17,7 @@ class CpController extends Controller
     public const APPROVER_EMAILS = [
         'inventory@5core.com',
         'president@5core.com',
+        'mgr-content@5core.com',
     ];
 
     /**
@@ -246,7 +247,7 @@ class CpController extends Controller
         if (! $this->userCanApprove()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Only inventory@5core.com or president@5core.com can approve a CP change.',
+                'message' => 'Only inventory@5core.com, president@5core.com or mgr-content@5core.com can approve a CP change.',
             ], 403);
         }
 
@@ -289,7 +290,7 @@ class CpController extends Controller
         if (! $this->userCanApprove()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Only inventory@5core.com or president@5core.com can unarchive a CP change.',
+                'message' => 'Only inventory@5core.com, president@5core.com or mgr-content@5core.com can unarchive a CP change.',
             ], 403);
         }
 

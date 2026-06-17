@@ -175,9 +175,13 @@ class BestBuyPricingController extends Controller
                 $lp = floatval($pm->lp);
             }
 
-            $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+        // BestBuy uses channel-specific Ship BB (Values['ship_bb']), NOT the generic ship.
+        // Falls back to pm->ship_bb column, then 0 — matching how Temu uses temu_ship, TT uses tt_ship, etc.
+        $ship = isset($values["ship_bb"])
+            ? floatval($values["ship_bb"])
+            : (isset($pm->ship_bb) ? floatval($pm->ship_bb) : 0);
 
-            // Price and units for calculations
+        // Price and units for calculations
             $price = floatval($row["BB Price"] ?? 0);
             $units_ordered_l30 = floatval($row["BB L30"] ?? 0);
 
@@ -384,7 +388,10 @@ class BestBuyPricingController extends Controller
             $lp = floatval($pm->lp);
         }
 
-        $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+        // BestBuy uses channel-specific Ship BB (Values['ship_bb']), NOT the generic ship.
+        $ship = isset($values["ship_bb"])
+            ? floatval($values["ship_bb"])
+            : (isset($pm->ship_bb) ? floatval($pm->ship_bb) : 0);
 
         // Calculate SGPFT
         $spriceFloat = floatval($sprice);
@@ -729,7 +736,10 @@ class BestBuyPricingController extends Controller
                     $lp = floatval($pm->lp);
                 }
 
-                $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+                // BestBuy uses channel-specific Ship BB (Values['ship_bb']), NOT the generic ship.
+                $ship = isset($values["ship_bb"])
+                    ? floatval($values["ship_bb"])
+                    : (isset($pm->ship_bb) ? floatval($pm->ship_bb) : 0);
 
                 // Get marketplace percentage (80%)
                 $marketplaceData = MarketplacePercentage::where('marketplace', 'BestbuyUSA')->first();

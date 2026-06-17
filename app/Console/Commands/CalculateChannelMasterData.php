@@ -42,9 +42,7 @@ class CalculateChannelMasterData extends Command
                               - Stores daily snapshot in lqs_history table
                               - Data displayed in dashboard LQS badges and trend charts';
 
-    /**
-     * Execute the console command.
-     */
+   
     public function handle()
     {
         $startTime = microtime(true);

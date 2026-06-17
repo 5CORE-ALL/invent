@@ -3833,7 +3833,7 @@
             // CP (Cost Price) manager: edit CP, require reason on increase,
             // view change history (newest first) and approve changes.
             // ---------------------------------------------------------------
-            const CP_APPROVER_EMAILS = ['inventory@5core.com', 'president@5core.com'];
+            const CP_APPROVER_EMAILS = ['inventory@5core.com', 'president@5core.com', 'mgr-content@5core.com'];
             const canApproveCp = CP_APPROVER_EMAILS.includes(String(currentUserEmail || '').toLowerCase());
 
             function cpFmt(v) {

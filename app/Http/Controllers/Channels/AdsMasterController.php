@@ -1504,7 +1504,9 @@ class AdsMasterController extends Controller
                 $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
 
                 $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
+                // BestBuy uses channel-specific Ship BB (Values['ship_bb']), matching /bestbuy-pricing
+                // and the marketplace_daily_metrics calculation. Falls back to pm->ship_bb column, then 0.
+                $ship = isset($values['ship_bb']) ? (float) $values['ship_bb'] : ($pm->ship_bb ?? 0);
             }
 
             // Profit per unit
