@@ -9,6 +9,7 @@ use App\Models\UserRR;
 use App\Models\DeletedTask;
 use App\Policies\TaskPolicy;
 use App\Services\TaskWhatsAppNotificationService;
+use App\Support\TaskBusinessTime;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -46,12 +47,9 @@ class TaskController extends Controller
             });
         }
 
-        // Calculate statistics based on filtered tasks (with user filter if selected)
-        // Overdue means TID/start_date + 1 day grace is already past.
-        // Keep only archived tasks excluded from overdue stats.
-        $overdueQuery = (clone $tasksQuery)->whereNotNull('start_date')
-                           ->whereRaw('DATE_ADD(start_date, INTERVAL 1 DAY) < NOW()')
-                           ->where('status', '!=', 'Archived');
+        // Overdue = TID business calendar day + 1 day grace (office timezone).
+        $overdueQuery = $this->whereOverdueByBusinessTid(clone $tasksQuery)
+            ->where('status', '!=', 'Archived');
 
         // Calculate statistics based on filtered tasks (with user filter if selected)
         $stats = [
@@ -254,6 +252,7 @@ class TaskController extends Controller
 
         // Special permission: Jasmine, Ritu mam, Joy sir can delete/modify any task
         $canDeleteAnyTask = TaskPolicy::userHasSpecialTaskPermission($user);
+        $canShowTaskMaintenanceButtons = TaskPolicy::userCanAccessTaskMaintenanceTools($user);
 
         // AVG SCORE: always the logged-in user's performance average (not task "selected user" filter)
         $stats['average_score'] = null;
@@ -270,19 +269,90 @@ class TaskController extends Controller
             }
         }
 
+        // Training video (header icon): link + whether this user may edit it.
+        $trainingVideoLink = $this->getTrainingVideoLink();
+        $canEditTrainingVideo = $this->userCanEditTrainingVideo($user);
+
         return view('tasks.index', compact(
             'stats',
             'isAdmin',
             'users',
             'canDeleteAnyTask',
+            'canShowTaskMaintenanceButtons',
             'tatChartData',
             'missedChartData',
             'selectedUserName',
             'assignorOnTasksUsers',
             'assignorOtherUsers',
             'assigneeOnTasksUsers',
-            'assigneeOtherUsers'
-        ));
+            'assigneeOtherUsers',
+            'trainingVideoLink',
+            'canEditTrainingVideo'
+        ) + [
+            'taskBusinessTz' => TaskBusinessTime::tz(),
+            'taskBusinessTzShort' => TaskBusinessTime::shortLabel(),
+            'taskBusinessTzLabel' => TaskBusinessTime::label(),
+            'taskBusinessToday' => TaskBusinessTime::today()->toDateString(),
+        ]);
+    }
+
+    /** Email allowed to add/edit the Task Manager training video link. */
+    private const TRAINING_VIDEO_EDITOR_EMAIL = 'mgr-content@5core.com';
+
+    /** Storage path (relative to storage/app) for the persisted training video link. */
+    private const TRAINING_VIDEO_FILE = 'task_training_video.json';
+
+    private function userCanEditTrainingVideo($user): bool
+    {
+        return $user && strtolower(trim($user->email ?? '')) === self::TRAINING_VIDEO_EDITOR_EMAIL;
+    }
+
+    private function getTrainingVideoLink(): string
+    {
+        try {
+            if (\Illuminate\Support\Facades\Storage::exists(self::TRAINING_VIDEO_FILE)) {
+                $data = json_decode(\Illuminate\Support\Facades\Storage::get(self::TRAINING_VIDEO_FILE), true);
+                return is_array($data) ? (string) ($data['link'] ?? '') : '';
+            }
+        } catch (\Throwable $e) {
+            // ignore and fall through to empty
+        }
+        return '';
+    }
+
+    /** Return the current training video link as JSON. */
+    public function getTrainingVideo(): JsonResponse
+    {
+        return response()->json([
+            'link' => $this->getTrainingVideoLink(),
+            'can_edit' => $this->userCanEditTrainingVideo(Auth::user()),
+        ]);
+    }
+
+    /** Save the training video link. Restricted to the designated editor email. */
+    public function saveTrainingVideo(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        if (!$this->userCanEditTrainingVideo($user)) {
+            return response()->json(['message' => 'You are not allowed to edit the training video link.'], 403);
+        }
+
+        $validated = $request->validate([
+            'link' => 'nullable|url|max:2048',
+        ]);
+
+        $link = trim((string) ($validated['link'] ?? ''));
+
+        try {
+            \Illuminate\Support\Facades\Storage::put(
+                self::TRAINING_VIDEO_FILE,
+                json_encode(['link' => $link, 'updated_by' => $user->email, 'updated_at' => now()->toIso8601String()])
+            );
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Failed to save the link.'], 500);
+        }
+
+        return response()->json(['link' => $link, 'message' => 'Training video link saved.']);
     }
 
     /**
@@ -306,6 +376,60 @@ class TaskController extends Controller
         }
 
         return $tasksQuery;
+    }
+
+    /**
+     * Overdue when office-calendar TID day + 1 full day has passed (matches UI grace).
+     */
+    protected function whereOverdueByBusinessTid(Builder $query): Builder
+    {
+        TaskBusinessTime::applyDatabaseSession();
+
+        return $query->whereNotNull('start_date')
+            ->whereRaw('DATE(DATE_ADD(DATE(start_date), INTERVAL 1 DAY)) < CURDATE()');
+    }
+
+    /**
+     * Predicted auto-delete time for daily automated tasks (nightly job at 00:05 office time).
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function autoDeleteMetaForTask(Task $task): ?array
+    {
+        if (!(int) ($task->is_automate_task ?? 0)) {
+            return null;
+        }
+        if (strtolower((string) ($task->schedule_type ?? '')) !== 'daily') {
+            return null;
+        }
+        $status = (string) ($task->status ?? '');
+        if (in_array($status, ['Done', 'Archived'], true)) {
+            return null;
+        }
+        if (empty($task->start_date)) {
+            return null;
+        }
+
+        try {
+            $startDay = TaskBusinessTime::parse($task->start_date)->startOfDay();
+            $deleteAt = TaskBusinessTime::autoDeleteAtForStartDay($startDay);
+            $now = TaskBusinessTime::now();
+            $past = $deleteAt->lt($now);
+            $tzShort = TaskBusinessTime::shortLabel();
+
+            return [
+                'auto_delete_at' => $deleteAt->format('Y-m-d H:i:s'),
+                'auto_delete_at_human' => $past
+                    ? $deleteAt->format('d M, h:i A').' '.$tzShort.' (pending)'
+                    : $deleteAt->format('d M, h:i A').' '.$tzShort,
+                'auto_delete_past' => $past,
+                'auto_delete_tooltip' => $past
+                    ? 'Missed daily auto-delete — removed at next 00:05 '.$tzShort.' run if still incomplete'
+                    : 'Auto-deletes at 12:05 AM '.$tzShort.' the day after TID if not marked Done',
+            ];
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     /**
@@ -455,8 +579,7 @@ class TaskController extends Controller
     {
         $q = $this->taskManagerVisibilityQuery();
 
-        $overdueQuery = (clone $q)->whereNotNull('start_date')
-            ->whereRaw('DATE_ADD(start_date, INTERVAL 1 DAY) < NOW()')
+        $overdueQuery = $this->whereOverdueByBusinessTid(clone $q)
             ->where('status', '!=', 'Archived');
 
         $activeEmailSet = array_flip(
@@ -589,11 +712,14 @@ class TaskController extends Controller
             // Normalize datetime fields to local string format so frontend date parsing
             // doesn't shift dates because of UTC ISO serialization ("...Z").
             foreach (['start_date', 'due_date', 'completion_date', 'created_at', 'updated_at'] as $dtField) {
-                if (!empty($task->{$dtField})) {
+                // Use the raw DB value (already stored as office-time wall-clock) and reformat
+                // without any timezone conversion. Reading $task->{$dtField} would apply the
+                // 'datetime' cast (app TZ = Asia/Kolkata) and a later shift to PT, rolling
+                // 00:01 PT auto-tasks back to the previous day.
+                $raw = $task->getRawOriginal($dtField);
+                if (!empty($raw)) {
                     try {
-                        $task->{$dtField} = \Carbon\Carbon::parse($task->{$dtField}, config('app.timezone'))
-                            ->setTimezone(config('app.timezone'))
-                            ->format('Y-m-d H:i:s');
+                        $task->{$dtField} = \Carbon\Carbon::parse($raw)->format('Y-m-d H:i:s');
                     } catch (\Throwable $e) {
                         // keep original value if parsing fails
                     }
@@ -662,6 +788,15 @@ class TaskController extends Controller
             // For permission checks
             $task->assignor_email = $task->assignor;
             $task->assignee_email = $task->assign_to;
+
+            $autoDeleteMeta = $this->autoDeleteMetaForTask($task);
+            if ($autoDeleteMeta) {
+                foreach ($autoDeleteMeta as $key => $value) {
+                    $task->{$key} = $value;
+                }
+            }
+
+            $task->tid_business_date = TaskBusinessTime::businessDateFromStart($task->start_date);
         });
 
         // Return raw DB attributes (not casted UTC ISO datetimes) so date filters/display
@@ -684,6 +819,11 @@ class TaskController extends Controller
                 'assignee_avatars',
                 'assignor_email',
                 'assignee_email',
+                'auto_delete_at',
+                'auto_delete_at_human',
+                'auto_delete_past',
+                'auto_delete_tooltip',
+                'tid_business_date',
             ] as $field) {
                 if (isset($task->{$field})) {
                     $row[$field] = $task->{$field};
@@ -871,7 +1011,7 @@ class TaskController extends Controller
             ]);
         }
 
-        return redirect()->route('tasks.index')->with($flash, $message);
+        return redirect()->back()->with($flash, $message);
     }
 
     public function show($id)
@@ -2283,31 +2423,22 @@ class TaskController extends Controller
     }
 
     /**
-     * List tasks deleted today (Asia/Kolkata) so users can spot accidental deletions.
+     * List tasks deleted today (office timezone) so users can spot accidental deletions.
      * Visibility: admins see everything; others see only rows where they were assignor or in assign_to,
      * plus anything they themselves deleted today.
      */
     public function todayDeletedData(Request $request)
     {
         $user = Auth::user();
-        if (!$user) {
-            return response()->json(['data' => [], 'count' => 0]);
+        if (!$user || !TaskPolicy::userCanAccessTaskMaintenanceTools($user)) {
+            return response()->json(['data' => [], 'count' => 0], $user ? 403 : 401);
         }
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
 
-        $todayStart = \Carbon\Carbon::today('Asia/Kolkata')->startOfDay();
-        $todayEnd = \Carbon\Carbon::today('Asia/Kolkata')->endOfDay();
+        $todayStart = TaskBusinessTime::todayStart();
+        $todayEnd = TaskBusinessTime::todayEnd();
 
         $query = DeletedTask::query()
             ->whereBetween('deleted_at', [$todayStart, $todayEnd]);
-
-        if (!$isAdmin) {
-            $query->where(function ($q) use ($user) {
-                $q->where('assignor', $user->email)
-                  ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%')
-                  ->orWhere('deleted_by_email', $user->email);
-            });
-        }
 
         // True total (not affected by the row limit), and a breakdown so the UI can show
         // "1,103 auto-expired, 19 manual" — useful when the daily-auto cleanup just ran.
@@ -2339,7 +2470,7 @@ class TaskController extends Controller
                 'deleted_by_email' => (string) ($r->deleted_by_email ?? ''),
                 'deleted_by_name' => (string) ($r->deleted_by_name ?? ''),
                 'deleted_at' => $r->deleted_at ? \Carbon\Carbon::parse($r->deleted_at)->format('Y-m-d H:i:s') : null,
-                'deleted_at_human' => $r->deleted_at ? \Carbon\Carbon::parse($r->deleted_at)->setTimezone('Asia/Kolkata')->format('h:i A') : '',
+                'deleted_at_human' => $r->deleted_at ? TaskBusinessTime::formatDisplay(TaskBusinessTime::parse($r->deleted_at)) : '',
                 'is_auto_expired' => strtolower((string) ($r->deleted_by_email ?? '')) === 'system@auto',
             ];
         });
@@ -2355,7 +2486,7 @@ class TaskController extends Controller
     }
 
     /**
-     * Revert a task that was deleted today (Asia/Kolkata). Looser permissions than the archive
+     * Revert a task that was deleted today (office timezone). Looser permissions than the archive
      * {@see reviveDeletedTask()}: any visible user may undo their own / their tasks' same-day deletion,
      * including system-auto deletions from the daily expire job.
      */
@@ -2364,6 +2495,9 @@ class TaskController extends Controller
         $user = Auth::user();
         if (!$user) {
             return response()->json(['success' => false, 'message' => 'Not authenticated.'], 401);
+        }
+        if (!TaskPolicy::userCanAccessTaskMaintenanceTools($user)) {
+            return response()->json(['success' => false, 'message' => 'You are not authorized to revert deleted tasks.'], 403);
         }
 
         $deletedTask = DeletedTask::find($id);
@@ -2399,14 +2533,16 @@ class TaskController extends Controller
         if (!$user) {
             return response()->json(['success' => false, 'message' => 'Not authenticated.'], 401);
         }
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        if (!TaskPolicy::userCanAccessTaskMaintenanceTools($user)) {
+            return response()->json(['success' => false, 'message' => 'You are not authorized to revert deleted tasks.'], 403);
+        }
 
         $mode = strtolower((string) $request->input('mode', 'all'));
         $ids = (array) $request->input('ids', []);
         $ids = array_values(array_filter(array_map('intval', $ids), fn ($v) => $v > 0));
 
-        $todayStart = \Carbon\Carbon::today('Asia/Kolkata')->startOfDay();
-        $todayEnd = \Carbon\Carbon::today('Asia/Kolkata')->endOfDay();
+        $todayStart = TaskBusinessTime::todayStart();
+        $todayEnd = TaskBusinessTime::todayEnd();
 
         $query = DeletedTask::query()->whereBetween('deleted_at', [$todayStart, $todayEnd]);
 
@@ -2425,14 +2561,6 @@ class TaskController extends Controller
                 'success' => false,
                 'message' => 'Invalid mode. Use auto, manual, all, or pass ids[].',
             ], 422);
-        }
-
-        if (!$isAdmin) {
-            $query->where(function ($q) use ($user) {
-                $q->where('assignor', $user->email)
-                  ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%')
-                  ->orWhere('deleted_by_email', $user->email);
-            });
         }
 
         // Hard cap so a runaway click can't try to revert tens of thousands at once.
@@ -2494,8 +2622,8 @@ class TaskController extends Controller
     {
         $isAdmin = strtolower($user->role ?? '') === 'admin';
 
-        $todayStart = \Carbon\Carbon::today('Asia/Kolkata')->startOfDay();
-        $todayEnd = \Carbon\Carbon::today('Asia/Kolkata')->endOfDay();
+        $todayStart = TaskBusinessTime::todayStart();
+        $todayEnd = TaskBusinessTime::todayEnd();
         $deletedAt = $deletedTask->deleted_at ? \Carbon\Carbon::parse($deletedTask->deleted_at) : null;
         if (!$deletedAt || $deletedAt->lt($todayStart) || $deletedAt->gt($todayEnd)) {
             return [
@@ -2599,11 +2727,10 @@ class TaskController extends Controller
     public function expireDailyAutomatedTasks(Request $request)
     {
         $user = Auth::user();
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
-        if (!$isAdmin) {
+        if (!TaskPolicy::userCanAccessTaskMaintenanceTools($user)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Only admins can run this cleanup.',
+                'message' => 'You are not authorized to run this cleanup.',
             ], 403);
         }
 
@@ -3010,9 +3137,7 @@ class TaskController extends Controller
      */
     private function userCanReviveArchivedTasks(?User $user): bool
     {
-        $email = strtolower((string) ($user->email ?? ''));
-
-        return in_array($email, ['president@5core.com', 'software5@5core.com'], true);
+        return TaskPolicy::userCanAccessTaskMaintenanceTools($user);
     }
 
     /**

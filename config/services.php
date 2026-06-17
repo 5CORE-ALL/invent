@@ -214,6 +214,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Shipment Tracking (multi-carrier aggregator)
+    |--------------------------------------------------------------------------
+    |
+    | Used by the "All Orders" Status column to pull live shipment status from
+    | a tracking number across carriers (GOFO, USPS, UPS, FedEx, ...).
+    |
+    | Default driver is 17TRACK (https://api.17track.net) which natively
+    | supports all of the above with a single API key. Get a key from the
+    | 17TRACK dashboard -> Settings -> Security and put it in TRACKING_API_KEY.
+    |
+    | Swap providers by changing TRACKING_PROVIDER and TRACKING_API_BASE.
+    |
+    */
+    'tracking' => [
+        'provider'      => env('TRACKING_PROVIDER', '17track'),
+        'api_key'       => env('TRACKING_API_KEY', ''),
+        'api_base'      => env('TRACKING_API_BASE', 'https://api.17track.net/track/v2.2'),
+        // Per-run safety limits so a sync can't blow the provider quota
+        'batch_size'    => (int) env('TRACKING_BATCH_SIZE', 40),
+        'max_per_run'   => (int) env('TRACKING_MAX_PER_RUN', 2000),
+        'http_timeout'  => (int) env('TRACKING_HTTP_TIMEOUT', 30),
+        'sleep_ms'      => (int) env('TRACKING_SLEEP_MS', 400),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Amazon SP-API
     |--------------------------------------------------------------------------
     */
@@ -263,6 +289,32 @@ return [
         'client_secret' => env('AMAZON_ADS_CLIENT_SECRET'),
         'refresh_token' => env('AMAZON_ADS_REFRESH_TOKEN'),
         'profile_ids' => env('AMAZON_ADS_PROFILE_IDS', ''),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | eBay Price Push Microservice (cPanel)
+    |--------------------------------------------------------------------------
+    |
+    | Instead of calling eBay's Trading API directly, this application
+    | delegates price pushes to an external cPanel Laravel microservice.
+    | The microservice handles eBay OAuth, ReviseFixedPriceItem, retries,
+    | and any account-specific restrictions.
+    |
+    | EBAY_PUSH_MICROSERVICE_URL          – full base URL (no trailing slash)
+    |                                        e.g. https://ebay-api.example.com
+    | EBAY_PUSH_MICROSERVICE_TOKEN        – shared Bearer token
+    | EBAY_PUSH_MICROSERVICE_TIMEOUT      – per-request timeout in seconds
+    | EBAY_PUSH_MICROSERVICE_RETRIES      – retry attempts on network/5xx failure
+    | EBAY_PUSH_MICROSERVICE_RETRY_DELAY_MS – ms to wait between retry attempts
+    |
+    */
+    'ebay_push_microservice' => [
+        'url'            => env('EBAY_PUSH_MICROSERVICE_URL', ''),
+        'token'          => env('EBAY_PUSH_MICROSERVICE_TOKEN', ''),
+        'timeout'        => (int) env('EBAY_PUSH_MICROSERVICE_TIMEOUT', 60),
+        'retries'        => (int) env('EBAY_PUSH_MICROSERVICE_RETRIES', 3),
+        'retry_delay_ms' => (int) env('EBAY_PUSH_MICROSERVICE_RETRY_DELAY_MS', 5000),
     ],
 
     /*
@@ -335,6 +387,31 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Newegg Marketplace API
+    |--------------------------------------------------------------------------
+    |
+    | Newegg uses three pieces of identity on (almost) every request:
+    |   - SellerID   : your Newegg seller account id (sent as ?sellerid=XXXX)
+    |   - API Key    : sent in the `Authorization` header
+    |   - Secret Key : sent in the `SecretKey` header
+    |
+    | NOTE: api.newegg.com is fronted by Cloudflare. Calls must originate from
+    | an IP that is whitelisted in the Newegg Seller Portal, otherwise Cloudflare
+    | returns a 403 "managed challenge" CAPTCHA page before the request ever
+    | reaches the API. Run any test from a whitelisted (production) server.
+    |
+    */
+    'newegg' => [
+        'seller_id'   => env('NEWEGG_SELLER_ID'),
+        'api_key'     => env('NEWEGG_API_KEY'),
+        'secret_key'  => env('NEWEGG_SECRET_KEY'),
+        'base_url'    => env('NEWEGG_BASE_URL', 'https://api.newegg.com'),
+        'http_timeout'    => (int) env('NEWEGG_HTTP_TIMEOUT', 60),
+        'connect_timeout' => (int) env('NEWEGG_CONNECT_TIMEOUT', 15),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Walmart
     |--------------------------------------------------------------------------
     */
@@ -355,6 +432,9 @@ return [
         'client_id' => env('WAYFAIR_CLIENT_ID'),
         'client_secret' => env('WAYFAIR_CLIENT_SECRET'),
         'audience' => env('WAYFAIR_AUDIENCE'),
+        'http_timeout' => (int) env('WAYFAIR_HTTP_TIMEOUT', 90),
+        'connect_timeout' => (int) env('WAYFAIR_CONNECT_TIMEOUT', 30),
+        'oauth_retries' => (int) env('WAYFAIR_OAUTH_RETRIES', 3),
         'supplier_id' => env('WAYFAIR_SUPPLIER_ID', '2603'),
         // Scope for catalog/title updates. If you get "Access Denied", run: php artisan wayfair:test-scopes
         'catalog_scope' => env('WAYFAIR_CATALOG_SCOPE', ''),
@@ -456,6 +536,7 @@ return [
         'app_secret' => env('ALIEXPRESS_APP_SECRET'),
         /** OAuth token value (sent as `session` for dropshipping /sync API) */
         'access_token' => env('ALIEXPRESS_ACCESS_TOKEN'),
+        'redirect_uri' => env('ALIEXPRESS_REDIRECT_URI', env('APP_URL')),
         /**
          * Dropshipping API POST URL (must end with /sync).
          * Default: https://api-sg.aliexpress.com/sync

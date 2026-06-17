@@ -20,6 +20,9 @@
             <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#sbidRuleModal">
                 <i class="fas fa-sliders-h me-1"></i>SBID Rule
             </button>
+            <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#dilRuleModal">
+                <i class="fas fa-tint me-1"></i>Dil Rule
+            </button>
             <button class="btn btn-sm btn-warning text-dark" id="push-sbid-btn" title="Run ebay:update-suggestedbid now">
                 <i class="fas fa-cloud-upload-alt me-1"></i>Push SBID
             </button>
@@ -135,7 +138,7 @@
                             <th style="width:40px;">#</th>
                             <th>Label</th>
                             <th>Color</th>
-                            <th>SCVR ≤ (%)</th>
+                            <th>CVR ≤ (%)</th>
                             <th>Bid (%)</th>
                         </tr>
                     </thead>
@@ -147,6 +150,8 @@
                 <div class="alert alert-info small py-2 mb-0">
                     <i class="fas fa-info-circle me-1"></i>
                     Set SCVR Max to <code>9999</code> for the last band (catches everything above previous threshold).
+                    Tick <strong>Dynamic by metric</strong> on any band (e.g. Pink) to decide its bid from
+                    Price / L30 Sold / Views / SCVR tiers instead of a single flat bid.
                     Changes apply next time <strong>ebay:update-suggestedbid</strong> runs.
                 </div>
                 <p class="small text-danger mb-0 mt-2 d-none" id="sbid-rule-err"></p>
@@ -154,6 +159,59 @@
             <div class="modal-footer py-2">
                 <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                 <button type="button" class="btn btn-sm btn-primary" id="sbid-rule-save-btn">
+                    <i class="fas fa-save me-1"></i>Save Rule
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- Dilution Rule Modal --}}
+<div class="modal fade" id="dilRuleModal" tabindex="-1" aria-labelledby="dilRuleModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title" id="dilRuleModalLabel">
+                    <i class="fas fa-tint me-2 text-danger"></i>eBay Dilution Rule — DIL % → Color
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted mb-3">
+                    Bands evaluated <strong>top to bottom</strong> — first match wins.
+                    <code>DIL = (L30 sold / Inventory) × 100</code>. Each band sets a color and a bid.
+                </p>
+
+                <table class="table table-sm table-bordered align-middle" id="dil-rule-table">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:40px;">#</th>
+                            <th>Label</th>
+                            <th>Color</th>
+                            <th>DIL ≤ (%)</th>
+                            <th>Bid (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dil-bands-body">
+                        {{-- filled by JS --}}
+                    </tbody>
+                </table>
+
+                <button type="button" class="btn btn-sm btn-outline-primary py-0 mb-2" id="dil-add-band-btn">
+                    <i class="fas fa-plus me-1"></i>Add band
+                </button>
+
+                <div class="alert alert-info small py-2 mb-0">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Set DIL Max to <code>9999</code> for the last band (catches everything above the previous threshold).
+                    <strong>Push logic:</strong> if a listing's SCVR <em>or</em> DIL lands in its <strong>Pink (catch-all)</strong>
+                    band, the Pink bid (e.g. 2.1%) is pushed; otherwise the SCVR rule's bid is used.
+                </div>
+                <p class="small text-danger mb-0 mt-2 d-none" id="dil-rule-err"></p>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-sm btn-primary" id="dil-rule-save-btn">
                     <i class="fas fa-save me-1"></i>Save Rule
                 </button>
             </div>
@@ -265,6 +323,23 @@ $(document).ready(function () {
                 }
             },
             {
+                title: 'Dil', field: 'shopify_qty', width: 80, hozAlign: 'center', frozen: true,
+                headerTooltip: 'Dilution = (L30 sold / Inventory) × 100. Colors from the Dil Rule.',
+                sorter: function(a, b, aRow, bRow) {
+                    return dilValue(aRow.getData()) - dilValue(bRow.getData());
+                },
+                formatter: function(cell) {
+                    const row = cell.getRow().getData();
+                    const inv = parseFloat(row.shopify_inv) || 0;
+                    const l30 = parseFloat(row.shopify_qty)  || 0;
+                    if (inv === 0) {
+                        return `<span style="color:${getDilColor(0)}; font-weight:600;">0%</span>`;
+                    }
+                    const dil = (l30 / inv) * 100;
+                    return `<span style="color:${getDilColor(dil)}; font-weight:600;">${Math.round(dil)}%</span>`;
+                }
+            },
+            {
                 title: 'Listing ID', field: 'listing_id', width: 140,
                 formatter: function(cell) {
                     const v       = cell.getValue();
@@ -340,20 +415,13 @@ $(document).ready(function () {
             },
             {
                 title: 'S Bid', field: 'ebay_l30', width: 110, hozAlign: 'center',
-                headerTooltip: 'Suggested bid based on SCVR + current rule. No SBID when CVR = 0 (no L30 sales).',
+                headerTooltip: 'Suggested bid: if SCVR or DIL is Pink → Pink bid; else SCVR rule. No SBID when CVR = 0 and DIL not Pink.',
                 sorter: function(a, b, aRow, bRow) {
-                    const aViews = parseFloat(aRow.getData().views) || 0;
-                    const bViews = parseFloat(bRow.getData().views) || 0;
-                    const aScvr  = aViews > 0 ? (parseFloat(a) / aViews) * 100 : 0;
-                    const bScvr  = bViews > 0 ? (parseFloat(b) / bViews) * 100 : 0;
-                    return getBidFromRule(aScvr).bid - getBidFromRule(bScvr).bid;
+                    return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                 },
                 formatter: function(cell) {
                     const row   = cell.getRow().getData();
-                    const sold  = parseFloat(row.ebay_l30) || 0;
-                    const views = parseFloat(row.views)    || 0;
-                    const scvr  = views > 0 ? (sold / views) * 100 : 0;
-                    const match = getBidFromRule(scvr);
+                    const match = getCombinedSbid(row);
                     if (match.skip) {
                         return `<span class="text-muted" title="No SBID — 0 CVR (no L30 sales)" style="font-size:11px;">— no sbid</span>`;
                     }
@@ -574,20 +642,44 @@ document.getElementById('push-selected-btn').addEventListener('click', function(
 
 // ── SBID Rule helper — used by S Bid column ────────
 // Skip SBID entirely when CVR = 0 (no signal: zero sales in L30 means we don't know what to bid)
-function getBidFromRule(scvr) {
+// `row` (optional) carries metric values so a matched band can resolve a dynamic sub-rule.
+function getBidFromRule(scvr, row) {
     const s = parseFloat(scvr);
     if (!isFinite(s) || s <= 0) {
         return { bid: 0, color: '#6c757d', skip: true };
     }
     const bands = currentRule.bands || [];
+    const ctx = {
+        scvr:       s,
+        ebay_price: parseFloat(row && row.metric_price) || 0,
+        ebay_l30:   parseFloat(row && row.ebay_l30)     || 0,
+        views:      parseFloat(row && row.views)        || 0,
+    };
     for (let i = 0; i < bands.length; i++) {
         if (s <= parseFloat(bands[i].scvr_max)) {
-            return { bid: parseFloat(bands[i].bid), color: bands[i].color || '#333', skip: false };
+            return resolveBandBid(bands[i], ctx);
         }
     }
     // fallback: last band
     const last = bands[bands.length - 1] || { bid: 2.1, color: '#e83e8c' };
-    return { bid: parseFloat(last.bid), color: last.color, skip: false };
+    return resolveBandBid(last, ctx);
+}
+
+// Resolve a band's bid — uses its dynamic sub-rule (by metric) when present.
+function resolveBandBid(band, ctx) {
+    const color = band.color || '#333';
+    const sub   = band.sub;
+    if (sub && sub.metric && Array.isArray(sub.bands) && sub.bands.length) {
+        const val = parseFloat(ctx[sub.metric]) || 0;
+        for (let j = 0; j < sub.bands.length; j++) {
+            if (val <= parseFloat(sub.bands[j].max)) {
+                return { bid: parseFloat(sub.bands[j].bid), color: color, skip: false };
+            }
+        }
+        const ls = sub.bands[sub.bands.length - 1];
+        return { bid: parseFloat(ls.bid), color: color, skip: false };
+    }
+    return { bid: parseFloat(band.bid), color: color, skip: false };
 }
 
 // ── SBID Rule ──────────────────────────────────────
@@ -596,11 +688,20 @@ const ruleSaveUrl = '/ebay/campaign-ads/rule';
 const pushSbidUrl = '/ebay/campaign-ads/push-sbid';
 let currentRule = @json($sbidRule ?? ['bands' => []]);
 
+// Metric options available for a band's dynamic sub-rule
+const SUB_METRICS = {
+    scvr:       { label: 'SCVR %',   unit: '%', step: '0.1' },
+    ebay_price: { label: 'Price $',  unit: '$', step: '0.01' },
+    ebay_l30:   { label: 'L30 Sold', unit: '',  step: '1' },
+    views:      { label: 'Views',    unit: '',  step: '1' },
+};
+
 function renderRuleBands(bands) {
     const tbody = document.getElementById('sbid-bands-body');
     tbody.innerHTML = '';
     bands.forEach(function(band, i) {
-        const isLast = (parseFloat(band.scvr_max) >= 9999);
+        const isLast  = (parseFloat(band.scvr_max) >= 9999);
+        const hasSub  = !!(band.sub && band.sub.metric);
         tbody.innerHTML += `
         <tr>
             <td class="text-center text-muted small">${i+1}</td>
@@ -623,14 +724,92 @@ function renderRuleBands(bands) {
             <td>
                 <div class="input-group input-group-sm">
                     <input type="number" step="0.1" min="0" max="100" class="form-control form-control-sm fw-semibold"
-                           value="${band.bid}" data-idx="${i}" data-field="bid"
+                           value="${band.bid}" data-idx="${i}" data-field="bid" ${hasSub ? 'disabled' : ''}
                            style="color:${band.color || '#333'}; font-weight:600;"
                            onchange="updateBand(this)">
                     <span class="input-group-text">%</span>
                 </div>
+                <div class="form-check form-check-inline mt-1">
+                    <input class="form-check-input" type="checkbox" id="sub-toggle-${i}" ${hasSub ? 'checked' : ''}
+                           onchange="toggleSub(${i}, this.checked)">
+                    <label class="form-check-label small text-muted" for="sub-toggle-${i}">Dynamic by metric</label>
+                </div>
+            </td>
+        </tr>
+        ${hasSub ? renderSubEditor(band, i) : ''}`;
+    });
+}
+
+// Renders the dynamic sub-rule editor row for a band (used for Pink / any band).
+function renderSubEditor(band, i) {
+    const sub    = band.sub || { metric: 'ebay_price', bands: [] };
+    const metric = sub.metric || 'ebay_price';
+    const unit   = (SUB_METRICS[metric] || {}).unit || '';
+    const step   = (SUB_METRICS[metric] || {}).step || '0.1';
+    const opts   = Object.keys(SUB_METRICS).map(function(k) {
+        return `<option value="${k}" ${k === metric ? 'selected' : ''}>${SUB_METRICS[k].label}</option>`;
+    }).join('');
+
+    const rows = (sub.bands || []).map(function(sb, j) {
+        const isLastSub = (parseFloat(sb.max) >= 9999);
+        return `
+        <tr>
+            <td class="text-center text-muted small">${j+1}</td>
+            <td>
+                ${isLastSub
+                    ? '<span class="text-muted small">∞ (catch-all)</span><input type="hidden" value="9999" data-idx="'+i+'" data-sub="max" data-j="'+j+'">'
+                    : `<div class="input-group input-group-sm">
+                           <input type="number" step="${step}" min="0" class="form-control form-control-sm"
+                                  value="${sb.max}" data-idx="${i}" data-sub="max" data-j="${j}" onchange="updateSubBand(this)">
+                           <span class="input-group-text">${unit || '≤'}</span>
+                       </div>`
+                }
+            </td>
+            <td>
+                <div class="input-group input-group-sm">
+                    <input type="number" step="0.1" min="0" max="100" class="form-control form-control-sm fw-semibold"
+                           value="${sb.bid}" data-idx="${i}" data-sub="bid" data-j="${j}" onchange="updateSubBand(this)">
+                    <span class="input-group-text">%</span>
+                </div>
+            </td>
+            <td class="text-center">
+                <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" onclick="removeSubBand(${i}, ${j})"
+                        title="Remove tier">&times;</button>
             </td>
         </tr>`;
-    });
+    }).join('');
+
+    return `
+    <tr class="sub-rule-row">
+        <td></td>
+        <td colspan="4" class="bg-light">
+            <div class="border rounded p-2">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="small fw-semibold text-secondary">
+                        <i class="fas fa-layer-group me-1"></i>${band.label || 'Band'} — bid by
+                    </span>
+                    <select class="form-select form-select-sm" style="width:auto;"
+                            data-idx="${i}" onchange="updateSubMetric(${i}, this.value)">${opts}</select>
+                    <span class="small text-muted">tiers (top to bottom — first match wins)</span>
+                </div>
+                <table class="table table-sm table-bordered align-middle mb-2">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:40px;">#</th>
+                            <th>${(SUB_METRICS[metric] || {}).label || 'Value'} ≤</th>
+                            <th>Bid (%)</th>
+                            <th style="width:50px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+                <button type="button" class="btn btn-sm btn-outline-primary py-0" onclick="addSubBand(${i})">
+                    <i class="fas fa-plus me-1"></i>Add tier
+                </button>
+                <span class="small text-muted ms-2">Set the last tier's value to <code>9999</code> as the catch-all.</span>
+            </div>
+        </td>
+    </tr>`;
 }
 
 function updateBand(el) {
@@ -642,6 +821,51 @@ function updateBand(el) {
     if (field === 'color') {
         el.closest('tr').querySelector('.badge').style.background = el.value;
     }
+}
+
+// Enable/disable a band's dynamic sub-rule
+function toggleSub(idx, enabled) {
+    if (enabled) {
+        currentRule.bands[idx].sub = {
+            metric: 'ebay_price',
+            bands: [
+                { max: 9999, bid: parseFloat(currentRule.bands[idx].bid) || 2.1 }
+            ]
+        };
+    } else {
+        delete currentRule.bands[idx].sub;
+    }
+    renderRuleBands(currentRule.bands);
+}
+
+function updateSubMetric(idx, metric) {
+    if (!currentRule.bands[idx].sub) return;
+    currentRule.bands[idx].sub.metric = metric;
+    renderRuleBands(currentRule.bands);
+}
+
+function updateSubBand(el) {
+    const idx   = parseInt(el.dataset.idx);
+    const j     = parseInt(el.dataset.j);
+    const field = el.dataset.sub; // 'max' | 'bid'
+    currentRule.bands[idx].sub.bands[j][field] = parseFloat(el.value);
+}
+
+function addSubBand(idx) {
+    if (!currentRule.bands[idx].sub) return;
+    const sb = currentRule.bands[idx].sub.bands;
+    // Insert before a trailing 9999 catch-all if present, else append
+    const lastIsCatch = sb.length && parseFloat(sb[sb.length - 1].max) >= 9999;
+    const newTier = { max: 0, bid: parseFloat(currentRule.bands[idx].bid) || 2.1 };
+    if (lastIsCatch) sb.splice(sb.length - 1, 0, newTier);
+    else sb.push(newTier);
+    renderRuleBands(currentRule.bands);
+}
+
+function removeSubBand(idx, j) {
+    if (!currentRule.bands[idx].sub) return;
+    currentRule.bands[idx].sub.bands.splice(j, 1);
+    renderRuleBands(currentRule.bands);
 }
 
 // Load rule when modal opens
@@ -707,6 +931,169 @@ document.getElementById('push-sbid-btn').addEventListener('click', function() {
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i>Push SBID';
             alert('Error: ' + (xhr.responseJSON?.error || xhr.responseText));
+        }
+    });
+});
+
+// ── Dilution Rule ───────────────────────────────────
+// DIL = (L30 sold / Inventory) × 100. Bands evaluated top-to-bottom, first DIL ≤ max wins.
+const dilGetUrl  = '/ebay/campaign-ads/dil-rule';
+const dilSaveUrl = '/ebay/campaign-ads/dil-rule';
+let currentDilRule = @json($dilRule ?? ['bands' => []]);
+
+// DIL value for a row (0 when inventory is 0 — treated as the lowest/worst band)
+function dilValue(row) {
+    const inv = parseFloat(row && row.shopify_inv) || 0;
+    const l30 = parseFloat(row && row.shopify_qty)  || 0;
+    return inv > 0 ? (l30 / inv) * 100 : 0;
+}
+
+// Color for a DIL% from the dynamic dilution rule
+function getDilColor(dil) {
+    const d = parseFloat(dil);
+    const bands = currentDilRule.bands || [];
+    for (let i = 0; i < bands.length; i++) {
+        if (d <= parseFloat(bands[i].dil_max)) {
+            return bands[i].color || '#333';
+        }
+    }
+    const last = bands[bands.length - 1];
+    return last ? (last.color || '#333') : '#e83e8c';
+}
+
+// True when value falls in the last (Pink / catch-all) band
+function isPinkBand(value, bands) {
+    const n = (bands || []).length;
+    if (!n) return false;
+    for (let i = 0; i < n; i++) {
+        const max = parseFloat(bands[i].scvr_max != null ? bands[i].scvr_max : bands[i].dil_max);
+        if (value <= max) return i === n - 1;
+    }
+    return true;
+}
+
+function pinkBidOf(bands) {
+    const last = (bands || [])[(bands || []).length - 1] || { bid: 2.1, color: '#e83e8c' };
+    return { bid: parseFloat(last.bid), color: last.color || '#e83e8c' };
+}
+
+// Combined S Bid for the column — mirrors the command:
+// if SCVR or DIL is Pink → push the Pink bid; else normal SCVR rule (skip when 0).
+function getCombinedSbid(row) {
+    const sold  = parseFloat(row.ebay_l30) || 0;
+    const views = parseFloat(row.views)    || 0;
+    const scvr  = views > 0 ? (sold / views) * 100 : 0;
+    const dil   = dilValue(row);
+
+    if (isPinkBand(dil, currentDilRule.bands || [])) {
+        const b = pinkBidOf(currentDilRule.bands);
+        return { bid: b.bid, color: b.color, skip: false };
+    }
+    if (isPinkBand(scvr, currentRule.bands || [])) {
+        const b = pinkBidOf(currentRule.bands);
+        return { bid: b.bid, color: b.color, skip: false };
+    }
+    return getBidFromRule(scvr, row);
+}
+
+function renderDilBands(bands) {
+    const tbody = document.getElementById('dil-bands-body');
+    tbody.innerHTML = '';
+    bands.forEach(function(band, i) {
+        const isLast = (parseFloat(band.dil_max) >= 9999);
+        tbody.innerHTML += `
+        <tr>
+            <td class="text-center text-muted small">${i+1}</td>
+            <td><input type="text" class="form-control form-control-sm" value="${band.label || ''}"
+                       data-idx="${i}" data-field="label" onchange="updateDilBand(this)"></td>
+            <td>
+                <div class="d-flex align-items-center gap-2">
+                    <input type="color" class="form-control form-control-color form-control-sm" style="width:40px;height:31px;"
+                           value="${band.color || '#6c757d'}" data-idx="${i}" data-field="color" onchange="updateDilBand(this)">
+                    <span class="badge" style="background:${band.color || '#6c757d'};">${band.label || ''}</span>
+                </div>
+            </td>
+            <td>
+                ${isLast
+                    ? '<span class="text-muted small">∞ (catch-all)</span><input type="hidden" value="9999" data-idx="'+i+'" data-field="dil_max">'
+                    : `<input type="number" step="0.01" min="0" class="form-control form-control-sm" value="${band.dil_max}"
+                              data-idx="${i}" data-field="dil_max" onchange="updateDilBand(this)">`
+                }
+            </td>
+            <td>
+                <div class="input-group input-group-sm">
+                    <input type="number" step="0.1" min="0" max="100" class="form-control form-control-sm fw-semibold"
+                           value="${band.bid != null ? band.bid : ''}" data-idx="${i}" data-field="bid"
+                           style="color:${band.color || '#333'}; font-weight:600;" onchange="updateDilBand(this)">
+                    <span class="input-group-text">%</span>
+                    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" onclick="removeDilBand(${i})"
+                            title="Remove band">&times;</button>
+                </div>
+            </td>
+        </tr>`;
+    });
+}
+
+function updateDilBand(el) {
+    const idx   = parseInt(el.dataset.idx);
+    const field = el.dataset.field;
+    currentDilRule.bands[idx][field] = (field === 'dil_max' || field === 'bid') ? parseFloat(el.value) : el.value;
+    if (field === 'color') {
+        el.closest('tr').querySelector('.badge').style.background = el.value;
+    }
+}
+
+function removeDilBand(idx) {
+    currentDilRule.bands.splice(idx, 1);
+    renderDilBands(currentDilRule.bands);
+}
+
+document.getElementById('dil-add-band-btn').addEventListener('click', function() {
+    const bands = currentDilRule.bands;
+    const lastIsCatch = bands.length && parseFloat(bands[bands.length - 1].dil_max) >= 9999;
+    const newBand = { dil_max: 0, bid: 2.1, label: 'New', color: '#6c757d' };
+    if (lastIsCatch) bands.splice(bands.length - 1, 0, newBand);
+    else bands.push(newBand);
+    renderDilBands(bands);
+});
+
+// Load rule when modal opens
+document.getElementById('dilRuleModal').addEventListener('show.bs.modal', function() {
+    $.get(dilGetUrl, function(data) {
+        currentDilRule = data;
+        renderDilBands(data.bands || []);
+    });
+});
+
+// Save rule
+document.getElementById('dil-rule-save-btn').addEventListener('click', function() {
+    const errEl = document.getElementById('dil-rule-err');
+    errEl.classList.add('d-none');
+    const btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+
+    $.ajax({
+        url: dilSaveUrl,
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+        contentType: 'application/json',
+        data: JSON.stringify({ bands: currentDilRule.bands }),
+        success: function(resp) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
+            currentDilRule = resp.rule;
+            if (table) table.redraw(true);
+            setTimeout(() => {
+                btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
+                bootstrap.Modal.getInstance(document.getElementById('dilRuleModal')).hide();
+            }, 1200);
+        },
+        error: function(xhr) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
+            errEl.textContent = 'Error: ' + (xhr.responseJSON?.error || xhr.responseText);
+            errEl.classList.remove('d-none');
         }
     });
 });

@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use Carbon\Carbon;
+use App\Support\TaskBusinessTime;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -22,29 +22,43 @@ class MarkMissedAutomatedTasks extends Command
      *
      * @var string
      */
-    protected $description = 'Mark automated tasks as missed if they are past due date and not completed';
+    protected $description = 'Mark WEEKLY/MONTHLY automated tasks missed once their generated-time window elapses (weekly 144h, monthly 720h). Daily auto-tasks are handled by tasks:expire-daily-automated. Never touches normal tasks.';
 
     /**
      * Execute the console command.
+     *
+     * Only AUTO-GENERATED weekly/monthly instances are considered. A task becomes
+     * missed when now >= start_date (generated time) + window for its schedule_type.
+     * Daily auto-tasks are expired separately; normal/manual tasks are never affected.
      */
     public function handle()
     {
-        $this->info('Checking for missed automated tasks...');
+        $this->info('Checking for missed automated (weekly/monthly) tasks...');
         
         try {
-            $now = Carbon::now();
+            TaskBusinessTime::applyDatabaseSession();
+            $now = TaskBusinessTime::now();
             $marked = 0;
 
-            // Find and mark missed tasks in chunks
+            // Find and mark missed tasks in chunks.
+            // STRICT scope: only automated weekly/monthly instances (is_automate_task = 1).
             DB::table('tasks')
                 ->where('is_automate_task', 1)
                 ->where('is_missed', 0)
-                ->where('due_date', '<', $now)
+                ->whereNull('deleted_at')
+                ->whereNotNull('start_date')
+                ->whereRaw("LOWER(schedule_type) IN ('weekly', 'monthly')")
                 ->whereNotIn('status', ['Done', 'Archived', 'Missed'])
                 ->orderBy('id')
                 ->chunk(100, function ($tasks) use ($now, &$marked) {
                     foreach ($tasks as $task) {
                         try {
+                            // Missed only once the per-type window (from generated start time) has elapsed.
+                            $missedAt = TaskBusinessTime::missedAtFor($task->start_date, $task->schedule_type);
+                            if ($missedAt === null || $now->lt($missedAt)) {
+                                continue;
+                            }
+
                             // Update task as missed
                             DB::table('tasks')
                                 ->where('id', $task->id)
@@ -56,9 +70,9 @@ class MarkMissedAutomatedTasks extends Command
                                 ]);
 
                             $marked++;
-                            
-                            $daysLate = Carbon::parse($task->due_date)->diffInDays($now);
-                            $this->warn("✗ Marked as missed ({$daysLate} days late): {$task->title}");
+
+                            $hoursLate = $missedAt->diffInHours($now);
+                            $this->warn("✗ Marked as missed ({$task->schedule_type}, {$hoursLate}h past window): {$task->title}");
 
                         } catch (Exception $e) {
                             $this->error("Error marking task ID {$task->id}: {$e->getMessage()}");

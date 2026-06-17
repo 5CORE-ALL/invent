@@ -296,16 +296,14 @@
             vertical-align: top !important;
         }
         
-        /* Title cell multi-line support */
+        /* Title cell: single line, truncate with ellipsis (full text on hover via title attr) */
         .title-cell-content {
-            display: -webkit-box;
-            -webkit-line-clamp: 3;
-            -webkit-box-orient: vertical;
+            display: block;
+            white-space: nowrap !important;
             overflow: hidden;
-            word-wrap: break-word;
-            word-break: break-word;
+            text-overflow: ellipsis;
             line-height: 1.4;
-            max-height: 4.2em; /* 3 lines × 1.4 line-height */
+            max-width: 100%;
         }
 
         /* Status Badges */
@@ -1169,7 +1167,7 @@
             function getEtcMonthlyMultiplier(scheduleType) {
                 var normalized = String(scheduleType || '').trim().toLowerCase();
                 if (normalized === 'daily' || normalized === 'd') return 25;
-                if (normalized === 'weekly' || normalized === 'w') return 6;
+                if (normalized === 'weekly' || normalized === 'w') return 4;
                 if (normalized === 'monthly' || normalized === 'm') return 1;
                 return 0;
             }
@@ -1257,9 +1255,9 @@
                         row.getElement().style.backgroundColor = "#fffbea";
                     }
                 },
-                layout: "fitDataTable",
+                layout: "fitColumns",
                 pagination: true,
-                paginationSize: 25,
+                paginationSize: 50,
                 paginationSizeSelector: [10, 25, 50, 100],
                 responsiveLayout: false,
                 placeholder: "No Tasks Found",
@@ -1330,21 +1328,21 @@
                     });
                     
                     // TASK - Multi-line with word wrap (no alert icon)
+                    // Cap the column at 40% of the table width so longer titles wrap to the next line.
+                    var taskTableWidth = (document.getElementById('tasks-table') || {}).clientWidth || window.innerWidth || 1000;
+                    var taskColMaxWidth = Math.round(taskTableWidth * 0.4);
                     cols.push({
                         title: "TASK", 
                         field: "title", 
                         widthGrow: 3,
                         minWidth: 200,
-                        variableHeight: true, // Allow row height to expand
+                        maxWidth: taskColMaxWidth,
                         formatter: function(cell) {
-                            var rowData = cell.getRow().getData();
                             var title = cell.getValue() || '';
                             var htmlTitle = String(title).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-                            
-                            // Multi-line title display with word wrap (no alert icon)
-                            return '<div style="display: flex; align-items: flex-start; gap: 4px; padding: 4px 0;">' + 
-                                   '<div class="title-cell-content"><strong>' + htmlTitle + '</strong></div>' +
-                                   '</div>';
+
+                            // Single line, ellipsis when too long; full text shown on hover (title attribute).
+                            return '<div class="title-cell-content" title="' + htmlTitle + '"><strong>' + htmlTitle + '</strong></div>';
                         }
                     });
                     
@@ -1401,9 +1399,10 @@
                         title: "ETC",
                         headerTooltip: "Minutes per run. Sum of this column for visible rows ÷ 60 matches the ETC (H) stat (not ETC-M).",
                         field: "eta_time", 
-                        width: 72,
-                        minWidth: 56,
+                        width: 48,
+                        minWidth: 40,
                         widthGrow: 0,
+                        widthShrink: 0,
                         cssClass: "tasks-col-etcmin-compact",
                         headerClass: "tasks-col-etcmin-compact",
                         hozAlign: "center",
@@ -1420,9 +1419,9 @@
                     // ETC-M (ETC x frequency multiplier) — whole number
                     cols.push({
                         title: "ETC-M",
-                        headerTooltip: "ETC minutes × weight (Daily 25, Weekly 6, Monthly 1). Stat card ETC-M uses the same sum ÷ 60 (h).",
+                        headerTooltip: "ETC minutes × weight (Daily 25, Weekly 4, Monthly 1). Stat card ETC-M uses the same sum ÷ 60 (h).",
                         field: "etc_monthly",
-                        width: 110,
+                       
                         hozAlign: "center",
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
@@ -1708,7 +1707,7 @@
                     cols.push({
                         title: "FREQ", 
                         field: "schedule_type", 
-                        width: 80,
+                       
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue() || '-';

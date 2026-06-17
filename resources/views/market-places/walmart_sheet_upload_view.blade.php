@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Walmart Pricing', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Walmart - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -65,6 +65,11 @@
 
         .walmart-percent-value.pink {
             color: #e83e8c !important;
+            background: none !important;
+        }
+
+        .walmart-percent-value.purple {
+            color: #d63384 !important;
             background: none !important;
         }
 
@@ -308,14 +313,13 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Walmart Pricing',
-        'sub_title' => 'Walmart Pricing',
+        'page_title' => 'Walmart - Analytics',
+        'sub_title' => '',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Walmart Pricing</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Inventory Filter -->
                     <div>
@@ -346,14 +350,10 @@
                         <select id="cvr-filter" class="form-select form-select-sm" style="width: 120px;">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
-                            <option value="0.01-1">0.01-1%</option>
-                            <option value="1-2">1-2%</option>
-                            <option value="2-3">2-3%</option>
-                            <option value="3-4">3-4%</option>
-                            <option value="0-4">0-4%</option>
-                            <option value="4-7">4-7%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
                             <option value="7-13">7-13%</option>
-                            <option value="10plus">10%+</option>
+                            <option value="13plus">13%+</option>
                         </select>
                     </div>
 
@@ -417,6 +417,10 @@
                     <button id="increase-btn" class="btn btn-sm btn-success">
                         <i class="fas fa-arrow-up"></i> Increase Mode
                     </button>
+
+                    <button id="same-price-btn" class="btn btn-sm btn-info" title="Apply ONE price (entered in the box) to every selected SKU">
+                        <i class="fas fa-equals"></i> Same Price Mode
+                    </button>
                     
                     <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadPriceModal">
                         <i class="fa fa-dollar-sign"></i> Upload Price
@@ -469,12 +473,15 @@
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span id="selected-skus-count" class="badge bg-primary">0 SKUs selected</span>
+                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
+                        <span id="discount-type-select-wrap">
                         <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
                             <option value="percentage">Percentage</option>
                             <option value="dollar">Dollar</option>
                         </select>
+                        </span>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
                                placeholder="Enter %" style="width: 150px;" step="0.01" min="0">
                         <button id="apply-discount-btn" class="btn btn-sm btn-warning">
@@ -634,6 +641,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="walmartEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="walmartEditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="walmartSellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="walmartBuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="walmartSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -642,6 +678,7 @@
     let table = null;
     let decreaseModeActive = false;
     let increaseModeActive = false;
+    let samePriceModeActive = false;
     let selectedSkus = new Set();
     
     // Badge filter states
@@ -1090,6 +1127,59 @@
     }
 
     $(document).ready(function() {
+        // ---- Edit Links (Buyer / Seller) ----
+        let walmartEditLinksRow = null;
+        window.openWalmartEditLinksModal = function(row) {
+            walmartEditLinksRow = row;
+            const d = row.getData();
+            $('#walmartEditLinksSku').text(d.sku || '');
+            $('#walmartSellerLinkInput').val(d.seller_link || '');
+            $('#walmartBuyerLinkInput').val(d.buyer_link || '');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('walmartEditLinksModal')).show();
+        };
+
+        $('#walmartSaveLinksBtn').on('click', function() {
+            if (!walmartEditLinksRow) return;
+            const sku = walmartEditLinksRow.getData().sku;
+            const sellerLink = $('#walmartSellerLinkInput').val().trim();
+            const buyerLink = $('#walmartBuyerLinkInput').val().trim();
+            const $btn = $(this);
+            $btn.prop('disabled', true).text('Saving...');
+            $.ajax({
+                url: '/walmart-sheet-save-links',
+                method: 'POST',
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    sku: sku,
+                    seller_link: sellerLink,
+                    buyer_link: buyerLink
+                },
+                success: function(res) {
+                    if (res && res.success) {
+                        walmartEditLinksRow.update({
+                            seller_link: res.seller_link || '',
+                            buyer_link: res.buyer_link || ''
+                        }).then(function() {
+                            walmartEditLinksRow.reformat();
+                        }).catch(function() {
+                            walmartEditLinksRow.reformat();
+                        });
+                        showToast('Links saved successfully', 'success');
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById('walmartEditLinksModal')).hide();
+                    } else {
+                        showToast((res && res.message) || 'Failed to save links', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save links';
+                    showToast(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text('Save');
+                }
+            });
+        });
+
         // Initialize SKU-specific chart
         initSkuMetricsChart();
 
@@ -1118,57 +1208,105 @@
             $('#skuMetricsModal').modal('show');
         });
 
-        // Discount type dropdown change handler
-        $('#discount-type-select').on('change', function() {
-            const discountType = $(this).val();
+        // Mode button visual resets — keep each in their idle styling.
+        function resetDecreaseBtn() {
+            $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning')
+                .html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+        }
+        function resetIncreaseBtn() {
+            $('#increase-btn').removeClass('btn-danger').addClass('btn-success')
+                .html('<i class="fas fa-arrow-up"></i> Increase Mode');
+        }
+        function resetSamePriceBtn() {
+            $('#same-price-btn').removeClass('btn-danger').addClass('btn-info')
+                .html('<i class="fas fa-equals"></i> Same Price Mode');
+        }
+        // Swap the discount-input panel between %/$ and Same Price modes.
+        function syncDiscountInputUi() {
             const $input = $('#discount-percentage-input');
-            
-            if (discountType === 'percentage') {
-                $input.attr('placeholder', 'Enter %');
+            if (samePriceModeActive) {
+                $('#discount-type-select-wrap').hide();
+                $('#discount-input-label').removeClass('d-none');
+                $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
+                $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Same Price');
             } else {
-                $input.attr('placeholder', 'Enter $');
+                $('#discount-type-select-wrap').show();
+                $('#discount-input-label').addClass('d-none');
+                const t = $('#discount-type-select').val();
+                $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
+                $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply');
             }
-        });
+        }
+
+        // Discount type dropdown change handler
+        $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
 
         $('#decrease-btn').on('click', function() {
             decreaseModeActive = !decreaseModeActive;
             increaseModeActive = false;
+            samePriceModeActive = false;
             const selectColumn = table.getColumn('_select');
-            
+
+            resetIncreaseBtn();
+            resetSamePriceBtn();
             if (decreaseModeActive) {
                 selectColumn.show();
-                $(this).removeClass('btn-warning').addClass('btn-danger');
-                $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
-                $('#increase-btn').removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> Increase Mode');
+                $(this).removeClass('btn-warning').addClass('btn-danger')
+                    .html('<i class="fas fa-times"></i> Cancel Decrease');
             } else {
+                resetDecreaseBtn();
                 selectColumn.hide();
-                $(this).removeClass('btn-danger').addClass('btn-warning');
-                $(this).html('<i class="fas fa-arrow-down"></i> Decrease Mode');
                 selectedSkus.clear();
                 updateSelectedCount();
                 updateSelectAllCheckbox();
             }
+            syncDiscountInputUi();
         });
-        
+
         // Increase Mode Toggle
         $('#increase-btn').on('click', function() {
             increaseModeActive = !increaseModeActive;
             decreaseModeActive = false;
+            samePriceModeActive = false;
             const selectColumn = table.getColumn('_select');
-            
+
+            resetDecreaseBtn();
+            resetSamePriceBtn();
             if (increaseModeActive) {
                 selectColumn.show();
-                $(this).removeClass('btn-success').addClass('btn-danger');
-                $(this).html('<i class="fas fa-times"></i> Cancel Increase');
-                $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning').html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+                $(this).removeClass('btn-success').addClass('btn-danger')
+                    .html('<i class="fas fa-times"></i> Cancel Increase');
             } else {
+                resetIncreaseBtn();
                 selectColumn.hide();
                 selectedSkus.clear();
-                $(this).removeClass('btn-danger').addClass('btn-success');
-                $(this).html('<i class="fas fa-arrow-up"></i> Increase Mode');
                 updateSelectedCount();
                 updateSelectAllCheckbox();
             }
+            syncDiscountInputUi();
+        });
+
+        // Same Price Mode Toggle — entered price applies to ALL selected SKUs.
+        $('#same-price-btn').on('click', function() {
+            samePriceModeActive = !samePriceModeActive;
+            decreaseModeActive = false;
+            increaseModeActive = false;
+            const selectColumn = table.getColumn('_select');
+
+            resetDecreaseBtn();
+            resetIncreaseBtn();
+            if (samePriceModeActive) {
+                selectColumn.show();
+                $(this).removeClass('btn-info').addClass('btn-danger')
+                    .html('<i class="fas fa-equals"></i> Same Price ON');
+            } else {
+                resetSamePriceBtn();
+                selectColumn.hide();
+                selectedSkus.clear();
+                updateSelectedCount();
+                updateSelectAllCheckbox();
+            }
+            syncDiscountInputUi();
         });
 
         $(document).on('change', '#select-all-checkbox', function() {
@@ -1259,34 +1397,41 @@
         function applyDiscount() {
             const discountValue = parseFloat($('#discount-percentage-input').val());
             const discountType = $('#discount-type-select').val();
-            
-            if (isNaN(discountValue) || discountValue <= 0) {
-                showToast('Please enter a valid discount value', 'error');
+
+            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                showToast('Turn on Decrease, Increase, or Same Price mode first', 'error');
                 return;
             }
-
+            if (isNaN(discountValue) || discountValue <= 0) {
+                showToast(samePriceModeActive ? 'Please enter a price (e.g. 19.99)' : 'Please enter a valid discount value', 'error');
+                return;
+            }
             if (selectedSkus.size === 0) {
                 showToast('Please select at least one SKU', 'error');
                 return;
             }
 
             let updatedCount = 0;
-            
+
             // Loop through selected SKUs using the same approach as applySuggestAmazonPrice
             selectedSkus.forEach(sku => {
                 // Find the row using Tabulator's searchRows method
                 const rows = table.searchRows("sku", "=", sku);
-                
+
                 if (rows.length > 0) {
                     const row = rows[0]; // Get the first matching row
                     const rowData = row.getData();
                     // Use API Price for increase/decrease mode (from Walmart API)
                     const currentPrice = parseFloat(rowData['api_price']) || 0;
-                    
-                    if (currentPrice > 0) {
+
+                    // Same Price applies even when API Price is empty;
+                    // Decrease / Increase modes still need a positive API Price to compute.
+                    if (samePriceModeActive || currentPrice > 0) {
                         let newSPrice;
-                        
-                        if (discountType === 'percentage') {
+
+                        if (samePriceModeActive) {
+                            newSPrice = Math.max(0.99, discountValue);
+                        } else if (discountType === 'percentage') {
                             if (increaseModeActive) {
                                 newSPrice = currentPrice * (1 + discountValue / 100);
                             } else {
@@ -1299,24 +1444,26 @@
                                 newSPrice = currentPrice - discountValue;
                             }
                         }
-                        
+
                         // Apply retail price rounding (round to .99 endings)
                         newSPrice = roundToRetailPrice(newSPrice);
-                        
+
                         // Ensure minimum price
                         newSPrice = Math.max(0.99, newSPrice);
-                        
+
                         // Update only sprice (don't change w_price)
                         row.update({
                             sprice: newSPrice
                         });
-                        
+
                         updatedCount++;
                     }
                 }
             });
-            
-            showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s) based on API Price`, 'success');
+
+            const action = samePriceModeActive ? 'Same Price' : (increaseModeActive ? 'Increase' : 'Discount');
+            const suffix = samePriceModeActive ? '' : ' based on API Price';
+            showToast(`${action} applied to ${updatedCount} SKU(s)${suffix}`, 'success');
             $('#discount-percentage-input').val('');
         }
 
@@ -1764,10 +1911,11 @@
 
         const getRoiColor = (value) => {
             const percent = parseFloat(value);
-            if (percent < 50) return 'red';
-            if (percent >= 50 && percent < 75) return 'yellow';
-            if (percent >= 75 && percent <= 125) return 'green';
-            return 'pink';
+            if (isNaN(percent)) return 'red';
+            if (percent >= 125) return 'purple';
+            if (percent >= 75) return 'green';
+            if (percent >= 40) return 'yellow';
+            return 'red';
         };
 
         table = new Tabulator("#walmart-table", {
@@ -1796,6 +1944,35 @@
                         if (!sku) return '';
                         
                         return `${sku} <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
+                    }
+                },
+                {
+                    title: "Links",
+                    field: "links_column",
+                    width: 55,
+                    frozen: true,
+                    hozAlign: "center",
+                    headerSort: false,
+                    tooltip: "Double-click to add / edit links",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const buyerLink = rowData.buyer_link || '';
+                        const sellerLink = rowData.seller_link || '';
+                        let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
+                        if (sellerLink) {
+                            html += '<a href="' + sellerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';
+                        }
+                        if (buyerLink) {
+                            html += '<a href="' + buyerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>';
+                        }
+                        if (!sellerLink && !buyerLink) {
+                            html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                        }
+                        html += '</div>';
+                        return html;
+                    },
+                    cellDblClick: function(e, cell) {
+                        openWalmartEditLinksModal(cell.getRow());
                     }
                 },
                 {
@@ -2024,7 +2201,7 @@
                         else if (cvr <= 4) color = '#a00211'; // red
                         else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
                         else if (cvr > 7 && cvr <= 13) color = '#28a745'; // green
-                        else color = '#ff1493'; // pink (>10)
+                        else color = '#e83e8c'; // pink (>13)
                         
                         return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
                     },
@@ -2745,14 +2922,10 @@
                     const cvrPercent = views > 0 ? (wl30 / views) * 100 : 0;
                     
                     if (cvrFilter === '0-0') return cvrPercent === 0;
-                    if (cvrFilter === '0.01-1') return cvrPercent >= 0.01 && cvrPercent <= 1;
-                    if (cvrFilter === '1-2') return cvrPercent > 1 && cvrPercent <= 2;
-                    if (cvrFilter === '2-3') return cvrPercent > 2 && cvrPercent <= 3;
-                    if (cvrFilter === '3-4') return cvrPercent > 3 && cvrPercent <= 4;
-                    if (cvrFilter === '0-4') return cvrPercent >= 0 && cvrPercent <= 4;
-                    if (cvrFilter === '4-7') return cvrPercent > 4 && cvrPercent <= 7;
+                    if (cvrFilter === '0-3') return cvrPercent > 0 && cvrPercent <= 3;
+                    if (cvrFilter === '3-7') return cvrPercent > 3 && cvrPercent <= 7;
                     if (cvrFilter === '7-13') return cvrPercent > 7 && cvrPercent <= 13;
-                    if (cvrFilter === '10plus') return cvrPercent > 10;
+                    if (cvrFilter === '13plus') return cvrPercent > 13;
                     return true;
                 });
             }

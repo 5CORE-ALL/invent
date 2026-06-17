@@ -113,47 +113,32 @@ class FetchDobaDailyData extends Command
         $this->info("  Date range: {$beginTime} to {$endTime}");
 
         $pageNo = 1;
-        $pageSize = 100;
+        // Default page size kept conservative — Doba's upstream RPC throws
+        // "request is too large!" on bigger responses (saw 500s at pageSize=100, page 6).
+        $pageSize = 50;
+        $consecutiveFailures = 0;
+        $maxConsecutiveFailures = 5;
 
         do {
-            $this->info("  Fetching page {$pageNo}...");
+            $orders = $this->fetchOrdersPage($pageNo, $pageSize, $beginTime, $endTime);
 
-            // Generate fresh signature for each request
-            $timestamp = $this->getMillisecond();
-            $getContent = $this->getContent($timestamp);
-            $sign = $this->generateSignature($getContent);
+            if ($orders === null) {
+                // Treat as transient (HTTP 500 / "request is too large!" etc.).
+                // Don't break out — Doba's pagination is independent per page, so older
+                // pages can still succeed. Stop only if too many in a row fail.
+                $consecutiveFailures++;
+                $this->warn("  Page {$pageNo} failed ({$consecutiveFailures}/{$maxConsecutiveFailures} consecutive). Skipping.");
 
-            $response = Http::withHeaders([
-                'appKey' => config('services.doba.app_key'),
-                'signType' => 'rsa2',
-                'timestamp' => $timestamp,
-                'sign' => $sign,
-                'Content-Type' => 'application/json',
-            ])->post($this->baseUrl . '/seller/queryOrderDetail', [
-                'pageNo' => $pageNo,
-                'pageSize' => $pageSize,
-                'beginTime' => $beginTime,
-                'endTime' => $endTime,
-            ]);
+                if ($consecutiveFailures >= $maxConsecutiveFailures) {
+                    $this->error('  Too many consecutive failures, stopping Doba fetch.');
+                    break;
+                }
 
-            if (!$response->ok()) {
-                $this->error('HTTP Error: ' . $response->status() . ' - ' . $response->body());
-                Log::error('Doba HTTP Error', ['response' => $response->body()]);
-                break;
+                $pageNo++;
+                continue;
             }
 
-            $json = $response->json();
-
-            // Debug: Log raw response
-            $this->info("  API Response Code: " . ($json['responseCode'] ?? 'N/A'));
-
-            if (($json['responseCode'] ?? '') !== '000000') {
-                $this->error('API Error: ' . ($json['responseMessage'] ?? 'Unknown error'));
-                Log::error('Doba API Error', ['response' => $json]);
-                break;
-            }
-
-            $orders = $json['businessData'][0]['data'] ?? [];
+            $consecutiveFailures = 0;
 
             if (empty($orders)) {
                 $this->info("  No more orders found on page {$pageNo}.");
@@ -188,6 +173,92 @@ class FetchDobaDailyData extends Command
         }
 
         $this->info("Fetched {$totalOrders} total orders, stored {$totalItems} items.");
+    }
+
+    /**
+     * Fetch a single page of orders, retrying with a smaller pageSize when the
+     * upstream RPC rejects the response as "request is too large!".
+     *
+     * @return array<int, array<string, mixed>>|null  null = give up on this page after retries
+     */
+    protected function fetchOrdersPage(int $pageNo, int $pageSize, string $beginTime, string $endTime): ?array
+    {
+        $attempts = [$pageSize];
+        if ($pageSize > 25) {
+            $attempts[] = 25;
+        }
+        if ($pageSize > 10) {
+            $attempts[] = 10;
+        }
+
+        foreach ($attempts as $size) {
+            $timestamp = $this->getMillisecond();
+            $getContent = $this->getContent($timestamp);
+            $sign = $this->generateSignature($getContent);
+
+            $this->info("  Fetching page {$pageNo} (size {$size})...");
+
+            try {
+                $response = Http::timeout(60)->withHeaders([
+                    'appKey' => config('services.doba.app_key'),
+                    'signType' => 'rsa2',
+                    'timestamp' => $timestamp,
+                    'sign' => $sign,
+                    'Content-Type' => 'application/json',
+                ])->post($this->baseUrl . '/seller/queryOrderDetail', [
+                    'pageNo' => $pageNo,
+                    'pageSize' => $size,
+                    'beginTime' => $beginTime,
+                    'endTime' => $endTime,
+                ]);
+            } catch (\Throwable $e) {
+                $this->warn('  Doba HTTP exception: ' . $e->getMessage());
+                Log::warning('Doba HTTP exception', ['page' => $pageNo, 'size' => $size, 'message' => $e->getMessage()]);
+                continue;
+            }
+
+            $bodyPreview = mb_substr((string) $response->body(), 0, 400);
+
+            if (!$response->ok()) {
+                $this->warn("  HTTP {$response->status()} on page {$pageNo} (size {$size}). Preview: {$bodyPreview}");
+                Log::warning('Doba HTTP error', ['status' => $response->status(), 'page' => $pageNo, 'size' => $size, 'body' => $bodyPreview]);
+
+                // "request is too large!" => retry with smaller chunk
+                if (stripos((string) $response->body(), 'request is too large') !== false) {
+                    continue;
+                }
+                continue;
+            }
+
+            $json = $response->json();
+            $this->info("  API Response Code: " . ($json['responseCode'] ?? 'N/A'));
+
+            // Doba returns businessData as a numerically-indexed array on success
+            // (so [0]['data'] works) but as a flat object on error (businessStatus / businessMessage).
+            $businessData = $json['businessData'] ?? null;
+            $businessStatus = is_array($businessData)
+                ? ($businessData['businessStatus'] ?? $businessData[0]['businessStatus'] ?? null)
+                : null;
+            $businessMessage = is_array($businessData)
+                ? ($businessData['businessMessage'] ?? $businessData[0]['businessMessage'] ?? null)
+                : null;
+
+            if (($json['responseCode'] ?? '') !== '000000'
+                || ($businessStatus !== null && $businessStatus !== '000000')) {
+                $message = $businessMessage ?? $json['responseMessage'] ?? 'Unknown error';
+                $this->warn("  API error on page {$pageNo} (size {$size}): " . mb_substr((string) $message, 0, 300));
+                Log::warning('Doba API error', ['page' => $pageNo, 'size' => $size, 'message' => $message]);
+
+                if (stripos((string) $message, 'request is too large') !== false) {
+                    continue;
+                }
+                continue;
+            }
+
+            return $businessData[0]['data'] ?? [];
+        }
+
+        return null;
     }
 
     /**

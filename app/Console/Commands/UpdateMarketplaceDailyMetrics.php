@@ -6,7 +6,6 @@ use Illuminate\Console\Command;
 use App\Models\MarketplaceDailyMetric;
 use App\Models\EbayOrder;
 use App\Models\Ebay2Order;
-use App\Models\TemuDailyData;
 use App\Models\TemuAdData;
 use App\Models\TemuCampaignReport;
 use App\Models\Temu2DailyData;
@@ -29,6 +28,9 @@ use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\ChannelMaster;
 use App\Http\Controllers\Sales\AmazonSalesController;
+use App\Services\EbayChannelMetricsService;
+use App\Services\SheinShopifySalesService;
+use App\Services\TemuShopifySalesService;
 use App\Models\AmazonOrder;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\EbayPromotedListingReport;
@@ -290,15 +292,16 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateEbayMetrics($date)
     {
-        // Get L30 orders data
-        $orders = EbayOrder::with('items')
-            ->where('period', 'l30')
-            ->where('status', '!=', 'CANCELLED')
-            ->get();
+        // L30 from app:fetch-ebay-orders (period = l30, Pacific window) — same filter as Channel Master
+        $orders = EbayChannelMetricsService::applyActiveOrderFilter(
+            EbayOrder::with('items')->where('period', 'l30')
+        )->get();
 
         if ($orders->isEmpty()) {
             return null;
         }
+
+        $percentageDecimal = EbayChannelMetricsService::percentageDecimal(1);
 
         $productMasters = ProductMaster::all()->keyBy(function ($item) {
             return strtoupper($item->sku);
@@ -387,8 +390,8 @@ class UpdateMarketplaceDailyMetrics extends Command
                 $cogs = $lp * $quantity;
                 $totalCogs += $cogs;
 
-                // PFT Each = (unitPrice * 0.85) - lp - ship_cost
-                $pftEach = ($unitPrice * 0.85) - $lp - $shipCost;
+                // PFT Each = (unitPrice * channel %) - lp - ship_cost
+                $pftEach = ($unitPrice * $percentageDecimal) - $lp - $shipCost;
 
                 // T PFT = pft_each * quantity
                 $pft = $pftEach * $quantity;
@@ -471,10 +474,10 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateEbay2Metrics($date)
     {
-        // Get L30 orders data from ebay2_orders (same as Ebay2SalesController)
-        $orders = Ebay2Order::with('items')
-            ->where('period', 'l30')
-            ->get();
+        // L30 from app:fetch-ebay2-orders (period = l30) — same active-order filter as Channel Master
+        $orders = EbayChannelMetricsService::applyActiveOrderFilter(
+            Ebay2Order::with('items')->where('period', 'l30')
+        )->get();
 
         if ($orders->isEmpty()) {
             return null;
@@ -513,9 +516,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             }
         }
 
-        // Get marketplace percentage for eBay 2
-        // NOTE: Ebay2SalesController uses hardcoded 0.85, so we use the same for consistency
-        $percentageDecimal = 0.85;
+        $percentageDecimal = EbayChannelMetricsService::percentageDecimal(2);
 
         $totalOrders = 0;
         $totalQuantity = 0;
@@ -668,103 +669,19 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateEbay3Metrics($date)
     {
-        // Get L30 orders data from ebay3_daily_data
-        $orders = DB::table('ebay3_daily_data')->where('period', 'l30')->get();
-
-        if ($orders->isEmpty()) {
+        // L30 from ebay3:daily (period = l30) — shared with Channel Master (EbayChannelMetricsService)
+        $lines = EbayChannelMetricsService::summarizeEbay3L30Lines();
+        if ($lines === null) {
             return null;
         }
 
-        // Get unique SKUs from orders
-        $skus = $orders->pluck('sku')->filter()->unique()->toArray();
-
-        // Fetch ProductMaster data
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
-        // Get marketplace percentage for eBay 3 (85%)
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'EbayThree')->first();
-        $percentageDecimal = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.85;
-
-        $totalOrders = 0;
-        $totalQuantity = 0;
-        $totalRevenue = 0;
-        $totalCogs = 0;
-        $totalPft = 0;
-        $totalWeightedPrice = 0;
-        $totalQuantityForPrice = 0;
-
-        foreach ($orders as $order) {
-            $sku = strtoupper($order->sku ?? '');
-            if (empty($sku)) continue;
-
-            $totalOrders++;
-            $quantity = (int) ($order->quantity ?? 1);
-            // IMPORTANT: unit_price in ebay3_daily_data is the TOTAL line item cost (not per unit)
-            $lineItemTotal = (float) ($order->unit_price ?? 0);
-            $perUnitPrice = $quantity > 0 ? $lineItemTotal / $quantity : 0;
-            
-            $totalQuantity += $quantity;
-            $totalRevenue += $lineItemTotal; // Already the total, don't multiply by quantity
-
-            if ($quantity > 0 && $perUnitPrice > 0) {
-                $totalWeightedPrice += $perUnitPrice * $quantity;
-                $totalQuantityForPrice += $quantity;
-            }
-
-            // Get LP, Ship and Weight Act from ProductMaster
-            $lp = 0;
-            $ship = 0;
-            $weightAct = 0;
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                
-                // Get LP
-                foreach ($values as $k => $v) {
-                    if (strtolower($k) === "lp") {
-                        $lp = floatval($v);
-                        break;
-                    }
-                }
-                if ($lp === 0 && isset($pm->lp)) {
-                    $lp = floatval($pm->lp);
-                }
-                
-                // Get Ship
-                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? floatval($pm->ship) : 0);
-                
-                // Get Weight Act
-                if (isset($values['wt_act'])) {
-                    $weightAct = floatval($values['wt_act']);
-                }
-            }
-
-            // T Weight = Weight Act * Quantity
-            $tWeight = $weightAct * $quantity;
-
-            // Ship Cost calculation (same as Ebay3SalesController)
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
-
-            // COGS = LP * quantity
-            $cogs = $lp * $quantity;
-            $totalCogs += $cogs;
-
-            // PFT Each = (per_unit_price * 0.85) - lp - ship_cost
-            $pftEach = ($perUnitPrice * $percentageDecimal) - $lp - $shipCost;
-
-            // T PFT = pft_each * quantity
-            $pft = $pftEach * $quantity;
-            $totalPft += $pft;
-        }
+        $totalOrders = $lines['total_orders'];
+        $totalQuantity = $lines['total_quantity'];
+        $totalRevenue = $lines['total_revenue'];
+        $totalCogs = $lines['total_cogs'];
+        $totalPft = $lines['total_pft'];
+        $totalWeightedPrice = $lines['total_weighted_price'];
+        $totalQuantityForPrice = $lines['total_quantity_for_price'];
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
         $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
@@ -840,185 +757,45 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateTemuMetrics($date)
     {
-        // Normalize SKU for matching (same as TemuController / temu-decrease)
-        $normalizeSku = function ($sku) {
-            $sku = strtoupper(trim((string) $sku));
-            $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
-            $sku = preg_replace('/\s+/', ' ', $sku);
-            return $sku;
-        };
+        // Source: temu_orders table (Temu API order-wise data), last 30 days.
+        $start = Carbon::now()->subDays(30)->startOfDay();
+        $end = Carbon::now()->endOfDay();
+        $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
 
-        // Get ProductMaster SKUs (excluding PARENT) - same universe as temu-tabulator
-        $productMasterSkus = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy('sku', 'asc')
-            ->pluck('sku')
-            ->filter(function ($sku) {
-                return stripos($sku, 'PARENT') === false;
-            })
-            ->unique()
-            ->values()
-            ->all();
-
-        // Normalized PM SKU set + no-space fallback map — MUST mirror temu-tabulator's
-        // salesSummary loop in TemuController::buildTemuDecreaseDataResponse, otherwise the
-        // L30 total on /all-marketplace-master drifts from the badge on /temu-tabulator.
-        $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
-            return [$normalizeSku($s) => true];
-        })->all();
-        $noSpaceToNormalized = [];
-        foreach (array_keys($normalizedPmSet) as $nk) {
-            $noSpace = str_replace(' ', '', $nk);
-            if ($noSpace !== '') {
-                $noSpaceToNormalized[$noSpace] = $nk;
-            }
-        }
-
-        // Pull every Temu daily row and filter in-PHP using the same two-tier match
-        // (normalized exact, then no-space fallback) the tabulator uses. We can't use
-        // the previous whereIn() pre-filter because it dropped rows that only matched
-        // via the no-space fallback (≈$400 / 5 orders missing on Temu as of 2026-05-23).
-        $data = TemuDailyData::all();
-
-        if ($data->isEmpty()) {
+        if ($m['sales'] <= 0 && $m['qty'] <= 0) {
             return null;
         }
 
-        // Get ProductMaster keyed by normalized SKU (so order contribution_sku matches PM sku)
-        $allPms = ProductMaster::all();
-        $productMastersBySku = $allPms->keyBy('sku');
-        $productMastersByNormalized = $allPms->keyBy(function ($pm) use ($normalizeSku) {
-            return $normalizeSku($pm->sku ?? '');
-        });
-        $productMastersByNoSpace = $allPms->keyBy(function ($pm) use ($normalizeSku) {
-            return str_replace(' ', '', $normalizeSku($pm->sku ?? ''));
-        });
-
-        // Read Temu margin from marketplace_percentages (fallback 0.96)
-        $mp = MarketplacePercentage::where('marketplace', 'Temu')->first();
-        $percentage = $mp && $mp->percentage ? ($mp->percentage / 100) : 0.96;
-
-        $totalOrders = 0;
-        $totalQuantity = 0;
-        $totalRevenue = 0;
-        $totalL30Sales = 0;
-        $totalCogs = 0;
-        $totalPft = 0;
-        $totalWeightedPrice = 0;
-        $totalQuantityForPrice = 0;
-
-        foreach ($data as $row) {
-            // Skip rows with empty SKU or order_id (match temu-tabulator logic)
-            $rawSku  = trim((string) ($row->contribution_sku ?? ''));
-            $orderId = trim((string) ($row->order_id ?? ''));
-            if ($rawSku === '' || $orderId === '') {
-                continue;
-            }
-
-            // Match this order row to the ProductMaster universe exactly the way the
-            // temu-tabulator badge does: normalized → no-space fallback. Skip otherwise.
-            $normalizedRowSku        = $normalizeSku($rawSku);
-            $normalizedRowSkuNoSpace = str_replace(' ', '', $normalizedRowSku);
-            if (!isset($normalizedPmSet[$normalizedRowSku])
-                && !isset($noSpaceToNormalized[$normalizedRowSkuNoSpace])) {
-                continue;
-            }
-
-            // Look up ProductMaster (same three-tier strategy as the SKU match above)
-            $pm = $productMastersBySku[$rawSku]
-                ?? $productMastersByNormalized[$normalizedRowSku]
-                ?? $productMastersByNoSpace[$normalizedRowSkuNoSpace]
-                ?? null;
-
-            $totalOrders++;
-            $quantity  = (int)   ($row->quantity_purchased ?? 0);
-            $basePrice = (float) ($row->base_price_total ?? 0);
-
-            $totalQuantity += $quantity;
-
-            $total   = $basePrice * $quantity;
-            $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
-
-            // Revenue / L30 Sales: include every matched row (no hasSales gate). This is
-            // the value rendered as "Sales" on /all-marketplace-master and must agree
-            // with /temu-tabulator's sales summary card.
-            $totalRevenue  += $fbPrice * $quantity;
-            $totalL30Sales += $fbPrice * $quantity;
-
-            if ($quantity > 0 && $basePrice > 0) {
-                $totalWeightedPrice += $basePrice * $quantity;
-                $totalQuantityForPrice += $quantity;
-            }
-
-            // Get LP and temu_ship from ProductMaster (already fetched above as $pm)
-            $lp = 0;
-            $temuShip = 0;
-
-            if ($pm) {
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                foreach ($values as $k => $v) {
-                    if (strtolower($k) === "lp") {
-                        $lp = floatval($v);
-                        break;
-                    }
-                }
-                if ($lp === 0 && isset($pm->lp)) {
-                    $lp = floatval($pm->lp);
-                }
-                if (isset($values['temu_ship'])) {
-                    $temuShip = floatval($values['temu_ship']);
-                } elseif (isset($pm->temu_ship)) {
-                    $temuShip = floatval($pm->temu_ship);
-                }
-            }
-
-            // PFT/COGS only accumulate on rows with real qty + price (price=0 would
-            // divide by zero in the per-row PFT% calculation below).
-            if ($quantity > 0 && $basePrice > 0) {
-                // PFT % = (price * Temu margin - lp - temuship) / price; dollar = pft * price * quantity (price = FB Prc)
-                $pftDecimal = $fbPrice > 0 ? ($fbPrice * $percentage - $lp - $temuShip) / $fbPrice : 0;
-                $totalPft  += $pftDecimal * $fbPrice * $quantity;
-                $totalCogs += $lp * $quantity;
-            }
-        }
-
-        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
-        // PFT % = (Total PFT / L30 Sales) * 100 — same as temu tabulator (price * margin - lp - temuship) / price
+        $totalL30Sales = $m['sales'];
+        $totalPft = $m['pft'];
+        $totalCogs = $m['cogs'];
         $pftPercentage = $totalL30Sales > 0 ? ($totalPft / $totalL30Sales) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
-        // Calculate Temu Ad Spend (from temu_campaign_reports table, L30)
-        // Match the logic used in getTemuDecreaseData and fetchAdMetricsFromTables
         $temuSpent = TemuCampaignReport::where('report_range', 'L30')
             ->selectRaw('SUM(spend) as total_spend')
             ->value('total_spend') ?? 0;
 
-        // Calculate TACOS %: (Temu Spent / Total Sales) * 100
         $tacosPercentage = $totalL30Sales > 0 ? ($temuSpent / $totalL30Sales) * 100 : 0;
-
-        // Calculate N PFT: GPFT % - TACOS %
         $nPftPercentage = $pftPercentage - $tacosPercentage;
-
-        // Calculate N ROI: (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
         $netProfit = $totalPft - $temuSpent;
         $nRoiPercentage = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
 
         return [
-            'total_orders' => $totalOrders,
-            'total_quantity' => $totalQuantity,
-            'total_revenue' => $totalRevenue,
+            'total_orders' => $m['orders'],
+            'total_quantity' => $m['qty'],
+            'total_revenue' => $totalL30Sales,
             'total_sales' => $totalL30Sales,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
             'pft_percentage' => $pftPercentage,
             'roi_percentage' => $roiPercentage,
-            'avg_price' => $avgPrice,
+            'avg_price' => $m['qty'] > 0 ? round($totalL30Sales / $m['qty'], 2) : 0,
             'l30_sales' => $totalL30Sales,
-            'kw_spent' => round($temuSpent, 2), // Store Temu ad spend in kw_spent field
-            'pmt_spent' => 0, // Temu doesn't have separate PMT
+            'kw_spent' => round($temuSpent, 2),
+            'pmt_spent' => 0,
             'tacos_percentage' => round($tacosPercentage, 1),
-            'ads_percentage' => round($tacosPercentage, 1), // Add ads_percentage for Temu (same as TACOS)
+            'ads_percentage' => round($tacosPercentage, 1),
             'n_pft' => round($nPftPercentage, 1),
             'n_roi' => round($nRoiPercentage, 1),
         ];
@@ -1300,117 +1077,32 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateSheinMetrics($date)
     {
-        // Get Shein daily data
-        $data = SheinDailyData::all();
+        // L30 from Shopify Sen Shp (same source as /shein-tabulator).
+        // Previous logic read app/uploads-only shein_daily_data which no longer reflects live sales.
+        [$start, $end] = SheinShopifySalesService::tabulatorL30Window();
+        $summary = SheinShopifySalesService::computeChannelSummary($start, $end);
 
-        if ($data->isEmpty()) {
+        if ($summary['total_orders'] === 0 && $summary['total_sales'] <= 0.00001) {
             return null;
         }
 
-        $pctRow = MarketplacePercentage::where('marketplace', 'Shein')->first();
-        $marginPct = 100.0;
-        if ($pctRow && $pctRow->percentage !== null && $pctRow->percentage !== '') {
-            $marginPct = (float) $pctRow->percentage;
-        }
-        $margin = $marginPct / 100.0;
-
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper(trim((string) $item->sku));
-        });
-
-        $totalOrders = 0;
-        $totalQuantity = 0;
-        $totalRevenue = 0;
-        $totalCogs = 0;
-        $totalPft = 0;
-        $totalCommission = 0;
-        $totalWeightedPrice = 0;
-        $totalQuantityForPrice = 0;
-
-        foreach ($data as $row) {
-            $orderNum = trim((string) ($row->order_number ?? ''));
-            $sellerSku = trim((string) ($row->seller_sku ?? ''));
-            if ($orderNum === '' && $sellerSku === '') {
-                continue;
-            }
-
-            // Skip refunded/returned/cancelled orders (same as shein_tabulator_view updateSummary)
-            $orderStatus = strtolower((string) ($row->order_status ?? ''));
-            if (str_contains($orderStatus, 'refund')
-                || str_contains($orderStatus, 'returned')
-                || str_contains($orderStatus, 'cancelled')) {
-                continue;
-            }
-
-            $totalOrders++;
-            $quantity = (int) ($row->quantity ?? 0);
-            $productPrice = (float) ($row->product_price ?? 0);
-            $commission = (float) ($row->commission ?? 0);
-
-            $totalQuantity += $quantity;
-            $totalRevenue += $productPrice * $quantity;
-            $totalCommission += $commission;
-
-            if ($quantity > 0 && $productPrice > 0) {
-                $totalWeightedPrice += $productPrice * $quantity;
-                $totalQuantityForPrice += $quantity;
-            }
-
-            $skuKey = strtoupper(trim((string) ($row->seller_sku ?? '')));
-            $lp = 0.0;
-            $ship = 0.0;
-
-            if ($skuKey !== '' && isset($productMasters[$skuKey])) {
-                $pm = $productMasters[$skuKey];
-                $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                foreach ($values as $k => $v) {
-                    if (strtolower((string) $k) === 'lp') {
-                        $lp = (float) $v;
-                        break;
-                    }
-                }
-                if ($lp === 0.0 && isset($pm->lp)) {
-                    $lp = (float) $pm->lp;
-                }
-
-                if (isset($values['ship'])) {
-                    $ship = (float) $values['ship'];
-                } elseif (isset($pm->ship)) {
-                    $ship = (float) $pm->ship;
-                }
-            }
-
-            $cogs = $lp * $quantity;
-            $totalCogs += $cogs;
-
-            // PFT: (unit price × marketplace keep-rate − LP − Ship) × Qty — matches /shein/daily-data + tabulator
-            $pft = ($productPrice * $margin - $lp - $ship) * $quantity;
-            $totalPft += $pft;
-        }
-
-        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
-        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
-        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
-
         // Shein has no ads, so N ROI = G ROI and N PFT = G PFT
         return [
-            'total_orders' => $totalOrders,
-            'total_quantity' => $totalQuantity,
-            'total_revenue' => $totalRevenue,
-            'total_sales' => $totalRevenue,
-            'total_cogs' => $totalCogs,
-            'total_pft' => $totalPft,
-            'pft_percentage' => round($pftPercentage, 1),
-            'roi_percentage' => round($roiPercentage, 1),
-            'avg_price' => $avgPrice,
-            'l30_sales' => $totalRevenue,
-            'total_commission' => $totalCommission,
+            'total_orders' => $summary['total_orders'],
+            'total_quantity' => $summary['total_quantity'],
+            'total_revenue' => $summary['total_sales'],
+            'total_sales' => $summary['total_sales'],
+            'total_cogs' => $summary['total_cogs'],
+            'total_pft' => $summary['total_pft'],
+            'pft_percentage' => round($summary['pft_percentage'], 1),
+            'roi_percentage' => round($summary['roi_percentage'], 1),
+            'avg_price' => $summary['avg_price'],
+            'l30_sales' => $summary['total_sales'],
+            'total_commission' => $summary['total_commission'],
             'kw_spent' => 0,
             'pmt_spent' => 0,
-            'n_pft' => $totalPft,
-            'n_roi' => round($roiPercentage, 1),
+            'n_pft' => $summary['total_pft'],
+            'n_roi' => round($summary['roi_percentage'], 1),
         ];
     }
 
@@ -2948,8 +2640,9 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateDobaMetrics($date)
     {
-        // Get Doba L30 orders from DobaDailyData (matching DobaSalesController)
-        $orders = DobaDailyData::where('period', 'L30')
+        // L30 from doba_daily_data (period stored lowercase by doba:daily), cancelled excluded
+        $orders = DobaDailyData::whereRaw('LOWER(period) = ?', ['l30'])
+            ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'])
             ->get();
 
         if ($orders->isEmpty()) {
@@ -3445,7 +3138,8 @@ class UpdateMarketplaceDailyMetrics extends Command
     /**
      * Purchasing Power — purchasing_power_sales (same upload as /purchasing-power-sales).
      * Excludes canceled rows; margin from marketplace_percentages.marketplace = Purchase (default 65%).
-     * PFT per line matches Purchasing Power pricing: (unit_price × margin) − LP − ship, × quantity.
+     * PFT per line matches Purchasing Power pricing: (unit_price × margin) − LP, × quantity.
+     * Note: Ship is intentionally excluded from PP profit (matches /purchasing-power-pricing).
      */
     private function calculatePurchasingPowerMetrics($date)
     {
@@ -3511,7 +3205,6 @@ class UpdateMarketplaceDailyMetrics extends Command
 
             $sku = strtoupper(trim((string) ($row->offer_sku ?? '')));
             $lp = 0.0;
-            $ship = 0.0;
             $pm = $sku !== '' ? ($productMasters[$sku] ?? null) : null;
             if ($pm) {
                 $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
@@ -3524,10 +3217,10 @@ class UpdateMarketplaceDailyMetrics extends Command
                 if ($lp === 0.0 && isset($pm->lp)) {
                     $lp = (float) $pm->lp;
                 }
-                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0.0);
             }
 
-            $profitPerUnit = ($unit * $pct) - $lp - $ship;
+            // Ship intentionally excluded to match /purchasing-power-pricing.
+            $profitPerUnit = ($unit * $pct) - $lp;
             $totalPft += $profitPerUnit * $qty;
             $totalCogs += $lp * $qty;
         }

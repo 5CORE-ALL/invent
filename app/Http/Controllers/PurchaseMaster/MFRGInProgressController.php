@@ -7,11 +7,13 @@ use App\Models\MfrgProgress;
 use App\Models\PurchaseOrder;
 use App\Models\ReadyToShip;
 use App\Models\Supplier;
+use App\Services\PurchasePageExecService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class MFRGInProgressController extends Controller
 {
@@ -25,19 +27,29 @@ class MFRGInProgressController extends Controller
         );
 
         // Get Ready-to-Ship data - SIMPLE VERSION
-        $readyToShipData = ReadyToShip::whereNull('deleted_at')
+        // Only rows still on Ready to Ship (transit_inv_status = 0); rows already moved to
+        // transit are flagged transit_inv_status = 1 and must not appear on the MIP page.
+        $readyToShipData = ReadyToShip::where('transit_inv_status', 0)
+            ->whereNull('deleted_at')
             ->orderBy('created_at', 'desc')
             ->get();
 
-        // Mark RTS items simply
+        // Mark RTS items simply.
+        // NOTE: stage MUST be the canonical 'r2s' (with the digit 2), not 'rts'. The dropdown
+        // editor saves 'r2s', the page's stage filter / color map / label map all key on 'r2s',
+        // so emitting 'rts' here previously made every Ready-to-Ship row render with the gray
+        // "Not set" dot and be invisible to the "R2S only" filter.
         foreach ($readyToShipData as $item) {
-            $item->stage = 'rts';
+            $item->stage = 'r2s';
             $item->source_table = 'ready_to_ship';
             $item->nr = 'RTS';
             $item->order_qty = $item->qty ?? 0;
             $item->ready_to_ship = 'No'; // Set to 'No' so it won't be filtered out
+            $item->mip_po_number = '';
             // Keep original fields: sku, supplier, zone, packing, terms, etc.
         }
+
+        self::attachProductCpToRows($readyToShipData);
 
         // Combine both datasets
         $combinedData = $mfrgData->concat($readyToShipData);
@@ -62,12 +74,26 @@ class MFRGInProgressController extends Controller
             'data' => $combinedData,
             'suppliers' => $supplierCache['names'],
             'supplier_platforms_by_name' => $supplierCache['platformsByName'],
+            'execOptions' => app(PurchasePageExecService::class)->getOptions(),
+            'pageExec' => app(PurchasePageExecService::class)->getAssignment('mip') ?? '',
+            'execCanEdit' => PurchasePageExecService::userCanEdit(),
         ]);
     }
 
     public function newMfrgView()
     {
-        return view('purchase-master.mfrg-progress.mfrg-new');
+        $allSuppliers = Supplier::query()
+            ->where('type', 'Supplier')
+            ->orderBy('name')
+            ->pluck('name')
+            ->map(fn ($n) => trim((string) $n))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return view('purchase-master.mfrg-progress.mfrg-new', [
+            'allSuppliers' => $allSuppliers,
+        ]);
     }
 
     public function archivedMfrgCount()
@@ -87,23 +113,51 @@ class MFRGInProgressController extends Controller
             supplierCache: $supplierCache,
         );
 
-        // Also include Ready-to-Ship data if not archived
+        // Also include Ready-to-Ship data if not archived.
+        // Only rows still on Ready to Ship (transit_inv_status = 0); rows moved to transit
+        // are flagged transit_inv_status = 1 and must drop off the MIP (MIP + R2S) page,
+        // matching the Ready to Ship page query.
         if (!$archived) {
-            $readyToShipData = ReadyToShip::whereNull('deleted_at')
+            $readyToShipData = ReadyToShip::where('transit_inv_status', 0)
+                ->whereNull('deleted_at')
                 ->orderBy('created_at', 'desc')
                 ->get();
             
-            // Mark RTS items simply
+            // Mark RTS items simply. See note on canonical 'r2s' value above.
             foreach ($readyToShipData as $item) {
-                $item->stage = 'rts';
+                $item->stage = 'r2s';
                 $item->source_table = 'ready_to_ship';
                 $item->nr = 'RTS';
                 $item->order_qty = $item->qty ?? 0;
                 $item->ready_to_ship = 'No';
             }
-            
+
+            self::attachProductCpToRows($readyToShipData);
+
             $mfrgData = $mfrgData->concat($readyToShipData);
+        } else {
+            // Archived view: also show archived (soft-deleted) Ready-to-Ship rows so they
+            // can be restored from "Show archived".
+            $trashedRts = ReadyToShip::onlyTrashed()
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            foreach ($trashedRts as $item) {
+                $item->stage = 'r2s';
+                $item->source_table = 'ready_to_ship';
+                $item->nr = 'RTS';
+                $item->order_qty = $item->qty ?? 0;
+                $item->ready_to_ship = 'No';
+            }
+
+            self::attachProductCpToRows($trashedRts);
+
+            $mfrgData = $mfrgData->concat($trashedRts);
         }
+
+        // Attach exec to the full set (incl. Ready-to-Ship rows). Exec is keyed by SKU in
+        // to_order_analysis, so RTS rows that aren't in mfrg_progress still show their saved exec.
+        self::attachExecBySku($mfrgData);
 
         if (config('app.debug')) {
             Log::debug('mip.getMfrgProgressData', [
@@ -113,8 +167,18 @@ class MFRGInProgressController extends Controller
             ]);
         }
 
+        // Explicitly forbid caching at every layer (browser HTTP cache, the PWA service
+        // worker in public/sw.js, any proxy). This endpoint is the live source of truth
+        // shared across users — User A's edit must be visible to User B on the next
+        // refresh. Without these headers the browser was free to reuse a prior 200 from
+        // disk because Laravel returns no Cache-Control by default on JSON responses,
+        // which manifested as "two users seeing different data after a refresh".
         return response()->json([
             'data' => $mfrgData->values()->all(),
+        ])->withHeaders([
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma'        => 'no-cache',
+            'Expires'       => '0',
         ]);
     }
 
@@ -254,6 +318,46 @@ class MFRGInProgressController extends Controller
     /**
      * Load MfrgProgress rows with shared enrichment (index blade + Tabulator JSON).
      */
+    /**
+     * Attach `exec` to each row from to_order_analysis (single source of truth, keyed by SKU).
+     * Works for any row that has a `sku`, including Ready-to-Ship rows not present in mfrg_progress.
+     */
+    private static function attachExecBySku(Collection $rows): void
+    {
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        $execBySku = [];
+        // The same SKU can appear in multiple to_order_analysis rows (different parent
+        // variants, normalization history, etc.). Without an explicit ORDER BY, MySQL
+        // returned rows in storage order, so the "winning" exec was non-deterministic
+        // and the page would intermittently show a freshly-saved exec as "Unassigned"
+        // (or revert to a stale value) on the very next refresh.
+        //
+        // We now order by latest write first and skip blanks; the first non-empty exec
+        // we see for a given SKU is what the user just saved, so it always wins.
+        $execRows = DB::table('to_order_analysis')
+            ->whereNull('deleted_at')
+            ->whereNotNull('exec')
+            ->where('exec', '!=', '')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->select(['sku', 'exec'])
+            ->get();
+        foreach ($execRows as $r) {
+            $k = strtoupper(trim((string) ($r->sku ?? '')));
+            if ($k !== '' && !isset($execBySku[$k])) {
+                $execBySku[$k] = $r->exec;
+            }
+        }
+
+        foreach ($rows as $row) {
+            $key = strtoupper(trim((string) ($row->sku ?? '')));
+            $row->exec = $execBySku[$key] ?? null;
+        }
+    }
+
     private static function loadEnrichedMipProgressCollection(bool $onlyTrashed, array $supplierCache): Collection
     {
         $normalizeSku = fn (?string $sku) => self::normalizeMipSku($sku);
@@ -311,6 +415,9 @@ class MFRGInProgressController extends Controller
             );
         }
 
+        // Attach exec from to_order_analysis (single source of truth shared with to-order-analysis page)
+        self::attachExecBySku($mfrgData);
+
         // Filter to show items with stage='mip' or stage='r2s' (exclude transit, all good, etc.)
         // The MIP In Progress page now lists both MIP and R2S stage rows from forecast_analysis.
         $mfrgData = $mfrgData->filter(function($row) {
@@ -319,7 +426,36 @@ class MFRGInProgressController extends Controller
             return $rowStage === 'mip' || $rowStage === 'r2s' || $rowStage === '';
         });
 
+        self::attachMipPoNumbers($mfrgData);
+
         return $mfrgData;
+    }
+
+    /**
+     * Attach PO numbers from mfrg_progress_po (separate table).
+     */
+    private static function attachMipPoNumbers(Collection $mfrgData): void
+    {
+        $ids = $mfrgData->pluck('id')->filter()->unique()->values()->all();
+        if ($ids === []) {
+            foreach ($mfrgData as $row) {
+                $row->mip_po_number = '';
+            }
+
+            return;
+        }
+
+        $poByMipId = DB::table('mfrg_progress_po')
+            ->whereIn('mfrg_progress_id', $ids)
+            ->get()
+            ->keyBy('mfrg_progress_id');
+
+        foreach ($mfrgData as $row) {
+            $id = $row->id ?? null;
+            $row->mip_po_number = ($id && isset($poByMipId[$id]))
+                ? trim((string) $poByMipId[$id]->po_number)
+                : '';
+        }
     }
 
     /**
@@ -343,6 +479,7 @@ class MFRGInProgressController extends Controller
         $supplierNames = [];
         $priceFromPO = null;
         $currencyFromPO = null;
+        $productCp = null;
 
         $skuVariations = self::mipRowSkuVariations($row->sku ?? null, $normalizeSku);
 
@@ -377,6 +514,11 @@ class MFRGInProgressController extends Controller
                     $ctnCbmE = $values['cbm_e'];
                 } elseif (isset($values['ctn_cbm_e'])) {
                     $ctnCbmE = $values['ctn_cbm_e'];
+                }
+                // CP (cost price) stored in product_master Values->cp (also accept 'CP').
+                $cpRaw = $values['cp'] ?? $values['CP'] ?? null;
+                if ($cpRaw !== null && $cpRaw !== '' && is_numeric($cpRaw)) {
+                    $productCp = (float) $cpRaw;
                 }
             }
 
@@ -417,6 +559,7 @@ class MFRGInProgressController extends Controller
         $row->ctn_cbm_e = $ctnCbmE;
         $row->price_from_po = $priceFromPO;
         $row->currency_from_po = $currencyFromPO;
+        $row->product_cp = $productCp;
 
         $supplierName = trim((string) ($row->supplier ?? ''));
         $row->supplier_platform_links = ($supplierName !== '' && isset($platformsByName[$supplierName]))
@@ -539,11 +682,18 @@ class MFRGInProgressController extends Controller
             'advance_amt', 'pay_conf_date', 'o_links', 'adv_date', 'del_date', 'delivery_date', 'total_cbm',
             'barcode_sku', 'artwork_manual_book', 'notes', 'ready_to_ship', 'rate', 'rate_currency',
             'photo_packing', 'photo_int_sale', 'supplier', 'supplier_sku', 'created_at', 'qty',
-            'pkg_inst', 'u_manual', 'compliance',
+            'pkg_inst', 'u_manual', 'compliance', 'exec',
         ];
 
         if (! in_array($column, $validColumns)) {
             return response()->json(['success' => false, 'message' => 'Invalid column.']);
+        }
+
+        // Ready-to-Ship rows live in their own table with an independent id space.
+        // Their mip_id is a ready_to_ship.id, so routing it through MfrgProgress::find()
+        // would match an unrelated SKU. Update the ready_to_ship row directly instead.
+        if ((string) $request->input('source_table') === 'ready_to_ship') {
+            return $this->inlineUpdateReadyToShip($request, $skuKey, $column);
         }
 
         $columnsAllowCreate = ['supplier', 'supplier_sku'];
@@ -632,6 +782,53 @@ class MFRGInProgressController extends Controller
         return response()->json(['success' => true]);
     }
 
+    /**
+     * Inline update for a Ready-to-Ship row (its mip_id is a ready_to_ship.id, not a mfrg_progress.id).
+     */
+    private function inlineUpdateReadyToShip(Request $request, ?string $skuKey, string $column)
+    {
+        $rts = null;
+        $mipIdRaw = $request->input('mip_id');
+        if ($mipIdRaw !== null && $mipIdRaw !== '' && ctype_digit((string) $mipIdRaw)) {
+            $rts = ReadyToShip::query()->find((int) $mipIdRaw);
+        }
+        if (! $rts && $skuKey !== null && $skuKey !== '') {
+            $rts = ReadyToShip::query()
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($skuKey))])
+                ->first();
+        }
+        if (! $rts) {
+            return response()->json(['success' => false, 'message' => 'Ready-to-Ship row not found.']);
+        }
+
+        if (! Schema::hasColumn('ready_to_ship', $column)) {
+            return response()->json(['success' => false, 'message' => 'This field cannot be edited for a Ready-to-Ship row.']);
+        }
+
+        $value = $request->input('value');
+        if ($column === 'qty') {
+            $value = is_numeric($value) ? (float) $value : 0;
+        }
+        if (in_array($column, ['delivery_date', 'created_at'], true) && ($value === '' || $value === null)) {
+            $value = null;
+        }
+
+        try {
+            $rts->{$column} = $value;
+            $rts->save();
+        } catch (\Throwable $e) {
+            Log::warning('mip.inlineUpdateReadyToShip.save_failed', [
+                'sku' => $skuKey,
+                'column' => $column,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json(['success' => false, 'message' => 'Save failed: '.$e->getMessage()], 500);
+        }
+
+        return response()->json(['success' => true]);
+    }
+
     public function storeDataReadyToShip(Request $request)
     {
         try {
@@ -665,6 +862,33 @@ class MFRGInProgressController extends Controller
     public function deleteBySkus(Request $request)
     {
         try {
+            // Preferred: archive specific rows by id + source table (only the selected rows,
+            // even when several rows share the same SKU).
+            $items = $request->input('items', []);
+            if (is_array($items) && ! empty($items)) {
+                $archivedCount = 0;
+                foreach ($items as $item) {
+                    $id = (int) ($item['id'] ?? 0);
+                    if ($id <= 0) {
+                        continue;
+                    }
+                    $source = ($item['source'] ?? '') === 'ready_to_ship' ? 'ready_to_ship' : 'mfrg_progress';
+                    if ($source === 'ready_to_ship') {
+                        $archivedCount += ReadyToShip::query()->where('id', $id)->delete();
+                    } else {
+                        $archivedCount += MfrgProgress::query()->where('id', $id)->delete();
+                    }
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'deleted_count' => $archivedCount,
+                    'message' => $archivedCount > 0
+                        ? "Archived {$archivedCount} row(s). You can restore them from “Show archived”."
+                        : 'No matching rows to archive.',
+                ]);
+            }
+
             $skus = $request->input('skus', []);
 
             if (empty($skus) || ! is_array($skus)) {
@@ -685,6 +909,12 @@ class MFRGInProgressController extends Controller
                 }
                 $archivedCount += MfrgProgress::query()
                     ->whereRaw('UPPER(TRIM(sku)) = ?', [$ns])
+                    ->delete();
+
+                // MIP page also lists Ready-to-Ship rows; archive those too (soft delete).
+                $archivedCount += ReadyToShip::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$ns])
+                    ->where('transit_inv_status', 0)
                     ->delete();
             }
 
@@ -708,6 +938,36 @@ class MFRGInProgressController extends Controller
     public function restoreBySkus(Request $request)
     {
         try {
+            // Preferred: restore specific rows by id + source table.
+            $items = $request->input('items', []);
+            if (is_array($items) && ! empty($items)) {
+                $restoredCount = 0;
+                foreach ($items as $item) {
+                    $id = (int) ($item['id'] ?? 0);
+                    if ($id <= 0) {
+                        continue;
+                    }
+                    $source = ($item['source'] ?? '') === 'ready_to_ship' ? 'ready_to_ship' : 'mfrg_progress';
+                    if ($source === 'ready_to_ship') {
+                        $row = ReadyToShip::onlyTrashed()->find($id);
+                    } else {
+                        $row = MfrgProgress::onlyTrashed()->find($id);
+                    }
+                    if ($row) {
+                        $row->restore();
+                        $restoredCount++;
+                    }
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'restored_count' => $restoredCount,
+                    'message' => $restoredCount > 0
+                        ? "Restored {$restoredCount} row(s)."
+                        : 'No archived rows matched.',
+                ]);
+            }
+
             $skus = $request->input('skus', []);
 
             if (empty($skus) || ! is_array($skus)) {
@@ -731,6 +991,15 @@ class MFRGInProgressController extends Controller
                     ->get();
                 foreach ($rows as $row) {
                     $row->restore();
+                    $restoredCount++;
+                }
+
+                // Restore archived Ready-to-Ship rows as well.
+                $rtsRows = ReadyToShip::onlyTrashed()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$ns])
+                    ->get();
+                foreach ($rtsRows as $rtsRow) {
+                    $rtsRow->restore();
                     $restoredCount++;
                 }
             }
@@ -1016,26 +1285,23 @@ class MFRGInProgressController extends Controller
             return $productMasterByKey;
         }
 
-        $mipKeySet = array_fill_keys($candidates, true);
-        foreach (DB::table('product_master')->select('sku', 'parent', 'Values')->cursor() as $item) {
-            $norm = $normalizeSku($item->sku);
-            if ($norm === '') {
-                continue;
-            }
-            $keys = array_unique(array_filter([$norm, str_replace(' ', '', $norm)]));
-            $hit = false;
-            foreach ($keys as $k) {
-                if (isset($mipKeySet[$k])) {
-                    $hit = true;
-                    break;
-                }
-            }
-            if (! $hit) {
-                continue;
-            }
-            foreach ($keys as $k) {
-                if ($k !== '' && ! isset($productMasterByKey[$k])) {
-                    $productMasterByKey[$k] = $item;
+        // Fallback: try upper-cased variants via a second targeted whereIn (avoids full table scan)
+        $missingCandidates = array_values(array_filter($candidates, function ($c) use ($productMasterByKey) {
+            return $c !== '' && ! isset($productMasterByKey[$c]);
+        }));
+        foreach (array_chunk($missingCandidates, 450) as $chunk) {
+            $chunk = array_values(array_filter($chunk, fn ($s) => $s !== ''));
+            if ($chunk === []) continue;
+            foreach (DB::table('product_master')
+                ->whereIn(DB::raw('UPPER(TRIM(sku))'), $chunk)
+                ->select('sku', 'parent', 'Values')
+                ->get() as $item) {
+                $norm = $normalizeSku($item->sku);
+                if ($norm === '') continue;
+                foreach (array_unique([$norm, str_replace(' ', '', $norm)]) as $k) {
+                    if ($k !== '' && ! isset($productMasterByKey[$k])) {
+                        $productMasterByKey[$k] = $item;
+                    }
                 }
             }
         }
@@ -1049,6 +1315,9 @@ class MFRGInProgressController extends Controller
     private static function buildShopifyImageByKeyForMipRows(iterable $mfrgRows, callable $normalizeSku): array
     {
         $candidates = self::collectMipSkuCandidates($mfrgRows, $normalizeSku);
+        if (empty($candidates)) {
+            return [];
+        }
         $mipKeySet = array_fill_keys($candidates, true);
         $shopifyImageByKey = [];
 
@@ -1056,26 +1325,16 @@ class MFRGInProgressController extends Controller
             ->select('sku', 'image_src')
             ->whereNotNull('image_src')
             ->where('image_src', '!=', '')
-            ->cursor() as $item) {
+            ->whereIn('sku', $candidates)
+            ->get() as $item) {
             $norm = $normalizeSku($item->sku);
             if ($norm === '') {
                 continue;
             }
             $keys = array_unique(array_filter([$norm, str_replace(' ', '', $norm)]));
-            $hit = false;
-            foreach ($keys as $k) {
-                if (isset($mipKeySet[$k])) {
-                    $hit = true;
-                    break;
-                }
-            }
-            if (! $hit) {
-                continue;
-            }
-            $src = $item->image_src;
             foreach ($keys as $k) {
                 if ($k !== '' && ! isset($shopifyImageByKey[$k])) {
-                    $shopifyImageByKey[$k] = $src;
+                    $shopifyImageByKey[$k] = $item->image_src;
                 }
             }
         }
@@ -1086,6 +1345,55 @@ class MFRGInProgressController extends Controller
     /**
      * @param  iterable<int, object>  $mfrgRows
      */
+    /**
+     * Attach product_master CP (Values->cp) to Ready-to-Ship rows so the MIP page CP column
+     * is populated for SKUs that have a cost price in /product-master.
+     */
+    private static function attachProductCpToRows(Collection $rows): void
+    {
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        $normalizeSku = fn (?string $sku) => self::normalizeMipSku($sku);
+
+        $candidates = [];
+        foreach ($rows as $r) {
+            $n = $normalizeSku($r->sku ?? '');
+            if ($n !== '') {
+                $candidates[$n] = true;
+                $candidates[str_replace(' ', '', $n)] = true;
+            }
+        }
+        $candidates = array_keys($candidates);
+
+        $cpByKey = [];
+        foreach (array_chunk($candidates, 450) as $chunk) {
+            $chunk = array_values(array_filter($chunk, fn ($s) => $s !== ''));
+            if ($chunk === []) {
+                continue;
+            }
+            foreach (DB::table('product_master')->whereIn('sku', $chunk)->select('sku', 'Values')->get() as $item) {
+                $values = json_decode($item->Values ?? '{}', true);
+                $cpRaw = is_array($values) ? ($values['cp'] ?? $values['CP'] ?? null) : null;
+                if ($cpRaw === null || $cpRaw === '' || ! is_numeric($cpRaw)) {
+                    continue;
+                }
+                $norm = $normalizeSku($item->sku);
+                foreach (array_unique([$norm, str_replace(' ', '', $norm)]) as $k) {
+                    if ($k !== '' && ! isset($cpByKey[$k])) {
+                        $cpByKey[$k] = (float) $cpRaw;
+                    }
+                }
+            }
+        }
+
+        foreach ($rows as $r) {
+            $n = $normalizeSku($r->sku ?? '');
+            $r->product_cp = $cpByKey[$n] ?? $cpByKey[str_replace(' ', '', $n)] ?? null;
+        }
+    }
+
     private static function buildSkuToPriceMapForMipRows(iterable $mfrgRows, callable $normalizeSku): array
     {
         $mipSkuSet = [];
@@ -1105,7 +1413,8 @@ class MFRGInProgressController extends Controller
             ->whereNotNull('items')
             ->select(['items', 'created_at'])
             ->orderBy('created_at', 'desc')
-            ->cursor() as $po) {
+            ->limit(300)
+            ->get() as $po) {
             $items = json_decode($po->items, true);
             if (! is_array($items)) {
                 continue;
@@ -1162,8 +1471,9 @@ class MFRGInProgressController extends Controller
         $platformsByName = $supplierCache['platformsByName'] ?? [];
 
         foreach ($rtsData as $row) {
-            // Mark as RTS FIRST
-            $row->stage = 'rts';
+            // Mark as RTS FIRST (canonical stage = 'r2s' so the front-end color map,
+            // tooltip label and "R2S only" filter all match — see note above).
+            $row->stage = 'r2s';
             $row->source_table = 'ready_to_ship';
             $row->order_qty = $row->qty ?? 0;
             $row->nr = 'RTS';

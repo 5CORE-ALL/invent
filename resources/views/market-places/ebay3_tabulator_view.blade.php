@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Ebay 3 Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Ebay 3 - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -255,14 +255,13 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Ebay 3 Analytics',
-        'sub_title' => 'Ebay 3 Analytics',
+        'page_title' => 'Ebay 3 - Analytics',
+        'sub_title' => '',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>eBay3 Data</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <select id="section-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -274,8 +273,8 @@
 
                     <select id="view-mode-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="sku">SKU Only</option>
-                        <option value="parent" selected>Parent Only</option>
+                        <option value="sku" selected>SKU Only</option>
+                        <option value="parent">Parent Only</option>
                         <option value="both">Both (Parent + SKU)</option>
                     </select>
 
@@ -284,13 +283,6 @@
                         <option value="all">All Inventory</option>
                         <option value="zero">0 Inventory</option>
                         <option value="more" selected>More than 0</option>
-                    </select>
-
-                    <select id="ebay-stock-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">All E Stock</option>
-                        <option value="zero">0 E Stock</option>
-                        <option value="more" selected>E Stock &gt; 0</option>
                     </select>
 
                     <select id="el30-filter" class="form-select form-select-sm"
@@ -536,9 +528,8 @@
                             style="width: auto; display: inline-block; flex-shrink: 0;">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
-                            <option value="0-2">0-2%</option>
-                            <option value="2-4">2-4%</option>
-                            <option value="4-7">4-7%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
                             <option value="7-13">7-13%</option>
                             <option value="13plus">13%+</option>
                         </select>
@@ -550,9 +541,7 @@
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
-                        <option value="125-175">125–175%</option>
-                        <option value="175-250">175–250%</option>
-                        <option value="gt250">&gt; 250%</option>
+                        <option value="gt125">125%+</option>
                     </select>
 
                     <select id="cvr-trend-filter" class="form-select form-select-sm pricing-filter-item"
@@ -789,7 +778,7 @@
 
                 <!-- Summary Stats — same badge set/order as Ebay 2 Analytics -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary (E Stock &gt; 0)</h6>
+                    <h6 class="mb-3">Summary</h6>
                     <div class="ebay2-summary-badge-row">
                         <span class="badge bg-danger fs-6 p-2 sold-filter-badge ebay3-hover-chart" data-filter="zero" data-metric="zero_sold_count" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for daily trend">0 Sold: <span id="zero-sold-count">0</span></span>
                         <span class="badge fs-6 p-2 sold-filter-badge ebay3-hover-chart" data-filter="sold" data-metric="sold_count" style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter · Hover for daily trend">&gt; 0 Sold: <span id="more-sold-count">0</span></span>
@@ -979,6 +968,35 @@
                         <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
                         <p class="text-muted small mb-0">No daily snapshots yet. Open this page on separate days to build history (auto-saved from summary).</p>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="ebay3EditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="ebay3EditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="ebay3SellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="ebay3BuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="ebay3SaveLinksBtn">Save</button>
                 </div>
             </div>
         </div>
@@ -1784,6 +1802,59 @@
         if (lmpModalEl) {
             lmpModalEl.addEventListener('hidden.bs.modal', cleanupLmpModalBackdrop);
         }
+
+        // ---- Edit Links (Buyer / Seller) ----
+        let ebay3EditLinksRow = null;
+        window.openEbay3EditLinksModal = function(row) {
+            ebay3EditLinksRow = row;
+            const d = row.getData();
+            $('#ebay3EditLinksSku').text(d['(Child) sku'] || '');
+            $('#ebay3SellerLinkInput').val(d.seller_link || '');
+            $('#ebay3BuyerLinkInput').val(d.buyer_link || '');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('ebay3EditLinksModal')).show();
+        };
+
+        $('#ebay3SaveLinksBtn').on('click', function() {
+            if (!ebay3EditLinksRow) return;
+            const sku = ebay3EditLinksRow.getData()['(Child) sku'];
+            const sellerLink = $('#ebay3SellerLinkInput').val().trim();
+            const buyerLink = $('#ebay3BuyerLinkInput').val().trim();
+            const $btn = $(this);
+            $btn.prop('disabled', true).text('Saving...');
+            $.ajax({
+                url: '/ebay3/save-links',
+                method: 'POST',
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    sku: sku,
+                    seller_link: sellerLink,
+                    buyer_link: buyerLink
+                },
+                success: function(res) {
+                    if (res && res.success) {
+                        ebay3EditLinksRow.update({
+                            seller_link: res.seller_link || '',
+                            buyer_link: res.buyer_link || ''
+                        }).then(function() {
+                            ebay3EditLinksRow.reformat();
+                        }).catch(function() {
+                            ebay3EditLinksRow.reformat();
+                        });
+                        showToast('Links saved successfully', 'success');
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById('ebay3EditLinksModal')).hide();
+                    } else {
+                        showToast((res && res.message) || 'Failed to save links', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save links';
+                    showToast(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text('Save');
+                }
+            });
+        });
 
         $('#ebay3ChartRangeSelect').on('change', function() {
             const days = parseInt($(this).val(), 10);
@@ -2850,6 +2921,36 @@
                     }
                 },
                 {
+                    title: "Links",
+                    field: "buyer_link",
+                    hozAlign: "center",
+                    width: 55,
+                    frozen: true,
+                    headerSort: false,
+                    headerTooltip: "eBay Buyer / Seller links (same source as pricing-master-cvr)",
+                    tooltip: "Double-click to add / edit links",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const buyerLink = rowData.buyer_link || '';
+                        const sellerLink = rowData.seller_link || '';
+                        let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
+                        if (sellerLink) {
+                            html += '<a href="' + sellerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';
+                        }
+                        if (buyerLink) {
+                            html += '<a href="' + buyerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>';
+                        }
+                        if (!sellerLink && !buyerLink) {
+                            html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                        }
+                        html += '</div>';
+                        return html;
+                    },
+                    cellDblClick: function(e, cell) {
+                        openEbay3EditLinksModal(cell.getRow());
+                    }
+                },
+                {
                     title: "INV",
                     field: "INV",
                     hozAlign: "center",
@@ -3117,27 +3218,6 @@
                     }
                 },
                 {
-                    title: "B/S",
-                    field: "buyer_link",
-                    hozAlign: "center",
-                    width: 70,
-                    headerTooltip: "eBay Buyer / Seller links (same source as pricing-master-cvr)",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const buyerLink = rowData.buyer_link || '';
-                        const sellerLink = rowData.seller_link || '';
-                        if (!buyerLink && !sellerLink) return '-';
-                        let html = '';
-                        if (buyerLink) {
-                            html += '<a href="' + buyerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary me-1" title="Buyer link">B</a>';
-                        }
-                        if (sellerLink) {
-                            html += '<a href="' + sellerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="Seller link">S</a>';
-                        }
-                        return html;
-                    }
-                },
-                {
                     title: "MAP",
                     field: "MAP",
                     hozAlign: "center",
@@ -3354,10 +3434,10 @@
                         const percent = parseFloat(value);
                         let color = '';
                         
-                        if (percent < 50) color = '#a00211';
-                        else if (percent >= 50 && percent < 75) color = '#ffc107';
-                        else if (percent >= 75 && percent <= 125) color = '#28a745';
-                        else color = '#e83e8c';
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
@@ -3382,7 +3462,7 @@
                         const sprice = isNaN(spriceNum) ? 0 : spriceNum;
                         
                         if (value == null || value === '' || isNaN(spriceNum) || sprice <= 0) return '';
-                        if (currentPrice > 0 && sprice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) return '';
+                        // Always show SPRICE when it has a value — even if it equals the eBay price.
                         const formattedValue = `$${Number(sprice).toFixed(2)}`;
                         if (hasCustomSprice === false) {
                             return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
@@ -3466,7 +3546,10 @@
                                     data: { sku: sku, status: 'applied' },
                                     success: function(response) {
                                         if (response.success) {
-                                            table.replaceData();
+                                            // Update only this row (no full reload → no horizontal slide)
+                                            const row = cell.getRow();
+                                            row.update({ SPRICE_STATUS: 'applied' });
+                                            row.reformat();
                                             showToast('Status updated to Applied', 'success');
                                         }
                                     }
@@ -3478,9 +3561,12 @@
                         if ($target.hasClass('apply-price-btn') || $target.closest('.apply-price-btn').length) {
                             e.stopPropagation();
                             const $btn = $target.hasClass('apply-price-btn') ? $target : $target.closest('.apply-price-btn');
-                            const sku = $btn.attr('data-sku') || $btn.data('sku');
-                            const price = parseFloat($btn.attr('data-price') || $btn.data('price'));
-                            const currentStatus = $btn.attr('data-status') || '';
+                            // Read SKU/price from LIVE row data (not stale data-* attributes),
+                            // so a freshly-edited SPRICE is pushed instead of an old value.
+                            const liveRowData = cell.getRow().getData();
+                            const sku = liveRowData['(Child) sku'] || $btn.attr('data-sku');
+                            const price = parseFloat(liveRowData.SPRICE) || parseFloat($btn.attr('data-price'));
+                            const currentStatus = liveRowData.SPRICE_STATUS || $btn.attr('data-status') || '';
                             
                             if (!sku || !price || price <= 0 || isNaN(price)) {
                                 showToast('Invalid SKU or price', 'error');
@@ -3565,10 +3651,10 @@
                         if (isNaN(percent)) return '';
                         
                         let color = '';
-                        if (percent < 50) color = '#a00211';
-                        else if (percent >= 50 && percent < 75) color = '#ffc107';
-                        else if (percent >= 75 && percent <= 125) color = '#28a745';
-                        else color = '#e83e8c';
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
@@ -4141,10 +4227,10 @@
                         var ebayL30 = parseFloat(rd.pmt_own_ebay_l30) || 0;
                         var scvr = views > 0 ? (ebayL30 / views) * 100 : 0;
                         var color;
-                        if (scvr <= 4) color = 'red';
-                        else if (scvr <= 7) color = '#daa520';
-                        else if (scvr <= 13) color = 'green';
-                        else color = '#E83E8C';
+                        if (scvr <= 4) color = '#a00211';
+                        else if (scvr <= 7) color = '#ffc107';
+                        else if (scvr <= 13) color = '#28a745';
+                        else color = '#e83e8c';
                         return '<span style="color:' + color + '; font-weight: 600;">' + scvr.toFixed(2) + '%</span>';
                     },
                     width: 80
@@ -4531,6 +4617,34 @@
             return Math.abs(inv - st) <= 3 + 1e-9;
         }
 
+        /** Map row — same rule as Ebay 2 badge: listed (has item id), REQ, INV>0, eBay stock>0, |INV − eBay| ≤ 3. */
+        function ebay3RowMap(data) {
+            if (!data) return false;
+            if (String(data['(Child) sku'] || '').toUpperCase().includes('PARENT')) return false;
+            const itemId = data['eBay_item_id'];
+            if (!itemId || String(itemId).trim() === '') return false;
+            const inv = typeof ebay3Qty === 'function' ? ebay3Qty(data['INV']) : (parseFloat(data['INV'] || 0) || 0);
+            if (inv <= 0) return false;
+            if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
+            const est = typeof ebay3EbayStockQty === 'function' ? ebay3EbayStockQty(data) : (parseFloat(data['eBay Stock'] || data['E Stock'] || 0) || 0);
+            if (est <= 0) return false;
+            return Math.abs(inv - est) <= 3 + 1e-9;
+        }
+
+        /** N Map row — same rule as Ebay 2 badge: listed, REQ, INV>0, and (eBay stock===0 ? INV>3 : |INV − eBay| > 3). */
+        function ebay3RowNMap(data) {
+            if (!data) return false;
+            if (String(data['(Child) sku'] || '').toUpperCase().includes('PARENT')) return false;
+            const itemId = data['eBay_item_id'];
+            if (!itemId || String(itemId).trim() === '') return false;
+            const inv = typeof ebay3Qty === 'function' ? ebay3Qty(data['INV']) : (parseFloat(data['INV'] || 0) || 0);
+            if (inv <= 0) return false;
+            if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
+            const est = typeof ebay3EbayStockQty === 'function' ? ebay3EbayStockQty(data) : (parseFloat(data['eBay Stock'] || data['E Stock'] || 0) || 0);
+            if (est <= 0) return inv > 3;
+            return Math.abs(inv - est) > 3 + 1e-9;
+        }
+
         // Apply filters
         function applyFilters() {
             if (isPlayNavigationActive) {
@@ -4540,7 +4654,6 @@
 
             const viewModeFilter = $('#view-mode-filter').val();
             const invFilter = $('#inv-filter').val() || 'more';
-            const ebayStockFilter = $('#ebay-stock-filter').val();
             const el30Filter = $('#el30-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();
@@ -4599,18 +4712,6 @@
                         return false;
                     }
                     return ebay3Qty(data.INV) > 0;
-                });
-            }
-
-            if (ebayStockFilter === 'zero') {
-                table.addFilter(function(data) {
-                    const estock = parseFloat(data['eBay Stock'] || data['E Stock'] || 0) || 0;
-                    return estock === 0;
-                });
-            } else if (ebayStockFilter === 'more') {
-                table.addFilter(function(data) {
-                    const estock = parseFloat(data['eBay Stock'] || data['E Stock'] || 0) || 0;
-                    return estock > 0;
                 });
             }
 
@@ -4684,9 +4785,10 @@
                     if (sku.toUpperCase().includes('PARENT')) return true;
                     const roiVal = parseFloat(data['ROI%']) || 0;
                     if (roiFilter === 'lt40') return roiVal < 40;
-                    if (roiFilter === 'gt250') return roiVal > 250;
-                    const [min, max] = roiFilter.split('-').map(Number);
-                    return roiVal >= min && roiVal <= max;
+                    if (roiFilter === '40-75') return roiVal >= 40 && roiVal < 75;
+                    if (roiFilter === '75-125') return roiVal >= 75 && roiVal < 125;
+                    if (roiFilter === 'gt125') return roiVal >= 125;
+                    return true;
                 });
             }
 
@@ -4699,9 +4801,8 @@
                     const cvrRounded = Math.round(cvr * 100) / 100;
                     
                     if (cvrFilter === '0-0') return cvrRounded === 0;
-                    if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                    if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                    if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                    if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                    if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                     if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                     if (cvrFilter === '13plus') return cvrRounded > 13;
                     return true;
@@ -4998,8 +5099,10 @@
                     if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
                     
                     const itemId = data['eBay_item_id'];
-                    // Missing: no eBay3 item_id; exclude NR
-                    return (!itemId || itemId === null || itemId === '')
+                    const invQty = (typeof ebay3Qty === 'function') ? ebay3Qty(data['INV']) : (parseFloat(data['INV'] || 0) || 0);
+                    // Missing L: in stock (INV>0) but not listed on eBay (no item id); exclude NR — Amazon parity
+                    return invQty > 0
+                        && (!itemId || itemId === null || itemId === '')
                         && !ebay3RowNrReqIsNr(data);
                 });
             }
@@ -5019,30 +5122,25 @@
                 });
             }
 
-            // Map filter — |INV − eBay stock| ≤ 3, REQ only
+            // Map filter — same rule as Ebay 2 badge
             if (mapFilterActive) {
                 table.addFilter(function(data) {
                     // Skip filter for parent rows in tree mode
                     const sku = data['(Child) sku'] || '';
                     if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
-                    
-                    const nrReq = String(data.nr_req || '').trim();
-                    return nrReq === 'REQ' && ebay3RowMapStockMatch(data);
+
+                    return ebay3RowMap(data);
                 });
             }
 
-            // N Map filter — beyond ±3 or REQ mismatch path; exclude missing listings (no eBay item id)
+            // N Map filter — same rule as Ebay 2 badge
             if (invStockFilterActive) {
                 table.addFilter(function(data) {
                     // Skip filter for parent rows in tree mode
                     const sku = data['(Child) sku'] || '';
                     if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
 
-                    const itemId = data['eBay_item_id'];
-                    if (!itemId || itemId === null || itemId === '') return false;
-
-                    const nrReq = String(data.nr_req || '').trim();
-                    return nrReq === 'REQ' && !ebay3RowMapStockMatch(data);
+                    return ebay3RowNMap(data);
                 });
             }
 
@@ -5053,7 +5151,7 @@
             }, 100);
         }
 
-        $('#view-mode-filter, #inv-filter, #ebay-stock-filter, #el30-filter, #variation-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter').on('change', function() {
+        $('#view-mode-filter, #inv-filter, #el30-filter, #variation-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter').on('change', function() {
             applyFilters();
             if ($('#section-filter').val() === 'kw_ads') {
                 updateKwAdsStats();
@@ -5272,33 +5370,52 @@
         }
 
         // Export button: download CSV for current section (visible columns + filtered data)
+        // Always build the CSV manually from table.getRows('active') so that all dropdown,
+        // column, and tree filters are honored consistently. Tabulator's built-in
+        // table.download('csv', { downloadRowRange: 'active' }) is unreliable with
+        // dataTree + dataTreeFilter and can emit unfiltered rows.
         $('#export-section-btn').on('click', function() {
             var sectionVal = $('#section-filter').val() || 'all';
             var dateStr = new Date().toISOString().slice(0, 10);
             var filename = 'ebay3_' + sectionVal + '_export_' + dateStr + '.csv';
             try {
-                var viewMode = $('#view-mode-filter').val();
-
-                // "Both (Parent + SKU)": Tabulator CSV only outputs displayed rows (collapsed tree = no SKUs).
-                // Also, parent rows use summed INV/metrics and pass filters while many child SKUs fail the same
-                // row-level filters — so filtering every descendant drops all SKU lines. Export from row data:
-                // one CSV row per parent, then all nested _children, for each table.getRows("active") root.
-                if (viewMode === 'both' && table) {
-                    var flatRows = [];
-                    table.getRows('active').forEach(function(rc) {
-                        ebay3FlattenTreeBranchForExport(rc.getData(), flatRows);
-                    });
-                    var exportCols = ebay3VisibleExportColumns();
-                    if (!exportCols.length) {
-                        throw new Error('No visible columns to export');
-                    }
-                    ebay3DownloadManualCsv(filename, flatRows, exportCols);
-                } else {
-                    table.download('csv', filename, { downloadRowRange: 'active' });
+                if (!table) {
+                    throw new Error('Table not ready');
                 }
 
+                var exportCols = ebay3VisibleExportColumns();
+                if (!exportCols.length) {
+                    throw new Error('No visible columns to export');
+                }
+
+                var viewMode = $('#view-mode-filter').val();
+                var activeRows = table.getRows('active');
+                var flatRows = [];
+
+                if (viewMode === 'both') {
+                    // Parent + SKU: emit each visible parent followed by all its descendants.
+                    activeRows.forEach(function(rc) {
+                        ebay3FlattenTreeBranchForExport(rc.getData(), flatRows);
+                    });
+                } else {
+                    // sku or parent: emit only the rows that pass the active filter set,
+                    // stripped of the _children reference so the CSV stays flat.
+                    activeRows.forEach(function(rc) {
+                        var d = rc.getData() || {};
+                        var copy = {};
+                        Object.keys(d).forEach(function(k) {
+                            if (k !== '_children') {
+                                copy[k] = d[k];
+                            }
+                        });
+                        flatRows.push(copy);
+                    });
+                }
+
+                ebay3DownloadManualCsv(filename, flatRows, exportCols);
+
                 if (typeof showToast === 'function') {
-                    showToast('success', 'Export started');
+                    showToast('success', 'Export started (' + flatRows.length + ' rows)');
                 }
             } catch (e) {
                 if (typeof showToast === 'function') {
@@ -5631,7 +5748,6 @@
             var processedSkusForZeroInv = new Set();
 
             var invFilterVal = $('#inv-filter').val() || 'more';
-            var ebayStockFilterVal = $('#ebay-stock-filter').val() || 'more';
             var el30FilterVal = $('#el30-filter').val() || 'all';
             var growthSignKw = $('#growth-sign-filter').val() || 'all';
 
@@ -5668,9 +5784,6 @@
                 var shopifyInv = typeof ebay3Qty === 'function' ? ebay3Qty(row['INV']) : (parseFloat(row['INV'] || 0) || 0);
                 if (invFilterVal === 'zero') { if (shopifyInv !== 0) return; }
                 else if (invFilterVal === 'more') { if (shopifyInv <= 0) return; }
-
-                if (ebayStockFilterVal === 'zero') { if (estock > 0) return; }
-                else if (ebayStockFilterVal === 'more') { if (estock <= 0) return; }
 
                 if (el30FilterVal === 'zero') {
                     if (ebayL30ForFilter !== 0) return;
@@ -5851,20 +5964,20 @@
                 const itemId = row['eBay_item_id'];
                 const sku = String(row['(Child) sku'] || '').toUpperCase();
                 const isParentRow = sku.includes('PARENT');
+                const invQty = (typeof ebay3Qty === 'function') ? ebay3Qty(row['INV']) : (parseFloat(row['INV'] || 0) || 0);
+                // Missing L: in stock (INV>0) but not listed on eBay (no item id); exclude NR — Amazon parity
                 if (!isParentRow
+                    && invQty > 0
                     && (!itemId || itemId === null || itemId === '')
                     && !ebay3RowNrReqIsNr(row)) {
                     missingCount++;
                 }
 
-                const nrReq = String(row.nr_req || '').trim();
-                if (!isParentRow && nrReq === 'REQ' && ebay3RowMapStockMatch(row)) {
+                // Map / N Map — same rule as Ebay 2 badges
+                if (ebay3RowMap(row)) {
                     mapCount++;
-                } else if (!isParentRow && nrReq === 'REQ' && (itemId && itemId !== null && itemId !== '') && !ebay3RowMapStockMatch(row)) {
-                    const invN = typeof ebay3Qty === 'function' ? ebay3Qty(row['INV']) : (parseFloat(row['INV'] || 0) || 0);
-                    if (invN > 0 && ebay3EbayStockQty(row) > 0) {
-                        invStockCount++;
-                    }
+                } else if (ebay3RowNMap(row)) {
+                    invStockCount++;
                 }
             });
 

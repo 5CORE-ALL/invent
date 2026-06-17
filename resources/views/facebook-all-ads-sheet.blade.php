@@ -6,6 +6,10 @@
      * `?type=…` to the data endpoint so the server filters server-side.
      */
     $pageType        = $pageType        ?? 'all';
+    // Optional channel lens — when set ('FB' | 'Insta') the page only
+    // shows rows tagged with that CH value (powers the Facebook /
+    // Instagram channel pages). Null on the generic "all" page.
+    $chFilter        = $chFilter        ?? null;
     $pageTitle       = $pageTitle       ?? 'Facebook All Ads Sheet';
     $pageSubtitle    = $pageSubtitle    ?? 'Generic CSV / Excel / TSV importer — upload any sheet and view it as a table';
     $allowedAdTypes  = $allowedAdTypes  ?? ['GROUP VIDEO', 'GROUP CAROUSAL', 'PARENT VIDEO', 'PARENT CAROUSAL'];
@@ -89,6 +93,27 @@
         .faas-stat-badge--acos  { background: #ea580c; }   /* orange  */
         .faas-stat-badge--ctr   { background: #0891b2; }   /* cyan    */
         .faas-stat-badge--cvr   { background: #db2777; }   /* pink    */
+
+        /* ── Badge trend chart modal — full screen width, pinned to top
+           (same look & sizing as /all-marketplace-master adBreakdownChartModal).
+           Theme uses --tz-modal-* CSS variables, so we override those *and*
+           the dialog/content widths directly to be safe across themes. */
+        #badgeChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #badgeChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #badgeChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
     </style>
 @endsection
 
@@ -243,6 +268,17 @@
             <div class="card-body py-2 border-top">
                 {{-- Order: Type · Search · Sbgt (2nd-last) · Stat (last) --}}
                 <div class="d-flex align-items-center flex-nowrap gap-2">
+                    {{-- Bulk-set the CH (channel) on the selected rows, or
+                         every visible row when none are checked. --}}
+                    <button type="button"
+                            class="btn btn-sm btn-outline-info"
+                            style="flex-shrink:0;"
+                            data-bs-toggle="modal"
+                            data-bs-target="#bulkChModal"
+                            title="Set CH (FB / Insta) on the selected or visible rows">
+                        <i class="fas fa-layer-group me-1"></i>Bulk CH
+                    </button>
+
                     {{-- Type multi-select. Uses the AD_TYPE_COLORS
                          palette for the leading dot and shortAdType()
                          for compact labels. --}}
@@ -490,6 +526,54 @@
     </div>
 </div>
 
+{{-- ── Bulk CH modal ───────────────────────────────────────────────
+     Sets the CH (channel) column on every row currently visible in the
+     table (after Type / Search / Sbgt / Stat filters) in one go. The
+     same per-campaign propagation as the inline dropdown applies. --}}
+<div class="modal fade"
+     id="bulkChModal"
+     tabindex="-1"
+     aria-labelledby="bulkChModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:linear-gradient(135deg,#1877f2,#0d5cb6);color:#fff;">
+                <h5 class="modal-title" id="bulkChModalLabel">
+                    <i class="fas fa-layer-group me-2"></i>Bulk update CH
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">
+                    Applies the chosen channel to
+                    <span id="bulkChScope" class="fw-semibold text-dark">all visible rows</span>.
+                    Tick the row checkboxes to target only those; otherwise every
+                    row currently visible (after the Type / Search / Sbgt / Stat
+                    filters) is used.
+                    <span id="bulkChCount" class="fw-semibold text-dark">0</span>
+                    campaign(s) will be updated.
+                </p>
+                <div class="mb-3">
+                    <label for="bulkChValue" class="form-label fw-semibold">Channel (CH)</label>
+                    <select id="bulkChValue" class="form-select">
+                        <option value="">— Clear (remove CH) —</option>
+                        @foreach (($chOptions ?? ['FB', 'Insta']) as $opt)
+                            <option value="{{ $opt }}">{{ $opt }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div id="bulkChError" class="alert alert-danger py-2 small d-none mb-0"></div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="bulkChApplyBtn" class="btn btn-sm btn-info text-white">
+                    <i class="fas fa-check me-1"></i>Apply to visible rows
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {{-- ── Campaign Audit modal ────────────────────────────────────────
      Opens when the Audit cell is clicked. Renders the AUDIT_CHECKLIST
      items as point-weighted checkboxes with a live total, plus a
@@ -518,17 +602,39 @@
                     </span>
                 </div>
 
-                <div class="table-responsive border rounded mb-3">
+                <div class="table-responsive border rounded mb-2">
                     <table class="table table-sm align-middle mb-0" id="auditChecklistTable">
                         <thead class="table-light">
                             <tr>
                                 <th style="width:40px;"></th>
                                 <th>Check</th>
+                                <th style="min-width:200px;">Notes</th>
                                 <th class="text-end" style="width:80px;">Points</th>
+                                <th style="width:36px;"></th>
                             </tr>
                         </thead>
                         <tbody id="auditChecklistBody"></tbody>
                     </table>
+                </div>
+
+                {{-- Manually add a custom check + point row to the checklist
+                     above. Added rows are scored and saved alongside the
+                     built-in checklist items. --}}
+                <div class="d-flex flex-wrap align-items-end gap-2 mb-3 p-2 border rounded bg-light">
+                    <div class="flex-grow-1" style="min-width:200px;">
+                        <label class="form-label small text-muted mb-1">Add custom check</label>
+                        <input type="text" id="auditCustomLabel"
+                               class="form-control form-control-sm"
+                               placeholder="e.g. Landing page loads under 3s">
+                    </div>
+                    <div style="width:90px;">
+                        <label class="form-label small text-muted mb-1">Points</label>
+                        <input type="number" id="auditCustomWeight" min="0" step="1" value="5"
+                               class="form-control form-control-sm text-end">
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="auditAddCustomBtn">
+                        <i class="fas fa-plus me-1"></i>Add
+                    </button>
                 </div>
 
                 <label class="form-label small text-muted mb-1">Comments</label>
@@ -572,12 +678,12 @@
      and Chart.js draws a 32-day rolling line with dots (green = up,
      red = down, grey = flat), a dashed median line, and a side panel
      showing HIGHEST / MEDIAN / LOWEST. --}}
-<div class="modal fade"
+<div class="modal fade p-0"
      id="badgeChartModal"
      tabindex="-1"
      aria-labelledby="badgeChartModalLabel"
      aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-dialog shadow-none m-0 mx-0">
         <div class="modal-content">
             <div class="modal-header py-2" style="background:#0d6efd;color:#fff;">
                 <h6 class="modal-title fw-bold" id="badgeChartModalLabel">
@@ -632,6 +738,9 @@
 
         // Page-specific config (set by the controller).
         const PAGE_TYPE = @json($pageType);
+        // Channel lens ('FB' | 'Insta' | null) — sent to the data feed as
+        // ?ch=… so the server filters rows by the CH column.
+        const CH_FILTER = @json($chFilter);
         // Dropdown choices on this page. On Video/Carousal pages this is a
         // restricted subset so users can't pick a value that would make the
         // row disappear from the page they're currently looking at.
@@ -641,6 +750,12 @@
             'GROUP CAROUSAL':  { bg: '#dcfce7', fg: '#166534' },
             'PARENT VIDEO':    { bg: '#fef3c7', fg: '#92400e' },
             'PARENT CAROUSAL': { bg: '#fce7f3', fg: '#9d174d' },
+        };
+        // CH (channel) dropdown — which platform the campaign runs on.
+        const CH_OPTIONS = @json($chOptions ?? ['FB', 'Insta']);
+        const CH_COLORS = {
+            'FB':    { bg: '#e0e7ff', fg: '#3730a3' },  // indigo  → Facebook
+            'Insta': { bg: '#fce7f3', fg: '#9d174d' },  // pink    → Instagram
         };
         // Frontend-only short labels for the Ad-Type column. The DB
         // and the rest of the code keep using the full strings — only
@@ -674,6 +789,17 @@
             const label = shortAdType(v);
             return `<span style="display:inline-block;padding:2px 10px;border-radius:999px;`
                  + `background:${c.bg};color:${c.fg};font-size:0.75rem;font-weight:600;">${label}</span>`;
+        }
+
+        // Render the CH (channel) cell as a coloured pill — FB / Insta.
+        function formatChCell(cell) {
+            const v = cell.getValue();
+            if (!v) {
+                return '<span class="text-muted small">— Select —</span>';
+            }
+            const c = CH_COLORS[v] || { bg: '#e5e7eb', fg: '#374151' };
+            return `<span style="display:inline-block;padding:2px 10px;border-radius:999px;`
+                 + `background:${c.bg};color:${c.fg};font-size:0.75rem;font-weight:600;">${v}</span>`;
         }
 
         // Renders the Status column (sourced from Meta's "Campaign
@@ -752,6 +878,35 @@
             });
         }
 
+        // Persist a row's chosen CH (channel) to the backend on edit.
+        function onChEdited(cell) {
+            const row    = cell.getRow();
+            const id     = row.getData()._id;
+            const value  = cell.getValue() || '';
+            const oldVal = cell.getOldValue() || '';
+            if (!id) return;
+
+            const fd = new FormData();
+            fd.append('ch',     value);
+            fd.append('_token', csrfToken);
+
+            fetch(`/facebook-all-ads-sheet/${id}/ch`, {
+                method:      'POST',
+                credentials: 'same-origin',
+                headers:     { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body:        fd,
+            })
+            .then(async r => {
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data.success) throw new Error(data.message || `HTTP ${r.status}`);
+                return data;
+            })
+            .catch(err => {
+                row.update({ ch: oldVal });
+                alert('Failed to save CH: ' + err.message);
+            });
+        }
+
         function showStatus(html, type = 'info') {
             const cls = {
                 info:    'alert-info',
@@ -799,6 +954,7 @@
                 params.set('batch_id', batchId);
             }
             if (PAGE_TYPE !== 'all') params.set('type', PAGE_TYPE);
+            if (CH_FILTER) params.set('ch', CH_FILTER);
             const url = '/facebook-all-ads-sheet/data?' + params.toString();
 
             return fetch(url, { credentials: 'same-origin' })
@@ -856,9 +1012,16 @@
                         const v = (cell.getValue() ?? '').toString();
                         if (!v) return '';
                         const safe = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-                        if (v.length <= 70) return safe;
-                        const truncSafe = v.slice(0, 70).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-                        return `<span title="${safe}">${truncSafe}…</span>`;
+                        const attr = safe.replace(/'/g, '&#39;');
+                        const copy = `<i class="fas fa-copy faas-copy-name" role="button" tabindex="0"`
+                                   + ` title="Copy campaign name" data-copy="${attr}"`
+                                   + ` style="margin-left:6px;color:#94a3b8;cursor:pointer;flex-shrink:0;"></i>`;
+                        const text = v.length <= 70
+                            ? safe
+                            : `<span title="${safe}">${v.slice(0, 70).replace(/&/g, '&amp;').replace(/</g, '&lt;')}…</span>`;
+                        return `<span style="display:inline-flex;align-items:center;gap:2px;max-width:100%;">`
+                             + `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${text}</span>`
+                             + `${copy}</span>`;
                     }
                     // Audit column — small button that opens the audit
                     // modal. Cell text shows the latest score (0–100%)
@@ -1030,10 +1193,44 @@
                             sorter:       sorter,
                         };
                     });
-                    // Prepend the Ad Type dropdown column. (Row index
+                    // Prepend the Ad Type + CH dropdown columns. (Row index
                     // hidden by request — the data is still in the row
                     // payload as `_row_index` for any future use.)
                     cols.unshift(
+                        {
+                            // Row-selection checkbox. Used by Bulk CH —
+                            // when any rows are checked the bulk action
+                            // targets only those, otherwise all visible.
+                            formatter:       'rowSelection',
+                            titleFormatter:  'rowSelection',
+                            titleFormatterParams: { rowRange: 'active' },
+                            hozAlign:        'center',
+                            headerHozAlign:  'center',
+                            headerSort:      false,
+                            width:           42,
+                            frozen:          true,
+                            cellClick:       function (e, cell) { cell.getRow().toggleSelect(); },
+                        },
+                        {
+                            // CH = channel the campaign runs on (FB / Insta).
+                            title:        'CH',
+                            field:        'ch',
+                            width:        90,
+                            headerFilter: false,
+                            editor:       'list',
+                            editorParams: {
+                                values: {
+                                    '': '— Select —',
+                                    ...Object.fromEntries(CH_OPTIONS.map(v => [v, v])),
+                                },
+                                clearable:        true,
+                                autocomplete:     true,
+                                listOnEmpty:      true,
+                                placeholderEmpty: '— Select —',
+                            },
+                            cellEdited:   onChEdited,
+                            formatter:    formatChCell,
+                        },
                         {
                             // Header is "Type" but the field stays
                             // ad_type so all backend code is unchanged.
@@ -1075,6 +1272,9 @@
                         movableColumns:         true,
                         resizableColumns:       true,
                         clipboard:              true,
+                        // Row checkboxes feed the Bulk CH action.
+                        selectableRows:         true,
+                        selectableRowsRangeMode:'click',
                         // Centre every column unless a column overrides
                         // hozAlign explicitly (e.g. the # row-index column).
                         columnDefaults: {
@@ -1937,6 +2137,103 @@
                 });
         });
 
+        // ── Bulk CH update ───────────────────────────────────────────
+        // Sets the CH column on every currently-visible (filtered) row.
+        // Collects the distinct campaign ids on screen and POSTs them
+        // with the chosen channel; the backend propagates per campaign.
+        const BULK_CH_URL = '/facebook-all-ads-sheet/bulk-ch';
+
+        // Distinct, valid campaign ids out of a list of row-data objects.
+        function campaignIdsFromRows(rows) {
+            const seen = new Set();
+            (rows || []).forEach(r => {
+                const cid = (r['CAMPAIGN ID'] ?? '').toString().trim();
+                if (cid && /^\d{6,}$/.test(cid)) seen.add(cid);
+            });
+            return [...seen];
+        }
+
+        // Bulk CH targets the checked rows when any are selected, and
+        // falls back to every visible (filtered) row otherwise.
+        function collectBulkChTarget() {
+            if (!tabulator) return { cids: [], scope: 'visible' };
+            const selected = tabulator.getSelectedData() || [];
+            if (selected.length > 0) {
+                return { cids: campaignIdsFromRows(selected), scope: 'selected' };
+            }
+            return { cids: campaignIdsFromRows(tabulator.getData('active')), scope: 'visible' };
+        }
+
+        // Refresh the "N row(s) will be updated" hint + scope wording
+        // whenever the modal opens, so it reflects the current selection
+        // / filters.
+        document.getElementById('bulkChModal')?.addEventListener('show.bs.modal', function () {
+            const countEl = document.getElementById('bulkChCount');
+            const scopeEl = document.getElementById('bulkChScope');
+            const errEl   = document.getElementById('bulkChError');
+            if (errEl) errEl.classList.add('d-none');
+            const target = collectBulkChTarget();
+            if (countEl) countEl.textContent = target.cids.length.toString();
+            if (scopeEl) scopeEl.textContent = target.scope === 'selected'
+                ? 'selected (checked) rows'
+                : 'all visible rows';
+        });
+
+        document.getElementById('bulkChApplyBtn')?.addEventListener('click', function () {
+            const errEl = document.getElementById('bulkChError');
+            const ch    = document.getElementById('bulkChValue').value;
+            const target = collectBulkChTarget();
+            const cids   = target.cids;
+
+            errEl.classList.add('d-none');
+            if (cids.length === 0) {
+                errEl.textContent = target.scope === 'selected'
+                    ? 'None of the checked rows have a valid Campaign ID.'
+                    : 'No campaigns with a valid Campaign ID are currently visible.';
+                errEl.classList.remove('d-none');
+                return;
+            }
+
+            const label = ch === '' ? 'clear CH on' : `set CH = "${ch}" for`;
+            const scopeWord = target.scope === 'selected' ? 'selected' : 'visible';
+            if (!confirm(`This will ${label} ${cids.length} ${scopeWord} campaign(s). Continue?`)) {
+                return;
+            }
+
+            const btn = this;
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Applying…';
+
+            fetch(BULK_CH_URL, {
+                method:      'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept':       'application/json',
+                },
+                body: JSON.stringify({ ch: ch, campaign_ids: cids }),
+            })
+            .then(async r => {
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data.success) throw new Error(data.message || `HTTP ${r.status}`);
+                return data;
+            })
+            .then(data => {
+                bootstrap.Modal.getInstance(document.getElementById('bulkChModal')).hide();
+                loadTable();
+            })
+            .catch(err => {
+                errEl.textContent = 'Failed to update CH: ' + err.message;
+                errEl.classList.remove('d-none');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            });
+        });
+
         // ── Badge trend chart ────────────────────────────────────────
         // Each toolbar badge has data-metric/data-label; clicking opens
         // the chart modal and asks the backend for the daily series.
@@ -2167,6 +2464,41 @@
         const AUDIT_SAVE_URL = '/facebook-all-ads-sheet/audit';
         let auditCurrentCid  = '';
         let auditChecklistCache = [];   // mirrors AUDIT_CHECKLIST from server
+        let auditCustomSeq   = 0;       // counter for client-side custom check keys
+
+        // ── Copy campaign name to clipboard (icon in the name cell) ─────
+        function faasCopyText(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                return navigator.clipboard.writeText(text);
+            }
+            return new Promise((resolve, reject) => {
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.focus(); ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    resolve();
+                } catch (err) { reject(err); }
+            });
+        }
+        document.addEventListener('click', function (e) {
+            const icon = e.target.closest && e.target.closest('.faas-copy-name');
+            if (!icon) return;
+            e.stopPropagation();
+            e.preventDefault();
+            const tmp = document.createElement('textarea');
+            tmp.innerHTML = icon.getAttribute('data-copy') || '';
+            faasCopyText(tmp.value).then(() => {
+                const prev = icon.className;
+                icon.className = 'fas fa-check faas-copy-name';
+                icon.style.color = '#22c55e';
+                setTimeout(() => { icon.className = prev; icon.style.color = '#94a3b8'; }, 1000);
+            }).catch(() => {});
+        });
 
         document.addEventListener('click', function (e) {
             const btn = e.target.closest('[data-audit-cid]');
@@ -2190,9 +2522,14 @@
             document.getElementById('auditCampaignId').textContent   = cid;
             document.getElementById('auditError')?.classList.add('d-none');
             document.getElementById('auditComments').value = '';
+            auditCustomSeq = 0;
+            const cl = document.getElementById('auditCustomLabel');
+            const cw = document.getElementById('auditCustomWeight');
+            if (cl) cl.value = '';
+            if (cw) cw.value = '5';
             // Empty state until the fetch completes.
             document.getElementById('auditChecklistBody').innerHTML =
-                '<tr><td colspan="3" class="text-center small text-muted py-3">Loading…</td></tr>';
+                '<tr><td colspan="5" class="text-center small text-muted py-3">Loading…</td></tr>';
 
             fetch(`${AUDIT_GET_URL}?campaign_id=${encodeURIComponent(cid)}`,
                 { credentials: 'same-origin' })
@@ -2201,7 +2538,10 @@
                     if (!resp.success) throw new Error(resp.error || 'Failed to load audit.');
                     auditChecklistCache = resp.checklist || [];
                     const ticked = (resp.latest && resp.latest.checks) || {};
-                    renderAuditChecklist(auditChecklistCache, ticked);
+                    const notes  = (resp.latest && resp.latest.notes)  || {};
+                    const custom = (resp.latest && resp.latest.custom_items) || [];
+                    renderAuditChecklist(auditChecklistCache, ticked, notes);
+                    custom.forEach(ci => appendAuditCustomRow(ci));
                     document.getElementById('auditComments').value =
                         (resp.latest && resp.latest.comments) || '';
                     renderAuditHistory(resp.history || []);
@@ -2217,20 +2557,34 @@
             if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
         }
 
-        function renderAuditChecklist(items, ticked) {
+        function escapeAuditHtml(s) {
+            return (s ?? '').toString()
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function renderAuditChecklist(items, ticked, notes) {
             const tbody = document.getElementById('auditChecklistBody');
             tbody.innerHTML = '';
+            notes = notes || {};
             items.forEach(it => {
                 const tr = document.createElement('tr');
                 const checked = ticked && ticked[it.key] ? 'checked' : '';
+                const note    = escapeAuditHtml(notes[it.key] || '');
                 tr.innerHTML = `
                     <td class="text-center">
                         <input type="checkbox" class="form-check-input"
                                data-audit-key="${it.key}"
                                data-audit-weight="${it.weight}" ${checked}>
                     </td>
-                    <td>${it.label.replace(/</g, '&lt;')}</td>
-                    <td class="text-end fw-semibold text-muted">${it.weight}</td>`;
+                    <td>${escapeAuditHtml(it.label)}</td>
+                    <td>
+                        <input type="text" class="form-control form-control-sm audit-note-input"
+                               data-audit-note-key="${it.key}"
+                               value="${note}" placeholder="Add a note…">
+                    </td>
+                    <td class="text-end fw-semibold text-muted">${it.weight}</td>
+                    <td></td>`;
                 tbody.appendChild(tr);
             });
             tbody.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -2238,16 +2592,103 @@
             });
         }
 
+        // Append a single manually-added custom check row. `item` may be
+        // undefined (a brand-new blank row using the Add inputs) or a saved
+        // { key, label, weight, checked, note } object loaded from history.
+        function appendAuditCustomRow(item) {
+            const tbody = document.getElementById('auditChecklistBody');
+            if (!tbody) return;
+            item = item || {};
+            const key     = item.key || ('custom_' + (++auditCustomSeq));
+            const label   = escapeAuditHtml(item.label || '');
+            const weight  = Number(item.weight) || 0;
+            const note    = escapeAuditHtml(item.note || '');
+            const checked = item.checked ? 'checked' : '';
+            const tr = document.createElement('tr');
+            tr.dataset.auditCustom = '1';
+            tr.innerHTML = `
+                <td class="text-center">
+                    <input type="checkbox" class="form-check-input"
+                           data-audit-key="${key}"
+                           data-audit-weight="${weight}" ${checked}>
+                </td>
+                <td>
+                    <input type="text" class="form-control form-control-sm audit-custom-label"
+                           value="${label}" placeholder="Custom check…">
+                </td>
+                <td>
+                    <input type="text" class="form-control form-control-sm audit-note-input"
+                           value="${note}" placeholder="Add a note…">
+                </td>
+                <td class="text-end">
+                    <input type="number" min="0" step="1"
+                           class="form-control form-control-sm text-end audit-custom-weight"
+                           style="width:70px;display:inline-block;" value="${weight}">
+                </td>
+                <td class="text-center">
+                    <button type="button" class="btn btn-sm btn-link text-danger p-0 audit-custom-remove"
+                            title="Remove this check"><i class="fas fa-times"></i></button>
+                </td>`;
+            tbody.appendChild(tr);
+            const cb = tr.querySelector('input[type="checkbox"]');
+            cb.addEventListener('change', recalcAuditScore);
+            const wt = tr.querySelector('.audit-custom-weight');
+            wt.addEventListener('input', function () {
+                cb.dataset.auditWeight = Number(this.value) || 0;
+                recalcAuditScore();
+            });
+            tr.querySelector('.audit-custom-remove').addEventListener('click', function () {
+                tr.remove();
+                recalcAuditScore();
+            });
+            return tr;
+        }
+
         function recalcAuditScore() {
             let earned = 0, total = 0;
-            auditChecklistCache.forEach(it => { total += Number(it.weight) || 0; });
             document.querySelectorAll('#auditChecklistBody input[type="checkbox"]')
-                .forEach(cb => { if (cb.checked) earned += Number(cb.dataset.auditWeight) || 0; });
+                .forEach(cb => {
+                    const w = Number(cb.dataset.auditWeight) || 0;
+                    total += w;
+                    if (cb.checked) earned += w;
+                });
             const pct = total > 0 ? Math.round((earned / total) * 100) : 0;
             document.getElementById('auditLiveScore').textContent  = pct + '%';
             document.getElementById('auditLiveEarned').textContent = earned;
             document.getElementById('auditLiveTotal').textContent  = total;
         }
+
+        // "Add custom check" button — pulls the label/points inputs, appends
+        // a row, persists the audit immediately, then clears the inputs ready
+        // for the next entry (the modal stays open).
+        document.getElementById('auditAddCustomBtn')?.addEventListener('click', function () {
+            const labelEl  = document.getElementById('auditCustomLabel');
+            const weightEl = document.getElementById('auditCustomWeight');
+            const label = (labelEl.value || '').trim();
+            if (!label) {
+                labelEl.focus();
+                labelEl.classList.add('is-invalid');
+                setTimeout(() => labelEl.classList.remove('is-invalid'), 1200);
+                return;
+            }
+            appendAuditCustomRow({
+                label:   label,
+                weight:  Math.max(0, Number(weightEl.value) || 0),
+                checked: true,
+            });
+            labelEl.value = '';
+            weightEl.value = '5';
+            recalcAuditScore();
+            performAuditSave({ button: this, closeOnSuccess: false })
+                .then(() => labelEl.focus());
+        });
+
+        document.getElementById('auditCustomLabel')?.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('auditAddCustomBtn')?.click();
+            }
+        });
 
         function renderAuditHistory(rows) {
             const body  = document.getElementById('auditHistoryBody');
@@ -2277,16 +2718,44 @@
             });
         }
 
-        document.getElementById('auditSaveBtn')?.addEventListener('click', function () {
+        // Collect the modal state + POST it. `opts.closeOnSuccess` hides the
+        // modal afterwards (the Save button); the Add button persists without
+        // closing so more custom checks can be added. `opts.button` is shown
+        // in a spinner state while the request is in flight.
+        function performAuditSave(opts) {
+            opts = opts || {};
             const checks = {};
-            document.querySelectorAll('#auditChecklistBody input[type="checkbox"]').forEach(cb => {
-                checks[cb.dataset.auditKey] = !!cb.checked;
+            const notes  = {};
+            const customItems = [];
+            document.querySelectorAll('#auditChecklistBody tr').forEach(tr => {
+                const cb = tr.querySelector('input[type="checkbox"]');
+                if (!cb) return;
+                const noteEl = tr.querySelector('.audit-note-input');
+                const note   = noteEl ? (noteEl.value || '').trim() : '';
+                if (tr.dataset.auditCustom === '1') {
+                    const labelEl  = tr.querySelector('.audit-custom-label');
+                    const weightEl = tr.querySelector('.audit-custom-weight');
+                    const label = labelEl ? (labelEl.value || '').trim() : '';
+                    if (!label) return; // skip blank custom rows
+                    customItems.push({
+                        key:     cb.dataset.auditKey,
+                        label:   label,
+                        weight:  Math.max(0, Number(weightEl ? weightEl.value : 0) || 0),
+                        checked: !!cb.checked,
+                        note:    note,
+                    });
+                } else {
+                    checks[cb.dataset.auditKey] = !!cb.checked;
+                    if (note) notes[cb.dataset.auditKey] = note;
+                }
             });
             const comments = document.getElementById('auditComments').value || '';
-            const btn = this;
-            const original = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+            const btn = opts.button || null;
+            const original = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+            }
 
             // Look up the row's campaign name once more (might have
             // changed if the user switched filters between open + save).
@@ -2297,7 +2766,7 @@
                 if (match) campaignName = match['Campaign name'] || '';
             }
 
-            fetch(AUDIT_SAVE_URL, {
+            return fetch(AUDIT_SAVE_URL, {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: {
@@ -2309,6 +2778,8 @@
                     campaign_id:   auditCurrentCid,
                     campaign_name: campaignName,
                     checks:        checks,
+                    notes:         notes,
+                    custom_items:  customItems,
                     comments:      comments,
                 }),
             })
@@ -2320,6 +2791,7 @@
                         e.classList.remove('d-none');
                         return;
                     }
+                    document.getElementById('auditError')?.classList.add('d-none');
                     // Patch the corresponding Tabulator row in place so
                     // the Audit / History columns repaint without a
                     // full table reload.
@@ -2336,7 +2808,9 @@
                             row.reformat();
                         }
                     }
-                    bootstrap.Modal.getInstance(document.getElementById('auditModal'))?.hide();
+                    if (opts.closeOnSuccess) {
+                        bootstrap.Modal.getInstance(document.getElementById('auditModal'))?.hide();
+                    }
                 })
                 .catch(err => {
                     const e = document.getElementById('auditError');
@@ -2344,9 +2818,15 @@
                     e.classList.remove('d-none');
                 })
                 .finally(() => {
-                    btn.disabled = false;
-                    btn.innerHTML = original;
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = original;
+                    }
                 });
+        }
+
+        document.getElementById('auditSaveBtn')?.addEventListener('click', function () {
+            performAuditSave({ button: this, closeOnSuccess: true });
         });
 
         // ── Export (filtered rows + visible columns) ───────────────────
@@ -2390,7 +2870,12 @@
         }
 
         function faasExportFilename(ext) {
-            const pageSlug = PAGE_TYPE === 'all' ? 'all_ads' : `${PAGE_TYPE}_ads`;
+            // Compose CH lens + PAGE_TYPE so the export filename reflects the exact view
+            // (e.g. /facebook-ads/video → facebook_fb_video_ads_…csv,
+            //       /facebook-ads      → facebook_fb_ads_…csv).
+            const chSlug   = CH_FILTER ? `${CH_FILTER.toLowerCase()}_` : '';
+            const typeSlug = PAGE_TYPE === 'all' ? (CH_FILTER ? '' : 'all_') : `${PAGE_TYPE}_`;
+            const pageSlug = (chSlug + typeSlug + 'ads').replace(/_+/g, '_').replace(/^_|_$/g, '');
             const dateStr  = new Date().toISOString().slice(0, 10);
             return `facebook_${pageSlug}_${dateStr}.${ext}`;
         }

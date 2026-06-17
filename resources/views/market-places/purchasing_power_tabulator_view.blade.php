@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Purchasing Power Pricing', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Purchasing Power - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -32,14 +32,13 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Purchasing Power Pricing',
-        'sub_title'  => 'Purchasing Power Pricing',
+        'page_title' => 'Purchasing Power - Analytics',
+        'sub_title'  => '',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Purchasing Power Data</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <select id="inventory-filter" class="form-select form-select-sm" style="width: auto;">
                         <option value="all">All Inventory</option>
@@ -67,9 +66,8 @@
                         <select id="cvr-filter" class="form-select form-select-sm" style="width: auto;">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
-                            <option value="0-2">0-2%</option>
-                            <option value="2-4">2-4%</option>
-                            <option value="4-7">4-7%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
                             <option value="7-13">7-13%</option>
                             <option value="13plus">13%+</option>
                         </select>
@@ -80,9 +78,7 @@
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
-                        <option value="125-175">125–175%</option>
-                        <option value="175-250">175–250%</option>
-                        <option value="gt250">&gt; 250%</option>
+                        <option value="gt125">125%+</option>
                     </select>
 
                     <select id="dil-filter" class="form-select form-select-sm" style="width: auto;">
@@ -116,6 +112,9 @@
                     <button id="increase-btn" class="btn btn-sm btn-success">
                         <i class="fas fa-arrow-up"></i> Increase Mode
                     </button>
+                    <button id="same-price-btn" class="btn btn-sm btn-info" title="Apply ONE price (entered in the box) to every selected SKU">
+                        <i class="fas fa-equals"></i> Same Price Mode
+                    </button>
                 </div>
 
                 <!-- Summary Stats -->
@@ -144,14 +143,17 @@
 
             <div class="card-body" style="padding:0;">
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display:none;">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span id="selected-skus-count" class="fw-bold"></span>
+                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
+                        <span id="discount-type-select-wrap">
                         <select id="discount-type-select" class="form-select form-select-sm" style="width:120px;">
                             <option value="percentage">Percentage</option>
                             <option value="value">Value ($)</option>
                         </select>
+                        </span>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm"
-                            placeholder="Enter %" step="0.01" style="width:100px;">
+                            placeholder="Enter %" step="0.01" style="width:140px;">
                         <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
                         <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
                             <i class="fas fa-eraser"></i> Clear SPRICE
@@ -167,6 +169,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="editLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editLinksSku">
+                    <p class="mb-3"><strong>SKU:</strong> <span id="editLinksSkuDisplay"></span></p>
+                    <div class="mb-3">
+                        <label for="editSellerLink" class="form-label">S Link (Seller)</label>
+                        <input type="url" class="form-control" id="editSellerLink" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editBuyerLink" class="form-label">B Link (Buyer)</label>
+                        <input type="url" class="form-control" id="editBuyerLink" placeholder="https://...">
+                    </div>
+                    <div id="editLinksError" class="text-danger small" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -175,6 +206,7 @@
     let table = null;
     let decreaseModeActive = false;
     let increaseModeActive = false;
+    let samePriceModeActive = false;
     let selectedSkus = new Set();
 
     function showToast(message, type = 'info') {
@@ -191,38 +223,96 @@
         toast.addEventListener('hidden.bs.toast', () => toast.remove());
     }
 
+    // Mode button visual resets — keep each in their idle styling.
+    function resetDecreaseBtn() {
+        $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning')
+            .html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+    }
+    function resetIncreaseBtn() {
+        $('#increase-btn').removeClass('btn-danger').addClass('btn-success')
+            .html('<i class="fas fa-arrow-up"></i> Increase Mode');
+    }
+    function resetSamePriceBtn() {
+        $('#same-price-btn').removeClass('btn-danger').addClass('btn-info')
+            .html('<i class="fas fa-equals"></i> Same Price Mode');
+    }
+    // Swap the discount-input panel between %/$ and Same Price modes.
+    function syncDiscountInputUi() {
+        const $input = $('#discount-percentage-input');
+        if (samePriceModeActive) {
+            $('#discount-type-select-wrap').hide();
+            $('#discount-input-label').removeClass('d-none');
+            $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
+            $('#apply-discount-btn').text('Apply Same Price');
+        } else {
+            $('#discount-type-select-wrap').show();
+            $('#discount-input-label').addClass('d-none');
+            const t = $('#discount-type-select').val();
+            $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
+            $('#apply-discount-btn').text('Apply');
+        }
+    }
+
     $(document).ready(function() {
 
-        $('#discount-type-select').on('change', function() {
-            $('#discount-percentage-input').attr('placeholder', $(this).val() === 'percentage' ? 'Enter %' : 'Enter $');
-        });
+        $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
 
         $('#decrease-btn').on('click', function() {
             decreaseModeActive = !decreaseModeActive;
             increaseModeActive = false;
+            samePriceModeActive = false;
             const selectColumn = table.getColumn('_select');
+
+            resetIncreaseBtn();
+            resetSamePriceBtn();
             if (decreaseModeActive) {
-                $(this).removeClass('btn-warning').addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> Decrease ON');
+                $(this).removeClass('btn-warning').addClass('btn-danger')
+                    .html('<i class="fas fa-arrow-down"></i> Decrease ON');
                 selectColumn.show();
-                $('#increase-btn').removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> Increase Mode');
             } else {
-                $(this).removeClass('btn-danger').addClass('btn-warning').html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+                resetDecreaseBtn();
                 selectColumn.hide(); selectedSkus.clear(); updateSelectedCount();
             }
+            syncDiscountInputUi();
         });
 
         $('#increase-btn').on('click', function() {
             increaseModeActive = !increaseModeActive;
             decreaseModeActive = false;
+            samePriceModeActive = false;
             const selectColumn = table.getColumn('_select');
+
+            resetDecreaseBtn();
+            resetSamePriceBtn();
             if (increaseModeActive) {
-                $(this).removeClass('btn-success').addClass('btn-danger').html('<i class="fas fa-arrow-up"></i> Increase ON');
+                $(this).removeClass('btn-success').addClass('btn-danger')
+                    .html('<i class="fas fa-arrow-up"></i> Increase ON');
                 selectColumn.show();
-                $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning').html('<i class="fas fa-arrow-down"></i> Decrease Mode');
             } else {
-                $(this).removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> Increase Mode');
+                resetIncreaseBtn();
                 selectColumn.hide(); selectedSkus.clear(); updateSelectedCount();
             }
+            syncDiscountInputUi();
+        });
+
+        // Same Price Mode — entered price applies to ALL selected SKUs.
+        $('#same-price-btn').on('click', function() {
+            samePriceModeActive = !samePriceModeActive;
+            decreaseModeActive = false;
+            increaseModeActive = false;
+            const selectColumn = table.getColumn('_select');
+
+            resetDecreaseBtn();
+            resetIncreaseBtn();
+            if (samePriceModeActive) {
+                $(this).removeClass('btn-info').addClass('btn-danger')
+                    .html('<i class="fas fa-equals"></i> Same Price ON');
+                selectColumn.show();
+            } else {
+                resetSamePriceBtn();
+                selectColumn.hide(); selectedSkus.clear(); updateSelectedCount();
+            }
+            syncDiscountInputUi();
         });
 
         $(document).on('change', '#select-all-checkbox', function() {
@@ -286,7 +376,15 @@
         function applyDiscount() {
             const discountType  = $('#discount-type-select').val();
             const discountValue = parseFloat($('#discount-percentage-input').val());
-            if (isNaN(discountValue) || discountValue === 0) { showToast('Enter a valid discount value', 'error'); return; }
+
+            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                showToast('Turn on Decrease, Increase, or Same Price mode first', 'error');
+                return;
+            }
+            if (isNaN(discountValue) || discountValue <= 0) {
+                showToast(samePriceModeActive ? 'Please enter a price (e.g. 19.99)' : 'Enter a valid value', 'error');
+                return;
+            }
             if (selectedSkus.size === 0) { showToast('Select at least one SKU', 'error'); return; }
 
             let updatedCount = 0;
@@ -297,10 +395,14 @@
                 if (!rows.length) return;
                 const row = rows[0], rowData = row.getData();
                 const currentPrice = parseFloat(rowData['PP Price']) || 0;
-                if (currentPrice <= 0) return;
+                // Same Price mode applies even when PP Price is empty;
+                // %/$ modes still need a positive PP Price to compute against.
+                if (!samePriceModeActive && currentPrice <= 0) return;
 
                 let newSprice;
-                if (discountType === 'percentage') {
+                if (samePriceModeActive) {
+                    newSprice = Math.max(0.99, discountValue);
+                } else if (discountType === 'percentage') {
                     newSprice = decreaseModeActive ? currentPrice * (1 - discountValue / 100) : currentPrice * (1 + discountValue / 100);
                 } else {
                     newSprice = decreaseModeActive ? currentPrice - discountValue : currentPrice + discountValue;
@@ -319,7 +421,8 @@
             });
 
             if (updates.length) saveSpriceUpdates(updates);
-            showToast(`${decreaseModeActive ? 'Decrease' : 'Increase'} applied to ${updatedCount} SKU(s)`, 'success');
+            const action = samePriceModeActive ? 'Same Price' : (decreaseModeActive ? 'Decrease' : 'Increase');
+            showToast(`${action} applied to ${updatedCount} SKU(s)`, 'success');
             $('#discount-percentage-input').val('');
         }
 
@@ -434,6 +537,31 @@
                         return `<span>${sku}</span><i class="fa fa-copy text-secondary copy-sku-btn" style="cursor:pointer;margin-left:8px;font-size:14px;" data-sku="${sku}" title="Copy SKU"></i>`;
                     }
                 },
+                {
+                    title: 'Links', field: 'links_column', frozen: true, width: 55, hozAlign: 'center', headerSort: false, visible: true,
+                    tooltip: 'Double-click to add / edit links',
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        const buyerLink = d['B Link'] || '';
+                        const sellerLink = d['S Link'] || '';
+                        let html = '<div style="display:flex;flex-direction:column;gap:4px;align-items:center;">';
+                        if (sellerLink) {
+                            html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> S</a>`;
+                        }
+                        if (buyerLink) {
+                            html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> B</a>`;
+                        }
+                        if (!sellerLink && !buyerLink) {
+                            html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                        }
+                        html += '</div>';
+                        return html;
+                    },
+                    cellDblClick: function(e, cell) {
+                        e.stopPropagation();
+                        openEditLinksModal(cell.getRow());
+                    }
+                },
                 { title: 'INV',  field: 'INV',  hozAlign: 'center', width: 50, sorter: 'number' },
                 { title: 'OV L30', field: 'L30', hozAlign: 'center', width: 50, sorter: 'number' },
                 {
@@ -529,7 +657,7 @@
                     title: 'ROI%', field: 'ROI%', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
                         const p = parseFloat(cell.getValue());
-                        const color = p < 50 ? '#a00211' : p < 100 ? '#ffc107' : p < 150 ? '#28a745' : '#e83e8c';
+                        const color = p < 40 ? '#a00211' : p < 75 ? '#ffc107' : p < 125 ? '#28a745' : '#d63384';
                         return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
                     }
                 },
@@ -593,7 +721,7 @@
                     title: 'SROI', field: 'SROI', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
                         const p = parseFloat(cell.getValue());
-                        const color = p < 50 ? '#a00211' : p < 100 ? '#ffc107' : p < 150 ? '#28a745' : '#e83e8c';
+                        const color = p < 40 ? '#a00211' : p < 75 ? '#ffc107' : p < 125 ? '#28a745' : '#d63384';
                         return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
                     }
                 }
@@ -613,6 +741,50 @@
                 data: { sku, nr_req: newValue, _token: '{{ csrf_token() }}' },
                 success: function() { showToast(`${sku}: updated to ${newValue}`, 'success'); row.update({ nr_req: newValue }); },
                 error: function() { showToast(`Failed to update ${sku}`, 'error'); }
+            });
+        });
+
+        // Open Edit Links modal
+        let editLinksRow = null;
+        function openEditLinksModal(row) {
+            if (!row) return;
+            editLinksRow = row;
+            const d = row.getData();
+            $('#editLinksSku').val(d['(Child) sku']);
+            $('#editLinksSkuDisplay').text(d['(Child) sku']);
+            $('#editSellerLink').val(d['S Link'] || '');
+            $('#editBuyerLink').val(d['B Link'] || '');
+            $('#editLinksError').hide().text('');
+            new bootstrap.Modal(document.getElementById('editLinksModal')).show();
+        }
+
+        // Save links
+        $(document).on('click', '#saveLinksBtn', function() {
+            const sku = $('#editLinksSku').val();
+            const sellerLink = $('#editSellerLink').val().trim();
+            const buyerLink = $('#editBuyerLink').val().trim();
+            const $err = $('#editLinksError');
+            $err.hide().text('');
+
+            const $btn = $(this).prop('disabled', true);
+            $.ajax({
+                url: '{{ url("/pp-update-links") }}',
+                method: 'POST',
+                data: { sku, seller_link: sellerLink, buyer_link: buyerLink, _token: '{{ csrf_token() }}' },
+                success: function(res) {
+                    if (editLinksRow) {
+                        editLinksRow.update({ 'S Link': res.seller_link || '', 'B Link': res.buyer_link || '' })
+                            .then(function() { editLinksRow.reformat(); })
+                            .catch(function() { editLinksRow.reformat(); });
+                    }
+                    showToast(`${sku}: links saved`, 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('editLinksModal'))?.hide();
+                },
+                error: function(xhr) {
+                    const msg = xhr.responseJSON?.message || 'Failed to save links.';
+                    $err.text(msg).show();
+                },
+                complete: function() { $btn.prop('disabled', false); }
             });
         });
 
@@ -664,9 +836,8 @@
                     const cvrPercent = ov > 0 ? (sold / ov) * 100 : 0;
                     const cvrRounded = Math.round(cvrPercent * 100) / 100;
                     if (cvrF === '0-0') return cvrRounded === 0;
-                    if (cvrF === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                    if (cvrF === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                    if (cvrF === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                    if (cvrF === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                    if (cvrF === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                     if (cvrF === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                     if (cvrF === '13plus') return cvrRounded > 13;
                     return true;
@@ -678,9 +849,10 @@
                 table.addFilter(function(d) {
                     const roiVal = parseFloat(d['ROI%']) || 0;
                     if (roi === 'lt40')  return roiVal < 40;
-                    if (roi === 'gt250') return roiVal > 250;
-                    const [min, max] = roi.split('-').map(Number);
-                    return roiVal >= min && roiVal <= max;
+                    if (roi === '40-75') return roiVal >= 40 && roiVal < 75;
+                    if (roi === '75-125') return roiVal >= 75 && roiVal < 125;
+                    if (roi === 'gt125') return roiVal >= 125;
+                    return true;
                 });
             }
 

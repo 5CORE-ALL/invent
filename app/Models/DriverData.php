@@ -15,6 +15,9 @@ class DriverData extends Model
         'title',
         'location_url',
         'folder_id',
+        'department_id',
+        'tag',
+        'resource',
         'file_name',
         'file_data',
         'file_size',
@@ -25,9 +28,10 @@ class DriverData extends Model
 
     protected $casts = [
         'folder_id' => 'integer',
+        'department_id' => 'integer',
     ];
 
-    protected $appends = ['icon', 'is_link', 'open_url'];
+    protected $appends = ['icon', 'is_link', 'open_url', 'department_name'];
 
     public function creator(): BelongsTo
     {
@@ -39,9 +43,19 @@ class DriverData extends Model
         return $this->belongsTo(DriverFolder::class, 'folder_id');
     }
 
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(ResourceDepartment::class, 'department_id');
+    }
+
+    public function getDepartmentNameAttribute(): ?string
+    {
+        return $this->department?->name;
+    }
+
     public function getIsLinkAttribute(): bool
     {
-        return $this->file_type === 'link' && filled($this->location_url);
+        return in_array($this->file_type, ['link', 'gsheet'], true) && filled($this->location_url);
     }
 
     public function getOpenUrlAttribute(): ?string
@@ -61,6 +75,7 @@ class DriverData extends Model
     {
         return match ($this->file_type) {
             'link' => 'ri-links-line',
+            'gsheet' => 'ri-google-line',
             'spreadsheet' => 'ri-file-excel-2-line',
             'image' => 'ri-image-line',
             'pdf' => 'ri-file-pdf-line',

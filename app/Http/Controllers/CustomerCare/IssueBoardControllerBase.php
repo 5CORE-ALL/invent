@@ -39,7 +39,7 @@ abstract class IssueBoardControllerBase extends Controller
     protected function normalizeFieldType(string $fieldType): string
     {
         $value = trim($fieldType);
-        abort_unless(in_array($value, ['root_cause_found', 'root_cause_fixed'], true), 422, 'Invalid field type.');
+        abort_unless(in_array($value, ['root_cause_found', 'root_cause_fixed', 'action', 'what_happened'], true), 422, 'Invalid field type.');
         return $value;
     }
 
@@ -352,7 +352,7 @@ abstract class IssueBoardControllerBase extends Controller
                 'marketplace_1' => isset($validated['marketplace_1']) ? trim((string) $validated['marketplace_1']) : null,
                 'marketplace_2' => isset($validated['marketplace_2']) ? trim((string) $validated['marketplace_2']) : null,
                 'what_happened' => isset($validated['what_happened']) ? trim((string) $validated['what_happened']) : null,
-                'issue' => trim($validated['issue']),
+                'issue' => isset($validated['issue']) ? trim((string) $validated['issue']) : null,
                 'issue_remark' => isset($validated['issue_remark']) ? trim((string) $validated['issue_remark']) : null,
                 'action_1' => isset($validated['action_1']) ? trim((string) $validated['action_1']) : null,
                 'action_1_remark' => isset($validated['action_1_remark']) ? trim((string) $validated['action_1_remark']) : null,
@@ -433,7 +433,7 @@ abstract class IssueBoardControllerBase extends Controller
                 'marketplace_1' => isset($validated['marketplace_1']) ? trim((string) $validated['marketplace_1']) : null,
                 'marketplace_2' => isset($validated['marketplace_2']) ? trim((string) $validated['marketplace_2']) : null,
                 'what_happened' => isset($validated['what_happened']) ? trim((string) $validated['what_happened']) : null,
-                'issue' => trim($validated['issue']),
+                'issue' => isset($validated['issue']) ? trim((string) $validated['issue']) : null,
                 'issue_remark' => isset($validated['issue_remark']) ? trim((string) $validated['issue_remark']) : null,
                 'action_1' => isset($validated['action_1']) ? trim((string) $validated['action_1']) : null,
                 'action_1_remark' => isset($validated['action_1_remark']) ? trim((string) $validated['action_1_remark']) : null,

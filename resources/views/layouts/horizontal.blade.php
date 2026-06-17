@@ -45,6 +45,9 @@
 
     @vite(['resources/js/layout.js', 'resources/js/main.js'])
 
+    {{-- Shared DAR quick-entry modal (opened from the topbar DAR button). --}}
+    @include('layouts.shared.dar-modal')
+
     @yield('script-after-vite')
 
     @include('components.ai-chat-widget')

@@ -44,6 +44,7 @@
             <div class="card shadow-sm">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-nowrap">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'container_planning'])
                         <!-- Search -->
                         <div class="input-group" style="max-width: 225px;">
                             <span class="input-group-text bg-white border-end-0">

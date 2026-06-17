@@ -9,6 +9,7 @@ use App\Models\ChannelMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\PLSDataView;
 use App\Models\PLSProduct;
+use App\Models\PlsListingStatus;
 use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -481,39 +482,59 @@ class PlsController extends Controller
         // 3. Get inventory and L30 from shopify_skus table (like Purchasing Power page)
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
-        // 4. Get PLS products data (price, L30, L60)
-        $plsProducts = PLSProduct::whereIn('sku', $skus)
+        // 4. Get PLS products data (price, L30, L60) — normalized keys (NBSP vs space tolerant)
+        $plsProducts = PLSProduct::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
             ->get()
-            ->keyBy(function($item) {
-                return strtoupper($item->sku);
-            });
+            ->keyBy(fn ($item) => ShopifySku::normalizeSkuForShopifyLookup($item->sku));
 
-        // 5. Get PLS inventory from shopify_catalog_variants
+        // 5. Get PLS inventory from shopify_catalog_variants — same normalization as shopify_skus
         $catalogVariants = \DB::table('shopify_catalog_variants')
             ->where('store', 'pls')
-            ->whereIn('sku', $skus)
-            ->select('sku', 'inventory_quantity')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->select('sku', 'inventory_quantity', 'price')
             ->get()
-            ->groupBy(function($item) {
-                return strtoupper($item->sku);
-            });
+            ->groupBy(fn ($item) => ShopifySku::normalizeSkuForShopifyLookup($item->sku));
 
         // 6. Get SPRICE, SGPFT, SROI from pls_data_views
-        $plsDataViews = PLSDataView::whereIn('sku', $skus)->get()->keyBy('sku');
+        $plsDataViews = $this->buildPlsDataViewLookupByNormalizedSku($skus);
 
         // 6b. Get PLS_STATUS from amazon_data_views
-        $amazonDataViews = \App\Models\AmazonDataView::whereIn('sku', $skus)->get()->keyBy('sku');
+        $amazonDataViews = $this->buildAmazonDataViewLookupByNormalizedSku($skus);
+
+        // 6b-2. Get Amazon price from amazon_datsheets (normalized sku lookup)
+        $amazonPriceBySku = [];
+        foreach (\App\Models\AmazonDatasheet::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['sku', 'price']) as $amzRow) {
+            $key = ShopifySku::normalizeSkuForShopifyLookup($amzRow->sku);
+            if ($key !== '' && ! isset($amazonPriceBySku[$key])) {
+                $amazonPriceBySku[$key] = floatval($amzRow->price);
+            }
+        }
+
+        // 6c. Buyer / Seller links from pls_listing_statuses
+        $plsLinkBySku = [];
+        foreach (PlsListingStatus::whereIn('sku', $skus)->get() as $linkRow) {
+            $key = ShopifySku::normalizeSkuForShopifyLookup($linkRow->sku);
+            if ($key !== '' && ! isset($plsLinkBySku[$key])) {
+                $plsLinkBySku[$key] = $linkRow;
+            }
+        }
 
         // 7. Build Result
         $data = [];
 
         foreach ($productMasters as $pm) {
-            $skuUpper = strtoupper($pm->sku);
+            $skuNorm = ShopifySku::normalizeSkuForShopifyLookup($pm->sku);
             
             // Get related data
             $shopify = $shopifyData->get($pm->sku);
-            $plsProduct = $plsProducts->get($skuUpper);
-            $plsCatalogVariants = $catalogVariants->get($skuUpper);
+            $plsProduct = $plsProducts->get($skuNorm);
+            $plsCatalogVariants = $catalogVariants->get($skuNorm);
             
             // Basic info
             $row = [];
@@ -547,7 +568,7 @@ class PlsController extends Controller
             $plsInventory = $plsCatalogVariants ? $plsCatalogVariants->sum('inventory_quantity') : 0;
             
             // Get SPRICE, SGPFT, SROI from pls_data_views
-            $plsDataView = $plsDataViews->get($pm->sku);
+            $plsDataView = $plsDataViews[$skuNorm] ?? null;
             $sprice = null;
             $sgpft = null;
             $sroi = null;
@@ -573,6 +594,7 @@ class PlsController extends Controller
             
             $row['image_path'] = $imagePath;
             $row['price'] = $price;
+            $row['amazon_price'] = $amazonPriceBySku[$skuNorm] ?? 0;
             $row['lp'] = $lp;
             $row['ship'] = $ship;
             $row['inventory'] = $inventory;
@@ -607,7 +629,7 @@ class PlsController extends Controller
             $row['has_custom_sprice'] = $hasCustomSprice;
             
             // Get PLS_STATUS from amazon_data_views
-            $amazonDataView = $amazonDataViews->get($pm->sku);
+            $amazonDataView = $amazonDataViews[$skuNorm] ?? null;
             $plsStatus = null;
             
             if ($amazonDataView) {
@@ -621,7 +643,15 @@ class PlsController extends Controller
             }
             
             $row['pls_status'] = $plsStatus;
-            
+
+            // Buyer / Seller links
+            $linkRecord = $plsLinkBySku[$skuNorm] ?? null;
+            $linkVal = $linkRecord
+                ? (is_array($linkRecord->value) ? $linkRecord->value : (json_decode($linkRecord->value, true) ?: []))
+                : [];
+            $row['buyer_link'] = $linkVal['buyer_link'] ?? '';
+            $row['seller_link'] = $linkVal['seller_link'] ?? '';
+
             // Total profit based on OV L30 (our sales)
             $row['total_pft_l30'] = round($gpft * $ovl30, 2);
             
@@ -650,6 +680,92 @@ class PlsController extends Controller
         }
         
         return response()->json($data);
+    }
+
+    /**
+     * @param  array<int, string>  $productSkus
+     * @return array<string, PLSDataView>
+     */
+    private static function buildPlsDataViewLookupByNormalizedSku(array $productSkus): array
+    {
+        $lookup = [];
+        foreach (PLSDataView::whereIn('sku', $productSkus)->get() as $row) {
+            $key = ShopifySku::normalizeSkuForShopifyLookup($row->sku);
+            if ($key !== '' && ! isset($lookup[$key])) {
+                $lookup[$key] = $row;
+            }
+        }
+
+        $missing = [];
+        foreach ($productSkus as $pmSku) {
+            $key = ShopifySku::normalizeSkuForShopifyLookup((string) $pmSku);
+            if ($key !== '' && ! isset($lookup[$key])) {
+                $missing[$key] = true;
+            }
+        }
+
+        if ($missing !== []) {
+            PLSDataView::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->orderBy('id')
+                ->chunkById(500, function ($rows) use (&$lookup, &$missing) {
+                    foreach ($rows as $row) {
+                        $key = ShopifySku::normalizeSkuForShopifyLookup($row->sku);
+                        if ($key !== '' && isset($missing[$key]) && ! isset($lookup[$key])) {
+                            $lookup[$key] = $row;
+                            unset($missing[$key]);
+                        }
+                    }
+
+                    return count($missing) > 0;
+                });
+        }
+
+        return $lookup;
+    }
+
+    /**
+     * @param  array<int, string>  $productSkus
+     * @return array<string, \App\Models\AmazonDataView>
+     */
+    private static function buildAmazonDataViewLookupByNormalizedSku(array $productSkus): array
+    {
+        $lookup = [];
+        foreach (\App\Models\AmazonDataView::whereIn('sku', $productSkus)->get() as $row) {
+            $key = ShopifySku::normalizeSkuForShopifyLookup($row->sku);
+            if ($key !== '' && ! isset($lookup[$key])) {
+                $lookup[$key] = $row;
+            }
+        }
+
+        $missing = [];
+        foreach ($productSkus as $pmSku) {
+            $key = ShopifySku::normalizeSkuForShopifyLookup((string) $pmSku);
+            if ($key !== '' && ! isset($lookup[$key])) {
+                $missing[$key] = true;
+            }
+        }
+
+        if ($missing !== []) {
+            \App\Models\AmazonDataView::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->orderBy('id')
+                ->chunkById(500, function ($rows) use (&$lookup, &$missing) {
+                    foreach ($rows as $row) {
+                        $key = ShopifySku::normalizeSkuForShopifyLookup($row->sku);
+                        if ($key !== '' && isset($missing[$key]) && ! isset($lookup[$key])) {
+                            $lookup[$key] = $row;
+                            unset($missing[$key]);
+                        }
+                    }
+
+                    return count($missing) > 0;
+                });
+        }
+
+        return $lookup;
     }
 
     /**
@@ -778,6 +894,81 @@ class PlsController extends Controller
             'sgpft_percent' => round($sgpft_percent, 2),
             'sroi_percent' => round($sroi_percent, 2),
             'has_custom_sprice' => true
+        ]);
+    }
+
+    /**
+     * Batch-clear SPRICE for multiple PLS SKUs
+     */
+    public function clearPlsSprice(Request $request)
+    {
+        $updates = $request->input('updates', []);
+
+        if (empty($updates)) {
+            return response()->json(['error' => 'No updates provided'], 400);
+        }
+
+        $cleared = 0;
+        foreach ($updates as $item) {
+            $sku = $item['sku'] ?? null;
+            if (!$sku) continue;
+
+            $dataView = PLSDataView::firstOrNew(['sku' => $sku]);
+            $currentValue = $dataView->value;
+            if (is_string($currentValue)) {
+                $currentValue = json_decode($currentValue, true) ?: [];
+            } elseif (!is_array($currentValue)) {
+                $currentValue = [];
+            }
+
+            unset($currentValue['sprice'], $currentValue['sgpft'], $currentValue['sroi']);
+            $dataView->value = $currentValue;
+            $dataView->save();
+            $cleared++;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => "SPRICE cleared for {$cleared} SKU(s)",
+            'cleared' => $cleared
+        ]);
+    }
+
+    /**
+     * Save buyer / seller links for a SKU into pls_listing_statuses.value JSON.
+     * Empty strings clear the link (URL validation only applies to non-empty values).
+     */
+    public function saveLinks(Request $request)
+    {
+        $sku = $request->input('sku');
+        if (!$sku) {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $buyerLink = trim((string) $request->input('buyer_link', ''));
+        $sellerLink = trim((string) $request->input('seller_link', ''));
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $field => $val) {
+            if ($val !== '' && !filter_var($val, FILTER_VALIDATE_URL)) {
+                return response()->json(['success' => false, 'message' => 'Invalid URL for ' . $field], 422);
+            }
+        }
+
+        $status = PlsListingStatus::firstOrNew(['sku' => $sku]);
+        $existing = is_array($status->value)
+            ? $status->value
+            : (json_decode($status->value, true) ?: []);
+
+        $existing['buyer_link'] = $buyerLink !== '' ? $buyerLink : null;
+        $existing['seller_link'] = $sellerLink !== '' ? $sellerLink : null;
+
+        $status->value = $existing;
+        $status->save();
+
+        return response()->json([
+            'success' => true,
+            'buyer_link' => $existing['buyer_link'],
+            'seller_link' => $existing['seller_link'],
         ]);
     }
 }

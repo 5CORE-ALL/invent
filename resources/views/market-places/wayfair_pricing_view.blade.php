@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Wayfair Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Wayfair - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -87,8 +87,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Wayfair Analytics',
-        'sub_title'  => 'Base-cost upload, SPRICE, and L30 sales from Wayfair daily; margin from Marketplace % (Wayfair)',
+        'page_title' => 'Wayfair - Analytics',
+        'sub_title'  => '',
     ])
 
     <div class="row">
@@ -154,9 +154,7 @@
                             <option value="lt40">&lt; 40%</option>
                             <option value="40-75">40–75%</option>
                             <option value="75-125">75–125%</option>
-                            <option value="125-175">125–175%</option>
-                            <option value="175-250">175–250%</option>
-                            <option value="gt250">&gt; 250%</option>
+                            <option value="gt125">125%+</option>
                         </select>
                         <select id="wf-fqty-filter" class="form-select form-select-sm" style="width:130px;" title="Units sold (Wayfair daily L30)">
                             <option value="all">Sold</option>
@@ -204,7 +202,7 @@
                         <button type="button" id="wf-show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
                             <i class="fa fa-eye"></i> Show all
                         </button>
-                        <button id="wf-price-mode-btn" type="button" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same SPRICE (all rows)">
+                        <button id="wf-price-mode-btn" type="button" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same SPRICE (enter one price, applies to all selected rows)">
                             <i class="fas fa-exchange-alt"></i> Pricing mode
                         </button>
                     </div>
@@ -273,6 +271,35 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-warning" id="wfUploadPriceSheetBtn">Upload</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="wfEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="wfEditLinksSku">
+                    <p class="mb-3"><strong>SKU:</strong> <span id="wfEditLinksSkuDisplay"></span></p>
+                    <div class="mb-3">
+                        <label for="wfEditBuyerLink" class="form-label">B Link (Buyer · Wayfair)</label>
+                        <input type="url" class="form-control" id="wfEditBuyerLink" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label for="wfEditSellerLink" class="form-label">S Link (Seller · Partners)</label>
+                        <input type="url" class="form-control" id="wfEditSellerLink" placeholder="https://...">
+                    </div>
+                    <div id="wfEditLinksError" class="text-danger small" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="wfSaveLinksBtn">Save</button>
                 </div>
             </div>
         </div>
@@ -548,7 +575,7 @@
                 $btn.removeClass('btn-secondary btn-danger btn-primary').addClass('btn-warning')
                     .html('<i class="fas fa-equals"></i> Same SPRICE');
                 if (selectCol) selectCol.show();
-                $('#wf-discount-input').attr('placeholder', 'SPRICE $');
+                $('#wf-discount-input').attr('placeholder', 'Enter price (e.g. 19.99)');
                 wfUpdateSelectedCount();
                 return;
             }
@@ -579,10 +606,10 @@
                 const cnt = wfSelectedSkus.size;
                 if (cnt > 0) {
                     $('#wf-selected-skus-count').text(
-                        cnt + ' SKU' + (cnt !== 1 ? 's' : '') + ' selected — Apply uses these rows only (clear checks for all SKUs).'
+                        'Same SPRICE: ' + cnt + ' SKU' + (cnt !== 1 ? 's' : '') + ' selected — enter a price and click Apply to set the SAME SPRICE on these rows.'
                     );
                 } else {
-                    $('#wf-selected-skus-count').text('Same SPRICE: no rows checked — Apply updates every SKU (not parent summaries).');
+                    $('#wf-selected-skus-count').text('Same SPRICE: check the rows you want to update, enter a price, then click Apply.');
                 }
             } else {
                 const cnt = wfSelectedSkus.size;
@@ -608,14 +635,21 @@
             const discountVal = parseFloat($('#wf-discount-input').val());
 
             if (wfUniformPriceModeActive) {
-                if (isNaN(discountVal) || discountVal <= 0 || !table) return;
+                if (!table) return;
+                if (isNaN(discountVal) || discountVal <= 0) {
+                    if (window.toastr) toastr.warning('Enter a price first (e.g. 19.99)');
+                    return;
+                }
+                if (wfSelectedSkus.size === 0) {
+                    if (window.toastr) toastr.warning('Check the rows you want to apply this price to first.');
+                    return;
+                }
                 const newSprice = wfRoundToRetailPrice(Math.max(0.99, discountVal));
                 const updates = [];
-                const limitToSelection = wfSelectedSkus.size > 0;
                 table.getRows('active').forEach(function(row) {
                     const d = row.getData();
                     if (d.is_parent) return;
-                    if (limitToSelection && !wfSelectedSkus.has(d.sku)) return;
+                    if (!wfSelectedSkus.has(String(d.sku))) return;
                     const margin = wayfairMarginFromRow(d);
                     const lp = parseFloat(d.lp) || 0;
                     const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp) / newSprice) * 100) : 0;
@@ -623,7 +657,12 @@
                     row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
                     updates.push({ sku: d.sku, sprice: newSprice });
                 });
-                if (updates.length) saveWayfairSpriceUpdates(updates);
+                if (updates.length) {
+                    saveWayfairSpriceUpdates(updates);
+                    if (window.toastr) toastr.success('SPRICE set to $' + newSprice.toFixed(2) + ' for ' + updates.length + ' SKU(s)');
+                } else if (window.toastr) {
+                    toastr.warning('No matching SKU rows in the current view.');
+                }
                 $('#wf-discount-input').val('');
                 return;
             }
@@ -702,7 +741,7 @@
                 table.getRows('active').forEach(function(row) {
                     const d = row.getData();
                     if (d.is_parent) return;
-                    if (limitToSelection && !wfSelectedSkus.has(d.sku)) return;
+                    if (limitToSelection && !wfSelectedSkus.has(String(d.sku))) return;
                     row.update({ sprice: 0, sgpft: 0, sroi: 0 });
                     updates.push({ sku: d.sku, sprice: 0 });
                 });
@@ -714,7 +753,7 @@
             const updates = [];
             table.getRows('active').forEach(function(row) {
                 const d = row.getData();
-                if (wfSelectedSkus.has(d.sku) && !d.is_parent) {
+                if (wfSelectedSkus.has(String(d.sku)) && !d.is_parent) {
                     row.update({ sprice: 0, sgpft: 0, sroi: 0 });
                     updates.push({ sku: d.sku, sprice: 0 });
                 }
@@ -860,9 +899,10 @@
                     if (d.is_parent) return true;
                     const roi = parseFloat(d.groi) || 0;
                     if (roiFilter === 'lt40') return roi < 40;
-                    if (roiFilter === 'gt250') return roi > 250;
-                    const parts = roiFilter.split('-').map(Number);
-                    return roi >= parts[0] && roi <= parts[1];
+                    if (roiFilter === '40-75') return roi >= 40 && roi < 75;
+                    if (roiFilter === '75-125') return roi >= 75 && roi < 125;
+                    if (roiFilter === 'gt125') return roi >= 125;
+                    return true;
                 });
             }
             if (fqtyFilter !== 'all') {
@@ -1075,6 +1115,7 @@
                         width: 64,
                         download: false,
                         frozen: true,
+                        tooltip: 'Double-click to add / edit links',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
@@ -1089,7 +1130,13 @@
                                 parts.push('<a href="' + wfEscUrlAttr(s) + '" target="_blank" rel="noopener noreferrer" ' +
                                     'class="fw-semibold" style="color:#6f42c1;" title="Seller (Partners)">S</a>');
                             }
-                            return parts.length ? parts.join('<span class="text-muted" style="margin:0 3px;">|</span>') : '';
+                            return parts.length ? parts.join('<span class="text-muted" style="margin:0 3px;">|</span>') : '<span class="text-muted" style="font-size:12px;">-</span>';
+                        },
+                        cellDblClick: function(e, cell) {
+                            e.stopPropagation();
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return;
+                            openWfEditLinksModal(cell.getRow());
                         }
                     },
                     {
@@ -1197,9 +1244,8 @@
                             let color;
                             if (v < 40) color = '#a00211';
                             else if (v < 75) color = '#ffc107';
-                            else if (v < 125) color = '#3591dc';
-                            else if (v < 250) color = '#28a745';
-                            else color = '#e83e8c';
+                            else if (v < 125) color = '#28a745';
+                            else color = '#d63384';
                             return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
                         }
                     },
@@ -1266,9 +1312,8 @@
                             let color;
                             if (v < 40) color = '#a00211';
                             else if (v < 75) color = '#ffc107';
-                            else if (v < 125) color = '#3591dc';
-                            else if (v < 250) color = '#28a745';
-                            else color = '#e83e8c';
+                            else if (v < 125) color = '#28a745';
+                            else color = '#d63384';
                             return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
                         }
                     },
@@ -1470,6 +1515,49 @@
                 applyFilters();
             });
             $(document).on('click', function() { $('.wf-manual-dropdown').removeClass('show'); });
+
+            // ---- Edit B/S Links (double-click on B/S cell) ----
+            let wfEditLinksRow = null;
+            window.openWfEditLinksModal = function(row) {
+                if (!row) return;
+                wfEditLinksRow = row;
+                const d = row.getData();
+                $('#wfEditLinksSku').val(d.sku);
+                $('#wfEditLinksSkuDisplay').text(d.sku);
+                $('#wfEditBuyerLink').val(d.buyer_link || '');
+                $('#wfEditSellerLink').val(d.seller_link || '');
+                $('#wfEditLinksError').hide().text('');
+                new bootstrap.Modal(document.getElementById('wfEditLinksModal')).show();
+            };
+
+            $(document).on('click', '#wfSaveLinksBtn', function() {
+                const sku = $('#wfEditLinksSku').val();
+                const buyerLink = $('#wfEditBuyerLink').val().trim();
+                const sellerLink = $('#wfEditSellerLink').val().trim();
+                const $err = $('#wfEditLinksError');
+                $err.hide().text('');
+                const $btn = $(this).prop('disabled', true);
+                $.ajax({
+                    url: '{{ route("wayfair.pricing.save.links") }}',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: { _token: '{{ csrf_token() }}', sku: sku, buyer_link: buyerLink, seller_link: sellerLink },
+                    success: function(res) {
+                        if (wfEditLinksRow) {
+                            wfEditLinksRow.update({ buyer_link: res.buyer_link || null, seller_link: res.seller_link || null })
+                                .then(function() { wfEditLinksRow.reformat(); })
+                                .catch(function() { wfEditLinksRow.reformat(); });
+                        }
+                        if (window.toastr) toastr.success(sku + ': links saved');
+                        bootstrap.Modal.getInstance(document.getElementById('wfEditLinksModal'))?.hide();
+                    },
+                    error: function(xhr) {
+                        const msg = xhr.responseJSON?.message || 'Failed to save links.';
+                        $err.text(msg).show();
+                    },
+                    complete: function() { $btn.prop('disabled', false); }
+                });
+            });
 
             $(document).on('click', '.wf-copy-sku-btn', function(e) {
                 e.preventDefault();

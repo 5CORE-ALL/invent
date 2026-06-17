@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Reviews;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\FetchReviewsJob;
-use App\Jobs\ProcessCsvReviewsJob;
 use App\Models\ProductMaster;
 use App\Models\ReviewAlert;
 use App\Models\ReviewIssuesSummary;
@@ -358,28 +357,112 @@ class ReviewMasterController extends Controller
     // CSV Upload
     // -------------------------------------------------------------------------
 
-    public function uploadCsv(Request $request): JsonResponse
+    public function uploadCsv(Request $request, \App\Services\ReviewFetchService $service): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'csv_file' => 'required|file|mimes:csv,txt|max:10240',
-        ]);
+        if (!$request->hasFile('csv_file') || !$request->file('csv_file')->isValid()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No valid file was uploaded. Please choose a CSV file and try again.',
+            ], 422);
+        }
 
-        if ($validator->fails()) {
-            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+        $file      = $request->file('csv_file');
+        $extension = strtolower($file->getClientOriginalExtension());
+
+        // Validate by extension instead of MIME — browsers report CSV with many
+        // different (and often unreliable) MIME types, which caused valid uploads
+        // to be rejected.
+        if (!in_array($extension, ['csv', 'txt'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid file type. Please upload a .csv or .txt file.',
+            ], 422);
+        }
+
+        if ($file->getSize() > 10 * 1024 * 1024) {
+            return response()->json([
+                'success' => false,
+                'message' => 'File is too large. Maximum allowed size is 10MB.',
+            ], 422);
         }
 
         try {
-            $path = $request->file('csv_file')->store('reviews/csv_uploads');
-            ProcessCsvReviewsJob::dispatch($path, auth()->id() ?? 0);
+            $rows = $this->parseCsvFile($file->getRealPath());
+
+            if (empty($rows)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No data rows found. Make sure the file has a header row and at least one review row.',
+                ], 422);
+            }
+
+            $stats = $service->processCsvRows($rows);
+
+            $message = "Import complete: {$stats['saved']} saved";
+            if (!empty($stats['skipped'])) {
+                $message .= ", {$stats['skipped']} skipped (duplicates)";
+            }
+            if (!empty($stats['errors'])) {
+                $message .= ", {$stats['errors']} skipped (unknown SKU / invalid row)";
+            }
+            $message .= '.';
 
             return response()->json([
                 'success' => true,
-                'message' => 'CSV uploaded and queued for processing.',
+                'message' => $message,
+                'stats'   => $stats,
             ]);
         } catch (\Exception $e) {
             Log::error("ReviewMasterController: CSV upload failed", ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Upload failed.'], 500);
+            return response()->json([
+                'success' => false,
+                'message' => 'Upload failed: ' . $e->getMessage(),
+            ], 500);
         }
+    }
+
+    /**
+     * Parse an uploaded CSV/TXT file into an array of associative rows keyed by
+     * the (lower-cased, trimmed) header columns.
+     */
+    private function parseCsvFile(string $path): array
+    {
+        $rows    = [];
+        $headers = [];
+
+        if (($handle = fopen($path, 'r')) === false) {
+            return [];
+        }
+
+        $lineNum = 0;
+        while (($data = fgetcsv($handle, 0, ',')) !== false) {
+            $lineNum++;
+
+            // Skip fully empty lines
+            if ($data === [null] || (count($data) === 1 && trim((string) $data[0]) === '')) {
+                continue;
+            }
+
+            if (empty($headers)) {
+                $headers = array_map('trim', array_map('strtolower', $data));
+                continue;
+            }
+
+            // Pad/trim row so it lines up with the header count
+            if (count($data) < count($headers)) {
+                $data = array_pad($data, count($headers), null);
+            } elseif (count($data) > count($headers)) {
+                $data = array_slice($data, 0, count($headers));
+            }
+
+            $row = array_combine($headers, $data);
+            if ($row !== false) {
+                $rows[] = $row;
+            }
+        }
+
+        fclose($handle);
+        return $rows;
     }
 
     // -------------------------------------------------------------------------

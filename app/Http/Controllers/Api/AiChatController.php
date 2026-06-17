@@ -8,6 +8,7 @@ use App\Models\AiEscalation;
 use App\Models\AiKnowledgeBase;
 use App\Models\AiKnowledgeFile;
 use App\Models\AiQuestion;
+use App\Models\HelpDeskFaq;
 use App\Models\Task;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -951,6 +952,58 @@ class AiChatController extends Controller
         };
 
         return response()->stream($callback, 200, $headers);
+    }
+
+    /**
+     * Return Help Desk FAQs for the chat panel. FAQs are filtered by the current
+     * user's department; FAQs with no department (or "all") are shown to everyone.
+     */
+    public function getFaqs(Request $request): JsonResponse
+    {
+        if (!\Illuminate\Support\Facades\Schema::hasTable('help_desk_faqs')) {
+            return response()->json(['faqs' => []]);
+        }
+
+        $user = $request->user();
+        $deptId = $user?->resource_department_id;
+        $deptSlug = null;
+        if ($deptId && \Illuminate\Support\Facades\Schema::hasTable('resource_departments')) {
+            $deptSlug = optional(\App\Models\ResourceDepartment::find($deptId))->slug;
+        }
+
+        $faqs = HelpDeskFaq::orderByDesc('id')->get()->filter(function ($f) use ($deptId, $deptSlug) {
+            $dept = $f->dept;
+            // No department set => visible to everyone
+            if (empty($dept) || !is_array($dept)) {
+                return true;
+            }
+            // "all" sentinel => visible to everyone
+            if (in_array('all', array_map('strtolower', array_map('strval', $dept)), true)) {
+                return true;
+            }
+            // Match by department id or slug
+            foreach ($dept as $d) {
+                if ((string) $d === (string) $deptId) {
+                    return true;
+                }
+                if ($deptSlug !== null && strcasecmp((string) $d, (string) $deptSlug) === 0) {
+                    return true;
+                }
+            }
+            return false;
+        })->values()->map(function ($f) {
+            return [
+                'id' => $f->id,
+                'faq' => $f->faq,
+                'answers' => $f->answers,
+                'link' => $f->link,
+                'link2' => $f->link2,
+                'sop' => $f->sop,
+                'video' => $f->video,
+            ];
+        });
+
+        return response()->json(['faqs' => $faqs]);
     }
 
     public function feedback(Request $request): JsonResponse

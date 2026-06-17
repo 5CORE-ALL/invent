@@ -525,14 +525,12 @@ class FaireController extends Controller
     public function getDailyData(Request $request)
     {
         try {
-            // Source changed from `faire_daily_data` (manual Excel uploads) to live Shopify
-            // order data on the `apicentral` connection. Faire orders are identified the same
-            // way the Shopify Orders page identifies them: source_name='faire' OR tags contain
-            // "Faire" (covers shopify_draft_order rows tagged Faire too).
+            // Source: shopify_raw_orders on the default (inventory_db) connection. Faire orders
+            // are identified the same way the Shopify Orders page identifies them:
+            // source_name='faire' OR tags contain "Faire".
             // Window: last 30 days (Pacific time) to match the L30 view used elsewhere.
             $thirtyDaysAgo = \Carbon\Carbon::now('America/Los_Angeles')->subDays(30)->startOfDay();
-            $rows = DB::connection('apicentral')
-                ->table('shopify_order_items')
+            $rows = DB::table('shopify_raw_orders')
                 ->where('order_date', '>=', $thirtyDaysAgo)
                 ->where(function ($q) {
                     $q->where('source_name', 'faire')
@@ -549,7 +547,12 @@ class FaireController extends Controller
                 $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
             }
 
-            $mapped = $rows->map(function ($item) use ($productMasters) {
+            // Keep-rate from marketplace_percentages (Faire), not hardcoded. Stored as a whole
+            // number (e.g. 70 = 70%), same convention as the eBay daily-sales page.
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'Faire')->first();
+            $keepRate = ($marketplaceData ? (float) $marketplaceData->percentage : 100) / 100;
+
+            $mapped = $rows->map(function ($item) use ($productMasters, $keepRate) {
                 $sku = $item->sku;
                 $lp = 0.0;
 
@@ -577,12 +580,15 @@ class FaireController extends Controller
                 $price    = (float) ($item->price ?? 0);
                 $quantity = (float) ($item->quantity ?? 0);
 
-                // Same profit formula as before: PFT each = (price × 0.75) − LP. Faire keeps 25%.
-                $pftEachAmount = ($price * 0.75) - $lp;
+                // PFT each = (price × keep-rate) − LP. Keep-rate comes from marketplace_percentages
+                // (Faire). No ship cost on Faire.
+                $pftEachAmount = ($price * $keepRate) - $lp;
                 $pftEachPct    = $price > 0 ? ($pftEachAmount / $price) * 100 : 0;
-                $roi           = $lp > 0 ? ($pftEachAmount / $lp) * 100 : 0;
                 $totalPft      = $pftEachAmount * $quantity;
                 $cogs          = $lp * $quantity;
+                // ROI = (T PFT / COGS) × 100. Dividing by total COGS (lp × qty) keeps ROI
+                // quantity-independent and consistent with the ROI summary badge.
+                $roi           = $cogs > 0 ? ($totalPft / $cogs) * 100 : 0;
 
                 return [
                     // Core identifiers
@@ -930,16 +936,31 @@ class FaireController extends Controller
                 $displaySku = $productMaster
                     ? trim((string) $productMaster->sku)
                     : ($sale ? (string) $sale->sku : ($priceRow ? trim((string) $priceRow->sku) : $normalizedSku));
-                $isMissing = !$productMaster || $price <= 0;
 
-                if ($isMissing) {
-                    $mapValue = '';
-                } else {
-                    $diff = abs($inv - $faireStock);
-                    if ($diff <= 3) {
-                        $mapValue = 'Map';
-                    } else {
-                        $mapValue = "N Map|{$diff}";
+                $faRec = $forecastNrBySku[$normalizedSku] ?? null;
+                $nrOut = '';
+                if ($faRec && $faRec->nr !== null && trim((string) $faRec->nr) !== '') {
+                    $nrOut = strtoupper(trim((string) $faRec->nr));
+                    if (! in_array($nrOut, ['REQ', 'NR', 'LATER'], true)) {
+                        $nrOut = 'REQ';
+                    }
+                }
+
+                // Listed on Faire = row in uploaded price sheet with price > 0 (same idea as Amazon sheet / AliExpress export).
+                $isMissingFaire = $priceRow === null || $price <= 0;
+                $nrForRules = $this->resolveFaireNrForRules($nrOut, is_array($meta) ? $meta : [], $productMaster !== null);
+
+                $missing = '';
+                $mapValue = '';
+                if ($inv > 0 && $nrForRules === 'REQ') {
+                    if ($isMissingFaire || $price <= 0) {
+                        $missing = 'M';
+                    } elseif ($price > 0) {
+                        if (self::faireInvWithinMapTolerance((float) $inv, (float) $faireStock)) {
+                            $mapValue = 'Map';
+                        } else {
+                            $mapValue = 'N Map|'.(int) round(abs($inv - $faireStock));
+                        }
                     }
                 }
 
@@ -953,15 +974,6 @@ class FaireController extends Controller
                 $buyerLink = $buyerLink !== '' ? $buyerLink : null;
                 $sellerLink = $sellerLink !== '' ? $sellerLink : null;
 
-                $faRec = $forecastNrBySku[$normalizedSku] ?? null;
-                $nrOut = '';
-                if ($faRec && $faRec->nr !== null && trim((string) $faRec->nr) !== '') {
-                    $nrOut = strtoupper(trim((string) $faRec->nr));
-                    if (! in_array($nrOut, ['REQ', 'NR', 'LATER'], true)) {
-                        $nrOut = 'REQ';
-                    }
-                }
-
                 $rows[] = [
                     'sku' => $displaySku,
                     'parent' => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
@@ -971,8 +983,10 @@ class FaireController extends Controller
                     'lmp' => null,
                     'lmp_link' => null,
                     'lmp_entries' => [],
-                    'missing' => $isMissing ? 'M' : '',
+                    'is_missing_faire' => $isMissingFaire,
+                    'missing' => $missing,
                     'map' => $mapValue,
+                    'nr' => $nrForRules ?? $nrOut,
                     'buyer_link' => $buyerLink,
                     'seller_link' => $sellerLink,
                     'gpft' => (int) round($gpft),
@@ -990,7 +1004,6 @@ class FaireController extends Controller
                     'ov_l30' => $ovL30,
                     'ae_stock' => $faireStock,
                     'dil_percent' => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
-                    'nr' => $nrOut,
                 ];
             }
 
@@ -1079,6 +1092,44 @@ class FaireController extends Controller
 
             return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Save buyer / seller links for a SKU into faire_listing_statuses.value JSON.
+     * Empty strings clear the link (URL validation only applies to non-empty values).
+     */
+    public function saveLinks(Request $request)
+    {
+        $sku = $request->input('sku');
+        if (!$sku) {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $buyerLink = trim((string) $request->input('buyer_link', ''));
+        $sellerLink = trim((string) $request->input('seller_link', ''));
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $field => $val) {
+            if ($val !== '' && !filter_var($val, FILTER_VALIDATE_URL)) {
+                return response()->json(['success' => false, 'message' => 'Invalid URL for ' . $field], 422);
+            }
+        }
+
+        $status = FaireListingStatus::firstOrNew(['sku' => $sku]);
+        $existing = is_array($status->value)
+            ? $status->value
+            : (json_decode($status->value, true) ?: []);
+
+        $existing['buyer_link'] = $buyerLink !== '' ? $buyerLink : null;
+        $existing['seller_link'] = $sellerLink !== '' ? $sellerLink : null;
+
+        $status->value = $existing;
+        $status->save();
+
+        return response()->json([
+            'success' => true,
+            'buyer_link' => $existing['buyer_link'],
+            'seller_link' => $existing['seller_link'],
+        ]);
     }
 
     public function faireBadgeChartData(Request $request)
@@ -1222,6 +1273,95 @@ class FaireController extends Controller
         ];
     }
 
+    /**
+     * NR for map/missing rules — mirrors Amazon / AliExpress (REQ vs NR, default REQ when in product master).
+     *
+     * @param  array<string, mixed>  $meta
+     */
+    private function resolveFaireNrForRules(string $forecastNr, array $meta, bool $hasProductMaster): ?string
+    {
+        $nrl = strtoupper(trim((string) ($meta['NRL'] ?? '')));
+        if ($nrl === 'NRL') {
+            return 'NR';
+        }
+        if ($nrl === 'REQ') {
+            return 'REQ';
+        }
+
+        $nrp = strtoupper(trim((string) ($meta['NRP'] ?? '')));
+        if ($nrp === 'NR') {
+            return 'NR';
+        }
+
+        $nr = strtoupper(trim($forecastNr));
+        if ($nr === 'NR' || $nr === 'LATER') {
+            return 'NR';
+        }
+        if ($nr === 'REQ') {
+            return 'REQ';
+        }
+
+        return $hasProductMaster ? 'REQ' : null;
+    }
+
+    /** INV vs Faire stock = Map if diff ≤ 3 units OR ≤ 3% of Shopify INV (Amazon INV vs INV_AMZ). */
+    private static function faireInvWithinMapTolerance(float $inv, float $faireStock): bool
+    {
+        if ($inv <= 0) {
+            return true;
+        }
+        $diff = abs($inv - $faireStock);
+        if ($diff <= 3.0) {
+            return true;
+        }
+
+        return $diff <= ($inv * 0.03);
+    }
+
+    /**
+     * Map / Miss / NMap — same rules as faire_pricing_view (Amazon / AliExpress aligned).
+     */
+    public static function countFairePricingBadgeTotals(iterable $rows): array
+    {
+        $map = 0;
+        $miss = 0;
+        $nmap = 0;
+
+        foreach ($rows as $row) {
+            if (is_object($row)) {
+                $row = (array) $row;
+            }
+            if (! is_array($row) || ! empty($row['is_parent'])) {
+                continue;
+            }
+
+            $inv = (float) ($row['inv'] ?? 0);
+            $nrValue = (string) ($row['nr'] ?? '');
+            $isMissingFaire = (bool) ($row['is_missing_faire'] ?? false);
+            $rowPrice = (float) ($row['price'] ?? 0);
+            $faireStock = (float) ($row['ae_stock'] ?? 0);
+
+            if ($inv > 0 && $nrValue === 'REQ') {
+                if ($isMissingFaire || $rowPrice <= 0) {
+                    $miss++;
+                } elseif (! $isMissingFaire && $rowPrice > 0) {
+                    if (self::faireInvWithinMapTolerance($inv, $faireStock)) {
+                        $map++;
+                    } else {
+                        $nmap++;
+                    }
+                }
+            }
+        }
+
+        return [
+            'map' => $map,
+            'miss' => $miss,
+            'nmap' => $nmap,
+            'total_views' => 0,
+        ];
+    }
+
     private function saveFairePricingSnapshot(array $rows): void
     {
         try {
@@ -1240,9 +1380,6 @@ class FaireController extends Controller
             $totalAl30 = 0;
             $dilSum = 0;
             $dilCount = 0;
-            $missingCount = 0;
-            $mapCount = 0;
-            $nmapCount = 0;
             $zeroSold = 0;
             $moreSold = 0;
 
@@ -1278,16 +1415,12 @@ class FaireController extends Controller
                     $dilSum += ($ovL30 / $inv) * 100;
                     $dilCount++;
                 }
-                if (($r['missing'] ?? '') === 'M') {
-                    $missingCount++;
-                }
-                $mapVal = (string) ($r['map'] ?? '');
-                if ($mapVal === 'Map') {
-                    $mapCount++;
-                } elseif (str_starts_with($mapVal, 'N Map|')) {
-                    $nmapCount++;
-                }
             }
+
+            $badgeTotals = self::countFairePricingBadgeTotals($allChildRows);
+            $missingCount = $badgeTotals['miss'];
+            $mapCount = $badgeTotals['map'];
+            $nmapCount = $badgeTotals['nmap'];
 
             $totalSkuCount = $allChildRows->count();
 

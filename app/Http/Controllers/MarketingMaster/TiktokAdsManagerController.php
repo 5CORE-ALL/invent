@@ -438,6 +438,10 @@ class TiktokAdsManagerController extends Controller
 
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
+        $approvalMap = TiktokGmvAd::whereIn('sku', $skus)
+            ->pluck('approval', 'sku')
+            ->all();
+
         $result = [];
 
         foreach ($productMasters as $pm) {
@@ -447,10 +451,11 @@ class TiktokAdsManagerController extends Controller
             $shopify = $shopifyData[$pm->sku] ?? null;
 
             $row = [];
-            $row['parent'] = $parent;
-            $row['sku']    = $pm->sku;
-            $row['INV']    = $shopify->inv ?? 0;
-            $row['L30']    = $shopify->quantity ?? 0;
+            $row['parent']   = $parent;
+            $row['sku']      = $pm->sku;
+            $row['INV']      = $shopify->inv ?? 0;
+            $row['L30']      = $shopify->quantity ?? 0;
+            $row['approval'] = $approvalMap[$pm->sku] ?? 'Pending';
 
             $result[] = (object) $row;
         }
@@ -458,6 +463,23 @@ class TiktokAdsManagerController extends Controller
         return response()->json([
             'message' => 'Data fetched successfully',
             'data'    => $result,
+            'status'  => 200,
+        ]);
+    }
+
+    public function updateVideoAdApproval(Request $request) {
+        $request->validate([
+            'sku'      => 'required|string',
+            'approval' => 'required|in:Pending,Approved,Rejected,Need Approval',
+        ]);
+
+        TiktokGmvAd::updateOrCreate(
+            ['sku' => $request->sku],
+            ['approval' => $request->approval]
+        );
+
+        return response()->json([
+            'message' => 'Approval updated successfully',
             'status'  => 200,
         ]);
     }

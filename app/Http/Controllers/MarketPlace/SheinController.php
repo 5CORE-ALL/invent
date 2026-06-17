@@ -12,6 +12,7 @@ use App\Models\SheinDataView;
 use App\Models\SheinDailyData;
 use App\Models\SheinDailyDataL60;
 use App\Models\ShopifySku;
+use App\Services\SheinShopifySalesService;
 use App\Models\AmazonChannelSummary;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -824,102 +825,51 @@ class SheinController extends Controller
     }
 
     /**
-     * Get L60 sales statistics from shein_daily_data_l60 table
+     * Get L60 sales statistics — prior 30-day shopify_order_items window (Sen Shp).
      */
     public function getL60Sales(Request $request)
     {
         try {
-            $marketplaceMarginDecimal = $this->sheinMarketplaceMarginPercent() / 100;
+            [$start, $end] = SheinShopifySalesService::channelMasterL60Window();
+            $totals = SheinShopifySalesService::computeL60Totals($start, $end);
 
-            // Get all L60 data and calculate totals
-            $excludedStatuses = ['refund', 'return', 'cancel', 'closed', 'exchange'];
-            
-            $l60Data = SheinDailyDataL60::query()
-                ->where(function ($q) use ($excludedStatuses) {
-                    foreach ($excludedStatuses as $s) {
-                        $q->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ["%{$s}%"]);
-                    }
-                })
-                ->get();
-
-            $totalOrders = 0;
-            $totalQuantity = 0;
-            $totalSales = 0;
-
-            $normalizeSku = static fn($v) => strtoupper(trim((string) $v));
-            $productMasters = $this->productMasterByNormalizedSku();
-
-            foreach ($l60Data as $row) {
-                // Count rows with order_number OR seller_sku
-                $orderNum = trim((string) ($row->order_number ?? ''));
-                $sellerSku = trim((string) ($row->seller_sku ?? ''));
-                if (!$orderNum && !$sellerSku) {
-                    continue;
-                }
-
-                $totalOrders++;
-                
-                $quantity = max(0, (int) ($row->quantity ?? 0));
-                $productPrice = (float) ($row->product_price ?? 0);
-                $estRev = (float) ($row->estimated_merchandise_revenue ?? 0);
-                
-                // Line revenue: prefer unit price × qty; fall back to Est. Revenue
-                $lineRevenue = $productPrice > 0 ? ($productPrice * $quantity) : ($estRev > 0 ? $estRev : 0);
-                
-                $totalQuantity += $quantity;
-                $totalSales += $lineRevenue;
-            }
+            Log::info('Shein L60 sales fetched from shopify_order_items', $totals);
 
             return response()->json([
                 'success' => true,
-                'data' => [
-                    'total_sales' => round($totalSales, 2),
-                    'total_orders' => $totalOrders,
-                    'total_quantity' => $totalQuantity,
-                ]
+                'data' => $totals,
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching Shein L60 sales: ' . $e->getMessage());
+            Log::error('Error fetching Shein L60 sales from shopify_order_items: ' . $e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
-     * Get daily data for Shein tabulator view
+     * Get daily data for Shein tabulator view.
+     * Source: apicentral.shopify_order_items — same Shein identification as /shopify-orders (Sen Shp).
      */
     public function getDailyData(Request $request)
     {
         try {
-            $marketplaceMarginDecimal = $this->sheinMarketplaceMarginPercent() / 100;
+            [$start, $end] = SheinShopifySalesService::tabulatorL30Window();
+            $data = SheinShopifySalesService::getDailyDataRows($start, $end);
 
-            // Get all Shein daily data
-            $data = SheinDailyData::orderBy('order_processed_on', 'desc')->get();
-
-            $normalizeSku = static fn($v) => strtoupper(trim((string) $v));
-            $productMasters = $this->productMasterByNormalizedSku();
-
-            $data = $data->map(function ($item) use ($productMasters, $normalizeSku) {
-                $key = $item->seller_sku ? $normalizeSku($item->seller_sku) : '';
-                $pm = $key !== '' ? $productMasters->get($key) : null;
-                if (! $pm instanceof ProductMaster) {
-                    $pm = null;
-                }
-                $resolved = $this->lpAndShipFromProductMaster($pm);
-                $item->lp = $resolved['lp'];
-                $item->ship = $resolved['ship'];
-
-                return $item;
-            });
+            Log::info('Shein daily data fetched from shopify_order_items', [
+                'result_count' => count($data),
+            ]);
 
             return response()->json([
-                'data' => $data->values()->all(),
-                'marketplace_margin_decimal' => $marketplaceMarginDecimal,
+                'data' => $data,
+                'marketplace_margin_decimal' => SheinShopifySalesService::sheinMarginDecimal(),
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching Shein daily data: ' . $e->getMessage());
+            Log::error('Error fetching Shein daily data from shopify_order_items: ' . $e->getMessage());
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1318,6 +1268,15 @@ class SheinController extends Controller
                     ->keyBy(fn($r) => $normalizeSku($r->sku));
             }
 
+            // ── 5b. Buyer / Seller links from shein_listing_statuses
+            $linksBySku = collect();
+            if ($allNormalizedSkus->isNotEmpty()) {
+                $linksBySku = \App\Models\SheinListingStatus::query()
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
+                    ->get()
+                    ->keyBy(fn($r) => $normalizeSku($r->sku));
+            }
+
             // ── 6. Margin from marketplace_percentages
             $percentage = $this->sheinMarketplaceMarginPercent();
             $margin = $percentage / 100;
@@ -1352,6 +1311,10 @@ class SheinController extends Controller
 
                 $metaRecord = $viewMetaBySku->get($normalizedSku);
                 $meta       = $metaRecord ? ($metaRecord->value ?? []) : [];
+                if (! is_array($meta)) {
+                    $meta = [];
+                }
+                $nr         = $this->resolveSheinNrFromMeta($meta, $productMaster !== null);
                 $sprice     = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
 
                 // Use special_offer_price only for all calculations
@@ -1363,27 +1326,39 @@ class SheinController extends Controller
                 $sroi   = ($sprice > 0 && $lp > 0) ? round((($sprice * $margin - $lp - $ship) / $lp) * 100, 2) : 0;
 
                 $displaySku = $productMaster?->sku ?? ($priceRow->sku ?? $normalizedSku);
-                // Missing only when special_offer_price is 0 or no row exists
-                $isMissing  = !$priceRow || $spOffer <= 0;
+                $isMissingShein = ! $priceRow || $spOffer <= 0;
 
-                // MAP: |INV − Shein stock| ≤ 3 → Map (same tolerance as other pricing pages)
-                if ($isMissing) {
+                if ($isMissingShein) {
                     $mapValue = '';
                 } else {
                     $adiff = abs($inv - $sheinStock);
-                    if ($adiff <= 3) {
-                        $mapValue = 'Map';
-                    } else {
-                        $mapValue = 'N Map|' . $adiff;
-                    }
+                    $mapValue = $this->sheinInvWithinMapTolerance((float) $inv, (float) $sheinStock)
+                        ? 'Map'
+                        : 'N Map|' . (int) round($adiff);
                 }
+
+                // Buyer / Seller links
+                $linkRecord = $linksBySku->get($normalizedSku);
+                $linkVal = $linkRecord
+                    ? (is_array($linkRecord->value) ? $linkRecord->value : (json_decode($linkRecord->value, true) ?: []))
+                    : [];
+                $buyerLink  = $linkVal['buyer_link']  ?? '';
+                $sellerLink = $linkVal['seller_link'] ?? '';
+                // NR/REQ status — prefer shein_listing_statuses.nr_req (same source as listing-shein),
+                // fall back to meta-derived value, then INV-based default.
+                $nrReq = $linkVal['nr_req'] ?? $nr ?? ($inv > 0 ? 'REQ' : 'NR');
 
                 $rows[] = [
                     'sku'          => trim((string) $displaySku),
                     'parent'       => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
                     'is_parent'    => false,
                     'image'        => $imageSrc,
-                    'missing'      => $isMissing ? 'M' : '',
+                    'B Link'       => $buyerLink,
+                    'S Link'       => $sellerLink,
+                    'NR'           => $nr,
+                    'nr_req'       => $nrReq,
+                    'is_missing_shein' => $isMissingShein,
+                    'missing'      => $isMissingShein ? 'M' : '',
                     'map'          => $mapValue,
                     'gpft'         => round($gpft,  2),
                     'groi'         => round($groi,  2),
@@ -1469,20 +1444,94 @@ class SheinController extends Controller
     }
 
     /**
-     * N Map badge logic — same as shein_pricing_view.js aeSheinStrictNMapFromMap.
+     * NR for map/missing rules — mirrors Amazon NRL → NR (REQ vs NR).
+     *
+     * @param  array<string, mixed>  $meta
      */
-    private function sheinStrictNMapFromMapValue(string $mapVal): bool
+    private function resolveSheinNrFromMeta(array $meta, bool $hasProductMaster): ?string
     {
-        $mapVal = trim($mapVal);
-        if ($mapVal === '' || ! str_starts_with($mapVal, 'N Map|')) {
-            return false;
+        $nrl = strtoupper(trim((string) ($meta['NRL'] ?? '')));
+        if ($nrl === 'NRL') {
+            return 'NR';
         }
-        $rest = trim(substr($mapVal, strlen('N Map|')));
-        if ($rest === '' || ! is_numeric($rest)) {
-            return false;
+        if ($nrl === 'REQ') {
+            return 'REQ';
         }
 
-        return abs((float) $rest) > 3;
+        $nr = $meta['NR'] ?? $meta['NRP'] ?? null;
+        if (is_bool($nr)) {
+            return $nr ? 'NR' : ($hasProductMaster ? 'REQ' : null);
+        }
+        $nrOut = strtoupper(trim((string) $nr));
+        if ($nrOut === 'NR' || $nrOut === 'NRL') {
+            return 'NR';
+        }
+        if ($nrOut === 'REQ' || $nrOut === 'TRUE' || $nrOut === '1') {
+            return $nrOut === 'REQ' ? 'REQ' : ($hasProductMaster ? 'REQ' : null);
+        }
+
+        return $hasProductMaster ? 'REQ' : null;
+    }
+
+    /** INV vs Shein stock = Map if diff ≤ 3 units OR ≤ 3% of Shopify INV (amazon INV vs INV_AMZ). */
+    private function sheinInvWithinMapTolerance(float $inv, float $sheinStock): bool
+    {
+        if ($inv <= 0) {
+            return true;
+        }
+        $diff = abs($inv - $sheinStock);
+        if ($diff <= 3.0) {
+            return true;
+        }
+
+        return $diff <= ($inv * 0.03);
+    }
+
+    /**
+     * Map / Miss / NMap — same rules as shein_pricing_view badges (Amazon-aligned).
+     */
+    public static function countSheinPricingBadgeTotals(iterable $rows): array
+    {
+        $map = 0;
+        $miss = 0;
+        $nmap = 0;
+
+        foreach ($rows as $row) {
+            if (is_object($row)) {
+                $row = (array) $row;
+            }
+            if (! is_array($row) || ! empty($row['is_parent'])) {
+                continue;
+            }
+
+            $inv = (float) ($row['inv'] ?? 0);
+            // NR/REQ — same source as the shein-pricing page badge (prefer nr_req, fall back to meta NR).
+            $nrValue = strtoupper(trim((string) (($row['nr_req'] ?? '') ?: ($row['NR'] ?? ''))));
+            $isMissingShein = (bool) ($row['is_missing_shein'] ?? false);
+            $rowPrice = (float) ($row['special_offer'] ?? 0);
+
+            if ($inv > 0 && $nrValue === 'REQ') {
+                if ($isMissingShein || $rowPrice <= 0) {
+                    $miss++;
+                } elseif (! $isMissingShein && $rowPrice > 0) {
+                    $sheinStock = (float) ($row['shein_stock'] ?? 0);
+                    $diff = abs($inv - $sheinStock);
+                    $within = $inv <= 0 || $diff <= 3.0 || $diff <= ($inv * 0.03);
+                    if ($within) {
+                        $map++;
+                    } else {
+                        $nmap++;
+                    }
+                }
+            }
+        }
+
+        return [
+            'map' => $map,
+            'miss' => $miss,
+            'nmap' => $nmap,
+            'total_views' => 0,
+        ];
     }
 
     /**
@@ -1509,14 +1558,20 @@ class SheinController extends Controller
             $moreSold = 0;
             $dilSum = 0.0;
             $dilCount = 0;
-            $missingCount = 0;
-            $mapCount = 0;
-            $nmapCount = 0;
+            $badgeTotals = self::countSheinPricingBadgeTotals($children);
+            $missingCount = $badgeTotals['miss'];
+            $mapCount = $badgeTotals['map'];
+            $nmapCount = $badgeTotals['nmap'];
 
             foreach ($children as $row) {
-                $isMissing = strtoupper(trim((string) ($row['missing'] ?? ''))) === 'M';
-                $al30 = (float) ($row['al30'] ?? 0);
                 $inv = (float) ($row['inv'] ?? 0);
+                // NR/REQ — same source as the shein-pricing page badge (prefer nr_req, fall back to meta NR).
+                $nrValue = strtoupper(trim((string) (($row['nr_req'] ?? '') ?: ($row['NR'] ?? ''))));
+                $isMissingShein = (bool) ($row['is_missing_shein'] ?? false);
+                $rowPrice = (float) ($row['special_offer'] ?? 0);
+                $isMissingL = $inv > 0 && $nrValue === 'REQ' && ($isMissingShein || $rowPrice <= 0);
+
+                $al30 = (float) ($row['al30'] ?? 0);
                 $ovL30 = (float) ($row['ov_l30'] ?? 0);
                 $profit = (float) ($row['profit'] ?? 0);
                 $lp = (float) ($row['lp'] ?? 0);
@@ -1532,18 +1587,8 @@ class SheinController extends Controller
                     $dilSum += ($ovL30 / $inv) * 100;
                     $dilCount++;
                 }
-                if ($isMissing) {
-                    $missingCount++;
-                }
 
-                $mapVal = trim((string) ($row['map'] ?? ''));
-                if (! $isMissing && $mapVal === 'Map') {
-                    $mapCount++;
-                } elseif ($this->sheinStrictNMapFromMapValue($mapVal)) {
-                    $nmapCount++;
-                }
-
-                if (! $isMissing) {
+                if (! $isMissingL) {
                     $totalSales += (float) ($row['sales'] ?? 0);
                     $totalPft += $al30 * $profit;
 
@@ -1658,5 +1703,45 @@ class SheinController extends Controller
             Log::error('Shein SPRICE save failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Save buyer / seller links for a SKU into shein_listing_statuses.value JSON.
+     * Empty strings clear the link (URL validation only applies to non-empty values).
+     */
+    public function saveLinks(Request $request)
+    {
+        $sku = trim((string) $request->input('sku'));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $buyerLink = trim((string) $request->input('buyer_link', ''));
+        $sellerLink = trim((string) $request->input('seller_link', ''));
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $field => $val) {
+            if ($val !== '' && !filter_var($val, FILTER_VALIDATE_URL)) {
+                return response()->json(['success' => false, 'message' => 'Invalid URL for ' . $field], 422);
+            }
+        }
+
+        $status = \App\Models\SheinListingStatus::where('sku', $sku)->first();
+        $existing = $status
+            ? (is_array($status->value) ? $status->value : (json_decode($status->value, true) ?: []))
+            : [];
+
+        $existing['buyer_link'] = $buyerLink !== '' ? $buyerLink : null;
+        $existing['seller_link'] = $sellerLink !== '' ? $sellerLink : null;
+
+        \App\Models\SheinListingStatus::updateOrCreate(
+            ['sku' => $sku],
+            ['value' => $existing]
+        );
+
+        return response()->json([
+            'success' => true,
+            'buyer_link' => $existing['buyer_link'],
+            'seller_link' => $existing['seller_link'],
+        ]);
     }
 }

@@ -54,6 +54,7 @@
             <div class="card shadow-sm">
                 <div class="card-body">
                     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'supplier_ledger'])
                         <div class="input-group" style="max-width: 320px;">
                             <span class="input-group-text bg-white border-end-0">
                                 <i class="fas fa-search text-muted"></i>

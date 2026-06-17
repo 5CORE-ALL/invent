@@ -30,6 +30,11 @@ class PayrollController extends Controller
         abort_unless(Gate::allows('payroll.manage'), 403, 'You do not have permission to manage payroll.');
     }
 
+    protected function authorizeSheetAdmin(): void
+    {
+        abort_unless(Gate::allows('payroll.sheet-admin'), 403, 'Only HR and the President can use this function.');
+    }
+
     protected function ensureUnlocked(?PayrollMonth $month): void
     {
         if ($month && $month->is_locked) {
@@ -55,7 +60,9 @@ class PayrollController extends Controller
     {
         $canManage = Gate::allows('payroll.manage');
         $months = PayrollMonth::orderByDesc('id')->get();
-        $activeMonth = $months->first();
+
+        $defaultLabel = $this->payroll->defaultMonthLabel();
+        $activeMonth = $months->firstWhere('month_label', $defaultLabel) ?? $months->first();
         $users = User::query()
             ->where('is_active', true)
             ->where('show_in_salary', true)
@@ -75,6 +82,15 @@ class PayrollController extends Controller
 
     public function monthData(PayrollMonth $payrollMonth): JsonResponse
     {
+  
+        if (! $payrollMonth->is_locked) {
+            $this->payroll->removeIneligibleEmployees($payrollMonth);
+            $this->payroll->ensureSheetPopulated($payrollMonth);
+            $this->payroll->syncCarryForwardSalaries($payrollMonth);
+            $this->payroll->syncBankDetails($payrollMonth);
+            $this->payroll->refreshLiveHours($payrollMonth);
+        }
+
         $payrollMonth->loadCount([
             'employeeSalaries',
             'salaryComponents',
@@ -93,8 +109,12 @@ class PayrollController extends Controller
                 'email' => $r->user?->email,
                 'salary_pp' => $r->salary_pp,
                 'increment' => $r->increment,
+                'other' => $r->other,
+                'adv_inc_other' => $r->adv_inc_other,
+                'incentive' => $r->incentive,
                 'salary_lm' => (float) $r->salary_pp + (float) $r->increment,
                 'hours_worked' => $r->hours_worked,
+                'hours_overridden' => (bool) $r->hours_overridden,
                 'amount_lm' => $r->gross_amount,
                 'amount_p' => $r->net_amount,
                 'gross_amount' => $r->gross_amount,
@@ -103,6 +123,8 @@ class PayrollController extends Controller
                 'bank_1' => $r->bank_1,
                 'bank_2' => $r->bank_2,
                 'upi_id' => $r->upi_id,
+                'edited_by' => $r->edited_by,
+                'edited_at' => $r->edited_at?->toIso8601String(),
             ]);
 
         $salaryByUser = PayrollEmployeeSalary::where('payroll_month_id', $payrollMonth->id)
@@ -111,6 +133,8 @@ class PayrollController extends Controller
 
         return response()->json([
             'month' => $payrollMonth,
+            'hours_override_locked' => $payrollMonth->isOverrideLocked(),
+            'hours_override_unlock_date' => $payrollMonth->overrideUnlockDate()?->toIso8601String(),
             'employees' => $employees,
             'components' => PayrollSalaryComponent::with('user')->where('payroll_month_id', $payrollMonth->id)->get(),
             'payments' => PayrollPaymentDeduction::with('user')->where('payroll_month_id', $payrollMonth->id)->get(),
@@ -189,7 +213,7 @@ class PayrollController extends Controller
 
     public function syncEmployees(Request $request, PayrollMonth $payrollMonth): JsonResponse
     {
-        $this->authorizeManage();
+        $this->authorizeSheetAdmin();
         $this->ensureUnlocked($payrollMonth);
 
         $userIds = $request->input('user_ids', []);
@@ -219,12 +243,49 @@ class PayrollController extends Controller
             'increment' => 'nullable|numeric|min:0',
             'other' => 'nullable|numeric|min:0',
             'adv_inc_other' => 'nullable|numeric|min:0',
+            'incentive' => 'nullable|numeric|min:0',
             'hours_worked' => 'nullable|numeric|min:0',
             'bank_1' => 'nullable|string|max:255',
             'bank_2' => 'nullable|string|max:255',
             'upi_id' => 'nullable|string|max:255',
             'is_new_hire' => 'nullable|boolean',
         ]);
+
+        // Empty numeric inputs come through as null; treat a blank as 0 so the
+        // sheet never stores nulls and recalculation has real numbers to work with.
+        foreach (['salary_pp', 'increment', 'other', 'adv_inc_other', 'incentive', 'hours_worked'] as $numericField) {
+            if (array_key_exists($numericField, $validated)) {
+                $validated[$numericField] = $validated[$numericField] ?? 0;
+            }
+        }
+
+        // A manually edited Salary PP is locked in: flag it so the month-over-month
+        // carry-forward stops overwriting it and the edited value always shows.
+        if (array_key_exists('salary_pp', $validated)) {
+            $validated['salary_pp_overridden'] = true;
+        }
+
+        // A manually edited Hours value is locked in too: flag it so the live
+        // TeamLogger refresh stops overwriting it and the edited value persists.
+        // Overrides are blocked until the 2nd of the next month so last month's
+        // working hours can settle first; only an actual change counts as an edit.
+        if (array_key_exists('hours_worked', $validated)) {
+            $hoursChanged = (float) $payrollEmployeeSalary->hours_worked !== (float) $validated['hours_worked'];
+
+            if ($hoursChanged) {
+                if ($month && $month->isOverrideLocked()) {
+                    $unlock = $month->overrideUnlockDate()?->format('d M Y');
+                    abort(422, "Hours can be edited only from {$unlock} (the 2nd of next month). Last month's working hours are still being finalised.");
+                }
+                $validated['hours_overridden'] = true;
+            } else {
+                // No real change — don't touch the value or flip the override flag.
+                unset($validated['hours_worked']);
+            }
+        }
+
+        $validated['edited_by'] = $request->user()?->name;
+        $validated['edited_at'] = now();
 
         $payrollEmployeeSalary->update($validated);
         $this->payroll->recalculateMonth($month);
@@ -445,6 +506,42 @@ class PayrollController extends Controller
             $this->payslipViewPayload($payrollPayslip),
             ['autoPrint' => $request->boolean('print', true)]
         ));
+    }
+
+    /**
+     * Download (print-to-PDF) a single employee's salary slip for a month, built
+     * live from their current salary row. Works even when payslips have not been
+     * formally generated/released yet, so the Salary Slip tab can offer a download
+     * for every employee on the sheet.
+     */
+    public function downloadSalarySlip(Request $request, PayrollMonth $payrollMonth, User $user): View
+    {
+        $this->authorizeManage();
+
+        $row = PayrollEmployeeSalary::with('user')
+            ->where('payroll_month_id', $payrollMonth->id)
+            ->where('user_id', $user->id)
+            ->firstOrFail();
+
+        $format = $payrollMonth->payslip_format ?: 'standard';
+        $data = $this->payroll->buildPayslipData($payrollMonth, $row, $format);
+
+        // Give the print partial a payslip stub so its property fallbacks resolve
+        // without a stored payslip record.
+        $payslipStub = new PayrollPayslip([
+            'payroll_month_id' => $payrollMonth->id,
+            'user_id' => $user->id,
+            'format' => $format,
+        ]);
+        $payslipStub->setRelation('user', $row->user);
+        $payslipStub->setRelation('payrollMonth', $payrollMonth);
+
+        return view('payroll.payslip-print', [
+            'payslip' => $payslipStub,
+            'data' => $data,
+            'company' => config('payroll.company', []),
+            'autoPrint' => $request->boolean('print', true),
+        ]);
     }
 
     public function storeArrear(Request $request): JsonResponse
@@ -668,6 +765,10 @@ class PayrollController extends Controller
     {
         $this->authorizeManage();
 
+        if (! $payrollMonth->is_locked) {
+            $this->payroll->syncBankDetails($payrollMonth);
+        }
+
         $rows = PayrollEmployeeSalary::with('user')
             ->where('payroll_month_id', $payrollMonth->id)
             ->get();
@@ -688,5 +789,82 @@ class PayrollController extends Controller
         return response($csv, 200)
             ->header('Content-Type', 'text/csv')
             ->header('Content-Disposition', 'attachment; filename="'.$filename.'"');
+    }
+
+    /**
+     * Bank payout sheet for a month as a styled Excel workbook, in the columns the
+     * accounts team uses: Name, Amount P (net pay), B1 (bank account 1), B2 (bank
+     * account 2), UPI — with a yellow header row and a green Amount P column.
+     */
+    public function exportPayoutSheet(PayrollMonth $payrollMonth)
+    {
+        $this->authorizeSheetAdmin();
+
+        if (! $payrollMonth->is_locked) {
+            $this->payroll->removeIneligibleEmployees($payrollMonth);
+            $this->payroll->ensureSheetPopulated($payrollMonth);
+            $this->payroll->syncCarryForwardSalaries($payrollMonth);
+            $this->payroll->syncBankDetails($payrollMonth);
+            $this->payroll->refreshLiveHours($payrollMonth);
+        }
+
+        $rows = PayrollEmployeeSalary::with('user')
+            ->where('payroll_month_id', $payrollMonth->id)
+            ->get()
+            ->sortBy(fn ($r) => $r->user?->name)
+            ->values();
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle(substr($payrollMonth->month_label, 0, 31));
+
+        $headers = ['Name', 'Amount P', 'B1', 'B2', 'UPI'];
+        $sheet->fromArray($headers, null, 'A1');
+
+        $r = 2;
+        foreach ($rows as $row) {
+            $sheet->setCellValue('A'.$r, $row->user?->name ?? '');
+            $sheet->setCellValue('B'.$r, (float) $row->net_amount);
+            $sheet->setCellValueExplicit('C'.$r, (string) ($row->bank_1 ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('D'.$r, (string) ($row->bank_2 ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('E'.$r, (string) ($row->upi_id ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $r++;
+        }
+        $lastRow = $r - 1;
+
+        // Header row: bold black text on yellow, centered.
+        $sheet->getStyle('A1:E1')->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => '000000']],
+            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFF00']],
+        ]);
+
+        // Amount P column (B): green fill, centered, formatted as number.
+        $sheet->getStyle('B2:B'.$lastRow)->applyFromArray([
+            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => '00E000']],
+            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+        ]);
+        $sheet->getStyle('B2:B'.$lastRow)->getNumberFormat()->setFormatCode('#,##0');
+
+        // Borders + wrap for bank detail columns on the whole table.
+        $sheet->getStyle('A1:E'.$lastRow)->getBorders()->getAllBorders()
+            ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+        $sheet->getStyle('A1:A'.$lastRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+        $sheet->getStyle('C2:E'.$lastRow)->getAlignment()->setWrapText(true);
+
+        $sheet->getColumnDimension('A')->setWidth(20);
+        $sheet->getColumnDimension('B')->setWidth(14);
+        $sheet->getColumnDimension('C')->setWidth(45);
+        $sheet->getColumnDimension('D')->setWidth(45);
+        $sheet->getColumnDimension('E')->setWidth(28);
+
+        $filename = 'payout_'.str_replace(' ', '_', $payrollMonth->month_label).'.xlsx';
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 }

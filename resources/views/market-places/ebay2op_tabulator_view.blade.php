@@ -337,9 +337,8 @@
                             style="width: auto; display: inline-block;">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
-                            <option value="0-2">0-2%</option>
-                            <option value="2-4">2-4%</option>
-                            <option value="4-7">4-7%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
                             <option value="7-13">7-13%</option>
                             <option value="13plus">13%+</option>
                         </select>
@@ -351,9 +350,7 @@
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
-                        <option value="125-175">125–175%</option>
-                        <option value="175-250">175–250%</option>
-                        <option value="gt250">&gt; 250%</option>
+                        <option value="gt125">125%+</option>
                     </select>
 
                     <select id="cvr-trend-filter" class="form-select form-select-sm pricing-filter-item"
@@ -943,6 +940,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="ebay2opEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="ebay2opEditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="ebay2opSellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="ebay2opBuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="ebay2opSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
     @section('script-bottom')
@@ -1241,6 +1267,73 @@
             if (lmpModalEl) {
                 lmpModalEl.addEventListener('hidden.bs.modal', cleanupLmpModalBackdrop);
             }
+
+            // ---- Edit Links (Buyer / Seller) ----
+            function ebay2opLinksNotify(msg, type) {
+                type = type || 'info';
+                var bg = type === 'success' ? 'bg-success' : (type === 'error' || type === 'danger' ? 'bg-danger' : 'bg-info');
+                var $c = $('.toast-container');
+                if (!$c.length) {
+                    $c = $('<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index:1090;"></div>').appendTo('body');
+                }
+                var $t = $('<div class="toast align-items-center text-white ' + bg + ' border-0" role="alert"><div class="d-flex"><div class="toast-body">' + msg + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>');
+                $c.append($t);
+                var bsT = new bootstrap.Toast($t[0]);
+                bsT.show();
+                setTimeout(function() { $t.remove(); }, 5000);
+            }
+
+            let ebay2opEditLinksRow = null;
+            window.openEbay2opEditLinksModal = function(row) {
+                ebay2opEditLinksRow = row;
+                const d = row.getData();
+                $('#ebay2opEditLinksSku').text(d['(Child) sku'] || '');
+                $('#ebay2opSellerLinkInput').val(d['S Link'] || '');
+                $('#ebay2opBuyerLinkInput').val(d['B Link'] || '');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('ebay2opEditLinksModal')).show();
+            };
+
+            $('#ebay2opSaveLinksBtn').on('click', function() {
+                if (!ebay2opEditLinksRow) return;
+                const sku = ebay2opEditLinksRow.getData()['(Child) sku'];
+                const sellerLink = $('#ebay2opSellerLinkInput').val().trim();
+                const buyerLink = $('#ebay2opBuyerLinkInput').val().trim();
+                const $btn = $(this);
+                $btn.prop('disabled', true).text('Saving...');
+                $.ajax({
+                    url: '/ebay2/save-links',
+                    method: 'POST',
+                    data: {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        sku: sku,
+                        seller_link: sellerLink,
+                        buyer_link: buyerLink
+                    },
+                    success: function(res) {
+                        if (res && res.success) {
+                            ebay2opEditLinksRow.update({
+                                'S Link': res.seller_link || '',
+                                'B Link': res.buyer_link || ''
+                            }).then(function() {
+                                ebay2opEditLinksRow.reformat();
+                            }).catch(function() {
+                                ebay2opEditLinksRow.reformat();
+                            });
+                            ebay2opLinksNotify('Links saved successfully', 'success');
+                            bootstrap.Modal.getOrCreateInstance(document.getElementById('ebay2opEditLinksModal')).hide();
+                        } else {
+                            ebay2opLinksNotify((res && res.message) || 'Failed to save links', 'error');
+                        }
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save links';
+                        ebay2opLinksNotify(msg, 'error');
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).text('Save');
+                    }
+                });
+            });
 
             // Initialize SKU-specific chart only
             initSkuMetricsChart();
@@ -2449,44 +2542,32 @@
                         title: "Links",
                         field: "links_column",
                         frozen: true,
-                        width: 100,
-                        visible: false,
+                        width: 55,
+                        visible: true,
                         hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "Double-click to add / edit links",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const buyerLink = rowData['B Link'] || '';
                             const sellerLink = rowData['S Link'] || '';
-                            
-                            // Enhanced debug logging - log every row to see what's happening
-                            console.log('eBay Row Data:', {
-                                sku: rowData['(Child) sku'],
-                                buyerLink: buyerLink,
-                                sellerLink: sellerLink,
-                                allKeys: Object.keys(rowData).filter(k => k.toLowerCase().includes('link'))
-                            });
-                            
-                            let html = '<div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">';
-                            
+
+                            let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
                             if (sellerLink) {
-                                html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size: 12px; text-decoration: none;">
-                                    <i class="fa fa-link"></i> S Link
-                                </a>`;
+                                html += `<a href="${sellerLink}" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>`;
                             }
-                            
                             if (buyerLink) {
-                                html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size: 12px; text-decoration: none;">
-                                    <i class="fa fa-link"></i> B Link
-                                </a>`;
+                                html += `<a href="${buyerLink}" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>`;
                             }
-                            
                             if (!sellerLink && !buyerLink) {
-                                html += '<span class="text-muted" style="font-size: 12px;">-</span>';
+                                html += '<span class="text-muted" style="font-size:12px;">-</span>';
                             }
-                            
                             html += '</div>';
                             return html;
                         },
-                        headerSort: false
+                        cellDblClick: function(e, cell) {
+                            openEbay2opEditLinksModal(cell.getRow());
+                        }
                     },
                     
                     {
@@ -2895,10 +2976,10 @@
                             let color = '';
                             
                             // getRoiColor logic from inc/dec page
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            if (percent < 40) color = '#a00211'; // red
+                            else if (percent < 75) color = '#ffc107'; // yellow
+                            else if (percent < 125) color = '#28a745'; // green
+                            else color = '#d63384'; // magenta
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -2923,10 +3004,10 @@
                             const nroi = roi - adPercent;
                             
                             let color = '';
-                            if (nroi < 50) color = '#a00211'; // red
-                            else if (nroi >= 50 && nroi < 75) color = '#ffc107'; // yellow
-                            else if (nroi >= 75 && nroi <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            if (nroi < 40) color = '#a00211'; // red
+                            else if (nroi < 75) color = '#ffc107'; // yellow
+                            else if (nroi < 125) color = '#28a745'; // green
+                            else color = '#d63384'; // magenta
                             
                             return `<span style="color: ${color}; font-weight: 600;">${nroi.toFixed(0)}%</span>`;
                         },
@@ -3110,11 +3191,7 @@
                             
                             if (!value) return '';
                             
-                            // If SPRICE matches eBay2 Price, show blank
-                            if (sprice === ebay2Price) {
-                                return '<span style="color: #999; font-style: italic;">-</span>';
-                            }
-                            
+                            // Always show SPRICE when it has a value — even if it equals the eBay price.
                             const formattedValue = `$${parseFloat(value).toFixed(2)}`;
                             
                             // If using default eBay Price (not custom), show in blue
@@ -3308,10 +3385,10 @@
                             
                             let color = '';
                             // Same as ROI% color logic
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            if (percent < 40) color = '#a00211'; // red
+                            else if (percent < 75) color = '#ffc107'; // yellow
+                            else if (percent < 125) color = '#28a745'; // green
+                            else color = '#d63384'; // magenta
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -3856,10 +3933,10 @@
                             var ebayL30 = parseFloat(rd['eBay L30']) || 0;
                             var scvr = views > 0 ? (ebayL30 / views) * 100 : 0;
                             var color;
-                            if (scvr <= 4) color = 'red';
-                            else if (scvr <= 7) color = '#daa520';
-                            else if (scvr <= 13) color = 'green';
-                            else color = '#E83E8C';
+                            if (scvr <= 4) color = '#a00211';
+                            else if (scvr <= 7) color = '#ffc107';
+                            else if (scvr <= 13) color = '#28a745';
+                            else color = '#e83e8c';
                             return '<span style="color:' + color + '; font-weight: 600;">' + Math.round(scvr) + '%</span>';
                         },
                         width: 80
@@ -4263,9 +4340,10 @@
                     table.addFilter(function(data) {
                         const roiVal = parseFloat(data['ROI%']) || 0;
                         if (roiFilter === 'lt40') return roiVal < 40;
-                        if (roiFilter === 'gt250') return roiVal > 250;
-                        const [min, max] = roiFilter.split('-').map(Number);
-                        return roiVal >= min && roiVal <= max;
+                        if (roiFilter === '40-75') return roiVal >= 40 && roiVal < 75;
+                        if (roiFilter === '75-125') return roiVal >= 75 && roiVal < 125;
+                        if (roiFilter === 'gt125') return roiVal >= 125;
+                        return true;
                     });
                 }
 
@@ -4283,9 +4361,8 @@
                         const cvrRounded = Math.round(cvr * 100) / 100;
                         
                         if (cvrFilter === '0-0') return cvrRounded === 0;
-                        if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                        if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                        if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                        if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                        if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                         if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                         if (cvrFilter === '13plus') return cvrRounded > 13;
                         return true;

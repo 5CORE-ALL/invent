@@ -83,79 +83,106 @@ class GA4ApiService
 
         try {
             $url = "https://analyticsdata.googleapis.com/v1beta/properties/{$this->propertyId}:runReport";
-            
-            $requestBody = [
-                'dateRanges' => [
-                    [
-                        'startDate' => $startDate,
-                        'endDate' => $endDate,
-                    ]
-                ],
-                'dimensions' => [
-                    ['name' => 'sessionGoogleAdsCampaignName'],
-                    ['name' => 'date'],
-                    ['name' => 'eventName'], // Required to filter purchase events
-                ],
-                'metrics' => [
-                    ['name' => 'purchaseRevenue'], // Total revenue from purchases
-                    ['name' => 'eventCount'], // Number of events (will filter for purchase)
-                ],
-                'dimensionFilter' => [
-                    'filter' => [
-                        'fieldName' => 'eventName',
-                        'stringFilter' => [
-                            'matchType' => 'EXACT',
-                            'value' => 'purchase',
+
+            // GA4 runReport caps each response at a maximum of `limit` rows (default 10,000).
+            // Without paging through `offset` until we reach `rowCount`, any campaign/day rows
+            // beyond the first page are silently dropped — so some campaigns never get their
+            // actual GA4 revenue/purchases written and the grid shows stale or missing sales.
+            $pageSize = 100000; // GA4 allows up to 250,000 rows per request
+            $offset = 0;
+            $rowCount = null;
+            $campaigns = [];
+            $totalRowsFetched = 0;
+
+            do {
+                $requestBody = [
+                    'dateRanges' => [
+                        [
+                            'startDate' => $startDate,
+                            'endDate' => $endDate,
                         ]
-                    ]
-                ],
-            ];
+                    ],
+                    'dimensions' => [
+                        ['name' => 'sessionGoogleAdsCampaignName'],
+                        ['name' => 'date'],
+                        ['name' => 'eventName'], // Required to filter purchase events
+                    ],
+                    'metrics' => [
+                        ['name' => 'purchaseRevenue'], // Total revenue from purchases
+                        ['name' => 'eventCount'], // Number of events (will filter for purchase)
+                    ],
+                    'dimensionFilter' => [
+                        'filter' => [
+                            'fieldName' => 'eventName',
+                            'stringFilter' => [
+                                'matchType' => 'EXACT',
+                                'value' => 'purchase',
+                            ]
+                        ]
+                    ],
+                    'limit' => $pageSize,
+                    'offset' => $offset,
+                ];
 
-            $response = Http::timeout(60)
-                ->withToken($this->accessToken)
-                ->withHeaders([
-                    'Content-Type' => 'application/json',
-                ])
-                ->post($url, $requestBody);
+                $response = Http::timeout(60)
+                    ->withToken($this->accessToken)
+                    ->withHeaders([
+                        'Content-Type' => 'application/json',
+                    ])
+                    ->post($url, $requestBody);
 
-            if ($response->successful()) {
+                if (!$response->successful()) {
+                    Log::error('GA4 API request failed', [
+                        'status' => $response->status(),
+                        'body' => $response->body(),
+                        'url' => $url,
+                        'offset' => $offset,
+                    ]);
+
+                    // Return whatever we managed to collect so far rather than losing it all.
+                    return $campaigns;
+                }
+
                 $data = $response->json();
-                $campaigns = [];
+                $rowCount = isset($data['rowCount']) ? (int) $data['rowCount'] : 0;
+                $rows = $data['rows'] ?? [];
+                $rowsThisPage = count($rows);
+                $totalRowsFetched += $rowsThisPage;
 
-                if (isset($data['rows'])) {
-                    foreach ($data['rows'] as $row) {
-                        $campaignName = $row['dimensionValues'][0]['value'] ?? '';
-                        $date = $row['dimensionValues'][1]['value'] ?? '';
-                        $eventName = $row['dimensionValues'][2]['value'] ?? '';
-                        $revenue = floatval($row['metricValues'][0]['value'] ?? 0);
-                        $eventCount = floatval($row['metricValues'][1]['value'] ?? 0);
+                foreach ($rows as $row) {
+                    $campaignName = $row['dimensionValues'][0]['value'] ?? '';
+                    $date = $row['dimensionValues'][1]['value'] ?? '';
+                    $eventName = $row['dimensionValues'][2]['value'] ?? '';
+                    $revenue = floatval($row['metricValues'][0]['value'] ?? 0);
+                    $eventCount = floatval($row['metricValues'][1]['value'] ?? 0);
 
-                        // Only process purchase events
-                        if ($eventName === 'purchase' && !empty($campaignName) && !empty($date)) {
-                            if (!isset($campaigns[$campaignName])) {
-                                $campaigns[$campaignName] = [];
-                            }
-                            $campaigns[$campaignName][$date] = [
-                                'campaign_name' => $campaignName,
-                                'date' => $date,
-                                'purchases' => $eventCount,
-                                'revenue' => $revenue,
-                            ];
+                    // Only process purchase events
+                    if ($eventName === 'purchase' && !empty($campaignName) && !empty($date)) {
+                        if (!isset($campaigns[$campaignName])) {
+                            $campaigns[$campaignName] = [];
                         }
+                        $campaigns[$campaignName][$date] = [
+                            'campaign_name' => $campaignName,
+                            'date' => $date,
+                            'purchases' => $eventCount,
+                            'revenue' => $revenue,
+                        ];
                     }
                 }
 
-                $totalCampaigns = count($campaigns);
-                $totalDays = array_sum(array_map('count', $campaigns));
-                Log::info("GA4 API: Fetched {$totalCampaigns} campaigns with {$totalDays} daily records");
-                return $campaigns;
-            } else {
-                Log::error('GA4 API request failed', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                    'url' => $url
-                ]);
-            }
+                $offset += $pageSize;
+
+                // Stop when an empty page comes back (guards against an unreliable rowCount).
+                if ($rowsThisPage === 0) {
+                    break;
+                }
+            } while ($offset < $rowCount);
+
+            $totalCampaigns = count($campaigns);
+            $totalDays = array_sum(array_map('count', $campaigns));
+            Log::info("GA4 API: Fetched {$totalCampaigns} campaigns with {$totalDays} daily records ({$totalRowsFetched} rows across pages, rowCount={$rowCount})");
+
+            return $campaigns;
         } catch (\Exception $e) {
             Log::error('Error fetching GA4 campaign metrics: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString()

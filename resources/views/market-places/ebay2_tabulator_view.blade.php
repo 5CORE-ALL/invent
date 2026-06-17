@@ -1,10 +1,38 @@
-@extends('layouts.vertical', ['title' => 'Ebay 2 Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Ebay 2 - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
+        /* Toolbar: compact controls, wrap to next row if needed.
+           NOTE: do NOT use overflow-x on this row — it clips Bootstrap dropdown menus
+           (Columns, DIL%, etc.) so they wouldn't open. */
+        .ebay2-toolbar-row {
+            row-gap: 4px;
+        }
+        /* Compact every interactive control in the toolbar so more fits per row,
+           but keep enough padding for the native select arrow + full label text. */
+        .ebay2-toolbar-row > .form-select,
+        .ebay2-toolbar-row .form-select.pricing-filter-item,
+        .ebay2-toolbar-row .form-select.kw-ads-filter-item,
+        .ebay2-toolbar-row > .btn,
+        .ebay2-toolbar-row > .dropdown > .btn,
+        .ebay2-toolbar-row > .manual-dropdown-container > .btn {
+            padding: 3px 10px;
+            font-size: 0.8125rem;
+            line-height: 1.3;
+            min-height: 30px;
+        }
+        /* Selects need a touch more right-side room so the native ▼ arrow doesn't overlap the label. */
+        .ebay2-toolbar-row .form-select {
+            padding-right: 24px;
+            background-position: right 6px center;
+        }
+        .ebay2-toolbar-row .dropdown-menu {
+            font-size: 0.8125rem;
+        }
+
         /* Image column hover preview (forecast.analysis) */
         #image-hover-preview {
             transition: opacity 0.2s ease;
@@ -230,15 +258,14 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Ebay 2 Analytics',
-        'sub_title' => 'Ebay 2 Analytics',
+        'page_title' => 'Ebay 2 - Analytics',
+        'sub_title' => '',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Ebay 2 Analytics</h4>
-                <div class="d-flex align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center flex-wrap gap-2 ebay2-toolbar-row">
                     <select id="section-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all" selected>Section Filter</option>
@@ -337,29 +364,26 @@
                         <option value="NR">NR Only</option>
                     </select>
 
-                    <div class="d-flex flex-column gap-1 pricing-filter-item" style="width: auto;">
-                        <select id="gpft-filter" class="form-select form-select-sm"
-                            style="width: auto; display: inline-block;">
-                            <option value="all">GPFT%</option>
-                            <option value="negative">Negative</option>
-                            <option value="0-10">0-10%</option>
-                            <option value="10-20">10-20%</option>
-                            <option value="20-30">20-30%</option>
-                            <option value="30-40">30-40%</option>
-                            <option value="40-50">40-50%</option>
-                            <option value="50plus">Above 50%</option>
-                        </select>
-                        <select id="cvr-filter" class="form-select form-select-sm"
-                            style="width: auto; display: inline-block;">
-                            <option value="all">All CVR%</option>
-                            <option value="0-0">0%</option>
-                            <option value="0-2">0-2%</option>
-                            <option value="2-4">2-4%</option>
-                            <option value="4-7">4-7%</option>
-                            <option value="7-13">7-13%</option>
-                            <option value="13plus">13%+</option>
-                        </select>
-                    </div>
+                    <select id="gpft-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40-50">40-50%</option>
+                        <option value="50plus">Above 50%</option>
+                    </select>
+                    <select id="cvr-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">All CVR%</option>
+                        <option value="0-0">0%</option>
+                        <option value="0-3">0-3%</option>
+                        <option value="3-7">3-7%</option>
+                        <option value="7-13">7-13%</option>
+                        <option value="13plus">13%+</option>
+                    </select>
 
                     <select id="roi-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
@@ -367,9 +391,7 @@
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
-                        <option value="125-175">125–175%</option>
-                        <option value="175-250">175–250%</option>
-                        <option value="gt250">&gt; 250%</option>
+                        <option value="gt125">125%+</option>
                     </select>
 
                     <select id="cvr-trend-filter" class="form-select form-select-sm pricing-filter-item"
@@ -384,6 +406,15 @@
                         style="width: auto; display: inline-block;">
                         <option value="all">SPRICE</option>
                         <option value="blank">Blank SPRICE only</option>
+                    </select>
+
+                    <select id="temu-price-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;"
+                        title="Filter rows by Temu Price color (vs eBay Prc × 0.90)">
+                        <option value="all">Temu vs Prc</option>
+                        <option value="red">🔴 Red (Temu &gt; Prc × 0.90)</option>
+                        <option value="yellow">🟡 Yellow (Temu = Prc × 0.90)</option>
+                        <option value="green">🟢 Green (Temu &lt; Prc × 0.90)</option>
                     </select>
 
                     <!-- DIL Filter -->
@@ -546,10 +577,6 @@
                             <!-- Columns will be populated by JavaScript -->
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary pricing-filter-item">
-                        <i class="fa fa-eye"></i> Show All
-                    </button>
-
                     <button id="ebay2-price-mode-btn" type="button" class="btn btn-sm btn-secondary pricing-filter-item"
                             title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         <i class="fas fa-exchange-alt"></i> Price %
@@ -558,14 +585,6 @@
                     <button type="button" class="btn btn-sm btn-success pricing-filter-item" data-bs-toggle="modal" data-bs-target="#exportModal">
                         <i class="fa fa-file-excel"></i> Export
                     </button>
-
-                    <button type="button" class="btn btn-sm btn-primary pricing-filter-item" data-bs-toggle="modal" data-bs-target="#importModal">
-                        <i class="fas fa-upload"></i> Import Ratings
-                    </button>
-
-                    <a href="{{ url('/ebay-ratings-sample') }}" class="btn btn-sm btn-info pricing-filter-item">
-                        <i class="fas fa-download"></i> Sample CSV
-                    </a>
                 </div>
 
                 <!-- KW Ads Statistics (shown only when KW Ads is selected) -->
@@ -614,8 +633,7 @@
                         <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: white; font-weight: bold;">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="ebay2-missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: E Stock &gt; 0, no eBay item id (Missing L)">Missing: 0</span>
-                        <span class="badge fs-6 p-2" id="ebay2-map-count-badge" style="background-color: #198754; color: #fff; font-weight: bold; cursor: pointer;" title="Click to filter: |INV − E Stock| ≤ 3 (MP rows)">Map: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="ebay2-missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: not listed (no eBay item id), REQ, INV &gt; 0 (Missing L) — same as /map-issues">Missing L: 0</span>
                         <span class="badge fs-6 p-2" id="ebay2-nmap-count-badge" style="color: white; font-weight: bold; cursor: pointer; background-color: #a71d2a;" title="Click to filter: N Map rows (same as MAP column)">N Map: 0</span>
                         
                     </div>
@@ -961,12 +979,43 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="ebay2EditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="ebay2EditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="ebay2SellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="ebay2BuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="ebay2SaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
     @section('script-bottom')
     <script>
         // Cache bust: v2.1 - OPEN BOX items now included with base SKU lookup
-        const COLUMN_VIS_KEY = "ebay2_tabulator_column_visibility";
+        /** Stored in DB table channel_tabulator_column_settings (shared for all users). */
+        const TABULATOR_COLUMN_CHANNEL = 'ebay2_tabulator';
+        const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
         /** Same as AD% column — getEbaytwoMasterAdsPercent() / all-marketplace-master */
         const EBAY2_CHANNEL_ADS_PCT = {{ number_format((float) ($channelAdsPercent ?? 0), 4, '.', '') }};
         let skuMetricsChart = null;
@@ -1026,7 +1075,7 @@
             const p = data.Parent;
             return !!(p && String(p).toUpperCase().startsWith('PARENT'));
         }
-        /** Same N Map test as eBay 1 tabulator (isEbayTabulatorNMapRow), E Stock field. */
+        /** N Map — same rule as /map-issues (listed, REQ, INV>0, E Stock>0, outside tolerance). */
         function isEbay2TabulatorNMapRow(data) {
             if (isEbay2TabulatorParentRowForMap(data)) return false;
             const itemId = data['eBay_item_id'];
@@ -1035,9 +1084,12 @@
             if (inv <= 0) return false;
             if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
             const ebayStock = rowEbay2StockQty(data);
-            if (ebayStock === 0) return inv > 3;
-            if (ebayStock > 0 && Math.abs(inv - ebayStock) > 3) return true;
-            return false;
+            if (ebayStock <= 0) return false; // same as /map-issues: both sides need stock
+            const diff = Math.abs(inv - ebayStock);
+            if (inv * 0.03 < 3) {
+                return diff > 3;
+            }
+            return Math.round((diff / inv) * 100) > 3;
         }
         function isEbay2TabulatorMapRow(data) {
             if (isEbay2TabulatorParentRowForMap(data)) return false;
@@ -1048,7 +1100,21 @@
             if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
             const ebayStock = rowEbay2StockQty(data);
             if (ebayStock <= 0) return false;
-            return Math.abs(inv - ebayStock) <= 3;
+            const diff = Math.abs(inv - ebayStock);
+            if (inv * 0.03 < 3) {
+                return diff <= 3;
+            }
+            return Math.round((diff / inv) * 100) <= 3;
+        }
+        /** Missing L — same rule as /map-issues: not listed (no item id), REQ, INV > 0, non-parent. */
+        function isEbay2MissingL(data) {
+            if (isEbay2TabulatorParentRowForMap(data)) return false;
+            const itemId = data['eBay_item_id'];
+            const notListed = (!itemId || String(itemId).trim() === '');
+            if (!notListed) return false;
+            if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
+            const inv = parseFloat(data['INV']) || 0;
+            return inv > 0;
         }
         
         // Toast notification function
@@ -1313,6 +1379,73 @@
             if (lmpModalEl) {
                 lmpModalEl.addEventListener('hidden.bs.modal', cleanupLmpModalBackdrop);
             }
+
+            // ---- Edit Links (Buyer / Seller) ----
+            function ebay2LinksNotify(msg, type) {
+                type = type || 'info';
+                var bg = type === 'success' ? 'bg-success' : (type === 'error' || type === 'danger' ? 'bg-danger' : 'bg-info');
+                var $c = $('.toast-container');
+                if (!$c.length) {
+                    $c = $('<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index:1090;"></div>').appendTo('body');
+                }
+                var $t = $('<div class="toast align-items-center text-white ' + bg + ' border-0" role="alert"><div class="d-flex"><div class="toast-body">' + msg + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>');
+                $c.append($t);
+                var bsT = new bootstrap.Toast($t[0]);
+                bsT.show();
+                setTimeout(function() { $t.remove(); }, 5000);
+            }
+
+            let ebay2EditLinksRow = null;
+            window.openEbay2EditLinksModal = function(row) {
+                ebay2EditLinksRow = row;
+                const d = row.getData();
+                $('#ebay2EditLinksSku').text(d['(Child) sku'] || '');
+                $('#ebay2SellerLinkInput').val(d['S Link'] || '');
+                $('#ebay2BuyerLinkInput').val(d['B Link'] || '');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('ebay2EditLinksModal')).show();
+            };
+
+            $('#ebay2SaveLinksBtn').on('click', function() {
+                if (!ebay2EditLinksRow) return;
+                const sku = ebay2EditLinksRow.getData()['(Child) sku'];
+                const sellerLink = $('#ebay2SellerLinkInput').val().trim();
+                const buyerLink = $('#ebay2BuyerLinkInput').val().trim();
+                const $btn = $(this);
+                $btn.prop('disabled', true).text('Saving...');
+                $.ajax({
+                    url: '/ebay2/save-links',
+                    method: 'POST',
+                    data: {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        sku: sku,
+                        seller_link: sellerLink,
+                        buyer_link: buyerLink
+                    },
+                    success: function(res) {
+                        if (res && res.success) {
+                            ebay2EditLinksRow.update({
+                                'S Link': res.seller_link || '',
+                                'B Link': res.buyer_link || ''
+                            }).then(function() {
+                                ebay2EditLinksRow.reformat();
+                            }).catch(function() {
+                                ebay2EditLinksRow.reformat();
+                            });
+                            ebay2LinksNotify('Links saved successfully', 'success');
+                            bootstrap.Modal.getOrCreateInstance(document.getElementById('ebay2EditLinksModal')).hide();
+                        } else {
+                            ebay2LinksNotify((res && res.message) || 'Failed to save links', 'error');
+                        }
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save links';
+                        ebay2LinksNotify(msg, 'error');
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).text('Save');
+                    }
+                });
+            });
 
             // Initialize SKU-specific chart only
             initSkuMetricsChart();
@@ -1744,6 +1877,9 @@
                                     SGPFT: response.sgpft_percent,
                                     SPRICE_STATUS: 'saved'
                                 });
+                                // Re-render the row so the Accept button's data-price
+                                // reflects the NEW SPRICE (otherwise push uses the old value).
+                                row.reformat();
                             }
                             resolve(response);
                         },
@@ -1782,7 +1918,7 @@
                 if (isBackgroundRetry) {
                     try {
                         const response = await $.ajax({
-                            url: '/push-ebay-price-tabulator',
+                            url: '/push-ebay2-price',
                             method: 'POST',
                             headers: {
                                 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
@@ -1835,7 +1971,7 @@
 
                 try {
                     const response = await $.ajax({
-                        url: '/push-ebay-price-tabulator',
+                        url: '/push-ebay2-price',
                         method: 'POST',
                         headers: {
                             'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
@@ -1928,7 +2064,7 @@
                         attempt++;
                         
                         $.ajax({
-                            url: '/push-ebay-price-tabulator',
+                            url: '/push-ebay2-price',
                             method: 'POST',
                             headers: {
                                 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
@@ -2550,9 +2686,13 @@
                         headerFilter: "input",
                         headerFilterPlaceholder: "Search SKU...",
                         cssClass: "text-primary fw-bold",
-                        tooltip: true,
+                        // Full SKU tooltip on hover — explicit so it works even when the SKU text
+                        // is truncated by the narrower column width.
+                        tooltip: function(e, cell) {
+                            return cell.getValue() || '';
+                        },
                         frozen: true,
-                        width: 250,
+                        width: 175,
                         formatter: function(cell) {
                             const sku = cell.getValue();
                             const rowData = cell.getRow().getData();
@@ -2562,16 +2702,18 @@
                                 ? ` <i class="fa fa-star" style="color: orange;"></i> ${rowData.rating}` 
                                 : '';
                             
-                            let html = `<span>${sku}${ratingDisplay}</span>`;
+                            // Truncate the SKU text with ellipsis when it exceeds the narrower column
+                            // width; full text remains visible via the column's tooltip on hover.
+                            let html = `<span style="display: inline-block; max-width: 105px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;" title="${sku}">${sku}${ratingDisplay}</span>`;
                             
                             // Copy button
                             html += `<i class="fa fa-copy text-secondary copy-sku-btn" 
-                                       style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
+                                       style="cursor: pointer; margin-left: 6px; font-size: 14px; vertical-align: middle;" 
                                        data-sku="${sku}"
                                        title="Copy SKU"></i>`;
                             
                             // Metrics chart button
-                            html += `<button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;">
+                            html += `<button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 4px; vertical-align: middle;">
                                         <i class="fa fa-info-circle"></i>
                                      </button>`;
                             
@@ -2590,44 +2732,32 @@
                         title: "Links",
                         field: "links_column",
                         frozen: true,
-                        width: 100,
-                        visible: false,
+                        width: 55,
+                        visible: true,
                         hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "Double-click to add / edit links",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const buyerLink = rowData['B Link'] || '';
                             const sellerLink = rowData['S Link'] || '';
-                            
-                            // Enhanced debug logging - log every row to see what's happening
-                            console.log('eBay Row Data:', {
-                                sku: rowData['(Child) sku'],
-                                buyerLink: buyerLink,
-                                sellerLink: sellerLink,
-                                allKeys: Object.keys(rowData).filter(k => k.toLowerCase().includes('link'))
-                            });
-                            
-                            let html = '<div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">';
-                            
+
+                            let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
                             if (sellerLink) {
-                                html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size: 12px; text-decoration: none;">
-                                    <i class="fa fa-link"></i> S Link
-                                </a>`;
+                                html += `<a href="${sellerLink}" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>`;
                             }
-                            
                             if (buyerLink) {
-                                html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size: 12px; text-decoration: none;">
-                                    <i class="fa fa-link"></i> B Link
-                                </a>`;
+                                html += `<a href="${buyerLink}" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>`;
                             }
-                            
                             if (!sellerLink && !buyerLink) {
-                                html += '<span class="text-muted" style="font-size: 12px;">-</span>';
+                                html += '<span class="text-muted" style="font-size:12px;">-</span>';
                             }
-                            
                             html += '</div>';
                             return html;
                         },
-                        headerSort: false
+                        cellDblClick: function(e, cell) {
+                            openEbay2EditLinksModal(cell.getRow());
+                        }
                     },
                     
                     {
@@ -2777,14 +2907,10 @@
                         field: "Missing",
                         hozAlign: "center",
                         width: 70,
-                        headerTooltip: "M when listed in REQ scope but no eBay item id (same as eBay 1 tabulator).",
+                        headerTooltip: "M when not listed (no eBay item id), REQ, INV > 0 — same as /map-issues.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            if (rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT')) {
-                                return '';
-                            }
-                            const itemId = rowData['eBay_item_id'];
-                            if (!itemId || itemId === null || itemId === '') {
+                            if (isEbay2MissingL(rowData)) {
                                 return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
                             }
                             return '';
@@ -2795,7 +2921,7 @@
                         field: "MAP",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "MP when |INV − E Stock| ≤ 3; N MP otherwise (listed rows only). Matches eBay 1 tabulator.",
+                        headerTooltip: "MP when within /map-issues tolerance (3 units, or rounded 3% for INV ≥ 100); N MP otherwise (listed rows with E Stock > 0).",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT')) {
@@ -2807,16 +2933,16 @@
                             }
                             const ebayStock = parseFloat(rowData['E Stock']) || 0;
                             const inv = parseFloat(rowData['INV']) || 0;
-                            if (inv > 0 && ebayStock === 0) {
-                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${inv})</span>`;
-                            }
+                            // Same as /map-issues: both sides must have stock to be Map / N Map.
                             if (inv > 0 && ebayStock > 0) {
-                                if (Math.abs(inv - ebayStock) <= 3) {
+                                const diff = Math.abs(inv - ebayStock);
+                                const isNotMap = (inv * 0.03 < 3) ? (diff > 3) : (Math.round((diff / inv) * 100) > 3);
+                                if (!isNotMap) {
                                     return '<span style="color: #28a745; font-weight: bold;">MP</span>';
                                 }
-                                const diff = inv - ebayStock;
-                                const sign = diff > 0 ? '+' : '';
-                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
+                                const signedDiff = inv - ebayStock;
+                                const sign = signedDiff > 0 ? '+' : '';
+                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${signedDiff})</span>`;
                             }
                             return '';
                         }
@@ -2840,19 +2966,8 @@
                             let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
                             return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
                         },
-                        width: 60
-                    },
-                    {
-                        title: "CVR 45",
-                        field: "CVR_45",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const val = parseFloat(cell.getValue()) || 0;
-                            let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
-                            return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
-                        },
-                        width: 60
+                        width: 60,
+                        visible: false
                     },
                     {
                         title: "CVR 30",
@@ -3000,6 +3115,47 @@
                         width: 70
                     },
 
+                    {
+                        title: "Temu Price",
+                        field: "Temu Price",
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerTooltip: "Temu Price = base_price + 2.99 if ≤ $26.99, else base_price.\nBackground: vs (eBay Prc × 0.90) — Red > threshold, Yellow ≈, Green < threshold.",
+                        formatter: function(cell) {
+                            const el = cell.getElement();
+                            const value = parseFloat(cell.getValue() || 0);
+                            // Always reset (Tabulator reuses cell elements between data reloads).
+                            el.style.backgroundColor = '';
+                            el.style.color = '';
+                            el.style.fontWeight = '';
+
+                            if (!value) {
+                                return `<span style="color: #adb5bd;">—</span>`;
+                            }
+                            const ebayPrice = parseFloat(cell.getRow().getData()['eBay Price'] || 0);
+                            if (ebayPrice > 0) {
+                                const threshold = Math.round(ebayPrice * 0.90 * 100) / 100; // round to cents
+                                const diff = Math.round((value - threshold) * 100) / 100;
+                                if (diff > 0) {
+                                    // Temu Price > 90% of Prc → red
+                                    el.style.backgroundColor = '#f8d7da';
+                                    el.style.color = '#721c24';
+                                } else if (diff === 0) {
+                                    // Temu Price ≈ 90% of Prc (within 1¢) → yellow
+                                    el.style.backgroundColor = '#fff3cd';
+                                    el.style.color = '#856404';
+                                } else {
+                                    // Temu Price < 90% of Prc → green
+                                    el.style.backgroundColor = '#d4edda';
+                                    el.style.color = '#155724';
+                                }
+                                el.style.fontWeight = '600';
+                            }
+                            return `$${value.toFixed(2)}`;
+                        },
+                        width: 80
+                    },
+
                       {
                         title: "GPFT %",
                         field: "GPFT%",
@@ -3105,10 +3261,10 @@
                             let color = '';
                             
                             // getRoiColor logic from inc/dec page
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            if (percent < 40) color = '#a00211'; // red
+                            else if (percent < 75) color = '#ffc107'; // yellow
+                            else if (percent < 125) color = '#28a745'; // green
+                            else color = '#d63384'; // magenta
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -3133,10 +3289,10 @@
                             const nroi = roi - adPercent;
                             
                             let color = '';
-                            if (nroi < 50) color = '#a00211'; // red
-                            else if (nroi >= 50 && nroi < 75) color = '#ffc107'; // yellow
-                            else if (nroi >= 75 && nroi <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            if (nroi < 40) color = '#a00211'; // red
+                            else if (nroi < 75) color = '#ffc107'; // yellow
+                            else if (nroi < 125) color = '#28a745'; // green
+                            else color = '#d63384'; // magenta
                             
                             return `<span style="color: ${color}; font-weight: 600;">${nroi.toFixed(0)}%</span>`;
                         },
@@ -3290,11 +3446,7 @@
                             
                             if (!value) return '';
                             
-                            // If SPRICE matches eBay2 Price, show blank
-                            if (sprice === ebay2Price) {
-                                return '<span style="color: #999; font-style: italic;">-</span>';
-                            }
-                            
+                            // Always show SPRICE when it has a value — even if it equals the eBay price.
                             const formattedValue = `$${parseFloat(value).toFixed(2)}`;
                             
                             // If using default eBay Price (not custom), show in blue
@@ -3307,13 +3459,62 @@
                         width: 80
                     },
                     {
+                        title: "Temu Price",
+                        // Pseudo-field — same value as `Temu Price` but a unique key so this column's
+                        // visibility/filter/save state stays independent from the first Temu Price column.
+                        field: "Temu Price S",
+                        hozAlign: "center",
+                        headerTooltip: "Temu Price vs (S PRC × 0.90) — Red > threshold, Yellow ≈, Green < threshold.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const aVal = parseFloat(aRow.getData()['Temu Price']) || 0;
+                            const bVal = parseFloat(bRow.getData()['Temu Price']) || 0;
+                            return aVal - bVal;
+                        },
+                        formatter: function(cell) {
+                            const el = cell.getElement();
+                            el.style.backgroundColor = '';
+                            el.style.color = '';
+                            el.style.fontWeight = '';
+
+                            const rowData = cell.getRow().getData();
+                            const value = parseFloat(rowData['Temu Price']) || 0;
+                            if (!value) {
+                                return `<span style="color: #adb5bd;">—</span>`;
+                            }
+                            const sprice = parseFloat(rowData.SPRICE) || 0;
+                            if (sprice > 0) {
+                                const threshold = Math.round(sprice * 0.90 * 100) / 100;
+                                const diff = Math.round((value - threshold) * 100) / 100;
+                                if (diff > 0) {
+                                    // Temu Price > 90% of S PRC → red
+                                    el.style.backgroundColor = '#f8d7da';
+                                    el.style.color = '#721c24';
+                                } else if (diff === 0) {
+                                    // Temu Price ≈ 90% of S PRC → yellow
+                                    el.style.backgroundColor = '#fff3cd';
+                                    el.style.color = '#856404';
+                                } else {
+                                    // Temu Price < 90% of S PRC → green
+                                    el.style.backgroundColor = '#d4edda';
+                                    el.style.color = '#155724';
+                                }
+                                el.style.fontWeight = '600';
+                            }
+                            return `$${value.toFixed(2)}`;
+                        },
+                        width: 80
+                    },
+                    {
                         field: "_accept",
                         hozAlign: "center",
                         headerSort: false,
+                        width: 60,
                         titleFormatter: function(column) {
-                            return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px; flex-direction: column;">
+                            // Bulk-apply button is kept in the DOM (hidden) so existing #apply-all-btn
+                            // click handlers and programmatic triggers continue to work.
+                            return `<div style="display: flex; align-items: center; justify-content: center;">
                                 <span>Accept</span>
-                                <button type="button" class="btn btn-sm" id="apply-all-btn" title="Apply All Selected Prices to eBay" style="border: none; background: none; padding: 0; cursor: pointer; color: #28a745;">
+                                <button type="button" class="btn btn-sm" id="apply-all-btn" title="Apply All Selected Prices to eBay" style="display: none; border: none; background: none; padding: 0; cursor: pointer; color: #28a745;">
                                     <i class="fas fa-check-double" style="font-size: 1.2em;"></i>
                                 </button>
                             </div>`;
@@ -3386,7 +3587,10 @@
                                         data: { sku: sku, status: 'applied' },
                                         success: function(response) {
                                             if (response.success) {
-                                                refreshEbay2TableData();
+                                                // Update only this row (no full reload → no horizontal slide)
+                                                const row = cell.getRow();
+                                                row.update({ SPRICE_STATUS: 'applied' });
+                                                row.reformat();
                                                 showToast('Status updated to Applied', 'success');
                                             }
                                         }
@@ -3398,9 +3602,12 @@
                             if ($target.hasClass('apply-price-btn') || $target.closest('.apply-price-btn').length) {
                                 e.stopPropagation();
                                 const $btn = $target.hasClass('apply-price-btn') ? $target : $target.closest('.apply-price-btn');
-                                const sku = $btn.attr('data-sku') || $btn.data('sku');
-                                const price = parseFloat($btn.attr('data-price') || $btn.data('price'));
-                                const currentStatus = $btn.attr('data-status') || '';
+                                // Read SKU/price from LIVE row data (not the stale data-* HTML attributes),
+                                // so a freshly-edited SPRICE is used instead of reverting to the old value.
+                                const liveRowData = cell.getRow().getData();
+                                const sku = liveRowData['(Child) sku'] || $btn.attr('data-sku');
+                                const price = parseFloat(liveRowData.SPRICE) || parseFloat($btn.attr('data-price'));
+                                const currentStatus = liveRowData.SPRICE_STATUS || $btn.attr('data-status') || '';
                                 
                                 if (!sku || !price || price <= 0 || isNaN(price)) {
                                     showToast('Invalid SKU or price', 'error');
@@ -3473,10 +3680,11 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
-                        width: 80
+                        width: 80,
+                        visible: false
                     },
                     {
-                        title: "SROI",
+                        title: "SGROI",
                         field: "SROI",
                         hozAlign: "center",
                         sorter: "number",
@@ -3488,10 +3696,10 @@
                             
                             let color = '';
                             // Same as ROI% color logic
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            if (percent < 40) color = '#a00211'; // red
+                            else if (percent < 75) color = '#ffc107'; // yellow
+                            else if (percent < 125) color = '#28a745'; // green
+                            else color = '#d63384'; // magenta
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -4096,10 +4304,10 @@
                             var ebayL30 = parseFloat(rd['eBay L30']) || 0;
                             var scvr = views > 0 ? (ebayL30 / views) * 100 : 0;
                             var color;
-                            if (scvr <= 4) color = 'red';
-                            else if (scvr <= 7) color = '#daa520';
-                            else if (scvr <= 13) color = 'green';
-                            else color = '#E83E8C';
+                            if (scvr <= 4) color = '#a00211';
+                            else if (scvr <= 7) color = '#ffc107';
+                            else if (scvr <= 13) color = '#28a745';
+                            else color = '#e83e8c';
                             return '<span style="color:' + color + '; font-weight: 600;">' + scvr.toFixed(2) + '%</span>';
                         },
                         width: 80
@@ -4443,18 +4651,26 @@
                 const cvrFilter = $('#cvr-filter').val();
                 const cvrTrendFilter = $('#cvr-trend-filter').val();
                 const spriceFilter = $('#sprice-filter').val();
+                const temuPriceFilter = $('#temu-price-filter').val();
                 const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
 
                 table.clearFilter(true);
 
-                if (inventoryFilter === 'zero') {
-                    table.addFilter(function(data) {
-                        return (parseFloat(data['E Stock'] || 0) || 0) === 0;
-                    });
-                } else if (inventoryFilter === 'more') {
-                    table.addFilter(function(data) {
-                        return (parseFloat(data['E Stock'] || 0) || 0) > 0;
-                    });
+                // Missing / Map / N Map badges are authoritative (same rows as /map-issues).
+                // Skip the "E Stock" inventory filter while one is active, otherwise not-listed
+                // Missing L rows (E Stock = 0) get filtered out and the view shows nothing.
+                const badgeFilterActive = missingFilterActive || mapFilterActive || nmapFilterActive;
+
+                if (!badgeFilterActive) {
+                    if (inventoryFilter === 'zero') {
+                        table.addFilter(function(data) {
+                            return (parseFloat(data['E Stock'] || 0) || 0) === 0;
+                        });
+                    } else if (inventoryFilter === 'more') {
+                        table.addFilter(function(data) {
+                            return (parseFloat(data['E Stock'] || 0) || 0) > 0;
+                        });
+                    }
                 }
 
                 if (el30Filter === 'zero') {
@@ -4520,9 +4736,10 @@
                     table.addFilter(function(data) {
                         const roiVal = parseFloat(data['ROI%']) || 0;
                         if (roiFilter === 'lt40') return roiVal < 40;
-                        if (roiFilter === 'gt250') return roiVal > 250;
-                        const [min, max] = roiFilter.split('-').map(Number);
-                        return roiVal >= min && roiVal <= max;
+                        if (roiFilter === '40-75') return roiVal >= 40 && roiVal < 75;
+                        if (roiFilter === '75-125') return roiVal >= 75 && roiVal < 125;
+                        if (roiFilter === 'gt125') return roiVal >= 125;
+                        return true;
                     });
                 }
 
@@ -4540,9 +4757,8 @@
                         const cvrRounded = Math.round(cvr * 100) / 100;
                         
                         if (cvrFilter === '0-0') return cvrRounded === 0;
-                        if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                        if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                        if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                        if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                        if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                         if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                         if (cvrFilter === '13plus') return cvrRounded > 13;
                         return true;
@@ -4571,6 +4787,24 @@
                     });
                 }
 
+                // Temu Price color filter (matches the Temu Price column formatter):
+                //   red    → Temu Price > (eBay Price × 0.90)
+                //   yellow → Temu Price ≈ (eBay Price × 0.90)   (within 1¢)
+                //   green  → Temu Price < (eBay Price × 0.90)
+                if (temuPriceFilter === 'red' || temuPriceFilter === 'green' || temuPriceFilter === 'yellow') {
+                    table.addFilter(function(data) {
+                        if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT')) return false;
+                        const temu = parseFloat(data['Temu Price'] || 0) || 0;
+                        const ebay = parseFloat(data['eBay Price'] || 0) || 0;
+                        if (temu <= 0 || ebay <= 0) return false;
+                        const threshold = Math.round(ebay * 0.90 * 100) / 100;
+                        const diff = Math.round((temu - threshold) * 100) / 100;
+                        if (temuPriceFilter === 'red')    return diff > 0;
+                        if (temuPriceFilter === 'yellow') return diff === 0;
+                        return diff < 0; // green
+                    });
+                }
+
                 // Badge Filters (only E Stock > 0)
                 if (zeroSoldFilterActive) {
                     table.addFilter(function(data) {
@@ -4590,11 +4824,7 @@
 
                 if (missingFilterActive) {
                     table.addFilter(function(data) {
-                        const estock = rowEbay2StockQty(data);
-                        if (estock <= 0) return false;
-                        const itemId = data['eBay_item_id'];
-                        if (isEbay2TabulatorParentRowForMap(data)) return false;
-                        return !itemId || itemId === null || itemId === '';
+                        return isEbay2MissingL(data);
                     });
                 }
                 if (mapFilterActive) {
@@ -4790,7 +5020,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #el30-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter').on('change', function() {
+            $('#inventory-filter, #el30-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #temu-price-filter').on('change', function() {
                 applyFilters();
             });
 
@@ -4863,12 +5093,12 @@
 
             // Section Filter: column visibility groups
             var pricingOnlyColumns = [
-                'image_path', 'E Stock', 'Missing', 'MAP', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
-                'GPFT%', 'AD%', 'PFT %', 'ROI%',
+                'image_path', 'E Stock', 'Missing', 'MAP', 'nr_req', 'SCVR',
+                'GPFT%', 'AD%', 'PFT %', 'ROI%', 'Temu Price', 'Temu Price S',
                 'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI'
             ];
             var kwAdsOnlyColumns = [
-                'kw_hasCampaign', 'NRL', 'l7_views', 'kw_cvr',
+                'kw_hasCampaign', 'NRL', 'kw_cvr',
                 'kw_campaignBudgetAmount', 'kw_sbgt', 'kw_acos', 'kw_clicks',
                 'kw_spend_L30', 'kw_ad_sold', 'kw_l7_spend', 'kw_l1_spend', 'kw_l7_cpc', 'kw_l1_cpc',
                 'kw_last_sbid', 'kw_sbid_calc', 'kw_sbid_m', 'kw_apr_bid', 'kw_campaignStatus'
@@ -5271,17 +5501,14 @@
                 });
                 const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
 
+                // Missing L / Map / N Map are counted over the FULL dataset (like /map-issues),
+                // not the active/filtered view — otherwise not-listed rows are hidden by the
+                // default filters and the Missing badge shows 0.
                 let missingCount = 0;
                 let mapCount = 0;
                 let nmapCount = 0;
-                data.forEach(row => {
-                    const estock = rowEbay2StockQty(row);
-                    if (estock > 0) {
-                        const itemId = row['eBay_item_id'];
-                        if ((!itemId || itemId === null || itemId === '') && !isEbay2TabulatorParentRowForMap(row)) {
-                            missingCount++;
-                        }
-                    }
+                table.getData().forEach(row => {
+                    if (isEbay2MissingL(row)) missingCount++;
                     if (isEbay2TabulatorMapRow(row)) mapCount++;
                     if (isEbay2TabulatorNMapRow(row)) nmapCount++;
                 });
@@ -5311,7 +5538,7 @@
                 $('#avg-cvr-badge').text('CVR: ' + Math.round(avgCVR) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                 $('#total-inv-badge').text('E Stock: ' + Math.round(totalFbaInv).toLocaleString());
-                $('#ebay2-missing-count-badge').text('Missing: ' + missingCount.toLocaleString());
+                $('#ebay2-missing-count-badge').text('Missing L: ' + missingCount.toLocaleString());
                 $('#ebay2-map-count-badge').text('Map: ' + mapCount.toLocaleString());
                 $('#ebay2-nmap-count-badge').text('N Map: ' + nmapCount.toLocaleString());
             }
@@ -5319,9 +5546,10 @@
             // Build Column Visibility Dropdown
             function buildColumnDropdown() {
                 const menu = document.getElementById("column-dropdown-menu");
+                if (!menu) return;
                 menu.innerHTML = '';
 
-                fetch('/get-ebay2-column-visibility', {
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
@@ -5363,20 +5591,21 @@
                     }
                 });
 
-                fetch('/set-ebay2-column-visibility', {
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                     },
                     body: JSON.stringify({
+                        channel: TABULATOR_COLUMN_CHANNEL,
                         visibility: visibility
                     })
                 });
             }
 
             function applyColumnVisibilityFromServer() {
-                fetch('/get-ebay2-column-visibility', {
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
@@ -5455,14 +5684,6 @@
                 }
             });
 
-            // Show All Columns button
-            document.getElementById("show-all-columns-btn").addEventListener("click", function() {
-                table.getColumns().forEach(col => {
-                    col.show();
-                });
-                buildColumnDropdown();
-                saveColumnVisibilityToServer();
-            });
 
             // Toggle functionality removed - only PMT Spend L30 shown now
             document.addEventListener("click", function(e) {
@@ -5673,7 +5894,15 @@
 
         function refreshEbay2TableData() {
             if (typeof table !== 'undefined' && table) {
-                table.replaceData('/ebay2-data?_=' + Date.now());
+                // Preserve the horizontal scroll position so the table doesn't
+                // "slide" back to the left when data is reloaded (e.g. after a push).
+                const holder = table.element ? table.element.querySelector('.tabulator-tableHolder') : null;
+                const scrollLeft = holder ? holder.scrollLeft : 0;
+
+                table.replaceData('/ebay2-data?_=' + Date.now()).then(function() {
+                    const h = table.element ? table.element.querySelector('.tabulator-tableHolder') : null;
+                    if (h) h.scrollLeft = scrollLeft;
+                }).catch(function() {});
             }
         }
 

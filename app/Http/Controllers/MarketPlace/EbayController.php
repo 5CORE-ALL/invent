@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\EbayListingStatus;
 use App\Services\EbayApiService;
+use App\Services\EbayPushService;
 use App\Services\EbayLivePriceFetcher;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -256,6 +257,9 @@ class EbayController extends Controller
         // 3. Related Models (NBSP / Unicode space–safe PM ↔ shopify_skus match)
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
+        // Key by NBSP / Unicode space–safe normalized SKU: ebay_metrics.sku can contain
+        // non-breaking spaces (U+00A0) while product_masters.sku uses normal spaces, which
+        // otherwise breaks the lookup (item_id/price missing → row wrongly shows as Missing L).
         $ebayMetrics = EbayMetric::select(
                 'sku',
                 'ebay_l30',
@@ -269,7 +273,9 @@ class EbayController extends Controller
             )
             ->whereIn('sku', $skus)
             ->get()
-            ->keyBy('sku');
+            ->keyBy(function ($metric) {
+                return ShopifySku::normalizeSkuForShopifyLookup($metric->sku);
+            });
 
         // Fetch Amazon prices for comparison
         $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)
@@ -479,7 +485,7 @@ class EbayController extends Controller
             $parent = $pm->parent;
 
             $shopify = $shopifyData->get($pm->sku);
-            $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
+            $ebayMetric = $ebayMetrics[ShopifySku::normalizeSkuForShopifyLookup($pm->sku)] ?? null;
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
 
             $row = [];
@@ -2068,8 +2074,10 @@ class EbayController extends Controller
 
     public function pushEbayPrice(Request $request)
     {
-        $sku = strtoupper(trim($request->input('sku')));
+        $sku   = strtoupper(trim($request->input('sku')));
         $price = $request->input('price');
+
+        // --- Input validation (kept identical to original) ---
 
         if (empty($sku)) {
             $this->saveSpriceStatus($sku, 'error');
@@ -2078,7 +2086,6 @@ class EbayController extends Controller
             ], 400);
         }
 
-        // Validate price
         $priceFloat = floatval($price);
         if (!is_numeric($price) || $priceFloat <= 0) {
             $this->saveSpriceStatus($sku, 'error');
@@ -2087,7 +2094,6 @@ class EbayController extends Controller
             ], 400);
         }
 
-        // Validate price range (e.g., between 0.01 and 10000)
         if ($priceFloat < 0.01 || $priceFloat > 10000) {
             $this->saveSpriceStatus($sku, 'error');
             return response()->json([
@@ -2095,132 +2101,146 @@ class EbayController extends Controller
             ], 400);
         }
 
-        // Ensure price has max 2 decimal places
+        // Cap to two decimal places
         $priceFloat = round($priceFloat, 2);
 
         try {
-            // Get item_id from EbayMetric
-            $ebayMetric = EbayMetric::where('sku', $sku)
-                ->first();
+            // Resolve eBay listing metadata from the local DB
+            $ebayMetric = EbayMetric::where('sku', $sku)->first();
 
             if (!$ebayMetric || !$ebayMetric->item_id) {
                 $this->saveSpriceStatus($sku, 'error');
-                Log::error('eBay item_id not found', ['sku' => $sku]);
+                Log::error('[EbayController] eBay item_id not found', ['sku' => $sku]);
                 return response()->json([
                     'errors' => [['code' => 'NotFound', 'message' => 'eBay listing not found for SKU: ' . $sku]]
                 ], 404);
             }
 
-            // Push price to eBay using EbayApiService
+            // Push price DIRECTLY to eBay via the local EbayApiService (no microservice).
             $ebayService = new EbayApiService();
             $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat);
 
+            // --- Success path ---
             if (isset($result['success']) && $result['success']) {
                 $this->saveSpriceStatus($sku, 'pushed');
-                Log::info('eBay price update successful', ['sku' => $sku, 'price' => $priceFloat, 'item_id' => $ebayMetric->item_id]);
-                return response()->json(['success' => true, 'message' => 'Price updated successfully']);
-            } else {
-                // Check if account is restricted (don't save as error for retry - it won't help)
-                $isAccountRestricted = isset($result['accountRestricted']) && $result['accountRestricted'];
-                
-                if ($isAccountRestricted) {
-                    // Save with special status to prevent background retries
-                    $this->saveSpriceStatus($sku, 'account_restricted');
-                } else {
-                    $this->saveSpriceStatus($sku, 'error');
-                }
-                
-                $errors = $result['errors'] ?? [['code' => 'UnknownError', 'message' => 'Failed to update price']];
-                
-                // Check for Lvis error and provide user-friendly message
-                $errorMessages = [];
-                $hasLvisError = false;
-                
-                // Normalize errors to array format
-                if (!is_array($errors)) {
-                    $errors = [$errors];
-                }
-                
-                foreach ($errors as $error) {
-                    $errorCode = is_array($error) ? ($error['ErrorCode'] ?? '') : '';
-                    $errorMsg = is_array($error) ? ($error['LongMessage'] ?? $error['ShortMessage'] ?? 'Unknown error') : (string)$error;
-                    $errorParams = is_array($error) ? ($error['ErrorParameters'] ?? []) : [];
-                    
-                    // Extract error parameter messages
-                    $paramMessages = [];
-                    if (is_array($errorParams)) {
-                        foreach ($errorParams as $param) {
-                            if (is_array($param) && isset($param['Value'])) {
-                                $paramMessages[] = strip_tags($param['Value']); // Remove HTML tags
-                            }
-                        }
-                    }
-                    $fullErrorText = $errorMsg . ' ' . implode(' ', $paramMessages);
-                    
-                    // Check for account restriction errors
-                    $isAccountRestricted = false;
-                    $isEmbargoedCountry = false;
-                    
-                    if (stripos($fullErrorText, 'account is restricted') !== false || 
-                        stripos($fullErrorText, 'restrictions on your account') !== false ||
-                        stripos($fullErrorText, 'embargoed country') !== false) {
-                        $isAccountRestricted = true;
-                        $isEmbargoedCountry = stripos($fullErrorText, 'embargoed country') !== false;
-                    }
-                    
-                    if ($errorCode == '21916293' || strpos($errorMsg, 'Lvis') !== false || $isAccountRestricted) {
-                        $hasLvisError = true;
-                        
-                        if ($isAccountRestricted) {
-                            if ($isEmbargoedCountry) {
-                                $errorMessages[] = [
-                                    'code' => $errorCode ?: 'AccountRestricted',
-                                    'message' => 'ACCOUNT RESTRICTION: Your eBay account is restricted due to country/embargo restrictions. Please check your eBay Messages for "Your eBay account is restricted" and resolve the account restrictions before updating prices. This cannot be bypassed programmatically.'
-                                ];
-                            } else {
-                                $errorMessages[] = [
-                                    'code' => $errorCode ?: 'AccountRestricted',
-                                    'message' => 'ACCOUNT RESTRICTION: Your eBay account has restrictions that prevent price updates. Please check your eBay Messages for "Your eBay account is restricted" and provide the requested information to remove restrictions. Contact eBay Customer Service if you believe this is an error.'
-                                ];
-                            }
-                        } else {
-                            $errorMessages[] = [
-                                'code' => $errorCode ?: 'LvisBlocked',
-                                'message' => 'Listing validation blocked: This listing may have policy violations or restrictions. Please check the listing status in eBay Seller Hub and resolve any issues before updating the price.'
-                            ];
-                        }
-                    } else {
-                        // Check for business policy warning (non-blocking)
-                        if ($errorCode == '21919456' || stripos($errorMsg, 'business policies') !== false) {
-                            // This is just a warning, not a blocking error
-                            Log::warning('eBay business policy warning (non-blocking)', [
-                                'sku' => $sku,
-                                'error' => $errorMsg
-                            ]);
-                            // Don't add to errorMessages as it's just a warning
-                        } else {
-                            $errorMessages[] = [
-                                'code' => $errorCode ?: 'APIError',
-                                'message' => $errorMsg
-                            ];
-                        }
-                    }
-                }
-                
-                Log::error('eBay price update failed', [
-                    'sku' => $sku,
-                    'price' => $priceFloat,
+                Log::info('[EbayController] eBay price push successful via microservice', [
+                    'sku'     => $sku,
+                    'price'   => $priceFloat,
                     'item_id' => $ebayMetric->item_id,
-                    'errors' => $errors,
-                    'hasLvisError' => $hasLvisError
                 ]);
-                
-                return response()->json(['errors' => $errorMessages], 400);
+                return response()->json(['success' => true, 'message' => 'Price updated successfully']);
             }
+
+            // --- Failure path ---
+
+            // accountRestricted is forwarded from the microservice (which itself
+            // forwards it from eBay's Trading API response).
+            $isAccountRestricted = isset($result['accountRestricted']) && $result['accountRestricted'];
+
+            $this->saveSpriceStatus($sku, $isAccountRestricted ? 'account_restricted' : 'error');
+
+            // EbayPushService already normalizes errors to [{code, message}].
+            // We also handle the raw eBay format (ErrorCode / LongMessage) in
+            // case the microservice forwards it verbatim, so both shapes work.
+            $errors = $result['errors'] ?? [['code' => 'UnknownError', 'message' => 'Failed to update price']];
+
+            if (!is_array($errors)) {
+                $errors = [$errors];
+            }
+
+            $errorMessages = [];
+            $hasLvisError  = false;
+
+            foreach ($errors as $error) {
+                // Support both microservice normalized format {code, message}
+                // and raw eBay Trading API format {ErrorCode, LongMessage, ...}
+                $errorCode   = is_array($error) ? ($error['code'] ?? $error['ErrorCode'] ?? '') : '';
+                $errorMsg    = is_array($error)
+                    ? ($error['message'] ?? $error['LongMessage'] ?? $error['ShortMessage'] ?? 'Unknown error')
+                    : (string) $error;
+                $errorParams = is_array($error) ? ($error['ErrorParameters'] ?? []) : [];
+
+                // Append any embedded parameter values into the full error text
+                $paramMessages = [];
+                if (is_array($errorParams)) {
+                    foreach ($errorParams as $param) {
+                        if (is_array($param) && isset($param['Value'])) {
+                            $paramMessages[] = strip_tags($param['Value']);
+                        }
+                    }
+                }
+                $fullErrorText = trim($errorMsg . ' ' . implode(' ', $paramMessages));
+
+                // Detect account-level restrictions that cannot be bypassed
+                $isRestricted      = false;
+                $isEmbargoedCountry = false;
+
+                if (
+                    stripos($fullErrorText, 'account is restricted') !== false ||
+                    stripos($fullErrorText, 'restrictions on your account') !== false ||
+                    stripos($fullErrorText, 'embargoed country') !== false ||
+                    stripos($fullErrorText, 'ACCOUNT RESTRICTION') !== false
+                ) {
+                    $isRestricted       = true;
+                    $isEmbargoedCountry = stripos($fullErrorText, 'embargoed country') !== false;
+                }
+
+                if ($errorCode === '21916293' || stripos($errorMsg, 'Lvis') !== false || $isRestricted) {
+                    $hasLvisError = true;
+
+                    if ($isRestricted) {
+                        $errorMessages[] = [
+                            'code'    => $errorCode ?: 'AccountRestricted',
+                            'message' => $isEmbargoedCountry
+                                ? 'ACCOUNT RESTRICTION: Your eBay account is restricted due to country/embargo restrictions. Please check your eBay Messages for "Your eBay account is restricted" and resolve the account restrictions before updating prices. This cannot be bypassed programmatically.'
+                                : 'ACCOUNT RESTRICTION: Your eBay account has restrictions that prevent price updates. Please check your eBay Messages for "Your eBay account is restricted" and provide the requested information to remove restrictions. Contact eBay Customer Service if you believe this is an error.',
+                        ];
+                    } else {
+                        $errorMessages[] = [
+                            'code'    => $errorCode ?: 'LvisBlocked',
+                            'message' => 'Listing validation blocked: This listing may have policy violations or restrictions. Please check the listing status in eBay Seller Hub and resolve any issues before updating the price.',
+                        ];
+                    }
+                } else {
+                    // Business-policy warnings (21919456) are non-blocking – log but do not surface to the UI
+                    if ($errorCode === '21919456' || stripos($errorMsg, 'business policies') !== false) {
+                        Log::warning('[EbayController] eBay business policy warning (non-blocking)', [
+                            'sku'   => $sku,
+                            'error' => $errorMsg,
+                        ]);
+                    } else {
+                        $errorMessages[] = [
+                            'code'    => $errorCode ?: 'APIError',
+                            'message' => $errorMsg,
+                        ];
+                    }
+                }
+            }
+
+            Log::error('[EbayController] eBay price push failed via microservice', [
+                'sku'          => $sku,
+                'price'        => $priceFloat,
+                'item_id'      => $ebayMetric->item_id,
+                'errors'       => $errors,
+                'hasLvisError' => $hasLvisError,
+            ]);
+
+            return response()->json(['errors' => $errorMessages], 400);
+
         } catch (\Exception $e) {
+            // Catch-all: log the failure but do not let it propagate and break
+            // the UI. EbayPushService already catches its own exceptions; this
+            // guard covers any unexpected error in the controller logic itself.
             $this->saveSpriceStatus($sku, 'error');
-            Log::error('Exception in pushEbayPrice', ['sku' => $sku, 'price' => $priceFloat, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
-            return response()->json(['errors' => [['code' => 'Exception', 'message' => 'An error occurred: ' . $e->getMessage()]]], 500);
+            Log::error('[EbayController] Exception in pushEbayPrice', [
+                'sku'   => $sku,
+                'price' => $priceFloat ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'errors' => [['code' => 'Exception', 'message' => 'An error occurred: ' . $e->getMessage()]]
+            ], 500);
         }
     }
 

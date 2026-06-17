@@ -214,6 +214,13 @@
                         <i class="fas fa-filter"></i> Audit
                     </button>
 
+                    <!-- Inventory Filter -->
+                    <select id="invFilter" class="form-select form-select-sm" style="width: 130px;" title="Filter by inventory">
+                        <option value="all">All Inv</option>
+                        <option value="gt0">Inv &gt; 0</option>
+                        <option value="eq0">Inv = 0</option>
+                    </select>
+
                     <!-- Action Buttons -->
                     <button type="button" class="btn btn-sm btn-primary" id="addAPlusImagesBtn">
                         <i class="fas fa-plus"></i> Add
@@ -1122,6 +1129,25 @@
         // LQS Search
         $('#lqs-search').on('keyup', function() {
             table.setFilter("lqs", "like", this.value);
+        });
+
+        // Inventory Filter (shopify_inv)
+        let invFilterFunc = null;
+        $('#invFilter').on('change', function() {
+            if (invFilterFunc) {
+                table.removeFilter(invFilterFunc);
+                invFilterFunc = null;
+            }
+            const v = this.value;
+            if (v === 'gt0') {
+                invFilterFunc = function(d) { return parseFloat(d.shopify_inv || 0) > 0; };
+            } else if (v === 'eq0') {
+                invFilterFunc = function(d) { return parseFloat(d.shopify_inv || 0) <= 0; };
+            }
+            if (invFilterFunc) {
+                table.addFilter(invFilterFunc);
+            }
+            updateSummary();
         });
 
         // Update summary

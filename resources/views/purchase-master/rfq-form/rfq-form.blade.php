@@ -397,6 +397,14 @@
         </div>
     @else
         <div class="form-container">
+            @if(!empty($canEdit) && !empty($editUrl))
+                <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
+                    <a href="{{ $editUrl }}" target="_blank" rel="noopener noreferrer"
+                       style="display:inline-flex; align-items:center; gap:6px; background:#4361ee; color:#fff; padding:8px 16px; border-radius:6px; text-decoration:none; font-size:0.9rem; font-weight:500;">
+                        ✏️ Edit Form
+                    </a>
+                </div>
+            @endif
             <div class="logo-container">
                 <img src="{{ asset('images/5core_logo.png') }}" alt="5core Logo" class="logo">
             </div>
@@ -406,12 +414,35 @@
                         <h1 class="form-title">📌 {{$rfqForm->title}}</h1>
                         <p class="form-subtitle">{{ $rfqForm->subtitle }}</p>
                     </div>
+                    @if(!empty($rfqForm->main_image))
                     <div class="image-container">
-                        <img src="{{ asset('storage/' . $rfqForm->main_image) }}" alt="stand" class="image">
+                        <img src="{{ asset('storage/' . $rfqForm->main_image) }}" alt="{{ $rfqForm->title }}" class="image"
+                            loading="lazy"
+                            onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22220%22 height=%22220%22&gt;&lt;rect width=%22100%25%22 height=%22100%25%22 fill=%22%23f1f1f1%22 stroke=%22%23dcdcdc%22/&gt;&lt;text x=%2250%25%22 y=%2252%25%22 font-size=%2216%22 text-anchor=%22middle%22 fill=%22%23999%22&gt;No Image&lt;/text&gt;&lt;/svg&gt;';this.style.objectFit='contain';">
                     </div>
+                    @endif
                 </div>
+                @php
+                    $part = $part ?? 'all';
+                    $showBasics = in_array($part, ['all', 'basics']);
+                    $showDetails = in_array($part, ['all', 'details']);
+                    $allFields = collect($rfqForm->fields)->sortBy('order')->values();
+                    $basicsFields = $allFields->filter(fn($f) => ($f['part'] ?? 'details') === 'basics')->values();
+                    $detailsFields = $allFields->filter(fn($f) => ($f['part'] ?? 'details') !== 'basics')->values();
+                @endphp
+                @if($part !== 'all')
+                    <div class="section-title" style="background:#eef2ff; border-radius:6px; padding:10px 14px; border:none;">
+                        Part: {{ $part === 'basics' ? 'Basics' : 'Details' }}
+                    </div>
+                @endif
                 <form id="productForm" action="{{ route('rfq-form.submit', $rfqForm->slug) }}" method="POST" enctype="multipart/form-data">
                     @csrf
+                    <input type="hidden" name="part" value="{{ $part }}">
+                    @if(!empty($token))
+                        <input type="hidden" name="token" value="{{ $token }}">
+                    @endif
+
+                    @if($showBasics)
                     <div class="section-title">Supplier Details (供应商详情)</div>
                     <div class="form-row">
                         <div class="form-group">
@@ -435,36 +466,43 @@
                         </div>
                     </div>
 
+                    @if($basicsFields->count())
+                    <!-- Basics custom fields -->
+                    <div class="section-title">Product Specifications(产品规格)</div>
+                    <div class="form-row row">
+                        @foreach($basicsFields as $field)
+                            @include('purchase-master.rfq-form._field', ['field' => $field])
+                        @endforeach
+                    </div>
+                    @endif
+                    @endif
+
+                    @if($showDetails)
+                    @if($part === 'details')
+                    {{-- Identity block: lets a stand-alone Details submission merge into the same
+                         supplier row (matched by Supplier Name) as the earlier Basics submission. --}}
+                    <div class="section-title">Supplier Details (供应商详情)</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="supplierName" class="required">Supplier Name</label>
+                            <input type="text" id="supplierName" name="supplierName" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="companyName">Company Name</label>
+                            <input type="text" id="companyName" name="companyName">
+                        </div>
+                    </div>
+                    @endif
+
+                    @if($detailsFields->count())
                     <!-- Product Details Section -->
                     <div class="section-title">Product Specifications(产品规格)</div>
                     <div class="form-row row">
-                        @php
-                            $fields = collect($rfqForm->fields)->sortBy('order')->values();
-                        @endphp
-                        @foreach($fields as $field)
-                            <div class="form-group">
-                                <label class="form-label @if(!empty($field['required'])) required @endif">
-                                    {{ $field['label'] }}
-                                </label>
-
-                                @if($field['type'] === 'select')
-                                    <select name="{{ $field['name'] }}" class="form-select" @if(!empty($field['required'])) required @endif>
-                                        <option value="">Select</option>
-                                        @if(!empty($field['options']))
-                                            @foreach(explode(',', $field['options']) as $option)
-                                                <option value="{{ trim($option) }}">{{ trim($option) }}</option>
-                                            @endforeach
-                                        @endif
-                                    </select>
-                                @else
-                                    <input type="{{ $field['type'] }}" 
-                                        name="{{ $field['name'] }}" 
-                                        class="form-control"
-                                        @if(!empty($field['required'])) required @endif>
-                                @endif
-                            </div>
+                        @foreach($detailsFields as $field)
+                            @include('purchase-master.rfq-form._field', ['field' => $field])
                         @endforeach
                     </div>
+                    @endif
 
                     {{-- Dimension Inner Box --}}
                     @if($rfqForm->dimension_inner === 'true')
@@ -543,8 +581,9 @@
                             </div>
                         </div>
                     @endif
+                    @endif {{-- end showDetails (specs + dimensions) --}}
 
-
+                    @if($showBasics)
                     <!-- Pricing Section -->
                     <div class="section-title">Pricing & MOQ (价格和起订量)</div>
                     <div class="form-row">
@@ -563,7 +602,7 @@
                     <div class="form-row">
                         <div class="form-group">
                             <div class="form-group">
-                                <label for="moq" class="required">MOQ</label>
+                                <label for="moq" class="required" title="Minimum Order Quantity">MOQ</label>
                                 <input type="number" id="moq" name="moq" step="0.01" min="0"
                                     placeholder="0" required>
                             </div>
@@ -587,7 +626,9 @@
                         <div class="form-group">
                         </div>
                     </div>
+                    @endif {{-- end showBasics (pricing) --}}
 
+                    @if($showDetails)
                     <!-- Product Photos Section -->
                     <div class="section-title">Product Images Additional (产品附加图片 (Chǎnpǐn fùjiā túpiàn))</div>
                     <div class="form-row">
@@ -613,7 +654,8 @@
                             <textarea id="reviews" name="reviews"></textarea>
                         </div>
                     </div>
-                    <button type="submit" class="submit-btn">Submit Product</button>
+                    @endif {{-- end showDetails (photos + additional info) --}}
+                    <button type="submit" class="submit-btn">Submit {{ $part === 'basics' ? 'Basics' : ($part === 'details' ? 'Details' : 'Product') }}</button>
                 </form>
             </div>
         </div>
@@ -623,6 +665,10 @@
     document.addEventListener("DOMContentLoaded", function () {
         const fileUploadContainer = document.getElementById("fileUploadContainer");
         const addFileBtn = document.getElementById("addFileBtn");
+
+        if(!fileUploadContainer || !addFileBtn){
+            return; // Photos section not present (e.g. Basics part)
+        }
 
         // Function: show preview
         function showPreview(input) {

@@ -97,17 +97,18 @@ class DobaController extends Controller
 
     private function buildViewDobaListingData(Request $request, bool $onlyPickupPrepaidLabelFromDaily): \Illuminate\Http\JsonResponse
     {
-        // 1. Get Doba-listed SKUs from DobaMetric table (populated from API)
-        $dobaListedSkus = DobaMetric::pluck('sku')->filter()->unique()->values()->all();
-        
-        // 2. Base ProductMaster fetch - only for Doba-listed SKUs
-        $productMasters = ProductMaster::whereIn('sku', $dobaListedSkus)
+        // Normalized SKU matcher (case/whitespace-insensitive), same approach as other marketplaces
+        $normalizeSku = static fn ($s) => strtoupper(trim((string) $s));
+
+        // 1. Show ALL product_master SKUs (same as other marketplaces); Doba data is overlaid where it matches
+        $productMasters = ProductMaster::whereNotNull('sku')
+            ->where('sku', '!=', '')
             ->orderBy("parent", "asc")
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy("sku", "asc")
             ->get();
 
-        // 3. SKU list
+        // 2. SKU list (actual product_master SKUs; Shopify lookup normalizes internally)
         $skus = $productMasters
             ->pluck("sku")
             ->filter()
@@ -115,15 +116,22 @@ class DobaController extends Controller
             ->values()
             ->all();
 
-        // 4. Related Models
+        // 3. Related Models — keyed by NORMALIZED sku so overlay works despite case/whitespace differences
         $shopifyData = ShopifySku::mapByProductSkus($skus);
-        $dobaMetrics = dobaMetric::whereIn("sku", $skus)
-            ->get()
-            ->keyBy("sku");
-        $nrValues = DobaDataView::whereIn("sku", $skus)->pluck("value", "sku");
-        
+        $dobaMetrics = DobaMetric::all()->keyBy(fn ($m) => $normalizeSku($m->sku));
+        $nrValues = DobaDataView::all()
+            ->keyBy(fn ($r) => $normalizeSku($r->sku))
+            ->map(fn ($r) => $r->value);
+
+        // Buyer / Seller links stored per SKU in doba_listing_statuses.value JSON
+        $linkValues = DobaListingStatus::all()
+            ->keyBy(fn ($r) => $normalizeSku($r->sku))
+            ->map(fn ($r) => $r->value);
+
         // Fetch Amazon prices for comparison
-        $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)->pluck('price', 'sku');
+        $amazonPrices = AmazonDatasheet::select('sku', 'price')->get()
+            ->keyBy(fn ($r) => $normalizeSku($r->sku))
+            ->map(fn ($r) => $r->price);
 
         $applyDailyFilters = function ($query) use ($onlyPickupPrepaidLabelFromDaily) {
             $query->where(function ($q) {
@@ -144,12 +152,11 @@ class DobaController extends Controller
                 'sku',
                 DB::raw('SUM(quantity) as s_l30_count')
             )
-            ->whereIn('sku', $skus)
             ->whereRaw("LOWER(period) = 'l30'")
             ->tap($applyDailyFilters)
             ->groupBy('sku')
             ->get()
-            ->keyBy('sku');
+            ->keyBy(fn ($r) => $normalizeSku($r->sku));
 
         // Calculate L30 Average Price from doba_daily_data
         $l30AvgPrice = DB::table('doba_daily_data')
@@ -158,12 +165,11 @@ class DobaController extends Controller
                 DB::raw('SUM(total_price) as total_sales'),
                 DB::raw('SUM(quantity) as total_quantity')
             )
-            ->whereIn('sku', $skus)
             ->whereRaw("LOWER(period) = 'l30'")
             ->tap($applyDailyFilters)
             ->groupBy('sku')
             ->get()
-            ->keyBy('sku');
+            ->keyBy(fn ($r) => $normalizeSku($r->sku));
 
         // Calculate L60 Average Price from doba_daily_data
         $l60AvgPrice = DB::table('doba_daily_data')
@@ -172,12 +178,11 @@ class DobaController extends Controller
                 DB::raw('SUM(total_price) as total_sales'),
                 DB::raw('SUM(quantity) as total_quantity')
             )
-            ->whereIn('sku', $skus)
             ->whereRaw("LOWER(period) = 'l60'")
             ->tap($applyDailyFilters)
             ->groupBy('sku')
             ->get()
-            ->keyBy('sku');
+            ->keyBy(fn ($r) => $normalizeSku($r->sku));
 
         // Sold qty with order_time from 45 days through 15 days before yesterday (excludes most recent 15 days)
         $yesterday = Carbon::yesterday();
@@ -185,12 +190,11 @@ class DobaController extends Controller
         $l45Start = $yesterday->copy()->subDays(45)->startOfDay();
         $dobaDailyL45 = DB::table('doba_daily_data')
             ->select('sku', DB::raw('SUM(quantity) as total_quantity'))
-            ->whereIn('sku', $skus)
             ->whereBetween('order_time', [$l45Start, $l45End])
             ->tap($applyDailyFilters)
             ->groupBy('sku')
             ->get()
-            ->keyBy('sku');
+            ->keyBy(fn ($r) => $normalizeSku($r->sku));
 
         $pickupDailyL7 = null;
         $pickupDailyL7Prev = null;
@@ -203,21 +207,19 @@ class DobaController extends Controller
 
             $pickupDailyL7 = DB::table('doba_daily_data')
                 ->select('sku', DB::raw('SUM(quantity) as total_quantity'))
-                ->whereIn('sku', $skus)
                 ->whereBetween('order_time', [$l7Start, $l7End])
                 ->tap($applyDailyFilters)
                 ->groupBy('sku')
                 ->get()
-                ->keyBy('sku');
+                ->keyBy(fn ($r) => $normalizeSku($r->sku));
 
             $pickupDailyL7Prev = DB::table('doba_daily_data')
                 ->select('sku', DB::raw('SUM(quantity) as total_quantity'))
-                ->whereIn('sku', $skus)
                 ->whereBetween('order_time', [$l7prevStart, $l7prevEnd])
                 ->tap($applyDailyFilters)
                 ->groupBy('sku')
                 ->get()
-                ->keyBy('sku');
+                ->keyBy(fn ($r) => $normalizeSku($r->sku));
         }
 
         // 6. Get marketplace percentage (no cache)
@@ -228,33 +230,39 @@ class DobaController extends Controller
 
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
+            $normSku = $normalizeSku($pm->sku);
             $parent = $pm->parent;
             $shopify = $shopifyData->get($pm->sku);
-            $dobaMetric = $dobaMetrics[$pm->sku] ?? null;
+            $dobaMetric = $dobaMetrics[$normSku] ?? null;
 
             $row = [];
             $row["Parent"] = $parent;
             $row["(Child) sku"] = $pm->sku;
 
-            // Shopify
-            $row["INV"] = $shopify->inv ?? 0;
+            // INV from Doba inventory (doba_metrics.inventory)
+            $row["INV"] = (int) ($dobaMetric->inventory ?? 0);
+            // Shopify inventory shown as a separate column
+            $row["shopify_inv"] = (int) ($shopify->inv ?? 0);
+            // Missing = SKU not listed on Doba (no doba_metrics record), same idea as is_missing_amazon
+            $row["is_missing_doba"] = $dobaMetric ? false : true;
+            // L30 (overall) still from Shopify
             $row["L30"] = $shopify->quantity ?? 0;
 
             // Doba sold quantities: from DobaMetric, or from doba_daily_data when filtering by pickup + prepaid label
             if ($onlyPickupPrepaidLabelFromDaily) {
-                $l30Daily = $dobaDailyL30[$pm->sku] ?? null;
-                $l60Daily = $l60AvgPrice[$pm->sku] ?? null;
+                $l30Daily = $dobaDailyL30[$normSku] ?? null;
+                $l60Daily = $l60AvgPrice[$normSku] ?? null;
                 $row["doba L30"] = $l30Daily ? (int) $l30Daily->s_l30_count : 0;
                 $row["doba L60"] = (int) ($l60Daily?->total_quantity ?? 0);
-                $row["quantity_l7"] = (int) ($pickupDailyL7[$pm->sku]->total_quantity ?? 0);
-                $row["quantity_l7_prev"] = (int) ($pickupDailyL7Prev[$pm->sku]->total_quantity ?? 0);
+                $row["quantity_l7"] = (int) ($pickupDailyL7[$normSku]->total_quantity ?? 0);
+                $row["quantity_l7_prev"] = (int) ($pickupDailyL7Prev[$normSku]->total_quantity ?? 0);
             } else {
                 $row["doba L30"] = $dobaMetric->quantity_l30 ?? 0;
                 $row["doba L60"] = $dobaMetric->quantity_l60 ?? 0;
                 $row["quantity_l7"] = $dobaMetric->quantity_l7 ?? 0;
                 $row["quantity_l7_prev"] = $dobaMetric->quantity_l7_prev ?? 0;
             }
-            $row['doba L45'] = (int) ($dobaDailyL45[$pm->sku]->total_quantity ?? 0);
+            $row['doba L45'] = (int) ($dobaDailyL45[$normSku]->total_quantity ?? 0);
             $listPrice = floatval($dobaMetric->anticipated_income ?? 0);
             $selfPickMetric = floatval($dobaMetric->self_pick_price ?? 0);
             $row['doba_item_id'] = $dobaMetric->item_id ?? null;
@@ -271,21 +279,21 @@ class DobaController extends Controller
             $row['map'] = $dobaMetric->map ?? 0;
             
             // Amazon Price for comparison
-            $row['amazon_price'] = isset($amazonPrices[$pm->sku]) ? floatval($amazonPrices[$pm->sku]) : 0;
+            $row['amazon_price'] = isset($amazonPrices[$normSku]) ? floatval($amazonPrices[$normSku]) : 0;
 
             // S L30 from doba_daily_data (excluding cancelled orders)
-            $sL30Data = $dobaDailyL30[$pm->sku] ?? null;
+            $sL30Data = $dobaDailyL30[$normSku] ?? null;
             $row["s_l30"] = $sL30Data ? (int) $sL30Data->s_l30_count : 0;
 
             // Calculate L30 Average Price
-            $l30AvgData = $l30AvgPrice[$pm->sku] ?? null;
+            $l30AvgData = $l30AvgPrice[$normSku] ?? null;
             $row["l30_avg_price"] = 0;
             if ($l30AvgData && $l30AvgData->total_quantity > 0) {
                 $row["l30_avg_price"] = round($l30AvgData->total_sales / $l30AvgData->total_quantity, 2);
             }
 
             // Calculate L60 Average Price
-            $l60AvgData = $l60AvgPrice[$pm->sku] ?? null;
+            $l60AvgData = $l60AvgPrice[$normSku] ?? null;
             $row["l60_avg_price"] = 0;
             if ($l60AvgData && $l60AvgData->total_quantity > 0) {
                 $row["l60_avg_price"] = round($l60AvgData->total_sales / $l60AvgData->total_quantity, 2);
@@ -358,8 +366,8 @@ class DobaController extends Controller
             $row['Live'] = null;
             $row['APlus'] = null;
 
-            if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
+            if (isset($nrValues[$normSku])) {
+                $raw = $nrValues[$normSku];
 
                 if (!is_array($raw)) {
                     $raw = json_decode($raw, true);
@@ -379,6 +387,23 @@ class DobaController extends Controller
                 }
             }
 
+            // Buyer / Seller links
+            $bLink = '';
+            $sLink = '';
+            if (isset($linkValues[$normSku])) {
+                $linkRaw = $linkValues[$normSku];
+                if (!is_array($linkRaw)) {
+                    $linkRaw = json_decode($linkRaw, true);
+                }
+                if (is_array($linkRaw)) {
+                    $bLink = $linkRaw['buyer_link'] ?? '';
+                    $sLink = $linkRaw['seller_link'] ?? '';
+                }
+            }
+            $row['B Link'] = $bLink;
+            $row['S Link'] = $sLink;
+            $row['raw_data'] = ['B Link' => $bLink, 'S Link' => $sLink];
+
             // Image
             $row["image_path"] =
                 $shopify->image_src ??
@@ -391,6 +416,44 @@ class DobaController extends Controller
             "message" => "doba Data Fetched Successfully",
             "data" => $result,
             "status" => 200,
+        ]);
+    }
+
+    /**
+     * Save buyer / seller links for a SKU into doba_listing_statuses.value JSON.
+     * Empty strings clear the link (URL validation only applies to non-empty values).
+     */
+    public function saveLinks(Request $request)
+    {
+        $sku = $request->input('sku');
+        if (!$sku) {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $buyerLink = trim((string) $request->input('buyer_link', ''));
+        $sellerLink = trim((string) $request->input('seller_link', ''));
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $field => $val) {
+            if ($val !== '' && !filter_var($val, FILTER_VALIDATE_URL)) {
+                return response()->json(['success' => false, 'message' => 'Invalid URL for ' . $field], 422);
+            }
+        }
+
+        $status = DobaListingStatus::firstOrNew(['sku' => $sku]);
+        $existing = is_array($status->value)
+            ? $status->value
+            : (json_decode($status->value, true) ?: []);
+
+        $existing['buyer_link'] = $buyerLink !== '' ? $buyerLink : null;
+        $existing['seller_link'] = $sellerLink !== '' ? $sellerLink : null;
+
+        $status->value = $existing;
+        $status->save();
+
+        return response()->json([
+            'success' => true,
+            'buyer_link' => $existing['buyer_link'],
+            'seller_link' => $existing['seller_link'],
         ]);
     }
 

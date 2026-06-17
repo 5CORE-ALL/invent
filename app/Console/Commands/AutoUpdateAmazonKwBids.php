@@ -81,8 +81,8 @@ class AutoUpdateAmazonKwBids extends Command
                         $ub7 = floatval($campaign->ub7 ?? 0);
                         $ub1 = floatval($campaign->ub1 ?? 0);
                         $ub2 = floatval($campaign->ub2 ?? 0);
-                        $pinkPink = AmazonAdsSbidRule::isBothAboveUtilHigh($ub2, $ub1, $sbidRule);
-                        $redRed = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRule);
+                        $pinkPink = AmazonAdsSbidRule::isBothAboveUtilHigh($ub7, $ub1, $sbidRule);
+                        $redRed = AmazonAdsSbidRule::isBothBelowUtilLow($ub7, $ub1, $sbidRule);
                         $campaignBudgetMap[$campaignId] = $sbid;
                         $campaignDetails[$campaignId] = [
                             'name' => $campaignName,
@@ -661,7 +661,7 @@ class AutoUpdateAmazonKwBids extends Command
             }
 
             $bidOut = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc(
-                $ub2,
+                $ub7,
                 $ub1,
                 $l1_cpc,
                 $l2_cpc,
@@ -690,8 +690,8 @@ class AutoUpdateAmazonKwBids extends Command
                 continue; // Skip if invalid bid
             }
 
-            $bothLowKw = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRule);
-            $bothHighKw = AmazonAdsSbidRule::isBothAboveUtilHigh($ub2, $ub1, $sbidRule);
+            $bothLowKw = AmazonAdsSbidRule::isBothBelowUtilLow($ub7, $ub1, $sbidRule);
+            $bothHighKw = AmazonAdsSbidRule::isBothAboveUtilHigh($ub7, $ub1, $sbidRule);
             // Match grid / HL jobs: only extremes + band agrees (under when red+red, over when pink+pink)
             if (! empty($row['campaign_id']) && is_numeric($row['sbid']) && $row['sbid'] > 0 && ($row['campaignStatus'] ?? '') === 'ENABLED'
                 && (($bothLowKw && $bidOut['band'] === 'under') || ($bothHighKw && $bidOut['band'] === 'over'))) {

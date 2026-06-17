@@ -77,7 +77,7 @@
         display: block;
     }
     .ps-company-name {
-        font-size: 1.35rem;
+        font-size: 1.62rem;
         font-weight: 800;
         letter-spacing: 0.06em;
         color: var(--ps-ink);
@@ -85,7 +85,7 @@
         line-height: 1.2;
     }
     .ps-company-tag {
-        font-size: 0.7rem;
+        font-size: 0.84rem;
         color: var(--ps-muted);
         letter-spacing: 0.12em;
         text-transform: uppercase;
@@ -95,7 +95,7 @@
     .ps-doc-title {
         font-size: 0.95rem;
         font-weight: 700;
-        color: var(--ps-red);
+        color: #1b5e20;
         text-transform: uppercase;
         letter-spacing: 0.08em;
         margin: 0;
@@ -160,6 +160,10 @@
         margin: 0;
         padding: 8px 12px;
         border-radius: 6px 6px 0 0;
+        text-align: center;
+    }
+    .ps-tables .ps-table-wrap:first-child h6 {
+        background: #1b5e20;
     }
     .ps-table {
         width: 100%;
@@ -193,7 +197,7 @@
         justify-content: space-between;
         padding: 18px 22px;
         margin-bottom: 20px;
-        background: linear-gradient(135deg, var(--ps-red) 0%, var(--ps-red-dark) 100%);
+        background: linear-gradient(135deg, #1b5e20 0%, #0d3b13 100%);
         border-radius: 10px;
         color: #fff;
         box-shadow: 0 6px 20px rgba(196,30,36,.25);

@@ -38,8 +38,15 @@ class ShopifySku extends Model
     ];
 
     /**
-     * Match product_master.sku to shopify_skus.sku when strings differ only by Unicode spaces
-     * (e.g. NBSP in Shopify vs normal space in PM — common on variants like "DS CH YLW REST-LVR").
+     * Match product_master.sku to shopify_skus.sku when strings differ only by:
+     *  - Unicode whitespace (NBSP, NNBSP, FIGURE SPACE, ZWSP) vs a normal space
+     *    (common on variants like "DS CH YLW REST-LVR" where Shopify ships NBSPs), or
+     *  - hyphen / en-dash / em-dash / underscore vs a space
+     *    (e.g. PM "ND 58" vs Shopify "ND-58" — both refer to the same listing).
+     *
+     * Hyphen/underscore unification is intentional and audited: across product_master
+     * the only collision it produces today is the legitimate "ND 58" ↔ "ND-58" pair,
+     * so unifying them is the right behaviour for marketplace price/inventory lookups.
      */
     public static function normalizeSkuForShopifyLookup(?string $sku): string
     {
@@ -47,6 +54,7 @@ class ShopifySku extends Model
             return '';
         }
         $s = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xE2\x80\x87", "\xE2\x80\x8B"], ' ', $sku);
+        $s = preg_replace('/[-\x{2010}-\x{2015}_]+/u', ' ', $s);
         $s = preg_replace('/\s+/u', ' ', trim($s));
 
         return strtoupper($s);

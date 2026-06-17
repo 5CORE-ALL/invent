@@ -13,7 +13,14 @@ class EbayCampaignAdsController extends Controller
     {
         $rule = DB::table('ebay_sbid_rules')->where('key', 'ebay1')->first();
         $ruleData = $rule ? json_decode($rule->rule, true) : $this->defaultRule();
-        return view('campaign.ebay-campaign-ads', ['sbidRule' => $ruleData]);
+
+        $dil = DB::table('ebay_sbid_rules')->where('key', 'ebay1_dil')->first();
+        $dilData = $dil ? json_decode($dil->rule, true) : $this->defaultDilRule();
+
+        return view('campaign.ebay-campaign-ads', [
+            'sbidRule' => $ruleData,
+            'dilRule'  => $dilData,
+        ]);
     }
 
     public function getRule()
@@ -43,6 +50,50 @@ class EbayCampaignAdsController extends Controller
         return response()->json(['success' => true, 'rule' => $rule]);
     }
 
+    /**
+     * Dilution rule — configurable DIL% color bands.
+     * Stored in ebay_sbid_rules under key 'ebay1_dil' (no extra table needed).
+     * DIL = (L30 sold / inventory) * 100. Bands evaluated ascending by dil_max,
+     * first band where DIL <= dil_max wins.
+     */
+    public function getDilRule()
+    {
+        $rule = DB::table('ebay_sbid_rules')->where('key', 'ebay1_dil')->first();
+        return response()->json($rule ? json_decode($rule->rule, true) : $this->defaultDilRule());
+    }
+
+    public function saveDilRule(Request $request)
+    {
+        $bands = $request->input('bands', []);
+
+        if (empty($bands) || !is_array($bands)) {
+            return response()->json(['error' => 'Invalid rule data'], 422);
+        }
+
+        usort($bands, fn($a, $b) => $a['dil_max'] <=> $b['dil_max']);
+
+        $rule = ['bands' => $bands];
+
+        DB::table('ebay_sbid_rules')->updateOrInsert(
+            ['key' => 'ebay1_dil'],
+            ['rule' => json_encode($rule), 'updated_at' => now()]
+        );
+
+        return response()->json(['success' => true, 'rule' => $rule]);
+    }
+
+    private function defaultDilRule(): array
+    {
+        return [
+            'bands' => [
+                ['dil_max' => 16.66, 'bid' => 9.1, 'label' => 'Red',    'color' => '#a00211'],
+                ['dil_max' => 25,    'bid' => 7.1, 'label' => 'Yellow', 'color' => '#ffc107'],
+                ['dil_max' => 50,    'bid' => 4.1, 'label' => 'Green',  'color' => '#28a745'],
+                ['dil_max' => 9999,  'bid' => 2.1, 'label' => 'Pink',   'color' => '#e83e8c'],
+            ]
+        ];
+    }
+
     public function pushSelected(Request $request)
     {
         $listingIds = $request->input('listing_ids', []);
@@ -53,9 +104,13 @@ class EbayCampaignAdsController extends Controller
         // Load rule
         $sbidRule  = DB::table('ebay_sbid_rules')->where('key', 'ebay1')->first();
         $bands     = $sbidRule ? (json_decode($sbidRule->rule, true)['bands'] ?? []) : [];
+        $dilBands  = $this->dilBands();
 
         // Get ebay metrics for these listings
         $metrics = \App\Models\EbayMetric::whereIn('item_id', $listingIds)->get()->keyBy('item_id');
+
+        // Shopify inv/quantity for DIL, keyed by normalized SKU
+        $shopifyMap = $this->shopifyByNormSku($metrics->pluck('sku')->filter()->unique()->values()->all());
 
         // Load campaign ads for these listings
         $ads = DB::table('ebay_campaign_ads')
@@ -89,15 +144,24 @@ class EbayCampaignAdsController extends Controller
                 continue;
             }
 
-            // Calculate bid from SCVR
+            // Calculate bid from SCVR + DIL (Pink in either → push Pink bid)
             $metric = $metrics->get($lid);
             $views  = (float)($metric?->views ?? 0);
             $l30    = (float)($metric?->ebay_l30 ?? 0);
             $scvr   = $views > 0 ? ($l30 / $views) * 100 : 0;
 
-            $newBid = $this->getBidFromBands($scvr, $bands);
+            $shop = $metric ? ($shopifyMap[$this->normSku($metric->sku)] ?? null) : null;
+            $inv  = (float)($shop->inv ?? 0);
+            $qty  = (float)($shop->quantity ?? 0);
+            $dil  = $inv > 0 ? ($qty / $inv) * 100 : 0;
+
+            $newBid = $this->resolveCombinedBid($scvr, $bands, $dil, $dilBands, [
+                'ebay_price' => (float)($metric?->ebay_price ?? 0),
+                'ebay_l30'   => $l30,
+                'views'      => $views,
+            ]);
             if ($newBid <= 0) {
-                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No SBID — 0 CVR (no L30 sales)'];
+                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No SBID — 0 CVR & DIL not Pink'];
                 $skipped++;
                 continue;
             }
@@ -143,18 +207,115 @@ class EbayCampaignAdsController extends Controller
      * Dynamic SBID — bid from SCVR bands.
      * Returns 0.0 when SCVR (CVR) is 0 — no L30 sales means no signal to bid on.
      * Callers MUST treat 0 as "skip / no SBID".
+     *
+     * $ctx may carry extra metric values (ebay_price, ebay_l30, views) so that a
+     * matched band can resolve its bid dynamically from a nested sub-rule.
      */
-    private function getBidFromBands(float $scvr, array $bands): float
+    private function getBidFromBands(float $scvr, array $bands, array $ctx = []): float
     {
         if ($scvr <= 0) {
             return 0.0;
         }
+        $ctx['scvr'] = $scvr;
         foreach ($bands as $band) {
             if ($scvr <= (float)($band['scvr_max'] ?? 9999)) {
-                return (float)($band['bid'] ?? 9.1);
+                return $this->resolveBandBid($band, $ctx);
             }
         }
-        return (float)(end($bands)['bid'] ?? 2.1);
+        $last = end($bands);
+        return $last ? $this->resolveBandBid($last, $ctx) : 2.1;
+    }
+
+    /**
+     * Resolve a single band's bid. If the band carries a dynamic sub-rule, the bid
+     * is chosen from its sub-bands using the configured metric value; otherwise the
+     * band's flat bid is used.
+     *
+     * sub = ['metric' => 'ebay_price'|'scvr'|'ebay_l30'|'views',
+     *        'bands'  => [['max' => float, 'bid' => float], ...]]
+     */
+    private function resolveBandBid(array $band, array $ctx): float
+    {
+        $sub = $band['sub'] ?? null;
+        if (is_array($sub) && !empty($sub['metric']) && !empty($sub['bands']) && is_array($sub['bands'])) {
+            $val = (float)($ctx[$sub['metric']] ?? 0);
+            foreach ($sub['bands'] as $sb) {
+                if ($val <= (float)($sb['max'] ?? 9999)) {
+                    return (float)($sb['bid'] ?? $band['bid'] ?? 2.1);
+                }
+            }
+            $lastSub = end($sub['bands']);
+            return (float)($lastSub['bid'] ?? $band['bid'] ?? 2.1);
+        }
+        return (float)($band['bid'] ?? 9.1);
+    }
+
+    /**
+     * Combined SCVR + DIL bid.
+     * If EITHER the SCVR value or the DIL value lands in its Pink (catch-all / last)
+     * band, the Pink bid is returned (e.g. 2.1) — even when both are Pink. Otherwise
+     * the normal SCVR rule decides (and still returns 0 / skip when SCVR = 0).
+     */
+    private function resolveCombinedBid(float $scvr, array $sbidBands, float $dil, array $dilBands, array $ctx = []): float
+    {
+        if ($this->isPinkBand($dil, $dilBands)) {
+            return $this->pinkBid($dilBands);
+        }
+        if ($this->isPinkBand($scvr, $sbidBands)) {
+            return $this->pinkBid($sbidBands);
+        }
+        return $this->getBidFromBands($scvr, $sbidBands, $ctx);
+    }
+
+    /** True when $value falls in the last (catch-all / Pink) band. */
+    private function isPinkBand(float $value, array $bands): bool
+    {
+        $n = count($bands);
+        if ($n === 0) {
+            return false;
+        }
+        foreach ($bands as $i => $band) {
+            $max = (float)($band['scvr_max'] ?? $band['dil_max'] ?? 9999);
+            if ($value <= $max) {
+                return $i === $n - 1;
+            }
+        }
+        return true;
+    }
+
+    /** Bid of the last (Pink / catch-all) band. */
+    private function pinkBid(array $bands): float
+    {
+        $last = end($bands);
+        return (float)($last['bid'] ?? 2.1);
+    }
+
+    /** Normalize a SKU for matching shopify_skus (unicode spaces → single space, upper). */
+    private function normSku(?string $s): string
+    {
+        $s = (string)$s;
+        $s = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xE2\x80\x87", "\xE2\x80\x8B"], ' ', $s);
+        return strtoupper(preg_replace('/\s+/u', ' ', trim($s)));
+    }
+
+    /** Load DIL bands from rule (fallback to defaults). */
+    private function dilBands(): array
+    {
+        $dil = DB::table('ebay_sbid_rules')->where('key', 'ebay1_dil')->first();
+        return $dil ? (json_decode($dil->rule, true)['bands'] ?? $this->defaultDilRule()['bands']) : $this->defaultDilRule()['bands'];
+    }
+
+    /** Shopify rows keyed by normalized SKU for DIL (inv / quantity). */
+    private function shopifyByNormSku(array $skus): array
+    {
+        $map = [];
+        foreach (\App\Models\ShopifySku::whereIn('sku', $skus)->get() as $s) {
+            $k = $this->normSku($s->sku);
+            if ($k !== '' && !isset($map[$k])) {
+                $map[$k] = $s;
+            }
+        }
+        return $map;
     }
 
     public function getCampaignList()
@@ -183,10 +344,14 @@ class EbayCampaignAdsController extends Controller
         // Load rule
         $sbidRule = DB::table('ebay_sbid_rules')->where('key', 'ebay1')->first();
         $bands    = $sbidRule ? (json_decode($sbidRule->rule, true)['bands'] ?? []) : [];
+        $dilBands = $this->dilBands();
 
         // Get metrics for SCVR calculation
         $metrics = \App\Models\EbayMetric::whereIn('item_id', $listingIds)
             ->get()->keyBy('item_id');
+
+        // Shopify inv/quantity for DIL, keyed by normalized SKU
+        $shopifyMap = $this->shopifyByNormSku($metrics->pluck('sku')->filter()->unique()->values()->all());
 
         try {
             $service = new \App\Services\EbayApiService();
@@ -206,10 +371,20 @@ class EbayCampaignAdsController extends Controller
             $views  = (float)($metric?->views ?? 0);
             $l30    = (float)($metric?->ebay_l30 ?? 0);
             $scvr   = $views > 0 ? ($l30 / $views) * 100 : 0;
-            $bid    = $this->getBidFromBands($scvr, $bands);
+
+            $shop = $metric ? ($shopifyMap[$this->normSku($metric->sku)] ?? null) : null;
+            $inv  = (float)($shop->inv ?? 0);
+            $qty  = (float)($shop->quantity ?? 0);
+            $dil  = $inv > 0 ? ($qty / $inv) * 100 : 0;
+
+            $bid    = $this->resolveCombinedBid($scvr, $bands, $dil, $dilBands, [
+                'ebay_price' => (float)($metric?->ebay_price ?? 0),
+                'ebay_l30'   => $l30,
+                'views'      => $views,
+            ]);
 
             if ($bid <= 0) {
-                $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'skipped', 'reason' => 'No SBID — 0 CVR (no L30 sales)'];
+                $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'skipped', 'reason' => 'No SBID — 0 CVR & DIL not Pink'];
                 $skipped++;
                 continue;
             }
@@ -294,7 +469,12 @@ class EbayCampaignAdsController extends Controller
                 DB::raw("CASE WHEN em.sku IS NOT NULL THEN 1 ELSE 0 END as sku_matched"),
                 'em.ebay_price as metric_price',
                 'em.views',
-                'em.ebay_l30'
+                'em.ebay_l30',
+                // Dilution inputs (from shopify_skus, matched by sku). Correlated subqueries
+                // avoid row multiplication and keep every ad row visible even when unmatched.
+                // DIL = (quantity / inv) * 100  — quantity = L30 sold, inv = stock on hand.
+                DB::raw("(SELECT ss.inv FROM shopify_skus ss WHERE ss.sku = em.sku LIMIT 1) as shopify_inv"),
+                DB::raw("(SELECT ss.quantity FROM shopify_skus ss WHERE ss.sku = em.sku LIMIT 1) as shopify_qty")
             );
 
         if ($request->filled('funding_strategy')) {

@@ -444,7 +444,7 @@ class ShopifyApiInventoryController extends Controller
 
     /**
      * DB columns to persist after GraphQL Ohio inventory (matches Shopify Admin for that location).
-     * Sets legacy `inv` to the same value as on_hand so reports using `inv` stay aligned with Admin.
+     * Sets legacy `inv` to the same value as available_to_sell so reports using `inv` reflect sellable stock.
      *
      * @param  array<string, mixed>  $data
      * @return array<string, int>
@@ -452,14 +452,15 @@ class ShopifyApiInventoryController extends Controller
     protected function shopifySkuQuantitiesFromGraphQlRow(array $data): array
     {
         $onHand = max(0, (int) ($data['on_hand'] ?? 0));
+        $availableToSell = max(0, (int) ($data['available_to_sell'] ?? 0));
 
         return [
-            'available_to_sell' => max(0, (int) ($data['available_to_sell'] ?? 0)),
+            'available_to_sell' => $availableToSell,
             'committed' => max(0, (int) ($data['committed'] ?? 0)),
             'on_hand' => $onHand,
             'unavailable' => max(0, (int) ($data['unavailable'] ?? 0)),
             'incoming' => max(0, (int) ($data['incoming'] ?? 0)),
-            'inv' => $onHand,
+            'inv' => $availableToSell,
         ];
     }
 

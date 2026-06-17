@@ -14,8 +14,11 @@
             white-space: nowrap; height: 78px; display: flex; align-items: center;
             justify-content: center; font-size: 11px; font-weight: 600;
         }
-        .tabulator .tabulator-header .tabulator-col { height: 80px !important; }
-        .tabulator .tabulator-row { min-height: 50px; }
+        .tabulator .tabulator-tableholder { scrollbar-width: thin; scrollbar-color: #c1c1c1 transparent; }
+        .tabulator .tabulator-tableholder::-webkit-scrollbar { width: 8px; height: 8px; }
+        .tabulator .tabulator-tableholder::-webkit-scrollbar-track { background: transparent; }
+        .tabulator .tabulator-tableholder::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        .tabulator .tabulator-tableholder::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
 
         /* ── Parent row – identical to amazon_tabulator_view ── */
         .tabulator-row.ae-parent-row,
@@ -35,32 +38,9 @@
             background-color: #93c5fd !important;
         }
 
-        /* ── Modern pagination – identical to amazon_tabulator_view ── */
-        .tabulator .tabulator-footer {
-            background: #f8fafc !important; border-top: 1px solid #e2e8f0 !important;
-            padding: 10px 16px !important;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator {
-            display: flex; align-items: center; justify-content: center; gap: 4px;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
-            font-size: 14px !important; font-weight: 500 !important;
-            min-width: 36px !important; height: 36px !important; line-height: 36px !important;
-            padding: 0 10px !important; border-radius: 8px !important;
-            border: 1px solid #e2e8f0 !important; background: #fff !important;
-            color: #475569 !important; cursor: pointer; transition: all 0.15s ease !important;
-            text-align: center !important;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
-            background: #f1f5f9 !important; border-color: #cbd5e1 !important; color: #1e293b !important;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
-            background: #4361ee !important; border-color: #4361ee !important;
-            color: #fff !important; font-weight: 600 !important;
-            box-shadow: 0 2px 6px rgba(67,97,238,0.3) !important;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
-            opacity: 0.4 !important; cursor: not-allowed !important;
+        /* Custom pagination label (match ebay-tabulator-view) */
+        .tabulator-paginator label {
+            margin-right: 5px;
         }
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0 !important;
@@ -117,10 +97,9 @@
                     {{-- ── Filter bar (TikTok style) ── --}}
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
 
-                        {{-- Row type filter (All Rows / Parents / SKUs) – same as Amazon --}}
+                        {{-- Row type filter (All Rows / SKUs) — parent rows are hidden --}}
                     <select id="ae-row-type-filter" class="form-select form-select-sm" style="width:120px;">
                         <option value="all" selected>All Rows</option>
-                        <option value="parents">Parents</option>
                         <option value="skus">SKUs</option>
                     </select>
 
@@ -157,9 +136,7 @@
                             <option value="lt40">&lt; 40%</option>
                             <option value="40-75">40–75%</option>
                             <option value="75-125">75–125%</option>
-                            <option value="125-175">125–175%</option>
-                            <option value="175-250">175–250%</option>
-                            <option value="gt250">&gt; 250%</option>
+                            <option value="gt125">125%+</option>
                         </select>
 
                         {{-- AL30 filter --}}
@@ -245,7 +222,7 @@
                             <span class="badge bg-success fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-pft-badge" data-metric="total_pft" style="font-weight:700;cursor:pointer;color:#111;" title="Click or hover (½s) for daily trend">PFT: $0</span>
                             <span class="badge bg-warning fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-al30-badge" data-metric="total_al30" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover (½s) for daily trend">Sh L30: 0</span>
                             <span class="badge bg-info fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-avg-gpft-badge" data-metric="avg_gpft" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover (½s) for daily trend">GPFT: 0%</span>
-                            <span class="badge bg-danger fs-6 p-2 ae-hover-chart" id="ae-missing-badge" data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">Missing: 0</span>
+                            <span class="badge bg-danger fs-6 p-2 ae-hover-chart" id="ae-missing-badge" data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">Missing L: 0</span>
                             <span class="badge fs-6 p-2 ae-hover-chart" id="ae-map-badge" data-metric="map_count" style="font-weight:700;cursor:pointer;background:#198754;color:#fff;" title="Click to filter · Hover ½s for daily trend">Map: 0</span>
                             <span class="badge fs-6 p-2 ae-hover-chart" id="ae-nmap-badge" data-metric="nmap_count" style="font-weight:700;cursor:pointer;background:#a71d2a;color:#fff;" title="Click to filter · Hover ½s for daily trend">N Map: 0</span>
                             <span class="badge fs-6 p-2 ae-hover-chart" id="ae-zero-sold-badge" data-metric="zero_sold" style="font-weight:700;cursor:pointer;background:#dc3545;color:#fff;" title="Click to filter · Hover ½s for daily trend">0 Sold: 0</span>
@@ -335,6 +312,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="sheinEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="sheinEditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="sheinSellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="sheinBuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="sheinSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -351,6 +357,19 @@
         let aeNMapActive     = false;
         let aeZeroSoldActive = false;
         let aeMoreSoldActive = false;
+
+        function aeApplyBadgeFilterFromUrl() {
+            const badge = (new URLSearchParams(window.location.search).get('badge') || '').toLowerCase();
+            if (!badge || !table) return;
+            aeMissingActive = aeMapActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
+            if (badge === 'missing') aeMissingActive = true;
+            else if (badge === 'map') aeMapActive = true;
+            else if (badge === 'nmap') aeNMapActive = true;
+            else if (badge === 'zero_sold') aeZeroSoldActive = true;
+            else if (badge === 'more_sold') aeMoreSoldActive = true;
+            else return;
+            applyFilters();
+        }
 
         // Price Mode (mirrors TikTok exactly)
         let decreaseModeActive = false;
@@ -480,12 +499,32 @@
             return `$${(parseFloat(value) || 0).toFixed(2)}`;
         }
 
-        /** Shein map "N Map|{abs diff}" — N Map badge/filter only when diff > 3 (≤3 is Map). */
-        function aeSheinStrictNMapFromMap(mapVal) {
-            if (!mapVal || typeof mapVal !== 'string' || !mapVal.startsWith('N Map|')) return false;
-            const part = mapVal.split('|')[1];
-            const d = parseFloat(String(part == null ? '' : part).trim(), 10);
-            return Number.isFinite(d) && Math.abs(d) > 3;
+        /** INV vs Shein stock = Map if diff ≤ 3 OR ≤ 3% of INV (same as amazon_tabulator_view). */
+        function sheinInvWithinMapTolerance(inv, sheinStock) {
+            const invNum = parseFloat(inv) || 0;
+            const shNum = parseFloat(sheinStock) || 0;
+            if (invNum <= 0) return true;
+            const diff = Math.abs(invNum - shNum);
+            if (diff <= 3 + 1e-9) return true;
+            return diff <= invNum * 0.03 + 1e-9;
+        }
+
+        /** NR/REQ status — prefer editable nr_req (shein_listing_statuses), fall back to meta NR. Same source eBay uses. */
+        function sheinNrReq(row) {
+            return ((row && (row.nr_req || row.NR)) || '').toString().trim().toUpperCase();
+        }
+
+        /**
+         * Missing L — same logic as eBay isEbayMissingL:
+         * not listed (no Shein price / special offer), NR/REQ === 'REQ', INV > 0, not a parent row.
+         */
+        function sheinRowIsMissingL(row) {
+            if (!row || row.is_parent) return false;
+            const inv = parseFloat(row.inv) || 0;
+            const nr = sheinNrReq(row);
+            const isMissingShein = !!row.is_missing_shein || (String(row.missing || '').trim().toUpperCase() === 'M');
+            const price = parseFloat(row.special_offer) || 0;
+            return inv > 0 && nr === 'REQ' && (isMissingShein || price <= 0);
         }
 
         // ── applyFilters (mirrors TikTok applyFilters) ────────────────
@@ -545,9 +584,10 @@
                     if (d.is_parent) return true;
                     const roi = parseFloat(d.groi) || 0;
                     if (roiFilter === 'lt40')    return roi < 40;
-                    if (roiFilter === 'gt250')   return roi > 250;
-                    const [min, max] = roiFilter.split('-').map(Number);
-                    return roi >= min && roi <= max;
+                    if (roiFilter === '40-75')   return roi >= 40 && roi < 75;
+                    if (roiFilter === '75-125')  return roi >= 75 && roi < 125;
+                    if (roiFilter === 'gt125')   return roi >= 125;
+                    return true;
                 });
             }
 
@@ -563,11 +603,24 @@
                 });
             }
 
-            // Map filter
+            // Map filter (Amazon: listed, INV>0, NR=REQ, INV vs Shein stock tolerance)
             if (mapFilter === 'map') {
-                table.addFilter(d => (d.map || '') === 'Map');
+                table.addFilter(d => {
+                    if (d.is_parent) return false;
+                    const inv = parseFloat(d.inv) || 0;
+                    const nr = sheinNrReq(d);
+                    if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return false;
+                    return parseFloat(d.special_offer) > 0 && sheinInvWithinMapTolerance(inv, d.shein_stock);
+                });
             } else if (mapFilter === 'nmap') {
-                table.addFilter(d => aeSheinStrictNMapFromMap(d.map || ''));
+                table.addFilter(d => {
+                    if (d.is_parent) return false;
+                    const inv = parseFloat(d.inv) || 0;
+                    const nr = sheinNrReq(d);
+                    if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return false;
+                    if (parseFloat(d.special_offer) <= 0) return false;
+                    return !sheinInvWithinMapTolerance(inv, d.shein_stock);
+                });
             }
 
             // DIL% filter (identical to TikTok)
@@ -585,9 +638,29 @@
             }
 
             // Badge-click filters
-            if (aeMissingActive)  table.addFilter(d => (d.missing || '').trim().toUpperCase() === 'M');
-            if (aeMapActive)      table.addFilter(d => (d.map     || '') === 'Map');
-            if (aeNMapActive)     table.addFilter(d => aeSheinStrictNMapFromMap(d.map || ''));
+            if (aeMissingActive) {
+                table.addFilter(d => sheinRowIsMissingL(d));
+            }
+            if (aeMapActive) {
+                table.addFilter(d => {
+                    if (d.is_parent) return false;
+                    const inv = parseFloat(d.inv) || 0;
+                    const nr = sheinNrReq(d);
+                    if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return false;
+                    return parseFloat(d.special_offer) > 0 && sheinInvWithinMapTolerance(inv, d.shein_stock);
+                });
+            }
+            if (aeNMapActive) {
+                table.addFilter(d => {
+                    if (d.is_parent) return false;
+                    const inv = parseFloat(d.inv) || 0;
+                    const nr = sheinNrReq(d);
+                    if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return false;
+                    const price = parseFloat(d.special_offer) || 0;
+                    if (price <= 0) return false;
+                    return !sheinInvWithinMapTolerance(inv, d.shein_stock);
+                });
+            }
             if (aeZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (aeMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
         }
@@ -632,12 +705,15 @@
 
             rows.forEach(row => {
                 if (row.is_parent) return;
-                const isMissing = (row.missing || '').trim().toUpperCase() === 'M';
                 const al30   = parseFloat(row.al30)   || 0;
                 const inv    = parseFloat(row.inv)    || 0;
                 const ovL30  = parseFloat(row.ov_l30) || 0;
+                const nr     = sheinNrReq(row);
+                const isMissingShein = !!row.is_missing_shein;
+                const rowPrice = parseFloat(row.special_offer) || 0;
+                const isMissingL = sheinRowIsMissingL(row);
 
-                if (!isMissing) {
+                if (!isMissingL) {
                     totalSales += parseFloat(row.sales) || 0;
                     totalPft += al30 * (parseFloat(row.profit) || 0);
 
@@ -651,10 +727,16 @@
                 totalAl30 += al30;
                 if (al30 === 0) zeroSold++; else moreSold++;
                 if (inv > 0) { dilSum += (ovL30 / inv) * 100; dilCount++; }
-                if (isMissing) missingCount++;
-                const mapVal = (row.map || '').trim();
-                if (!isMissing && mapVal === 'Map') mapCount++;
-                else if (aeSheinStrictNMapFromMap(mapVal)) nmapCount++;
+
+                if (isMissingL) {
+                    missingCount++;
+                } else if (inv > 0 && nr === 'REQ' && !isMissingShein && rowPrice > 0) {
+                    if (sheinInvWithinMapTolerance(inv, row.shein_stock)) {
+                        mapCount++;
+                    } else {
+                        nmapCount++;
+                    }
+                }
             });
 
             const avgGpft = gpftCount > 0 ? gpftSum / gpftCount : 0;
@@ -666,7 +748,7 @@
             $('#ae-total-pft-badge').text(totalPft !== 0 || totalSales > 0 ? `PFT: $${Math.round(totalPft).toLocaleString()}` : 'PFT: –');
             $('#ae-total-al30-badge').text(`Sh L30: ${totalAl30.toLocaleString()}`);
             $('#ae-avg-gpft-badge').text(gpftCount  > 0 ? `GPFT: ${Math.round(avgGpft)}%`  : 'GPFT: –');
-            $('#ae-missing-badge').text(`Missing: ${missingCount.toLocaleString()}`);
+            $('#ae-missing-badge').text(`Missing L: ${missingCount.toLocaleString()}`);
             $('#ae-map-badge').text(`Map: ${mapCount.toLocaleString()}`);
             $('#ae-nmap-badge').text(`N Map: ${nmapCount.toLocaleString()}`);
             $('#ae-zero-sold-badge').text(`0 Sold: ${zeroSold.toLocaleString()}`);
@@ -681,13 +763,26 @@
             table = new Tabulator("#shein-pricing-table", {
                 ajaxURL: "/shein/pricing-data",
                 ajaxResponse: function(url, params, response) {
-                    summaryDataCache = normalizeRows(response);
+                    // Hide parent rows — drop them from the dataset entirely
+                    const rows = Array.isArray(response) ?
+                        response.filter(r => !(r && r.is_parent === true)) : response;
+                    summaryDataCache = normalizeRows(rows);
                     updateSummary(summaryDataCache);
-                    return response;
+                    setTimeout(aeApplyBadgeFilterFromUrl, 0);
+                    return rows;
                 },
                 layout: "fitDataStretch",
+                height: "calc(100vh - 260px)",
                 pagination: true,
                 paginationSize: 100,
+                paginationSizeSelector: [10, 25, 50, 100, 200],
+                langs: {
+                    "default": {
+                        "pagination": {
+                            "page_size": "SKU Count"
+                        }
+                    }
+                },
                 initialSort: [],
                 rowFormatter: function(row) {
                     if (row.getData().is_parent === true) {
@@ -753,6 +848,60 @@
                             }
                             const esc = val.replace(/&/g,'&amp;').replace(/</g,'&lt;');
                             return `<span class="fw-bold">${esc}</span>`;
+                        }
+                    },
+                    {
+                        title: "Links",
+                        field: "links_column",
+                        width: 55,
+                        frozen: true,
+                        hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "Double-click to add / edit links",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const b = d['B Link'] || '';
+                            const s = d['S Link'] || '';
+                            let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
+                            if (s) {
+                                html += '<a href="' + String(s).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';
+                            }
+                            if (b) {
+                                html += '<a href="' + String(b).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>';
+                            }
+                            if (!s && !b) {
+                                html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                            }
+                            html += '</div>';
+                            return html;
+                        },
+                        cellDblClick: function(e, cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return;
+                            openSheinEditLinksModal(cell.getRow());
+                        }
+                    },
+                    {
+                        title: "NR",
+                        field: "nr_req",
+                        width: 60,
+                        frozen: true,
+                        hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "Required (REQ) / Not Required (NR)",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const sku = String(d.sku || '').replace(/"/g, '&quot;');
+                            const value = cell.getValue() || 'REQ';
+                            return '<select class="form-select form-select-sm shein-nr-dropdown" data-sku="' + sku + '" style="width:52px;border:1px solid #adb5bd;padding:2px;font-size:16px;text-align:center;cursor:pointer;" onclick="event.stopPropagation();">' +
+                                '<option value="REQ"' + (value === 'REQ' ? ' selected' : '') + '>\uD83D\uDFE2</option>' +
+                                '<option value="NR"' + (value === 'NR' ? ' selected' : '') + '>\uD83D\uDD34</option>' +
+                                '</select>';
+                        },
+                        cellClick: function(e, cell) {
+                            e.stopPropagation();
                         }
                     },
                     {
@@ -835,14 +984,15 @@
                         }
                     },
                     {
-                        title: "Missing",
+                        title: "Missing L",
                         field: "missing",
                         hozAlign: "center",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            const value = (cell.getValue() || '').toString().trim().toUpperCase();
-                            if (value === 'M') return '<span class="badge bg-danger">M</span>';
+                            if (sheinRowIsMissingL(d)) {
+                                return '<span class="badge bg-danger">L</span>';
+                            }
                             return '';
                         }
                     },
@@ -854,17 +1004,17 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            const val = (cell.getValue() || '').trim();
-                            if (val === 'Map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
-                            if (val.startsWith('N Map|')) {
-                                const part = val.split('|')[1];
-                                const ad = Math.abs(parseFloat(String(part || '').trim(), 10) || 0);
-                                if (Number.isFinite(ad) && ad <= 3) {
-                                    return '<span style="color:#198754;font-weight:bold;">Map</span>';
-                                }
-                                return `<span style="color:#dc3545;font-weight:bold;">N Map (${part})</span>`;
+                            const inv = parseFloat(d.inv) || 0;
+                            const nr = sheinNrReq(d);
+                            if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return '';
+                            const rowPrice = parseFloat(d.special_offer) || 0;
+                            if (rowPrice <= 0) return '';
+                            const sheinStock = parseFloat(d.shein_stock) || 0;
+                            if (sheinInvWithinMapTolerance(inv, sheinStock)) {
+                                return '<span style="color:#198754;font-weight:bold;">Map</span>';
                             }
-                            return '';
+                            const diff = Math.round(Math.abs(inv - sheinStock));
+                            return `<span style="color:#dc3545;font-weight:bold;">N Map (${diff})</span>`;
                         }
                     },
                     {
@@ -894,11 +1044,10 @@
                             const v = parseFloat(cell.getValue()) || 0;
                             // Color ranges matching the ROI% filter dropdown
                             let color;
-                            if      (v < 40)  color = '#a00211';  // red    – < 40%
-                            else if (v < 75)  color = '#ffc107';  // yellow – 40–75%
-                            else if (v < 125) color = '#3591dc';  // blue   – 75–125%
-                            else if (v < 250) color = '#28a745';  // green  – 125–250%
-                            else              color = '#e83e8c';  // pink   – > 250%
+                            if      (v < 40)  color = '#a00211';
+                            else if (v < 75)  color = '#ffc107';
+                            else if (v < 125) color = '#28a745';
+                            else              color = '#d63384';
                             const r = Math.round(v);
                             return `<span style="color:${color};font-weight:600;">${r}%</span>`;
                         }
@@ -1013,9 +1162,8 @@
                             let color;
                             if      (v < 40)  color = '#a00211';
                             else if (v < 75)  color = '#ffc107';
-                            else if (v < 125) color = '#3591dc';
-                            else if (v < 250) color = '#28a745';
-                            else              color = '#e83e8c';
+                            else if (v < 125) color = '#28a745';
+                            else              color = '#d63384';
                             return `<span style="color:${color};font-weight:600;">${r}%</span>`;
                         }
                     },
@@ -1113,28 +1261,38 @@
                 saveSpriceUpdates([{ sku: sku, sprice: sprice }]);
             });
 
-            // Badge click filters (identical to TikTok)
-            $('#ae-missing-badge').on('click', function() {
+            // Badge click → table filter (hover opens chart via ae-hover-chart)
+            $('#ae-missing-badge').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
                 aeMissingActive = !aeMissingActive;
                 aeMapActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
                 applyFilters();
             });
-            $('#ae-map-badge').on('click', function() {
+            $('#ae-map-badge').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
                 aeMapActive = !aeMapActive;
                 aeMissingActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
                 applyFilters();
             });
-            $('#ae-nmap-badge').on('click', function() {
+            $('#ae-nmap-badge').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
                 aeNMapActive = !aeNMapActive;
                 aeMissingActive = aeMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
                 applyFilters();
             });
-            $('#ae-zero-sold-badge').on('click', function() {
+            $('#ae-zero-sold-badge').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
                 aeZeroSoldActive = !aeZeroSoldActive;
                 aeMoreSoldActive = aeMissingActive = aeMapActive = aeNMapActive = false;
                 applyFilters();
             });
-            $('#ae-more-sold-badge').on('click', function() {
+            $('#ae-more-sold-badge').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
                 aeMoreSoldActive = !aeMoreSoldActive;
                 aeZeroSoldActive = aeMissingActive = aeMapActive = aeNMapActive = false;
                 applyFilters();
@@ -1460,6 +1618,129 @@
                 aeBadgeDays = d;
                 $('#aeBadgeChartTitle').text(aeBadgeChartModalTitle());
                 aeLoadChart();
+            });
+        });
+
+        // ===== Edit Links (Buyer / Seller) =====
+        function sheinLinksNotify(message, type) {
+            if (window.toastr) {
+                (type === 'error' ? toastr.error : toastr.success)(message);
+                return;
+            }
+            let container = document.getElementById('sheinToastContainer');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'sheinToastContainer';
+                container.style.cssText =
+                    'position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;';
+                document.body.appendChild(container);
+            }
+            const toast = document.createElement('div');
+            const bg = type === 'error' ? '#dc3545' : '#198754';
+            toast.style.cssText =
+                'min-width:220px;max-width:340px;color:#fff;background:' + bg +
+                ';padding:12px 16px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.18);font-size:14px;opacity:0;transition:opacity .25s ease;';
+            toast.textContent = message;
+            container.appendChild(toast);
+            requestAnimationFrame(function() {
+                toast.style.opacity = '1';
+            });
+            setTimeout(function() {
+                toast.style.opacity = '0';
+                setTimeout(function() {
+                    toast.remove();
+                }, 300);
+            }, 2600);
+        }
+
+        let sheinEditLinksRow = null;
+
+        function openSheinEditLinksModal(row) {
+            sheinEditLinksRow = row;
+            const d = row.getData();
+            document.getElementById('sheinEditLinksSku').textContent = d.sku || '';
+            document.getElementById('sheinSellerLinkInput').value = d['S Link'] || '';
+            document.getElementById('sheinBuyerLinkInput').value = d['B Link'] || '';
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('sheinEditLinksModal')).show();
+        }
+
+        $(document).on('click', '#sheinSaveLinksBtn', function() {
+            if (!sheinEditLinksRow) return;
+            const d = sheinEditLinksRow.getData();
+            const sku = d.sku || '';
+            const sellerLink = document.getElementById('sheinSellerLinkInput').value.trim();
+            const buyerLink = document.getElementById('sheinBuyerLinkInput').value.trim();
+            const $btn = $(this);
+            $btn.prop('disabled', true).text('Saving...');
+
+            $.ajax({
+                url: "/shein/save-links",
+                method: 'POST',
+                data: {
+                    sku: sku,
+                    buyer_link: buyerLink,
+                    seller_link: sellerLink
+                },
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function(res) {
+                    if (res && res.success) {
+                        sheinEditLinksRow.update({
+                            'S Link': res.seller_link || '',
+                            'B Link': res.buyer_link || ''
+                        }).then(function() {
+                            sheinEditLinksRow.reformat();
+                        }).catch(function() {
+                            sheinEditLinksRow.reformat();
+                        });
+                        sheinLinksNotify('Links saved', 'success');
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById(
+                            'sheinEditLinksModal')).hide();
+                    } else {
+                        sheinLinksNotify((res && res.message) || 'Error saving links', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    let msg = 'Error saving links';
+                    if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                    sheinLinksNotify(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text('Save');
+                }
+            });
+        });
+
+        // NR / REQ dropdown — saves to shein_listing_statuses (same source as listing-shein)
+        $(document).on('change', '.shein-nr-dropdown', function() {
+            const $select = $(this);
+            const sku = $select.data('sku');
+            const value = $select.val();
+
+            const rows = table ? table.searchRows('sku', '=', sku) : [];
+            if (rows.length) {
+                rows[0].update({ nr_req: value });
+            }
+
+            $.ajax({
+                url: '/listing_shein/save-status',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    sku: sku,
+                    nr_req: value
+                },
+                success: function(res) {
+                    if (res && res.status === 'success') {
+                        sheinLinksNotify(value === 'REQ' ? 'REQ updated' : 'NR updated', 'success');
+                    } else {
+                        sheinLinksNotify('Failed to save NR/REQ', 'error');
+                    }
+                },
+                error: function() {
+                    sheinLinksNotify('Failed to save NR/REQ for ' + sku, 'error');
+                }
             });
         });
     </script>

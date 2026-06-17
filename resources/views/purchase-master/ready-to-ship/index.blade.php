@@ -347,6 +347,7 @@
                 <!-- Filters Row - First Row -->
                 <div class="column-controls card mb-3 p-3 shadow-sm" id="columnControls" style="background: #f8f9fa; border-radius: 8px;">
                     <div class="d-flex flex-wrap align-items-center gap-3">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'r2s'])
                         <!-- Navigation -->
                         <div class="col-auto">
                             <label class="form-label fw-semibold mb-1 d-block">▶️ Navigation</label>

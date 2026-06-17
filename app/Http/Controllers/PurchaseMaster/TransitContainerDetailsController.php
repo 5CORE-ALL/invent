@@ -96,8 +96,22 @@ class TransitContainerDetailsController extends Controller
             }
         }
 
+        // Build last-saved map: detail_id => {user_name, saved_at}
+        $lastSavedMap = TransitContainerHistory::with('user')
+            ->whereNotNull('transit_container_detail_id')
+            ->whereIn('action_type', ['row_created', 'row_updated'])
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->unique('transit_container_detail_id')
+            ->mapWithKeys(function ($h) {
+                return [(int) $h->transit_container_detail_id => [
+                    'user_name' => $h->user->name ?? '—',
+                    'saved_at'  => $h->created_at ? $h->created_at->format('d M H:i') : '—',
+                ]];
+            })->toArray();
+
         // Transform TransitContainerDetail Records
-        $allRecords->transform(function ($record) use ($skuParentMap, $parentSupplierMap, $shopifyImages, $productValuesMap, $pushedMap, $clinkBySku) {
+        $allRecords->transform(function ($record) use ($skuParentMap, $parentSupplierMap, $shopifyImages, $productValuesMap, $pushedMap, $clinkBySku, $lastSavedMap) {
             $sku = strtoupper(trim(preg_replace('/\s+/', ' ', $record->our_sku ?? '')));
             $tabKey = strtoupper(trim(preg_replace('/\s+/', ' ', $record->tab_name ?? '')));
             // $rowId = $record->id; 
@@ -125,6 +139,9 @@ class TransitContainerDetailsController extends Controller
             }
             // $record->pushed = isset($pushedMap[$sku]) ? (int) $pushedMap[$sku] : 0;
             $record->created_by_name = $record->user->name ?? '—';
+            $lastSaved = $lastSavedMap[$record->id] ?? null;
+            $record->last_saved_by = $lastSaved['user_name'] ?? ($record->user->name ?? '—');
+            $record->last_saved_at = $lastSaved['saved_at']  ?? ($record->created_at ? $record->created_at->format('d M H:i') : '—');
             $record->setAttribute('Clink', $clinkBySku[$sku] ?? '');
 
             return $record;
@@ -186,6 +203,16 @@ class TransitContainerDetailsController extends Controller
             if ($row) {
                 $fromTab = $row->tab_name;
                 $toTab = $data['tab_name'] ?? $fromTab;
+
+                // If qty-related fields changed, reset push_status so it gets re-pushed to Shopify
+                $qtyFields = ['no_of_units', 'total_ctn', 'pcs_qty', 'our_sku'];
+                $qtyChanged = collect($qtyFields)->contains(fn($f) => array_key_exists($f, $data) && (string)($data[$f] ?? '') !== (string)($row->{$f} ?? ''));
+                if ($qtyChanged) {
+                    InventoryWarehouse::where('transit_container_id', $row->id)
+                        ->where('push_status', 'success')
+                        ->update(['push_status' => 'pending', 'pushed' => 0]);
+                }
+
                 $row->update($data);
                 if ($fromTab !== $toTab) {
                     $this->logHistory('row_moved', $row->id, $fromTab, $toTab, $row->our_sku, ['sku' => $row->our_sku, 'from' => $fromTab, 'to' => $toTab]);

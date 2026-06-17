@@ -882,10 +882,16 @@
                             <a href="{{ route('customer.care.dispatch.issues') }}">All Issues</a>
                         </li>
                         <li>
+                            <a href="{{ route('customer.care.dispatch.issues.only') }}">Dispatch Issues</a>
+                        </li>
+                        <li>
                             <a href="{{ route('customer.care.dispatch.carrier.and.claim') }}">Carrier and Claim</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.dispatch.carrier.issue') }}">Carrier Issue</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.dispatch.chargeback.issues') }}">Chargeback Issues</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.listing.issue') }}">Listing Issue</a>

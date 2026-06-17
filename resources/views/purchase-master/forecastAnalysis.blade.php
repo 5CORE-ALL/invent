@@ -459,20 +459,23 @@
 
                     <!-- ── Row 2: Searches + Filters ── -->
                         <div class="d-flex align-items-center flex-wrap gap-2">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'forecast'])
                         <!-- Column Searches -->
-                        <input type="text" id="search-sku"      class="form-control form-control-sm border-primary" placeholder="SKU…"      autocomplete="off" style="width:140px;">
                         <input type="text" id="search-parent"   class="form-control form-control-sm border-primary" placeholder="Parent…"   autocomplete="off" style="width:130px;">
+                        <input type="text" id="search-sku"      class="form-control form-control-sm border-primary" placeholder="SKU…"      autocomplete="off" style="width:140px;">
                         <input type="text" id="search-supplier" class="form-control form-control-sm border-primary" placeholder="Supplier…" autocomplete="off" style="width:130px;">
 
                         <span class="vr align-self-stretch opacity-25"></span>
 
                         <!-- Stage Filter + blue summary badge (filtered child rows + column sum) -->
                         <div class="d-inline-flex flex-column align-items-start">
-                            <span class="text-muted fw-semibold" style="font-size:0.62rem;line-height:1.1;white-space:nowrap;"
-                                title="Child SKU rows currently visible after Stage and all other filters. QTY is the sum of that stage’s quantity column (e.g. appr_req_qty for Appr Req).">Stage summary</span>
                             <div class="d-flex align-items-center gap-1 flex-wrap">
-                                <select id="stage-filter" class="form-select form-select-sm border border-primary" style="width:140px;">
-                                <option value="">All</option>
+                                {{-- "Stage summary" label now lives inside the select itself
+                                     (first option + title tooltip) instead of as a separate <span>
+                                     above it — keeps the toolbar shorter while preserving meaning. --}}
+                                <select id="stage-filter" class="form-select form-select-sm border border-primary" style="width:150px;"
+                                        title="Stage summary — child SKU rows currently visible after Stage and all other filters. QTY is the sum of that stage’s quantity column (e.g. appr_req_qty for Appr Req).">
+                                <option value="">Stage summary — All</option>
                                 <option value="__blank__">Not Req Now</option>
                                 <option value="two_ord_nonneg">2 Ord</option>
                                 <option value="appr_req">Appr Req</option>
@@ -487,6 +490,8 @@
 
                         <!-- Row Type -->
                         <select id="row-data-type" class="form-select form-select-sm border border-primary" style="width:150px;" aria-label="Row type"></select>
+
+                        <span class="vr align-self-stretch opacity-25"></span>
 
                         <!-- NRP multiselect -->
                         <div class="dropdown d-inline-block">
@@ -514,18 +519,19 @@
                             </div>
 
                         <!-- Export Button -->
-                        <button id="export-forecast-btn" class="btn btn-sm btn-success fw-semibold d-flex align-items-center gap-1" title="Export filtered rows: Supplier, SKU, Image, QTY, Order Date">
-                            <i class="fas fa-file-csv"></i>
-                            <span>Export</span>
+                        <button id="export-forecast-btn" class="btn btn-sm btn-success fw-semibold d-flex align-items-center" type="button"
+                                title="Export filtered rows: Supplier, SKU, Image, QTY, Order Date"
+                                aria-label="Export filtered rows">
+                            <i class="fas fa-download"></i>
                             </button>
 
                         <!-- Clear All Filters -->
                         <button id="clear-all-filters-btn"
-                                class="btn btn-sm btn-outline-danger fw-semibold d-flex align-items-center gap-1"
+                                class="btn btn-sm btn-outline-danger fw-semibold d-flex align-items-center"
                                 type="button"
+                                aria-label="Clear all filters"
                                 title="Reset every search, filter, play mode, NRP selection, header filter and zero-stock toggle">
                             <i class="fas fa-times-circle"></i>
-                            <span>Clear</span>
                         </button>
                     </div>
 
@@ -533,14 +539,17 @@
                     <div class="d-flex align-items-center flex-wrap gap-2">
                         <button id="total_msl_c"       class="btn btn-sm btn-success fw-semibold text-dark"> MSL_LP: $<span id="total_msl_c_value">0.00</span></button>
                         <button type="button"           class="btn btn-sm btn-info fw-semibold text-dark" title="MSL × AMZ price ÷ 4"> MSL_SP: $<span id="total_msl_sp_amz_value">0</span></button>
-                        <button id="total_inv_value"    class="btn btn-sm btn-info fw-semibold text-dark"> INV Val: $<span id="total_inv_value_display">0</span></button>
-                        <button id="total_lp_value"     class="btn btn-sm btn-warning fw-semibold text-dark"> LP Val: $<span id="total_lp_value_display">0</span></button>
-                        <button id="total_order_value"  class="btn btn-sm btn-warning fw-semibold text-dark" title="2 Ord × CP"> Ord Val: $<span id="total_order_value_display">0</span></button>
-                        <button id="total_minimal_msl"  class="btn btn-sm btn-secondary fw-semibold text-white">Missing Sales: $<span id="total_minimal_msl_value">0</span></button>
-                        <button id="total_mip_value"    class="btn btn-sm btn-warning fw-semibold text-dark"> MIP Val: $<span id="total_mip_value_display">0</span></button>
-                        <button id="total_r2s_value"    class="btn btn-sm btn-warning fw-semibold text-dark"> R2S Val: $<span id="total_r2s_value_display">0</span></button>
-                        <button id="total_transit_value" class="btn btn-sm btn-secondary fw-semibold text-dark"> Trn Val: $<span id="total_transit_value_display">0</span></button>
-                        <button type="button" id="zero-stock-badge-btn" class="btn btn-sm btn-danger fw-semibold text-white" style="cursor:pointer;" title="Child SKUs with INV ≤ 0 (zero or negative). Click to filter or clear." aria-pressed="false">0 Stock: <span id="zero-stock-count">0</span></button>
+                        <button id="total_inv_value"    class="btn btn-sm btn-info fw-semibold text-dark" title="INV Value"> INV: $<span id="total_inv_value_display">0</span></button>
+                        <button id="total_lp_value"     class="btn btn-sm btn-warning fw-semibold text-dark" title="LP Value"> LP: $<span id="total_lp_value_display">0</span></button>
+                        <button id="total_order_value"  class="btn btn-sm btn-warning fw-semibold text-dark" title="2 Ord × CP"> Ord: $<span id="total_order_value_display">0</span></button>
+                        <button id="total_minimal_msl"  class="btn btn-sm btn-secondary fw-semibold text-white" title="Missing forecast.analysis">Missing: $<span id="total_minimal_msl_value">0</span></button>
+                        <button id="total_mip_value"    class="btn btn-sm btn-warning fw-semibold text-dark" title="MIP Value"> MIP: $<span id="total_mip_value_display">0</span></button>
+                        <button id="total_r2s_value"    class="btn btn-sm btn-warning fw-semibold text-dark" title="R2S Value"> R2S: $<span id="total_r2s_value_display">0</span></button>
+                        <button id="total_transit_value" class="btn btn-sm btn-secondary fw-semibold text-dark" title="Transit Value"> Trn: $<span id="total_transit_value_display">0</span></button>
+                        {{-- Total CBM across the rows currently visible (filtered + paginated alike).
+                             Each row contributes total_cbm = MSL × CBM/unit (see ForecastAnalysisController). --}}
+                        <button id="total_cbm_value" class="btn btn-sm btn-info fw-semibold text-dark" title="Total CBM — Σ (MSL × CBM/unit) across visible child SKUs"> CBM: <span id="total_cbm_value_display">0</span></button>
+                        <button type="button" id="zero-stock-badge-btn" class="btn btn-sm btn-danger fw-semibold text-white" style="cursor:pointer;" title="Child SKUs with INV ≤ 0 (zero or negative). Click to filter or clear." aria-pressed="false">0: <span id="zero-stock-count">0</span></button>
                     </div>
 
                     <!-- Bulk edit badge (shown when rows selected) -->
@@ -599,7 +608,7 @@
                             </ul>
                         </div>
                         <div class="dropdown">
-                            <button class="btn btn-sm btn-warning dropdown-toggle" type="button" id="bulkEditMoqBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                            <button class="btn btn-sm btn-warning dropdown-toggle" type="button" id="bulkEditMoqBtn" data-bs-toggle="dropdown" aria-expanded="false" title="Minimum Order Quantity">
                                 MOQ
                             </button>
                             <ul class="dropdown-menu" aria-labelledby="bulkEditMoqBtn">
@@ -816,6 +825,30 @@
                     <button type="button" class="btn btn-sm btn-outline-danger" id="columnHideAllBtn">Hide All</button>
                     <button type="button" class="btn btn-sm btn-primary" data-bs-dismiss="modal">Done</button>
                         </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- LMP Competitors Modal — same data source / styling as /to-order-analysis. --}}
+    <div class="modal fade" id="faLmpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="fa fa-shopping-cart"></i> LMP Competitors for SKU: <span id="faLmpSku"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="faLmpDataList">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading competitors...</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1878,6 +1911,7 @@
                 {
                     title: "MOQ",
                     field: "MOQ",
+                    headerTooltip: "Minimum Order Quantity",
                     accessor: row => (row ? row["MOQ"] : ''),
                     headerSort: true,
                     hozAlign: "center",
@@ -2228,6 +2262,7 @@
                 {
                     title: "DOA",
                     field: "date_apprvl",
+                    visible: false,
                     width: 72,
                     minWidth: 68,
                     headerSort: true,
@@ -2266,6 +2301,47 @@
                     }
                 },
                 {
+                    title: "C link",
+                    field: "Clink",
+                    hozAlign: "center",
+                    headerSort: false,
+                    headerTooltip: "Comparison link (click cell to edit)",
+                    editor: "input",
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return !(d.is_parent || d.isParent);
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        const url = String(cell.getValue() || '').trim();
+                        if (!url) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;cursor:text;">-</span>';
+                        }
+                        return `<div style="display:flex;align-items:center;justify-content:center;">
+                            <a href="${url}" target="_blank" rel="noopener noreferrer"
+                                class="btn btn-sm btn-outline-primary py-0 px-2" title="Open link" aria-label="Open link">
+                                <i class="mdi mdi-link"></i>
+                            </a>
+                        </div>`;
+                    },
+                    cellEdited: function(cell) {
+                        const row = cell.getRow();
+                        const d = row.getData();
+                        if (d.is_parent || d.isParent) return;
+                        const sku = String(d.SKU || '').trim();
+                        const parent = String(d.Parent || '').trim();
+                        const value = String(cell.getValue() || '').trim();
+                        if (!sku) return;
+                        updateForecastField(
+                            { sku: sku, parent: parent, column: 'Clink', value: value },
+                            function() { row.update({ Clink: value }, true); }
+                        );
+                    }
+                },
+                {
                     title: "RFQ",
                     field: "rfq_form_link",
                     hozAlign: "center",
@@ -2283,96 +2359,6 @@
                             ? `<a href="${reportLink}" target="_blank" title="RFQ Report" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#2e7d32;border:1px solid #1b5e20;"></a>`
                             : '';
                         return `<div style="display:flex;justify-content:center;align-items:center;gap:8px;">${formDot}${reportDot}</div>`;
-                    }
-                },
-                {
-                    title: "GPFT%",
-                    field: "avg_gpft_pct",
-                    minWidth: 58,
-                    width: 62,
-                    headerSort: true,
-                    hozAlign: "center",
-                    sorter: "number",
-                    titleFormatter: function() {
-                        const span = document.createElement("span");
-                        span.textContent = "GPFT%";
-                        span.setAttribute("title", "Gross Profit % (amazon_data_view)");
-                        return span;
-                    },
-                    accessor: function(row) {
-                        if (!row) return null;
-                        const v = parseFloat(row.avg_gpft_pct);
-                        return Number.isFinite(v) ? v : null;
-                    },
-                    formatter: function(cell) {
-                        const v = cell.getValue();
-                        if (v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v))) {
-                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
-                        }
-                        const n = Math.round(parseFloat(v));
-                        let col = '#1b5e20';
-                        if (n < 18) col = '#b71c1c';
-                        else if (n > 33) col = '#c2185b';
-                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="Gross Profit % — red &lt;18, green 18–33, magenta &gt;33">${n}%</span>`;
-                    }
-                },
-                {
-                    title: "Ads%",
-                    field: "avg_ad_pct",
-                    minWidth: 52,
-                    width: 58,
-                    headerSort: true,
-                    hozAlign: "center",
-                    sorter: "number",
-                    titleFormatter: function() {
-                        const span = document.createElement("span");
-                        span.textContent = "Ads%";
-                        span.setAttribute("title", "Ads % — live channel-level Ads% from all-marketplace-master (Amazon)");
-                        return span;
-                    },
-                    accessor: function(row) {
-                        if (!row) return null;
-                        const v = parseFloat(row.avg_ad_pct);
-                        return Number.isFinite(v) ? v : null;
-                    },
-                    formatter: function(cell) {
-                        const v = cell.getValue();
-                        if (v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v))) {
-                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
-                        }
-                        const n = parseFloat(v);
-                        let col = '#1b5e20';
-                        if (n > 10) col = '#b71c1c';
-                        else if (n >= 5) col = '#e65100';
-                        const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};vertical-align:middle;margin-left:3px;"></span>`;
-                        return `<span style="display:block;text-align:center;font-weight:600;color:${col};" title="Ads % — green &lt;5, orange 5–10, red &gt;10">${n.toFixed(1)}%${dot}</span>`;
-                    }
-                },
-                {
-                    title: "NPFT%",
-                    field: "avg_gpft_pct",
-                    minWidth: 58,
-                    width: 62,
-                    headerSort: false,
-                    hozAlign: "center",
-                    titleFormatter: function() {
-                        const span = document.createElement("span");
-                        span.textContent = "NPFT%";
-                        span.setAttribute("title", "Net Profit % = GPFT% − Ads%");
-                        return span;
-                    },
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const gpft = parseFloat(row.avg_gpft_pct);
-                        const ads  = parseFloat(row.avg_ad_pct);
-                        if (!Number.isFinite(gpft) || !Number.isFinite(ads)) {
-                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
-                        }
-                        const n = Math.round(gpft - ads);
-                        let col = '#1b5e20';
-                        if (n < 18) col = '#b71c1c';
-                        else if (n > 33) col = '#c2185b';
-                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="GPFT% − Ads% — red &lt;18, green 18–33, magenta &gt;33">${n}%</span>`;
                     }
                 },
                 {
@@ -2407,100 +2393,6 @@
                     }
                 },
                 {
-                    title: "NROI%",
-                    field: "avg_groi_pct",
-                    minWidth: 58,
-                    width: 62,
-                    headerSort: false,
-                    hozAlign: "center",
-                    titleFormatter: function() {
-                        const span = document.createElement("span");
-                        span.textContent = "NROI%";
-                        span.setAttribute("title", "Net ROI % = GROI% − Ads%");
-                        return span;
-                    },
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const groi = parseFloat(row.avg_groi_pct);
-                        const ads  = parseFloat(row.avg_ad_pct);
-                        if (!Number.isFinite(groi) || !Number.isFinite(ads)) {
-                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
-                        }
-                        const n = Math.round(groi - ads);
-                        let col = '#1b5e20';
-                        if (n < 50) col = '#b71c1c';
-                        else if (n > 100) col = '#c2185b';
-                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="GROI% − Ads% — red &lt;50, green 50–100, magenta &gt;100">${n}%</span>`;
-                    }
-                },
-                {
-                    title: "EFF ROI %",
-                    field: "eff_roi_pct",
-                    minWidth: 58,
-                    width: 62,
-                    headerSort: true,
-                    hozAlign: "center",
-                    titleFormatter: function() {
-                        const span = document.createElement("span");
-                        span.textContent = "EFF ROI %";
-                        span.setAttribute("title", "NROI% ÷ TAT × 12");
-                        return span;
-                    },
-                    accessor: function(row) {
-                        if (!row) {
-                            return null;
-                        }
-                        if (row.is_parent || row.isParent) {
-                            const pe = row.eff_roi_pct;
-                            return pe != null && Number.isFinite(Number(pe)) ? Math.round(Number(pe)) : null;
-                        }
-                        const mAvg = parseFloat(row.m_avg) || 0;
-                        const moq = parseFloat(row.MOQ) || 0;
-                        const tat = mAvg > 0 ? Math.round(moq / mAvg) : 0;
-                        const nroi = parseFloat(row.avg_groi_pct);
-                        if (!tat || tat <= 0 || !Number.isFinite(nroi)) {
-                            return null;
-                        }
-
-                        return Math.round((nroi / tat) * 12);
-                    },
-                    sorter: "number",
-                    formatter: function(cell) {
-                        function effRoiTextColor(effRounded) {
-                            const e = Math.round(Number(effRounded));
-                            if (e < 100) {
-                                return '#b71c1c';
-                            }
-                            if (e <= 200) {
-                                return '#1b5e20';
-                            }
-                            return '#c2185b';
-                        }
-                        const d = cell.getRow().getData();
-                        if (d.is_parent || d.isParent) {
-                            const pe = d.eff_roi_pct;
-                            if (pe != null && pe !== '' && Number.isFinite(Number(pe))) {
-                                const eff = Math.round(Number(pe));
-                                const col = effRoiTextColor(eff);
-
-                                return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="Avg of child EFF ROI % (NROI% ÷ TAT × 12)">${eff}%</span>`;
-                            }
-                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
-                        }
-                        const mAvg = parseFloat(d.m_avg) || 0;
-                        const moq = parseFloat(d.MOQ) || 0;
-                        const tat = mAvg > 0 ? Math.round(moq / mAvg) : 0;
-                        const nroi = parseFloat(d.avg_groi_pct);
-                        if (!tat || tat <= 0 || !Number.isFinite(nroi)) {
-                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
-                        }
-                        const eff = Math.round((nroi / tat) * 12);
-                        const col = effRoiTextColor(eff);
-
-                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="NROI% ÷ TAT × 12 — red &lt;100, green 100–200, magenta &gt;200">${eff}%</span>`;
-                    }
-                },
-                 {
                     title: "CP",
                     field: "CP",
                     accessor: row => (row ? row["CP"] : 0),
@@ -2521,6 +2413,52 @@
                     }
                 },
                 {
+                    // LMP — Lowest Market Price across competitor entries (sourced from
+                    // amazon_sku_competitors, same data that powers /amazon-tabulator-view).
+                    // Shows the lowest competitor price + a "View N" link that opens the
+                    // Amazon tabulator view filtered to this SKU so users can drill in.
+                    title: "LMP",
+                    field: "lmp_price",
+                    hozAlign: "center",
+                    headerSort: true,
+                    sorter: "number",
+                    width: 110,
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const lmpPrice = parseFloat(cell.getValue());
+                        const total = parseInt(d.lmp_entries_total, 10) || 0;
+                        if ((!Number.isFinite(lmpPrice) || lmpPrice <= 0) && total === 0) {
+                            return '<span style="display:block;text-align:center;color:#9ca3af;">—</span>';
+                        }
+                        // Compare against current price to color the cell:
+                        //   green = LMP is at-or-above current price (our price is competitive)
+                        //   red   = LMP undercuts us (we're priced higher than market)
+                        const currentPrice = parseFloat(d.price) || parseFloat(d.shopifyb2c_price) || 0;
+                        const priceColor = (Number.isFinite(lmpPrice) && lmpPrice > 0 && currentPrice > 0 && lmpPrice < currentPrice)
+                            ? '#dc3545' : '#16a34a';
+
+                        let html = '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.1;">';
+                        if (Number.isFinite(lmpPrice) && lmpPrice > 0) {
+                            html += `<span style="color:${priceColor};font-weight:700;font-size:0.85rem;">$${lmpPrice.toFixed(2)}</span>`;
+                        }
+                        if (total > 0) {
+                            // Click → opens an inline modal (same structure as the LMP modal
+                            // on /to-order-analysis) listing every competitor for this SKU.
+                            // No more new-tab navigation — users stay on the forecast page.
+                            const sku = String(d.SKU || '').trim();
+                            const safeSku = sku.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            html += `<a href="#" class="fa-view-lmp-competitors" data-sku="${safeSku}"
+                                        style="color:#2563eb;text-decoration:none;font-size:0.7rem;font-weight:600;"
+                                        title="View all ${total} competitor entries">
+                                        <i class="fas fa-eye" style="font-size:0.7rem;"></i> View ${total}
+                                     </a>`;
+                        }
+                        html += '</div>';
+                        return html;
+                    }
+                },
+                {
                     title: "CBM",
                     field: "cbm",
                     hozAlign: "center",
@@ -2535,6 +2473,7 @@
                 {
                     title: "Total CBM",
                     field: "total_cbm",
+                    visible: false,
                     hozAlign: "center",
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
@@ -2614,6 +2553,7 @@
                 {
                     title: "Order Date",
                     field: "mfrg_order_date",
+                    visible: false,
                     hozAlign: "center",
                     headerSort: true,
                     sorter: function(a, b, aRow, bRow, col, dir) {
@@ -2729,6 +2669,90 @@
                     }
                 },
                 {
+                    // Exec — reads/writes the same to_order_analysis.exec column used by
+                    // the MFRG In Progress page and the /update-link "Exec" save path,
+                    // so an exec change here is visible everywhere immediately.
+                    title: "Exec",
+                    field: "exec",
+                    hozAlign: "center",
+                    headerSort: true,
+                    width: 110,
+                    editor: "list",
+                    editorParams: {
+                        values: { "": "— Unassigned —", "Atin": "Atin", "Jack": "Jack", "Nitish": "Nitish", "Ajay": "Ajay", "Candy": "Candy", "Sruti": "Sruti" },
+                        defaultValue: "",
+                        verticalNavigation: "editor",
+                    },
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return !(d.is_parent || d.isParent);
+                    },
+                    cellClick: function(e, cell) {
+                        const d = cell.getRow().getData();
+                        if (d.is_parent || d.isParent) return;
+                        cell.edit();
+                    },
+                    cellEditing: function(cell) {
+                        cell._execPrev = cell.getValue();
+                    },
+                    cellEdited: function(cell) {
+                        const row = cell.getRow();
+                        const d = row.getData();
+                        if (d.is_parent || d.isParent) return;
+                        const next = String(cell.getValue() || '').trim();
+                        const prev = cell._execPrev || '';
+                        delete cell._execPrev;
+                        if (next === prev) return;
+                        const sku = String(d.SKU || '').trim();
+                        if (!sku) return;
+                        const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                        // Same backend path used by MFRG In Progress for executive saves.
+                        // value = null when the user picks "Unassigned" so the DB column
+                        // gets a real NULL (matches the rest of the app).
+                        fetch('/update-link', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': token,
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ sku: sku, row_id: 0, column: 'Exec', value: next || null })
+                        })
+                        .then(r => r.json())
+                        .then(res => {
+                            if (!res || !res.success) {
+                                cell.setValue(prev, true);
+                                alert(res?.message || 'Failed to update Exec');
+                            } else {
+                                row.update({ exec: next }, true);
+                            }
+                        })
+                        .catch(() => {
+                            cell.setValue(prev, true);
+                            alert('Failed to update Exec');
+                        });
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const value = String(cell.getValue() || '').trim();
+                        const colorMap = {
+                            Atin:   { bg: '#3b82f6', text: '#fff' },
+                            Jack:   { bg: '#10b981', text: '#fff' },
+                            Nitish: { bg: '#8b5cf6', text: '#fff' },
+                            Ajay:   { bg: '#f59e0b', text: '#fff' },
+                            Candy:  { bg: '#ec4899', text: '#fff' },
+                            Sruti:  { bg: '#14b8a6', text: '#fff' },
+                        };
+                        if (!value) {
+                            return '<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:#e5e7eb;color:#6b7280;font-size:0.72rem;font-weight:600;cursor:pointer;" title="Click to assign">— Unassigned —</span>';
+                        }
+                        const c = colorMap[value] || { bg: '#6b7280', text: '#fff' };
+                        return `<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:${c.bg};color:${c.text};font-size:0.75rem;font-weight:700;cursor:pointer;" title="Click to change">${value}</span>`;
+                    }
+                },
+                {
                     title: "New Photo",
                     field: "r2s_new_photo",
                     visible: false,
@@ -2761,6 +2785,9 @@
                 let totalMipValue = 0;
                 let totalR2sValue = 0;
                 let totalTransitValueLocal = 0;
+                // Sum the CBM column (already pre-computed per row as MSL × CBM/unit
+                // by the controller — see total_cbm assignment in ForecastAnalysisController).
+                let totalCbmSum = 0;
 
                 for (let i = 0, n = dataArr.length; i < n; i++) {
                     const item = dataArr[i];
@@ -2771,6 +2798,8 @@
                     const inv = parseFloat(item.INV) || 0;
                     totalInvValue += parseFloat(item.inv_value) || 0;
                     totalLpValue  += parseFloat(item.lp_value)  || 0;
+                    const rowCbm = parseFloat(item.total_cbm);
+                    if (Number.isFinite(rowCbm)) totalCbmSum += rowCbm;
 
                     if (inv === 0) {
                         restockCount++;
@@ -2832,6 +2861,13 @@
                 setBadgeText('total_r2s_value_display',          totalR2sValue);
                 setBadgeText('total_transit_value_display',      totalTransitValue);
                 setBadgeText('total_restock_msl_lp_value',       totalRestockMslLp);
+
+                // CBM badge — show with 2 decimals (everything else rounds to whole-number $),
+                // since CBM is a fractional volume figure.
+                const totalCbmEl = document.getElementById('total_cbm_value_display');
+                if (totalCbmEl) {
+                    totalCbmEl.textContent = totalCbmSum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
 
 
                 const groupedMSL = {};
@@ -3126,7 +3162,7 @@
                         table.updateColumnDefinition("order_given",     { title: "MIP" });
                         table.updateColumnDefinition("readyToShipQty",  { title: "R2S" });
                         table.updateColumnDefinition("transit",         { title: "Trn" });
-                        table.updateColumnDefinition("MOQ",             { title: "MOQ" });
+                        table.updateColumnDefinition("MOQ",             { title: "MOQ", headerTooltip: "Minimum Order Quantity" });
                     } finally {
                         if (typeof table.restoreRedraw === 'function') table.restoreRedraw();
                     }
@@ -5643,7 +5679,7 @@
                 if (!sel) return;
                 const prev = (sel.value || 'sku').trim();
                 const ROW_TYPE_OPTS = [
-                    ['all', '🔁 Show All'],
+                    ['all', '🔁 All'],
                     ['sku', '🔹 SKU (Child)'],
                     ['parent', '🔸 Parent']
                 ];
@@ -6395,8 +6431,106 @@
             }
 
             btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-file-csv"></i> <span>Export</span>';
+            btn.innerHTML = '<i class="fas fa-download"></i>';
         });
+
+        // ── LMP Competitors modal ────────────────────────────────────────────────
+        // Mirrors the toaLmpModal flow on /to-order-analysis: clicking the
+        // "View N" link inside the LMP column fetches /amazon/competitors?sku=…
+        // and renders the same table layout inside an in-page Bootstrap modal,
+        // so users never leave /forecast.analysis.
+        (function setupFaLmpModal() {
+            const escAttr = function (s) {
+                return String(s == null ? '' : s)
+                    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+                    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            };
+
+            function renderFaLmpCompetitorsList(competitors, lowestPrice) {
+                const $list = $("#faLmpDataList");
+                if (!competitors || competitors.length === 0) {
+                    $list.html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No competitors found for this SKU</div>');
+                    return;
+                }
+                let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm">';
+                html += `<thead class="table-light"><tr>
+                    <th>#</th><th>Image</th><th>ASIN</th><th>Product Title</th><th>Seller</th>
+                    <th>Price</th><th>Rating</th><th>Reviews</th><th>Link</th>
+                </tr></thead><tbody>`;
+
+                competitors.forEach(function (item, index) {
+                    const isLowest = Math.abs(parseFloat(item.price) - parseFloat(lowestPrice)) < 0.01;
+                    const rowClass = isLowest ? "table-success" : "";
+                    const priceFormatted = "$" + parseFloat(item.price).toFixed(2);
+                    const productLink = item.link || item.product_link || "#";
+                    const productTitle = item.title || item.product_title || "N/A";
+                    const sellerName = item.seller_name || "—";
+                    const imageUrl = item.image || "";
+                    const imageHtml = imageUrl
+                        ? `<img src="${escAttr(imageUrl)}" style="width:50px;height:50px;object-fit:contain;" alt="">`
+                        : '<span style="color:#999;">—</span>';
+                    const rating = item.rating
+                        ? `<span style="color:#ffc107;">${parseFloat(item.rating).toFixed(1)} <i class="fa fa-star"></i></span>`
+                        : '<span style="color:#999;">—</span>';
+                    const reviews = item.reviews
+                        ? `<span>${parseInt(item.reviews, 10).toLocaleString()}</span>`
+                        : '<span style="color:#999;">—</span>';
+
+                    html += `<tr class="${rowClass}">
+                        <td class="text-center"><strong>${index + 1}</strong></td>
+                        <td class="text-center">${imageHtml}</td>
+                        <td><span class="text-primary fw-semibold" style="font-size:11px;">${escAttr(item.asin || "N/A")}</span></td>
+                        <td style="font-size:11px;" title="${escAttr(productTitle)}">${escAttr(productTitle.length > 60 ? productTitle.substring(0, 60) + "…" : productTitle)}</td>
+                        <td style="font-size:11px;">${escAttr(sellerName)}</td>
+                        <td><strong>${priceFormatted}${isLowest ? ' <i class="fa fa-trophy text-success"></i>' : ""}</strong></td>
+                        <td class="text-center">${rating}</td>
+                        <td class="text-center">${reviews}</td>
+                        <td class="text-center">
+                            <a href="${escAttr(productLink)}" target="_blank" rel="noopener" class="btn btn-sm btn-info" title="View product">
+                                <i class="fa fa-external-link"></i>
+                            </a>
+                        </td>
+                    </tr>`;
+                });
+                html += "</tbody></table></div>";
+                $list.html(html);
+            }
+
+            function loadFaLmpModal(sku) {
+                $("#faLmpSku").text(sku);
+                const modal = new bootstrap.Modal(document.getElementById("faLmpModal"));
+                modal.show();
+                $("#faLmpDataList").html(`
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading competitors...</p>
+                    </div>
+                `);
+                $.ajax({
+                    url: "/amazon/competitors",
+                    method: "GET",
+                    data: { sku: sku },
+                    success: function (response) {
+                        if (response.success) {
+                            renderFaLmpCompetitorsList(response.competitors, response.lowest_price);
+                        } else {
+                            $("#faLmpDataList").html('<div class="alert alert-warning"><i class="fa fa-info-circle"></i> No competitors found for this SKU.</div>');
+                        }
+                    },
+                    error: function () {
+                        $("#faLmpDataList").html('<div class="alert alert-warning"><i class="fa fa-info-circle"></i> Could not load competitor data.</div>');
+                    }
+                });
+            }
+
+            $(document).on("click", ".fa-view-lmp-competitors", function (e) {
+                e.preventDefault();
+                const sku = $(this).data("sku");
+                if (sku) loadFaLmpModal(String(sku));
+            });
+        })();
 
     </script>
 @endsection

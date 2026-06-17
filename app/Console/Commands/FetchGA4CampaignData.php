@@ -87,26 +87,39 @@ class FetchGA4CampaignData extends Command
             $updated = 0;
             $notFound = 0;
             $totalRecords = 0;
+            $insertedRecords = 0;
 
             // Update database with GA4 daily data
             foreach ($ga4DailyData as $campaignName => $dailyRecords) {
                 $campaignNameUpper = strtoupper(trim($campaignName));
                 $campaignNameClean = trim($campaignName);
-                
-                // Find matching campaign in database - try multiple matching strategies
+
+                // Match the GA4 campaign to a DB campaign. Always prefer an exact
+                // (case-insensitive, trimmed) name match; only fall back to partial
+                // matching when no exact match exists. The previous version OR'd the
+                // exact and LIKE conditions together and took ->first(), so a loose
+                // partial match could win over the real campaign — assigning GA4 sales
+                // to the wrong campaign and leaving the correct one with no sales.
                 $dbCampaign = DB::table('google_ads_campaigns')
                     ->where('advertising_channel_type', 'SHOPPING')
-                    ->where(function($query) use ($campaignNameUpper, $campaignNameClean) {
-                        // Exact match (case-insensitive, trimmed)
-                        $query->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$campaignNameUpper])
-                              // Partial match from GA4 name
-                              ->orWhere('campaign_name', 'LIKE', '%' . $campaignNameClean . '%')
-                              // Reverse partial match (database name contains GA4 name)
-                              ->orWhereRaw('UPPER(TRIM(campaign_name)) LIKE ?', ['%' . $campaignNameUpper . '%']);
-                    })
+                    ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$campaignNameUpper])
                     ->select('campaign_id', 'campaign_name')
                     ->distinct()
                     ->first();
+
+                if (!$dbCampaign) {
+                    // Fallback: partial match, deterministically preferring the closest name.
+                    $dbCampaign = DB::table('google_ads_campaigns')
+                        ->where('advertising_channel_type', 'SHOPPING')
+                        ->where(function($query) use ($campaignNameUpper, $campaignNameClean) {
+                            $query->where('campaign_name', 'LIKE', '%' . $campaignNameClean . '%')
+                                  ->orWhereRaw('UPPER(TRIM(campaign_name)) LIKE ?', ['%' . $campaignNameUpper . '%']);
+                        })
+                        ->orderByRaw('CHAR_LENGTH(campaign_name) ASC')
+                        ->select('campaign_id', 'campaign_name')
+                        ->distinct()
+                        ->first();
+                }
 
                 if (!$dbCampaign) {
                     $notFound++;
@@ -114,20 +127,40 @@ class FetchGA4CampaignData extends Command
                     continue;
                 }
 
-                // Update each day's data
+                // Write each day's GA4 data. GA4 attributes a purchase to the purchase
+                // date, which may be a day the campaign had no Google Ads activity — so a
+                // matching google_ads_campaigns row may not exist. Insert one in that case
+                // (the table has a unique campaign_id+date index) so the sale isn't lost.
                 foreach ($dailyRecords as $date => $metrics) {
-                    $updatedCount = DB::table('google_ads_campaigns')
+                    $rowExists = DB::table('google_ads_campaigns')
                         ->where('campaign_id', $dbCampaign->campaign_id)
                         ->where('date', $date)
-                        ->where('advertising_channel_type', 'SHOPPING')
-                        ->update([
+                        ->exists();
+
+                    if ($rowExists) {
+                        DB::table('google_ads_campaigns')
+                            ->where('campaign_id', $dbCampaign->campaign_id)
+                            ->where('date', $date)
+                            ->update([
+                                'ga4_actual_sold_units' => $metrics['purchases'],
+                                'ga4_actual_revenue' => $metrics['revenue'],
+                                'updated_at' => now(),
+                            ]);
+                    } else {
+                        DB::table('google_ads_campaigns')->insert([
+                            'campaign_id' => $dbCampaign->campaign_id,
+                            'campaign_name' => $dbCampaign->campaign_name,
+                            'advertising_channel_type' => 'SHOPPING',
+                            'date' => $date,
                             'ga4_actual_sold_units' => $metrics['purchases'],
                             'ga4_actual_revenue' => $metrics['revenue'],
+                            'created_at' => now(),
+                            'updated_at' => now(),
                         ]);
-
-                    if ($updatedCount > 0) {
-                        $totalRecords += $updatedCount;
+                        $insertedRecords++;
                     }
+
+                    $totalRecords++;
                 }
                 
                 $totalPurchases = array_sum(array_column($dailyRecords, 'purchases'));
@@ -139,7 +172,7 @@ class FetchGA4CampaignData extends Command
             $this->info("\n" . str_repeat('=', 60));
             $this->info("Summary:");
             $this->info("  - Campaigns updated: {$updated}");
-            $this->info("  - Total records updated: {$totalRecords}");
+            $this->info("  - Total records written: {$totalRecords} (including {$insertedRecords} new rows inserted for missing dates)");
             $this->info("  - Campaigns not found in DB: {$notFound}");
             $this->info("  - Total GA4 campaigns: " . count($ga4DailyData));
             $this->info(str_repeat('=', 60));

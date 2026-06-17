@@ -29,7 +29,7 @@ class FetchReverbData extends Command
      *
      * @var string
      */
-    protected $description = 'Calculate Reverb L30/L60 data from metrics table and update products';
+    protected $description = 'Fetch Reverb listings/orders: replaces reverb_products (truncate + insert), upserts order metrics';
 
     /**
      * Execute the console command.
@@ -59,13 +59,24 @@ class FetchReverbData extends Command
 
         // Create map of SKU to listing data - THIS IS THE SOURCE OF ALL SKUs
         $listingMap = [];
+        $duplicateSkuCount = 0;
         foreach ($listings as $item) {
-            $sku = $item['sku'] ?? null;
-            if ($sku) {
-                $listingMap[$sku] = $item;
+            $sku = $this->normalizeSku($item['sku'] ?? '');
+            if ($sku === '') {
+                continue;
             }
+            if (isset($listingMap[$sku])) {
+                $duplicateSkuCount++;
+                if (! $this->shouldPreferListing($item, $listingMap[$sku])) {
+                    continue;
+                }
+            }
+            $listingMap[$sku] = $item;
         }
         $this->info('Found ' . count($listingMap) . ' total listings with SKUs.');
+        if ($duplicateSkuCount > 0) {
+            $this->warn("Merged {$duplicateSkuCount} duplicate SKU listing(s) (e.g. NBSP vs space); kept live/newest per SKU.");
+        }
 
         // Calculate quantities for each SKU (optimized single query)
         $rL30 = $this->calculateQuantitiesFromMetrics($l30Start, $l30End);
@@ -83,20 +94,11 @@ class FetchReverbData extends Command
 
             $price = $listing['price']['amount'] ?? null;
             $views = $listing['stats']['views'] ?? null;
-            $remainingInventory = $listing['inventory'] ?? null;
+            $rawInventory = (int) ($listing['inventory'] ?? 0);
             $bumpBid = $bumpBidBySku[$sku] ?? null;
             $listingId = $listing['id'] ?? null;
-            // Reverb API may return state as object { slug: 'live' }, or 'status', or _embedded.state
-            $state = $listing['state'] ?? $listing['status'] ?? null;
-            if (is_array($state)) {
-                $state = $state['slug'] ?? $state['name'] ?? $state['title'] ?? null;
-            }
-            if ($state === null && isset($listing['_embedded']['state'])) {
-                $emb = $listing['_embedded']['state'];
-                $state = is_array($emb) ? ($emb['slug'] ?? $emb['name'] ?? null) : $emb;
-            }
-            $listingState = $state ? strtolower((string) $state) : 'live';
-            // Default 'live' when state missing so tab counts work (All vs Active); run reverb:fetch to refresh
+            $listingState = $this->resolveListingStateFromApi($listing) ?? 'live';
+            $remainingInventory = ReverbApiService::effectiveInventoryQuantity($rawInventory, $listingState);
 
             $bulkData[] = [
                 'sku' => $sku,
@@ -113,9 +115,8 @@ class FetchReverbData extends Command
             ];
         }
 
-        // Bulk upsert using database transaction
-        $this->info('Bulk updating ' . count($bulkData) . ' records...');
-        $this->bulkUpsert($bulkData);
+        $this->info('Replacing reverb_products (' . count($bulkData) . ' listings from API)...');
+        $this->bulkReplaceProducts($bulkData);
 
         $endTime = microtime(true);
         $duration = round($endTime - $startTime, 2);
@@ -421,7 +422,7 @@ class FetchReverbData extends Command
     {
         $this->info("Calculating quantities from metrics table for {$startDate->toDateString()} to {$endDate->toDateString()}...");
 
-        $quantities = ReverbOrderMetric::whereBetween('order_date', [$startDate->toDateString(), $endDate->toDateString()])
+        $rawQuantities = ReverbOrderMetric::whereBetween('order_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->whereNotIn('status', ['returned', 'refunded'])
             ->whereNotNull('sku')
             ->selectRaw('sku, SUM(quantity) as total_quantity')
@@ -429,7 +430,17 @@ class FetchReverbData extends Command
             ->pluck('total_quantity', 'sku')
             ->toArray();
 
-        $this->info("Found " . count($quantities) . " SKUs with orders in this period.");
+        $quantities = [];
+        foreach ($rawQuantities as $sku => $total) {
+            $normalized = $this->normalizeSku($sku);
+            if ($normalized === '') {
+                continue;
+            }
+            $quantities[$normalized] = ($quantities[$normalized] ?? 0) + (int) $total;
+        }
+
+        $this->info('Found ' . count($quantities) . ' SKUs with orders in this period.');
+
         return $quantities;
     }
 
@@ -469,47 +480,132 @@ class FetchReverbData extends Command
     }
 
     /**
-     * Bulk upsert products using raw SQL for better performance
+     * Replace all reverb_products rows with the latest API snapshot (delete + insert).
+     * Uses DELETE not TRUNCATE — MySQL TRUNCATE implicitly commits and breaks DB::transaction().
+     * Skips replace when there is nothing to insert so a failed fetch does not wipe the table.
      */
-    protected function bulkUpsert(array $data): void
+    protected function bulkReplaceProducts(array $data): void
     {
         if (empty($data)) {
+            $this->warn('No Reverb listings to insert — reverb_products was not changed.');
+
             return;
         }
 
-        try {
-            // Use chunking for very large datasets
-            $chunks = array_chunk($data, 500);
-            $totalChunks = count($chunks);
-            
-            foreach ($chunks as $index => $chunk) {
-                DB::transaction(function () use ($chunk) {
-                    foreach ($chunk as $item) {
-                        DB::table('reverb_products')
-                            ->updateOrInsert(
-                                ['sku' => $item['sku']],
-                                $item
-                            );
-                    }
-                });
-                
-                if ($totalChunks > 1) {
-                    $this->info("  Processed chunk " . ($index + 1) . " of {$totalChunks}...");
-                }
-            }
-        } catch (\Exception $e) {
-            $this->error('Error bulk upserting products: ' . $e->getMessage());
-            // Fallback to individual inserts if bulk fails
-            foreach ($data as $item) {
-                try {
-                    ReverbProduct::updateOrCreate(
-                        ['sku' => $item['sku']],
-                        $item
-                    );
-                } catch (\Exception $e) {
-                    $this->warn('Failed to insert product ' . ($item['sku'] ?? 'unknown') . ': ' . $e->getMessage());
-                }
-            }
+        $data = $this->dedupeProductRowsForInsert($data);
+
+        if ($data === []) {
+            $this->warn('No valid SKUs in listing data — reverb_products was not changed.');
+
+            return;
         }
+
+        $previousCount = ReverbProduct::count();
+
+        try {
+            DB::transaction(function () use ($data) {
+                Schema::disableForeignKeyConstraints();
+                DB::table('reverb_products')->delete();
+                Schema::enableForeignKeyConstraints();
+
+                $chunks = array_chunk($data, 500);
+                foreach ($chunks as $index => $chunk) {
+                    // Safety net: never send duplicate SKUs to MySQL (case/unicode variants).
+                    $chunk = $this->dedupeProductRowsForInsert($chunk);
+                    DB::table('reverb_products')->insert($chunk);
+                    if (count($chunks) > 1) {
+                        $this->info('  Inserted chunk '.($index + 1).' of '.count($chunks).'...');
+                    }
+                }
+            });
+
+            $this->info('reverb_products: replaced '.$previousCount.' row(s) with '.count($data).' listing(s).');
+        } catch (\Exception $e) {
+            $this->error('Error replacing reverb_products: '.$e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Collapse rows that MySQL treats as the same SKU (case / spacing / PCS variants).
+     *
+     * @param  array<int, array<string, mixed>>  $data
+     * @return array<int, array<string, mixed>>
+     */
+    protected function dedupeProductRowsForInsert(array $data): array
+    {
+        $bySku = [];
+        foreach ($data as $item) {
+            $key = ReverbProduct::normalizeSkuForLookup($item['sku'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+            if (isset($bySku[$key]) && ! $this->shouldPreferProductRow($item, $bySku[$key])) {
+                continue;
+            }
+            $item['sku'] = $key;
+            $bySku[$key] = $item;
+        }
+
+        return array_values($bySku);
+    }
+
+    /**
+     * Normalize SKU for storage and dedup (same rules as reverb-pricing lookup).
+     */
+    protected function normalizeSku(mixed $sku): string
+    {
+        return ReverbProduct::normalizeSkuForLookup((string) $sku);
+    }
+
+    /**
+     * When duplicate normalized SKUs reach bulk insert, keep live/newest listing row.
+     */
+    protected function shouldPreferProductRow(array $candidate, array $current): bool
+    {
+        $candidatePriority = $this->listingStatePriority($candidate['listing_state'] ?? null);
+        $currentPriority = $this->listingStatePriority($current['listing_state'] ?? null);
+        if ($candidatePriority !== $currentPriority) {
+            return $candidatePriority > $currentPriority;
+        }
+
+        return (int) ($candidate['reverb_listing_id'] ?? 0) > (int) ($current['reverb_listing_id'] ?? 0);
+    }
+
+    /**
+     * When Reverb returns multiple listings with the same normalized SKU, keep the best row.
+     */
+    protected function shouldPreferListing(array $candidate, array $current): bool
+    {
+        $candidatePriority = $this->listingStatePriority($this->resolveListingStateFromApi($candidate));
+        $currentPriority = $this->listingStatePriority($this->resolveListingStateFromApi($current));
+        if ($candidatePriority !== $currentPriority) {
+            return $candidatePriority > $currentPriority;
+        }
+
+        return (int) ($candidate['id'] ?? 0) > (int) ($current['id'] ?? 0);
+    }
+
+    protected function listingStatePriority(?string $state): int
+    {
+        return match (strtolower((string) $state)) {
+            'live', 'published' => 100,
+            'sold' => 50,
+            default => 10,
+        };
+    }
+
+    protected function resolveListingStateFromApi(array $listing): ?string
+    {
+        $state = $listing['state'] ?? $listing['status'] ?? null;
+        if (is_array($state)) {
+            $state = $state['slug'] ?? $state['name'] ?? $state['title'] ?? null;
+        }
+        if ($state === null && isset($listing['_embedded']['state'])) {
+            $emb = $listing['_embedded']['state'];
+            $state = is_array($emb) ? ($emb['slug'] ?? $emb['name'] ?? null) : $emb;
+        }
+
+        return $state !== null ? strtolower((string) $state) : null;
     }
 }

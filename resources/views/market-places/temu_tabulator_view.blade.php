@@ -99,9 +99,6 @@
                     <button type="button" class="btn btn-sm btn-info" id="export-l7-btn">
                         <i class="fa fa-download"></i> Export L7
                     </button>
-                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDailyDataModal">
-                        <i class="fa fa-upload"></i> Upload Daily Data
-                    </button>
                     <a href="{{ route('temu.decrease') }}" class="btn btn-sm btn-outline-primary" title="View SKU analytics (DIL%, CVR, pricing, ads)">
                         <i class="fa fa-chart-line"></i> Temu Analytics
                     </a>
@@ -132,58 +129,6 @@
                     </div>
                     <!-- Table body (scrollable section) -->
                     <div id="temu-table" style="flex: 1;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- Upload Daily Data Modal -->
-    <div class="modal fade" id="uploadDailyDataModal" tabindex="-1" aria-labelledby="uploadDailyDataModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="uploadDailyDataModalLabel">
-                        <i class="fa fa-upload me-2"></i>Upload Temu Daily Data
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="dailyDataUploadPeriod" class="form-label">Upload for</label>
-                        <select id="dailyDataUploadPeriod" class="form-select form-select-sm" style="width: auto;">
-                            <option value="L30">L30 Sales (temu_daily_data)</option>
-                            <option value="L60">L60 Sales (temu_daily_data_l60)</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="dailyDataFile" class="form-label">Select Excel File</label>
-                        <input type="file" class="form-control" id="dailyDataFile" accept=".xlsx,.xls,.csv">
-                        <div class="form-text">
-                            Supported formats: Excel (.xlsx, .xls) or CSV. Same format for L30 and L60.
-                            <br>
-                            <a href="{{ route('temu.daily.sample') }}" class="text-primary">
-                                <i class="fa fa-download me-1"></i>Download Sample Excel Template
-                            </a>
-                        </div>
-                    </div>
-                    
-                    <div id="uploadProgressContainer" style="display: none;">
-                        <div class="mb-2">
-                            <strong>Upload Progress:</strong>
-                        </div>
-                        <div class="progress mb-2" style="height: 25px;">
-                            <div id="uploadProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
-                                 role="progressbar" style="width: 0%">0%</div>
-                        </div>
-                        <div id="uploadStatus" class="text-muted small"></div>
-                    </div>
-
-                    <div id="uploadResult" class="alert" style="display: none;"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="startUploadBtn">
-                        <i class="fa fa-upload me-1"></i>Start Upload
-                    </button>
                 </div>
             </div>
         </div>
@@ -388,12 +333,7 @@
                     mutator: function(value, data, type, params, component) {
                         const basePrice = parseFloat(data.base_price_total) || 0;
                         const quantity = parseInt(data.quantity_purchased) || 0;
-                        const total = basePrice * quantity;
-                        
-                        if (total < 27) {
-                            return (basePrice + 2.99).toFixed(2);
-                        }
-                        return basePrice.toFixed(2);
+                        return temuFbPrice(basePrice, quantity).toFixed(2);
                     }
                 },
                 {
@@ -456,25 +396,13 @@
                         return `<span style="color: ${color}; font-weight: bold;">$${parseFloat(value).toFixed(2)}</span>`;
                     },
                     mutator: function(value, data, type, params, component) {
-                        const fbPrice = parseFloat(data.fb_price || data.base_price_total) || 0;
                         const basePrice = parseFloat(data.base_price_total) || 0;
                         const quantity = parseInt(data.quantity_purchased) || 0;
-                        const total = basePrice * quantity;
-                        
-                        // Calculate FB Price first
-                        let calculatedFbPrice = fbPrice;
-                        if (total < 27) {
-                            calculatedFbPrice = basePrice + 2.99;
-                        } else {
-                            calculatedFbPrice = basePrice;
-                        }
-                        
+                        const fbPrice = temuFbPrice(basePrice, quantity);
                         const lp = parseFloat(data.lp) || 0;
                         const temuShip = parseFloat(data.temu_ship) || 0;
-                        // PFT % = (price * 0.96 - lp - temuship) / price; dollar total = pft * price * quantity (price = FB Prc)
-                        const pftDecimal = calculatedFbPrice > 0 ? (calculatedFbPrice * 0.96 - lp - temuShip) / calculatedFbPrice : 0;
-                        const pftDollars = pftDecimal * calculatedFbPrice * quantity;
-                        return pftDollars.toFixed(2);
+                        const pftDecimal = fbPrice > 0 ? (fbPrice * 0.96 - lp - temuShip) / fbPrice : 0;
+                        return (pftDecimal * fbPrice * quantity).toFixed(2);
                     }
                 },
                 {
@@ -493,19 +421,8 @@
                     mutator: function(value, data, type, params, component) {
                         const basePrice = parseFloat(data.base_price_total) || 0;
                         const quantity = parseInt(data.quantity_purchased) || 0;
-                        const total = basePrice * quantity;
-                        
-                        // Calculate FB Price
-                        let calculatedFbPrice;
-                        if (total < 27) {
-                            calculatedFbPrice = basePrice + 2.99;
-                        } else {
-                            calculatedFbPrice = basePrice;
-                        }
-                        
-                        // L30 Sales = Quantity * FB Prc
-                        const l30Sales = quantity * calculatedFbPrice;
-                        return l30Sales.toFixed(2);
+                        const fbPrice = temuFbPrice(basePrice, quantity);
+                        return (quantity * fbPrice).toFixed(2);
                     }
                 },
                 {
@@ -559,6 +476,22 @@
             table.setFilter("contribution_sku", "like", value);
         });
 
+        // FB Prc: +$2.99 per unit when line total (base × qty) is under $27
+        function temuFbPrice(basePrice, quantity) {
+            const base = parseFloat(basePrice) || 0;
+            const qty = parseInt(quantity) || 0;
+            if (qty <= 0 || base <= 0) {
+                return 0;
+            }
+            return (base * qty) < 27 ? base + 2.99 : base;
+        }
+
+        function temuLinePrice(row) {
+            const basePrice = parseFloat(row.base_price_total) || 0;
+            const quantity = parseInt(row.quantity_purchased) || 0;
+            return temuFbPrice(basePrice, quantity);
+        }
+
         // Update summary stats
         // Update summary stats (matching eBay pattern exactly)
         function updateSummary() {
@@ -586,13 +519,11 @@
                 totalOrders++;
                 const quantity = parseInt(row.quantity_purchased) || 0;
                 const basePrice = parseFloat(row.base_price_total) || 0;
+                const fbPrice = temuFbPrice(basePrice, quantity);
                 const lp = parseFloat(row.lp) || 0;
                 const temuShip = parseFloat(row.temu_ship) || 0;
                 
                 totalQuantity += quantity;
-                // Use fbPrice logic to match all-marketplace-master calculation
-                const total = basePrice * quantity;
-                const fbPrice = total < 27 ? basePrice + 2.99 : basePrice;
                 totalRevenue += fbPrice * quantity;
                 
                 if (quantity > 0 && basePrice > 0) {
@@ -600,15 +531,11 @@
                     totalQuantityForPrice += quantity;
                 }
                 
-                // Only include rows with sales in PFT / L30 Sales / COGS (same as Temu decrease & Amazon)
                 const hasSales = quantity > 0 && basePrice > 0;
                 if (hasSales) {
-                    const total = basePrice * quantity;
-                    const calculatedFbPrice = total < 27 ? basePrice + 2.99 : basePrice;  // FB Prc = price for PFT formula
-                    // PFT % = (price * 0.96 - lp - temuship) / price; dollar = pft * price * quantity
-                    const pftDecimal = calculatedFbPrice > 0 ? (calculatedFbPrice * 0.96 - lp - temuShip) / calculatedFbPrice : 0;
-                    totalPft += pftDecimal * calculatedFbPrice * quantity;
-                    totalL30Sales += quantity * calculatedFbPrice;
+                    const pftDecimal = fbPrice > 0 ? (fbPrice * 0.96 - lp - temuShip) / fbPrice : 0;
+                    totalPft += pftDecimal * fbPrice * quantity;
+                    totalL30Sales += quantity * fbPrice;
                     totalCogs += lp * quantity;
                 }
             });
@@ -766,9 +693,8 @@
                             const hasSales = quantity > 0 && basePrice > 0;
                             
                             if (hasSales) {
-                                const total = basePrice * quantity;
-                                const calculatedFbPrice = total < 27 ? basePrice + 2.99 : basePrice;
-                                totalL60Sales += quantity * calculatedFbPrice;
+                                const fbPrice = temuFbPrice(basePrice, quantity);
+                                totalL60Sales += quantity * fbPrice;
                             }
                         });
                         
@@ -865,137 +791,6 @@
                 }
             });
         });
-
-        // Upload Daily Data Handler
-        $('#startUploadBtn').on('click', function() {
-            const fileInput = document.getElementById('dailyDataFile');
-            const file = fileInput.files[0];
-
-            if (!file) {
-                showToast('Please select a file to upload', 'error');
-                return;
-            }
-
-            // Validate file type
-            const validTypes = [
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                'application/vnd.ms-excel',
-                'text/csv'
-            ];
-            if (!validTypes.includes(file.type)) {
-                showToast('Please select a valid Excel or CSV file', 'error');
-                return;
-            }
-
-            // Show progress container
-            $('#uploadProgressContainer').show();
-            $('#uploadResult').hide();
-            $('#startUploadBtn').prop('disabled', true);
-
-            // Chunk settings
-            const totalChunks = 5;
-            const period = $('#dailyDataUploadPeriod').val() || 'L30';
-            const uploadUrl = period === 'L60' ? '/temu/upload-daily-data-l60-chunk' : '/temu/upload-daily-data-chunk';
-            const uploadId = (period === 'L60' ? 'temu_l60_' : 'temu_') + Date.now();
-            let currentChunk = 0;
-            let totalImported = 0;
-
-            function uploadChunk() {
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('chunk', currentChunk);
-                formData.append('totalChunks', totalChunks);
-                formData.append('uploadId', uploadId);
-                formData.append('_token', '{{ csrf_token() }}');
-
-                $.ajax({
-                    url: uploadUrl,
-                    type: 'POST',
-                    data: formData,
-                    processData: false,
-                    contentType: false,
-                    success: function(response) {
-                        if (response.success) {
-                            totalImported += response.imported || 0;
-                            const progress = response.progress || 0;
-
-                            $('#uploadProgressBar')
-                                .css('width', progress + '%')
-                                .text(Math.round(progress) + '%');
-
-                            $('#uploadStatus').text(
-                                `Processing chunk ${currentChunk + 1} of ${totalChunks}... (${totalImported} records imported so far)`
-                            );
-
-                            if (currentChunk < totalChunks - 1) {
-                                currentChunk++;
-                                setTimeout(uploadChunk, 500);
-                            } else {
-                                $('#uploadProgressBar')
-                                    .removeClass('progress-bar-animated')
-                                    .addClass('bg-success');
-
-                                $('#uploadResult')
-                                    .removeClass('alert-danger')
-                                    .addClass('alert-success')
-                                    .html(`<i class="fa fa-check-circle me-2"></i>Upload completed successfully! ${totalImported} records imported to ${period} Sales.`)
-                                    .show();
-
-                                $('#startUploadBtn').prop('disabled', false);
-                                showToast(`${period} Sales upload completed! ${totalImported} records imported.`, 'success');
-
-                                setTimeout(function() {
-                                    $('#uploadDailyDataModal').modal('hide');
-                                    resetUploadForm();
-                                    if (period === 'L30') table.setData('/temu/daily-data');
-                                }, 2000);
-                            }
-                        } else {
-                            throw new Error(response.message || 'Upload failed');
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        let errorMessage = 'Upload failed. Please try again.';
-                        if (xhr.responseJSON && xhr.responseJSON.message) {
-                            errorMessage = xhr.responseJSON.message;
-                        }
-
-                        $('#uploadProgressBar')
-                            .removeClass('progress-bar-animated')
-                            .addClass('bg-danger');
-
-                        $('#uploadResult')
-                            .removeClass('alert-success')
-                            .addClass('alert-danger')
-                            .html(`<i class="fa fa-exclamation-circle me-2"></i>${errorMessage}`)
-                            .show();
-
-                        $('#startUploadBtn').prop('disabled', false);
-                        showToast(errorMessage, 'error');
-                    }
-                });
-            }
-
-            uploadChunk();
-        });
-
-        // Reset upload form when modal is hidden
-        $('#uploadDailyDataModal').on('hidden.bs.modal', function() {
-            resetUploadForm();
-        });
-
-        function resetUploadForm() {
-            $('#dailyDataFile').val('');
-            $('#uploadProgressContainer').hide();
-            $('#uploadResult').hide();
-            $('#uploadProgressBar')
-                .removeClass('bg-success bg-danger')
-                .addClass('progress-bar-animated')
-                .css('width', '0%')
-                .text('0%');
-            $('#uploadStatus').text('');
-            $('#startUploadBtn').prop('disabled', false);
-        }
     });
 </script>
 @endsection

@@ -103,6 +103,8 @@ class PurchasingPowerController extends Controller
             $row['SPRICE']          = null;
             $row['has_custom_sprice'] = false;
             $row['SPRICE_STATUS']   = null;
+            $row['B Link']          = '';
+            $row['S Link']          = '';
 
             if (isset($dataViews[$pm->sku])) {
                 $raw = $dataViews[$pm->sku];
@@ -112,6 +114,8 @@ class PurchasingPowerController extends Controller
                     $row['NR']     = $raw['NR']     ?? '';
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['Live']   = isset($raw['Live'])   ? filter_var($raw['Live'],   FILTER_VALIDATE_BOOLEAN) : null;
+                    $row['B Link'] = $raw['buyer_link']  ?? '';
+                    $row['S Link'] = $raw['seller_link'] ?? '';
 
                     if (isset($raw['SPRICE'])) {
                         $row['SPRICE']           = floatval($raw['SPRICE']);
@@ -136,15 +140,15 @@ class PurchasingPowerController extends Controller
             $units_l30       = floatval($row['PP L30']   ?? 0);
 
             $row['PP Dil%']    = ($units_l30 && $row['INV'] > 0) ? round($units_l30 / $row['INV'], 2) : 0;
-            $row['Total_pft']  = round(($price * $percentage - $lp - $ship) * $units_l30, 2);
+            $row['Total_pft']  = round(($price * $percentage - $lp) * $units_l30, 2);
             $row['Profit']     = $row['Total_pft'];
             $row['T_Sale_l30'] = round($price * $units_l30, 2);
             $row['Sales L30']  = $row['T_Sale_l30'];
 
-            $gpft = $price > 0 ? (($price * $percentage - $lp - $ship) / $price) * 100 : 0;
+            $gpft = $price > 0 ? (($price * $percentage - $lp) / $price) * 100 : 0;
             $row['GPFT%']  = round($gpft, 2);
             $row['PFT %']  = round($gpft, 2);
-            $row['ROI%']   = round($lp > 0 ? (($price * $percentage - $lp - $ship) / $lp) * 100 : 0, 2);
+            $row['ROI%']   = round($lp > 0 ? (($price * $percentage - $lp) / $lp) * 100 : 0, 2);
 
             $row['percentage']          = $percentage;
             $row['LP_productmaster']    = $lp;
@@ -152,10 +156,10 @@ class PurchasingPowerController extends Controller
 
             // SPRICE metrics
             $sprice = $row['SPRICE'] ?? 0;
-            $sgpft  = round($sprice > 0 ? (($sprice * $percentage - $lp - $ship) / $sprice) * 100 : 0, 2);
+            $sgpft  = round($sprice > 0 ? (($sprice * $percentage - $lp) / $sprice) * 100 : 0, 2);
             $row['SGPFT'] = $sgpft;
             $row['SPFT']  = $sgpft;
-            $row['SROI']  = round($lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2);
+            $row['SROI']  = round($lp > 0 ? (($sprice * $percentage - $lp) / $lp) * 100 : 0, 2);
 
             $row['image_path'] = $shopify?->image_src ?? ($values['image_path'] ?? ($pm->image_path ?? null));
 
@@ -183,6 +187,44 @@ class PurchasingPowerController extends Controller
         return response()->json(['success' => true, 'message' => 'NR/REQ updated']);
     }
 
+    /** Save Buyer (B) / Seller (S) links for a SKU into purchasing_power_data_views.value JSON. */
+    public function updateLinks(Request $request)
+    {
+        $validated = $request->validate([
+            'sku'         => 'required|string',
+            'buyer_link'  => 'nullable|string|max:1000',
+            'seller_link' => 'nullable|string|max:1000',
+        ]);
+
+        $sku = trim($validated['sku']);
+
+        $buyerLink  = isset($validated['buyer_link']) ? trim((string) $validated['buyer_link']) : '';
+        $sellerLink = isset($validated['seller_link']) ? trim((string) $validated['seller_link']) : '';
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $label => $link) {
+            if ($link !== '' && !filter_var($link, FILTER_VALIDATE_URL)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => ucfirst(str_replace('_', ' ', $label)) . ' must be a valid URL.',
+                ], 422);
+            }
+        }
+
+        $dv       = PurchasingPowerDataView::firstOrNew(['sku' => $sku]);
+        $existing = is_array($dv->value) ? $dv->value : (json_decode($dv->value, true) ?? []);
+        $existing['buyer_link']  = $buyerLink;
+        $existing['seller_link'] = $sellerLink;
+        $dv->value = $existing;
+        $dv->save();
+
+        return response()->json([
+            'success'     => true,
+            'message'     => 'Links saved.',
+            'buyer_link'  => $buyerLink,
+            'seller_link' => $sellerLink,
+        ]);
+    }
+
     public function saveSpriceTabulator(Request $request)
     {
         try {
@@ -199,18 +241,16 @@ class PurchasingPowerController extends Controller
 
             $pm = ProductMaster::where('sku', $sku)->first();
             $lp = 0;
-            $ship = 0;
             if ($pm) {
                 $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
                 foreach ($values as $k => $v) {
                     if (strtolower($k) === 'lp') { $lp = (float) $v; break; }
                 }
                 if ($lp === 0 && isset($pm->lp)) $lp = (float) $pm->lp;
-                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0);
             }
 
-            $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp - $ship) / $sprice) * 100, 2) : 0;
-            $sroi  = $lp     > 0 ? round((($sprice * $margin - $lp - $ship) / $lp)     * 100, 2) : 0;
+            $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp) / $sprice) * 100, 2) : 0;
+            $sroi  = $lp     > 0 ? round((($sprice * $margin - $lp) / $lp)     * 100, 2) : 0;
 
             // Same pattern as AliExpress
             $view   = PurchasingPowerDataView::firstOrNew(['sku' => $sku]);
@@ -265,14 +305,12 @@ class PurchasingPowerController extends Controller
 
                 $pm = ProductMaster::where('sku', $sku)->first();
                 $lp = 0;
-                $ship = 0;
                 if ($pm) {
                     $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
                     foreach ($values as $k => $v) {
                         if (strtolower($k) === 'lp') { $lp = (float) $v; break; }
                     }
                     if ($lp === 0 && isset($pm->lp)) $lp = (float) $pm->lp;
-                    $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0);
                 }
 
                 // Same pattern as AliExpress
@@ -283,8 +321,8 @@ class PurchasingPowerController extends Controller
                 if ($sprice == 0) {
                     unset($stored['SPRICE'], $stored['SPFT'], $stored['SROI'], $stored['SGPFT']);
                 } else {
-                    $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp - $ship) / $sprice) * 100, 2) : 0;
-                    $sroi  = $lp     > 0 ? round((($sprice * $margin - $lp - $ship) / $lp)     * 100, 2) : 0;
+                    $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp) / $sprice) * 100, 2) : 0;
+                    $sroi  = $lp     > 0 ? round((($sprice * $margin - $lp) / $lp)     * 100, 2) : 0;
 
                     $stored['SPRICE'] = $sprice;
                     $stored['SGPFT']  = $sgpft;

@@ -217,6 +217,7 @@
             <div class="card-body">
 
                 <div class="d-flex justify-content-start align-items-center mb-3 flex-wrap gap-2">
+                    @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'on_sea_transit'])
                     <div class="d-flex flex-wrap gap-3 w-100">
                         <span class="badge bg-warning text-dark" style="font-size: 1.1rem; padding: 0.75rem 1.25rem; flex: 1; min-width: 150px;">
                             <i class="fas fa-clipboard-list me-2"></i>Pre-Load: {{ $planningCount }}

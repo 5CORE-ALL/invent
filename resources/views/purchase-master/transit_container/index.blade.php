@@ -162,6 +162,7 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
                     <div class="d-flex gap-4 align-items-center">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'transit_container_inv'])
                         <div class="fw-semibold text-dark" style="font-size: 1rem;">
                             📦 To. Ctns: <span class="text-success" id="total-cartons-display">0</span>
                         </div>
@@ -555,24 +556,20 @@ TAB_NAMES.forEach((tabName, index) => {
         rowHeight: 55,
         index: "id",
         selectable: true,
+        // Default sort: surface "Not pushed" rows first so users can act on them.
+        initialSort: [
+            { column: "push_status", dir: "asc" }
+        ],
         rowFormatter: function(row) {
             const rowData = row.getData();
+            const status  = rowData.push_status || 'pending';
+            const el      = row.getElement();
 
-            // Ensure tab_name and SKU are normalized
-            const tabName = (rowData.tab_name || '').trim().toUpperCase();
-            const sku = (rowData.our_sku || '').trim().toUpperCase();
-            const rowId = rowData.id;
+            el.style.backgroundColor = '';
 
-            // The pushed flag should already be set in your controller for this exact combination
-            // if (rowData.pushed == 1) {
-            //     const cell = row.getCell("our_sku");
-            //     if (cell) {
-            //         const el = cell.getElement();
-            //         el.style.boxShadow = "0 0 10px 2px #4CAF50"; // green shadow
-            //         el.style.borderRadius = "6px";
-            //         el.style.padding = "3px";
-            //     }
-            // }
+            if (status === 'failed') {
+                el.style.backgroundColor = '#f8d7da'; // red for failed
+            }
         },
 
         columns: [{
@@ -588,7 +585,7 @@ TAB_NAMES.forEach((tabName, index) => {
                 visible: false,
             },
             {
-            title: "Sl No.",
+            title: "SL",
             formatter: function(cell) {
                 return cell.getRow().getPosition(true) + 0;
             },
@@ -701,6 +698,14 @@ TAB_NAMES.forEach((tabName, index) => {
               field: "our_sku",
               formatter: function(cell) {
                 const sku = cell.getValue() || '';
+                const shopifyDomain = '{{ config("services.shopify.store_url") }}';
+                // Use exact-SKU filter (`sku:"..."`) so Shopify Admin returns only the
+                // specific variant being worked on, not every variant whose SKU contains
+                // this string (e.g. "ABC" was previously also matching "ABC 2P").
+                const shopifyUrl = shopifyDomain && sku
+                    ? `https://${shopifyDomain}/admin/products/inventory?query=${encodeURIComponent('sku:"' + sku + '"')}`
+                    : '#';
+                const shopifyLink = sku ? `<a href="${shopifyUrl}" target="_blank" title="View exact SKU in Shopify" style="color: #28a745; text-decoration: none; font-size: 0.9rem;" onclick="event.stopPropagation();"><i class="fas fa-external-link-alt"></i></a>` : '';
                 return `
                   <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
                     <span>${sku}</span>
@@ -709,6 +714,7 @@ TAB_NAMES.forEach((tabName, index) => {
                        style="cursor: pointer; color: #2563eb; font-size: 0.9rem; transition: color 0.2s;"
                        title="Copy SKU">
                     </i>
+                    ${shopifyLink}
                   </div>
                 `;
               }
@@ -716,27 +722,34 @@ TAB_NAMES.forEach((tabName, index) => {
             {
               title: "Status",
               field: "push_status",
-              headerSort: false,
+              headerSort: true,
               hozAlign: "center",
               width: 80,
+              // Sort order (ascending): not pushed → failed → processing → success
+              // so user can immediately see what still needs attention at the top.
+              sorter: function(a, b) {
+                const order = { pending: 0, failed: 1, processing: 2, success: 3 };
+                const av = order[a || 'pending'] ?? 0;
+                const bv = order[b || 'pending'] ?? 0;
+                return av - bv;
+              },
               formatter: function(cell) {
                 const status = cell.getValue() || 'pending';
-                const rowData = cell.getRow().getData();
-                
+
                 if (status === 'success') {
-                  return '<i class="fas fa-check-circle text-success" style="font-size: 1.2rem;" title="Successfully pushed"></i>';
+                  return '<i class="fas fa-check-circle" style="font-size:1.4rem; color:#16a34a;" title="Successfully pushed to Shopify"></i>';
                 } else if (status === 'failed') {
-                  return '<i class="fas fa-times-circle text-danger" style="font-size: 1.2rem;" title="Failed to push"></i>';
+                  return '<i class="fas fa-times-circle text-danger" style="font-size:1.4rem;" title="Push failed"></i>';
                 } else if (status === 'processing') {
-                  return '<i class="fas fa-spinner fa-spin text-primary" style="font-size: 1.2rem;" title="Processing..."></i>';
+                  return '<i class="fas fa-spinner fa-spin text-primary" style="font-size:1.4rem;" title="Processing..."></i>';
                 } else {
-                  return '<i class="fas fa-clock text-muted" style="font-size: 1.2rem;" title="Pending"></i>';
+                  return '<i class="fas fa-clock text-muted" style="font-size:1.4rem;" title="Not pushed yet"></i>';
                 }
               }
             },
             // { title: "Rec Qty", field: "rec_qty"},
-            { title: "Qty / Ctns", field: "no_of_units", editor: "input" },
-            { title: "Qty Ctns", field: "total_ctn", editor: "input" },
+            { title: "Qty /<br>Ctns", field: "no_of_units", editor: "input" },
+            { title: "Qty<br>Ctns", field: "total_ctn", editor: "input" },
             { 
               title: "Qty", 
               field: "pcs_qty", 
@@ -750,31 +763,42 @@ TAB_NAMES.forEach((tabName, index) => {
                   return units * ctn;
               }
             },
-            { title: "Rate ($)", field: "rate", editor: "input" },
-            { 
-              title: "CBM", 
-              field: "cbm", 
+            { title: "Rate$", field: "rate", editor: "input" },
+            {
+              title: "CBM",
+              field: "cbm",
               editor: "input",
+              hozAlign: "center",
+              width: 60,
               formatter: function(cell) {
                   const data = cell.getRow().getData();
                   let values = data.Values;
+                  let cbm = 0;
 
-                  if (!values) {
-                      return "0.000";
-                  }
-
-                  if (typeof values === "string") {
-                      try {
-                          values = JSON.parse(values);
-                      } catch (e) {
-                          console.error("JSON parse error:", e, values);
-                          values = {};
+                  if (values) {
+                      if (typeof values === "string") {
+                          try { values = JSON.parse(values); } catch(e) { values = {}; }
                       }
+                      cbm = parseFloat(values?.cbm) || 0;
                   }
 
+                  if (cbm > 0) {
+                      return `<span title="CBM: ${cbm.toFixed(3)}"
+                                    style="display:inline-block;width:14px;height:14px;border-radius:50%;
+                                           background:#16a34a;cursor:default;"></span>`;
+                  }
+                  return `<span title="No CBM data"
+                                style="display:inline-block;width:14px;height:14px;border-radius:50%;
+                                       background:#ef4444;cursor:default;"></span>`;
+              },
+              tooltip: function(cell) {
+                  const data = cell.getRow().getData();
+                  let values = data.Values;
+                  if (!values) return 'No CBM data';
+                  if (typeof values === "string") { try { values = JSON.parse(values); } catch(e) { return 'No CBM data'; } }
                   const cbm = parseFloat(values?.cbm) || 0;
-                  return cbm ? cbm.toFixed(3) : "0.000";
-              }
+                  return cbm > 0 ? 'CBM: ' + cbm.toFixed(3) : 'No CBM data';
+              },
             },
             {
               title: "Unit",
@@ -852,38 +876,19 @@ TAB_NAMES.forEach((tabName, index) => {
                 field: "supplier_name",
                 headerSort: false,
                 hozAlign: "center",
-                width: 220,
+                width: 110,
                 formatter: function (cell) {
-                    const row = cell.getRow().getData();
-                    const saved = String(row.supplier_name || "").trim();
-                    const related = row.supplier_names;
-                    const relatedStr = Array.isArray(related) ? related.filter(Boolean).join(", ") : "";
-                    const parts = [];
-                    if (saved) {
-                        parts.push('<div style="font-weight:600;">' + escapeHtmlTransit(saved) + "</div>");
-                    }
-                    if (relatedStr) {
-                        parts.push(
-                            '<div style="font-size:0.88rem;color:#475569;margin-top:2px;">Related: ' +
-                                escapeHtmlTransit(relatedStr) +
-                                "</div>"
-                        );
-                    }
-                    if (parts.length === 0) {
-                        return '<span class="text-muted">—</span>';
-                    }
-                    return '<div style="text-align:center;max-width:260px;margin:0 auto;">' + parts.join("") + "</div>";
+                    const saved = String(cell.getValue() || "").trim();
+                    if (!saved) return '<span class="text-muted">—</span>';
+                    return `<div title="${saved.replace(/"/g,'&quot;')}"
+                                 style="font-weight:600;overflow:hidden;white-space:nowrap;
+                                        text-overflow:ellipsis;max-width:100px;">
+                                ${escapeHtmlTransit(saved)}
+                            </div>`;
                 },
                 editor: "input",
                 tooltip: function (cell) {
-                    const row = cell.getRow().getData();
-                    const saved = String(row.supplier_name || "").trim();
-                    const related = row.supplier_names;
-                    const relatedStr = Array.isArray(related) ? related.filter(Boolean).join(", ") : "";
-                    const lines = [];
-                    if (saved) lines.push("Saved: " + saved);
-                    if (relatedStr) lines.push("Related: " + relatedStr);
-                    return lines.join("\n") || "";
+                    return String(cell.getValue() || "").trim();
                 },
             },
             // {
@@ -898,28 +903,62 @@ TAB_NAMES.forEach((tabName, index) => {
             //     return Math.round(rate * pcs_qty);
             //   }
             // },
-            { title: "Changes", field: "changes", editor: "input" },
-            { 
-              title: "Spec.",
-              field: "specification", 
-              editor: "input",
-              formatter: function(cell) {
-                const value = cell.getValue();
-                return `<div title="${value?.replace(/"/g, '&quot;') ?? ''}" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;">
-                          ${value ?? ''}
-                        </div>`;
-              }
+            {
+                title: "CHG",
+                field: "changes",
+                editor: "input",
+                hozAlign: "center",
+                width: 60,
+                formatter: function(cell) {
+                    const val = (cell.getValue() || '').trim();
+                    if (val) {
+                        return `<span title="${val.replace(/"/g, '&quot;')}"
+                                      style="display:inline-block;width:14px;height:14px;border-radius:50%;
+                                             background:#16a34a;cursor:default;"></span>`;
+                    }
+                    return `<span title="No data"
+                                  style="display:inline-block;width:14px;height:14px;border-radius:50%;
+                                         background:#eab308;cursor:default;"></span>`;
+                },
+                tooltip: function(cell) {
+                    return (cell.getValue() || '').trim() || 'No data';
+                },
             },
             {
-                title: "Created By",
-                field: "created_by_name",
+              title: "SPEC",
+              field: "specification",
+              editor: "input",
+              hozAlign: "center",
+              width: 65,
+              formatter: function(cell) {
+                const val = (cell.getValue() || '').trim();
+                if (val) {
+                    return `<span title="${val.replace(/"/g, '&quot;')}"
+                                  style="display:inline-block;width:14px;height:14px;border-radius:50%;
+                                         background:#16a34a;cursor:default;"></span>`;
+                }
+                return `<span title="No specification"
+                              style="display:inline-block;width:14px;height:14px;border-radius:50%;
+                                     background:#eab308;cursor:default;"></span>`;
+              },
+              tooltip: function(cell) {
+                return (cell.getValue() || '').trim() || 'No specification';
+              },
+            },
+            {
+                title: "History",
+                field: "last_saved_by",
                 headerSort: false,
                 hozAlign: "center",
+                width: 130,
                 formatter: function(cell) {
-                    const value = cell.getValue();
-                    return `<span class="badge bg-secondary" style="padding: 6px 12px; font-size: 0.9rem;">
-                                ${value || '—'}
-                            </span>`;
+                    const row  = cell.getRow().getData();
+                    const name = row.last_saved_by || '—';
+                    const date = row.last_saved_at  || '—';
+                    return `<div style="line-height:1.3;">
+                                <div style="font-weight:600;font-size:0.85rem;">${name}</div>
+                                <div style="font-size:0.75rem;color:#64748b;">${date}</div>
+                            </div>`;
                 }
             },
         ],
@@ -1340,6 +1379,69 @@ TAB_NAMES.forEach((tabName, index) => {
 //     });
 // });
 
+// Retry configuration for failed pushes — keeps retrying until success or until
+// the safety cap is reached, so the user does not have to manually re-push.
+const PUSH_MAX_ATTEMPTS = 8;     // hard safety cap to avoid an infinite loop
+const PUSH_RETRY_BASE_MS = 800;  // initial backoff (doubles each attempt, capped)
+const PUSH_RETRY_MAX_MS  = 5000; // max backoff between retries
+
+async function pushSingleWithRetry(row, tableRow, table, tabName, forceRepush) {
+    const rowId = row.id;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= PUSH_MAX_ATTEMPTS; attempt++) {
+        tableRow.update({ push_status: 'processing' });
+        table.redraw();
+
+        try {
+            const res = await fetch("/inventory-warehouse/push-single", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify({
+                    tab_name: tabName,
+                    force: forceRepush,
+                    data: {
+                        ...row,
+                        our_sku: row.our_sku ? row.our_sku.trim().toUpperCase() : '',
+                        id: rowId
+                    }
+                })
+            });
+
+            const response = await res.json();
+
+            if (response.status === 'success') {
+                tableRow.update({ push_status: 'success', pushed: 1 });
+                tableRow.deselect();
+                return { status: 'success', attempts: attempt };
+            }
+
+            if (response.status === 'skipped') {
+                tableRow.update({ push_status: 'success' });
+                return { status: 'skipped', attempts: attempt };
+            }
+
+            lastError = response.message || 'Push failed';
+        } catch (err) {
+            console.error(`Error pushing SKU ${row.our_sku} (attempt ${attempt}):`, err);
+            lastError = err && err.message ? err.message : 'Network error';
+        }
+
+        if (attempt < PUSH_MAX_ATTEMPTS) {
+            const delay = Math.min(PUSH_RETRY_BASE_MS * Math.pow(2, attempt - 1), PUSH_RETRY_MAX_MS);
+            console.warn(`Retrying SKU ${row.our_sku} in ${delay}ms (attempt ${attempt + 1}/${PUSH_MAX_ATTEMPTS})...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+
+    tableRow.update({ push_status: 'failed' });
+    table.redraw();
+    return { status: 'failed', attempts: PUSH_MAX_ATTEMPTS, error: lastError };
+}
+
 document.getElementById("push-inventory-btn").addEventListener("click", async function () {
     const activeTab = document.querySelector(".nav-link.active");
     if (!activeTab) {
@@ -1361,134 +1463,108 @@ document.getElementById("push-inventory-btn").addEventListener("click", async fu
         return;
     }
 
-    // Filter out already pushed items (status = 'success')
-    const rowsToPush = selectedRows.filter(row => {
-        const status = row.push_status || 'pending';
-        return status !== 'success';
-    });
+    const alreadyPushedRows = selectedRows.filter(r => (r.push_status || 'pending') === 'success');
+    const pendingRows       = selectedRows.filter(r => (r.push_status || 'pending') !== 'success');
 
-    const alreadyPushedRows = selectedRows.filter(row => {
-        const status = row.push_status || 'pending';
-        return status === 'success';
-    });
+    // Decide which rows to push and whether to force-repush
+    let rowsToPush = pendingRows;
+    let forceRepush = false;
 
-    // Show message if all selected items are already pushed
-    if (rowsToPush.length === 0) {
-        alert("⚠️ All selected items are already pushed successfully!");
-        return;
+    if (alreadyPushedRows.length > 0 && pendingRows.length === 0) {
+        // All selected are already pushed — ask if they want to re-push
+        if (!confirm(`All ${alreadyPushedRows.length} selected item(s) are already pushed.\n\nDo you want to re-push them to Shopify? (Inventory will be adjusted again)`)) return;
+        rowsToPush = alreadyPushedRows;
+        forceRepush = true;
+    } else if (alreadyPushedRows.length > 0) {
+        // Mix — ask whether to include already-pushed ones
+        const includeAlready = confirm(
+            `You selected ${selectedRows.length} item(s).\n` +
+            `• ${pendingRows.length} pending/failed — will be pushed\n` +
+            `• ${alreadyPushedRows.length} already pushed\n\n` +
+            `Do you also want to RE-PUSH the already-pushed items?\n(Click OK to include them, Cancel to skip them)`
+        );
+        if (includeAlready) {
+            rowsToPush = selectedRows;
+            forceRepush = true;
+        } else {
+            if (!confirm(`Push ${pendingRows.length} pending item(s)? Continue?`)) return;
+        }
+    } else {
+        if (!confirm(`Push ${pendingRows.length} item(s)? Continue?`)) return;
     }
-
-    // Show message if some items are already pushed
-    let confirmMessage = `You have selected ${selectedRows.length} item(s).\n`;
-    if (alreadyPushedRows.length > 0) {
-        confirmMessage += `⚠️ ${alreadyPushedRows.length} item(s) are already pushed and will be skipped.\n`;
-    }
-    confirmMessage += `\nOnly ${rowsToPush.length} item(s) will be pushed.\n\nContinue?`;
-
-    if (!confirm(confirmMessage)) return;
 
     const tabName = activeTab.textContent.trim();
     const button = this;
     const originalText = button.innerHTML;
-    
-    // Disable button during processing
+
     button.disabled = true;
     button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pushing...';
 
     let successCount = 0;
-    let failedCount = 0;
-    let skippedCount = alreadyPushedRows.length; // Count already pushed items as skipped
+    let failedCount  = 0;
+    let skippedCount = 0;
+    const stillFailed = [];
 
-    // Process items one by one (only failed/pending items)
     for (let i = 0; i < rowsToPush.length; i++) {
-        const row = rowsToPush[i];
-        const rowId = row.id;
+        const row    = rowsToPush[i];
+        const rowId  = row.id;
         const tableRow = table.getRow(rowId);
-        
+
         if (!tableRow) continue;
 
-        // Update status to processing
-        tableRow.update({ push_status: 'processing' });
-        table.redraw();
+        const result = await pushSingleWithRetry(row, tableRow, table, tabName, forceRepush);
 
-        try {
-            const res = await fetch("/inventory-warehouse/push-single", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
-                },
-                body: JSON.stringify({ 
-                    tab_name: tabName, 
-                    data: {
-                        ...row,
-                        our_sku: row.our_sku ? row.our_sku.trim().toUpperCase() : '',
-                        id: rowId
-                    }
-                })
-            });
-
-            const response = await res.json();
-
-            // Update status based on response
-            if (response.status === 'success') {
-                tableRow.update({ 
-                    push_status: 'success',
-                    pushed: 1
-                });
-                tableRow.getElement().style.backgroundColor = "#d4edda";
-                tableRow.deselect();
-                successCount++;
-            } else if (response.status === 'skipped') {
-                // This should not happen since we filtered, but handle it anyway
-                tableRow.update({ push_status: 'success' });
-                tableRow.getElement().style.backgroundColor = "#fff3cd";
-                skippedCount++;
-            } else {
-                tableRow.update({ push_status: 'failed' });
-                tableRow.getElement().style.backgroundColor = "#f8d7da";
-                failedCount++;
-            }
-
-            table.redraw();
-
-        } catch (err) {
-            console.error(`Error pushing SKU ${row.our_sku}:`, err);
-            tableRow.update({ push_status: 'failed' });
-            tableRow.getElement().style.backgroundColor = "#f8d7da";
+        if (result.status === 'success') {
+            successCount++;
+        } else if (result.status === 'skipped') {
+            skippedCount++;
+        } else {
             failedCount++;
-            table.redraw();
+            stillFailed.push({ row, tableRow, error: result.error });
         }
 
-        // Small delay between items to avoid overwhelming the server
+        table.redraw();
+
         if (i < rowsToPush.length - 1) {
             await new Promise(resolve => setTimeout(resolve, 100));
         }
     }
 
-    // Re-enable button
+    // Final sweep: if anything is still failed after the per-row retry budget,
+    // give the user an option to keep retrying so the column eventually clears.
+    while (stillFailed.length > 0) {
+        const proceed = confirm(
+            `${stillFailed.length} item(s) are still failing after ${PUSH_MAX_ATTEMPTS} attempts each.\n\n` +
+            `Click OK to keep retrying these items, or Cancel to stop.`
+        );
+        if (!proceed) break;
+
+        const retryQueue = stillFailed.splice(0, stillFailed.length);
+        for (const item of retryQueue) {
+            const result = await pushSingleWithRetry(item.row, item.tableRow, table, tabName, forceRepush);
+            if (result.status === 'success') {
+                successCount++;
+                failedCount--;
+            } else if (result.status === 'skipped') {
+                skippedCount++;
+                failedCount--;
+            } else {
+                stillFailed.push(item);
+            }
+            table.redraw();
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+
     button.disabled = false;
     button.innerHTML = originalText;
 
-    // Show summary
     let message = `Push completed!\n\n`;
-    if (successCount > 0) {
-        message += `✅ Successfully pushed: ${successCount}\n`;
-    }
-    if (skippedCount > 0) {
-        message += `⚠️ Already pushed (skipped): ${skippedCount}\n`;
-    }
-    if (failedCount > 0) {
-        message += `❌ Failed: ${failedCount}\n`;
-    }
-    
-    if (successCount === 0 && failedCount === 0 && skippedCount > 0) {
-        message = `⚠️ All selected items were already pushed successfully!\n\nNo items were processed.`;
-    }
+    if (successCount > 0) message += `✅ Successfully pushed: ${successCount}\n`;
+    if (skippedCount > 0) message += `⚠️ Skipped (already pushed): ${skippedCount}\n`;
+    if (failedCount  > 0) message += `❌ Failed: ${failedCount}\n`;
 
     alert(message);
-    
-    // Update summary totals
     updateActiveTabSummary(index, table);
 });
 

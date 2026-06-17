@@ -12,6 +12,7 @@ class TemuCampaignReport extends Model
     protected $fillable = [
         'goods_name',
         'goods_id',
+        'sku',
         'report_range',
         'spend',
         'base_price_sales',

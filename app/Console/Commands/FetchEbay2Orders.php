@@ -60,17 +60,19 @@ class FetchEbay2Orders extends Command
 
     private function dateRanges()
     {
-        // Use California timezone (America/Los_Angeles) to match eBay order times
-        $today = Carbon::now('America/Los_Angeles')->startOfDay();
+        // Aligned with app:fetch-ebay-orders (Pacific, L30 end = now, L60 end = end of day 30 ago)
+        $tz = 'America/Los_Angeles';
+        $today = Carbon::now($tz)->startOfDay();
+        $now = Carbon::now($tz);
 
         return [
             'l30' => [
-                'start' => $today->copy()->subDays(30),
-                'end' => $today->copy(),
+                'start' => $today->copy()->subDays(30)->startOfDay(),
+                'end' => $now->copy(),
             ],
             'l60' => [
-                'start' => $today->copy()->subDays(60),
-                'end' => $today->copy()->subDays(30),
+                'start' => $today->copy()->subDays(60)->startOfDay(),
+                'end' => $today->copy()->subDays(30)->endOfDay(),
             ],
         ];
     }
@@ -115,8 +117,8 @@ class FetchEbay2Orders extends Command
     private function fetchOrders($token, $range)
     {
         $orders = [];
-        $from = $range['start']->format('Y-m-d\TH:i:s.000\Z');
-        $to = $range['end']->format('Y-m-d\TH:i:s.000\Z');
+        $from = $range['start']->copy()->utc()->format('Y-m-d\TH:i:s.000\Z');
+        $to = $range['end']->copy()->utc()->format('Y-m-d\TH:i:s.000\Z');
 
         $url = "https://api.ebay.com/sell/fulfillment/v1/order?filter=creationdate:[{$from}..{$to}]&limit=200";
 

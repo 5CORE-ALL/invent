@@ -526,7 +526,7 @@ class AutoUpdateAmzUnderKwBids extends Command
             }
 
             $bidOut = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc(
-                $ub2,
+                $ub7,
                 $ub1,
                 $l1_cpc,
                 $l2_cpc,
@@ -536,7 +536,7 @@ class AutoUpdateAmzUnderKwBids extends Command
             $row['sbid'] = $bidOut['sbid'];
             $row['ub2'] = $ub2;
 
-            $bothLowKw = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRule);
+            $bothLowKw = AmazonAdsSbidRule::isBothBelowUtilLow($ub7, $ub1, $sbidRule);
             // Same persisted SBID rule as over-KW / grid: red+red + under band only
             if ($row['INV'] > 0 && $row['campaignName'] !== '' && $baseBid > 0 && $bothLowKw && $bidOut['band'] === 'under'
                 && $row['sbid'] !== null && is_numeric($row['sbid']) && (float) $row['sbid'] > 0

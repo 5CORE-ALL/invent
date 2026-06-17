@@ -41,7 +41,18 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <div class="d-flex flex-wrap justify-content-end align-items-center mb-3 gap-2">
-                    <div class="d-flex flex-wrap gap-2">
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'rfq_form'])
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-sm btn-warning dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-file-import me-1"></i> Import
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="#" id="downloadFormTemplateBtn"><i class="fas fa-download me-2"></i>Download Template</a></li>
+                                <li><a class="dropdown-item" href="#" id="importFormBtn"><i class="fas fa-file-import me-2"></i>Import Form</a></li>
+                            </ul>
+                        </div>
+                        <input type="file" id="importFormInput" accept=".xlsx,.xls,.csv" style="display:none;">
                         <button id="add-new-row" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#createRFQFormModal">
                             <i class="fas fa-plus-circle me-1"></i> Create RFQ Form
                         </button>
@@ -122,12 +133,20 @@
                     <div class="border p-3 rounded">
                         <h6 class="fw-bold mb-3">Add Fields</h6>
 
+                        <div class="row g-3 mb-1 small text-muted fw-semibold">
+                            <div class="col-md-3">Label</div>
+                            <div class="col-md-2">Name</div>
+                            <div class="col-md-2">Type</div>
+                            <div class="col-md-2">Part (Basics / Details)</div>
+                            <div class="col-md-2">Options</div>
+                            <div class="col-md-1">Req.</div>
+                        </div>
                         <div id="dynamicFieldsWrapper">
                             <div class="row g-3 mb-2 field-item">
                                 <div class="col-md-3">
                                     <input type="text" name="fields[0][label]" class="form-control field-label" placeholder="Field Label" required>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <input type="text" name="fields[0][name]" class="form-control field-name" placeholder="Field Name (auto)" readonly>
                                 </div>
                                 <div class="col-md-2">
@@ -137,13 +156,19 @@
                                         <option value="select">Select</option>
                                     </select>
                                 </div>
-                                <div class="col-md-3 select-options-wrapper" style="display:none;">
+                                <div class="col-md-2">
+                                    <select name="fields[0][part]" class="form-select field-part">
+                                        <option value="basics">Basics</option>
+                                        <option value="details" selected>Details</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2 select-options-wrapper" style="display:none;">
                                     <input type="text" name="fields[0][options]" class="form-control" placeholder="Options (comma separated)">
                                 </div>
                                 <div class="col-md-1">
                                     <input type="checkbox" name="fields[0][required]" class="form-check-input mt-2" value="1"> Required
                                 </div>
-                                <div class="col-md-1">
+                                <div class="col-md-12">
                                     <button type="button" class="btn btn-danger btn-sm remove-field">X</button>
                                 </div>
                             </div>
@@ -230,6 +255,14 @@
                     <!-- Dynamic Fields -->
                     <div class="border p-3 rounded">
                         <h6 class="fw-bold mb-3">Edit Fields</h6>
+                        <div class="row g-3 mb-1 small text-muted fw-semibold">
+                            <div class="col-md-3">Label</div>
+                            <div class="col-md-2">Name</div>
+                            <div class="col-md-2">Type</div>
+                            <div class="col-md-2">Part (Basics / Details)</div>
+                            <div class="col-md-2">Options</div>
+                            <div class="col-md-1">Req.</div>
+                        </div>
                         <div id="editDynamicFieldsWrapper"></div>
                         <button type="button" class="btn btn-success btn-sm mt-2" id="addEditFieldBtn">
                             <i class="fas fa-plus"></i> Add Field
@@ -242,6 +275,62 @@
                     <button type="submit" class="btn btn-warning">Update Form</button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+{{-- Supplier Links Modal (Basics / Details / Combined) --}}
+<div class="modal fade" id="supplierLinksModal" tabindex="-1" aria-labelledby="supplierLinksModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered shadow-none">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold" id="supplierLinksModalLabel">
+                    <i class="fa-solid fa-share-nodes me-2"></i> Supplier Links
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-2">
+                    <span id="links_form_name" class="fw-bold"></span><br>
+                    These links share one supplier token, so <strong>Basics</strong> and <strong>Details</strong> submissions
+                    are automatically combined into the same supplier row in the report. Generate a new token for each supplier.
+                </p>
+
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <span class="small text-muted">Token:</span>
+                    <code id="links_token" class="px-2 py-1 bg-light border rounded"></code>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="regenerateTokenBtn">
+                        <i class="fa-solid fa-rotate"></i> New Token
+                    </button>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold text-primary">1. Basics link (Supplier details + Pricing/MOQ)</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" class="form-control link-field" id="link_basics" readonly>
+                        <button class="btn btn-outline-primary copy-link-btn" data-target="link_basics" type="button"><i class="fa-regular fa-copy"></i></button>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold text-success">2. Details link (Specs + Dimensions + Photos + Notes)</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" class="form-control link-field" id="link_details" readonly>
+                        <button class="btn btn-outline-success copy-link-btn" data-target="link_details" type="button"><i class="fa-regular fa-copy"></i></button>
+                    </div>
+                </div>
+
+                <div class="mb-1">
+                    <label class="form-label fw-semibold text-dark">3. Combined link (Both parts together)</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" class="form-control link-field" id="link_combined" readonly>
+                        <button class="btn btn-outline-dark copy-link-btn" data-target="link_combined" type="button"><i class="fa-regular fa-copy"></i></button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
         </div>
     </div>
 </div>
@@ -304,9 +393,79 @@
     </div>
 </div>
 
+{{-- Linked SKU Modal --}}
+<div class="modal fade" id="linkedSkusModal" tabindex="-1" aria-labelledby="linkedSkusModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered shadow-none">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold" id="linkedSkusModalLabel">
+                    <i class="fa-solid fa-tags me-2"></i> Linked SKUs
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="linked_skus_form_id">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Form Name:</label>
+                    <p id="linked_skus_form_name" class="text-muted mb-0"></p>
+                </div>
+
+                <div class="mb-3 position-relative">
+                    <label for="sku_search" class="form-label">Search SKU <span class="text-danger">*</span></label>
+                    <input type="text" id="sku_search" class="form-control" placeholder="Type to search by SKU or parent...">
+                    <small class="text-muted">Start typing to search and select multiple SKUs</small>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Selected SKUs</label>
+                    <div id="selectedSkusList" class="border rounded p-3" style="min-height: 80px; max-height: 220px; overflow-y: auto;">
+                        <p class="text-muted text-center mb-0">No SKUs selected</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="saveLinkedSkusBtn">
+                    <i class="fa-solid fa-floppy-disk me-1"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- History Modal --}}
+<div class="modal fade" id="rfqHistoryModal" tabindex="-1" aria-labelledby="rfqHistoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered shadow-none">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title fw-bold" id="rfqHistoryModalLabel">
+                    <i class="fa-solid fa-clock-rotate-left me-2"></i> RFQ Form History
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <h6 class="fw-bold mb-3" id="rfqHistoryFormName"></h6>
+                <div class="table-responsive">
+                    <table class="table table-bordered align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Action</th>
+                                <th>User</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rfqHistoryBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 @endsection
 @section('script')
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
     // Toast notification helper function
     function showToast(type, message) {
@@ -335,6 +494,45 @@
         });
     }
 
+    // Format a date string as "1 APR 26" (or "1 APR" when withYear is false)
+    function formatRfqDate(value, withYear = true) {
+        if (!value) return '';
+        const d = new Date(String(value).replace(' ', 'T'));
+        if (isNaN(d.getTime())) return '';
+        const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+        let out = d.getDate() + ' ' + months[d.getMonth()];
+        if (withYear) out += ' ' + String(d.getFullYear()).slice(-2);
+        return out;
+    }
+
+    // Show the created/updated history for an RFQ form in a modal
+    function showRfqHistory(data) {
+        document.getElementById('rfqHistoryFormName').textContent = data.name || '';
+
+        const rows = [
+            {
+                action: 'Created',
+                user: data.created_by || '-',
+                date: formatRfqDate(data.created_at) || '-'
+            },
+            {
+                action: 'Last Updated',
+                user: data.updated_by || '-',
+                date: formatRfqDate(data.updated_at) || '-'
+            }
+        ];
+
+        document.getElementById('rfqHistoryBody').innerHTML = rows.map(r => `
+            <tr>
+                <td><span class="badge bg-light text-dark">${r.action}</span></td>
+                <td>${r.user}</td>
+                <td class="fw-semibold">${r.date}</td>
+            </tr>
+        `).join('');
+
+        new bootstrap.Modal(document.getElementById('rfqHistoryModal')).show();
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
 
         const table = new Tabulator("#rfq-form-table", {
@@ -357,7 +555,86 @@
                     }
                 },
                 {
-                    title: "Report Link",
+                    title: "Linked SKU",
+                    field: "linked_skus",
+                    width: 220,
+                    headerSort: false,
+                    formatter: function(cell){
+                        const data = cell.getData();
+                        let skus = data.linked_skus || [];
+                        if(typeof skus === 'string'){
+                            try { skus = JSON.parse(skus) || []; } catch(e){ skus = []; }
+                        }
+                        if(!Array.isArray(skus)) skus = [];
+
+                        const badges = skus.length
+                            ? skus.map(s => `<span class="badge bg-info-subtle text-dark border me-1 mb-1">${s}</span>`).join('')
+                            : '<span class="text-muted fst-italic">No SKUs</span>';
+
+                        return `
+                            <div class="d-flex flex-column align-items-start py-1">
+                                <div class="mb-1" style="line-height:1.6;">${badges}</div>
+                                <button class="btn btn-sm btn-outline-primary manage-skus-btn" data-id="${data.id}" title="Add SKU" style="cursor:pointer; padding:2px 8px;">
+                                    <i class="fa-solid fa-plus"></i>
+                                </button>
+                            </div>
+                        `;
+                    },
+                    cellClick: function(e, cell){
+                        if(e.target.closest('.manage-skus-btn')){
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openLinkedSkusModal(cell.getData());
+                        }
+                    }
+                },
+                {
+                    title: "Form Link",
+                    field: "slug",
+                    width: 220,
+                    formatter: function(cell, formatterParams, onRendered){
+                        const slug = cell.getValue();
+                        if(!slug) return "";
+
+                        const base = window.location.origin + `/api/rfq-form/${slug}`;
+                        const basicsUrl = `${base}?part=basics`;
+                        const detailsUrl = `${base}?part=details`;
+
+                        return `
+                            <div class="d-flex flex-column gap-1 py-1">
+                                <div class="d-flex align-items-center gap-1">
+                                    <a href="${basicsUrl}" target="_blank" class="btn btn-sm btn-primary flex-grow-1 text-start">
+                                        <i class="fa-solid fa-link me-1"></i> Basics
+                                    </a>
+                                    <button class="btn btn-sm btn-outline-primary copy-form-link" data-link="${basicsUrl}" title="Copy Basics link">
+                                        <i class="fa-regular fa-copy"></i>
+                                    </button>
+                                </div>
+                                <div class="d-flex align-items-center gap-1">
+                                    <a href="${detailsUrl}" target="_blank" class="btn btn-sm btn-success flex-grow-1 text-start">
+                                        <i class="fa-solid fa-link me-1"></i> Details
+                                    </a>
+                                    <button class="btn btn-sm btn-outline-success copy-form-link" data-link="${detailsUrl}" title="Copy Details link">
+                                        <i class="fa-regular fa-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    },
+                    cellClick: function(e, cell){
+                        const copyBtn = e.target.closest('.copy-form-link');
+                        if(copyBtn){
+                            const link = copyBtn.dataset.link;
+                            navigator.clipboard.writeText(link).then(() => {
+                                showToast('success', 'Link copied successfully!');
+                            }).catch(() => {
+                                alert('Failed to copy link');
+                            });
+                        }
+                    }
+                },
+                {
+                    title: "Report",
                     field: "slug",
                     formatter: function(cell, formatterParams, onRendered){
                         const slug = cell.getValue();
@@ -373,46 +650,32 @@
                     },
                 },
                 {
-                    title: "Form Link",
-                    field: "slug",
-                    formatter: function(cell, formatterParams, onRendered){
-                        const slug = cell.getValue();
-                        if(!slug) return "";
-
-                        const fullUrl = window.location.origin + `/api/rfq-form/${slug}`;
+                    title: "Created / Updated",
+                    field: "updated_at",
+                    hozAlign: "center",
+                    formatter: function(cell){
+                        const d = cell.getData();
+                        const updatedDate = formatRfqDate(d.updated_at, false);
+                        const updatedBy = d.updated_by || '-';
 
                         return `
-                            <div class="d-flex justify-content-center align-item-center">
-                                <a href="${fullUrl}" target="_blank" class="btn btn-sm btn-outline-info me-2"><i class="fa-solid fa-link"></i></a>
-                                <button class="btn btn-sm btn-outline-primary copy-btn" data-slug="${fullUrl}"><i class="fa-regular fa-copy"></i></button>
+                            <div class="d-flex align-items-center justify-content-center gap-2 py-1" style="font-size:11px;">
+                                <div class="d-flex flex-column align-items-start lh-sm">
+                                    <span class="fw-semibold">${updatedDate || '-'}</span>
+                                    <span class="text-muted">${updatedBy}</span>
+                                </div>
+                                <button class="btn btn-sm btn-outline-secondary history-btn" data-id="${d.id}" title="View History" style="cursor:pointer; padding:2px 8px;">
+                                    <i class="fa-solid fa-clock-rotate-left"></i>
+                                </button>
                             </div>
                         `;
                     },
                     cellClick: function(e, cell){
-                        if(e.target.classList.contains('copy-btn')){
-                            const slug = e.target.dataset.slug;
-                            navigator.clipboard.writeText(slug).then(() => {
-                                showToast('success', 'Link copied successfully!');
-                            }).catch(() => {
-                                alert('Failed to copy slug');
-                            });
+                        if(e.target.closest('.history-btn')){
+                            e.preventDefault();
+                            e.stopPropagation();
+                            showRfqHistory(cell.getData());
                         }
-                    }
-                },
-                {
-                    title: "Created Date",
-                    field: "created_at",
-                    formatter: function(cell){
-                        let value = cell.getValue();
-                        return value ? moment(value).format('YYYY-MM-DD') : '';
-                    }
-                },
-                {
-                    title: "Updated Date",
-                    field: "updated_at",
-                    formatter: function(cell){
-                        let value = cell.getValue();
-                        return value ? moment(value).format('YYYY-MM-DD') : '';
                     }
                 },
                 {
@@ -429,11 +692,14 @@
                                 <button class="btn btn-sm btn-success me-2 edit-btn" data-id="${rowData.id}" title="Edit" style="cursor:pointer;">
                                     <i class="fa-solid fa-pen-to-square"></i>
                                 </button>
-                                <button class="btn btn-sm btn-info me-2 copy-btn" data-id="${rowData.id}" title="Copy" style="cursor:pointer;">
+                                <button class="btn btn-sm btn-warning me-2 copy-btn" data-id="${rowData.id}" title="Duplicate Form" style="cursor:pointer;">
                                     <i class="fa-solid fa-copy"></i>
                                 </button>
                                 <button class="btn btn-sm btn-primary me-2 send-email-btn" data-id="${rowData.id}" data-slug="${rowData.slug}" data-name="${rowData.name}" title="Send to Supplier" style="cursor:pointer;">
                                     <i class="fa-solid fa-envelope"></i>
+                                </button>
+                                <button class="btn btn-sm btn-dark me-2 links-btn" data-id="${rowData.id}" data-slug="${rowData.slug}" data-name="${rowData.name}" title="Supplier Links (Basics / Details)" style="cursor:pointer;">
+                                    <i class="fa-solid fa-share-nodes"></i>
                                 </button>
                                 <button class="btn btn-sm btn-danger delete-btn" data-id="${rowData.id}" title="Delete" style="cursor:pointer;">
                                     <i class="fa-solid fa-trash"></i>
@@ -481,7 +747,7 @@
                                                     <div class="col-md-3">
                                                         <input type="text" name="fields[${index}][label]" class="form-control field-label" value="${field.label || ''}" required>
                                                     </div>
-                                                    <div class="col-md-3">
+                                                    <div class="col-md-2">
                                                         <input type="text" name="fields[${index}][name]" class="form-control field-name" value="${field.name || ''}" readonly>
                                                     </div>
                                                     <div class="col-md-2">
@@ -491,13 +757,14 @@
                                                             <option value="select" ${field.type === 'select' ? 'selected':''}>Select</option>
                                                         </select>
                                                     </div>
-                                                    <div class="col-md-3 select-options-wrapper" style="${field.type === 'select' ? 'display:block':'display:none'};">
+                                                    ${fieldPartCol(index, field.part)}
+                                                    <div class="col-md-2 select-options-wrapper" style="${field.type === 'select' ? 'display:block':'display:none'};">
                                                         <input type="text" name="fields[${index}][options]" class="form-control" value="${field.options || ''}">
                                                     </div>
                                                     <div class="col-md-1">
                                                         <input type="checkbox" name="fields[${index}][required]" class="form-check-input mt-2" value="1" ${field.required ? 'checked':''}>
                                                     </div>
-                                                    <div class="col-md-1">
+                                                    <div class="col-md-12">
                                                         <button type="button" class="btn btn-danger btn-sm remove-field">X</button>
                                                     </div>
                                                 </div>
@@ -552,7 +819,7 @@
                                                     <div class="col-md-3">
                                                         <input type="text" name="fields[${index}][label]" class="form-control field-label" value="${field.label || ''}" required>
                                                     </div>
-                                                    <div class="col-md-3">
+                                                    <div class="col-md-2">
                                                         <input type="text" name="fields[${index}][name]" class="form-control field-name" value="${field.name || ''}" readonly>
                                                     </div>
                                                     <div class="col-md-2">
@@ -562,13 +829,14 @@
                                                             <option value="select" ${field.type === 'select' ? 'selected':''}>Select</option>
                                                         </select>
                                                     </div>
-                                                    <div class="col-md-3 select-options-wrapper" style="${field.type === 'select' ? 'display:block':'display:none'};">
+                                                    ${fieldPartCol(index, field.part)}
+                                                    <div class="col-md-2 select-options-wrapper" style="${field.type === 'select' ? 'display:block':'display:none'};">
                                                         <input type="text" name="fields[${index}][options]" class="form-control" value="${field.options || ''}">
                                                     </div>
                                                     <div class="col-md-1">
                                                         <input type="checkbox" name="fields[${index}][required]" class="form-check-input mt-2" value="1" ${field.required ? 'checked':''}>
                                                     </div>
-                                                    <div class="col-md-1">
+                                                    <div class="col-md-12">
                                                         <button type="button" class="btn btn-danger btn-sm remove-field">X</button>
                                                     </div>
                                                 </div>
@@ -576,32 +844,7 @@
                                         });
                                     } else {
                                         // Add one empty field if no fields exist
-                                        wrapper.insertAdjacentHTML('beforeend', `
-                                            <div class="row g-3 mb-2 field-item">
-                                                <div class="col-md-3">
-                                                    <input type="text" name="fields[0][label]" class="form-control field-label" placeholder="Field Label" required>
-                                                </div>
-                                                <div class="col-md-3">
-                                                    <input type="text" name="fields[0][name]" class="form-control field-name" placeholder="Field Name (auto)" readonly>
-                                                </div>
-                                                <div class="col-md-2">
-                                                    <select name="fields[0][type]" class="form-select field-type">
-                                                        <option value="text">Text</option>
-                                                        <option value="number">Number</option>
-                                                        <option value="select">Select</option>
-                                                    </select>
-                                                </div>
-                                                <div class="col-md-3 select-options-wrapper" style="display:none;">
-                                                    <input type="text" name="fields[0][options]" class="form-control" placeholder="Options (comma separated)">
-                                                </div>
-                                                <div class="col-md-1">
-                                                    <input type="checkbox" name="fields[0][required]" class="form-check-input mt-2" value="1"> Required
-                                                </div>
-                                                <div class="col-md-1">
-                                                    <button type="button" class="btn btn-danger btn-sm remove-field">X</button>
-                                                </div>
-                                            </div>
-                                        `);
+                                        wrapper.insertAdjacentHTML('beforeend', createFieldRow(0));
                                     }
 
                                     // Update field count
@@ -641,6 +884,13 @@
                             myModal.show();
                             return;
                         }
+
+                        if(e.target.closest('.links-btn')) {
+                            e.preventDefault();
+                            const btn = e.target.closest('.links-btn');
+                            openSupplierLinksModal(btn.dataset.slug, btn.dataset.name);
+                            return;
+                        }
                         
                         if(e.target.closest('.delete-btn')) {
                             e.preventDefault();
@@ -676,11 +926,204 @@
             },
         });
 
+        // ===== Import a new RFQ Form from a template =====
+        document.getElementById('downloadFormTemplateBtn').addEventListener('click', function(e){
+            e.preventDefault();
+            const formSheet = [
+                ['Name', 'Title', 'Subtitle', 'Dimension Inner', 'Product Dimension', 'Package Dimension'],
+                ['Sample RFQ Form', 'RFQ for Sample Product', 'Short description shown on the form', 'no', 'no', 'no']
+            ];
+            const fieldsSheet = [
+                ['Label', 'Name', 'Type', 'Part', 'Options', 'Required'],
+                ['Material', 'material', 'text', 'details', '', 'yes'],
+                ['Color', 'color', 'select', 'details', 'Black, White, Red', 'no'],
+                ['Target Price', 'target_price', 'number', 'basics', '', 'yes']
+            ];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(formSheet), 'Form');
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(fieldsSheet), 'Fields');
+            XLSX.writeFile(wb, 'rfq_form_template.xlsx');
+        });
+
+        document.getElementById('importFormBtn').addEventListener('click', function(e){
+            e.preventDefault();
+            document.getElementById('importFormInput').click();
+        });
+
+        document.getElementById('importFormInput').addEventListener('change', function(e){
+            const file = e.target.files[0];
+            if(!file) return;
+
+            const truthy = v => ['yes','y','true','1','required'].includes(String(v).toLowerCase().trim());
+            const reader = new FileReader();
+            reader.onload = function(ev){
+                try {
+                    const wb = XLSX.read(ev.target.result, { type: 'array' });
+
+                    // Sheet names are case-insensitive: find "Form" and "Fields"
+                    const findSheet = (name) => wb.SheetNames.find(n => n.toLowerCase() === name) || null;
+                    const formSheetName = findSheet('form') || wb.SheetNames[0];
+                    const fieldsSheetName = findSheet('fields') || wb.SheetNames[1];
+
+                    const formRows = XLSX.utils.sheet_to_json(wb.Sheets[formSheetName], { defval: '' });
+                    const meta = formRows[0] || {};
+
+                    const getMeta = (keys) => {
+                        for(const k of keys){
+                            for(const mk in meta){
+                                if(mk.toLowerCase().trim() === k){ return meta[mk]; }
+                            }
+                        }
+                        return '';
+                    };
+
+                    const payload = {
+                        name: getMeta(['name', 'form name', 'rfq form name']),
+                        title: getMeta(['title', 'heading', 'form heading']),
+                        subtitle: getMeta(['subtitle', 'description']),
+                        dimension_inner: truthy(getMeta(['dimension inner', 'dimension inner box'])) ? 'true' : null,
+                        product_dimension: truthy(getMeta(['product dimension'])) ? 'true' : null,
+                        package_dimension: truthy(getMeta(['package dimension'])) ? 'true' : null,
+                        fields: []
+                    };
+
+                    if(!payload.name || !payload.title){
+                        alert('The "Form" sheet must include at least a Name and Title.');
+                        e.target.value = '';
+                        return;
+                    }
+
+                    const fieldRows = fieldsSheetName ? XLSX.utils.sheet_to_json(wb.Sheets[fieldsSheetName], { defval: '' }) : [];
+                    const pick = (row, keys) => {
+                        for(const rk in row){
+                            if(keys.includes(rk.toLowerCase().trim())) return row[rk];
+                        }
+                        return '';
+                    };
+
+                    payload.fields = fieldRows.map((row, i) => {
+                        const label = String(pick(row, ['label'])).trim();
+                        if(!label) return null;
+                        let name = String(pick(row, ['name'])).trim();
+                        if(!name) name = label.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'');
+                        let type = String(pick(row, ['type'])).toLowerCase().trim();
+                        if(!['text','number','select'].includes(type)) type = 'text';
+                        let part = String(pick(row, ['part'])).toLowerCase().trim();
+                        if(!['basics','details'].includes(part)) part = 'details';
+                        return {
+                            label: label,
+                            name: name,
+                            type: type,
+                            part: part,
+                            options: String(pick(row, ['options'])).trim(),
+                            required: truthy(pick(row, ['required'])) ? 1 : 0,
+                            order: i + 1
+                        };
+                    }).filter(Boolean);
+
+                    if(payload.fields.length === 0){
+                        alert('The "Fields" sheet must include at least one field (with a Label).');
+                        e.target.value = '';
+                        return;
+                    }
+
+                    fetch('/rfq-form/import', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+                        body: JSON.stringify(payload)
+                    })
+                    .then(r => r.json())
+                    .then(res => {
+                        if(res.success){
+                            showToast('success', 'Form imported successfully!');
+                            table.replaceData();
+                        } else {
+                            alert('Import failed: ' + (res.message || 'Unknown error'));
+                        }
+                    })
+                    .catch(() => alert('Error importing form'))
+                    .finally(() => { e.target.value = ''; });
+                } catch(err){
+                    alert('Could not read the file. Please use the provided template.');
+                    e.target.value = '';
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        // ===== Supplier links (Basics / Details / Combined) =====
+        let linksCurrentSlug = '';
+
+        function generateToken(){
+            if(window.crypto && crypto.randomUUID){
+                return crypto.randomUUID().replace(/-/g, '').slice(0, 20);
+            }
+            return 'tok' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+        }
+
+        function buildSupplierLinks(token){
+            const base = window.location.origin + '/api/rfq-form/' + linksCurrentSlug;
+            document.getElementById('links_token').textContent = token;
+            document.getElementById('link_basics').value = `${base}?part=basics&token=${token}`;
+            document.getElementById('link_details').value = `${base}?part=details&token=${token}`;
+            document.getElementById('link_combined').value = `${base}?part=all&token=${token}`;
+        }
+
+        function openSupplierLinksModal(slug, name){
+            linksCurrentSlug = slug;
+            document.getElementById('links_form_name').textContent = name || '';
+            buildSupplierLinks(generateToken());
+            new bootstrap.Modal(document.getElementById('supplierLinksModal')).show();
+        }
+        window.openSupplierLinksModal = openSupplierLinksModal;
+
+        document.getElementById('regenerateTokenBtn').addEventListener('click', function(){
+            buildSupplierLinks(generateToken());
+        });
+
+        document.querySelectorAll('#supplierLinksModal .copy-link-btn').forEach(btn => {
+            btn.addEventListener('click', function(){
+                const input = document.getElementById(this.dataset.target);
+                if(!input) return;
+                navigator.clipboard.writeText(input.value).then(() => {
+                    showToast('success', 'Link copied!');
+                }).catch(() => {
+                    input.select();
+                    document.execCommand('copy');
+                });
+            });
+        });
+
+        // Auto-open the edit modal when arriving with ?edit=ID (e.g. from the public form's Edit button)
+        const urlParams = new URLSearchParams(window.location.search);
+        const autoEditId = urlParams.get('edit');
+        if(autoEditId){
+            const onceOpen = function(){
+                const editBtn = document.querySelector(`.edit-btn[data-id="${autoEditId}"]`);
+                if(editBtn){
+                    table.off("renderComplete", onceOpen);
+                    editBtn.click();
+                }
+            };
+            table.on("renderComplete", onceOpen);
+        }
+
 
         let fieldCount = 1;
 
         function slugify(text){
             return text.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'');
+        }
+
+        // Part (Basics / Details) selector column for a field row
+        function fieldPartCol(index, part){
+            const p = (part === 'basics') ? 'basics' : 'details';
+            return `<div class="col-md-2">
+                    <select name="fields[${index}][part]" class="form-select field-part">
+                        <option value="basics" ${p === 'basics' ? 'selected' : ''}>Basics</option>
+                        <option value="details" ${p === 'details' ? 'selected' : ''}>Details</option>
+                    </select>
+                </div>`;
         }
 
         function createFieldRow(index){
@@ -689,7 +1132,7 @@
                 <div class="col-md-3">
                     <input type="text" name="fields[${index}][label]" class="form-control field-label" placeholder="Field Label" required>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <input type="text" name="fields[${index}][name]" class="form-control field-name" placeholder="Field Name (auto)" readonly>
                 </div>
                 <div class="col-md-2">
@@ -699,13 +1142,14 @@
                         <option value="select">Select</option>
                     </select>
                 </div>
-                <div class="col-md-3 select-options-wrapper" style="display:none;">
+                ${fieldPartCol(index)}
+                <div class="col-md-2 select-options-wrapper" style="display:none;">
                     <input type="text" name="fields[${index}][options]" class="form-control" placeholder="Options (comma separated)">
                 </div>
                 <div class="col-md-1">
                     <input type="checkbox" name="fields[${index}][required]" class="form-check-input mt-2" value="1"> Required
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-12">
                     <button type="button" class="btn btn-danger btn-sm remove-field">X</button>
                 </div>
             </div>
@@ -772,29 +1216,7 @@
                 
                 // Reset fields wrapper to initial state
                 const wrapper = document.getElementById('dynamicFieldsWrapper');
-                wrapper.innerHTML = `
-                    <div class="row g-3 mb-2 field-item">
-                        <div class="col-md-3">
-                            <input type="text" name="fields[0][label]" class="form-control field-label" placeholder="Field Label" required>
-                        </div>
-                        <div class="col-md-3">
-                            <input type="text" name="fields[0][name]" class="form-control field-name" placeholder="Field Name (auto)" readonly>
-                        </div>
-                        <div class="col-md-2">
-                            <select name="fields[0][type]" class="form-select field-type">
-                                <option value="text">Text</option>
-                                <option value="number">Number</option>
-                                <option value="select">Select</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3 select-options-wrapper" style="display:none;">
-                            <input type="text" name="fields[0][options]" class="form-control" placeholder="Options (comma separated)">
-                        </div>
-                        <div class="col-md-2">
-                            <input type="checkbox" name="fields[0][required]" class="form-check-input mt-2" value="1"> Required
-                        </div>
-                    </div>
-                `;
+                wrapper.innerHTML = createFieldRow(0);
                 fieldCount = 1;
             }
             isCopyAction = false; // Reset flag
@@ -1039,9 +1461,10 @@
                 const label = item.querySelector('.field-label')?.value || '';
                 const name = item.querySelector('.field-name')?.value || '';
                 const type = item.querySelector('.field-type')?.value || 'text';
+                const part = item.querySelector('.field-part')?.value || 'details';
                 const options = item.querySelector('[name*="[options]"]')?.value || '';
                 const required = item.querySelector('[name*="[required]"]')?.checked ? 1 : 0;
-                fields.push({ label, name, type, options, required, order: index + 1 });
+                fields.push({ label, name, type, part, options, required, order: index + 1 });
             });
 
             const formData = new FormData(this);
@@ -1066,6 +1489,145 @@
                 }
             })
             .catch(() => alert("Error updating form"));
+        });
+
+        // ===== Linked SKUs management =====
+        let selectedSkus = [];
+        let skuSearchTimeout;
+
+        window.openLinkedSkusModal = function(data){
+            document.getElementById('linked_skus_form_id').value = data.id;
+            document.getElementById('linked_skus_form_name').textContent = data.name || '';
+
+            let skus = data.linked_skus || [];
+            if(typeof skus === 'string'){
+                try { skus = JSON.parse(skus) || []; } catch(e){ skus = []; }
+            }
+            if(!Array.isArray(skus)) skus = [];
+            selectedSkus = skus.slice();
+
+            document.getElementById('sku_search').value = '';
+            renderSelectedSkus();
+            hideSkuDropdown();
+
+            new bootstrap.Modal(document.getElementById('linkedSkusModal')).show();
+        };
+
+        function renderSelectedSkus(){
+            const list = document.getElementById('selectedSkusList');
+            if(!selectedSkus.length){
+                list.innerHTML = '<p class="text-muted text-center mb-0">No SKUs selected</p>';
+                return;
+            }
+            list.innerHTML = selectedSkus.map(sku => `
+                <span class="badge bg-primary-subtle text-dark border d-inline-flex align-items-center me-1 mb-1 p-2">
+                    ${sku}
+                    <button type="button" class="btn-close ms-2" style="font-size:.6rem;" data-sku="${sku}" aria-label="Remove"></button>
+                </span>
+            `).join('');
+        }
+
+        document.getElementById('selectedSkusList').addEventListener('click', function(e){
+            const btn = e.target.closest('[data-sku]');
+            if(btn){
+                const sku = btn.getAttribute('data-sku');
+                selectedSkus = selectedSkus.filter(s => s !== sku);
+                renderSelectedSkus();
+            }
+        });
+
+        document.getElementById('sku_search').addEventListener('input', function(e){
+            const term = e.target.value.trim();
+            if(term.length < 1){ hideSkuDropdown(); return; }
+            clearTimeout(skuSearchTimeout);
+            skuSearchTimeout = setTimeout(() => {
+                fetch(`{{ url('/rfq-form/skus/search') }}?q=${encodeURIComponent(term)}`, {
+                    headers: { 'Accept':'application/json', 'X-Requested-With':'XMLHttpRequest' }
+                })
+                .then(r => r.json())
+                .then(res => {
+                    if(res.items && res.items.length){ showSkuDropdown(res.items); }
+                    else { hideSkuDropdown(); }
+                })
+                .catch(() => hideSkuDropdown());
+            }, 300);
+        });
+
+        function showSkuDropdown(items){
+            hideSkuDropdown();
+            const dropdown = document.createElement('div');
+            dropdown.id = 'skuDropdown';
+            dropdown.className = 'list-group position-absolute w-100';
+            dropdown.style.cssText = 'z-index:1060; max-height:220px; overflow-y:auto; border:1px solid #ddd; border-radius:4px;';
+
+            let added = 0;
+            items.forEach(item => {
+                if(selectedSkus.includes(item.id)) return;
+                added++;
+                const a = document.createElement('a');
+                a.href = '#';
+                a.className = 'list-group-item list-group-item-action';
+                a.textContent = item.text;
+                a.addEventListener('click', function(ev){
+                    ev.preventDefault();
+                    if(!selectedSkus.includes(item.id)){
+                        selectedSkus.push(item.id);
+                        renderSelectedSkus();
+                    }
+                    document.getElementById('sku_search').value = '';
+                    hideSkuDropdown();
+                });
+                dropdown.appendChild(a);
+            });
+
+            if(added === 0) return;
+
+            const wrapper = document.getElementById('sku_search').parentElement;
+            wrapper.appendChild(dropdown);
+        }
+
+        function hideSkuDropdown(){
+            const d = document.getElementById('skuDropdown');
+            if(d) d.remove();
+        }
+
+        document.addEventListener('click', function(e){
+            if(!e.target.closest('#sku_search') && !e.target.closest('#skuDropdown')){
+                hideSkuDropdown();
+            }
+        });
+
+        document.getElementById('saveLinkedSkusBtn').addEventListener('click', function(){
+            const id = document.getElementById('linked_skus_form_id').value;
+            const btn = this;
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Saving...';
+
+            const formData = new FormData();
+            if(selectedSkus.length === 0){
+                formData.append('linked_skus', '');
+            }
+            selectedSkus.forEach(sku => formData.append('linked_skus[]', sku));
+
+            fetch(`/rfq-form/${id}/linked-skus`, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept':'application/json' }
+            })
+            .then(r => r.json())
+            .then(res => {
+                if(res.success){
+                    const row = table.getRow(id);
+                    if(row){ row.update({ linked_skus: res.linked_skus }); }
+                    showToast('success', 'Linked SKUs updated successfully!');
+                    bootstrap.Modal.getInstance(document.getElementById('linkedSkusModal')).hide();
+                } else {
+                    alert('Failed: ' + (res.message || 'Unknown error'));
+                }
+            })
+            .catch(() => alert('Error saving linked SKUs'))
+            .finally(() => { btn.disabled = false; btn.innerHTML = original; });
         });
 
     });

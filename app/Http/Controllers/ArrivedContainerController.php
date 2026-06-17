@@ -7,9 +7,12 @@ use App\Models\ArrivedContainerHistory;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\Supplier;
+use App\Models\MfrgProgress;
+use App\Models\ReadyToShip;
 use App\Models\TransitContainerDetail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\OnSeaTransit;
 
@@ -153,6 +156,60 @@ class ArrivedContainerController extends Controller
                 TransitContainerDetail::where('id', $row['id'])->update([
                     'status' => 'inactive',
                 ]);
+            }
+
+            // End-of-cycle handling for the SKU we just Arrived.
+            //
+            // User intent ("the cycle ends here, save in archived"):
+            //   1. The SKU must no longer appear on the MIP In Progress page.
+            //   2. Its data should remain available via the MIP page's "Show archived"
+            //      toggle (i.e. soft-deleted, restorable — same behavior as the existing
+            //      Archive button on MIP), not hard-deleted.
+            //   3. If a stage is set on the row in forecast_analysis we clear it back to
+            //      "Select stage" (empty), so the forecast page applies its own rule
+            //      format from there instead of leaving a misleading stage like 'mip' /
+            //      'transit' / 'r2s' hanging around. We don't put 'all_good' there — that
+            //      would just be another active stage instead of the empty "Select" state.
+            $rawSku = (string) ($row['our_sku'] ?? '');
+            $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', $rawSku)));
+
+            if ($normSku !== '') {
+                $rawParent = (string) ($row['parent'] ?? '');
+                $normParent = strtoupper(trim(preg_replace('/\s+/', ' ', $rawParent)));
+
+                // (1+2) Archive any matching mfrg_progress row(s) — soft delete via the
+                // SoftDeletes trait. Mirrors what /mfrg-progresses/delete already does
+                // when a user clicks the MIP "Archive" button, so the row shows up under
+                // the same "Show archived" filter and can be restored from there.
+                MfrgProgress::query()
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$normSku])
+                    ->delete();
+
+                // Same for ready_to_ship rows still on R2S (transit_inv_status = 0) — if
+                // the SKU was an RTS row showing on MIP it must also drop off.
+                ReadyToShip::query()
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$normSku])
+                    ->where('transit_inv_status', 0)
+                    ->delete();
+
+                // (3) Clear the stage in forecast_analysis so it goes back to the
+                // "Select stage" / empty state and the forecast page applies its rules.
+                // Parent-scoped match first so SKUs reused across parents don't bleed.
+                $cleared = 0;
+                if ($normParent !== '') {
+                    $cleared = (int) DB::table('forecast_analysis')
+                        ->whereRaw('TRIM(UPPER(sku)) = ?', [$normSku])
+                        ->whereRaw('TRIM(UPPER(COALESCE(parent, ?))) = ?', ['', $normParent])
+                        ->update(['stage' => '', 'updated_at' => now()]);
+                }
+                if ($cleared === 0) {
+                    DB::table('forecast_analysis')
+                        ->whereRaw('TRIM(UPPER(sku)) = ?', [$normSku])
+                        ->update(['stage' => '', 'updated_at' => now()]);
+                }
+                // No forecast row? Do NOT insert one — the user said "if stage is
+                // required" it should go to Select; if there isn't one, no stage is
+                // required and we shouldn't fabricate a row.
             }
         }
 

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Sales;
 use App\Http\Controllers\Controller;
 use App\Models\DobaDailyData;
 use App\Models\ProductMaster;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class DobaSalesController extends Controller
@@ -36,6 +37,26 @@ class DobaSalesController extends Controller
             ->select(['sku', 'Values'])
             ->get()
             ->keyBy('sku');
+
+        // L60 sales per SKU — for the L60 Sales badge.
+        // total_price already represents quantity * item_price.
+        $l60SalesBySku = DobaDailyData::where('period', 'L60')
+            ->selectRaw('sku, SUM(total_price) as l60_total')
+            ->groupBy('sku')
+            ->pluck('l60_total', 'sku')
+            ->map(fn ($v) => (float) $v)
+            ->toArray();
+
+        // L60 window: same convention as FetchDobaDailyData — orders older than
+        // 30 days but within the last 60 days (i.e. day 60 → day 30 back from now).
+        $now = Carbon::now();
+        $l60Start = $now->copy()->subDays(60)->startOfDay();
+        $l60End   = $now->copy()->subDays(30)->endOfDay();
+        $l60Range = [
+            'start'   => $l60Start->toDateString(),
+            'end'     => $l60End->toDateString(),
+            'display' => $l60Start->format('M d, Y') . ' – ' . $l60End->format('M d, Y'),
+        ];
 
         // Process data to match Amazon structure
         $processedData = [];
@@ -115,7 +136,12 @@ class DobaSalesController extends Controller
             ];
         }
 
-        return response()->json($processedData);
+        return response()->json([
+            'data' => $processedData,
+            'l60_sales_by_sku' => $l60SalesBySku,
+            'l60_sales_total' => array_sum($l60SalesBySku),
+            'l60_range' => $l60Range,
+        ]);
     }
 
     public function getColumnVisibility(Request $request)

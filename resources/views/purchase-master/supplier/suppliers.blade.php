@@ -136,6 +136,19 @@
             background-color: #495057 !important;
             transform: scale(1.15);
         }
+
+        /* Remove black backdrop completely */
+        .modal-backdrop {
+            display: none !important;
+        }
+
+        .modal-backdrop.show {
+            display: none !important;
+        }
+
+        .modal.show {
+            background-color: transparent !important;
+        }
     </style>
 @endsection
 
@@ -163,15 +176,23 @@
                             @endif
                         </span>
                     </div>
-                    <div class="d-flex gap-2">
+                    <div class="d-flex gap-2 align-items-center">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'suppliers'])
                         <button type="button" class="btn btn-primary" data-bs-toggle="modal"
                             data-bs-target="#addSupplierModal">
                             <i class="mdi mdi-plus me-1"></i> Add Supplier
+                        </button>
+                        <button type="button" class="btn btn-info" data-bs-toggle="modal"
+                            data-bs-target="#addCategoryModal">
+                            <i class="mdi mdi-plus me-1"></i> Add Category
                         </button>
                         <button type="button" class="btn btn-success" data-bs-toggle="modal"
                             data-bs-target="#bulkImportModal">
                             <i class="mdi mdi-file-import me-1"></i> Bulk Import
                         </button>
+                        <a href="{{ route('supplier.export') }}" id="export-suppliers-btn" class="btn btn-outline-success">
+                            <i class="mdi mdi-file-export me-1"></i> Export
+                        </a>
                     </div>
                 </div>
 
@@ -264,7 +285,7 @@
                                 <th>Name</th>
                                 <th class="text-center">Approved</th>
                                 <th>Company</th>
-                                <th class="parents-col">P</th>
+                                <th class="parents-col">Product</th>
                                 <th>Zone</th>
                                 <th>Phone</th>
                                 <th>Rating</th>
@@ -340,9 +361,43 @@
     </div>
 </div>
 
+<!-- Add Category Modal -->
+<div class="modal fade" id="addCategoryModal" tabindex="-1" aria-labelledby="addCategoryModalLabel" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered shadow-none modal-lg">
+        <div class="modal-content border-0 rounded-3">
+            <div class="modal-header bg-primary text-white rounded-top">
+                <h5 class="modal-title" id="addCategoryModalLabel">
+                    <i class="mdi mdi-plus-circle me-1"></i> Add New Category
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="row g-3">
+                    <div class="col-md-8">
+                        <label for="new_category_name" class="form-label fw-semibold">Category Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="new_category_name" name="category_name" placeholder="Enter category name">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="new_category_status" class="form-label fw-semibold">Status</label>
+                        <select class="form-select" id="new_category_status" name="status">
+                            <option value="active" selected>Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary px-4" id="submit-add-category">
+                    <i class="mdi mdi-content-save me-1"></i> Save Category
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Supplier Modal -->
 <div class="modal fade" id="addSupplierModal" tabindex="-1" aria-labelledby="supplierModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered shadow-none">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable shadow-none">
         <div class="modal-content border-0 shadow-lg">
             <form method="POST" action="{{ route('supplier.create') }}" class="needs-validation" novalidate id="addSupplierForm">
                 @csrf
@@ -391,11 +446,6 @@
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Company</label>
                             <input type="text" name="company" class="form-control" placeholder="Company Name">
-                        </div>
-                        <div class="col-md-12">
-                            <label class="form-label fw-semibold">Parents</label>
-                            <input type="text" name="parent" class="form-control" placeholder="Use commas to separate multiple Parents (e.g., TV-BOX, CAMERA)">
-                            <small class="text-muted">Separate multiple parents with commas</small>
                         </div>
                         <div class="col-md-6">
                             <div class="row">
@@ -760,6 +810,64 @@
                 });
                 // Reset form
                 modal.find('form')[0].reset();
+            });
+
+            // Add Category modal — submit handler
+            $('#submit-add-category').on('click', function(e) {
+                e.preventDefault();
+
+                const categoryName = $('#new_category_name').val().trim();
+                if (!categoryName) {
+                    alert('Please enter a category name.');
+                    $('#new_category_name').focus();
+                    return;
+                }
+
+                const data = {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    category_name: categoryName,
+                    status: $('#new_category_status').val() || 'inactive'
+                };
+
+                const submitBtn = $('#submit-add-category');
+                const origHtml = submitBtn.html();
+                submitBtn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Saving...');
+
+                $.ajax({
+                    url: '{{ route('category.create') }}',
+                    method: 'POST',
+                    data: data,
+                    dataType: 'json',
+                    success: function(response) {
+                        if (response.success) {
+                            $('#addCategoryModal').modal('hide');
+                            $('#new_category_name').val('');
+                            $('#new_category_status').val('active');
+                            location.reload();
+                        } else {
+                            alert(response.message || 'Failed to save category.');
+                            submitBtn.prop('disabled', false).html(origHtml);
+                        }
+                    },
+                    error: function(xhr) {
+                        let errorMessage = 'An error occurred while saving the category.';
+                        if (xhr.responseJSON) {
+                            if (xhr.responseJSON.errors) {
+                                errorMessage = Object.values(xhr.responseJSON.errors).flat().join('\n');
+                            } else if (xhr.responseJSON.message) {
+                                errorMessage = xhr.responseJSON.message;
+                            }
+                        }
+                        alert(errorMessage);
+                        submitBtn.prop('disabled', false).html(origHtml);
+                    }
+                });
+            });
+
+            // Reset Add Category modal when closed
+            $('#addCategoryModal').on('hidden.bs.modal', function() {
+                $('#new_category_name').val('');
+                $('#new_category_status').val('active');
             });
             
             // Handle form submission with validation
@@ -1333,6 +1441,19 @@
             
             // Attach handlers initially
             attachFilterHandlers();
+
+            // Keep the Export button in sync with the active filters
+            $('#export-suppliers-btn').on('click', function (e) {
+                const params = new URLSearchParams();
+                const category = $('#category-filter').val() || '';
+                const type = $('#type-filter').val() || '';
+                const search = ($('#search-input').val() || '').trim();
+                if (category) params.set('category', category);
+                if (type) params.set('type', type);
+                if (search) params.set('search', search);
+                const base = '{{ route('supplier.export') }}';
+                $(this).attr('href', base + (params.toString() ? '?' + params.toString() : ''));
+            });
 
             // Apply filters when search input changes (with debounce and Enter key)
             let searchTimer;

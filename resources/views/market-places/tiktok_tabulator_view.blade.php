@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => $tiktokPageTitle ?? 'TikTok Shop Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => $tiktokPageTitle ?? 'TikTok Shop - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -153,8 +153,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => $tiktokPageTitle ?? 'TikTok Shop Analytics',
-        'sub_title' => $tiktokPageTitle ?? 'TikTok Shop Analytics',
+        'page_title' => $tiktokPageTitle ?? 'TikTok Shop - Analytics',
+        'sub_title' => '',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -228,9 +228,8 @@
                         <select id="cvr-filter" class="form-select form-select-sm" style="width: 130px;">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
-                            <option value="0-2">0-2%</option>
-                            <option value="2-4">2-4%</option>
-                            <option value="4-7">4-7%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
                             <option value="7-13">7-13%</option>
                             <option value="13plus">13%+</option>
                         </select>
@@ -241,9 +240,7 @@
                         <option value="lt40">&lt;40%</option>
                         <option value="40-75">40 to 75%</option>
                         <option value="75-125">75 to 125%</option>
-                        <option value="125-175">125 to 175%</option>
-                        <option value="175-250">175 to 250%</option>
-                        <option value="gt250">&gt;250%</option>
+                        <option value="gt125">125%+</option>
                     </select>
 
                     <select id="ad-click-filter" class="form-select form-select-sm" style="width: 130px;">
@@ -303,7 +300,7 @@
                     </button>
 
                     <button id="price-mode-btn" class="btn btn-sm btn-secondary"
-                        title="Cycle mode: Off → Decrease → Increase">
+                        title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         <i class="fas fa-exchange-alt"></i> Price Mode
                     </button>
 
@@ -439,14 +436,17 @@
             <div class="card-body" style="padding: 0;">
                 <!-- Discount Input Box -->
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span id="selected-skus-count" class="fw-bold"></span>
+                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
+                        <span id="discount-type-select-wrap">
                         <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
                             <option value="percentage">Percentage</option>
                             <option value="value">Value ($)</option>
                         </select>
+                        </span>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm"
-                            placeholder="Enter %" step="0.01" style="width: 100px;">
+                            placeholder="Enter %" step="0.01" style="width: 140px;">
                         <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
                         <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
                             <i class="fas fa-eraser"></i> Clear SPRICE
@@ -521,6 +521,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="tiktokEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="tiktokEditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="tiktokSellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="tiktokBuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="tiktokSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @php
@@ -530,6 +559,7 @@
             'badgeChart' => '/tiktok-badge-chart-data',
             'saveSprice' => '/tiktok-save-sprice',
             'saveNrp' => route('tiktok.save.nrp'),
+            'saveLinks' => '/tiktok-save-links',
             'columnGet' => '/tiktok-pricing-column-visibility',
             'columnSet' => '/tiktok-pricing-column-visibility',
             'distinctCampaign' => '/tiktok-distinct-campaign-count',
@@ -553,6 +583,7 @@
         let totalDistinctCampaigns = 0; // from API: COUNT(DISTINCT campaign_name) in tiktok_campaign_reports
         let decreaseModeActive = false;
         let increaseModeActive = false;
+        let samePriceModeActive = false;
         let selectedSkus = new Set();
 
         // Toast notification function
@@ -605,7 +636,105 @@
             return d !== null && d > 3;
         }
 
+        function ttIsParentRow(data) {
+            return data && (data.is_parent === true || (data.Parent && String(data.Parent).startsWith('PARENT ')));
+        }
+
+        function ttRowIsMissing(d) {
+            if (ttIsParentRow(d)) return false;
+            return String(d.Missing || '').trim().toUpperCase() === 'M';
+        }
+
+        function ttRowIsMap(d) {
+            if (ttIsParentRow(d)) return false;
+            if (ttRowIsMissing(d)) return false;
+            const mapValue = d.MAP;
+            if (mapValue === 'Map') return true;
+            const diff = ttAbsDiffFromMapValue(mapValue);
+            return diff !== null && diff <= 3;
+        }
+
+        function ttRowIsNMap(d) {
+            if (ttIsParentRow(d)) return false;
+            return ttIsStrictNMapMapValue(d.MAP, ttRowIsMissing(d));
+        }
+
+        // ---- Edit Links (Buyer / Seller) ----
+        function ttLinksNotify(msg, type) {
+            if (window.toastr) {
+                if (type === 'error' || type === 'danger') toastr.error(msg);
+                else if (type === 'warning') toastr.warning(msg);
+                else toastr.success(msg);
+                return;
+            }
+            let c = document.getElementById('ttLinksToastContainer');
+            if (!c) {
+                c = document.createElement('div');
+                c.id = 'ttLinksToastContainer';
+                c.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;';
+                document.body.appendChild(c);
+            }
+            const t = document.createElement('div');
+            const bg = (type === 'error' || type === 'danger') ? '#dc3545' : (type === 'warning' ? '#fd7e14' : '#198754');
+            t.style.cssText = 'min-width:220px;max-width:340px;color:#fff;background:' + bg + ';padding:12px 16px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.18);font-size:14px;opacity:0;transition:opacity .25s ease;';
+            t.textContent = msg;
+            c.appendChild(t);
+            requestAnimationFrame(function() { t.style.opacity = '1'; });
+            setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 300); }, 2600);
+        }
+        let tiktokEditLinksRow = null;
+        window.openTiktokEditLinksModal = function(row) {
+            tiktokEditLinksRow = row;
+            const d = row.getData();
+            $('#tiktokEditLinksSku').text(d['(Child) sku'] || '');
+            $('#tiktokSellerLinkInput').val(d['S Link'] || '');
+            $('#tiktokBuyerLinkInput').val(d['B Link'] || '');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('tiktokEditLinksModal')).show();
+        };
+        $(document).on('click', '#tiktokSaveLinksBtn', function() {
+            if (!tiktokEditLinksRow) return;
+            const sku = tiktokEditLinksRow.getData()['(Child) sku'];
+            const sellerLink = $('#tiktokSellerLinkInput').val().trim();
+            const buyerLink = $('#tiktokBuyerLinkInput').val().trim();
+            const $btn = $(this);
+            $btn.prop('disabled', true).text('Saving...');
+            $.ajax({
+                url: (typeof TTP_CFG !== 'undefined' && TTP_CFG.saveLinks) ? TTP_CFG.saveLinks : '/tiktok-save-links',
+                method: 'POST',
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    sku: sku,
+                    seller_link: sellerLink,
+                    buyer_link: buyerLink
+                },
+                success: function(res) {
+                    if (res && res.success) {
+                        tiktokEditLinksRow.update({
+                            'S Link': res.seller_link || '',
+                            'B Link': res.buyer_link || ''
+                        }).then(function() {
+                            tiktokEditLinksRow.reformat();
+                        }).catch(function() {
+                            tiktokEditLinksRow.reformat();
+                        });
+                        ttLinksNotify('Links saved successfully', 'success');
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById('tiktokEditLinksModal')).hide();
+                    } else {
+                        ttLinksNotify((res && res.message) || 'Failed to save links', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save links';
+                    ttLinksNotify(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text('Save');
+                }
+            });
+        });
+
         $(document).ready(function() {
+            let ttAllSkuRows = [];
             let ttBadgeChartInstance = null;
             let ttBadgeChartDays = 30;
             let ttBadgeChartMetricKey = '';
@@ -874,51 +1003,68 @@
                 loadTtBadgeChart();
             });
 
-            // Discount type dropdown change handler
-            $('#discount-type-select').on('change', function() {
-                const discountType = $(this).val();
+            // Swap the discount-input panel between %/$ and Same Price modes.
+            function syncDiscountInputUi() {
                 const $input = $('#discount-percentage-input');
-
-                if (discountType === 'percentage') {
-                    $input.attr('placeholder', 'Enter %');
+                if (samePriceModeActive) {
+                    $('#discount-type-select-wrap').hide();
+                    $('#discount-input-label').removeClass('d-none');
+                    $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
+                    $('#apply-discount-btn').text('Apply Same Price');
                 } else {
-                    $input.attr('placeholder', 'Enter $');
+                    $('#discount-type-select-wrap').show();
+                    $('#discount-input-label').addClass('d-none');
+                    const t = $('#discount-type-select').val();
+                    $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
+                    $('#apply-discount-btn').text('Apply');
                 }
-            });
+            }
 
-            // Single Price Mode button: Off -> Decrease ON -> Increase ON -> Off
+            // Discount type dropdown change handler
+            $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
+
+            // Single Price Mode cycle: Off → Decrease → Increase → Same Price → Off
             function syncPriceModeUi() {
                 const $btn = $('#price-mode-btn');
                 const selectColumn = table.getColumn('_select');
                 if (decreaseModeActive) {
-                    $btn.removeClass('btn-secondary btn-primary').addClass('btn-danger')
+                    $btn.removeClass('btn-secondary btn-primary btn-info').addClass('btn-danger')
                         .html('<i class="fas fa-arrow-down"></i> Decrease ON');
                     selectColumn.show();
+                    syncDiscountInputUi();
                     return;
                 }
                 if (increaseModeActive) {
-                    $btn.removeClass('btn-secondary btn-danger').addClass('btn-primary')
+                    $btn.removeClass('btn-secondary btn-danger btn-info').addClass('btn-primary')
                         .html('<i class="fas fa-arrow-up"></i> Increase ON');
                     selectColumn.show();
+                    syncDiscountInputUi();
                     return;
                 }
-                $btn.removeClass('btn-danger btn-primary').addClass('btn-secondary')
+                if (samePriceModeActive) {
+                    $btn.removeClass('btn-secondary btn-danger btn-primary').addClass('btn-info')
+                        .html('<i class="fas fa-equals"></i> Same Price ON');
+                    selectColumn.show();
+                    syncDiscountInputUi();
+                    return;
+                }
+                $btn.removeClass('btn-danger btn-primary btn-info').addClass('btn-secondary')
                     .html('<i class="fas fa-exchange-alt"></i> Price Mode');
                 selectColumn.hide();
                 selectedSkus.clear();
                 updateSelectedCount();
+                syncDiscountInputUi();
             }
 
             $('#price-mode-btn').on('click', function() {
-                if (!decreaseModeActive && !increaseModeActive) {
-                    decreaseModeActive = true;
-                    increaseModeActive = false;
+                if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                    decreaseModeActive = true;  increaseModeActive = false; samePriceModeActive = false;
                 } else if (decreaseModeActive) {
-                    decreaseModeActive = false;
-                    increaseModeActive = true;
+                    decreaseModeActive = false; increaseModeActive = true;  samePriceModeActive = false;
+                } else if (increaseModeActive) {
+                    decreaseModeActive = false; increaseModeActive = false; samePriceModeActive = true;
                 } else {
-                    decreaseModeActive = false;
-                    increaseModeActive = false;
+                    decreaseModeActive = false; increaseModeActive = false; samePriceModeActive = false;
                 }
                 syncPriceModeUi();
             });
@@ -1033,79 +1179,128 @@
                 clearSpriceForSelected();
             });
 
-            // 0 Sold badge click handler (same mutual exclusivity as ebay2-tabulator-view)
             let zeroSoldFilterActive = false;
-            $('#zero-sold-count-badge').on('click', function() {
-                zeroSoldFilterActive = !zeroSoldFilterActive;
-                moreSoldFilterActive = false;
-                missingFilterActive = false;
-                mapFilterActive = false;
-                invTTStockFilterActive = false;
-                adsBadgeFilter = null;
-                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
-                applyFilters();
-            });
-
-            // > 0 Sold badge click handler
             let moreSoldFilterActive = false;
-            $('#more-sold-count-badge').on('click', function() {
-                moreSoldFilterActive = !moreSoldFilterActive;
+            let missingFilterActive = false;
+            let mapFilterActive = false;
+            let invTTStockFilterActive = false;
+            let adsBadgeFilter = null;
+
+            function ttDismissBadgeChartModal() {
+                if (ttBadgeHoverTimer) {
+                    clearTimeout(ttBadgeHoverTimer);
+                    ttBadgeHoverTimer = null;
+                }
+                const modalEl = document.getElementById('ttBadgeChartModal');
+                if (!modalEl) return;
+                const inst = bootstrap.Modal.getInstance(modalEl);
+                if (inst) inst.hide();
+            }
+
+            function updateTtSummaryBadgeStyles() {
+                const badges = [{
+                    active: zeroSoldFilterActive,
+                    sel: '#zero-sold-count-badge',
+                    glow: 'rgba(220, 53, 69, 0.8)'
+                }, {
+                    active: moreSoldFilterActive,
+                    sel: '#more-sold-count-badge',
+                    glow: 'rgba(14, 165, 233, 0.75)'
+                }, {
+                    active: missingFilterActive,
+                    sel: '#missing-count-badge',
+                    glow: 'rgba(220, 53, 69, 0.8)'
+                }, {
+                    active: mapFilterActive,
+                    sel: '#map-count-badge',
+                    glow: 'rgba(40, 167, 69, 0.8)'
+                }, {
+                    active: invTTStockFilterActive,
+                    sel: '#inv-tt-stock-badge',
+                    glow: 'rgba(167, 29, 42, 0.85)'
+                }];
+                badges.forEach(function(b) {
+                    const $el = $(b.sel);
+                    if (!$el.length) return;
+                    if (b.active) {
+                        $el.css('opacity', '1').css('box-shadow', '0 0 10px ' + b.glow).addClass(
+                            'border border-3 border-dark');
+                    } else {
+                        $el.css('opacity', '').css('box-shadow', 'none').removeClass(
+                            'border border-3 border-dark');
+                    }
+                });
+            }
+
+            function ttClearSummaryBadgeFilters() {
                 zeroSoldFilterActive = false;
+                moreSoldFilterActive = false;
                 missingFilterActive = false;
                 mapFilterActive = false;
                 invTTStockFilterActive = false;
-                adsBadgeFilter = null;
-                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
-                applyFilters();
-            });
+            }
 
-            // Missing L badge click handler
-            let missingFilterActive = false;
-            $('#missing-count-badge').on('click', function() {
-                missingFilterActive = !missingFilterActive;
-                if (missingFilterActive) {
-                    mapFilterActive = false;
-                    invTTStockFilterActive = false;
-                }
-                zeroSoldFilterActive = false;
-                moreSoldFilterActive = false;
-                adsBadgeFilter = null;
-                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
-                applyFilters();
-            });
-
-            // Map badge click handler
-            let mapFilterActive = false;
-            $('#map-count-badge').on('click', function() {
-                mapFilterActive = !mapFilterActive;
-                if (mapFilterActive) {
-                    missingFilterActive = false;
-                    invTTStockFilterActive = false;
-                }
-                zeroSoldFilterActive = false;
-                moreSoldFilterActive = false;
-                adsBadgeFilter = null;
-                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
-                applyFilters();
-            });
-
-            // N Map badge — same scope as MAP column / ebay2 N Map badge
-            let invTTStockFilterActive = false;
-            $('#inv-tt-stock-badge').on('click', function() {
-                invTTStockFilterActive = !invTTStockFilterActive;
-                if (invTTStockFilterActive) {
+            function ttOnSummaryFilterBadgeClick(type) {
+                ttDismissBadgeChartModal();
+                if (type === 'zero-sold') {
+                    zeroSoldFilterActive = !zeroSoldFilterActive;
+                    moreSoldFilterActive = false;
                     missingFilterActive = false;
                     mapFilterActive = false;
+                    invTTStockFilterActive = false;
+                } else if (type === 'more-sold') {
+                    moreSoldFilterActive = !moreSoldFilterActive;
+                    zeroSoldFilterActive = false;
+                    missingFilterActive = false;
+                    mapFilterActive = false;
+                    invTTStockFilterActive = false;
+                } else if (type === 'missing') {
+                    missingFilterActive = !missingFilterActive;
+                    mapFilterActive = false;
+                    invTTStockFilterActive = false;
+                    zeroSoldFilterActive = false;
+                    moreSoldFilterActive = false;
+                } else if (type === 'map') {
+                    mapFilterActive = !mapFilterActive;
+                    missingFilterActive = false;
+                    invTTStockFilterActive = false;
+                    zeroSoldFilterActive = false;
+                    moreSoldFilterActive = false;
+                } else if (type === 'nmap') {
+                    invTTStockFilterActive = !invTTStockFilterActive;
+                    missingFilterActive = false;
+                    mapFilterActive = false;
+                    zeroSoldFilterActive = false;
+                    moreSoldFilterActive = false;
                 }
-                zeroSoldFilterActive = false;
-                moreSoldFilterActive = false;
                 adsBadgeFilter = null;
                 $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
                 applyFilters();
+                updateTtSummaryBadgeStyles();
+            }
+
+            $('#zero-sold-count-badge').on('click', function(e) {
+                e.stopPropagation();
+                ttOnSummaryFilterBadgeClick('zero-sold');
+            });
+            $('#more-sold-count-badge').on('click', function(e) {
+                e.stopPropagation();
+                ttOnSummaryFilterBadgeClick('more-sold');
+            });
+            $('#missing-count-badge').on('click', function(e) {
+                e.stopPropagation();
+                ttOnSummaryFilterBadgeClick('missing');
+            });
+            $('#map-count-badge').on('click', function(e) {
+                e.stopPropagation();
+                ttOnSummaryFilterBadgeClick('map');
+            });
+            $('#inv-tt-stock-badge').on('click', function(e) {
+                e.stopPropagation();
+                ttOnSummaryFilterBadgeClick('nmap');
             });
 
             // Ads section badge filter (like tiktok utilized page) - toggle on click
-            let adsBadgeFilter = null;
             $(document).on('click', '.ads-section-badge', function() {
                 const filter = $(this).data('ads-filter');
                 adsBadgeFilter = (adsBadgeFilter === filter) ? null : filter;
@@ -1114,12 +1309,9 @@
                     $('#utilized-count-section .ads-section-badge[data-ads-filter="' + adsBadgeFilter +
                         '"]').addClass('border border-3 border-dark');
                 }
-                missingFilterActive = false;
-                mapFilterActive = false;
-                invTTStockFilterActive = false;
-                zeroSoldFilterActive = false;
-                moreSoldFilterActive = false;
+                ttClearSummaryBadgeFilters();
                 applyFilters();
+                updateTtSummaryBadgeStyles();
                 if (typeof updateUtilizedCounts === 'function') updateUtilizedCounts();
             });
 
@@ -1198,8 +1390,12 @@
                 const discountType = $('#discount-type-select').val();
                 const discountValue = parseFloat($('#discount-percentage-input').val());
 
-                if (isNaN(discountValue) || discountValue === 0) {
-                    showToast('Please enter a valid discount value', 'error');
+                if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                    showToast('Turn on Decrease, Increase, or Same Price mode first', 'error');
+                    return;
+                }
+                if (isNaN(discountValue) || discountValue <= 0) {
+                    showToast(samePriceModeActive ? 'Please enter a price (e.g. 19.99)' : 'Please enter a valid discount value', 'error');
                     return;
                 }
 
@@ -1219,10 +1415,14 @@
                         const rowData = row.getData();
                         const currentPrice = parseFloat(rowData['TT Price']) || 0;
 
-                        if (currentPrice > 0) {
+                        // Same Price applies even when TT Price is empty;
+                        // Decrease / Increase still need a positive TT Price to compute.
+                        if (samePriceModeActive || currentPrice > 0) {
                             let newSprice;
 
-                            if (discountType === 'percentage') {
+                            if (samePriceModeActive) {
+                                newSprice = Math.max(0.99, discountValue);
+                            } else if (discountType === 'percentage') {
                                 if (increaseModeActive) {
                                     newSprice = currentPrice * (1 + discountValue / 100);
                                 } else {
@@ -1271,9 +1471,9 @@
                     saveSpriceUpdates(updates);
                 }
 
-                showToast(
-                    `${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s) based on TT Price`,
-                    'success');
+                const action = samePriceModeActive ? 'Same Price' : (increaseModeActive ? 'Increase' : 'Discount');
+                const suffix = samePriceModeActive ? '' : ' based on TT Price';
+                showToast(`${action} applied to ${updatedCount} SKU(s)${suffix}`, 'success');
                 $('#discount-percentage-input').val('');
             }
 
@@ -1502,6 +1702,40 @@
                             return '<span class="fw-bold">' + displaySku +
                                 '</span> <i class="fa fa-copy text-secondary copy-sku-btn" style="cursor:pointer;margin-left:8px;font-size:14px;" data-sku="' +
                                 safe(sku) + '" title="Copy SKU"></i>';
+                        }
+                    },
+                    {
+                        title: "Links",
+                        field: "links_column",
+                        width: 55,
+                        frozen: true,
+                        hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "Double-click to add / edit links",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            const isParent = d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT '));
+                            if (isParent) return '';
+                            const b = d['B Link'] || '';
+                            const s = d['S Link'] || '';
+                            let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
+                            if (s) {
+                                html += '<a href="' + String(s).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';
+                            }
+                            if (b) {
+                                html += '<a href="' + String(b).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>';
+                            }
+                            if (!s && !b) {
+                                html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                            }
+                            html += '</div>';
+                            return html;
+                        },
+                        cellDblClick: function(e, cell) {
+                            const d = cell.getRow().getData();
+                            const isParent = d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT '));
+                            if (isParent) return;
+                            openTiktokEditLinksModal(cell.getRow());
                         }
                     },
                     {
@@ -2040,10 +2274,10 @@
                             if (isNaN(percent)) return isParent ?
                                 '<span style="color:#6c757d;">-</span>' : '';
                             let color = '';
-                            if (percent < 50) color = '#a00211';
-                            else if (percent >= 50 && percent < 100) color = '#ffc107';
-                            else if (percent >= 100 && percent < 150) color = '#28a745';
-                            else color = '#e83e8c';
+                            if (percent < 40) color = '#a00211';
+                            else if (percent < 75) color = '#ffc107';
+                            else if (percent < 125) color = '#28a745';
+                            else color = '#d63384';
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
                         width: 50
@@ -2237,10 +2471,10 @@
                             const percent = parseFloat(value);
                             let color = '';
 
-                            if (percent < 50) color = '#a00211';
-                            else if (percent >= 50 && percent < 100) color = '#ffc107';
-                            else if (percent >= 100 && percent < 150) color = '#28a745';
-                            else color = '#e83e8c';
+                            if (percent < 40) color = '#a00211';
+                            else if (percent < 75) color = '#ffc107';
+                            else if (percent < 125) color = '#28a745';
+                            else color = '#d63384';
 
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         }
@@ -2665,8 +2899,17 @@
 
             // Helper: parent summary rows must never be hidden by filters
             function isParentRow(data) {
-                return data && (data.is_parent === true || (data.Parent && String(data.Parent).startsWith(
-                    'PARENT ')));
+                return ttIsParentRow(data);
+            }
+
+            function ttRefreshAllSkuRows() {
+                if (!table) {
+                    ttAllSkuRows = [];
+                    return;
+                }
+                ttAllSkuRows = table.getData('all').filter(function(row) {
+                    return !ttIsParentRow(row);
+                });
             }
 
             // Apply filters
@@ -2739,9 +2982,8 @@
                         const cvrPercent = views > 0 ? (sold / views) * 100 : 0;
                         const cvrRounded = Math.round(cvrPercent * 100) / 100;
                         if (cvrFilter === '0-0') return cvrRounded === 0;
-                        if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                        if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                        if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                        if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                        if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                         if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                         if (cvrFilter === '13plus') return cvrRounded > 13;
                         return true;
@@ -2757,9 +2999,7 @@
                         if (roiFilter === 'lt40') return roi < 40;
                         if (roiFilter === '40-75') return roi >= 40 && roi < 75;
                         if (roiFilter === '75-125') return roi >= 75 && roi < 125;
-                        if (roiFilter === '125-175') return roi >= 125 && roi < 175;
-                        if (roiFilter === '175-250') return roi >= 175 && roi < 250;
-                        if (roiFilter === 'gt250') return roi >= 250;
+                        if (roiFilter === 'gt125') return roi >= 125;
                         return true;
                     });
                 }
@@ -2825,29 +3065,27 @@
                     });
                 }
 
-                // Missing filter (parent rows always visible)
+                // Missing L filter (parent rows always visible)
                 if (missingFilterActive) {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return true;
-                        return data.Missing === 'M';
+                        return ttRowIsMissing(data);
                     });
                 }
 
-                // Map filter (parent rows always visible)
+                // Map filter — listed + |INV − TT Stock| ≤ 3 (matches MAP column)
                 if (mapFilterActive) {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return true;
-                        const isMissing = String(data.Missing || '').trim().toUpperCase() === 'M';
-                        return data.MAP === 'Map' && !isMissing;
+                        return ttRowIsMap(data);
                     });
                 }
 
-                // N Map filter — legacy Diff|/N Map| rows with |diff| > 3 only (≤3 is Map)
+                // N Map filter — |INV − TT Stock| > 3 only (≤3 is Map)
                 if (invTTStockFilterActive) {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return true;
-                        const isMissing = String(data.Missing || '').trim().toUpperCase() === 'M';
-                        return ttIsStrictNMapMapValue(data['MAP'], isMissing);
+                        return ttRowIsNMap(data);
                     });
                 }
 
@@ -2974,6 +3212,7 @@
                 }
 
                 updateSummary();
+                updateTtSummaryBadgeStyles();
             }
 
             $('#row-type-filter, #inventory-filter, #gpft-filter, #cvr-filter, #roi-filter, #tiktok-stock-filter, #ad-click-filter, #tl30-filter')
@@ -2983,9 +3222,9 @@
 
             // Update summary badges
             function updateSummary() {
-                const data = table.getData('active').filter(row => {
-                    return !(row.Parent && row.Parent.startsWith('PARENT '));
-                });
+                const data = table.getData('active').filter(row => !ttIsParentRow(row));
+                const badgeRows = (ttAllSkuRows && ttAllSkuRows.length) ? ttAllSkuRows : table.getData('all')
+                    .filter(row => !ttIsParentRow(row));
 
                 let totalSales = 0,
                     totalPft = 0,
@@ -3018,31 +3257,23 @@
                     totalInv += parseFloat(row.INV) || 0;
                     totalL30 += parseFloat(row['TT L30']) || 0;
 
-                    if (l30 === 0) {
-                        zeroSoldCount++;
-                    } else {
-                        moreSoldCount++;
-                    }
-
                     const roi = parseFloat(row['ROI%']) || 0;
                     if (roi !== 0) {
                         totalRoi += roi;
                         roiCount++;
                     }
+                });
 
-                    const isMissing = String(row['Missing'] || '').trim().toUpperCase() === 'M';
-                    if (isMissing) {
-                        missingCount++;
+                badgeRows.forEach(row => {
+                    const l30 = parseFloat(row['TT L30']) || 0;
+                    if (l30 === 0) {
+                        zeroSoldCount++;
+                    } else {
+                        moreSoldCount++;
                     }
-
-                    const mapValue = row['MAP'];
-                    if (mapValue === 'Map' && !isMissing) {
-                        mapCount++;
-                    }
-
-                    if (ttIsStrictNMapMapValue(mapValue, isMissing)) {
-                        invTTStockCount++;
-                    }
+                    if (ttRowIsMissing(row)) missingCount++;
+                    if (ttRowIsMap(row)) mapCount++;
+                    if (ttRowIsNMap(row)) invTTStockCount++;
                 });
 
                 const avgGpft = data.length > 0 ? totalGpft / data.length : 0;
@@ -3239,9 +3470,11 @@
             table.on('dataLoaded', function() {
                 function afterLoad() {
                     setTimeout(function() {
+                        ttRefreshAllSkuRows();
                         applyFilters();
                         updateSummary();
                         updateUtilizedCounts();
+                        updateTtSummaryBadgeStyles();
                     }, 100);
                 }
                 fetch(TTP_CFG.distinctCampaign)

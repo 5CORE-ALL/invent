@@ -3,85 +3,86 @@
 namespace App\Console\Commands;
 
 use App\Models\AliexpressMetric;
-use Carbon\Carbon;
+use App\Services\AliExpressApiService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Http;
 
 class SaveAliexpressOrderMetrics extends Command
 {
     protected $signature = 'aliexpress:save-order-metrics {--days=30} {--page-size=100}';
-    protected $description = 'Fetch and save AliExpress order metrics from API';
 
-    public function handle()
+    protected $description = 'Fetch AliExpress orders from official API and save L30/L60 metrics';
+
+    public function handle(AliExpressApiService $api): int
     {
-        $url = 'https://ship.5coremanagement.com/api/aliexpress/orders';
-        $days = $this->option('days');
-        $pageSize = $this->option('page-size');
+        if (empty($api->getAccessToken())) {
+            $this->error('ALIEXPRESS_ACCESS_TOKEN is missing in .env');
+
+            return self::FAILURE;
+        }
+
+        $days = max(1, min(180, (int) $this->option('days')));
+        $pageSize = max(1, min(100, (int) $this->option('page-size')));
+        $dateRange = $api->buildOrderDateRange($days);
+
+        $this->info("Fetching orders for last {$days} days...");
+
         $page = 1;
         $totalProcessed = 0;
-        
-        $this->info("Fetching orders for last {$days} days...");
-        
+
         do {
             $this->info("Processing page {$page}...");
-            
-            $response = Http::post($url, [
-                'page' => $page,
-                'page_size' => $pageSize,
-                'days' => $days
-            ]);
-            
-            $this->info("API Response Status: " . $response->status());
 
-            if ($response->failed()) {
-                $this->error("Failed to fetch data from API for page {$page}: " . $response->body());
-                return 1;
+            $result = $api->getOrders($page, $pageSize, $dateRange);
+
+            if (empty($result['success'])) {
+                $this->error('Failed to fetch orders: '.($result['message'] ?? 'unknown error'));
+
+                return self::FAILURE;
             }
 
-            $data = $response->json();
-            $orders = $data['orders'] ?? [];
-            
-            if (empty($orders)) {
-                $this->info("No more orders to process.");
+            $orders = $result['data']['orders'] ?? [];
+
+            if ($orders === []) {
+                $this->info('No more orders to process.');
                 break;
             }
 
-            $this->info("Found " . count($orders) . " orders on page {$page}");
-            
+            $this->info('Found '.count($orders).' orders on page '.$page);
+
             foreach ($orders as $order) {
-                $orderDate = Carbon::parse($order['gmt_create']);
-                $orderId = $order['order_id'];
-                $orderStatus = $order['order_status'];
-                
-                $this->info("Processing order {$orderId} from {$orderDate} with status {$orderStatus}");
-                
-                foreach ($order['product_list']['aeop_order_product_dto'] as $product) {
-                    $sku = $product['sku_code'] ?? null;
-                    if (!$sku) {
-                        $this->warn("Skipping product {$product['product_id']} - no SKU found");
+                if (! is_array($order)) {
+                    continue;
+                }
+
+                $orderPayload = [
+                    'order_id' => (string) ($order['order_id'] ?? ''),
+                    'gmt_create' => $order['gmt_create'] ?? now()->toDateTimeString(),
+                    'order_status' => (string) ($order['order_status'] ?? ''),
+                ];
+
+                foreach ($api->extractOrderProductLines($order) as $product) {
+                    $sku = trim((string) ($product['sku_code'] ?? ''));
+                    if ($sku === '') {
                         continue;
                     }
-                    
-                    // Update metrics using the new method
+
                     AliexpressMetric::updateOrderMetrics(
-                        $product['product_id'],
+                        (string) ($product['product_id'] ?? ''),
                         $sku,
-                        $order,
+                        $orderPayload,
                         $product
                     );
-                    
+
                     $totalProcessed++;
                 }
             }
 
             $page++;
-            
-            // Add a small delay to avoid overwhelming the API
-            usleep(100000); // 100ms delay
-            
-        } while (!empty($orders));
+            usleep(100000);
+        } while ($orders !== []);
 
-        $this->info("Successfully processed {$totalProcessed} products from orders across " . ($page - 1) . " pages.");
-        return 0;
+        $this->info("Successfully processed {$totalProcessed} product lines from orders across ".($page - 1).' page(s).');
+
+        return self::SUCCESS;
     }
 }

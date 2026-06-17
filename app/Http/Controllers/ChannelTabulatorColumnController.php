@@ -20,6 +20,40 @@ class ChannelTabulatorColumnController extends Controller
     }
 
     /**
+     * GET /tabulator-column-visibility-user?channel=your_channel_key
+     * Per-user column visibility (scoped to the authenticated user).
+     */
+    public function showUser(Request $request): JsonResponse
+    {
+        $channel = $this->sanitizeChannelName($request->query('channel'));
+        if ($channel === '') {
+            return response()->json(['message' => 'Query parameter "channel" is required.'], 422);
+        }
+
+        return $this->resolveVisibilityResponse($this->userScopedChannel($channel));
+    }
+
+    /**
+     * POST /tabulator-column-visibility-user
+     * Body: { "channel": "your_channel_key", "visibility": { "field": true, ... } }
+     * Stored per authenticated user.
+     */
+    public function storeUser(Request $request): JsonResponse
+    {
+        $channel = $this->sanitizeChannelName($request->input('channel'));
+        if ($channel === '') {
+            return response()->json(['message' => 'Field "channel" is required.'], 422);
+        }
+
+        return $this->persistVisibility($request, $this->userScopedChannel($channel));
+    }
+
+    private function userScopedChannel(string $channel): string
+    {
+        return 'u'.(int) (auth()->id() ?? 0).'__'.$channel;
+    }
+
+    /**
      * GET /tabulator-column-visibility?channel=your_channel_key
      * Shared column visibility for any Tabulator page (same JSON for all users).
      */

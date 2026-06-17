@@ -1,7 +1,49 @@
 @extends('layouts.vertical', ['title' => 'Team Management'])
 
 @section('css')
-    <link href="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.css" rel="stylesheet">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <style>
+        /* Tabulator users table */
+        #usersTabulator .avatar-circle {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 13px;
+            flex: 0 0 auto;
+        }
+        #usersTabulator .user-avatar-img {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            object-fit: cover;
+            background: #eef2ff;
+            flex: 0 0 auto;
+        }
+        #usersTabulator .tbl-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        #usersTabulator .tbl-dot--green { background: #22c55e; }
+        #usersTabulator .tbl-dot--red { background: #ef4444; }
+        #usersTabulator .designation-badge {
+            background: #eef2ff;
+            color: #4338ca;
+            font-weight: 600;
+            border-radius: 6px;
+            padding: 2px 8px;
+            font-size: 12px;
+        }
+    </style>
     <style>
         .performance-tab-content {
             display: none;
@@ -270,25 +312,6 @@
                 <h2 class="text-primary fw-bold mb-1">Team Management</h2>
                 <p class="text-muted">View and manage users & performance</p>
             </div>
-            @if($canEdit && $canViewSalary)
-            <div class="d-flex gap-2 flex-wrap">
-                <button type="button" class="btn btn-primary" id="copySalaryBtn">
-                    <i class="ri-file-copy-line me-2"></i>Copy Salary LM → PP
-                </button>
-                <div class="btn-group">
-                    <button type="button" class="btn btn-info" id="importBtn">
-                        <i class="ri-upload-2-line me-2"></i>Import Salary Data
-                    </button>
-                    <button type="button" class="btn btn-info btn-outline" id="downloadSalaryTemplateBtn" title="Download Salary Data Template">
-                        <i class="ri-file-download-line"></i>
-                    </button>
-                </div>
-                <input type="file" id="importFile" accept=".csv" style="display: none;">
-                <button type="button" class="btn btn-success" id="exportBtn">
-                    <i class="ri-download-2-line me-2"></i>Salary Sheet
-                </button>
-            </div>
-            @endif
         </div>
         
         @if($canEdit && $canViewSalary)
@@ -296,7 +319,7 @@
             <div class="d-flex gap-2 flex-nowrap w-100 salary-badges-container">
                 <span class="badge bg-primary fs-6 px-2 py-2 flex-fill text-center">
                     <i class="ri-team-line me-1"></i>
-                    Team: {{ $salaryUsers->count() }}
+                    Team: <span id="teamCountBadge">{{ $users->count() }}</span>
                 </span>
                 <span class="badge bg-success fs-6 px-2 py-2 flex-fill text-center">
                     <i class="ri-money-dollar-circle-line me-1"></i>
@@ -345,18 +368,6 @@
                     <i class="ri-user-line me-2"></i>Users
                 </button>
             </li>
-            @if($canViewSalary)
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="salary-tab" data-bs-toggle="tab" data-bs-target="#salary-content" type="button" role="tab">
-                    <i class="ri-money-dollar-circle-line me-2"></i>Salary
-                </button>
-            </li>
-            @endif
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="performance-tab" data-bs-toggle="tab" data-bs-target="#performance-content" type="button" role="tab">
-                    <i class="ri-bar-chart-line me-2"></i>Performance Management
-                </button>
-            </li>
         </ul>
 
         <!-- Tab Content -->
@@ -364,422 +375,206 @@
             <!-- Users Tab -->
             <div class="tab-pane fade show active" id="users-content" role="tabpanel">
 
-        <!-- Users Table Section -->
+        <!-- Users Table Section (Tabulator) -->
         <div class="card shadow-sm">
             <div class="card-body">
-                <!-- Search Form -->
-                <div class="mb-2">
-                    <div class="input-group">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <div class="input-group" style="max-width: 440px;">
                         <span class="input-group-text bg-light border-0">
                             <i class="fas fa-search text-muted"></i>
                         </span>
-                                <input type="text" id="searchInput" class="form-control border-0 bg-light" 
-                                    placeholder="Search by name, phone, email, designation, R&amp;R, resources, training, or checklist" onkeyup="filterTable()">
+                        <input type="text" id="usersSearch" class="form-control border-0 bg-light"
+                            placeholder="Search by name, phone, email, designation, R&amp;R, resources, training">
+                    </div>
+                    <div class="btn-group status-toggle" role="group" aria-label="Filter by status">
+                        <button type="button" class="btn btn-success active" id="statusActiveBtn">
+                            <i class="ri-checkbox-blank-circle-fill me-1"></i>Active
+                        </button>
+                        <button type="button" class="btn btn-outline-danger" id="statusInactiveBtn">
+                            <i class="ri-checkbox-blank-circle-fill me-1"></i>Inactive
+                        </button>
                     </div>
                 </div>
 
-                <!-- Users Table (scrolls inside viewport so edit mode stays on one screen) -->
-                <div class="users-active-table-wrap">
-                    <table class="table users-table align-middle" id="usersTable">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>Name</th>
-                                <th scope="col" class="text-center" title="Phone" aria-label="Phone">
-                                    <i class="ri-phone-line fs-5 text-secondary" aria-hidden="true"></i>
-                                </th>
-                                <th scope="col" class="text-center" title="Email" aria-label="Email">
-                                    <i class="ri-mail-line fs-5 text-secondary" aria-hidden="true"></i>
-                                </th>
-                                <th>Designation</th>
-                                <th>R&amp;R</th>
-                                <th>Resources</th>
-                                <th>Training</th>
-                                <th>Checklist</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse($users as $index => $user)
-                                <tr data-user-id="{{ $user->id }}">
-                                    <td>{{ $index + 1 }}</td>
-                                    <td>
-                                        <div class="d-flex align-items-center">
-                                            <div class="avatar-circle me-3">
-                                                {{ strtoupper(substr($user->name, 0, 1)) }}
-                                            </div>
-                                            <div class="user-name-cell" data-field="name" data-original="{{ $user->name }}">
-                                                <span class="user-display user-name">{{ $user->name }}</span>
-                                                <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $user->name }}" data-field="name">
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="user-phone-cell" data-field="phone" data-original="{{ $user->phone ?? '' }}">
-                                            <span class="user-display user-phone">
-                                                @if($user->phone)
-                                                    <span class="phone-dot phone-dot--green phone-dot--has-tooltip" data-tooltip="{{ e($user->phone) }}" aria-label="Phone: {{ e($user->phone) }}"></span>
-                                                    <span class="visually-hidden user-phone-search-text">{{ $user->phone }}</span>
-                                                @else
-                                                    <span class="phone-dot phone-dot--red phone-dot--has-tooltip" data-tooltip="No phone number" aria-label="No phone"></span>
-                                                @endif
-                                            </span>
-                                            <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $user->phone ?? '' }}" data-field="phone" placeholder="Phone number" maxlength="20">
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="user-email-cell" data-field="email" data-original="{{ $user->email }}">
-                                            <span class="user-display user-email">
-                                                @if($user->email)
-                                                    <span class="phone-dot phone-dot--green phone-dot--has-tooltip" data-tooltip="{{ e($user->email) }}" aria-label="Email: {{ e($user->email) }}"></span>
-                                                    <span class="visually-hidden user-email-search-text">{{ $user->email }}</span>
-                                                @else
-                                                    <span class="phone-dot phone-dot--red phone-dot--has-tooltip" data-tooltip="No email" aria-label="No email"></span>
-                                                @endif
-                                            </span>
-                                            <input type="email" class="form-control form-control-sm user-edit d-none" value="{{ $user->email }}" data-field="email">
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="user-designation-cell" data-field="designation" data-original="{{ $user->designation ?? '' }}">
-                                            @if($user->designation)
-                                                <span class="designation-badge user-display">{{ $user->designation }}</span>
-                                            @else
-                                                <span class="user-display">-</span>
-                                            @endif
-                                            <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $user->designation ?? '' }}" data-field="designation" placeholder="Enter designation">
-                                        </div>
-                                    </td>
-                                    <td>
-                                        @php
-                                            $rrRole = $user->userRR?->role ?? '';
-                                            $hasRrPortfolio = ($user->rr_portfolio_assignments_count ?? 0) > 0;
-                                            $rrDotGreen = trim($rrRole) !== '' || $hasRrPortfolio;
-                                            $rrTooltip = $rrRole !== '' ? $rrRole : ($hasRrPortfolio ? 'R&R portfolio assigned' : '');
-                                        @endphp
-                                        <div class="user-rr-cell" data-field="rr_role" data-original="{{ $rrRole }}" data-portfolio-url="{{ route('users.rr-portfolio.show', $user) }}" data-has-portfolio="{{ $hasRrPortfolio ? '1' : '0' }}">
-                                            <span class="user-display user-rr-display">
-                                                <a href="{{ route('users.rr-portfolio.show', $user) }}" class="rr-portfolio-link text-decoration-none d-inline-flex align-items-center" title="View R&amp;R portfolio">
-                                                @if($rrDotGreen)
-                                                    <span class="phone-dot phone-dot--green phone-dot--has-tooltip" data-tooltip="{{ e($rrTooltip) }}" aria-label="{{ e($rrRole !== '' ? 'R&R: '.$rrRole : 'R&R portfolio assigned') }}"></span>
-                                                    <span class="visually-hidden user-rr-search-text">{{ $rrRole }}@if($hasRrPortfolio && $rrRole === '') R&amp;R portfolio @endif</span>
-                                                @else
-                                                    <span class="phone-dot phone-dot--red phone-dot--has-tooltip" data-tooltip="No R&amp;R" aria-label="No R&amp;R"></span>
-                                                @endif
-                                                </a>
-                                            </span>
-                                            <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $rrRole }}" data-field="rr_role" placeholder="Role &amp; responsibility summary" maxlength="255">
-                                        </div>
-                                    </td>
-                                    <td>
-                                        @php $resourcesVal = $user->userRR?->resources ?? ''; @endphp
-                                        <div class="user-resources-cell" data-field="resources">
-                                            @if($resourcesVal !== '')
-                                                <span class="user-display small text-break d-block user-resources-display">{{ $resourcesVal }}</span>
-                                            @else
-                                                <span class="user-display">-</span>
-                                            @endif
-                                            <textarea class="form-control form-control-sm user-edit user-edit-textarea d-none" rows="2" data-field="resources" placeholder="Links, docs, or notes">{{ $resourcesVal }}</textarea>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        @php $trainingVal = $user->userRR?->training ?? ''; @endphp
-                                        <div class="user-training-cell" data-field="training">
-                                            @if($trainingVal !== '')
-                                                <span class="user-display small text-break d-block user-training-display">{{ $trainingVal }}</span>
-                                            @else
-                                                <span class="user-display">-</span>
-                                            @endif
-                                            <textarea class="form-control form-control-sm user-edit user-edit-textarea d-none" rows="2" data-field="training" placeholder="Training notes or link">{{ $trainingVal }}</textarea>
-                                        </div>
-                                    </td>
-                                    <td class="user-checklist-cell" data-checklist-base="{{ url('/performance/checklist') }}">
-                                        <div class="checklist-cell-inner">
-                                            @if(!empty($user->designation))
-                                                <a href="{{ route('performance.checklist.get', ['designationId' => $user->designation]) }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary">View</a>
-                                            @else
-                                                <span class="text-muted">—</span>
-                                            @endif
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="action-buttons">
-                                            @if($canEdit)
-                                            <button type="button" class="btn-action edit-btn" data-user-id="{{ $user->id }}" title="Edit">
-                                                <i class="ri-edit-line"></i>
-                                            </button>
-                                            @endif
-                                            <button type="button" class="btn-action btn-user-icon user-icon-btn" data-user-id="{{ $user->id }}" title="User">
-                                                <i class="ri-user-line"></i>
-                                            </button>
-                                            @if($canEdit && $user->id !== auth()->id())
-                                                <button type="button" class="btn-action btn-danger-soft delete-btn" data-user-id="{{ $user->id }}" title="Deactivate user">
-                                                    <i class="ri-delete-bin-line"></i>
-                                                </button>
-                                            @endif
-                                            @if($canEdit)
-                                            <button type="button" class="btn-action btn-success save-btn d-none" data-user-id="{{ $user->id }}" title="Save">
-                                                <i class="ri-check-line"></i>
-                                            </button>
-                                            <button type="button" class="btn-action btn-secondary cancel-btn d-none" data-user-id="{{ $user->id }}" title="Cancel">
-                                                <i class="ri-close-line"></i>
-                                            </button>
-                                            @endif
-                                        </div>
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="10" class="text-center py-4 text-muted">No users found</td>
-                                </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
-                </div>
+                <div id="usersTabulator"></div>
             </div>
         </div>
 
-        @if($canEdit)
-            <div class="card shadow-sm mt-4 border-warning border-opacity-25">
-                <div class="card-body">
-                    <h5 class="mb-1 text-dark fw-semibold">
-                        <i class="ri-user-forbid-line me-2 text-warning"></i>Inactive users
-                    </h5>
-                    <p class="text-muted small mb-3">These accounts cannot sign in. Use <strong>Recover</strong> to activate them again.</p>
-                    
-                    @if($inactiveUsers->count() > 0)
-                        <div class="mb-4">
-                            <div class="input-group">
-                                <span class="input-group-text bg-light border-0">
-                                    <i class="fas fa-search text-muted"></i>
-                                </span>
-                                <input type="text" id="searchInactiveInput" class="form-control form-control-lg border-0 bg-light"
-                                    placeholder="Search inactive users" onkeyup="filterInactiveTable()">
+    </div>
+
+    <!-- Edit User Modal -->
+    @if($canEdit)
+    <div class="modal fade" id="editUserModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <form id="editUserForm">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title"><i class="ri-edit-line me-2"></i>Edit User</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="editUserId" name="id">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Name <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="editName" name="name" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Email <span class="text-danger">*</span></label>
+                                <input type="email" class="form-control" id="editEmail" name="email" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Phone</label>
+                                <input type="text" class="form-control" id="editPhone" name="phone" maxlength="20">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Designation</label>
+                                <input type="text" class="form-control" id="editDesignation" name="designation">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Date of Joining</label>
+                                <input type="date" class="form-control" id="editDateOfJoining" name="date_of_joining">
+                                <div class="form-text">Employee's joining date (for records).</div>
                             </div>
                         </div>
-                        <div class="table-responsive">
-                            <table class="table users-table align-middle" id="inactiveUsersTable">
-                                <thead>
-                                    <tr>
-                                        <th>#</th>
-                                        <th>Name</th>
-                                        <th scope="col" class="text-center" title="Phone" aria-label="Phone">
-                                            <i class="ri-phone-line fs-5 text-secondary" aria-hidden="true"></i>
-                                        </th>
-                                        <th scope="col" class="text-center" title="Email" aria-label="Email">
-                                            <i class="ri-mail-line fs-5 text-secondary" aria-hidden="true"></i>
-                                        </th>
-                                        <th>Designation</th>
-                                        <th>R&amp;R</th>
-                                        <th>Resources</th>
-                                        <th>Training</th>
-                                        <th>Checklist</th>
-                                        <th>Salary PP</th>
-                                        <th>Incr</th>
-                                        <th>Salary LM</th>
-                                        <th>Hours LM</th>
-                                        <th>Other</th>
-                                        <th>Amt LM</th>
-                                        <th>Amt P</th>
-                                        <th>Adv</th>
-                                        <th>B1</th>
-                                        <th>B2</th>
-                                        <th>Deactivated at</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach($inactiveUsers as $index => $iu)
-                                        <tr data-inactive-user-id="{{ $iu->id }}">
-                                            <td>{{ $index + 1 }}</td>
-                                            <td>
-                                                <div class="d-flex align-items-center">
-                                                    <div class="avatar-circle me-3 opacity-75">
-                                                        {{ strtoupper(substr($iu->name, 0, 1)) }}
-                                                    </div>
-                                                    <span class="user-name">{{ $iu->name }}</span>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                @if($iu->phone)
-                                                    <span class="phone-dot phone-dot--green phone-dot--has-tooltip" data-tooltip="{{ e($iu->phone) }}" aria-label="Phone: {{ e($iu->phone) }}"></span>
-                                                    <span class="visually-hidden">{{ $iu->phone }}</span>
-                                                @else
-                                                    <span class="phone-dot phone-dot--red phone-dot--has-tooltip" data-tooltip="No phone number" aria-label="No phone"></span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @if($iu->email)
-                                                    <span class="phone-dot phone-dot--green phone-dot--has-tooltip" data-tooltip="{{ e($iu->email) }}" aria-label="Email: {{ e($iu->email) }}"></span>
-                                                    <span class="visually-hidden">{{ $iu->email }}</span>
-                                                @else
-                                                    <span class="phone-dot phone-dot--red phone-dot--has-tooltip" data-tooltip="No email" aria-label="No email"></span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @if($iu->designation)
-                                                    <span class="designation-badge">{{ $iu->designation }}</span>
-                                                @else
-                                                    <span>-</span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @php
-                                                    $iuRr = $iu->userRR?->role ?? '';
-                                                    $iuHasPf = ($iu->rr_portfolio_assignments_count ?? 0) > 0;
-                                                    $iuRrGreen = trim($iuRr) !== '' || $iuHasPf;
-                                                    $iuRrTip = $iuRr !== '' ? $iuRr : ($iuHasPf ? 'R&R portfolio assigned' : '');
-                                                @endphp
-                                                <a href="{{ route('users.rr-portfolio.show', $iu) }}" class="rr-portfolio-link text-decoration-none d-inline-flex align-items-center" title="View R&amp;R portfolio">
-                                                    @if($iuRrGreen)
-                                                        <span class="phone-dot phone-dot--green phone-dot--has-tooltip" data-tooltip="{{ e($iuRrTip) }}" aria-label="{{ e($iuRr !== '' ? 'R&R: '.$iuRr : 'R&R portfolio assigned') }}"></span>
-                                                        <span class="visually-hidden">{{ $iuRr }}@if($iuHasPf && $iuRr === '') R&amp;R portfolio @endif</span>
-                                                    @else
-                                                        <span class="phone-dot phone-dot--red phone-dot--has-tooltip" data-tooltip="No R&amp;R" aria-label="No R&amp;R"></span>
-                                                    @endif
-                                                </a>
-                                            </td>
-                                            <td>
-                                                @php $iuResources = $iu->userRR?->resources ?? ''; @endphp
-                                                @if($iuResources !== '')
-                                                    <span class="small text-break d-block inactive-long-text">{{ $iuResources }}</span>
-                                                @else
-                                                    <span>-</span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @php $iuTraining = $iu->userRR?->training ?? ''; @endphp
-                                                @if($iuTraining !== '')
-                                                    <span class="small text-break d-block inactive-long-text">{{ $iuTraining }}</span>
-                                                @else
-                                                    <span>-</span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @if(!empty($iu->designation))
-                                                    <a href="{{ route('performance.checklist.get', ['designationId' => $iu->designation]) }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary">View</a>
-                                                @else
-                                                    <span class="text-muted">—</span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @php $iuSalaryPP = $iu->userSalary?->salary_pp ?? ''; @endphp
-                                                @if($iuSalaryPP !== '')
-                                                    <span class="salary-badge">₹{{ number_format($iuSalaryPP, 0) }}</span>
-                                                @else
-                                                    <span class="text-muted">—</span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @php $iuIncrement = $iu->userSalary?->increment ?? ''; @endphp
-                                                @if($iuIncrement !== '')
-                                                    <span class="increment-badge">₹{{ number_format($iuIncrement, 0) }}</span>
-                                                @else
-                                                    <span class="text-muted">—</span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @php 
-                                                    $iuSalaryPPVal = $iu->userSalary?->salary_pp ?? 0;
-                                                    $iuIncrementVal = $iu->userSalary?->increment ?? 0;
-                                                    $iuSalaryLM = $iuSalaryPPVal + $iuIncrementVal;
-                                                @endphp
-                                                @if($iuSalaryLM > 0)
-                                                    <span class="salary-lm-badge">₹{{ number_format($iuSalaryLM, 0) }}</span>
-                                                @else
-                                                    <span class="text-muted">—</span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @php 
-                                                    $iuEmail = strtolower(trim($iu->email));
-                                                    $iuTeamLoggerEmail = getTeamLoggerEmail($iuEmail, $emailMapping);
-                                                    $iuHoursLM = $teamLoggerData[$iuTeamLoggerEmail]['hours'] ?? 0;
-                                                @endphp
-                                                @if($iuHoursLM > 0)
-                                                    <span class="hours-lm-badge" title="{{ $previousMonth }}: {{ $iuHoursLM }} hours">{{ $iuHoursLM }}h</span>
-                                                @else
-                                                    <span class="text-muted" title="No hours logged in {{ $previousMonth }}">—</span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @php $iuOther = $iu->userSalary?->other ?? 0; @endphp
-                                                @if($iuOther > 0)
-                                                    <span class="other-badge">₹{{ number_format($iuOther, 0) }}</span>
-                                                @else
-                                                    <span class="text-muted">—</span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @php 
-                                                    $iuEmail = strtolower(trim($iu->email));
-                                                    $iuTeamLoggerEmail = getTeamLoggerEmail($iuEmail, $emailMapping);
-                                                    $iuHoursLM = $teamLoggerData[$iuTeamLoggerEmail]['hours'] ?? 0;
-                                                    $iuSalaryPPVal = $iu->userSalary?->salary_pp ?? 0;
-                                                    $iuIncrementVal = $iu->userSalary?->increment ?? 0;
-                                                    $iuSalaryLM = $iuSalaryPPVal + $iuIncrementVal;
-                                                    $iuOther = $iu->userSalary?->other ?? 0;
-                                                    $iuAdvIncOther = $iu->userSalary?->adv_inc_other ?? 0;
-                                                    $iuAmountLM = (($iuHoursLM * $iuSalaryPPVal) / 200) - $iuAdvIncOther;
-                                                @endphp
-                                                @if($iuAmountLM != 0)
-                                                    <span class="amount-lm-badge">₹{{ number_format($iuAmountLM, 0) }}</span>
-                                                @else
-                                                    <span class="text-muted">—</span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @php 
-                                                    $iuEmail = strtolower(trim($iu->email));
-                                                    $iuTeamLoggerEmail = getTeamLoggerEmail($iuEmail, $emailMapping);
-                                                    $iuHoursLM = $teamLoggerData[$iuTeamLoggerEmail]['hours'] ?? 0;
-                                                    $iuSalaryPPVal = $iu->userSalary?->salary_pp ?? 0;
-                                                    $iuOther = $iu->userSalary?->other ?? 0;
-                                                    $iuAmountP = (($iuHoursLM * $iuSalaryPPVal) / 200) + $iuOther;
-                                                @endphp
-                                                @if($iuAmountP != 0)
-                                                    <span class="amount-p-badge">₹{{ number_format(round($iuAmountP / 100) * 100, 0) }}</span>
-                                                @else
-                                                    <span class="text-muted">—</span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @php $iuAdvIncOther = $iu->userSalary?->adv_inc_other ?? 0; @endphp
-                                                @if($iuAdvIncOther > 0)
-                                                    <span class="adv-inc-other-badge">₹{{ number_format($iuAdvIncOther, 0) }}</span>
-                                                @else
-                                                    <span class="text-muted">—</span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @php $iuBank1 = $iu->userSalary?->bank_1 ?? ''; @endphp
-                                                <span>{{ $iuBank1 ?: '—' }}</span>
-                                            </td>
-                                            <td>
-                                                @php $iuBank2 = $iu->userSalary?->bank_2 ?? ''; @endphp
-                                                <span>{{ $iuBank2 ?: '—' }}</span>
-                                            </td>
-                                            <td><span class="text-muted small">{{ $iu->deactivated_at?->format('Y-m-d H:i') ?? '—' }}</span></td>
-                                            <td>
-                                                <button type="button" class="btn btn-recover restore-btn" data-user-id="{{ $iu->id }}" title="Recover — activate user">
-                                                    <i class="ri-arrow-go-back-line me-1"></i> Recover
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
-                        </div>
-                    @else
-                        <div class="text-center py-4">
-                            <i class="ri-checkbox-circle-line text-success" style="font-size: 3rem;"></i>
-                            <p class="text-muted mt-2 mb-0">No inactive users. All accounts are active.</p>
-                        </div>
+                        <div class="alert alert-danger mt-3 d-none" id="editUserError"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="editUserSaveBtn">
+                            <i class="ri-save-line me-1"></i>Save Changes
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    @endif
+
+    <!-- Resume Modal -->
+    @if($canViewResume)
+    <div class="modal fade" id="resumeModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="ri-file-user-line me-2"></i>Resume — <span id="resumeUserName"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="resumeUserId">
+                    <div class="mb-3">
+                        <span class="fw-semibold d-block mb-1">Current file</span>
+                        <div id="resumeCurrent" class="d-flex align-items-center gap-2"></div>
+                    </div>
+                    @if($canEditResume)
+                    <div class="mb-2">
+                        <label class="form-label fw-semibold" for="resumeFile">Upload / replace (PDF, DOC, DOCX — max 10MB)</label>
+                        <input type="file" class="form-control" id="resumeFile" accept=".pdf,.doc,.docx">
+                    </div>
+                    @endif
+                    <div class="alert alert-danger mt-3 d-none" id="resumeError"></div>
+                </div>
+                <div class="modal-footer">
+                    @if($canEditResume)
+                    <button type="button" class="btn btn-outline-danger me-auto d-none" id="resumeDeleteBtn">
+                        <i class="ri-delete-bin-line me-1"></i>Remove
+                    </button>
+                    @endif
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    @if($canEditResume)
+                    <button type="button" class="btn btn-primary" id="resumeUploadBtn">
+                        <i class="ri-upload-2-line me-1"></i>Save
+                    </button>
                     @endif
                 </div>
             </div>
-        @endif
+        </div>
     </div>
+    @endif
+
+    <!-- Docs Modal -->
+    @if($canViewResume)
+    <div class="modal fade" id="docsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="ri-folder-3-line me-2"></i>Docs — <span id="docsUserName"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="docsUserId">
+
+                    <h6 class="fw-semibold mb-2"><i class="ri-attachment-2 me-1"></i>Attached</h6>
+                    <ul class="list-group mb-3" id="docsList"></ul>
+
+                    @if($canEditResume)
+                    <div class="border rounded p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="fw-semibold mb-0"><i class="ri-add-circle-line me-1"></i>Add documents</h6>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="docAddRowBtn">
+                                <i class="ri-add-line me-1"></i>Add option
+                            </button>
+                        </div>
+                        <div class="row g-2 fw-semibold text-muted small d-none d-md-flex mb-1">
+                            <div class="col-md-4">File name</div>
+                            <div class="col-md-4">File upload</div>
+                            <div class="col-md-3">File link</div>
+                            <div class="col-md-1"></div>
+                        </div>
+                        <div id="docRows"></div>
+                        <div class="text-muted small mt-1">For each option add a file <em>or</em> a link (a name is optional).</div>
+                    </div>
+                    @endif
+
+                    <div class="alert alert-danger mt-3 d-none" id="docsError"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    @if($canEditResume)
+                    <button type="button" class="btn btn-primary" id="docsSaveBtn">
+                        <i class="ri-save-line me-1"></i>Save
+                    </button>
+                    @endif
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
+
+    <!-- Bank Details Modal -->
+    @if($canViewSalary)
+    <div class="modal fade" id="bankModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="ri-bank-line me-2"></i>Bank Details — <span id="bankUserName"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="bankUserId">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="bankInput1">Bank 1</label>
+                        <textarea class="form-control" id="bankInput1" rows="2" placeholder="Account name, bank, account number..."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="bankInput2">Bank 2</label>
+                        <textarea class="form-control" id="bankInput2" rows="2" placeholder="Secondary bank details..."></textarea>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label fw-semibold" for="bankInputUpi">UPI ID</label>
+                        <input type="text" class="form-control" id="bankInputUpi" placeholder="name@bank">
+                    </div>
+                    <div class="text-muted small"><i class="ri-information-line me-1"></i>Leave a field blank to keep its current value — bank details are never deleted, only updated.</div>
+                    <div class="alert alert-danger mt-2 d-none" id="bankError"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="bankSaveBtn"><i class="ri-save-line me-1"></i>Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
 
     <style>
         /* Table Styling */
@@ -1224,6 +1019,8 @@
         }
     </style>
 
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+
     <script>
         const canEdit = {{ $canEdit ? 'true' : 'false' }};
         let originalData = {};
@@ -1350,40 +1147,6 @@
             if (!input) return;
             const filter = input.value.toLowerCase();
             const table = document.getElementById('salaryTable');
-            if (!table) return;
-            const rows = table.getElementsByTagName('tr');
-
-            for (let i = 1; i < rows.length; i++) {
-                const cells = rows[i].getElementsByTagName('td');
-                let match = false;
-
-                for (let j = 0; j < cells.length; j++) {
-                    if (cells[j]) {
-                        const text = cells[j].textContent || cells[j].innerText;
-                        if (text.toLowerCase().indexOf(filter) > -1) {
-                            match = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (match) {
-                    rows[i].style.display = '';
-                    rows[i].style.opacity = '1';
-                } else {
-                    rows[i].style.opacity = '0';
-                    setTimeout(() => {
-                        rows[i].style.display = 'none';
-                    }, 300);
-                }
-            }
-        }
-
-        function filterInactiveTable() {
-            const input = document.getElementById('searchInactiveInput');
-            if (!input) return;
-            const filter = input.value.toLowerCase();
-            const table = document.getElementById('inactiveUsersTable');
             if (!table) return;
             const rows = table.getElementsByTagName('tr');
 
@@ -2179,7 +1942,7 @@
             let totalAmountP = 0;
             let totalAdvIncOther = 0;
             
-            document.querySelectorAll('#usersTable tbody tr').forEach(row => {
+            document.querySelectorAll('#salaryTable tbody tr').forEach(row => {
                 const salaryCell = row.querySelector('[data-field="salary_pp"] .user-edit');
                 const salaryVal = (salaryCell && salaryCell.value) ? (parseFloat(salaryCell.value) || 0) : 0;
                 totalSalary += salaryVal;
@@ -2427,270 +2190,716 @@
                 });
             }
         });
+
+        // ============ Active Users Tabulator + Edit Modal ============
+        @php
+            $usersTableData = $allUsers->values()->map(function ($u) use ($currentMonthData, $emailMapping) {
+                $tlEmail = getTeamLoggerEmail($u->email ?? '', $emailMapping);
+                $workingHours = $currentMonthData[$tlEmail]['hours'] ?? 0;
+                return [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'avatar_url' => ! empty($u->avatar)
+                        ? asset('storage/' . $u->avatar)
+                        : asset('images/users/add-image-placeholder.svg'),
+                    'phone' => $u->phone ?? '',
+                    'email' => $u->email ?? '',
+                    'designation' => $u->designation ?? '',
+                    'date_of_joining' => $u->date_of_joining?->format('Y-m-d') ?? '',
+                    'working_hours' => $workingHours,
+                    'resources' => $u->userRR?->resources ?? '',
+                    'training' => $u->userRR?->training ?? '',
+                    'checklist_url' => ! empty($u->designation)
+                        ? route('performance.checklist.get', ['designationId' => $u->designation])
+                        : '',
+                    'has_resume' => ! empty($u->resume_path),
+                    'resume_url' => route('users.resume.show', $u),
+                    'resume_name' => $u->resume_original_name ?? '',
+                    'is_active' => (bool) $u->is_active,
+                    'bank_1' => $u->userSalary?->bank_1 ?? '',
+                    'bank_2' => $u->userSalary?->bank_2 ?? '',
+                    'upi_id' => $u->userSalary?->upi_id ?? '',
+                    'has_docs' => $u->docs->isNotEmpty(),
+                    'docs' => $u->docs->map(function ($d) use ($u) {
+                        return [
+                            'id' => $d->id,
+                            'type' => $d->type,
+                            'name' => $d->type === 'file' ? ($d->label ?: ($d->original_name ?: 'File')) : ($d->label ?: $d->url),
+                            'url' => $d->type === 'link' ? $d->url : route('users.docs.download', [$u->id, $d->id]),
+                        ];
+                    })->values(),
+                    'is_self' => $u->id === auth()->id(),
+                ];
+            });
+        @endphp
+        document.addEventListener('DOMContentLoaded', function () {
+            const tableEl = document.getElementById('usersTabulator');
+            if (!tableEl || typeof Tabulator === 'undefined') return;
+
+            const usersData = @json($usersTableData);
+            const csrfToken = '{{ csrf_token() }}';
+            const canViewResume = {{ $canViewResume ? 'true' : 'false' }};
+            const canEditResume = {{ $canEditResume ? 'true' : 'false' }};
+            const canViewSalary = {{ $canViewSalary ? 'true' : 'false' }};
+
+            const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            const dotFmt = (val, label) => {
+                const has = val !== null && String(val).trim() !== '';
+                return '<span class="tbl-dot ' + (has ? 'tbl-dot--green' : 'tbl-dot--red') + '" title="' +
+                    (has ? esc(val) : 'No ' + label) + '"></span>';
+            };
+            const textFmt = (c) => c.getValue() ? esc(c.getValue()) : '<span class="text-muted">-</span>';
+
+            const columns = [
+                { title: '#', formatter: 'rownum', width: 55, hozAlign: 'center', headerSort: false },
+                {
+                    title: 'Image', field: 'avatar_url', width: 80, hozAlign: 'center', headerSort: false,
+                    formatter: (c) => {
+                        const d = c.getRow().getData();
+                        const placeholder = '{{ asset('images/users/add-image-placeholder.svg') }}';
+                        const src = d.avatar_url || placeholder;
+                        return '<img src="' + src + '" class="user-avatar-img" alt="" loading="lazy" onerror="this.onerror=null;this.src=\'' + placeholder + '\';">';
+                    }
+                },
+                { title: 'Name', field: 'name', minWidth: 160, formatter: (c) => esc(c.getValue() || '') },
+                { title: 'Phone', field: 'phone', width: 80, hozAlign: 'center', headerSort: false, formatter: (c) => dotFmt(c.getValue(), 'phone number') },
+                { title: 'Email', field: 'email', width: 80, hozAlign: 'center', headerSort: false, formatter: (c) => dotFmt(c.getValue(), 'email') },
+                { title: 'Designation', field: 'designation', minWidth: 150, formatter: (c) => c.getValue() ? '<span class="designation-badge">' + esc(c.getValue()) + '</span>' : '<span class="text-muted">-</span>' },
+                { title: 'Joined', field: 'date_of_joining', width: 110, hozAlign: 'center', formatter: (c) => c.getValue() ? esc(c.getValue()) : '<span class="text-muted">-</span>' },
+                {
+                    title: 'Hours', field: 'working_hours', width: 90, hozAlign: 'center', headerSort: true,
+                    titleFormatter: () => '<span title="Productive working hours ({{ $currentMonth }})">Hours</span>',
+                    formatter: (c) => {
+                        const v = parseFloat(c.getValue());
+                        if (!v || isNaN(v)) return '<span class="text-muted">—</span>';
+                        return '<span class="badge bg-info" title="{{ $currentMonth }}">' + v + 'h</span>';
+                    }
+                },
+                {
+                    title: 'Active', field: 'is_active', width: 80, hozAlign: 'center', headerSort: false,
+                    formatter: (c) => {
+                        const d = c.getRow().getData();
+                        const active = d.is_active !== false;
+                        const dotCls = active ? 'tbl-dot--green' : 'tbl-dot--red';
+                        const clickable = canEdit && !d.is_self;
+                        const tip = active
+                            ? (clickable ? 'Active — click to deactivate' : 'Active')
+                            : (clickable ? 'Inactive — click to activate' : 'Inactive');
+                        const style = clickable ? 'cursor:pointer;' : '';
+                        return '<span class="tbl-dot status-dot ' + dotCls + '" style="' + style + '" title="' + tip + '"></span>';
+                    },
+                    cellClick: function (e, cell) {
+                        if (!canEdit) return;
+                        const d = cell.getRow().getData();
+                        if (d.is_self) return;
+                        toggleActive(d, cell.getRow());
+                    }
+                },
+            ];
+
+            if (canViewResume) {
+                columns.push({
+                    title: 'Docs', field: 'has_docs', width: 90, hozAlign: 'center', headerSort: false,
+                    formatter: (c) => {
+                        const d = c.getRow().getData();
+                        const tip = d.has_docs
+                            ? (canEditResume ? 'Docs attached — click to view/manage' : 'View docs')
+                            : (canEditResume ? 'No docs — click to add' : 'No docs');
+                        const cls = d.has_docs ? 'tbl-dot--green' : 'tbl-dot--red';
+                        return '<span class="tbl-dot docs-dot ' + cls + '" style="cursor:pointer;" title="' + esc(tip) + '"></span>';
+                    },
+                    cellClick: function (e, cell) {
+                        openDocsModal(cell.getRow().getData(), cell.getRow());
+                    }
+                });
+            }
+
+            if (canViewSalary) {
+                columns.push({
+                    title: 'Bank', field: 'bank_1', width: 90, hozAlign: 'center', headerSort: false,
+                    formatter: (c) => {
+                        const d = c.getRow().getData();
+                        const has = [d.bank_1, d.bank_2, d.upi_id].some((v) => v && String(v).trim() !== '');
+                        return has
+                            ? '<button type="button" class="btn btn-sm btn-success bank-view-btn py-0" title="View / edit bank details"><i class="ri-eye-line"></i></button>'
+                            : '<button type="button" class="btn btn-sm btn-outline-secondary bank-view-btn py-0" title="Add bank details"><i class="ri-bank-line"></i></button>';
+                    },
+                    cellClick: function (e, cell) {
+                        if (!e.target.closest('.bank-view-btn')) return;
+                        openBankModal(cell.getRow().getData(), cell.getRow());
+                    }
+                });
+            }
+
+            if (canEdit) {
+                columns.push({
+                    title: 'Action', field: 'id', width: 110, hozAlign: 'center', headerSort: false, frozen: true,
+                    formatter: (c) => {
+                        const d = c.getRow().getData();
+                        let html = '<button type="button" class="btn btn-sm btn-light border edit-user-btn" title="Edit"><i class="ri-edit-line"></i></button>';
+                        if (!d.is_self) {
+                            html += ' <button type="button" class="btn btn-sm btn-light border text-danger delete-user-btn" title="Deactivate user"><i class="ri-delete-bin-line"></i></button>';
+                        }
+                        return html;
+                    },
+                    cellClick: function (e, cell) {
+                        const d = cell.getRow().getData();
+                        if (e.target.closest('.edit-user-btn')) {
+                            openEditModal(d);
+                        } else if (e.target.closest('.delete-user-btn')) {
+                            deactivateUser(d, cell.getRow());
+                        }
+                    }
+                });
+            }
+
+            const usersTable = new Tabulator('#usersTabulator', {
+                data: usersData,
+                index: 'id',
+                layout: 'fitColumns',
+                height: '65vh',
+                placeholder: 'No users found',
+                pagination: true,
+                paginationSize: 50,
+                paginationSizeSelector: [25, 50, 100, 200],
+                columnDefaults: {
+                    hozAlign: 'center',
+                    headerHozAlign: 'center',
+                    vertAlign: 'middle',
+                },
+                columns: columns,
+                tableBuilt: function () {
+                    updateActiveCount();
+                },
+            });
+            window.usersTable = usersTable;
+
+            // Toggle a user's active status by clicking the status dot.
+            function toggleActive(d, row) {
+                const userId = d.id;
+                if (d.is_active !== false) {
+                    if (!confirm('Set this user to Inactive?')) return;
+                    fetch('/users/' + userId, {
+                        method: 'DELETE',
+                        headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                    })
+                    .then(r => r.json())
+                    .then(result => {
+                        if (result.success) {
+                            showToast(result.message, 'success');
+                            if (row) row.update({ is_active: false });
+                            applyUsersFilter();
+                        } else {
+                            showToast(result.message || 'Failed to update status', 'error');
+                        }
+                    })
+                    .catch(() => showToast('Failed to update status', 'error'));
+                } else {
+                    if (!confirm('Set this user to Active?')) return;
+                    const fd = new FormData();
+                    fd.append('_token', csrfToken);
+                    fetch('/users/' + userId + '/restore', {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                        body: fd
+                    })
+                    .then(r => r.json())
+                    .then(result => {
+                        if (result.success) {
+                            showToast(result.message, 'success');
+                            if (row) row.update({ is_active: true });
+                            applyUsersFilter();
+                        } else {
+                            showToast(result.message || 'Failed to update status', 'error');
+                        }
+                    })
+                    .catch(() => showToast('Failed to update status', 'error'));
+                }
+            }
+
+            const searchInput = document.getElementById('usersSearch');
+            let statusFilter = 'active';
+
+            function applyUsersFilter() {
+                const term = (searchInput && searchInput.value ? searchInput.value : '').toLowerCase();
+                usersTable.setFilter((data) => {
+                    const statusOk = statusFilter === 'active' ? (data.is_active !== false) : (data.is_active === false);
+                    if (!statusOk) return false;
+                    if (!term) return true;
+                    return ['name', 'email', 'phone', 'designation', 'resources', 'training']
+                        .some((f) => String(data[f] || '').toLowerCase().includes(term));
+                });
+                updateActiveCount();
+            }
+            window.applyUsersFilter = applyUsersFilter;
+
+            // Team badge always shows the total number of ACTIVE rows (regardless of the toggle/search).
+            function updateActiveCount() {
+                const badge = document.getElementById('teamCountBadge');
+                if (!badge) return;
+                let data = [];
+                try { data = usersTable.getData(); } catch (e) { /* table not built yet */ }
+                if (!data || !data.length) data = usersData; // fallback before the table finishes building
+                badge.textContent = data.filter((d) => d.is_active !== false).length;
+            }
+            window.updateActiveCount = updateActiveCount;
+
+            if (searchInput) {
+                searchInput.addEventListener('keyup', applyUsersFilter);
+            }
+
+            const statusActiveBtn = document.getElementById('statusActiveBtn');
+            const statusInactiveBtn = document.getElementById('statusInactiveBtn');
+            function setStatusFilter(status) {
+                statusFilter = status;
+                if (status === 'active') {
+                    statusActiveBtn.className = 'btn btn-success active';
+                    statusInactiveBtn.className = 'btn btn-outline-danger';
+                } else {
+                    statusActiveBtn.className = 'btn btn-outline-success';
+                    statusInactiveBtn.className = 'btn btn-danger active';
+                }
+                applyUsersFilter();
+            }
+            if (statusActiveBtn) statusActiveBtn.addEventListener('click', () => setStatusFilter('active'));
+            if (statusInactiveBtn) statusInactiveBtn.addEventListener('click', () => setStatusFilter('inactive'));
+
+            // Default view: active users only.
+            applyUsersFilter();
+
+            const modalEl = document.getElementById('editUserModal');
+            const bsModal = (modalEl && window.bootstrap) ? new bootstrap.Modal(modalEl) : null;
+            const form = document.getElementById('editUserForm');
+            const errBox = document.getElementById('editUserError');
+
+            function openEditModal(d) {
+                if (!bsModal) return;
+                errBox.classList.add('d-none');
+                errBox.textContent = '';
+                document.getElementById('editUserId').value = d.id;
+                document.getElementById('editName').value = d.name || '';
+                document.getElementById('editEmail').value = d.email || '';
+                document.getElementById('editPhone').value = d.phone || '';
+                document.getElementById('editDesignation').value = d.designation || '';
+                document.getElementById('editDateOfJoining').value = d.date_of_joining || '';
+                bsModal.show();
+            }
+
+            if (form) {
+                form.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    const saveBtn = document.getElementById('editUserSaveBtn');
+                    const orig = saveBtn.innerHTML;
+                    saveBtn.disabled = true;
+                    saveBtn.innerHTML = '<i class="ri-loader-4-line"></i> Saving...';
+                    errBox.classList.add('d-none');
+
+                    const userId = document.getElementById('editUserId').value;
+                    const fd = new FormData();
+                    fd.append('name', document.getElementById('editName').value.trim());
+                    fd.append('email', document.getElementById('editEmail').value.trim());
+                    fd.append('phone', document.getElementById('editPhone').value.trim());
+                    fd.append('designation', document.getElementById('editDesignation').value.trim());
+                    fd.append('date_of_joining', document.getElementById('editDateOfJoining').value);
+                    fd.append('_token', csrfToken);
+                    fd.append('_method', 'PUT');
+
+                    fetch('/users/' + userId, {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                        body: fd
+                    })
+                    .then(r => r.json())
+                    .then(result => {
+                        saveBtn.disabled = false;
+                        saveBtn.innerHTML = orig;
+                        if (result.success) {
+                            const row = usersTable.getRow(Number(userId));
+                            if (row) {
+                                row.update({
+                                    name: result.user.name,
+                                    email: result.user.email,
+                                    phone: result.user.phone || '',
+                                    designation: result.user.designation || '',
+                                    date_of_joining: result.user.date_of_joining || '',
+                                    rr_role: result.user.rr_role || '',
+                                    rr_has_portfolio: result.user.has_rr_portfolio === true,
+                                    resources: result.user.resources || '',
+                                    training: result.user.training || '',
+                                });
+                            }
+                            bsModal.hide();
+                            showToast(result.message || 'User updated successfully.', 'success');
+                        } else {
+                            let msg = result.message || 'Update failed';
+                            if (result.errors) msg = Object.values(result.errors).flat().join(' ');
+                            errBox.textContent = msg;
+                            errBox.classList.remove('d-none');
+                        }
+                    })
+                    .catch(() => {
+                        saveBtn.disabled = false;
+                        saveBtn.innerHTML = orig;
+                        errBox.textContent = 'An error occurred while updating user.';
+                        errBox.classList.remove('d-none');
+                    });
+                });
+            }
+
+            function deactivateUser(d, row) {
+                if (!confirm('Deactivate this user? They will not be able to sign in until you use Recover.')) return;
+                fetch('/users/' + d.id, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(r => r.json())
+                .then(result => {
+                    if (result.success) {
+                        showToast(result.message, 'success');
+                        row.update({ is_active: false });
+                        if (window.applyUsersFilter) window.applyUsersFilter();
+                    } else {
+                        showToast(result.message || 'Delete failed', 'error');
+                    }
+                })
+                .catch(() => showToast('Delete failed', 'error'));
+            }
+
+            // ---- Resume modal (HR only) ----
+            const resumeModalEl = document.getElementById('resumeModal');
+            const bsResumeModal = (resumeModalEl && window.bootstrap) ? new bootstrap.Modal(resumeModalEl) : null;
+            let resumeTargetRow = null;
+
+            function openResumeModal(d, row) {
+                if (!bsResumeModal) return;
+                resumeTargetRow = row;
+                document.getElementById('resumeUserId').value = d.id;
+                document.getElementById('resumeUserName').textContent = d.name || '';
+                const fileInput = document.getElementById('resumeFile');
+                if (fileInput) fileInput.value = '';
+                const errEl = document.getElementById('resumeError');
+                if (errEl) { errEl.classList.add('d-none'); errEl.textContent = ''; }
+                const current = document.getElementById('resumeCurrent');
+                const delBtn = document.getElementById('resumeDeleteBtn');
+                if (d.has_resume) {
+                    current.innerHTML = '<a href="' + d.resume_url + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success"><i class="ri-file-download-line me-1"></i>' + esc(d.resume_name || 'View resume') + '</a>';
+                    if (delBtn) delBtn.classList.remove('d-none');
+                } else {
+                    current.innerHTML = '<span class="text-muted">No resume uploaded yet.</span>';
+                    if (delBtn) delBtn.classList.add('d-none');
+                }
+                bsResumeModal.show();
+            }
+
+            const resumeUploadBtn = document.getElementById('resumeUploadBtn');
+            if (resumeUploadBtn) {
+                resumeUploadBtn.addEventListener('click', function () {
+                    const fileInput = document.getElementById('resumeFile');
+                    const errEl = document.getElementById('resumeError');
+                    if (!fileInput.files || !fileInput.files[0]) {
+                        errEl.textContent = 'Please choose a file to upload.';
+                        errEl.classList.remove('d-none');
+                        return;
+                    }
+                    const userId = document.getElementById('resumeUserId').value;
+                    const orig = resumeUploadBtn.innerHTML;
+                    resumeUploadBtn.disabled = true;
+                    resumeUploadBtn.innerHTML = '<i class="ri-loader-4-line"></i> Saving...';
+                    errEl.classList.add('d-none');
+
+                    const fd = new FormData();
+                    fd.append('resume', fileInput.files[0]);
+                    fd.append('_token', csrfToken);
+
+                    fetch('/users/' + userId + '/resume', {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                        body: fd
+                    })
+                    .then(r => r.json())
+                    .then(result => {
+                        resumeUploadBtn.disabled = false;
+                        resumeUploadBtn.innerHTML = orig;
+                        if (result.success) {
+                            if (resumeTargetRow) {
+                                resumeTargetRow.update({ has_resume: true, resume_name: result.resume_name, resume_url: result.resume_url });
+                            }
+                            bsResumeModal.hide();
+                            showToast(result.message || 'Resume uploaded.', 'success');
+                        } else {
+                            let msg = result.message || 'Upload failed';
+                            if (result.errors) msg = Object.values(result.errors).flat().join(' ');
+                            errEl.textContent = msg;
+                            errEl.classList.remove('d-none');
+                        }
+                    })
+                    .catch(() => {
+                        resumeUploadBtn.disabled = false;
+                        resumeUploadBtn.innerHTML = orig;
+                        errEl.textContent = 'An error occurred while uploading.';
+                        errEl.classList.remove('d-none');
+                    });
+                });
+            }
+
+            const resumeDeleteBtn = document.getElementById('resumeDeleteBtn');
+            if (resumeDeleteBtn) {
+                resumeDeleteBtn.addEventListener('click', function () {
+                    if (!confirm('Remove this resume file?')) return;
+                    const userId = document.getElementById('resumeUserId').value;
+                    const orig = resumeDeleteBtn.innerHTML;
+                    resumeDeleteBtn.disabled = true;
+                    resumeDeleteBtn.innerHTML = '<i class="ri-loader-4-line"></i>';
+
+                    fetch('/users/' + userId + '/resume', {
+                        method: 'DELETE',
+                        headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                    })
+                    .then(r => r.json())
+                    .then(result => {
+                        resumeDeleteBtn.disabled = false;
+                        resumeDeleteBtn.innerHTML = orig;
+                        if (result.success) {
+                            if (resumeTargetRow) {
+                                resumeTargetRow.update({ has_resume: false, resume_name: '' });
+                            }
+                            bsResumeModal.hide();
+                            showToast(result.message || 'Resume removed.', 'success');
+                        } else {
+                            showToast(result.message || 'Failed to remove', 'error');
+                        }
+                    })
+                    .catch(() => {
+                        resumeDeleteBtn.disabled = false;
+                        resumeDeleteBtn.innerHTML = orig;
+                        showToast('Failed to remove resume', 'error');
+                    });
+                });
+            }
+
+            // ---- Bank details modal (editable; update-only, never deletes) ----
+            const bankModalEl = document.getElementById('bankModal');
+            const bsBankModal = (bankModalEl && window.bootstrap) ? new bootstrap.Modal(bankModalEl) : null;
+            let bankTargetRow = null;
+
+            function openBankModal(d, row) {
+                if (!bsBankModal) return;
+                bankTargetRow = row || null;
+                document.getElementById('bankUserId').value = d.id;
+                document.getElementById('bankUserName').textContent = d.name || '';
+                document.getElementById('bankInput1').value = d.bank_1 || '';
+                document.getElementById('bankInput2').value = d.bank_2 || '';
+                document.getElementById('bankInputUpi').value = d.upi_id || '';
+                const err = document.getElementById('bankError');
+                if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                bsBankModal.show();
+            }
+
+            const bankSaveBtn = document.getElementById('bankSaveBtn');
+            if (bankSaveBtn) {
+                bankSaveBtn.addEventListener('click', function () {
+                    const userId = document.getElementById('bankUserId').value;
+                    const err = document.getElementById('bankError');
+                    const orig = bankSaveBtn.innerHTML;
+                    bankSaveBtn.disabled = true;
+                    bankSaveBtn.innerHTML = '<i class="ri-loader-4-line"></i> Saving...';
+                    if (err) err.classList.add('d-none');
+
+                    const fd = new FormData();
+                    fd.append('bank_1', document.getElementById('bankInput1').value.trim());
+                    fd.append('bank_2', document.getElementById('bankInput2').value.trim());
+                    fd.append('upi_id', document.getElementById('bankInputUpi').value.trim());
+                    fd.append('_token', csrfToken);
+
+                    fetch('/users/' + userId + '/bank', {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                        body: fd
+                    })
+                    .then(r => r.json())
+                    .then(result => {
+                        bankSaveBtn.disabled = false;
+                        bankSaveBtn.innerHTML = orig;
+                        if (result.success) {
+                            if (bankTargetRow) {
+                                bankTargetRow.update({ bank_1: result.bank_1, bank_2: result.bank_2, upi_id: result.upi_id });
+                            }
+                            bsBankModal.hide();
+                            showToast(result.message || 'Bank details updated.', 'success');
+                        } else {
+                            let m = result.message || 'Failed to update';
+                            if (result.errors) m = Object.values(result.errors).flat().join(' ');
+                            if (err) { err.textContent = m; err.classList.remove('d-none'); }
+                        }
+                    })
+                    .catch(() => {
+                        bankSaveBtn.disabled = false;
+                        bankSaveBtn.innerHTML = orig;
+                        if (err) { err.textContent = 'An error occurred while saving.'; err.classList.remove('d-none'); }
+                    });
+                });
+            }
+
+            // ---- Docs modal ----
+            const docsModalEl = document.getElementById('docsModal');
+            const bsDocsModal = (docsModalEl && window.bootstrap) ? new bootstrap.Modal(docsModalEl) : null;
+            let docsTargetRow = null;
+
+            function renderDocsList(docs) {
+                const list = document.getElementById('docsList');
+                if (!list) return;
+                if (!docs || !docs.length) {
+                    list.innerHTML = '<li class="list-group-item text-muted">No documents yet.</li>';
+                    return;
+                }
+                list.innerHTML = docs.map(function (doc) {
+                    const icon = doc.type === 'file' ? 'ri-file-3-line' : 'ri-link';
+                    const del = canEditResume
+                        ? '<button type="button" class="btn btn-sm btn-outline-danger doc-del-btn" data-doc-id="' + doc.id + '"><i class="ri-delete-bin-line"></i></button>'
+                        : '';
+                    return '<li class="list-group-item d-flex justify-content-between align-items-center gap-2">' +
+                        '<a href="' + doc.url + '" target="_blank" rel="noopener" class="text-decoration-none text-break">' +
+                        '<i class="' + icon + ' me-2"></i>' + esc(doc.name || (doc.type === 'file' ? 'File' : 'Link')) + '</a>' +
+                        del + '</li>';
+                }).join('');
+
+                list.querySelectorAll('.doc-del-btn').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        deleteDoc(btn.getAttribute('data-doc-id'), btn);
+                    });
+                });
+            }
+
+            function openDocsModal(d, row) {
+                if (!bsDocsModal) return;
+                docsTargetRow = row;
+                document.getElementById('docsUserId').value = d.id;
+                document.getElementById('docsUserName').textContent = d.name || '';
+                const errEl = document.getElementById('docsError');
+                if (errEl) { errEl.classList.add('d-none'); errEl.textContent = ''; }
+                resetDocRows();
+                renderDocsList(d.docs || []);
+                bsDocsModal.show();
+            }
+
+            function docRowTemplate() {
+                return '<div class="doc-row row g-2 align-items-center mb-2">' +
+                    '<div class="col-md-4"><input type="text" class="form-control form-control-sm doc-row-name" placeholder="File name (optional)"></div>' +
+                    '<div class="col-md-4"><input type="file" class="form-control form-control-sm doc-row-file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.zip,.txt,.csv"></div>' +
+                    '<div class="col-md-3"><input type="url" class="form-control form-control-sm doc-row-link" placeholder="https://link"></div>' +
+                    '<div class="col-md-1 text-end"><button type="button" class="btn btn-sm btn-outline-danger doc-row-remove" title="Remove"><i class="ri-close-line"></i></button></div>' +
+                    '</div>';
+            }
+
+            function addDocRow() {
+                const container = document.getElementById('docRows');
+                if (!container) return;
+                container.insertAdjacentHTML('beforeend', docRowTemplate());
+                const row = container.lastElementChild;
+                row.querySelector('.doc-row-remove').addEventListener('click', function () {
+                    row.remove();
+                    if (!document.querySelectorAll('#docRows .doc-row').length) addDocRow();
+                });
+            }
+
+            function resetDocRows() {
+                const container = document.getElementById('docRows');
+                if (!container) return;
+                container.innerHTML = '';
+                addDocRow();
+            }
+
+            function applyDocsResult(result) {
+                if (docsTargetRow) {
+                    docsTargetRow.update({ has_docs: result.has_docs, docs: result.docs });
+                }
+                renderDocsList(result.docs || []);
+            }
+
+            function docsError(msg) {
+                const errEl = document.getElementById('docsError');
+                if (!errEl) return;
+                errEl.textContent = msg;
+                errEl.classList.remove('d-none');
+            }
+
+            function deleteDoc(docId, btn) {
+                if (!confirm('Remove this document?')) return;
+                const userId = document.getElementById('docsUserId').value;
+                if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ri-loader-4-line"></i>'; }
+                fetch('/users/' + userId + '/docs/' + docId, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(r => r.json())
+                .then(result => {
+                    if (result.success) {
+                        applyDocsResult(result);
+                        showToast('Document removed.', 'success');
+                    } else {
+                        showToast(result.message || 'Failed to remove', 'error');
+                    }
+                })
+                .catch(() => showToast('Failed to remove document', 'error'));
+            }
+
+            const docAddRowBtn = document.getElementById('docAddRowBtn');
+            if (docAddRowBtn) {
+                docAddRowBtn.addEventListener('click', addDocRow);
+            }
+
+            const docsSaveBtn = document.getElementById('docsSaveBtn');
+            if (docsSaveBtn) {
+                docsSaveBtn.addEventListener('click', function () {
+                    const userId = document.getElementById('docsUserId').value;
+                    const rows = Array.from(document.querySelectorAll('#docRows .doc-row'));
+                    const fd = new FormData();
+                    fd.append('_token', csrfToken);
+                    let count = 0;
+
+                    rows.forEach(function (row) {
+                        const name = row.querySelector('.doc-row-name').value.trim();
+                        const link = row.querySelector('.doc-row-link').value.trim();
+                        const fileInput = row.querySelector('.doc-row-file');
+                        const file = (fileInput.files && fileInput.files[0]) ? fileInput.files[0] : null;
+                        if (!file && !link) return; // skip empty rows
+
+                        fd.append('rows[' + count + '][name]', name);
+                        fd.append('rows[' + count + '][link]', link);
+                        if (file) fd.append('rows[' + count + '][file]', file);
+                        count++;
+                    });
+
+                    if (count === 0) { docsError('Add at least one file or link.'); return; }
+
+                    const orig = docsSaveBtn.innerHTML;
+                    docsSaveBtn.disabled = true;
+                    docsSaveBtn.innerHTML = '<i class="ri-loader-4-line"></i> Saving...';
+                    document.getElementById('docsError').classList.add('d-none');
+
+                    fetch('/users/' + userId + '/docs', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' }, body: fd })
+                    .then(r => r.json())
+                    .then(result => {
+                        docsSaveBtn.disabled = false;
+                        docsSaveBtn.innerHTML = orig;
+                        if (result.success) {
+                            resetDocRows();
+                            applyDocsResult(result);
+                            showToast(result.message || 'Saved.', 'success');
+                        } else {
+                            let m = result.message || 'Failed to save';
+                            if (result.errors) m = Object.values(result.errors).flat().join(' ');
+                            docsError(m);
+                        }
+                    })
+                    .catch(() => { docsSaveBtn.disabled = false; docsSaveBtn.innerHTML = orig; docsError('An error occurred while saving.'); });
+                });
+            }
+        });
     </script>
             </div>
             <!-- End Users Tab -->
-
-            <!-- Salary Tab -->
-            @if($canViewSalary)
-            <div class="tab-pane fade" id="salary-content" role="tabpanel">
-                <div class="card shadow-sm">
-                    <div class="card-body">
-                        <!-- Search Form -->
-                        <div class="mb-2">
-                            <div class="input-group">
-                                <span class="input-group-text bg-light border-0">
-                                    <i class="fas fa-search text-muted"></i>
-                                </span>
-                                <input type="text" id="searchSalaryInput" class="form-control border-0 bg-light" 
-                                    placeholder="Search by name, salary, increment, salary LM, hours LM, other, amount LM, amount P, advance, or banks" onkeyup="filterSalaryTable()">
-                            </div>
-                        </div>
-
-                        <!-- Salary Table -->
-                        <div class="users-active-table-wrap">
-                            <table class="table users-table align-middle" id="salaryTable">
-                                <thead>
-                                    <tr>
-                                        <th>#</th>
-                                        <th>Name</th>
-                                        <th>Salary PP</th>
-                                        <th>Incr</th>
-                                        <th>Salary LM</th>
-                                        <th>Hours LM</th>
-                                        <th>Other</th>
-                                        <th>Amt LM</th>
-                                        <th>Amt P</th>
-                                        <th>Adv</th>
-                                        <th>B1</th>
-                                        <th>B2</th>
-                                        <th>UPI</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @forelse($salaryUsers as $index => $user)
-                                        <tr data-user-id="{{ $user->id }}" data-show-in-salary="{{ $user->show_in_salary ? 'true' : 'false' }}">
-                                            <td>{{ $index + 1 }}</td>
-                                            <td>
-                                                <div class="d-flex align-items-center">
-                                                    <div class="avatar-circle me-3">
-                                                        {{ strtoupper(substr($user->name, 0, 1)) }}
-                                                    </div>
-                                                    <div class="user-name-cell" data-field="name" data-original="{{ $user->name }}">
-                                                        <span class="user-display user-name">{{ $user->name }}</span>
-                                                        <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $user->name }}" data-field="name">
-                                                    </div>
-                                                </div>
-                                                <!-- Hidden fields for required data not displayed in Salary tab -->
-                                                <input type="hidden" class="salary-tab-email" value="{{ $user->email }}" data-field="email">
-                                                <input type="hidden" class="salary-tab-phone" value="{{ $user->phone ?? '' }}" data-field="phone">
-                                                <input type="hidden" class="salary-tab-designation" value="{{ $user->designation ?? '' }}" data-field="designation">
-                                                <input type="hidden" class="salary-tab-rr" value="{{ $user->userRR?->role ?? '' }}" data-field="rr_role">
-                                                <input type="hidden" class="salary-tab-resources" value="{{ $user->userRR?->resources ?? '' }}" data-field="resources">
-                                                <input type="hidden" class="salary-tab-training" value="{{ $user->userRR?->training ?? '' }}" data-field="training">
-                                            </td>
-                                            <td>
-                                                @php $salaryPP = $user->userSalary?->salary_pp ?? ''; @endphp
-                                                <div class="user-salary-cell" data-field="salary_pp">
-                                                    @if($salaryPP !== '')
-                                                        <span class="user-display salary-badge">₹{{ number_format($salaryPP, 0) }}</span>
-                                                    @else
-                                                        <span class="user-display text-muted">—</span>
-                                                    @endif
-                                                    <input type="number" step="1" min="0" class="form-control form-control-sm user-edit d-none" value="{{ $salaryPP !== '' ? round($salaryPP) : '' }}" data-field="salary_pp" placeholder="Salary PP">
-                                                </div>
-                                            </td>
-                                            <td>
-                                                @php $increment = $user->userSalary?->increment ?? ''; @endphp
-                                                <div class="user-increment-cell" data-field="increment">
-                                                    @if($increment !== '')
-                                                        <span class="user-display increment-badge">₹{{ number_format($increment, 0) }}</span>
-                                                    @else
-                                                        <span class="user-display text-muted">—</span>
-                                                    @endif
-                                                    <input type="number" step="1" min="0" class="form-control form-control-sm user-edit d-none" value="{{ $increment !== '' ? round($increment) : '' }}" data-field="increment" placeholder="Increment">
-                                                </div>
-                                            </td>
-                                            <td>
-                                                @php 
-                                                    $salaryPPVal = $user->userSalary?->salary_pp ?? 0;
-                                                    $incrementVal = $user->userSalary?->increment ?? 0;
-                                                    $salaryLM = $salaryPPVal + $incrementVal;
-                                                @endphp
-                                                <div class="user-salary-lm-cell">
-                                                    @if($salaryLM > 0)
-                                                        <span class="user-display salary-lm-badge">₹{{ number_format($salaryLM, 0) }}</span>
-                                                    @else
-                                                        <span class="user-display text-muted">—</span>
-                                                    @endif
-                                                </div>
-                                            </td>
-                                            <td>
-                                                @php 
-                                                    $userEmail = strtolower(trim($user->email));
-                                                    $teamLoggerEmail = getTeamLoggerEmail($userEmail, $emailMapping);
-                                                    $hoursLM = $teamLoggerData[$teamLoggerEmail]['hours'] ?? 0;
-                                                @endphp
-                                                <div class="user-hours-lm-cell" data-field="hours_lm">
-                                                    @if($hoursLM > 0)
-                                                        <span class="user-display hours-lm-badge" title="{{ $previousMonth }}: {{ $hoursLM }} hours">{{ $hoursLM }}h</span>
-                                                    @else
-                                                        <span class="user-display text-muted" title="No hours logged in {{ $previousMonth }}">—</span>
-                                                    @endif
-                                                    <input type="number" step="1" min="0" class="form-control form-control-sm user-edit d-none" value="{{ $hoursLM }}" data-field="hours_lm" placeholder="Hours">
-                                                </div>
-                                            </td>
-                                            <td>
-                                                @php $other = $user->userSalary?->other ?? ''; @endphp
-                                                <div class="user-other-cell" data-field="other" data-original="{{ $other }}">
-                                                    @if($other !== '' && $other > 0)
-                                                        <span class="user-display other-badge">₹{{ number_format($other, 0) }}</span>
-                                                    @else
-                                                        <span class="user-display text-muted">—</span>
-                                                    @endif
-                                                    <input type="number" step="1" min="0" class="form-control form-control-sm user-edit d-none" value="{{ $other !== '' ? round($other) : '' }}" data-field="other" placeholder="Other">
-                                                </div>
-                                            </td>
-                                            <td>
-                                                @php 
-                                                    $userEmail = strtolower(trim($user->email));
-                                                    $teamLoggerEmail = getTeamLoggerEmail($userEmail, $emailMapping);
-                                                    $hoursLM = $teamLoggerData[$teamLoggerEmail]['hours'] ?? 0;
-                                                    $salaryPPVal = $user->userSalary?->salary_pp ?? 0;
-                                                    $incrementVal = $user->userSalary?->increment ?? 0;
-                                                    $salaryLM = $salaryPPVal + $incrementVal;
-                                                    $other = $user->userSalary?->other ?? 0;
-                                                    $advIncOther = $user->userSalary?->adv_inc_other ?? 0;
-                                                    $amountLM = (($hoursLM * $salaryLM) / 200);
-                                                @endphp
-                                                <div class="user-amount-lm-cell">
-                                                    @if($amountLM != 0)
-                                                        <span class="amount-lm-badge">₹{{ number_format($amountLM, 0) }}</span>
-                                                    @else
-                                                        <span class="text-muted">—</span>
-                                                    @endif
-                                                </div>
-                                            </td>
-                                            <td>
-                                                @php 
-                                                    $userEmail = strtolower(trim($user->email));
-                                                    $teamLoggerEmail = getTeamLoggerEmail($userEmail, $emailMapping);
-                                                    $hoursLM = $teamLoggerData[$teamLoggerEmail]['hours'] ?? 0;
-                                                    $salaryPPVal = $user->userSalary?->salary_pp ?? 0;
-                                                    $incrementVal = $user->userSalary?->increment ?? 0;
-                                                    $salaryLM = $salaryPPVal + $incrementVal;
-                                                    $other = $user->userSalary?->other ?? 0;
-                                                    $advIncOther = $user->userSalary?->adv_inc_other ?? 0;
-                                                    $amountP = (($hoursLM * $salaryLM) / 200) + $other - $advIncOther;
-                                                @endphp
-                                                <div class="user-amount-p-cell">
-                                                    @if($amountP != 0)
-                                                        <span class="amount-p-badge">₹{{ number_format(round($amountP / 100) * 100, 0) }}</span>
-                                                    @else
-                                                        <span class="text-muted">—</span>
-                                                    @endif
-                                                </div>
-                                            </td>
-                                            <td>
-                                                @php $advIncOther = $user->userSalary?->adv_inc_other ?? ''; @endphp
-                                                <div class="user-adv-inc-other-cell" data-field="adv_inc_other" data-original="{{ $advIncOther }}">
-                                                    @if($advIncOther !== '' && $advIncOther > 0)
-                                                        <span class="user-display adv-inc-other-badge">₹{{ number_format($advIncOther, 0) }}</span>
-                                                    @else
-                                                        <span class="user-display text-muted">—</span>
-                                                    @endif
-                                                    <input type="number" step="1" min="0" class="form-control form-control-sm user-edit d-none" value="{{ $advIncOther !== '' ? round($advIncOther) : '' }}" data-field="adv_inc_other" placeholder="Adv">
-                                                </div>
-                                            </td>
-                                            <td>
-                                                @php $bank1 = $user->userSalary?->bank_1 ?? ''; @endphp
-                                                <div class="user-bank-1-cell" data-field="bank_1" data-original="{{ $bank1 }}">
-                                                    <span class="user-display">
-                                                        <span class="data-indicator {{ $bank1 ? 'indicator-filled' : 'indicator-empty' }}" data-tooltip="{{ $bank1 ?: 'No data' }}">
-                                                            <span class="tooltip-text">{{ $bank1 ?: 'No Bank 1 data' }}</span>
-                                                        </span>
-                                                    </span>
-                                                    <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $bank1 }}" data-field="bank_1" placeholder="B1">
-                                                </div>
-                                            </td>
-                                            <td>
-                                                @php $bank2 = $user->userSalary?->bank_2 ?? ''; @endphp
-                                                <div class="user-bank-2-cell" data-field="bank_2" data-original="{{ $bank2 }}">
-                                                    <span class="user-display">
-                                                        <span class="data-indicator {{ $bank2 ? 'indicator-filled' : 'indicator-empty' }}" data-tooltip="{{ $bank2 ?: 'No data' }}">
-                                                            <span class="tooltip-text">{{ $bank2 ?: 'No Bank 2 data' }}</span>
-                                                        </span>
-                                                    </span>
-                                                    <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $bank2 }}" data-field="bank_2" placeholder="B2">
-                                                </div>
-                                            </td>
-                                            <td>
-                                                @php $upiId = $user->userSalary?->upi_id ?? ''; @endphp
-                                                <div class="user-upi-id-cell" data-field="upi_id" data-original="{{ $upiId }}">
-                                                    <span class="user-display">
-                                                        <span class="data-indicator {{ $upiId ? 'indicator-filled' : 'indicator-empty' }}" data-tooltip="{{ $upiId ?: 'No data' }}">
-                                                            <span class="tooltip-text">{{ $upiId ?: 'No UPI ID data' }}</span>
-                                                        </span>
-                                                    </span>
-                                                    <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $upiId }}" data-field="upi_id" placeholder="UPI">
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div class="action-buttons">
-                                                    @if($canEdit)
-                                                    <button type="button" class="btn-action edit-btn" data-user-id="{{ $user->id }}" title="Edit">
-                                                        <i class="ri-edit-line"></i>
-                                                    </button>
-                                                    @endif
-                                                    <button type="button" class="btn-action btn-user-icon user-icon-btn" data-user-id="{{ $user->id }}" title="User">
-                                                        <i class="ri-user-line"></i>
-                                                    </button>
-                                                    @if($canEdit && $user->id !== auth()->id())
-                                                        <button type="button" class="btn-action btn-danger-soft delete-btn" data-user-id="{{ $user->id }}" title="Deactivate user">
-                                                            <i class="ri-delete-bin-line"></i>
-                                                        </button>
-                                                        <button type="button" class="btn-action btn-warning-soft salary-hide-btn" data-user-id="{{ $user->id }}" title="Hide from Salary">
-                                                            <i class="ri-eye-off-line"></i>
-                                                        </button>
-                                                    @endif
-                                                    @if($canEdit)
-                                                    <button type="button" class="btn-action btn-success save-btn d-none" data-user-id="{{ $user->id }}" title="Save">
-                                                        <i class="ri-check-line"></i>
-                                                    </button>
-                                                    <button type="button" class="btn-action btn-secondary cancel-btn d-none" data-user-id="{{ $user->id }}" title="Cancel">
-                                                        <i class="ri-close-line"></i>
-                                                    </button>
-                                                    @endif
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    @empty
-                                        <tr>
-                                            <td colspan="13" class="text-center py-4 text-muted">No users found</td>
-                                        </tr>
-                                    @endforelse
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            @endif
-            <!-- End Salary Tab -->
-
-            <!-- Performance Management Tab -->
-            <div class="tab-pane fade" id="performance-content" role="tabpanel">
-                @include('pages.performance-management')
-            </div>
-            <!-- End Performance Management Tab -->
         </div>
         <!-- End Tab Content -->
     </div>
-@endsection
-
-{{-- Performance Management: scripts must be on this view so @yield('script') receives them (sections in @include are unreliable) --}}
-@section('script')
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="{{ asset('js/performance-management.js') }}"></script>
 @endsection

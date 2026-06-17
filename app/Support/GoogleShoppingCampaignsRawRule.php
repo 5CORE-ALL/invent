@@ -52,22 +52,48 @@ final class GoogleShoppingCampaignsRawRule
      */
     public static function resolvedRule(): array
     {
-        return Cache::remember(self::CACHE_KEY, 86400, static function (): array {
-            if (! Schema::hasTable('google_shopping_campaigns_raw_rule_settings')) {
-                return self::defaults();
-            }
-            $row = GoogleShoppingCampaignsRawRuleSetting::query()->orderBy('id')->first();
-            if ($row === null || ! is_array($row->rule) || $row->rule === []) {
-                return self::defaults();
-            }
+        if (! Schema::hasTable('google_shopping_campaigns_raw_rule_settings')) {
+            return self::defaults();
+        }
 
-            return self::normalizeRule(array_replace_recursive(self::defaults(), $row->rule));
+        $row = GoogleShoppingCampaignsRawRuleSetting::query()
+            ->orderBy('id')
+            ->first(['id', 'rule', 'updated_at']);
+
+        if ($row === null || ! is_array($row->rule) || $row->rule === []) {
+            return self::defaults();
+        }
+
+        // Version the cache key by the row's updated_at so a save produces a brand-new
+        // key (always fresh) instead of relying on Cache::forget() succeeding. On servers
+        // where cron jobs write the file cache as a different OS user than the web server,
+        // forget() silently fails to unlink the cron-owned file and the old value would
+        // otherwise persist for the full TTL.
+        $version = $row->updated_at !== null
+            ? $row->updated_at->getTimestamp()
+            : 0;
+        $cacheKey = self::CACHE_KEY.':'.$row->id.':'.$version;
+
+        $rule = $row->rule;
+
+        return Cache::remember($cacheKey, 86400, static function () use ($rule): array {
+            return self::normalizeRule(array_replace_recursive(self::defaults(), $rule));
         });
     }
 
     public static function forgetResolvedCache(): void
     {
         Cache::forget(self::CACHE_KEY);
+
+        if (Schema::hasTable('google_shopping_campaigns_raw_rule_settings')) {
+            $row = GoogleShoppingCampaignsRawRuleSetting::query()
+                ->orderBy('id')
+                ->first(['id', 'updated_at']);
+            if ($row !== null) {
+                $version = $row->updated_at !== null ? $row->updated_at->getTimestamp() : 0;
+                Cache::forget(self::CACHE_KEY.':'.$row->id.':'.$version);
+            }
+        }
     }
 
     /**

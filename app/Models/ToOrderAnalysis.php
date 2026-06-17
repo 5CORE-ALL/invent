@@ -23,6 +23,7 @@ class ToOrderAnalysis extends Model
         'nrl',
         'sheet_link',
         'supplier_name',
+        'exec',
         'advance_date',
         'order_qty',
         'auth_user',

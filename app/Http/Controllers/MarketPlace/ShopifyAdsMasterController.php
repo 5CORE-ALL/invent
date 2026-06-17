@@ -11,6 +11,29 @@ use Illuminate\Support\Facades\DB;
 
 class ShopifyAdsMasterController extends Controller
 {
+    /**
+     * Per-request memoization for the Meta sheet aggregations. Computed once by
+     * {@see loadFacebookContext()} on the first {@see metaChannelMetrics()} call
+     * and reused so adding 8 typed sub-row variants does not multiply DB I/O.
+     *
+     * @var array{
+     *     baseCids: array<string,bool>,
+     *     nameToCid: array<string,string>,
+     *     chMap: array<string,string>,
+     *     adTypeMap: array<string,string>,
+     *     spendByCid: array<string, array{spend: float, clicks: float}>,
+     *     salesByCid: array<string, array{sold: float, sales: float}>
+     * }|null
+     */
+    private ?array $cachedFbContext = null;
+
+    /**
+     * Channel-name delimiter used to mark "sub-row" channels (e.g.
+     * "Facebook · G Video"). Detected by both {@see history()} and the
+     * frontend so sub-rows don't double-count rolled-up totals.
+     */
+    public const SUBROW_SEPARATOR = ' · ';
+
     public function index(Request $request)
     {
         $mode = $request->query('mode');
@@ -28,17 +51,301 @@ class ShopifyAdsMasterController extends Controller
 
     public function data()
     {
+        // Google Shopping ↔ Google SERP partition the same `google_ads_campaigns` rows by
+        // campaign-name word boundary on " SEARCH" (matches the /google/shopping/google-shopping
+        // and /google/shopping/google-serp pages). Listing both as channels is symmetric to what
+        // those pages show, with no double-counting between them.
+        //
+        // Facebook + Instagram each get four typed sub-rows (G Video / G Carousal / P Video /
+        // P Carousal) mirroring the new `/facebook-ads/{type}` and `/instagram-ads/{type}`
+        // child pages. Sub-rows carry `is_sub_row=true` so the rolled-up badges and the
+        // history endpoint skip them — they're slices of the parent, not new channels.
+        $sep = self::SUBROW_SEPARATOR;
+        $rows = [
+            $this->googleShoppingMetrics(),
+            $this->googleSerpMetrics(),
+            $this->metaChannelMetrics('Facebook', 'FB'),
+            $this->metaChannelMetrics('Facebook'.$sep.'G Video',     'FB',    ['GROUP VIDEO'],     true),
+            $this->metaChannelMetrics('Facebook'.$sep.'G Carousal',  'FB',    ['GROUP CAROUSAL'],  true),
+            $this->metaChannelMetrics('Facebook'.$sep.'P Video',     'FB',    ['PARENT VIDEO'],    true),
+            $this->metaChannelMetrics('Facebook'.$sep.'P Carousal',  'FB',    ['PARENT CAROUSAL'], true),
+            $this->metaChannelMetrics('Instagram', 'Insta'),
+            $this->metaChannelMetrics('Instagram'.$sep.'G Video',    'Insta', ['GROUP VIDEO'],     true),
+            $this->metaChannelMetrics('Instagram'.$sep.'G Carousal', 'Insta', ['GROUP CAROUSAL'],  true),
+            $this->metaChannelMetrics('Instagram'.$sep.'P Video',    'Insta', ['PARENT VIDEO'],    true),
+            $this->metaChannelMetrics('Instagram'.$sep.'P Carousal', 'Insta', ['PARENT CAROUSAL'], true),
+        ];
+
+        $netSales = $this->shopifyNetSales();
+
+        // TCOS = channel Spend / S Sales (store net sales), as a %. Computed
+        // here because it needs the store-level net-sales figure.
+        foreach ($rows as &$row) {
+            $spend = (float) ($row['spend'] ?? 0);
+            $row['tcos'] = $netSales > 0
+                ? round(($spend / $netSales) * 100, 0)
+                : ($spend > 0 ? 100 : 0);
+        }
+        unset($row);
+
+        // Persist today's snapshot so the badge trend chart has history.
+        // Never let a snapshot write break the data feed.
+        try {
+            $this->snapshotChannels($rows, $netSales);
+        } catch (\Throwable $e) {
+            \Log::warning('Shopify Ads Master snapshot failed: ' . $e->getMessage());
+        }
+
         return response()->json([
             'status' => 200,
             'message' => 'Shopify Ads Master data fetched successfully',
-            'data' => [
-                $this->googleShoppingMetrics(),
-                $this->facebookMetrics(),
-            ],
+            'data' => $rows,
+            // Net Sales (gross − discounts) for the last 30 days from the
+            // /shopify page, surfaced as the "S Sales" badge.
+            'shopify_net_sales' => $netSales,
         ]);
     }
 
+    /** Pseudo-channel key used to store the store-level S Sales snapshot. */
+    private const SSALES_CHANNEL = '__ssales__';
+
+    /**
+     * Marketplace sources/tags excluded from the /shopify Net Sales figure.
+     * Mirrors ShopifyRawDataController::EXCLUDE_SOURCES so the badge matches
+     * what that page shows.
+     */
+    private const SHOPIFY_EXCLUDE_SOURCES = [
+        'amazon', 'shein', 'ebay', 'tiktok', 'temu',
+        '179763773441', "macy's, inc.", "macy's", 'macys',
+        'purchasing power', 'purchasingpower', 'reverb',
+        'faire', 'best buy', 'bestbuy', 'best buy usa',
+        'doba', '145019994113',
+        'newegg', '189863297025',
+        'depop', 'tiendamia',
+    ];
+
+    /**
+     * Total Net Sales (gross − discounts) over the last 30 days (PST),
+     * mirroring the /shopify page's Net Sales card: shopify_raw_orders with
+     * the marketplace exclusions and the "XYZ" SKU filter applied.
+     */
+    private function shopifyNetSales(): float
+    {
+        try {
+            $tz       = 'America/Los_Angeles';
+            $dateFrom = Carbon::now($tz)->subDays(30)->startOfDay()->toDateString();
+            $dateTo   = Carbon::now($tz)->endOfDay()->toDateString();
+
+            $q = DB::table('shopify_raw_orders')
+                ->where('order_date', '>=', $dateFrom)
+                ->where('order_date', '<=', $dateTo);
+
+            foreach (self::SHOPIFY_EXCLUDE_SOURCES as $term) {
+                $t = strtolower($term);
+                $q->whereRaw('LOWER(COALESCE(source_name,"")) NOT LIKE ?', ['%' . $t . '%'])
+                  ->whereRaw('LOWER(COALESCE(tags,"")) NOT LIKE ?',        ['%' . $t . '%']);
+            }
+            $q->where('sku', 'NOT LIKE', '%XYZ%');
+
+            return round((float) $q->sum('net_sales'), 2);
+        } catch (\Throwable $e) {
+            \Log::warning('Shopify net sales lookup failed: ' . $e->getMessage());
+            return 0.0;
+        }
+    }
+
+    /**
+     * Upsert one snapshot row per channel for today. Keyed on
+     * (snapshot_date, channel) so repeated page loads simply refresh the
+     * day's value rather than piling up duplicates.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function snapshotChannels(array $rows, float $netSales = 0.0): void
+    {
+        $today = Carbon::today()->toDateString();
+        $now   = now();
+
+        foreach ($rows as $row) {
+            $channel = (string) ($row['channel'] ?? '');
+            if ($channel === '') {
+                continue;
+            }
+            DB::table('shopify_ads_master_metric_snapshots')->updateOrInsert(
+                ['snapshot_date' => $today, 'channel' => $channel],
+                [
+                    'spend'      => (float) ($row['spend'] ?? 0),
+                    'clicks'     => (float) ($row['clicks'] ?? 0),
+                    'sold'       => (float) ($row['sold'] ?? 0),
+                    'sales'      => (float) ($row['sales'] ?? 0),
+                    'updated_at' => $now,
+                    'created_at' => $now,
+                ]
+            );
+        }
+
+        // Store-level S Sales kept as its own pseudo-channel row (the
+        // net-sales figure lives in the `sales` column). Excluded from the
+        // channel totals in history().
+        DB::table('shopify_ads_master_metric_snapshots')->updateOrInsert(
+            ['snapshot_date' => $today, 'channel' => self::SSALES_CHANNEL],
+            ['sales' => $netSales, 'updated_at' => $now, 'created_at' => $now]
+        );
+    }
+
+    /**
+     * Badge trend history. Returns a per-day time-series for every badge
+     * (spend / clicks / sold / sales / cvr / acos), aggregated across all
+     * channels, plus the same broken out per channel so the chart can show
+     * either the rolled-up total or a single channel.
+     *
+     *   GET /shopify-ads-master/history?days=32
+     */
+    public function history(Request $request)
+    {
+        $days = max(1, min(365, (int) $request->query('days', 32)));
+        $from = Carbon::today()->subDays($days - 1)->toDateString();
+
+        $rows = DB::table('shopify_ads_master_metric_snapshots')
+            ->where('snapshot_date', '>=', $from)
+            ->orderBy('snapshot_date')
+            ->get(['snapshot_date', 'channel', 'spend', 'clicks', 'sold', 'sales']);
+
+        // Group the raw measures by date (totals) and by date+channel.
+        // The store-level S Sales pseudo-channel is kept aside so it never
+        // inflates the channel totals.
+        $byDate     = [];   // date => [spend, clicks, sold, sales]
+        $byChannel  = [];   // channel => date => [...]
+        $ssalesByDate = []; // date => net sales
+        $allDates   = [];   // every date seen, incl. ssales-only days
+        foreach ($rows as $r) {
+            $d  = (string) $r->snapshot_date;
+            $ch = (string) $r->channel;
+            $allDates[$d] = true;
+
+            if ($ch === self::SSALES_CHANNEL) {
+                $ssalesByDate[$d] = (float) $r->sales;
+                continue;
+            }
+
+            // Sub-row channels (e.g. "Facebook · G Video") are slices of their
+            // parent (Facebook) — keep their own per-channel series so the
+            // trend modal can lens to them, but skip from the rolled-up byDate
+            // total so the parent isn't double-counted.
+            $isSubRow = str_contains($ch, self::SUBROW_SEPARATOR);
+
+            $byChannel[$ch][$d] = [
+                'spend'  => (float) $r->spend,
+                'clicks' => (float) $r->clicks,
+                'sold'   => (float) $r->sold,
+                'sales'  => (float) $r->sales,
+            ];
+
+            if ($isSubRow) {
+                continue;
+            }
+
+            $byDate[$d] ??= ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0];
+            $byDate[$d]['spend']  += (float) $r->spend;
+            $byDate[$d]['clicks'] += (float) $r->clicks;
+            $byDate[$d]['sold']   += (float) $r->sold;
+            $byDate[$d]['sales']  += (float) $r->sales;
+        }
+
+        // Use the union of all dates so an ssales-only day still shows.
+        $labels = array_keys($allDates);
+        sort($labels);
+        foreach ($labels as $d) {
+            $byDate[$d] ??= ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0];
+        }
+
+        $metrics = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
+        $metrics['ssales'] = array_map(fn ($d) => round($ssalesByDate[$d] ?? 0, 2), $labels);
+
+        return response()->json([
+            'status'   => 200,
+            'days'     => $days,
+            'labels'   => array_map(fn ($d) => date('M d', strtotime($d)), $labels),
+            'metrics'  => $metrics,
+            'channels' => $this->buildChannelSeries($byChannel, $labels, $ssalesByDate),
+        ]);
+    }
+
+    /**
+     * Turn the per-day raw measures into the 6 badge series (with CVR /
+     * ACOS derived exactly like the badges / table do).
+     *
+     * @param  array<string, array<string, float>>  $byDate
+     * @param  array<int, string>  $labels
+     * @param  array<string, float>  $ssalesByDate  date => store net sales (for TCOS)
+     * @return array<string, array<int, float>>
+     */
+    private function buildMetricSeries(array $byDate, array $labels, array $ssalesByDate = []): array
+    {
+        $series = ['spend' => [], 'clicks' => [], 'sold' => [], 'sales' => [], 'cvr' => [], 'acos' => [], 'tcos' => []];
+        foreach ($labels as $d) {
+            $m = $byDate[$d];
+            $series['spend'][]  = round($m['spend'], 2);
+            $series['clicks'][] = (int) round($m['clicks']);
+            $series['sold'][]   = (int) round($m['sold']);
+            $series['sales'][]  = round($m['sales'], 2);
+            $series['cvr'][]    = $m['clicks'] > 0 ? round(($m['sold'] / $m['clicks']) * 100, 1) : 0;
+            $series['acos'][]   = $m['sales'] > 0
+                ? round(($m['spend'] / $m['sales']) * 100, 0)
+                : ($m['spend'] > 0 ? 100 : 0);
+            // TCOS = Spend / S Sales (store net sales).
+            $ss = $ssalesByDate[$d] ?? 0;
+            $series['tcos'][]   = $ss > 0
+                ? round(($m['spend'] / $ss) * 100, 0)
+                : ($m['spend'] > 0 ? 100 : 0);
+        }
+        return $series;
+    }
+
+    /**
+     * Per-channel badge series, aligned to the same date labels (missing
+     * days fill with 0 so every line spans the full range).
+     *
+     * @param  array<string, array<string, array<string, float>>>  $byChannel
+     * @param  array<int, string>  $labels
+     * @param  array<string, float>  $ssalesByDate
+     * @return array<string, array<string, array<int, float>>>
+     */
+    private function buildChannelSeries(array $byChannel, array $labels, array $ssalesByDate = []): array
+    {
+        $out = [];
+        foreach ($byChannel as $channel => $perDay) {
+            $byDate = [];
+            foreach ($labels as $d) {
+                $byDate[$d] = $perDay[$d] ?? ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0];
+            }
+            $out[$channel] = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
+        }
+        return $out;
+    }
+
     private function googleShoppingMetrics(): array
+    {
+        return $this->googleAdsChannelMetrics('Google Shopping', 'shopping');
+    }
+
+    /**
+     * Google SERP totals (campaigns whose name contains the word "SEARCH" — same scope as
+     * /google/shopping/google-serp). Leading-space matcher avoids false-positives like
+     * "RESEARCH". Complementary to {@see googleShoppingMetrics()} so the two channels
+     * partition `google_ads_campaigns` rows without overlap.
+     */
+    private function googleSerpMetrics(): array
+    {
+        return $this->googleAdsChannelMetrics('Google SERP', 'serp');
+    }
+
+    /**
+     * Shared L30 totals query for the two Google Ads sub-channels. `$scope = 'shopping'`
+     * excludes SEARCH-named campaigns; `$scope = 'serp'` includes only SEARCH-named
+     * campaigns. Anything else returns the unfiltered total (back-compat path).
+     */
+    private function googleAdsChannelMetrics(string $label, string $scope): array
     {
         try {
             $bounds = $this->googleShoppingDateBoundaries();
@@ -57,6 +364,12 @@ class ShopifyAdsMasterController extends Controller
                     ->whereBetween('date', [$bounds['start'], $bounds['end']]);
             }
 
+            if ($scope === 'shopping') {
+                $campaigns->whereRaw('UPPER(campaign_name) NOT LIKE ?', ['% SEARCH%']);
+            } elseif ($scope === 'serp') {
+                $campaigns->whereRaw('UPPER(campaign_name) LIKE ?', ['% SEARCH%']);
+            }
+
             $row = DB::query()
                 ->fromSub($campaigns, 'campaigns')
                 ->selectRaw('COALESCE(SUM(spend), 0) as spend')
@@ -65,82 +378,190 @@ class ShopifyAdsMasterController extends Controller
                 ->selectRaw('COALESCE(SUM(sales), 0) as sales')
                 ->first();
 
-            return $this->metricRow('Google Shopping', $row);
+            return $this->metricRow($label, $row);
         } catch (\Throwable) {
-            return $this->metricRow('Google Shopping');
+            return $this->metricRow($label);
         }
     }
 
-    private function facebookMetrics(): array
+    /**
+     * Totals for one Meta channel lens (CH = FB → /facebook-ads,
+     * CH = Insta → /instagram-ads). Mirrors the merged view but lensed to
+     * the campaigns tagged with $chCode, so each row matches its page.
+     *
+     * When `$adTypeList` is non-null, additionally lenses to campaigns whose
+     * `ad_type` is in the list — used to back the typed sub-rows
+     * (e.g. "Facebook · G Video" = CH=FB ∧ ad_type='GROUP VIDEO').
+     *
+     * `$isSubRow=true` flags the row so the frontend can skip it in the
+     * rolled-up "All channels" badges (sub-rows are subsets of their parent).
+     *
+     * @param  list<string>|null  $adTypeList
+     */
+    private function metaChannelMetrics(string $label, string $chCode, ?array $adTypeList = null, bool $isSubRow = false): array
     {
         try {
-            $latestBatches = $this->facebookLatestBatchPerType();
-            if (empty($latestBatches)) {
-                return $this->metricRow('Facebook');
+            $ctx = $this->loadFacebookContext();
+            if (empty($ctx['baseCids'])) {
+                return $this->metricRow($label, null, $isSubRow);
             }
-
-            // Determine base type (same priority as getMergedView: campaign > spend > sales).
-            // Only campaigns present in the base batch are included in the totals.
-            $baseType = null;
-            foreach (['campaign', 'spend', 'sales'] as $t) {
-                if (isset($latestBatches[$t])) {
-                    $baseType = $t;
-                    break;
-                }
-            }
-            if ($baseType === null) {
-                return $this->metricRow('Facebook');
-            }
-
-            // Step 1: collect valid campaign IDs + name→CID fallback from base batch.
-            [$baseCids, $nameToCid] = $this->facebookBuildBaseCids($latestBatches[$baseType]);
 
             $spend  = 0.0;
             $clicks = 0.0;
             $sold   = 0.0;
             $sales  = 0.0;
 
-            // Step 2: SPEND + CLK from the spend batch (filter to baseCids).
-            if (isset($latestBatches['spend'])) {
-                $rows = FacebookAllAdsSheet::query()
-                    ->where('import_batch_id', $latestBatches['spend'])
-                    ->get(['row_data']);
-
-                foreach ($rows as $row) {
-                    $rd      = array_filter((array) ($row->row_data ?? []), fn ($_, $k) => ! str_starts_with($k, '__'), ARRAY_FILTER_USE_BOTH);
-                    $cid     = $this->facebookFindCampaignId($rd) ?? $this->facebookNameLookup($rd, $nameToCid);
-                    if ($cid === null || $cid === '' || ! isset($baseCids[$cid])) {
+            foreach ($ctx['baseCids'] as $cid => $_) {
+                if (($ctx['chMap'][$cid] ?? null) !== $chCode) {
+                    continue;
+                }
+                if ($adTypeList !== null) {
+                    $at = $ctx['adTypeMap'][$cid] ?? null;
+                    if ($at === null || ! in_array($at, $adTypeList, true)) {
                         continue;
                     }
-                    // round() per-campaign mirrors applyFormatter('usd_int') in getMergedView,
-                    // so our total matches the badge which sums already-rounded integers.
-                    $spend  += round($this->parseMetricValue($rd['Amount spent (USD)'] ?? null));
-                    $clicks += $this->parseMetricValue($rd['Clicks (all)'] ?? null);
+                }
+                if (isset($ctx['spendByCid'][$cid])) {
+                    $spend  += $ctx['spendByCid'][$cid]['spend'];
+                    $clicks += $ctx['spendByCid'][$cid]['clicks'];
+                }
+                if (isset($ctx['salesByCid'][$cid])) {
+                    $sold  += $ctx['salesByCid'][$cid]['sold'];
+                    $sales += $ctx['salesByCid'][$cid]['sales'];
                 }
             }
 
-            // Step 3: SOLD + SALES from the sales batch (filter to baseCids).
-            if (isset($latestBatches['sales'])) {
-                $rows = FacebookAllAdsSheet::query()
-                    ->where('import_batch_id', $latestBatches['sales'])
-                    ->get(['row_data']);
-
-                foreach ($rows as $row) {
-                    $rd  = array_filter((array) ($row->row_data ?? []), fn ($_, $k) => ! str_starts_with($k, '__'), ARRAY_FILTER_USE_BOTH);
-                    $cid = $this->facebookFindCampaignId($rd) ?? $this->facebookNameLookup($rd, $nameToCid);
-                    if ($cid === null || $cid === '' || ! isset($baseCids[$cid])) {
-                        continue;
-                    }
-                    $sold  += $this->parseMetricValue($rd['Orders'] ?? null);
-                    // round() per-campaign mirrors applyFormatter('int') in getMergedView.
-                    $sales += round($this->parseMetricValue($rd['Sales'] ?? null));
-                }
-            }
-
-            return $this->metricRow('Facebook', (object) compact('spend', 'clicks', 'sold', 'sales'));
+            return $this->metricRow($label, (object) compact('spend', 'clicks', 'sold', 'sales'), $isSubRow);
         } catch (\Throwable) {
-            return $this->metricRow('Facebook');
+            return $this->metricRow($label, null, $isSubRow);
         }
+    }
+
+    /**
+     * Build all per-CID lookups for the latest Meta sheet in one shot, so the
+     * 10 metaChannelMetrics() calls (2 parents + 8 typed sub-rows) reuse a
+     * single read of the spend/sales batches.
+     *
+     * @return array{
+     *     baseCids: array<string,bool>,
+     *     nameToCid: array<string,string>,
+     *     chMap: array<string,string>,
+     *     adTypeMap: array<string,string>,
+     *     spendByCid: array<string, array{spend: float, clicks: float}>,
+     *     salesByCid: array<string, array{sold: float, sales: float}>
+     * }
+     */
+    private function loadFacebookContext(): array
+    {
+        if ($this->cachedFbContext !== null) {
+            return $this->cachedFbContext;
+        }
+
+        $empty = [
+            'baseCids'   => [],
+            'nameToCid'  => [],
+            'chMap'      => [],
+            'adTypeMap'  => [],
+            'spendByCid' => [],
+            'salesByCid' => [],
+        ];
+
+        $latestBatches = $this->facebookLatestBatchPerType();
+        if (empty($latestBatches)) {
+            return $this->cachedFbContext = $empty;
+        }
+
+        // Same base-type priority as getMergedView: campaign > spend > sales.
+        $baseType = null;
+        foreach (['campaign', 'spend', 'sales'] as $t) {
+            if (isset($latestBatches[$t])) {
+                $baseType = $t;
+                break;
+            }
+        }
+        if ($baseType === null) {
+            return $this->cachedFbContext = $empty;
+        }
+
+        [$baseCids, $nameToCid] = $this->facebookBuildBaseCids($latestBatches[$baseType]);
+
+        $spendByCid = [];
+        if (isset($latestBatches['spend'])) {
+            $rows = FacebookAllAdsSheet::query()
+                ->where('import_batch_id', $latestBatches['spend'])
+                ->get(['row_data']);
+
+            foreach ($rows as $row) {
+                $rd  = array_filter((array) ($row->row_data ?? []), fn ($_, $k) => ! str_starts_with($k, '__'), ARRAY_FILTER_USE_BOTH);
+                $cid = $this->facebookFindCampaignId($rd) ?? $this->facebookNameLookup($rd, $nameToCid);
+                if ($cid === null || $cid === '' || ! isset($baseCids[$cid])) {
+                    continue;
+                }
+                $spendByCid[$cid] ??= ['spend' => 0.0, 'clicks' => 0.0];
+                // round() per-campaign mirrors applyFormatter('usd_int') in getMergedView.
+                $spendByCid[$cid]['spend']  += round($this->parseMetricValue($rd['Amount spent (USD)'] ?? null));
+                $spendByCid[$cid]['clicks'] += $this->parseMetricValue($rd['Clicks (all)'] ?? null);
+            }
+        }
+
+        $salesByCid = [];
+        if (isset($latestBatches['sales'])) {
+            $rows = FacebookAllAdsSheet::query()
+                ->where('import_batch_id', $latestBatches['sales'])
+                ->get(['row_data']);
+
+            foreach ($rows as $row) {
+                $rd  = array_filter((array) ($row->row_data ?? []), fn ($_, $k) => ! str_starts_with($k, '__'), ARRAY_FILTER_USE_BOTH);
+                $cid = $this->facebookFindCampaignId($rd) ?? $this->facebookNameLookup($rd, $nameToCid);
+                if ($cid === null || $cid === '' || ! isset($baseCids[$cid])) {
+                    continue;
+                }
+                $salesByCid[$cid] ??= ['sold' => 0.0, 'sales' => 0.0];
+                $salesByCid[$cid]['sold']  += $this->parseMetricValue($rd['Orders'] ?? null);
+                // round() per-campaign mirrors applyFormatter('int') in getMergedView.
+                $salesByCid[$cid]['sales'] += round($this->parseMetricValue($rd['Sales'] ?? null));
+            }
+        }
+
+        return $this->cachedFbContext = [
+            'baseCids'   => $baseCids,
+            'nameToCid'  => $nameToCid,
+            'chMap'      => $this->facebookChMap(),
+            'adTypeMap'  => $this->facebookAdTypeMap(),
+            'spendByCid' => $spendByCid,
+            'salesByCid' => $salesByCid,
+        ];
+    }
+
+    /**
+     * Build a `Campaign ID → ad_type` map (latest tag wins per CID). Mirrors
+     * {@see facebookChMap()} so typed sub-rows can be lensed without re-reading
+     * the sheet for every (channel, ad_type) combination.
+     *
+     * @return array<string, string>
+     */
+    private function facebookAdTypeMap(): array
+    {
+        $rows = FacebookAllAdsSheet::query()
+            ->whereNotNull('ad_type')
+            ->where('ad_type', '!=', '')
+            ->orderByDesc('id')
+            ->get(['ad_type', 'row_data']);
+
+        $map = [];
+        foreach ($rows as $r) {
+            $rd  = array_filter(
+                (array) ($r->row_data ?? []),
+                fn ($_, $k) => ! str_starts_with($k, '__'),
+                ARRAY_FILTER_USE_BOTH
+            );
+            $cid = $this->facebookFindCampaignId($rd);
+            if ($cid !== null && $cid !== '' && ! isset($map[$cid])) {
+                $map[$cid] = $r->ad_type;
+            }
+        }
+
+        return $map;
     }
 
     /**
@@ -178,6 +599,37 @@ class ShopifyAdsMasterController extends Controller
         }
 
         return [$baseCids, $nameToCid];
+    }
+
+    /**
+     * Build a `Campaign ID → ch` map (latest CH tag wins per campaign).
+     * Mirrors FacebookAllAdsSheetController::buildChCarryMap() so the
+     * Facebook row here can be lensed to the /facebook-ads channel (CH = FB).
+     *
+     * @return array<string, string>
+     */
+    private function facebookChMap(): array
+    {
+        $rows = FacebookAllAdsSheet::query()
+            ->whereNotNull('ch')
+            ->where('ch', '!=', '')
+            ->orderByDesc('id')
+            ->get(['ch', 'row_data']);
+
+        $map = [];
+        foreach ($rows as $r) {
+            $rd  = array_filter(
+                (array) ($r->row_data ?? []),
+                fn ($_, $k) => ! str_starts_with($k, '__'),
+                ARRAY_FILTER_USE_BOTH
+            );
+            $cid = $this->facebookFindCampaignId($rd);
+            if ($cid !== null && $cid !== '' && ! isset($map[$cid])) {
+                $map[$cid] = $r->ch;
+            }
+        }
+
+        return $map;
     }
 
     /**
@@ -318,7 +770,7 @@ class ShopifyAdsMasterController extends Controller
         ];
     }
 
-    private function metricRow(string $channel, ?object $row = null): array
+    private function metricRow(string $channel, ?object $row = null, bool $isSubRow = false): array
     {
         $spend = (float) ($row->spend ?? 0);
         $clicks = (float) ($row->clicks ?? 0);
@@ -336,6 +788,13 @@ class ShopifyAdsMasterController extends Controller
             'acos' => $sales > 0
                 ? round(($spend / $sales) * 100, 0)
                 : ($spend > 0 ? 100 : 0),
+            // tcos (Spend / S Sales) is filled in by data() once the
+            // store-level net-sales figure is known.
+            'tcos' => 0,
+            // Sub-rows are typed slices of a parent channel (e.g.
+            // "Facebook · G Video" is a subset of "Facebook"). Frontend
+            // skips them when summing the rolled-up "All channels" badges.
+            'is_sub_row' => $isSubRow,
         ];
     }
 

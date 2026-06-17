@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Faire Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Faire - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -77,6 +77,10 @@
             -webkit-overflow-scrolling: touch;
             scrollbar-width: thin;
         }
+        #fr-summary-stats .fr-filter-badge.active-filter {
+            box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.45);
+            outline: 2px solid #0d6efd;
+        }
         #fr-summary-stats .ebay2-summary-badge-row > .badge {
             flex: 1 1 0;
             min-width: 0;
@@ -95,8 +99,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Faire Analytics',
-        'sub_title'  => 'List-price upload, SPRICE, and sales merge from Faire daily data (same source as Faire Sales Data)',
+        'page_title' => 'Faire - Analytics',
+        'sub_title'  => '',
     ])
 
     <div class="row">
@@ -165,9 +169,7 @@
                             <option value="lt40">&lt; 40%</option>
                             <option value="40-75">40–75%</option>
                             <option value="75-125">75–125%</option>
-                            <option value="125-175">125–175%</option>
-                            <option value="175-250">175–250%</option>
-                            <option value="gt250">&gt; 250%</option>
+                            <option value="gt125">125%+</option>
                         </select>
                         <select id="fr-fqty-filter" class="form-select form-select-sm" style="width:130px;" title="Units sold (Faire daily data)">
                             <option value="all">Sold</option>
@@ -244,11 +246,11 @@
                             <span class="badge bg-success fs-6 p-2 d-none fr-badge-chart fr-hover-chart" id="fr-total-profit-badge" data-metric="total_pft" style="font-weight:700;cursor:pointer;" aria-hidden="true" title="View trend">Profit: 0</span>
                             <span class="badge bg-info fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-avg-gpft-badge" data-metric="avg_gpft" style="font-weight:700;color:#111;cursor:pointer;" title="Same as Faire Sales Data: total order-style profit ÷ total sales (0.75×wholesale revenue − LP×qty). Click or hover for trend.">PFt: 0%</span>
                             <span class="badge bg-secondary fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-avg-roi-badge" data-metric="avg_roi" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover for daily trend">ROI: 0%</span>
-                            <span class="badge bg-danger fs-6 p-2 fr-hover-chart" id="fr-missing-badge" data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">Missing L: 0</span>
-                            <span class="badge fs-6 p-2 fr-hover-chart" id="fr-map-count-badge" data-metric="map_count" style="font-weight:700;background:#198754;color:#fff;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">Map: 0</span>
-                            <span class="badge fs-6 p-2 fr-hover-chart" id="fr-nmap-count-badge" data-metric="nmap_count" style="font-weight:700;background:#a71d2a;color:#fff;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">N Map: 0</span>
-                            <span class="badge fs-6 p-2 fr-hover-chart" id="fr-zero-sold-badge" data-metric="zero_sold" style="font-weight:700;background:#dc3545;color:#fff;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">0 Sold: 0</span>
-                            <span class="badge fs-6 p-2 fr-hover-chart" id="fr-more-sold-badge" data-metric="more_sold" style="font-weight:700;background:#b6e0fe;color:#0f172a;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">&gt;0 Sold: 0</span>
+                            <span class="badge bg-danger fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-missing-badge" data-metric="missing_count" data-filter="missing" style="font-weight:700;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">Missing L: 0</span>
+                            <span class="badge fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-map-count-badge" data-metric="map_count" data-filter="map" style="font-weight:700;background:#198754;color:#fff;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">Map: 0</span>
+                            <span class="badge fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-nmap-count-badge" data-metric="nmap_count" data-filter="nmap" style="font-weight:700;background:#a71d2a;color:#fff;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">N Map: 0</span>
+                            <span class="badge fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-zero-sold-badge" data-metric="zero_sold" data-filter="zero_sold" style="font-weight:700;background:#dc3545;color:#fff;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">0 Sold: 0</span>
+                            <span class="badge fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-more-sold-badge" data-metric="more_sold" data-filter="more_sold" style="font-weight:700;background:#b6e0fe;color:#0f172a;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">&gt;0 Sold: 0</span>
                         </div>
                     </div>
 
@@ -326,6 +328,35 @@
                         <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
                         <p class="text-muted small mb-0">No daily snapshots yet. Load this page on separate days to build history (saved automatically with pricing data).</p>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="faireEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="faireEditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="faireSellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="faireBuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="faireSaveLinksBtn">Save</button>
                 </div>
             </div>
         </div>
@@ -1012,9 +1043,10 @@
                     if (d.is_parent) return true;
                     const roi = parseFloat(d.groi) || 0;
                     if (roiFilter === 'lt40') return roi < 40;
-                    if (roiFilter === 'gt250') return roi > 250;
-                    const parts = roiFilter.split('-').map(Number);
-                    return roi >= parts[0] && roi <= parts[1];
+                    if (roiFilter === '40-75') return roi >= 40 && roi < 75;
+                    if (roiFilter === '75-125') return roi >= 75 && roi < 125;
+                    if (roiFilter === 'gt125') return roi >= 125;
+                    return true;
                 });
             }
             if (fqtyFilter !== 'all') {
@@ -1044,6 +1076,7 @@
                     return true;
                 });
             }
+            frSyncFilterBadgeActiveClasses();
             if (frMissingActive) table.addFilter(d => (d.missing || '').trim().toUpperCase() === 'M');
             if (frMapActive) table.addFilter(d => (d.map || '') === 'Map');
             if (frNMapActive) table.addFilter(d => (d.map || '').startsWith('N Map|'));
@@ -1114,6 +1147,80 @@
                 }
             });
         }
+
+        // ---- Edit Links (Buyer / Seller) ----
+        function frLinksNotify(msg, type) {
+            if (window.toastr) {
+                if (type === 'error' || type === 'danger') toastr.error(msg);
+                else if (type === 'warning') toastr.warning(msg);
+                else toastr.success(msg);
+                return;
+            }
+            let c = document.getElementById('frLinksToastContainer');
+            if (!c) {
+                c = document.createElement('div');
+                c.id = 'frLinksToastContainer';
+                c.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;';
+                document.body.appendChild(c);
+            }
+            const t = document.createElement('div');
+            const bg = (type === 'error' || type === 'danger') ? '#dc3545' : (type === 'warning' ? '#fd7e14' : '#198754');
+            t.style.cssText = 'min-width:220px;max-width:340px;color:#fff;background:' + bg + ';padding:12px 16px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.18);font-size:14px;opacity:0;transition:opacity .25s ease;';
+            t.textContent = msg;
+            c.appendChild(t);
+            requestAnimationFrame(function() { t.style.opacity = '1'; });
+            setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 300); }, 2600);
+        }
+        let faireEditLinksRow = null;
+        window.openFaireEditLinksModal = function(row) {
+            faireEditLinksRow = row;
+            const d = row.getData();
+            $('#faireEditLinksSku').text(d.sku || '');
+            $('#faireSellerLinkInput').val(d.seller_link || '');
+            $('#faireBuyerLinkInput').val(d.buyer_link || '');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('faireEditLinksModal')).show();
+        };
+        $(document).on('click', '#faireSaveLinksBtn', function() {
+            if (!faireEditLinksRow) return;
+            const sku = faireEditLinksRow.getData().sku;
+            const sellerLink = $('#faireSellerLinkInput').val().trim();
+            const buyerLink = $('#faireBuyerLinkInput').val().trim();
+            const $btn = $(this);
+            $btn.prop('disabled', true).text('Saving...');
+            $.ajax({
+                url: '/faire/save-links',
+                method: 'POST',
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    sku: sku,
+                    seller_link: sellerLink,
+                    buyer_link: buyerLink
+                },
+                success: function(res) {
+                    if (res && res.success) {
+                        faireEditLinksRow.update({
+                            seller_link: res.seller_link || '',
+                            buyer_link: res.buyer_link || ''
+                        }).then(function() {
+                            faireEditLinksRow.reformat();
+                        }).catch(function() {
+                            faireEditLinksRow.reformat();
+                        });
+                        frLinksNotify('Links saved successfully', 'success');
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById('faireEditLinksModal')).hide();
+                    } else {
+                        frLinksNotify((res && res.message) || 'Failed to save links', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save links';
+                    frLinksNotify(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text('Save');
+                }
+            });
+        });
 
         $(document).ready(function() {
             $('#frChartRangeSelect').on('change', function() {
@@ -1224,28 +1331,35 @@
                         }
                     },
                     {
-                        title: 'B/S',
+                        title: 'Links',
                         field: 'buyer_link',
                         headerSort: false,
                         hozAlign: 'center',
-                        width: 64,
+                        width: 55,
                         download: false,
                         frozen: true,
+                        tooltip: 'Double-click to add / edit links',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            const b = d.buyer_link;
-                            const s = d.seller_link;
-                            const parts = [];
-                            if (b) {
-                                parts.push('<a href="' + frEscUrlAttr(b) + '" target="_blank" rel="noopener noreferrer" ' +
-                                    'class="fw-semibold" style="color:#0d6efd;" title="Buyer (Faire)">B</a>');
-                            }
+                            const b = d.buyer_link || '';
+                            const s = d.seller_link || '';
+                            let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
                             if (s) {
-                                parts.push('<a href="' + frEscUrlAttr(s) + '" target="_blank" rel="noopener noreferrer" ' +
-                                    'class="fw-semibold" style="color:#6f42c1;" title="Seller (portal)">S</a>');
+                                html += '<a href="' + frEscUrlAttr(s) + '" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';
                             }
-                            return parts.length ? parts.join('<span class="text-muted" style="margin:0 3px;">|</span>') : '';
+                            if (b) {
+                                html += '<a href="' + frEscUrlAttr(b) + '" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>';
+                            }
+                            if (!s && !b) {
+                                html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                            }
+                            html += '</div>';
+                            return html;
+                        },
+                        cellDblClick: function(e, cell) {
+                            if (cell.getRow().getData().is_parent) return;
+                            openFaireEditLinksModal(cell.getRow());
                         }
                     },
                     {
@@ -1346,9 +1460,8 @@
                             let color;
                             if (v < 40) color = '#a00211';
                             else if (v < 75) color = '#ffc107';
-                            else if (v < 125) color = '#3591dc';
-                            else if (v < 250) color = '#28a745';
-                            else color = '#e83e8c';
+                            else if (v < 125) color = '#28a745';
+                            else color = '#d63384';
                             return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
                         }
                     },
@@ -1415,9 +1528,8 @@
                             let color;
                             if (v < 40) color = '#a00211';
                             else if (v < 75) color = '#ffc107';
-                            else if (v < 125) color = '#3591dc';
-                            else if (v < 250) color = '#28a745';
-                            else color = '#e83e8c';
+                            else if (v < 125) color = '#28a745';
+                            else color = '#d63384';
                             return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
                         }
                     },
@@ -1489,9 +1601,32 @@
                 renderComplete: function() { updateSummary(); }
             });
 
+            function frSyncFilterBadgeActiveClasses() {
+                $('#fr-missing-badge').toggleClass('active-filter', frMissingActive);
+                $('#fr-map-count-badge').toggleClass('active-filter', frMapActive);
+                $('#fr-nmap-count-badge').toggleClass('active-filter', frNMapActive);
+                $('#fr-zero-sold-badge').toggleClass('active-filter', frZeroSoldActive);
+                $('#fr-more-sold-badge').toggleClass('active-filter', frMoreSoldActive);
+            }
+
+            function frApplyBadgeFilterFromUrl() {
+                const badge = (new URLSearchParams(window.location.search).get('badge') || '').toLowerCase();
+                if (!badge || !table) return;
+                frMissingActive = frMapActive = frNMapActive = frZeroSoldActive = frMoreSoldActive = false;
+                if (badge === 'missing') frMissingActive = true;
+                else if (badge === 'map') frMapActive = true;
+                else if (badge === 'nmap') frNMapActive = true;
+                else if (badge === 'zero_sold') frZeroSoldActive = true;
+                else if (badge === 'more_sold') frMoreSoldActive = true;
+                else return;
+                frSyncFilterBadgeActiveClasses();
+                applyFilters();
+            }
+
             table.on('tableBuilt', function() {
                 frBuildColumnDropdown();
                 frApplyColumnVisibilityFromServer();
+                frApplyBadgeFilterFromUrl();
             });
 
             table.on('scrollVertical', frRemoveImagePreview);

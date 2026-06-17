@@ -23,6 +23,9 @@ use App\Models\AmazonProductReview;
 use App\Models\AmazonListingStatus;
 use App\Models\FbaDailyMetrics;
 use App\Models\MarketplacePercentage;
+use App\Models\MarketplaceDailyMetric;
+use App\Models\AmazonOrder;
+use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Services\ColorService;
 use App\Services\FbaInventoryService;
 use App\Services\FbaManualDataService;
@@ -720,8 +723,35 @@ class FbaDataController extends Controller
       $amazonMarketplace = MarketplacePercentage::where('marketplace', 'Amazon')->first();
       $amazonPercentage = $amazonMarketplace ? ($amazonMarketplace->percentage / 100) : 0.80;
 
+      // Channel-level Amazon Ads% — same source/calculation as all-marketplace-master
+      // (ChannelMasterController::getAmazonChannelData): total ad spend (KW + PMT + HL from
+      // marketplace_daily_metrics) ÷ L30 order sales. Applied to every row.
+      $amazonChannelAdsPercent = 0;
+      try {
+         $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
+         $endToday = $yesterdayPacific->copy()->endOfDay();
+         $startAmazonWindow = $yesterdayPacific->copy()
+            ->subDays(AmazonSalesController::DAILY_SALES_WINDOW_DAYS - 1)->startOfDay();
+
+         $amazonMetrics = MarketplaceDailyMetric::where('channel', 'Amazon')->latest('date')->first();
+
+         $l30SalesFromOrders = AmazonOrder::badgeTotalSalesByOrderDate($startAmazonWindow, $endToday);
+         $l30Sales = $l30SalesFromOrders > 0 ? $l30SalesFromOrders : ($amazonMetrics?->total_sales ?? 0);
+
+         $totalAdSpend = round(
+            ($amazonMetrics?->kw_spent ?? 0)
+            + ($amazonMetrics?->pmt_spent ?? 0)
+            + ($amazonMetrics?->hl_spent ?? 0),
+            2
+         );
+
+         $amazonChannelAdsPercent = $l30Sales > 0 ? round(($totalAdSpend / $l30Sales) * 100, 2) : 0;
+      } catch (\Throwable $e) {
+         Log::warning('FBA dispatch Amazon channel Ads% calc failed: ' . $e->getMessage());
+      }
+
       // Prepare table data with repeated parent name for all child SKUs
-      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $amazonReviews, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup, $amazonAdSpendBySku, $amazonPercentage, $fbaAgeData, $amazonListingStatuses) {
+      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $amazonReviews, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup, $amazonAdSpendBySku, $amazonPercentage, $fbaAgeData, $amazonListingStatuses, $amazonChannelAdsPercent) {
          $fbaPriceInfo = $fbaPriceData->get($sku);
          $fbaReportsInfo = $fbaReportsData->get($sku);
          $shopifyInfo = $shopifyData->get($sku);
@@ -900,6 +930,12 @@ class FbaDataController extends Controller
          // Calculate Amazon GPFT, PFT, AD, NPFT (using LP and Ship from ProductMaster only for Amazon)
          $amzLP = 0;
          $amzShip = 0;
+         $ctnQty = null;
+         $ctnL = null; // CTN L (CM)
+         $ctnW = null; // CTN W (CM)
+         $ctnH = null; // CTN H (CM)
+         $ctnWtLb = null; // CTN Weight (LB)
+         $shipVal = null; // Shipping Master "Ship" (ProductMaster Values['ship'])
          if ($product) {
             $values = $product->Values ?: [];
             if (is_string($values)) {
@@ -907,7 +943,12 @@ class FbaDataController extends Controller
             }
             foreach ($values as $k => $v) {
                if (strtolower($k) === "lp") $amzLP = floatval($v);
-               if (strtolower($k) === "ship") $amzShip = floatval($v);
+               if (strtolower($k) === "ship") { $amzShip = floatval($v); $shipVal = $v; }
+               if (strtolower($k) === "ctn_qty") $ctnQty = $v;
+               if (strtolower($k) === "ctn_l") $ctnL = $v;
+               if (strtolower($k) === "ctn_w") $ctnW = $v;
+               if (strtolower($k) === "ctn_h") $ctnH = $v;
+               if (strtolower($k) === "ctn_weight_lb") $ctnWtLb = $v;
             }
          }
          
@@ -924,6 +965,12 @@ class FbaDataController extends Controller
          
          // Calculate Amazon NPFT% = If L30 == 0, then NPFT = GPFT, else NPFT = GPFT - AD%
          $amzNPFT = ($amzGPFT !== null) ? ($amzL30 == 0 ? $amzGPFT : round($amzGPFT - $amzAD, 2)) : null;
+
+         // FBA ROI% — same formula as Amazon (FBM) but using FBA price and FBA ship.
+         // ROI = ((FBA price × marketplace_percentage) − FBA ship − LP) / LP × 100
+         $fbaRoi = ($amzLP > 0 && $PRICE > 0)
+            ? round((($PRICE * $amazonPercentage - $FBA_SHIP - $amzLP) / $amzLP) * 100, 2)
+            : null;
 
          // Use separate dimension fields if available, otherwise split combined dimensions
          $length = $manual ? ($manual->data['length'] ?? '') : '';
@@ -950,6 +997,7 @@ class FbaDataController extends Controller
          return [
             'Parent' => $product ? ($product->parent ?? '') : '',
             'SKU' => $sku,
+            'product_id' => $product ? $product->id : null,
             'FBA_SKU' => $fba->seller_sku,
             'image_path' => $product
                 ? ($product->main_image ?? $product->image1 ?? (is_array($product->Values) ? ($product->Values['image_path'] ?? null) : null))
@@ -965,8 +1013,15 @@ class FbaDataController extends Controller
             'AMZ_Rating' => $amzRating,
             'AMZ_Reviews' => $amzReviews,
             'AMZ_GPFT' => $amzGPFT,
-            'AMZ_AD' => $amzAD,
+            'AMZ_AD' => $amazonChannelAdsPercent,
             'AMZ_NPFT' => $amzNPFT,
+            'FBA_ROI' => $fbaRoi,
+            'CTN_QTY' => $ctnQty,
+            'CTN_L' => $ctnL,
+            'CTN_W' => $ctnW,
+            'CTN_H' => $ctnH,
+            'CTN_WT_LB' => $ctnWtLb,
+            'Ship' => $shipVal,
             'Shopify_OV_L30' => $shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0,
             'Shopify_INV' => $shopifyInfo ? ($shopifyInfo->inv ?? 0) : 0,
             'l60_units' => $monthlySales ? ($monthlySales->l60_units ?? 0) : 0,
@@ -1129,6 +1184,9 @@ class FbaDataController extends Controller
             })(),
             'SEND' => $manual ? ($manual->data['send'] ?? '') : '',
             'send_toggle' => $manual ? ($manual->data['send_toggle'] ?? 0) : 0,
+            'compliance' => $manual ? ($manual->data['compliance'] ?? '') : '',
+            'Send_Qty' => $manual ? ($manual->data['send_qty'] ?? '') : '',
+            'Send_History' => $manual ? ($manual->data['send_history'] ?? null) : null,
             'Correct_Cost' => $manual ? ($manual->data['correct_cost'] ?? false) : false,
             'Zero_Stock' => $manual ? ($manual->data['zero_stock'] ?? false) : false,
             '0-to-90-days' => $manual ? ($manual->data['0-to-90-days'] ?? '') : '',
@@ -1357,6 +1415,13 @@ class FbaDataController extends Controller
             'AMZ_GPFT' => null,
             'AMZ_AD' => null,
             'AMZ_NPFT' => null,
+            'FBA_ROI' => null,
+            'CTN_QTY' => null,
+            'CTN_L' => null,
+            'CTN_W' => null,
+            'CTN_H' => null,
+            'CTN_WT_LB' => null,
+            'Ship' => null,
             'ACTION_ACTION' => '',
             'REV_COUNT' => '',
             'RATING' => '',

@@ -700,6 +700,23 @@
             background: linear-gradient(135deg, #0dcaf0 0%, #0891b2 100%);
         }
 
+        /* Info - Page ETC total */
+        .stat-card-info {
+            border-left-color: #3bc9e8;
+        }
+        .stat-card-info .stat-icon {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        /* Hide the year (YYYY) portion of the start-date filter (WebKit/Chromium). */
+        #filter-date::-webkit-datetime-edit-year-field {
+            display: none;
+        }
+        /* Hide the "/" separator that precedes the year field. */
+        #filter-date::-webkit-datetime-edit-text:last-of-type {
+            display: none;
+        }
+
         /* Red - Overdue */
         .stat-card-red {
             border-left-color: #dc3545;
@@ -1472,6 +1489,47 @@
     }
 
     /* Today Deleted modal — yellow row when deletion was made by the automated system */
+    .task-auto-del-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #dc3545;
+        cursor: help;
+        vertical-align: middle;
+        box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.2);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .task-auto-del-dot:hover {
+        transform: scale(1.2);
+        box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.35);
+    }
+    .task-auto-del-hit {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 28px;
+        cursor: help;
+        vertical-align: middle;
+    }
+    #task-auto-del-float-tip {
+        position: fixed;
+        z-index: 99999;
+        padding: 8px 12px;
+        background: rgba(33, 37, 41, 0.96);
+        color: #fff;
+        font-size: 12px;
+        line-height: 1.45;
+        border-radius: 8px;
+        max-width: 320px;
+        pointer-events: none;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+        display: none;
+        white-space: normal;
+        text-align: left;
+    }
+
     #todayDeletedModal .today-deleted-row-auto > td {
         background-color: #fff3cd !important; /* Bootstrap "warning" subtle yellow */
         border-left: 3px solid #ffc107;
@@ -1508,6 +1566,15 @@
                 <div class="page-title-box d-flex align-items-center justify-content-between py-1">
                     <div class="d-flex align-items-center gap-3">
                         <h4 class="page-title mb-0">Task Manager</h4>
+                        <img src="{{ asset('assets/images/task-training-video-icon.png') }}"
+                            alt="Training Video"
+                            id="training-video-icon"
+                            data-link="{{ $trainingVideoLink ?? '' }}"
+                            data-can-edit="{{ !empty($canEditTrainingVideo) ? '1' : '0' }}"
+                            title="Training Video"
+                            style="width:38px;height:38px;object-fit:contain;cursor:pointer;border-radius:8px;transition:transform 0.15s ease;"
+                            onmouseover="this.style.transform='scale(1.1)'"
+                            onmouseout="this.style.transform='scale(1)'">
                     </div>
                     <div class="page-title-right">
                         <ol class="breadcrumb m-0">
@@ -1617,6 +1684,34 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Pending ETC Badge -->
+            <div class="col">
+                <div class="stat-card stat-card-cyan task-stat-trigger" data-metric="pending_etc" data-value="0" title="Click to view history">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-clock-alert-outline"></i>
+                    </div>
+                    <div class="stat-content text-center">
+                        <div class="stat-label">PENDING ETC</div>
+                        <div class="stat-value">0h</div>
+                        <div class="stat-unit" title="Total ETC (estimated time) of pending tasks not yet Done or Archived">hours</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page ETC total (sum of ETC for tasks shown on this page) -->
+            <div class="col">
+                <div class="stat-card stat-card-info" title="Total ETC of tasks shown on this page">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-clock-outline"></i>
+                    </div>
+                    <div class="stat-content text-center">
+                        <div class="stat-label">ETC</div>
+                        <div class="stat-value" id="etc-page-total">0m</div>
+                        <div class="stat-unit">this page</div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Tabs Navigation - Prominent Location -->
@@ -1649,11 +1744,11 @@
                                 <div class="d-none d-md-flex justify-content-between align-items-center">
                                     <div>
                                         <button type="button" class="btn btn-success" id="upload-csv-btn">
-                                            <i class="mdi mdi-file-upload me-2"></i> CSV
+                                            <i class="mdi mdi-upload me-2"></i> CSV
                                         </button>
 
                                         <button type="button" class="btn btn-primary ms-2" id="bulk-task-btn">
-                                            <i class="mdi mdi-plus-box-multiple me-2"></i> Multiple Task
+                                            <i class="mdi mdi-plus-box-multiple me-2"></i> Create Multi Task
                                         </button>
                                         
                                         <button type="button" class="btn btn-info ms-2" id="bulk-actions-btn">
@@ -1665,22 +1760,16 @@
                                         </button>
 
                                         <button type="button" class="btn btn-warning text-dark ms-2" id="tasks-refresh-table-btn" title="Reload tasks from server (keeps your filters)">
-                                            <i class="mdi mdi-refresh me-2"></i> Refresh
+                                            <i class="mdi mdi-refresh"></i>
                                         </button>
 
-                                        @if($isAdmin)
+                                        @if(!empty($canShowTaskMaintenanceButtons))
                                         <button type="button" class="btn btn-outline-danger ms-2" id="expire-daily-auto-btn"
-                                            title="Auto-delete DAILY automated tasks that were not completed the same day (e.g. 23rd's task → expired on 24th) and count them in Missed. Weekly & Monthly automated tasks are NOT affected. Runs automatically every night at 00:05 IST.">
-                                            <i class="mdi mdi-broom me-2"></i> Cleanup Missed Daily
+                                            title="Auto-delete DAILY automated tasks not completed before the California business day ends. Runs at 12:05 AM {{ $taskBusinessTzShort ?? 'PT' }} each night. Weekly/monthly not affected.">
+                                            <i class="mdi mdi-magnify me-2"></i> Missed
                                         </button>
-                                        @endif
 
-                                        <button type="button" class="btn btn-outline-secondary ms-2 position-relative" id="today-deleted-btn"
-                                            data-bs-toggle="modal" data-bs-target="#todayDeletedModal"
-                                            title="See tasks deleted today and revert any wrongly-deleted ones.">
-                                            <i class="mdi mdi-undo-variant me-2"></i> Today Deleted
-                                            <span class="badge bg-danger rounded-pill ms-1" id="today-deleted-badge" style="display:none;">0</span>
-                                        </button>
+                                        @endif
 
 
                                         <!-- Playback Controls - Assignor -->
@@ -2082,6 +2171,53 @@
 </div>
 
 <!-- Today Deleted Modal — recover tasks deleted today (incl. auto-expired daily auto-tasks) -->
+<!-- Training Video View Modal (80% of screen) -->
+<div class="modal fade" id="trainingVideoModal" tabindex="-1" aria-labelledby="trainingVideoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:80vw;width:80vw;">
+        <div class="modal-content" style="height:80vh;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%); color: white;">
+                <h5 class="modal-title" id="trainingVideoModalLabel">
+                    <i class="mdi mdi-school me-2"></i>Training Video
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0" style="background:#000;">
+                <div id="training-video-frame-wrap" style="width:100%;height:100%;"></div>
+                <div id="training-video-empty" class="d-none d-flex flex-column align-items-center justify-content-center text-center text-white h-100 p-4">
+                    <i class="mdi mdi-video-off-outline" style="font-size:48px;opacity:0.6;"></i>
+                    <p class="mt-3 mb-0">No training video link has been set yet.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Training Video Edit Link Modal (editor only) -->
+<div class="modal fade" id="trainingVideoEditModal" tabindex="-1" aria-labelledby="trainingVideoEditModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%); color: white;">
+                <h5 class="modal-title" id="trainingVideoEditModalLabel">
+                    <i class="mdi mdi-pencil me-2"></i>Edit Training Video Link
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <label for="training-video-link-input" class="form-label">Video URL</label>
+                <input type="url" class="form-control" id="training-video-link-input" placeholder="https://www.youtube.com/watch?v=...">
+                <div class="form-text">Paste a YouTube, Vimeo, or direct video URL. Leave empty to remove.</div>
+                <div class="invalid-feedback" id="training-video-link-feedback">Please enter a valid URL.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="training-video-save-btn">
+                    <i class="mdi mdi-content-save me-1"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="todayDeletedModal" tabindex="-1" aria-labelledby="todayDeletedModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
@@ -2096,7 +2232,7 @@
                 <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                     <div class="text-muted small">
                         <i class="mdi mdi-information-outline"></i>
-                        Only today's deletions are shown. After midnight (IST) use the Deleted/Archive page.
+                        Only today's deletions are shown ({{ $taskBusinessTzLabel ?? 'California (PT)' }}). After midnight office time, use Deleted/Archive.
                     </div>
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span class="small text-muted d-inline-flex align-items-center">
@@ -2586,6 +2722,9 @@
             var suppressAssignFilterApply = false;
             /** Set from session (e.g. Task Summary dot); OR filter assignor/assignee; cleared when assignee dropdown changes away from this name */
             var taskManagerSessionUserFocus = @json(trim((string) ($selectedUserName ?? '')));
+            var taskBusinessToday = @json($taskBusinessToday ?? '');
+            var taskBusinessTzShort = @json($taskBusinessTzShort ?? 'PT');
+            var taskBusinessTzLabel = @json($taskBusinessTzLabel ?? 'California (PT)');
 
             function currentUserIsAssigneeOnTask(rowData) {
                 if (!rowData) return false;
@@ -2812,6 +2951,75 @@
             }
             
             /** Parse start_date / TID; label e.g. "3rd Apr", title "DD/MM/YYYY" for tooltip. */
+            function addDaysYmd(ymd, days) {
+                var p = String(ymd).split('-').map(Number);
+                if (p.length < 3 || isNaN(p[0]) || isNaN(p[1]) || isNaN(p[2])) {
+                    return ymd;
+                }
+                var d = new Date(p[0], p[1] - 1, p[2] + days);
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            }
+
+            function isOverdueByBusinessTid(rowData) {
+                if (!rowData || rowData.status === 'Archived' || rowData.status === 'Done') {
+                    return false;
+                }
+                var bd = rowData.tid_business_date;
+                if (!bd || !taskBusinessToday) {
+                    return false;
+                }
+                return taskBusinessToday > addDaysYmd(bd, 1);
+            }
+
+            function formatTidFromBusinessDate(ymd) {
+                if (!ymd) {
+                    return null;
+                }
+                return formatTidCellParts(ymd + ' 12:00:00');
+            }
+
+            function escAttr(s) {
+                return String(s == null ? '' : s)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
+            }
+
+            function autoDeleteHoverText(row) {
+                if (!row || !row.auto_delete_at_human) {
+                    return '';
+                }
+                return String(row.auto_delete_at_human).replace(/\s*\(pending\)\s*$/i, '').trim();
+            }
+
+            var autoDelFloatTipEl = null;
+            function showAutoDelFloatTip(text, clientX, clientY) {
+                if (!text) {
+                    return;
+                }
+                if (!autoDelFloatTipEl) {
+                    autoDelFloatTipEl = document.createElement('div');
+                    autoDelFloatTipEl.id = 'task-auto-del-float-tip';
+                    document.body.appendChild(autoDelFloatTipEl);
+                }
+                autoDelFloatTipEl.textContent = text;
+                autoDelFloatTipEl.style.display = 'block';
+                autoDelFloatTipEl.style.left = Math.min(clientX + 14, window.innerWidth - 340) + 'px';
+                autoDelFloatTipEl.style.top = Math.min(clientY + 14, window.innerHeight - 80) + 'px';
+            }
+            function hideAutoDelFloatTip() {
+                if (autoDelFloatTipEl) {
+                    autoDelFloatTipEl.style.display = 'none';
+                }
+            }
+
+            $(document).on('mouseenter mousemove', '#tasks-table .task-auto-del-hit', function (e) {
+                var text = this.getAttribute('data-tip') || '';
+                showAutoDelFloatTip(text, e.clientX, e.clientY);
+            });
+            $(document).on('mouseleave', '#tasks-table .task-auto-del-hit', hideAutoDelFloatTip);
+
             function formatTidCellParts(value) {
                 if (!value) {
                     return null;
@@ -2954,9 +3162,15 @@
                                     return parts.join('');
                                 })()}
                                 ${(() => {
-                                    var tp = formatTidCellParts(task.start_date || task.tid);
-                                    return tp ? '<div><i class="mdi mdi-calendar"></i> ' + tp.label + '</div>' : '';
+                                    var tp = task.tid_business_date
+                                        ? formatTidFromBusinessDate(task.tid_business_date)
+                                        : formatTidCellParts(task.start_date || task.tid);
+                                    return tp ? '<div><i class="mdi mdi-calendar"></i> ' + tp.label + ' <span class="text-muted">(' + taskBusinessTzShort + ')</span></div>' : '';
                                 })()}
+                                ${task.auto_delete_at_human ? (function() {
+                                    var t = autoDeleteHoverText(task);
+                                    return '<div><span class="task-auto-del-hit" data-tip="' + escAttr(t) + '"><span class="task-auto-del-dot"></span></span> <span class="text-muted small">Auto-del</span></div>';
+                                })() : ''}
                             </div>
                             
                             <div class="mobile-task-actions">
@@ -2975,9 +3189,12 @@
                                     if (!canRework || st === 'Rework' || st === 'Archived') return '';
                                     return '<button type="button" class="btn btn-sm btn-outline-danger" onclick="openReworkFromMobile(' + task.id + ')"><i class="mdi mdi-undo-variant"></i> Rework</button>';
                                 })()}
-                                <button class="btn btn-sm btn-outline-secondary" onclick="editTask(${task.id})">
-                                    <i class="mdi mdi-pencil"></i>
-                                </button>
+                                ${(() => {
+                                    var aidEdit = task.assignor_id != null ? parseInt(task.assignor_id, 10) : NaN;
+                                    var canEditMobile = canDeleteAnyTask || (!isNaN(aidEdit) && aidEdit === currentUserId);
+                                    if (!canEditMobile) return '';
+                                    return '<button class="btn btn-sm btn-outline-secondary" onclick="editTask(' + task.id + ')"><i class="mdi mdi-pencil"></i></button>';
+                                })()}
                             </div>
                         </div>
                     `;
@@ -3198,23 +3415,7 @@
                 rowFormatter: function(row) {
                     var data = row.getData();
                     
-                    // OVERDUE should match TID/statistics logic for consistent UI:
-                    // compare against start_date day + 1 day grace for all tasks.
-                    let isOverdue = false;
-                    
-                    if (data.status !== 'Archived' && data.start_date) {
-                        const startDate = new Date(data.start_date);
-                        if (!isNaN(startDate.getTime())) {
-                            startDate.setHours(0, 0, 0, 0);
-
-                            // Give all tasks a 1-day grace before overdue.
-                            startDate.setDate(startDate.getDate() + 1);
-
-                            const now = new Date();
-                            now.setHours(0, 0, 0, 0);
-                            isOverdue = now > startDate;
-                        }
-                    }
+                    let isOverdue = isOverdueByBusinessTid(data);
                     
                     // Reset dynamic classes before applying current state
                     row.getElement().classList.remove('automated-task', 'alt', 'overdue-task');
@@ -3246,7 +3447,7 @@
                         // Keep default styling for non-automated rows
                     }
                 },
-                layout: "fitDataTable",
+                layout: "fitColumns",
                 pagination: true,
                 paginationSize: 100,
                 paginationSizeSelector: [25, 50, 100, 200, 500],
@@ -3357,10 +3558,10 @@
                                 var imgSrc = (row.assignor_avatar || "{{ asset('images/users/avatar-2.jpg') }}").replace(/&/g, '&amp;');
                                 var nameEsc = String(firstName).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                                 var designation = row.assignor_designation || '';
-                                var designationHtml = designation ? '<div style="font-size: 9px; color: #6c757d; margin-top: 2px;">' + String(designation).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>' : '';
-                                return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap">' +
+                                var designationAttr = designation ? ' title="' + String(designation).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '"' : '';
+                                return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap"' + designationAttr + '>' +
                                     '<img src="' + imgSrc + '" alt="" class="rounded-circle task-avatar-hover" style="width:24px;height:24px;object-fit:cover;flex-shrink:0;transition:all 0.2s ease;cursor:pointer;">' +
-                                    '<div style="text-align: left;"><strong style="font-size: 11px;">' + nameEsc + '</strong>' + designationHtml + '</div>' +
+                                    '<div style="text-align: left;"><strong style="font-size: 11px;">' + nameEsc + '</strong></div>' +
                                     '</div>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
@@ -3381,20 +3582,17 @@
                                 var imgSrc = (row.assignee_avatar || "{{ asset('images/users/avatar-2.jpg') }}").replace(/&/g, '&amp;');
                                 var nameEsc = String(displayValue).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                                 var designation = row.assignee_designation || '';
-                                var designationHtml = designation ? '<div style="font-size: 9px; color: #6c757d; margin-top: 2px;">' + String(designation).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>' : '';
-                                return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap">' +
+                                var designationAttr = designation ? ' title="' + String(designation).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '"' : '';
+                                return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap"' + designationAttr + '>' +
                                     '<img src="' + imgSrc + '" alt="" class="rounded-circle task-avatar-hover" style="width:24px;height:24px;object-fit:cover;flex-shrink:0;transition:all 0.2s ease;cursor:pointer;">' +
-                                    '<div style="text-align: left;"><strong style="font-size: 11px; line-height: 1.4;">' + nameEsc + '</strong>' + designationHtml + '</div>' +
+                                    '<div style="text-align: left;"><strong style="font-size: 11px; line-height: 1.4;">' + nameEsc + '</strong></div>' +
                                     '</div>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         },
                         tooltip: function(cell) {
-                            var value = cell.getValue();
-                            if (value && value !== '-') {
-                                return "Assigned to: " + value;
-                            }
-                            return "No assignee";
+                            var row = cell.getRow().getData();
+                            return row.assignee_designation || '';
                         }
                     });
                     
@@ -3408,38 +3606,47 @@
                             var rowData = cell.getRow().getData();
                             var value = cell.getValue();
                             
-                            if (value) {
-                                var fp = formatTidCellParts(value);
+                            if (value || rowData.tid_business_date) {
+                                var fp = rowData.tid_business_date
+                                    ? formatTidFromBusinessDate(rowData.tid_business_date)
+                                    : formatTidCellParts(value);
                                 if (!fp) {
                                     return '<span style="color: #adb5bd;">-</span>';
                                 }
-                                var year = fp.year;
-                                var month = fp.month;
-                                var day = fp.day;
                                 var label = fp.label;
-                                var titleFull = fp.title;
-
-                                var tidDate = new Date(year, month - 1, day);
-                                tidDate.setHours(0, 0, 0, 0);
-
-                                // Automated recurring tasks (daily/weekly/monthly):
-                                // allow a 1-day grace period before marking TID as red.
-                                var scheduleType = String(rowData.schedule_type || '').toLowerCase();
-                                var isAutomatedRecurring = !!rowData.is_automate_task && ['daily', 'weekly', 'monthly'].includes(scheduleType);
-                                if (isAutomatedRecurring) {
-                                    tidDate.setDate(tidDate.getDate() + 1);
-                                }
-
-                                var now = new Date();
-                                now.setHours(0, 0, 0, 0);
-                                var textColor = '#0d6efd'; // Default blue
-                                // Always red when overdue (past TID date), whether Done or not
-                                if (now > tidDate) {
-                                    textColor = '#dc3545'; // Red when overdue
-                                }
+                                var titleFull = fp.title + ' (' + taskBusinessTzShort + ')';
+                                var textColor = isOverdueByBusinessTid(rowData) ? '#dc3545' : '#0d6efd';
                                 return '<span style="color: ' + textColor + '; font-weight: 600; font-size: 11px;" title="' + titleFull + '">' + label + '</span>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
+                        }
+                    });
+
+                    // AUTO DEL — red dot; full time on hover (daily auto-tasks)
+                    cols.push({
+                        title: "AUTO DEL",
+                        titleFormatter: function() {
+                            return '<span title="Auto-delete (daily auto tasks) — hover row dot for time" style="font-weight:700;font-size:calc(11px * 0.9);color:#495057;">AUTO DEL</span>';
+                        },
+                        headerTooltip: "Daily automated tasks auto-delete at 12:05 AM {{ $taskBusinessTzShort ?? 'PT' }} the day after TID if not Done. Hover the dot for time.",
+                        field: "auto_delete_at_human",
+                        width: 52,
+                        minWidth: 44,
+                        widthGrow: 0,
+                        cssClass: "tasks-col-auto-del",
+                        headerClass: "tasks-col-auto-del",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hoverText = autoDeleteHoverText(row);
+                            if (!hoverText) {
+                                return '<span style="color: #adb5bd;">-</span>';
+                            }
+                            return '<span class="task-auto-del-hit" data-tip="' + escAttr(hoverText) + '" role="img" aria-label="' + escAttr(hoverText) + '">' +
+                                '<span class="task-auto-del-dot"></span></span>';
+                        },
+                        tooltip: function (cell) {
+                            return autoDeleteHoverText(cell.getRow().getData()) || false;
                         }
                     });
                     
@@ -3469,6 +3676,7 @@
                     cols.push({
                         title: "ATC",
                         field: "etc_done", 
+                        visible: false,
                         width: 52,
                         minWidth: 46,
                         widthGrow: 0,
@@ -3516,7 +3724,7 @@
                     
                     // SOP - Custom icon
                     cols.push({
-                        title: "SOP",
+                        title: '<img src="{{ asset("assets/images/task-sop-icon.png") }}" alt="SOP" style="width:22px;height:22px;display:inline-block;vertical-align:middle;" />',
                         field: "link3",
                         width: 48,
                         minWidth: 40,
@@ -3524,7 +3732,7 @@
                         cssClass: "tasks-col-link-icon",
                         headerClass: "tasks-col-link-icon",
                         hozAlign: "center",
-                        headerTooltip: "Training",
+                        headerTooltip: "Standard Operating Procedure",
                         formatter: function(cell) {
                             return formatSopLinkSlot(cell.getRow().getData(), function(d) { return d.link3 || d.training_link; });
                         }
@@ -3532,7 +3740,7 @@
                     
                     // Video - Custom icon
                     cols.push({
-                        title: "Video",
+                        title: '<img src="{{ asset("assets/images/task-video-icon.png") }}" alt="Video" style="width:22px;height:22px;display:inline-block;vertical-align:middle;" />',
                         field: "link4",
                         width: 44,
                         minWidth: 34,
@@ -3540,12 +3748,12 @@
                         cssClass: "tasks-col-link-icon",
                         headerClass: "tasks-col-link-icon",
                         hozAlign: "center",
+                        headerTooltip: "Video",
                         formatter: function(cell) {
                             return formatVideoLinkSlot(cell.getRow().getData(), function(d) { return d.link4 || d.video_link; });
                         }
                     });
                     
-                    linkCol("Form", "link5", function(d) { return d.link5 || d.form_link; }, 44);
                     linkCol("Form", "link5", function(d) { return d.link5 || d.form_link; }, 44);
                     linkCol("Report", "link6", function(d) { return d.link6 || d.form_report_link; }, 50, { minWidth: 44, headerTooltip: "Form report" });
                     linkCol("CL", "link7", function(d) { return d.link7 || d.checklist_link; }, 38, {
@@ -3672,28 +3880,14 @@
                             var st = rowData.status || '';
                             
                             // Determine permissions (special: Jasmine, Ritu mam, Joy sir can delete/edit any task)
-                            var canEdit = isAdmin || canDeleteAnyTask || assignorId === currentUserId;
+                            // Both the assignor (creator) and the assignee can edit an assigned task.
+                            // Only the assignor (creator) and the president override can edit/delete.
+                            var canEdit = canDeleteAnyTask || assignorId === currentUserId;
                             var canDelete = canDeleteAnyTask || assignorId === currentUserId;
                             var canView = isAdmin || assignorId === currentUserId || currentUserIsAssigneeOnTask(rowData);
                             var canReworkQuick = (isAdmin || canDeleteAnyTask || assignorId === currentUserId) && st !== 'Rework' && st !== 'Archived';
                             
                             var buttons = '';
-                            
-                            if (canView) {
-                                buttons += `
-                                    <button class="action-btn-icon action-btn-view view-task" data-id="${id}" title="View">
-                                        <i class="mdi mdi-eye"></i>
-                                    </button>
-                                `;
-                            }
-
-                            if (canReworkQuick) {
-                                buttons += `
-                                    <button type="button" class="action-btn-icon open-rework-from-actions" data-id="${id}" title="Send for rework" style="background:#f5576c;color:#fff;border:none;padding:8px 10px;border-radius:6px;cursor:pointer;margin:0 2px;">
-                                        <i class="mdi mdi-undo-variant"></i>
-                                    </button>
-                                `;
-                            }
                             
                             if (canEdit) {
                                 buttons += `
@@ -3728,6 +3922,17 @@
                 })(),
             });
 
+            // Format a minute total as "Xh Ym" (e.g. 5392 -> "89h 52m"). Under an hour -> "Ym".
+            function formatMinutesAsHm(totalMinutes) {
+                var mins = Math.round(Number(totalMinutes) || 0);
+                var hours = Math.floor(mins / 60);
+                var rem = mins % 60;
+                if (hours > 0) {
+                    return hours.toLocaleString() + 'h ' + rem + 'm';
+                }
+                return rem + 'm';
+            }
+
             // Update statistics based on filtered data
             function updateStatistics() {
                 var filteredData = table.getData("active");
@@ -3739,7 +3944,8 @@
                     etc_total: filteredData.reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0),
                     atc_total: filteredData.reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0),
                     done_etc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0),
-                    done_atc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0)
+                    done_atc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0),
+                    pending_etc: filteredData.filter(t => !['Done', 'Archived'].includes(t.status)).reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0)
                 };
                 
                 // Overdue calculation:
@@ -3842,15 +4048,19 @@
                     switch(label) {
                         case 'TOTAL':
                             valueEl.text(stats.total);
+                            $(this).attr('data-value', stats.total);
                             break;
                         case 'PENDING':
                             valueEl.text(stats.pending);
+                            $(this).attr('data-value', stats.pending);
                             break;
                         case 'OVERDUE':
                             valueEl.text(stats.overdue);
+                            $(this).attr('data-value', stats.overdue);
                             break;
                         case 'DONE':
                             valueEl.text(stats.done);
+                            $(this).attr('data-value', stats.done);
                             break;
                         case 'ETC 30D':
                             break;
@@ -3867,6 +4077,7 @@
                             break;
                         case 'TAT':
                             valueEl.text(stats.tat_avg_30 !== null ? String(Math.round(stats.tat_avg_30)) : '-');
+                            $(this).attr('data-value', stats.tat_avg_30 !== null ? Math.round(stats.tat_avg_30) : 0);
                             break;
                         case 'AVG SCORE':
                             if (performanceAverageScore !== null && performanceAverageScore !== undefined && performanceAverageScore !== '') {
@@ -3878,6 +4089,15 @@
                             break;
                         case 'MISSED':
                             valueEl.text(stats.missed_count_30);
+                            $(this).attr('data-value', stats.missed_count_30);
+                            break;
+                        case 'ETC':
+                            valueEl.text(formatMinutesAsHm(stats.etc_total || 0));
+                            break;
+                        case 'PENDING ETC':
+                            var pendingEtcHours = Math.round((stats.pending_etc || 0) / 60);
+                            valueEl.text(pendingEtcHours + 'h');
+                            $(this).attr('data-value', pendingEtcHours);
                             break;
                     }
                 });
@@ -4336,10 +4556,11 @@
                     }
                 });
             }
+            @if(!empty($canShowTaskMaintenanceButtons))
             refreshTodayDeletedBadge();
             setInterval(refreshTodayDeletedBadge, 60000);
-
             $('#todayDeletedModal').on('show.bs.modal', loadTodayDeleted);
+            @endif
             $('#today-deleted-refresh-btn').on('click', loadTodayDeleted);
 
             // ---- Selection: per-row + select-all ----
@@ -6124,7 +6345,8 @@
                 'atc': 'ATC 30D History (Hours)',
                 'tat': 'TAT History (Days)',
                 'score': 'Average Score History',
-                'missed': 'Missed Tasks History'
+                'missed': 'Missed Tasks History',
+                'pending_etc': 'Pending ETC History (Hours)'
             };
             document.getElementById('taskHistoryChartTitle').textContent = titles[metric] || 'History Trend';
             
@@ -6149,7 +6371,8 @@
                 'atc': { border: '#0891b2', bg: 'rgba(8, 145, 178, 0.1)' },
                 'tat': { border: '#0dcaf0', bg: 'rgba(13, 202, 240, 0.1)' },
                 'score': { border: '#38ef7d', bg: 'rgba(56, 239, 125, 0.1)' },
-                'missed': { border: '#dc3545', bg: 'rgba(220, 53, 69, 0.1)' }
+                'missed': { border: '#dc3545', bg: 'rgba(220, 53, 69, 0.1)' },
+                'pending_etc': { border: '#0dcaf0', bg: 'rgba(13, 202, 240, 0.1)' }
             };
             
             taskHistoryChart = new Chart(ctx, {
@@ -6296,5 +6519,102 @@
             
             return { labels, values };
         }
+
+        // ===== Training Video header icon: view (click) / edit link (double-click) =====
+        $(function () {
+            var $icon = $('#training-video-icon');
+            if (!$icon.length) return;
+
+            var saveUrl = '{{ route("tasks.trainingVideo.save") }}';
+            var csrfToken = '{{ csrf_token() }}';
+            var clickTimer = null;
+
+            function getLink() { return ($icon.attr('data-link') || '').trim(); }
+            function canEdit() { return $icon.attr('data-can-edit') === '1'; }
+
+            // Build an embeddable player from a URL (YouTube / Vimeo / direct file).
+            function buildPlayerHtml(url) {
+                var common = 'width:100%;height:100%;border:0;display:block;';
+                var yt = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+                if (yt) {
+                    return '<iframe src="https://www.youtube.com/embed/' + yt[1] + '?rel=0&autoplay=1" style="' + common + '" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>';
+                }
+                var vimeo = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+                if (vimeo) {
+                    return '<iframe src="https://player.vimeo.com/video/' + vimeo[1] + '?autoplay=1" style="' + common + '" allow="autoplay; fullscreen" allowfullscreen></iframe>';
+                }
+                if (/\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(url)) {
+                    return '<video src="' + url.replace(/"/g, '&quot;') + '" style="' + common + 'object-fit:contain;background:#000;" controls autoplay></video>';
+                }
+                // Fallback: try to embed the URL directly in an iframe.
+                return '<iframe src="' + url.replace(/"/g, '&quot;') + '" style="' + common + '" allow="autoplay; fullscreen" allowfullscreen></iframe>';
+            }
+
+            function openViewModal() {
+                var link = getLink();
+                var $wrap = $('#training-video-frame-wrap');
+                var $empty = $('#training-video-empty');
+                if (link) {
+                    $wrap.html(buildPlayerHtml(link)).removeClass('d-none');
+                    $empty.addClass('d-none');
+                } else {
+                    $wrap.empty().addClass('d-none');
+                    $empty.removeClass('d-none');
+                }
+                $('#trainingVideoModal').modal('show');
+            }
+
+            function openEditModal() {
+                $('#training-video-link-input').val(getLink()).removeClass('is-invalid');
+                $('#trainingVideoEditModal').modal('show');
+            }
+
+            $icon.on('click', function () {
+                if (clickTimer) return; // a dblclick is in progress
+                clickTimer = setTimeout(function () {
+                    clickTimer = null;
+                    openViewModal();
+                }, 250);
+            });
+
+            $icon.on('dblclick', function () {
+                if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+                if (canEdit()) {
+                    openEditModal();
+                }
+            });
+
+            // Stop the video when the view modal closes.
+            $('#trainingVideoModal').on('hidden.bs.modal', function () {
+                $('#training-video-frame-wrap').empty();
+            });
+
+            $('#training-video-save-btn').on('click', function () {
+                var $input = $('#training-video-link-input');
+                var val = ($input.val() || '').trim();
+                if (val && !/^https?:\/\//i.test(val)) {
+                    $input.addClass('is-invalid');
+                    return;
+                }
+                $input.removeClass('is-invalid');
+                var $btn = $(this).prop('disabled', true);
+                $.ajax({
+                    url: saveUrl,
+                    method: 'POST',
+                    data: { link: val, _token: csrfToken },
+                    success: function (res) {
+                        $icon.attr('data-link', (res && res.link) ? res.link : '');
+                        $('#trainingVideoEditModal').modal('hide');
+                    },
+                    error: function (xhr) {
+                        var msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Failed to save the link.';
+                        alert(msg);
+                    },
+                    complete: function () {
+                        $btn.prop('disabled', false);
+                    }
+                });
+            });
+        });
     </script>
 @endsection

@@ -14,6 +14,7 @@ class FacebookAllAdsSheet extends Model
         'row_index',
         'row_data',
         'ad_type',
+        'ch',
         'uploaded_by',
     ];
 
@@ -23,6 +24,12 @@ class FacebookAllAdsSheet extends Model
         'GROUP CAROUSAL',
         'PARENT VIDEO',
         'PARENT CAROUSAL',
+    ];
+
+    /** Allowed CH (channel) dropdown values shown on the page. */
+    public const CH_OPTIONS = [
+        'FB',
+        'Insta',
     ];
 
     protected $casts = [

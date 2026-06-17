@@ -56,22 +56,16 @@
             </div>
             <div>
                 <h1 class="ps-company-name">{{ $company['name'] ?? '5 CORE INC.' }}</h1>
-                <div class="ps-company-tag">{{ $company['tagline'] ?? 'Trusted Since 1984' }}</div>
+                <div class="ps-company-tag">{{ $company['tagline'] ?? 'OHIO, USA.' }}</div>
             </div>
             <div class="ps-doc-badge">
                 <p class="ps-doc-title">Salary Payslip</p>
                 <div class="ps-doc-meta">
                     <div><strong>Pay period:</strong> {{ $data['month'] ?? '—' }}</div>
-                    @if(!empty($data['period_start']))
-                        <div>{{ $data['period_start'] }} – {{ $data['period_end'] ?? '' }}</div>
-                    @endif
                     <div><strong>Payslip #:</strong> {{ $data['payslip_no'] ?? ('PS-'.$payslip->id) }}</div>
-                    <div><strong>Generated:</strong> {{ $data['generated_at'] ?? now()->format('d M Y') }}</div>
                 </div>
             </div>
         </header>
-
-        <div class="ps-confidential">Confidential — For employee use only. Unauthorized distribution prohibited.</div>
 
         <section class="ps-employee-grid">
             <div class="ps-field">
@@ -92,7 +86,7 @@
             </div>
             @if(!$isCompact)
             <div class="ps-field">
-                <label>Basic pay (Salary PP)</label>
+                <label>Salary Previous</label>
                 <span>₹{{ number_format($salaryPp, 0) }}</span>
             </div>
             <div class="ps-field">
@@ -100,67 +94,34 @@
                 <span>₹{{ number_format($increment, 0) }}</span>
             </div>
             <div class="ps-field">
-                <label>Salary LM</label>
+                <label>Salary</label>
                 <span>₹{{ number_format($salaryLm, 0) }}</span>
             </div>
             <div class="ps-field">
-                <label>Hours worked (LM)</label>
+                <label>Hours worked</label>
                 <span>{{ number_format($hours, 0) }} hours</span>
             </div>
             <div class="ps-field">
-                <label>Amt LM</label>
-                <span>₹{{ number_format($data['amount_lm_display'] ?? $data['gross'] ?? 0, 0) }}</span>
+                <label>Add Other</label>
+                <span style="color: #1b5e20;">+₹{{ number_format($data['other'] ?? 0, 0) }}</span>
+            </div>
+            <div class="ps-field">
+                <label>Add Incentive</label>
+                <span style="color: #1b5e20;">+₹{{ number_format($data['incentive'] ?? 0, 0) }}</span>
+            </div>
+            <div class="ps-field">
+                <label>Less Advance / Deductions</label>
+                <span style="color: #c41e24;">&minus;₹{{ number_format($data['adv_inc_other'] ?? 0, 0) }}</span>
+            </div>
+            <div class="ps-field">
+                <label>Amount</label>
+                <span>₹{{ number_format($data['amount_p'] ?? $net, 0) }}</span>
+            </div>
+            <div class="ps-field">
+                <label>Round Off</label>
+                <span>₹{{ number_format($net, 0) }}</span>
             </div>
             @endif
-        </section>
-
-        <section class="ps-tables">
-            <div class="ps-table-wrap">
-                <h6>Earnings</h6>
-                <table class="ps-table">
-                    <tbody>
-                        @foreach($earnings as [$label, $amt])
-                        @php $amt = (float) $amt; @endphp
-                        <tr>
-                            <td>{{ $label }}</td>
-                            <td class="{{ $amt < 0 ? 'text-deduct' : '' }}">
-                                @if($amt < 0)&minus;@endif₹{{ number_format(abs($amt), 2) }}
-                            </td>
-                        </tr>
-                        @endforeach
-                        <tr class="ps-total">
-                            <td>Total Earnings</td>
-                            <td>₹{{ number_format($totalEarnings, 2) }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="ps-table-wrap">
-                <h6>Deductions</h6>
-                <table class="ps-table">
-                    <tbody>
-                        @if($hasDeductions)
-                            @foreach($deductions as [$label, $amt])
-                            <tr>
-                                <td>{{ $label }}</td>
-                                <td class="text-deduct">&minus;₹{{ number_format((float) $amt, 2) }}</td>
-                            </tr>
-                            @endforeach
-                        @else
-                            <tr>
-                                <td>No deductions this month</td>
-                                <td>₹0.00</td>
-                            </tr>
-                        @endif
-                        <tr class="ps-total">
-                            <td>Total Deductions</td>
-                            <td class="{{ $hasDeductions ? 'text-deduct' : '' }}">
-                                @if($hasDeductions)&minus;@endif₹{{ number_format($totalDeductions, 2) }}
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
         </section>
 
         <section class="ps-net-box">
@@ -199,11 +160,8 @@
                 </div>
                 <div class="text-end">
                     <div>This is a computer-generated payslip.</div>
-                    <div>No signature required unless stamped by HR.</div>
+                    <div>No signature required.</div>
                 </div>
-            </div>
-            <div class="ps-sign">
-                <div class="ps-sign-line">Authorized Signatory — Human Resources</div>
             </div>
         </footer>
     </div>

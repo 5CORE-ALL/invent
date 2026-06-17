@@ -43,7 +43,9 @@ use App\Http\Controllers\Campaigns\EbayPinkDilAdController;
 use App\Http\Controllers\Campaigns\EbayPMPAdsController;
 use App\Http\Controllers\Campaigns\EbayCampaignAdsController;
 use App\Http\Controllers\Campaigns\Ebay2CampaignAdsController;
+use App\Http\Controllers\Campaigns\Ebay3CampaignAdsController;
 use App\Http\Controllers\Campaigns\EbayRunningAdsController;
+use App\Http\Controllers\Campaigns\GoogleSerpCampaignsController;
 use App\Http\Controllers\Campaigns\GoogleShoppingCampaignsController;
 use App\Http\Controllers\Campaigns\GoogleAdsController;
 use App\Http\Controllers\Campaigns\TiktokAdsController;
@@ -252,9 +254,13 @@ use App\Http\Controllers\PurchaseMaster\ChinaLoadController;
 use App\Http\Controllers\PurchaseMaster\ClaimReimbursementController;
 use App\Http\Controllers\PurchaseMaster\ContainerPlanningController;
 use App\Http\Controllers\PurchaseMaster\InstructionsItemPkgController;
+use App\Http\Controllers\PurchaseMaster\InstructionsCartonDesignController;
 use App\Http\Controllers\PurchaseMaster\FollowUpHistoryController;
 use App\Http\Controllers\PurchaseMaster\LedgerMasterController;
 use App\Http\Controllers\PurchaseMaster\MFRGInProgressController;
+use App\Http\Controllers\PurchaseMaster\MfrgProgressPoController;
+use App\Http\Controllers\PurchaseMaster\PurchasePageExecController;
+use App\Http\Controllers\PurchaseMaster\PurchasePageInfoController;
 use App\Http\Controllers\PurchaseMaster\OnRoadTransitController;
 use App\Http\Controllers\PurchaseMaster\OnSeaTransitController;
 use App\Http\Controllers\PurchaseMaster\PurchaseController;
@@ -263,6 +269,8 @@ use App\Http\Controllers\PurchaseMaster\QcImprovementReqBeforeItemPkgController;
 use App\Http\Controllers\PurchaseMaster\QualityEnhanceController;
 use App\Http\Controllers\PurchaseMaster\ReadyToShipController;
 use App\Http\Controllers\PurchaseMaster\RFQController;
+use App\Http\Controllers\PurchaseMaster\ScopeOfImprovementController;
+use App\Http\Controllers\PurchaseMaster\DarController as DarReportController;
 use App\Http\Controllers\PurchaseMaster\SourcingController;
 use App\Http\Controllers\PurchaseMaster\SupplierController;
 use App\Http\Controllers\PurchaseMaster\TransitContainerDetailsController;
@@ -276,6 +284,7 @@ use App\Http\Controllers\Sales\AmazonSalesDataTestController;
 use App\Http\Controllers\Sales\BestBuySalesController;
 use App\Http\Controllers\Sales\DobaSalesController;
 use App\Http\Controllers\Sales\EbaySalesController;
+use App\Http\Controllers\Sales\NeweggSalesController;
 use App\Http\Controllers\Sales\MercariController;
 use App\Http\Controllers\Sales\WayfairSalesController;
 use App\Http\Controllers\ShopifyController;
@@ -307,7 +316,24 @@ Route::prefix('ai')->middleware(['auth'])->group(function () {
     Route::post('/upload-knowledge', [\App\Http\Controllers\Api\AiChatController::class, 'uploadKnowledge'])->name('ai.upload');
     Route::get('/check-notifications', [\App\Http\Controllers\Api\AiChatController::class, 'checkNotifications'])->name('ai.check');
     Route::get('/pending-replies', [\App\Http\Controllers\Api\AiChatController::class, 'getPendingReplies'])->name('ai.pending');
+    Route::get('/faqs', [\App\Http\Controllers\Api\AiChatController::class, 'getFaqs'])->name('ai.faqs');
     Route::post('/mark-replies-read', [\App\Http\Controllers\Api\AiChatController::class, 'markRepliesRead'])->name('ai.mark-read');
+});
+
+// Help Desk FAQ management (admin UI)
+Route::middleware(['auth'])->group(function () {
+    Route::get('/help-desk-faqs', [\App\Http\Controllers\HelpDeskFaqController::class, 'index'])->name('help-desk-faqs.index');
+    Route::get('/help-desk-faqs/archived', [\App\Http\Controllers\HelpDeskFaqController::class, 'archived'])->name('help-desk-faqs.archived');
+    Route::post('/help-desk-faqs/{id}/restore', [\App\Http\Controllers\HelpDeskFaqController::class, 'restore'])->name('help-desk-faqs.restore');
+    Route::delete('/help-desk-faqs/{id}/force-delete', [\App\Http\Controllers\HelpDeskFaqController::class, 'forceDelete'])->name('help-desk-faqs.force-delete');
+    Route::post('/help-desk-faqs/gurus', [\App\Http\Controllers\HelpDeskFaqController::class, 'storeGuru'])->name('help-desk-faqs.gurus.store');
+    Route::delete('/help-desk-faqs/gurus/{id}', [\App\Http\Controllers\HelpDeskFaqController::class, 'destroyGuru'])->name('help-desk-faqs.gurus.destroy');
+    Route::get('/help-desk-faqs/sample-csv', [\App\Http\Controllers\HelpDeskFaqController::class, 'sampleCsv'])->name('help-desk-faqs.sample');
+    Route::post('/help-desk-faqs/bulk-import', [\App\Http\Controllers\HelpDeskFaqController::class, 'bulkImport'])->name('help-desk-faqs.bulk');
+    Route::post('/help-desk-faqs/bulk-update', [\App\Http\Controllers\HelpDeskFaqController::class, 'bulkUpdate'])->name('help-desk-faqs.bulk-update');
+    Route::post('/help-desk-faqs', [\App\Http\Controllers\HelpDeskFaqController::class, 'store'])->name('help-desk-faqs.store');
+    Route::put('/help-desk-faqs/{help_desk_faq}', [\App\Http\Controllers\HelpDeskFaqController::class, 'update'])->name('help-desk-faqs.update');
+    Route::delete('/help-desk-faqs/{help_desk_faq}', [\App\Http\Controllers\HelpDeskFaqController::class, 'destroy'])->name('help-desk-faqs.destroy');
 });
 
 // STEP 2: PUBLIC AI ROUTES (no auth)
@@ -503,6 +529,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // TopDawg Sales Dashboard (topdawg_order_metrics, margin 0.95, no ship)
     Route::get('/topdawg/sales-dashboard', [\App\Http\Controllers\MarketPlace\TopDawgSyncController::class, 'salesDashboard'])->name('topdawg.sales.dashboard');
     Route::get('/topdawg/sales-data', [\App\Http\Controllers\MarketPlace\TopDawgSyncController::class, 'getSalesData'])->name('topdawg.sales.data');
+
+    // TopDawg Pricing (Tabulator — price/stock from topdawg_products, map/miss like Reverb)
+    Route::get('/topdawg-pricing', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'pricingView'])->name('topdawg.pricing');
+    Route::get('/topdawg-data-json', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'dataJson'])->name('topdawg.data.json');
+    Route::post('/topdawg-save-links', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'saveLinks'])->name('topdawg.save.links');
+    Route::post('/topdawg-save-sprice', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'saveSprice'])->name('topdawg.save.sprice');
 
     // Route::get('/get-channel-sales-data', [ChannelMasterController::class, 'getChannelSalesData']);
     Route::get('/sales-trend-data', [ChannelMasterController::class, 'getSalesTrendData']);
@@ -811,10 +843,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ]);
     })->name('customer.care.orders.on.hold.sku.details');
     Route::get('/customer-care/orders-on-hold/issues', function () {
-        $rows = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')
+        $query = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')
             ->where(function ($q) {
                 $q->whereNull('is_archived')->orWhere('is_archived', false);
             })
+            ->where(function ($q) {
+                $q->where('department', 'Orders on Hold')
+                    ->orWhere('department', 'like', '%"Orders on Hold"%');
+            });
+        $rows = $query
             ->orderByDesc('id')
             ->limit(1000)
             ->get([
@@ -829,19 +866,123 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'issue',
                 'issue_remark',
                 'action_1',
+                'cc_action_history',
                 'action_1_remark',
                 'replacement_tracking',
                 'c_action_1',
                 'c_action_1_remark',
                 'close_note',
+                'order_number',
+                'department',
                 'created_by',
                 'created_at',
             ]);
 
         $tz = config('app.timezone');
-        $data = $rows->map(function ($row) use ($tz) {
+        $labelMap = \Illuminate\Support\Facades\DB::table('orders_on_hold_labels')
+            ->whereIn('issue_id', $rows->pluck('id')->all())
+            ->get()
+            ->keyBy('issue_id');
+        $optionsMap = \Illuminate\Support\Facades\DB::table('orders_on_hold_options')
+            ->whereIn('issue_id', $rows->pluck('id')->all())
+            ->get()
+            ->keyBy('issue_id');
+
+        $skus = $rows->pluck('sku')->map(fn ($s) => strtolower(trim((string) $s)))->unique()->values()->all();
+        if ($skus === []) {
+            $shopifyImages = collect();
+            $pmImages = collect();
+        } else {
+            $shopifyImages = \Illuminate\Support\Facades\DB::table('shopify_skus')
+                ->selectRaw('LOWER(TRIM(sku)) as sku_key, image_src')
+                ->whereRaw('LOWER(TRIM(sku)) IN ('.implode(',', array_fill(0, count($skus), '?')).')', $skus)
+                ->get()
+                ->keyBy('sku_key');
+            $pmImages = \Illuminate\Support\Facades\DB::table('product_master')
+                ->selectRaw('LOWER(TRIM(sku)) as sku_key, main_image, image1')
+                ->whereRaw('LOWER(TRIM(sku)) IN ('.implode(',', array_fill(0, count($skus), '?')).')', $skus)
+                ->get()
+                ->keyBy('sku_key');
+        }
+        $normalizeImage = static function ($path) {
+            $p = trim((string) ($path ?? ''));
+            if ($p === '') {
+                return null;
+            }
+            if (preg_match('/^(https?:)?\/\//i', $p) || str_starts_with($p, 'data:')) {
+                return $p;
+            }
+
+            return '/'.ltrim($p, '/');
+        };
+        $imageMap = [];
+        foreach ($skus as $key) {
+            $imageMap[$key] = $normalizeImage($shopifyImages[$key]->image_src ?? null)
+                ?? $normalizeImage($pmImages[$key]->main_image ?? null)
+                ?? $normalizeImage($pmImages[$key]->image1 ?? null);
+        }
+
+        // Per-marketplace "M link" (marketplace Customer Care message page) — same source as
+        // /customer-care/cc-messages-returns: Account Health metric definition m_link per channel scope.
+        $mLinkSlug = static function ($v): string {
+            $s = strtolower(trim((string) $v));
+
+            return str_replace([' ', '-', '_', '&', '/', '–', '—'], '', $s);
+        };
+        $mLinkBySlug = [];
+        try {
+            $ahmController = app(\App\Http\Controllers\Channels\AccountHealthMasterController::class);
+            $scopeToMLink = [];
+            foreach (\App\Models\ChannelMaster::where('status', 'Active')->get(['id', 'channel']) as $ch) {
+                $name = trim((string) $ch->channel);
+                if ($name === '') {
+                    continue;
+                }
+                $scope = $ahmController->definitionScopeForChannel($ch);
+                if (! array_key_exists($scope, $scopeToMLink)) {
+                    $scopeToMLink[$scope] = \App\Models\AccountHealthMetricFieldDefinition::query()
+                        ->where('definition_scope', $scope)
+                        ->whereNotNull('m_link')
+                        ->where('m_link', '!=', '')
+                        ->orderBy('sort_order')
+                        ->orderBy('id')
+                        ->value('m_link');
+                }
+                $mLinkBySlug[$mLinkSlug($name)] = $scopeToMLink[$scope] ?: null;
+            }
+        } catch (\Throwable $e) {
+            $mLinkBySlug = [];
+        }
+
+        $data = $rows->map(function ($row) use ($tz, $labelMap, $optionsMap, $imageMap, $mLinkBySlug, $mLinkSlug) {
+            $ccHistory = [];
+            if (! empty($row->cc_action_history)) {
+                $decoded = json_decode((string) $row->cc_action_history, true);
+                if (is_array($decoded)) {
+                    $ccHistory = $decoded;
+                }
+            }
+            $lbl = $labelMap[$row->id] ?? null;
+            $opt = $optionsMap[$row->id] ?? null;
+            $variantSkus = $opt && ! empty($opt->variant_skus) ? (json_decode((string) $opt->variant_skus, true) ?: []) : [];
+            $upgradeSkus = $opt && ! empty($opt->upgrade_skus) ? (json_decode((string) $opt->upgrade_skus, true) ?: []) : [];
+
             return [
                 'id' => (int) $row->id,
+                'label' => [
+                    'alternate_upgrade_done' => (bool) ($lbl->alternate_upgrade_done ?? false),
+                    'stock_adjustment_done' => (bool) ($lbl->stock_adjustment_done ?? false),
+                    'refunded' => (bool) ($lbl->refunded ?? false),
+                    'label_voided' => (bool) ($lbl->label_voided ?? false),
+                ],
+                'options' => [
+                    'variant_skus' => array_values($variantSkus),
+                    'upgrade_skus' => array_values($upgradeSkus),
+                    'no_options' => (bool) ($opt->no_options ?? false),
+                ],
+                'image_url' => $imageMap[strtolower(trim((string) $row->sku))] ?? null,
+                'm_link' => ($mLinkBySlug[$mLinkSlug($row->marketplace_1)] ?? null)
+                    ?: ($mLinkBySlug[$mLinkSlug($row->marketplace_2)] ?? null),
                 'sku' => $row->sku,
                 'qty' => (float) $row->qty,
                 'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
@@ -852,11 +993,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'issue' => $row->issue,
                 'issue_remark' => $row->issue_remark,
                 'action_1' => $row->action_1,
+                'cc_action_history' => $ccHistory,
                 'action_1_remark' => $row->action_1_remark,
                 'replacement_tracking' => $row->replacement_tracking,
                 'c_action_1' => $row->c_action_1,
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
+                'order_number' => $row->order_number,
+                'department' => \App\Support\CustomerCareDepartments::label($row->department ?? null),
+                'departments' => \App\Support\CustomerCareDepartments::decode($row->department ?? null),
                 'created_by' => $row->created_by,
                 'created_at' => $row->created_at,
                 'created_at_display' => $row->created_at
@@ -868,7 +1013,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         return response()->json(['data' => $data]);
     })->name('customer.care.orders.on.hold.issues.index');
     Route::get('/customer-care/orders-on-hold/history', function () {
-        $rows = \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')
+        $historyQuery = \Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')
+            ->where(function ($q) {
+                $q->where('department', 'Orders on Hold')
+                    ->orWhere('department', 'like', '%"Orders on Hold"%');
+            });
+        $rows = $historyQuery
             ->orderByDesc('id')
             ->limit(1000)
             ->get([
@@ -891,6 +1041,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1',
                 'c_action_1_remark',
                 'close_note',
+                'department',
                 'created_by',
                 'logged_at',
             ]);
@@ -924,6 +1075,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => $row->c_action_1,
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
+                'department' => \App\Support\CustomerCareDepartments::label($row->department ?? null),
+                'departments' => \App\Support\CustomerCareDepartments::decode($row->department ?? null),
                 'created_by' => $row->created_by,
                 'logged_at' => $row->logged_at,
                 'logged_at_display' => $row->logged_at
@@ -945,12 +1098,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'what_happened' => 'nullable|string|max:100',
             'issue' => 'required|string|max:255',
             'issue_remark' => 'nullable|string|max:255',
-            'action_1' => 'nullable|string|in:Offer Customer Alterntive / Updgrade,Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Refund,RTS,NA,Other|max:255',
+            'action_1' => 'nullable|string|max:255',
             'action_1_remark' => 'nullable|string|max:255',
             'replacement_tracking' => 'nullable|string|max:50',
             'c_action_1' => 'nullable|string|max:255',
             'c_action_1_remark' => 'nullable|string|max:255',
             'close_note' => 'nullable|string|max:255',
+            'order_number' => 'nullable|string|max:255',
+            'department' => 'nullable|array',
+            'department.*' => 'string|max:100',
         ]);
         $allowedRootCauses = [
             'Mapping',
@@ -992,7 +1148,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             $createdBy = 'System';
         }
 
-        $id = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $createdBy, $user) {
+        $departments = \App\Support\CustomerCareDepartments::normalizeStringList(array_merge((array) ($validated['department'] ?? []), ['Orders on Hold']));
+        $departmentEncoded = \App\Support\CustomerCareDepartments::encode($departments);
+
+        $id = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $createdBy, $user, $departmentEncoded) {
             $now = now();
 
             $payload = [
@@ -1006,20 +1165,27 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'issue' => trim($validated['issue']),
                 'issue_remark' => isset($validated['issue_remark']) ? trim((string) $validated['issue_remark']) : null,
                 'action_1' => isset($validated['action_1']) ? trim((string) $validated['action_1']) : null,
+                'cc_action_history' => json_encode([[
+                    'value' => (isset($validated['action_1']) && trim((string) $validated['action_1']) !== '') ? trim((string) $validated['action_1']) : 'Pending',
+                    'by' => $createdBy,
+                    'at' => $now->timezone(config('app.timezone'))->format('d-m-Y H:i'),
+                ]], JSON_UNESCAPED_UNICODE),
                 'action_1_remark' => isset($validated['action_1_remark']) ? trim((string) $validated['action_1_remark']) : null,
                 'replacement_tracking' => isset($validated['replacement_tracking']) ? trim((string) $validated['replacement_tracking']) : null,
                 'c_action_1' => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
                 'c_action_1_remark' => isset($validated['c_action_1_remark']) ? trim((string) $validated['c_action_1_remark']) : null,
                 'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
+                'order_number' => isset($validated['order_number']) && trim((string) $validated['order_number']) !== '' ? trim((string) $validated['order_number']) : null,
+                'department' => $departmentEncoded,
                 'created_by' => $createdBy,
                 'created_by_user_id' => $user?->id,
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
 
-            $issueId = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->insertGetId($payload);
+            $issueId = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->insertGetId($payload);
 
-            \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')->insert([
+            \Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')->insert([
                 'orders_on_hold_issue_id' => $issueId,
                 'event_type' => 'created',
                 'revision_no' => 0,
@@ -1038,6 +1204,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => $payload['c_action_1'],
                 'c_action_1_remark' => $payload['c_action_1_remark'],
                 'close_note' => $payload['close_note'],
+                'order_number' => $payload['order_number'],
+                'department' => $payload['department'],
                 'created_by' => $createdBy,
                 'created_by_user_id' => $user?->id,
                 'logged_at' => $now,
@@ -1048,7 +1216,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             return $issueId;
         });
 
-        $row = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')
+        $row = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')
             ->where('id', $id)
             ->first([
                 'id',
@@ -1062,16 +1230,26 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'issue',
                 'issue_remark',
                 'action_1',
+                'cc_action_history',
                 'action_1_remark',
                 'replacement_tracking',
                 'c_action_1',
                 'c_action_1_remark',
                 'close_note',
+                'order_number',
+                'department',
                 'created_by',
                 'created_at',
             ]);
 
         $tz = config('app.timezone');
+        $ccHistory = [];
+        if (! empty($row->cc_action_history)) {
+            $decoded = json_decode((string) $row->cc_action_history, true);
+            if (is_array($decoded)) {
+                $ccHistory = $decoded;
+            }
+        }
 
         return response()->json([
             'message' => 'Hold issue saved successfully.',
@@ -1087,11 +1265,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'issue' => $row->issue,
                 'issue_remark' => $row->issue_remark,
                 'action_1' => $row->action_1,
+                'cc_action_history' => $ccHistory,
                 'action_1_remark' => $row->action_1_remark,
                 'replacement_tracking' => $row->replacement_tracking,
                 'c_action_1' => $row->c_action_1,
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
+                'order_number' => $row->order_number,
+                'department' => \App\Support\CustomerCareDepartments::label($row->department ?? null),
+                'departments' => \App\Support\CustomerCareDepartments::decode($row->department ?? null),
                 'created_by' => $row->created_by,
                 'created_at' => $row->created_at,
                 'created_at_display' => $row->created_at
@@ -1111,12 +1293,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'what_happened' => 'nullable|string|max:100',
             'issue' => 'required|string|max:255',
             'issue_remark' => 'nullable|string|max:255',
-            'action_1' => 'nullable|string|in:Offer Customer Alterntive / Updgrade,Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Refund,RTS,NA,Other|max:255',
+            'action_1' => 'nullable|string|max:255',
             'action_1_remark' => 'nullable|string|max:255',
             'replacement_tracking' => 'nullable|string|max:50',
             'c_action_1' => 'nullable|string|max:255',
             'c_action_1_remark' => 'nullable|string|max:255',
             'close_note' => 'nullable|string|max:255',
+            'order_number' => 'nullable|string|max:255',
+            'department' => 'nullable|array',
+            'department.*' => 'string|max:100',
         ]);
         $allowedRootCauses = [
             'Mapping',
@@ -1152,7 +1337,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             ], 422);
         }
 
-        $existing = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->where('id', $id)->first();
+        $existing = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->where('id', $id)->first();
         if (! $existing) {
             return response()->json(['message' => 'Record not found.'], 404);
         }
@@ -1163,9 +1348,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             $actorName = 'System';
         }
 
-        \Illuminate\Support\Facades\DB::transaction(function () use ($id, $validated, $actorName, $user) {
+        $departments = \App\Support\CustomerCareDepartments::normalizeStringList(array_merge((array) ($validated['department'] ?? []), ['Orders on Hold']));
+        $departmentEncoded = \App\Support\CustomerCareDepartments::encode($departments);
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($id, $validated, $actorName, $user, $departmentEncoded) {
             $now = now();
-            $nextRevision = ((int) (\Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')
+            $nextRevision = ((int) (\Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')
                 ->where('orders_on_hold_issue_id', $id)
                 ->max('revision_no'))) + 1;
             $payload = [
@@ -1184,12 +1372,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
                 'c_action_1_remark' => isset($validated['c_action_1_remark']) ? trim((string) $validated['c_action_1_remark']) : null,
                 'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
+                'order_number' => isset($validated['order_number']) && trim((string) $validated['order_number']) !== '' ? trim((string) $validated['order_number']) : null,
+                'department' => $departmentEncoded,
                 'updated_at' => $now,
             ];
 
-            \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->where('id', $id)->update($payload);
+            \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->where('id', $id)->update($payload);
 
-            \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')->insert([
+            \Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')->insert([
                 'orders_on_hold_issue_id' => $id,
                 'event_type' => 'updated',
                 'revision_no' => $nextRevision,
@@ -1208,6 +1398,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => $payload['c_action_1'],
                 'c_action_1_remark' => $payload['c_action_1_remark'],
                 'close_note' => $payload['close_note'],
+                'order_number' => $payload['order_number'],
+                'department' => $payload['department'],
                 'created_by' => $actorName,
                 'created_by_user_id' => $user?->id,
                 'logged_at' => $now,
@@ -1219,7 +1411,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         return response()->json(['message' => 'Hold issue updated successfully.']);
     })->name('customer.care.orders.on.hold.issues.update');
     Route::post('/customer-care/orders-on-hold/issues/{id}/archive', function (int $id) {
-        $row = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->where('id', $id)->first();
+        $row = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->where('id', $id)->first();
         if (! $row) {
             return response()->json(['message' => 'Record not found.'], 404);
         }
@@ -1232,10 +1424,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         \Illuminate\Support\Facades\DB::transaction(function () use ($id, $row, $actorName, $user) {
             $now = now();
-            $nextRevision = ((int) (\Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')
+            $nextRevision = ((int) (\Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')
                 ->where('orders_on_hold_issue_id', $id)
                 ->max('revision_no'))) + 1;
-            \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')
+            \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')
                 ->where('id', $id)
                 ->update([
                     'is_archived' => true,
@@ -1244,7 +1436,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                     'updated_at' => $now,
                 ]);
 
-            \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')->insert([
+            \Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')->insert([
                 'orders_on_hold_issue_id' => $id,
                 'event_type' => 'archived',
                 'revision_no' => $nextRevision,
@@ -1263,6 +1455,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => $row->c_action_1 ?? null,
                 'c_action_1_remark' => $row->c_action_1_remark ?? null,
                 'close_note' => $row->close_note ?? null,
+                'department' => $row->department ?? null,
                 'created_by' => $actorName,
                 'created_by_user_id' => $user?->id,
                 'logged_at' => $now,
@@ -1273,6 +1466,235 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         return response()->json(['message' => 'Hold issue archived successfully.']);
     })->name('customer.care.orders.on.hold.issues.archive');
+    Route::delete('/customer-care/orders-on-hold/issues/{id}', function (int $id) {
+        $exists = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->where('id', $id)->exists();
+        if (! $exists) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($id) {
+            // Related rows first, then the issue itself. Hard delete (permanent).
+            \Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')
+                ->where('orders_on_hold_issue_id', $id)->delete();
+            \Illuminate\Support\Facades\DB::table('orders_on_hold_labels')
+                ->where('issue_id', $id)->delete();
+            \Illuminate\Support\Facades\DB::table('orders_on_hold_options')
+                ->where('issue_id', $id)->delete();
+            \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')
+                ->where('id', $id)->delete();
+        });
+
+        return response()->json(['message' => 'Record deleted permanently.']);
+    })->name('customer.care.orders.on.hold.issues.destroy');
+    Route::patch('/customer-care/orders-on-hold/issues/{id}/cc-action', function (\Illuminate\Http\Request $request, int $id) {
+        $validated = $request->validate(['cc_action' => 'nullable|string|max:50']);
+        $allowed = ['V/U Offer', 'Refunded', 'V/U Sent'];
+        $val = trim((string) ($validated['cc_action'] ?? ''));
+        if ($val === '' || strcasecmp($val, 'Pending') === 0) {
+            $val = null; // Pending is the default state (stored as empty)
+        } elseif (! in_array($val, $allowed, true)) {
+            return response()->json(['message' => 'Invalid status.'], 422);
+        }
+
+        $existing = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')
+            ->where('id', $id)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->first(['id', 'cc_action_history']);
+
+        if (! $existing) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        $history = [];
+        if (! empty($existing->cc_action_history)) {
+            $decoded = json_decode((string) $existing->cc_action_history, true);
+            if (is_array($decoded)) {
+                $history = $decoded;
+            }
+        }
+
+        $user = auth()->user();
+        $by = trim((string) ($user?->name ?? 'System')) ?: 'System';
+        $history[] = [
+            'value' => $val ?? 'Pending',
+            'by' => $by,
+            'at' => now()->timezone(config('app.timezone'))->format('d-m-Y H:i'),
+        ];
+
+        \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')
+            ->where('id', $id)
+            ->update([
+                'action_1' => $val,
+                'cc_action_history' => json_encode($history, JSON_UNESCAPED_UNICODE),
+                'updated_at' => now(),
+            ]);
+
+        return response()->json([
+            'message' => 'Updated.',
+            'cc_action' => $val,
+            'cc_action_history' => $history,
+        ]);
+    })->name('customer.care.orders.on.hold.issues.cc.action');
+    Route::post('/customer-care/orders-on-hold/issues/{id}/label', function (\Illuminate\Http\Request $request, int $id) {
+        $validated = $request->validate([
+            'alternate_upgrade_done' => 'required|boolean',
+            'stock_adjustment_done' => 'required|boolean',
+            'refunded' => 'required|boolean',
+            'label_voided' => 'required|boolean',
+        ]);
+
+        $exists = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->where('id', $id)->exists();
+        if (! $exists) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        $user = auth()->user();
+        $by = trim((string) ($user?->name ?? 'System')) ?: 'System';
+        $now = now();
+
+        $label = [
+            'alternate_upgrade_done' => (bool) $validated['alternate_upgrade_done'],
+            'stock_adjustment_done' => (bool) $validated['stock_adjustment_done'],
+            'refunded' => (bool) $validated['refunded'],
+            'label_voided' => (bool) $validated['label_voided'],
+        ];
+
+        \Illuminate\Support\Facades\DB::table('orders_on_hold_labels')->updateOrInsert(
+            ['issue_id' => $id],
+            array_merge($label, [
+                'updated_by' => $by,
+                'updated_by_user_id' => $user?->id,
+                'updated_at' => $now,
+                'created_at' => $now,
+            ])
+        );
+
+        return response()->json([
+            'message' => 'Label updated.',
+            'label' => $label,
+            'complete' => ($label['alternate_upgrade_done'] && $label['stock_adjustment_done']) || ($label['refunded'] && $label['label_voided']),
+        ]);
+    })->name('customer.care.orders.on.hold.issues.label');
+    Route::get('/customer-care/orders-on-hold/issues/{id}/options', function (int $id) {
+        $allowedEmails = ['president@5core.com', 'mgr-operations@5core.com'];
+        $canEdit = in_array(strtolower(trim((string) auth()->user()?->email)), $allowedEmails, true);
+
+        $opt = \Illuminate\Support\Facades\DB::table('orders_on_hold_options')->where('issue_id', $id)->first();
+        $variantSkus = $opt && ! empty($opt->variant_skus) ? (json_decode((string) $opt->variant_skus, true) ?: []) : [];
+        $upgradeSkus = $opt && ! empty($opt->upgrade_skus) ? (json_decode((string) $opt->upgrade_skus, true) ?: []) : [];
+
+        $enrich = function (array $skuList): array {
+            $skuList = array_values(array_filter(array_map(fn ($s) => trim((string) $s), $skuList), fn ($s) => $s !== ''));
+            if ($skuList === []) {
+                return [];
+            }
+            $keys = array_map(fn ($s) => strtolower($s), $skuList);
+            $placeholders = implode(',', array_fill(0, count($keys), '?'));
+            $shop = \Illuminate\Support\Facades\DB::table('shopify_skus')
+                ->selectRaw('LOWER(TRIM(sku)) as sku_key, COALESCE(inv, 0) as inv, image_src')
+                ->whereRaw('LOWER(TRIM(sku)) IN ('.$placeholders.')', $keys)
+                ->get()->keyBy('sku_key');
+            $pm = \Illuminate\Support\Facades\DB::table('product_master')
+                ->selectRaw('LOWER(TRIM(sku)) as sku_key, main_image, image1')
+                ->whereRaw('LOWER(TRIM(sku)) IN ('.$placeholders.')', $keys)
+                ->get()->keyBy('sku_key');
+            $normalize = static function ($path) {
+                $p = trim((string) ($path ?? ''));
+                if ($p === '') {
+                    return null;
+                }
+                if (preg_match('/^(https?:)?\/\//i', $p) || str_starts_with($p, 'data:')) {
+                    return $p;
+                }
+
+                return '/'.ltrim($p, '/');
+            };
+            $out = [];
+            foreach ($skuList as $s) {
+                $k = strtolower($s);
+                $out[] = [
+                    'sku' => $s,
+                    'inv' => isset($shop[$k]) ? (float) $shop[$k]->inv : null,
+                    'image_url' => $normalize($shop[$k]->image_src ?? null)
+                        ?? $normalize($pm[$k]->main_image ?? null)
+                        ?? $normalize($pm[$k]->image1 ?? null),
+                ];
+            }
+
+            return $out;
+        };
+
+        return response()->json([
+            'can_edit' => $canEdit,
+            'no_options' => (bool) ($opt->no_options ?? false),
+            'variants' => $enrich($variantSkus),
+            'upgrades' => $enrich($upgradeSkus),
+        ]);
+    })->name('customer.care.orders.on.hold.issues.options.show');
+    Route::post('/customer-care/orders-on-hold/issues/{id}/options', function (\Illuminate\Http\Request $request, int $id) {
+        $allowedEmails = ['president@5core.com', 'mgr-operations@5core.com'];
+        $user = auth()->user();
+        if (! in_array(strtolower(trim((string) $user?->email)), $allowedEmails, true)) {
+            return response()->json(['message' => 'You are not authorised to edit options.'], 403);
+        }
+
+        $validated = $request->validate([
+            'variant_skus' => 'nullable|array',
+            'variant_skus.*' => 'string|max:255',
+            'upgrade_skus' => 'nullable|array',
+            'upgrade_skus.*' => 'string|max:255',
+            'no_options' => 'nullable|boolean',
+        ]);
+
+        $exists = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->where('id', $id)->exists();
+        if (! $exists) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        $clean = function ($arr) {
+            $arr = is_array($arr) ? $arr : [];
+            $out = [];
+            foreach ($arr as $s) {
+                $s = trim((string) $s);
+                if ($s !== '' && ! in_array($s, $out, true)) {
+                    $out[] = $s;
+                }
+            }
+
+            return array_values($out);
+        };
+        $noOptions = (bool) ($validated['no_options'] ?? false);
+        // "No options" is mutually exclusive with adding variant/upgrade SKUs.
+        $variantSkus = $noOptions ? [] : $clean($validated['variant_skus'] ?? []);
+        $upgradeSkus = $noOptions ? [] : $clean($validated['upgrade_skus'] ?? []);
+
+        $by = trim((string) ($user?->name ?? 'System')) ?: 'System';
+        $now = now();
+
+        \Illuminate\Support\Facades\DB::table('orders_on_hold_options')->updateOrInsert(
+            ['issue_id' => $id],
+            [
+                'variant_skus' => json_encode($variantSkus, JSON_UNESCAPED_UNICODE),
+                'upgrade_skus' => json_encode($upgradeSkus, JSON_UNESCAPED_UNICODE),
+                'no_options' => $noOptions,
+                'updated_by' => $by,
+                'updated_by_user_id' => $user?->id,
+                'updated_at' => $now,
+                'created_at' => $now,
+            ]
+        );
+
+        return response()->json([
+            'message' => 'Options updated.',
+            'options' => [
+                'variant_skus' => $variantSkus,
+                'upgrade_skus' => $upgradeSkus,
+                'no_options' => $noOptions,
+            ],
+        ]);
+    })->name('customer.care.orders.on.hold.issues.options');
 
     Route::post('/customer-care/orders-on-hold/import-csv', function (\Illuminate\Http\Request $request) {
         $request->validate(['file' => 'required|file|mimes:csv,txt|max:2048']);
@@ -1327,10 +1749,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             }
             try {
                 $now = now();
-                $payload = ['sku' => $sku, 'qty' => (float) $qty, 'order_qty' => $get('order_qty') !== null ? (float) $get('order_qty') : null, 'parent' => $get('parent'), 'marketplace_1' => $get('marketplace_1'), 'marketplace_2' => $get('marketplace_2'), 'what_happened' => $get('what_happened'), 'issue' => $issue, 'issue_remark' => $get('issue_remark'), 'action_1' => $get('action_1'), 'action_1_remark' => $get('action_1_remark'), 'replacement_tracking' => $get('replacement_tracking'), 'c_action_1' => $get('c_action_1'), 'c_action_1_remark' => $get('c_action_1_remark'), 'created_by' => $createdBy, 'created_by_user_id' => $user?->id, 'created_at' => $now, 'updated_at' => $now];
+                $payload = ['sku' => $sku, 'qty' => (float) $qty, 'order_qty' => $get('order_qty') !== null ? (float) $get('order_qty') : null, 'parent' => $get('parent'), 'marketplace_1' => $get('marketplace_1'), 'marketplace_2' => $get('marketplace_2'), 'what_happened' => $get('what_happened'), 'issue' => $issue, 'issue_remark' => $get('issue_remark'), 'action_1' => $get('action_1'), 'action_1_remark' => $get('action_1_remark'), 'replacement_tracking' => $get('replacement_tracking'), 'c_action_1' => $get('c_action_1'), 'c_action_1_remark' => $get('c_action_1_remark'), 'department' => \App\Support\CustomerCareDepartments::encode(['Orders on Hold']), 'created_by' => $createdBy, 'created_by_user_id' => $user?->id, 'created_at' => $now, 'updated_at' => $now];
                 \Illuminate\Support\Facades\DB::transaction(function () use ($payload, $now) {
-                    $id = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->insertGetId($payload);
-                    \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')->insert(array_merge($payload, ['orders_on_hold_issue_id' => $id, 'event_type' => 'created', 'revision_no' => 0, 'logged_at' => $now]));
+                    $id = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->insertGetId($payload);
+                    \Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')->insert(array_merge($payload, ['orders_on_hold_issue_id' => $id, 'event_type' => 'created', 'revision_no' => 0, 'logged_at' => $now]));
                 });
                 $inserted++;
             } catch (\Throwable $e) {
@@ -1367,13 +1789,19 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.issues');
     Route::get('/customer-care/dispatch', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dispatchIssueBoard'])
         ->name('customer.care.dispatch.board');
+    Route::get('/customer-care/dispatch-issues-only', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dispatchOnlyBoard'])
+        ->name('customer.care.dispatch.issues.only');
     Route::get('/customer-care/carrier-and-claim', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'carrierAndClaimBoard'])
         ->name('customer.care.dispatch.carrier.and.claim');
     Route::get('/customer-care/carrier-issue', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'carrierIssueBoard'])
         ->name('customer.care.dispatch.carrier.issue');
+    Route::get('/customer-care/chargeback-issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'chargebackBoard'])
+        ->name('customer.care.dispatch.chargeback.issues');
     Route::permanentRedirect('/customer-care/dispatch-issue', '/customer-care/all-issues');
     Route::get('/customer-care/all-issues/sku-details', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'skuDetails'])
         ->name('customer.care.dispatch.issues.sku.details');
+    Route::get('/customer-care/all-issues/replacement-sku-details', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'replacementSkuDetails'])
+        ->name('customer.care.dispatch.issues.replacement.sku.details');
     Route::get('/customer-care/all-issues/issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'issuesIndex'])
         ->name('customer.care.dispatch.issues.list.index');
     Route::get('/customer-care/all-issues/l30-loss', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'l30Loss'])
@@ -2285,6 +2713,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/stock-transfer-store', [StockTransferController::class, 'store'])->name('stock.transfer.store');
     Route::get('/stock-transfer-data-list', [StockTransferController::class, 'list']);
 
+    // Map Issues
+    Route::get('/map-issues', [MapIssuesController::class, 'index'])->name('map.issues');
+    Route::get('/map-issues-data', [MapIssuesController::class, 'data'])->name('map.issues.data');
+    Route::post('/map-issues-update-nr', [MapIssuesController::class, 'updateNrReq'])->name('map.issues.update.nr');
+
     // Stock Balance
     Route::get('/stock-balance-view', [StockBalanceController::class, 'index'])->name('stock.balance.view');
     Route::get('/stock-balance-tabulator', [StockBalanceController::class, 'tabulatorView'])->name('stock.balance.tabulator');
@@ -2351,6 +2784,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/store-purchase-orders', 'store')->name('purchase-orders.store');
         Route::get('/purchase-orders/list', 'getPurchaseOrdersData')->name('purchase-orders.data');
         Route::get('/purchase-orders/convert', 'convert')->name('purchase-orders.convert');
+        Route::get('/purchase-order/by-po/{poNumber}/generate-pdf', 'generatePdfByPoNumber')->name('generate-pdf-by-po');
         Route::get('/purchase-order/{id}/generate-pdf', 'generatePdf')->name('generate-pdf');
         Route::post('/purchase-orders/delete', 'deletePurchaseOrders');
         Route::post('/purchase-orders/{id}/archive', 'archivePurchaseOrder');
@@ -2375,6 +2809,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/rfq-form/list', 'index')->name('rfq-form.index');
         Route::get('rfq-form/data', 'getRfqFormsData');
         Route::post('/rfq-form/store', 'storeRFQForm')->name('rfq-form.store');
+        Route::post('/rfq-form/import', 'importForm')->name('rfq-form.import');
         Route::get('/rfq-form/edit/{id}', 'edit')->name('rfq-form.edit');
         Route::post('/rfq-form/update/{id}', 'update')->name('rfq-form.update');
         Route::delete('/rfq-form/delete/{id}', 'destroy')->name('rfq-form.destroy');
@@ -2382,10 +2817,36 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         // form reports
         Route::get('/rfq-form/reports/{id}', 'rfqReports')->name('rfq-form.reports');
         Route::get('/rfq-form/reports-data/{id}', 'getRfqReportsData')->name('rfq-form.reports.data');
+        Route::post('/rfq-form/submission/{id}/update', 'updateSubmission')->name('rfq-form.submission.update');
+        Route::post('/rfq-form/submission/{id}/photos', 'updateSubmissionPhotos')->name('rfq-form.submission.photos');
+        Route::post('/rfq-form/{id}/import-submissions', 'importSubmissions')->name('rfq-form.import-submissions');
+        Route::post('/rfq-form/{id}/report-meta', 'updateReportMeta')->name('rfq-form.report-meta.update');
 
         // supplier email
         Route::get('/rfq-form/suppliers/search', 'searchSuppliers')->name('rfq-form.suppliers.search');
         Route::post('/rfq-form/send-email', 'sendEmailToSuppliers')->name('rfq-form.send-email');
+
+        // linked skus
+        Route::get('/rfq-form/skus/search', 'searchSkus')->name('rfq-form.skus.search');
+        Route::post('/rfq-form/{id}/linked-skus', 'updateLinkedSkus')->name('rfq-form.linked-skus.update');
+    });
+
+    // Scope of Improvement
+    Route::controller(ScopeOfImprovementController::class)->group(function () {
+        Route::get('/scope-of-improvement', 'index')->name('scope-of-improvement.index');
+        Route::get('/scope-of-improvement/data', 'data')->name('scope-of-improvement.data');
+        Route::post('/scope-of-improvement/store', 'store')->name('scope-of-improvement.store');
+        Route::post('/scope-of-improvement/update/{id}', 'update')->name('scope-of-improvement.update');
+        Route::post('/scope-of-improvement/delete/{id}', 'destroy')->name('scope-of-improvement.delete');
+    });
+
+    // DAR (Daily Activity Report)
+    Route::controller(DarReportController::class)->group(function () {
+        Route::get('/dar', 'index')->name('dar.index');
+        Route::get('/dar/data', 'data')->name('dar.data');
+        Route::post('/dar/store', 'store')->name('dar.store');
+        Route::post('/dar/update/{id}', 'update')->name('dar.update');
+        Route::post('/dar/delete/{id}', 'destroy')->name('dar.delete');
     });
 
     // Sourcingƒvies
@@ -2431,6 +2892,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-doba-pricing', [DobaController::class, 'updatePrice']);
     Route::get('/doba-pricing-cvr', [DobaController::class, 'dobaPricingCVR']);
     Route::get('/doba-tabulator', [DobaController::class, 'dobaTabulatorView']);
+    Route::post('/doba/save-links', [DobaController::class, 'saveLinks'])->name('doba.save.links');
     Route::get('/doba-data-view-withoutship', [DobaController::class, 'getViewDobaDataWithoutShip']);
     Route::get('/doba-tabulator-withoutship', [DobaController::class, 'dobaTabulatorViewWithoutShip'])->name('doba.withoutship.tabulator');
     Route::get('/doba_withoutship', [DobaController::class, 'dobaTabulatorViewWithoutShip'])->name('doba.withoutship');
@@ -2533,6 +2995,21 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'saveColumnVisibility']);
     Route::get('/ebay/sku-sales-data', [EbaySalesController::class, 'getSkuSalesData'])->name('ebay.sku.sales.data');
 
+    // Newegg Sales Routes
+    Route::get('/newegg/daily-sales-data', [NeweggSalesController::class, 'getData'])->name('newegg.daily.sales.data');
+    Route::get('/newegg/daily-sales', [NeweggSalesController::class, 'index'])->name('newegg.daily.sales');
+    Route::get('/newegg-daily-sales-column-visibility', [NeweggSalesController::class, 'getColumnVisibility']);
+    Route::post('/newegg-daily-sales-column-visibility', [NeweggSalesController::class, 'saveColumnVisibility']);
+
+    // Newegg Pricing & Inventory Routes
+    Route::get('/newegg-pricing-view', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'index'])->name('newegg.pricing.view');
+    Route::get('/newegg-pricing-data', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'getData'])->name('newegg.pricing.data');
+    Route::get('/newegg-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'getColumnVisibility']);
+    Route::post('/newegg-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveColumnVisibility']);
+    Route::post('/newegg-pricing-save-sprice', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveSprice'])->name('newegg.pricing.save.sprice');
+    Route::post('/newegg-pricing-save-nr', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveNr'])->name('newegg.pricing.save.nr');
+    Route::post('/newegg-pricing-save-links', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveLinks'])->name('newegg.pricing.save.links');
+
     // Wayfair Sales Routes
     Route::get('/wayfair/daily-sales-data', [WayfairSalesController::class, 'getData'])->name('wayfair.daily.sales.data');
     Route::get('/wayfair/daily-sales', [WayfairSalesController::class, 'index'])->name('wayfair.daily.sales');
@@ -2546,6 +3023,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/wayfair/pricing-price-sample', [WayfairController::class, 'downloadWayfairPricingPriceSample'])->name('wayfair.pricing.price.sample');
     Route::post('/wayfair/pricing-upload-price', [WayfairController::class, 'uploadWayfairPricingPriceSheet'])->name('wayfair.pricing.upload.price');
     Route::post('/wayfair/pricing-save-sprice', [WayfairController::class, 'saveWayfairSpriceUpdates'])->name('wayfair.pricing.save.sprice');
+    Route::post('/wayfair/pricing-save-links', [WayfairController::class, 'saveWayfairLinks'])->name('wayfair.pricing.save.links');
     Route::get('/wayfair/badge-chart-data', [WayfairController::class, 'wayfairBadgeChartData'])->name('wayfair.pricing.badge.chart');
     Route::get('/wayfair/pricing-column-visibility', [WayfairController::class, 'getWayfairPricingColumnVisibility'])->name('wayfair.pricing.column.get');
     Route::post('/wayfair/pricing-column-visibility', [WayfairController::class, 'setWayfairPricingColumnVisibility'])->name('wayfair.pricing.column.set');
@@ -2573,6 +3051,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/bestbuy-pricing', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'bestbuyPricingView'])->name('bestbuy.pricing');
     Route::get('/bestbuy-data-json', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'bestbuyDataJson'])->name('bestbuy.data.json');
     Route::post('/bestbuy-save-nr', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'saveNrToDatabase'])->name('bestbuy.save.nr');
+    Route::post('/bestbuy-save-links', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'saveLinks'])->name('bestbuy.save.links');
     Route::post('/bestbuy-save-sprice', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'saveSpriceToDatabase'])->name('bestbuy.save.sprice');
     Route::post('/bestbuy-update-listed-live', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'updateListedLive'])->name('bestbuy.update.listed.live');
     Route::get('/bestbuy-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'getColumnVisibility'])->name('bestbuy.pricing.column.get');
@@ -2594,6 +3073,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/purchasing-power-pricing', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'pricingView'])->name('purchasing.power.pricing');
     Route::get('/pp-data-json', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'dataJson'])->name('pp.data.json');
     Route::post('/pp-update-nr-req', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'updateNrReq'])->name('pp.update.nr.req');
+    Route::post('/pp-update-links', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'updateLinks'])->name('pp.update.links');
     Route::post('/pp-save-sprice-tabulator', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'saveSpriceTabulator'])->name('pp.save.sprice.tabulator');
     Route::post('/pp-save-sprice-batch', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'saveSpriceUpdates'])->name('pp.save.sprice.batch');
     Route::get('/pp-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'getColumnVisibility'])->name('pp.pricing.column.get');
@@ -2610,6 +3090,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/reverb-daily-data-totals-json', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'reverbDailyDataTotalsJson'])->name('reverb.daily.data.totals.json');
     Route::post('/reverb-update-listed-live', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'updateReverbListedLive'])->name('reverb.update.listed.live');
     Route::post('/reverb-save-sprice', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveSpriceUpdates'])->name('reverb.save.sprice');
+    Route::post('/reverb-save-links', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveLinks'])->name('reverb.save.links');
     Route::post('/reverb-save-recommended-bid', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveRecommendedBid'])->name('reverb.save.recommended.bid');
     Route::post('/reverb-save-bump-req', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveBumpReq'])->name('reverb.save.bump.req');
     Route::get('/reverb-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'getColumnVisibility'])->name('reverb.pricing.column.get');
@@ -2669,6 +3150,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tiktok-save-sprice', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveSpriceUpdates'])->name('tiktok.save.sprice');
     Route::post('/tiktok-2-save-sprice', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveSpriceTiktokTwoUpdates'])->name('tiktok2.save.sprice');
     Route::post('/tiktok-save-nrp', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveTiktokShopNrp'])->name('tiktok.save.nrp');
+    Route::post('/tiktok-save-links', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveLinks'])->name('tiktok.save.links');
+    Route::post('/tiktok-2-save-links', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveTiktokTwoLinks'])->name('tiktok2.save.links');
     Route::post('/tiktok-2-save-nrp', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveTiktokTwoNrp'])->name('tiktok2.save.nrp');
     Route::get('/tiktok-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'getColumnVisibility'])->name('tiktok.pricing.column.get');
     Route::post('/tiktok-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'setColumnVisibility'])->name('tiktok.pricing.column.set');
@@ -2727,6 +3210,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/depop/pricing/data',    [\App\Http\Controllers\MarketPlace\DepopController::class, 'getPricingData'])->name('depop.pricing.data');
     Route::get('/depop/pricing/export',  [\App\Http\Controllers\MarketPlace\DepopController::class, 'exportCsv'])->name('depop.pricing.export');
     Route::post('/depop/pricing/import', [\App\Http\Controllers\MarketPlace\DepopController::class, 'importCsv'])->name('depop.pricing.import');
+    Route::post('/depop/pricing/save-sprice', [\App\Http\Controllers\MarketPlace\DepopController::class, 'saveSprice'])->name('depop.pricing.save.sprice');
 
     // Missing Listing — channel_master rows (image + channel) plus DAR submissions
     Route::get('/missing-listing',              [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'index'])->name('missing.listing');
@@ -2766,6 +3250,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shopify-b2b/daily-sales', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'index'])->name('shopify-b2b.daily.sales');
     Route::get('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'getColumnVisibility']);
     Route::post('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'saveColumnVisibility']);
+
+    // Shopify Raw Data Routes
+    Route::get('/shopify-raw-data', [\App\Http\Controllers\ShopifyRawDataController::class, 'index'])->name('shopify-raw-data.index');
+    Route::get('/shopify-raw-data/get-data', [\App\Http\Controllers\ShopifyRawDataController::class, 'getData'])->name('shopify-raw-data.get-data');
+    Route::get('/shopify-raw-data/get-stats', [\App\Http\Controllers\ShopifyRawDataController::class, 'getStats'])->name('shopify-raw-data.get-stats');
+    Route::get('/shopify-raw-data/ebay1-sales', [\App\Http\Controllers\ShopifyRawDataController::class, 'ebay1Sales'])->name('shopify-raw-data.ebay1-sales');
+
+    // Shopify Page
+    Route::get('/shopify', [\App\Http\Controllers\ShopifyRawDataController::class, 'shopifyIndex'])->name('shopify.index');
 
     // Shopify Wholesales Sales Routes
     Route::get('/shopify-wholesales/sales-data', [\App\Http\Controllers\Sales\ShopifyWholesalesController::class, 'getData'])->name('shopify-wholesales.sales.data');
@@ -2870,6 +3363,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/facebook-all-ads-sheet/batches',          [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'batches'])->name('facebook.all.ads.sheet.batches');
     Route::post('/facebook-all-ads-sheet/upload',          [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'upload'])->name('facebook.all.ads.sheet.upload');
     Route::post('/facebook-all-ads-sheet/{id}/ad-type',    [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'updateAdType'])->whereNumber('id')->name('facebook.all.ads.sheet.ad.type');
+    Route::post('/facebook-all-ads-sheet/{id}/ch',         [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'updateCh'])->whereNumber('id')->name('facebook.all.ads.sheet.ch');
+    Route::post('/facebook-all-ads-sheet/bulk-ch',         [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'bulkCh'])->name('facebook.all.ads.sheet.bulk.ch');
 
     // ACOS → Sbgt rule (editable bands). Same shape as the eBay
     // SBID rule on /ebay/campaign-ads — see EbayCampaignAdsController.
@@ -2887,6 +3382,51 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // and view; only `pageType` and the ad_type filter differ.
     Route::get('/facebook-video-ads-sheet',                [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'videoIndex'])->name('facebook.video.ads.sheet');
     Route::get('/facebook-carousal-ads-sheet',             [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'carousalIndex'])->name('facebook.carousal.ads.sheet');
+
+    // Channel lenses over the same Meta Ads dataset — Facebook (CH=FB) and
+    // Instagram (CH=Insta). Both reuse the /facebook-all-ads-sheet/* data
+    // + action endpoints; only the CH filter differs.
+    Route::get('/facebook-ads',                            [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'facebookIndex'])->name('facebook.ads.channel');
+    // Facebook channel → one child page per ad_type (CH=FB intersected with that single ad_type).
+    Route::get('/facebook-ads/group-video',                [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'facebookGroupVideoIndex'])->name('facebook.ads.channel.group.video');
+    Route::get('/facebook-ads/group-carousal',             [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'facebookGroupCarousalIndex'])->name('facebook.ads.channel.group.carousal');
+    Route::get('/facebook-ads/parent-video',               [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'facebookParentVideoIndex'])->name('facebook.ads.channel.parent.video');
+    Route::get('/facebook-ads/parent-carousal',            [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'facebookParentCarousalIndex'])->name('facebook.ads.channel.parent.carousal');
+
+    Route::get('/instagram-ads',                           [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramIndex'])->name('instagram.ads.channel');
+    // Instagram channel → one child page per ad_type (CH=Insta intersected with that single ad_type).
+    Route::get('/instagram-ads/group-video',               [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramGroupVideoIndex'])->name('instagram.ads.channel.group.video');
+    Route::get('/instagram-ads/group-carousal',            [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramGroupCarousalIndex'])->name('instagram.ads.channel.group.carousal');
+    Route::get('/instagram-ads/parent-video',              [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramParentVideoIndex'])->name('instagram.ads.channel.parent.video');
+    Route::get('/instagram-ads/parent-carousal',           [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramParentCarousalIndex'])->name('instagram.ads.channel.parent.carousal');
+
+    // ── TikTok Video Ads — fully independent module (own tables, own
+    // controller). Same page layout / filters as the Meta sheet but a
+    // separate dataset sourced from TikTok uploads.
+    Route::get('/tiktok-video-ads',                        [\App\Http\Controllers\TiktokVideoAdsController::class, 'index'])->name('tiktok.video.ads');
+    Route::get('/tiktok-video-ads/data',                   [\App\Http\Controllers\TiktokVideoAdsController::class, 'getData'])->name('tiktok.video.ads.data');
+    Route::get('/tiktok-video-ads/batches',                [\App\Http\Controllers\TiktokVideoAdsController::class, 'batches'])->name('tiktok.video.ads.batches');
+    Route::post('/tiktok-video-ads/upload',                [\App\Http\Controllers\TiktokVideoAdsController::class, 'upload'])->name('tiktok.video.ads.upload');
+    Route::post('/tiktok-video-ads/{id}/ad-type',          [\App\Http\Controllers\TiktokVideoAdsController::class, 'updateAdType'])->whereNumber('id')->name('tiktok.video.ads.ad.type');
+    Route::get('/tiktok-video-ads/rule',                   [\App\Http\Controllers\TiktokVideoAdsController::class, 'getRule'])->name('tiktok.video.ads.rule.get');
+    Route::post('/tiktok-video-ads/rule',                  [\App\Http\Controllers\TiktokVideoAdsController::class, 'saveRule'])->name('tiktok.video.ads.rule.save');
+    Route::get('/tiktok-video-ads/badge-history',          [\App\Http\Controllers\TiktokVideoAdsController::class, 'badgeHistory'])->name('tiktok.video.ads.badge.history');
+    Route::get('/tiktok-video-ads/audit',                  [\App\Http\Controllers\TiktokVideoAdsController::class, 'getAudit'])->name('tiktok.video.ads.audit.get');
+    Route::post('/tiktok-video-ads/audit',                 [\App\Http\Controllers\TiktokVideoAdsController::class, 'saveAudit'])->name('tiktok.video.ads.audit.save');
+
+    // ── YouTube Video Ads — fully independent module (own tables, own
+    // controller). Same page layout / filters as the TikTok sheet but a
+    // separate dataset sourced from YouTube uploads.
+    Route::get('/youtube-video-ads-sheet',                 [\App\Http\Controllers\YoutubeVideoAdsController::class, 'index'])->name('youtube.video.ads');
+    Route::get('/youtube-video-ads-sheet/data',            [\App\Http\Controllers\YoutubeVideoAdsController::class, 'getData'])->name('youtube.video.ads.data');
+    Route::get('/youtube-video-ads-sheet/batches',         [\App\Http\Controllers\YoutubeVideoAdsController::class, 'batches'])->name('youtube.video.ads.batches');
+    Route::post('/youtube-video-ads-sheet/upload',         [\App\Http\Controllers\YoutubeVideoAdsController::class, 'upload'])->name('youtube.video.ads.upload');
+    Route::post('/youtube-video-ads-sheet/{id}/ad-type',   [\App\Http\Controllers\YoutubeVideoAdsController::class, 'updateAdType'])->whereNumber('id')->name('youtube.video.ads.ad.type');
+    Route::get('/youtube-video-ads-sheet/rule',            [\App\Http\Controllers\YoutubeVideoAdsController::class, 'getRule'])->name('youtube.video.ads.rule.get');
+    Route::post('/youtube-video-ads-sheet/rule',           [\App\Http\Controllers\YoutubeVideoAdsController::class, 'saveRule'])->name('youtube.video.ads.rule.save');
+    Route::get('/youtube-video-ads-sheet/badge-history',   [\App\Http\Controllers\YoutubeVideoAdsController::class, 'badgeHistory'])->name('youtube.video.ads.badge.history');
+    Route::get('/youtube-video-ads-sheet/audit',           [\App\Http\Controllers\YoutubeVideoAdsController::class, 'getAudit'])->name('youtube.video.ads.audit.get');
+    Route::post('/youtube-video-ads-sheet/audit',          [\App\Http\Controllers\YoutubeVideoAdsController::class, 'saveAudit'])->name('youtube.video.ads.audit.save');
     Route::get('/bullet-points', [BulletPointMasterController::class, 'index'])->name('bullet.points');
     Route::get('/bullet-points-data', [BulletPointMasterController::class, 'getData'])->name('bullet.points.data');
     Route::post('/bullet-points/update', [BulletPointMasterController::class, 'update'])->name('bullet.points.update');
@@ -2928,6 +3468,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/overallAmazon/saveLowProfit', action: [OverallAmazonController::class, 'saveLowProfit']);
     Route::get('/amazon-pricing-cvr', action: [OverallAmazonController::class, 'amazonPricingCVR'])->name('amazon.pricing.cvr');
     Route::get('/amazon-tabulator-view', action: [OverallAmazonController::class, 'amazonTabulatorView'])->name('amazon.tabulator.view');
+    Route::get('/mercari-with-ship-tabulator-view', [MercariWShipController::class, 'mercariWshipTabulatorView'])->name('mercari.wship.tabulator.view');
+    Route::get('/mercari-with-ship-tabulator-data', [MercariWShipController::class, 'getMercariWshipTabulatorData'])->name('mercari.wship.tabulator.data');
+    Route::post('/mercari-with-ship-price-sold/import', [MercariWShipController::class, 'importMercariWshipPriceSold'])->name('mercari.wship.price-sold.import');
+    Route::get('/mercari-with-ship-price-sold/sample', [MercariWShipController::class, 'downloadMercariWshipPriceSoldSample'])->name('mercari.wship.price-sold.sample');
+    Route::post('/mercari-with-ship-tabulator/save-status', [MercariWShipController::class, 'saveMercariWshipStatus'])->name('mercari.wship.tabulator.save-status');
+    Route::get('/mercari-without-ship-tabulator-view', [MercariWoShipController::class, 'mercariWoShipTabulatorView'])->name('mercari.woship.tabulator.view');
+    Route::get('/mercari-without-ship-tabulator-data', [MercariWoShipController::class, 'getMercariWoShipTabulatorData'])->name('mercari.woship.tabulator.data');
+    Route::post('/mercari-without-ship-price-sold/import', [MercariWoShipController::class, 'importMercariWoShipPriceSold'])->name('mercari.woship.price-sold.import');
+    Route::get('/mercari-without-ship-price-sold/sample', [MercariWoShipController::class, 'downloadMercariWoShipPriceSoldSample'])->name('mercari.woship.price-sold.sample');
+    Route::post('/mercari-without-ship-tabulator/save-status', [MercariWoShipController::class, 'saveMercariWoShipStatus'])->name('mercari.woship.tabulator.save-status');
     Route::get('/amazonpricing-cvr-tabular', action: [OverallAmazonController::class, 'amazonPricingCvrTabular'])->name('amazon.pricing.cvr.tabular');
     Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility'])->name('amazon.column.visibility');
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
@@ -3015,12 +3565,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // eBay3 Tabulator View Routes
     Route::get('/ebay3-tabulator-view', [EbayThreeController::class, 'ebay3TabulatorView'])->name('ebay3.tabulator.view');
+    Route::post('/ebay3/save-links', [EbayThreeController::class, 'saveLinks'])->name('ebay3.save.links');
     Route::get('/ebay3-data-json', [EbayThreeController::class, 'ebay3DataJson'])->name('ebay3.data.json');
     Route::get('/ebay3-badge-chart-data', [EbayThreeController::class, 'getEbay3BadgeChartData'])->name('ebay3.badge.chart.data');
     Route::get('/ebay3-column-visibility', [ChannelTabulatorColumnController::class, 'showEbay3'])->name('ebay3.column.visibility.get');
     Route::post('/ebay3-column-visibility', [ChannelTabulatorColumnController::class, 'storeEbay3'])->name('ebay3.column.visibility.set');
     Route::get('/tabulator-column-visibility', [ChannelTabulatorColumnController::class, 'show'])->name('tabulator.column.visibility.get');
     Route::post('/tabulator-column-visibility', [ChannelTabulatorColumnController::class, 'store'])->name('tabulator.column.visibility.set');
+    Route::get('/tabulator-column-visibility-user', [ChannelTabulatorColumnController::class, 'showUser'])->name('tabulator.column.visibility.user.get');
+    Route::post('/tabulator-column-visibility-user', [ChannelTabulatorColumnController::class, 'storeUser'])->name('tabulator.column.visibility.user.set');
     Route::post('/push-ebay3-price-tabulator', [EbayThreeController::class, 'pushEbay3Price'])->name('ebay3.push.price.tabulator');
     Route::post('/update-ebay3-sprice-status', [EbayThreeController::class, 'updateEbay3SpriceStatus'])->name('ebay3.update.sprice.status');
     Route::post('/clear-all-sprice-ebay3', [EbayThreeController::class, 'clearAllSprice'])->name('ebay3.clear.all.sprice');
@@ -3075,6 +3628,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/walmart-sheet-upload-summary', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getSummaryStats'])->name('walmart-sheet-upload-summary');
     Route::post('/walmart-sheet-save-amazon-prices', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'saveAmazonPriceUpdates'])->name('walmart-sheet-save-amazon-prices');
     Route::post('/walmart-sheet-update-cell', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'updateCellData'])->name('walmart-sheet-update-cell');
+    Route::post('/walmart-sheet-save-links', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'saveLinks'])->name('walmart-sheet-save-links');
     Route::get('/walmart-metrics-history', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getMetricsHistory'])->name('walmart-metrics-history');
     Route::get('/walmart-campaign-data-by-sku', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getCampaignDataBySku'])->name('walmart.campaign.data.by.sku');
 
@@ -3165,6 +3719,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay3-low-visibility-view', action: [Ebay3LowVisibilityController::class, 'ebay3LowVisibility'])->name('ebay3.low.visibility.view');
     // Listing Audit ebay2
     Route::get('/ebay2-tabulator-view', [EbayTwoController::class, 'ebay2TabulatorView'])->name('ebay2.tabulator.view');
+    Route::post('/ebay2/save-links', [EbayTwoController::class, 'saveLinks'])->name('ebay2.save.links');
     Route::get('/ebay2op-tabulator-view', [EbayTwoController::class, 'ebay2opTabulatorView'])->name('ebay2op.tabulator.view');
     Route::get('/ebay2-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2.data');
     Route::get('/ebay2op-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2op.data');
@@ -3214,6 +3769,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shopifyB2C', [Shopifyb2cController::class, 'shopifyb2cView'])->name('shopifyB2C');
     Route::get('/shopify-ads-master', [ShopifyAdsMasterController::class, 'index'])->name('shopify.ads.master');
     Route::get('/shopify-ads-master/data', [ShopifyAdsMasterController::class, 'data'])->name('shopify.ads.master.data');
+    Route::get('/shopify-ads-master/history', [ShopifyAdsMasterController::class, 'history'])->name('shopify.ads.master.history');
     Route::post('/shopifyb2c/saveLowProfit', [Shopifyb2cController::class, 'saveLowProfit']);
     Route::post('/shopifyb2c-analytics/import', [Shopifyb2cController::class, 'importShopifyB2CAnalytics'])->name('shopifyb2c.analytics.import');
     Route::get('/shopifyb2c-analytics/export', [Shopifyb2cController::class, 'exportShopifyB2CAnalytics'])->name('shopifyb2c.analytics.export');
@@ -3307,7 +3863,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Temu Ad Data Upload
     Route::post('/temu-ad-data/upload', [TemuController::class, 'uploadTemuAdData'])->name('temu.addata.upload');
-    Route::get('/temu-ad-data/sample', [TemuController::class, 'downloadTemuAdDataSample'])->name('temu.addata.sample');
 
     // Temu R Pricing Upload
     Route::post('/temu-r-pricing/upload', [TemuController::class, 'uploadTemuRPricing'])->name('temu.rpricing.upload');
@@ -3323,6 +3878,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu2-decrease-data-l7', [TemuController::class, 'getTemu2DecreaseDataL7'])->name('temu2.decrease.l7');
     Route::post('/temu2-decrease-column-visibility', [TemuController::class, 'saveTemu2DecreaseColumnVisibility']);
     Route::get('/temu2-decrease-column-visibility', [TemuController::class, 'getTemu2DecreaseColumnVisibility']);
+    Route::post('/temu2-decrease/save-links', [TemuController::class, 'saveTemu2DecreaseLinks'])->name('temu2.decrease.save.links');
     Route::get('/temu-badge-history', [TemuController::class, 'getTemuBadgeHistory']);
     Route::post('/temu-pricing/update-price', [TemuController::class, 'updateTemuPrice']);
     Route::post('/temu-pricing/save-sprice', [TemuController::class, 'saveTemuSprice']);
@@ -3332,6 +3888,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-decrease-column-visibility', [TemuController::class, 'saveTemuDecreaseColumnVisibility']);
     Route::get('/temu-decrease-column-visibility', [TemuController::class, 'getTemuDecreaseColumnVisibility']);
     Route::post('/temu-decrease/save-listing-status', [TemuController::class, 'saveListingStatus']);
+    Route::post('/temu-decrease/save-links', [TemuController::class, 'saveTemuDecreaseLinks'])->name('temu.decrease.save.links');
     Route::post('/temu2-data-view/save-listing-fields', [TemuController::class, 'saveTemu2ListingFieldsToDataView'])->name('temu2.dataview.save.listing');
 
     // Temu LMP (table + upload)
@@ -3413,6 +3970,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::delete('/supplier/delete/{id}', [SupplierController::class, 'deleteSupplier'])->name('supplier.delete');
     Route::post('/forecast-analysis/link-supplier-parent', [\App\Http\Controllers\ProductMaster\ForecastAnalysisController::class, 'linkSupplierToParent'])->name('forecast.link-supplier-parent');
     Route::post('/supplier/import', [SupplierController::class, 'bulkImport'])->name('supplier.import');
+    Route::get('/supplier/export', [SupplierController::class, 'exportSuppliers'])->name('supplier.export');
     Route::post('/supplier-rating', [SupplierController::class, 'storeRating'])->name('supplier.rating.save');
 
     // Catategory routes
@@ -3429,6 +3987,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/dim-wt-master/store', [CategoryController::class, 'storeDimWtMaster'])->name('dim.wt.master.store');
     Route::post('/dim-wt-master/update', [CategoryController::class, 'updateDimWtMaster'])->name('dim.wt.master.update');
     Route::post('/instructions-item-pkg/update', [InstructionsItemPkgController::class, 'update'])->name('instructions.item.pkg.update');
+    Route::post('/instructions-carton-design/update', [InstructionsCartonDesignController::class, 'update'])->name('instructions.carton.design.update');
     Route::post('/qc-improvement-req-before-item-pkg/update', [QcImprovementReqBeforeItemPkgController::class, 'update'])->name('qc.improvement.req.before.item.pkg.update');
     Route::post('/dim-wt-master/import', [CategoryController::class, 'importDimWtMaster'])->name('dim.wt.master.import');
     Route::post('/dim-wt-master/push-data', [CategoryController::class, 'pushDimWtDataToPlatforms'])->name('dim.wt.master.push');
@@ -3540,6 +4099,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/to-order-analysis/data', 'getToOrderAnalysis')->name('to.order.analysis.data');
         Route::post('/update-link', 'updateLink')->name('update.rfq.link');
         Route::post('/to-order-analysis/bulk-update-supplier', 'bulkUpdateSupplier')->name('to.order.analysis.bulk.supplier');
+        Route::post('/to-order-analysis/import-supplier', 'importSupplier')->name('to.order.analysis.import.supplier');
+        Route::get('/to-order-analysis/import-supplier/sample', 'importSupplierSample')->name('to.order.analysis.import.supplier.sample');
+        Route::get('/to-order-analysis/suppliers-by-category', 'suppliersByCategory')->name('to.order.analysis.suppliers.by.category');
+        Route::get('/to-order-analysis/qc-issues', 'qcIssuesForSku')->name('to.order.analysis.qc.issues');
+        Route::post('/to-order-analysis/bulk-update-exec', 'bulkUpdateExec')->name('to.order.analysis.bulk.exec');
         Route::post('/mfrg-progresses/insert', 'storeMFRG')->name('mfrg.progresses.insert');
         Route::post('/save-to-order-review', 'storeToOrderReview')->name('save.to_order_review');
         Route::post('/to-order-analysis/delete', 'deleteToOrderAnalysis')->name('delete.to_order_analysis');
@@ -3552,9 +4116,23 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Update Forecast Sheet
     Route::post('/update-forecast-data', [ForecastAnalysisController::class, 'updateForcastSheet'])->name('update.forecast.data');
 
+    // Purchase pipeline page executive assignment (To Order / MIP / R2S)
+    Route::controller(PurchasePageExecController::class)->group(function () {
+        Route::get('/purchase-page-exec/{pageKey}', 'show')->name('purchase.page.exec.show');
+        Route::post('/purchase-page-exec/{pageKey}/assignment', 'updateAssignment')->name('purchase.page.exec.assignment');
+        Route::post('/purchase-page-exec/options', 'storeOption')->name('purchase.page.exec.options');
+    });
+
+    // Purchase page info notes (HTML modal on purchase pages)
+    Route::controller(PurchasePageInfoController::class)->group(function () {
+        Route::get('/purchase-page-info/{pageKey}', 'show')->name('purchase.page.info.show');
+        Route::post('/purchase-page-info/{pageKey}', 'update')->name('purchase.page.info.update');
+    });
+
     // MFRG In Progress
     Route::controller(MFRGInProgressController::class)->group(function () {
-        Route::get('/mfrg-in-progress', 'index')->name('mfrg.in.progress');
+        Route::get('/mfrg-in-progress', 'newMfrgView')->name('mfrg.in.progress');
+        Route::get('/mfrg-in-progress-old', 'index')->name('mfrg.in.progress.old');
         Route::post('/mfrg-progresses/inline-update-by-sku', 'inlineUpdateBySku');
         Route::post('/mfrg-progresses/delete', 'deleteBySkus')->name('mfrg.progresses.delete');
         Route::post('/mfrg-progresses/restore', 'restoreBySkus')->name('mfrg.progresses.restore');
@@ -3567,6 +4145,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         Route::get('/mfrg-in-progress/new', 'newMfrgView')->name('mfrg.in.progress.new');
         Route::get('/mfrg-in-progress/data', 'getMfrgProgressData')->name('mfrg.in.progress.data');
+    });
+
+    Route::controller(MfrgProgressPoController::class)->group(function () {
+        Route::post('/mfrg-progress-po/update', 'update')->name('mfrg.progress.po.update');
+        Route::post('/mfrg-progress-po/bulk-update', 'bulkUpdate')->name('mfrg.progress.po.bulk-update');
     });
 
     // Follow-up History
@@ -3671,6 +4254,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/product-master/restore-bulk-update', [ProductMasterController::class, 'restoreBulkUpdate'])->name('product_master.restore_bulk_update');
     Route::get('/product-master/download-template', [ProductMasterController::class, 'downloadTemplate'])->name('product_master.download_template');
     Route::post('/product-master/batch-update', [ProductMasterController::class, 'batchUpdate']);
+    Route::get('/product-master/cp-history', [\App\Http\Controllers\ProductMaster\CpController::class, 'history'])->name('product_master.cp.history');
+    Route::get('/product-master/cp-all-history', [\App\Http\Controllers\ProductMaster\CpController::class, 'allHistory'])->name('product_master.cp.all_history');
+    Route::post('/product-master/cp-update', [\App\Http\Controllers\ProductMaster\CpController::class, 'update'])->name('product_master.cp.update');
+    Route::post('/product-master/cp-approve', [\App\Http\Controllers\ProductMaster\CpController::class, 'approve'])->name('product_master.cp.approve');
+    Route::post('/product-master/cp-unarchive', [\App\Http\Controllers\ProductMaster\CpController::class, 'unarchive'])->name('product_master.cp.unarchive');
     Route::post('/channel_master/store', [ChannelMasterController::class, 'store'])->name('channel_master.store');
     Route::post('/channel-master/update-sheet-link', [ChannelMasterController::class, 'updateSheetLink']);
     Route::post('/channels-master/toggle-flag', [ChannelMasterController::class, 'toggleCheckboxFlag']);
@@ -3813,7 +4401,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Aliexpress Daily Data routes
     Route::post('/aliexpress/upload-daily-data', [AliexpressController::class, 'uploadDailyDataChunk'])->name('aliexpress.upload.daily.data');
+    Route::post('/aliexpress/upload-daily-data-l60', [AliexpressController::class, 'uploadDailyDataL60Chunk'])->name('aliexpress.upload.daily.data.l60');
     Route::get('/aliexpress/daily-data', [AliexpressController::class, 'getDailyData'])->name('aliexpress.get.daily.data');
+    Route::get('/aliexpress/l60-sales', [AliexpressController::class, 'getL60Sales'])->name('aliexpress.get.l60.sales');
     Route::get('/aliexpress-tabulator', [AliexpressController::class, 'aliexpressTabulatorView'])->name('aliexpress.tabulator.view');
     Route::get('/aliexpress-lmp', [AliexpressController::class, 'aliexpressLmpPage'])->name('aliexpress.lmp');
     Route::post('/aliexpress-lmp/upload', [AliexpressController::class, 'uploadAliexpressLmp'])->name('aliexpress.lmp.upload');
@@ -3823,7 +4413,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/aliexpress/pricing-data', [AliexpressController::class, 'getPricingData'])->name('aliexpress.pricing.data');
     Route::get('/aliexpress/pricing-price-sample', [AliexpressController::class, 'downloadPricingPriceSample'])->name('aliexpress.pricing.price.sample');
     Route::post('/aliexpress/pricing-upload-price', [AliexpressController::class, 'uploadPricingPriceSheet'])->name('aliexpress.pricing.upload.price');
+    Route::post('/aliexpress/pricing-sync-api', [AliexpressController::class, 'syncPricingFromApi'])->name('aliexpress.pricing.sync.api');
     Route::post('/aliexpress/save-sprice', [AliexpressController::class, 'saveSpriceUpdates'])->name('aliexpress.pricing.save.sprice');
+    Route::post('/aliexpress/save-links', [AliexpressController::class, 'saveLinks'])->name('aliexpress.pricing.save.links');
     Route::get('/aliexpress/badge-chart-data', [AliexpressController::class, 'badgeChartData'])->name('aliexpress.badge.chart');
     Route::post('/aliexpress-column-visibility', [AliexpressController::class, 'saveAliexpressColumnVisibility'])->name('aliexpress.save.column.visibility');
     Route::get('/aliexpress-column-visibility', [AliexpressController::class, 'getAliexpressColumnVisibility'])->name('aliexpress.get.column.visibility');
@@ -3832,6 +4424,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/lqs-data', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'lqsDataView'])->name('lqs.data.view');
     Route::get('/lqs/data', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsData'])->name('lqs.data');
     Route::get('/lqs/badge-chart-data', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'badgeChartData'])->name('lqs.badge.chart');
+
+    // LQS Amz
+    Route::get('/lqs-amz', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'lqsAmzView'])->name('lqs.amz.view');
+    Route::get('/lqs/amz/data', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsAmzData'])->name('lqs.amz.data');
+    Route::get('/lqs/amz/badge-chart-data', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'lqsAmzBadgeChartData'])->name('lqs.amz.badge.chart');
+    Route::post('/lqs/amz/refresh-jungle-scout', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'refreshJungleScoutData'])->name('lqs.amz.refresh.js');
+    Route::post('/lqs/amz/action', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'saveLqsAmzAction'])->name('lqs.amz.action.save');
+    Route::get('/lqs/amz/action-history/{sku}', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsAmzActionHistory'])->name('lqs.amz.action.history');
+    Route::get('/lqs/amz/cvr-history', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsAmzCvrHistory'])->name('lqs.amz.cvr.history');
 
     // ebay variation
     Route::get('/zero-ebayvariation', [EbayVariationZeroController::class, 'ebayVariationZeroview'])->name('zero.ebayvariation');
@@ -3993,6 +4594,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shein/pricing-sample', [SheinController::class, 'downloadSheinPricingSample'])->name('shein.pricing.sample');
     Route::post('/shein/pricing-upload-price', [SheinController::class, 'uploadSheinPriceSheet'])->name('shein.pricing.upload.price');
     Route::post('/shein/save-sprice', [SheinController::class, 'saveSheinSpriceUpdates'])->name('shein.pricing.save.sprice');
+    Route::post('/shein/save-links', [SheinController::class, 'saveLinks'])->name('shein.pricing.save.links');
     Route::get('/shein/badge-chart-data', [SheinController::class, 'sheinBadgeChartData'])->name('shein.badge.chart');
 
     // faire
@@ -4015,6 +4617,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/faire/pricing-price-sample', [FaireController::class, 'downloadFairePricingPriceSample'])->name('faire.pricing.price.sample');
     Route::post('/faire/pricing-upload-price', [FaireController::class, 'uploadFairePricingPriceSheet'])->name('faire.pricing.upload.price');
     Route::post('/faire/pricing-save-sprice', [FaireController::class, 'saveFaireSpriceUpdates'])->name('faire.pricing.save.sprice');
+    Route::post('/faire/save-links', [FaireController::class, 'saveLinks'])->name('faire.pricing.save.links');
     Route::get('/faire/badge-chart-data', [FaireController::class, 'faireBadgeChartData'])->name('faire.pricing.badge.chart');
     Route::get('/faire/pricing-column-visibility', [FaireController::class, 'getFairePricingColumnVisibility'])->name('faire.pricing.column.get');
     Route::post('/faire/pricing-column-visibility', [FaireController::class, 'setFairePricingColumnVisibility'])->name('faire.pricing.column.set');
@@ -4035,6 +4638,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/pls-pricing', [PlsController::class, 'pricingView'])->name('pls.pricing');
     Route::get('/pls-pricing-data-json', [PlsController::class, 'pricingDataJson']);
     Route::post('/save-pls-sprice', [PlsController::class, 'savePlsSprice']);
+    Route::post('/pls-clear-sprice', [PlsController::class, 'clearPlsSprice']);
+    Route::post('/pls/save-links', [PlsController::class, 'saveLinks'])->name('pls.save.links');
     Route::post('/pls-analytics/import', [PlsController::class, 'importPlsAnalytics'])->name('pls.analytics.import');
     Route::get('/pls-analytics/export', [PlsController::class, 'exportPlsAnalytics'])->name('pls.analytics.export');
     Route::get('/pls-analytics/sample', [PlsController::class, 'downloadSample'])->name('pls.analytics.sample');
@@ -4071,6 +4676,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tiendamia-download-sample-csv', [TiendamiaPricingController::class, 'downloadSampleCsv'])->name('tiendamia.download.sample');
     Route::post('/tiendamia-save-sprice', [TiendamiaPricingController::class, 'saveSpriceUpdates'])->name('tiendamia.save.sprice');
     Route::post('/tiendamia-save-nrp', [TiendamiaPricingController::class, 'saveNrp'])->name('tiendamia.save.nrp');
+    Route::post('/tiendamia-save-links', [TiendamiaPricingController::class, 'saveLinks'])->name('tiendamia.save.links');
     Route::get('/tiendamia-test-nrp', [TiendamiaPricingController::class, 'testNrp'])->name('tiendamia.test.nrp');
     Route::get('/tiendamia-pricing-column-visibility', [TiendamiaPricingController::class, 'getColumnVisibility'])->name('tiendamia.column.get');
     Route::post('/tiendamia-pricing-column-visibility', [TiendamiaPricingController::class, 'setColumnVisibility'])->name('tiendamia.column.set');
@@ -4114,7 +4720,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/mercariwship-analytics/sample', [MercariWShipController::class, 'downloadSample'])->name('mercariwship.analytics.sample');
 
     // mercari wo ship
-    Route::get('mercariwoshipAnalysis', action: [MercariWoShipController::class, 'overallMercariWoShip']);
     Route::get('/mercariwoship/view-data', [MercariWoShipController::class, 'getViewMercariWoShipData']);
     Route::get('mercariwoshipPricingCVR', [MercariWoShipController::class, 'MercariWoShipPricingCVR'])->name('mercariwoship.pricing.cvr');
     Route::post('/update-all-mercariwoship-skus', [MercariWoShipController::class, 'updateAllMercariWoShipSkus']);
@@ -4301,6 +4906,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/claim-reimbursement', 'index')->name('claim.reimbursement');
         Route::get('/claim-reimbursement/view-data', 'getViewClaimReimbursementData');
         Route::post('/claim-reimbursement/save', 'saveClaimReimbursement')->name('claim.reimbursement.save');
+        Route::post('/claim-reimbursement/{id}/received-amount', 'updateReceivedAmount')->name('claim.reimbursement.received-amount');
+        Route::post('/claim-reimbursement/{id}/action', 'addAction')->name('claim.reimbursement.action');
+        Route::post('/claim-reimbursement/{id}/details-note', 'updateDetailsNote')->name('claim.reimbursement.details-note');
+        Route::post('/claim-reimbursement/{id}/follow-up', 'updateFollowUpDate')->name('claim.reimbursement.follow-up');
+        Route::post('/claim-reimbursement/{id}/archive', 'toggleArchive')->name('claim.reimbursement.archive');
     });
 
     Route::controller(VideoAdsMasterController::class)->group(function () {
@@ -4602,6 +5212,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/tiktok-gmv-max-data', 'tiktokGmvMaxData')->name('tiktok.gmv.max.data');
         Route::get('/tiktok-video-ad-analytics', 'tiktokVideoAd')->name('tiktok.video.ad.analytics');
         Route::get('/tiktok-video-ad-analytics-data', 'tiktokVideoAdData')->name('tiktok.video.ad.analytics.data');
+        Route::post('/tiktok-video-ad-analytics/update-approval', 'updateVideoAdApproval')->name('tiktok.video.ad.update.approval');
         Route::post('/tiktok/import', 'import')->name('tiktok.import');
         Route::post('/tiktok-gmv-ad/update-status', 'updateGMVAdStatus')->name('tiktok.gmv.ad.update.status');
     });
@@ -4721,6 +5332,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/campaign-ads/data', 'getData')->name('ebay.campaign.ads.data');
         Route::get('/ebay/campaign-ads/rule', 'getRule')->name('ebay.campaign.ads.rule');
         Route::post('/ebay/campaign-ads/rule', 'saveRule')->name('ebay.campaign.ads.rule.save');
+        Route::get('/ebay/campaign-ads/dil-rule', 'getDilRule')->name('ebay.campaign.ads.dil.rule');
+        Route::post('/ebay/campaign-ads/dil-rule', 'saveDilRule')->name('ebay.campaign.ads.dil.rule.save');
         Route::post('/ebay/campaign-ads/push-sbid', 'pushSbid')->name('ebay.campaign.ads.push.sbid');
         Route::post('/ebay/campaign-ads/push-selected', 'pushSelected')->name('ebay.campaign.ads.push.selected');
         Route::get('/ebay/campaign-ads/campaigns', 'getCampaignList')->name('ebay.campaign.ads.campaigns');
@@ -4732,10 +5345,25 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay2/campaign-ads/data', 'getData')->name('ebay2.campaign.ads.data');
         Route::get('/ebay2/campaign-ads/rule', 'getRule')->name('ebay2.campaign.ads.rule');
         Route::post('/ebay2/campaign-ads/rule', 'saveRule')->name('ebay2.campaign.ads.rule.save');
+        Route::get('/ebay2/campaign-ads/dil-rule', 'getDilRule')->name('ebay2.campaign.ads.dil.rule');
+        Route::post('/ebay2/campaign-ads/dil-rule', 'saveDilRule')->name('ebay2.campaign.ads.dil.rule.save');
         Route::post('/ebay2/campaign-ads/push-sbid', 'pushSbid')->name('ebay2.campaign.ads.push.sbid');
         Route::post('/ebay2/campaign-ads/push-selected', 'pushSelected')->name('ebay2.campaign.ads.push.selected');
         Route::get('/ebay2/campaign-ads/campaigns', 'getCampaignList')->name('ebay2.campaign.ads.campaigns');
         Route::post('/ebay2/campaign-ads/enroll', 'enrollInCampaign')->name('ebay2.campaign.ads.enroll');
+    });
+
+    Route::controller(Ebay3CampaignAdsController::class)->group(function () {
+        Route::get('/ebay3/campaign-ads', 'index')->name('ebay3.campaign.ads');
+        Route::get('/ebay3/campaign-ads/data', 'getData')->name('ebay3.campaign.ads.data');
+        Route::get('/ebay3/campaign-ads/rule', 'getRule')->name('ebay3.campaign.ads.rule');
+        Route::post('/ebay3/campaign-ads/rule', 'saveRule')->name('ebay3.campaign.ads.rule.save');
+        Route::get('/ebay3/campaign-ads/dil-rule', 'getDilRule')->name('ebay3.campaign.ads.dil.rule');
+        Route::post('/ebay3/campaign-ads/dil-rule', 'saveDilRule')->name('ebay3.campaign.ads.dil.rule.save');
+        Route::post('/ebay3/campaign-ads/push-sbid', 'pushSbid')->name('ebay3.campaign.ads.push.sbid');
+        Route::post('/ebay3/campaign-ads/push-selected', 'pushSelected')->name('ebay3.campaign.ads.push.selected');
+        Route::get('/ebay3/campaign-ads/campaigns', 'getCampaignList')->name('ebay3.campaign.ads.campaigns');
+        Route::post('/ebay3/campaign-ads/enroll', 'enrollInCampaign')->name('ebay3.campaign.ads.enroll');
     });
 
     Route::controller(EbayPMPAdsController::class)->group(function () {
@@ -4922,6 +5550,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-shopping/u7-distribution-history', 'u7DistributionHistory')->name('google.shopping.campaigns.u7.history');
     });
 
+    // Google SERP campaigns — same grid + rule storage as Google Shopping above, but filtered to
+    // campaigns whose name contains the word "SEARCH" (e.g. "DRUM THRONES SEARCH").
+    Route::controller(GoogleSerpCampaignsController::class)->group(function () {
+        Route::get('/google/shopping/google-serp', 'index')->name('google.serp.campaigns');
+        Route::get('/google/shopping/google-serp/data', 'data')->name('google.serp.campaigns.data');
+        Route::post('/google/shopping/google-serp/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.serp.campaigns.push.sbgt');
+        Route::post('/google/shopping/google-serp/push-sbid', 'pushSbidShopping')->name('google.serp.campaigns.push.sbid');
+        Route::get('/google/shopping/google-serp/badge-history', 'badgeHistory')->name('google.serp.campaigns.badge.history');
+        Route::post('/google/shopping/google-serp/u7-distribution', 'u7Distribution')->name('google.serp.campaigns.u7.distribution');
+        Route::post('/google/shopping/google-serp/u7-distribution-history', 'u7DistributionHistory')->name('google.serp.campaigns.u7.history');
+    });
+
     Route::controller(GoogleAdsController::class)->group(function () {
         Route::get('/google/shopping', 'index')->name('google.shopping');
         Route::get('/google/shopping/running', 'googleShoppingAdsRunning')->name('google.shopping.running');
@@ -5016,6 +5656,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/compare', [\App\Http\Controllers\JungleScout\CompetitorSalesController::class, 'compareCompetitors'])->name('compare');
         Route::get('/top-sellers', [\App\Http\Controllers\JungleScout\CompetitorSalesController::class, 'getTopSellers'])->name('top-sellers');
         Route::get('/buy-box-stats', [\App\Http\Controllers\JungleScout\CompetitorSalesController::class, 'getBuyBoxStats'])->name('buy-box-stats');
+    });
+
+    Route::prefix('repricer/amz-comp-jungle')->name('repricer.amz-comp-jungle.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\RePricer\AmzCompJungleController::class, 'index'])->name('index');
+        Route::get('/kws', [\App\Http\Controllers\RePricer\AmzCompJungleController::class, 'getKws'])->name('kws');
+        Route::get('/competitor-asins', [\App\Http\Controllers\RePricer\AmzCompJungleController::class, 'getCompetitorAsins'])->name('competitor-asins');
+        Route::post('/save-kw', [\App\Http\Controllers\RePricer\AmzCompJungleController::class, 'saveKw'])->name('save-kw');
+        Route::post('/save-asins', [\App\Http\Controllers\RePricer\AmzCompJungleController::class, 'saveAsins'])->name('save-asins');
+        Route::post('/save-asins-bulk', [\App\Http\Controllers\RePricer\AmzCompJungleController::class, 'saveAsinsBulk'])->name('save-asins-bulk');
+        Route::get('/import-template', [\App\Http\Controllers\RePricer\AmzCompJungleController::class, 'importTemplate'])->name('import-template');
+        Route::post('/import', [\App\Http\Controllers\RePricer\AmzCompJungleController::class, 'import'])->name('import');
     });
 
     Route::get('/facebook-image-ads', [FacebookAdsController::class, 'facebookImageAds'])->name('facebook.image.ads');
@@ -5137,6 +5788,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tasks/store-user-rr', [\App\Http\Controllers\TaskController::class, 'storeUserRR'])->name('tasks.storeUserRR');
     Route::get('/tasks/get-user-rr-data', [\App\Http\Controllers\TaskController::class, 'getUserRRData'])->name('tasks.getUserRRData');
     Route::post('/tasks/upload-image', [\App\Http\Controllers\TaskController::class, 'uploadImage'])->name('tasks.uploadImage');
+    Route::get('/tasks/training-video', [\App\Http\Controllers\TaskController::class, 'getTrainingVideo'])->name('tasks.trainingVideo.get');
+    Route::post('/tasks/training-video', [\App\Http\Controllers\TaskController::class, 'saveTrainingVideo'])->name('tasks.trainingVideo.save');
     Route::get('/tasks/users-list', [\App\Http\Controllers\TaskController::class, 'getUsersList'])->name('tasks.usersList');
     Route::get('/tasks/download-template', [\App\Http\Controllers\TaskController::class, 'downloadTemplate'])->name('tasks.downloadTemplate');
     Route::post('/tasks/import-csv', [\App\Http\Controllers\TaskController::class, 'importCsv'])->name('tasks.importCsv');
@@ -5186,8 +5839,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
 
     // User management routes
+    // Access (HR / President only) is enforced in the controller so we can show a custom message.
     Route::get('/users/add', [UserController::class, 'index'])
-        ->middleware(['auth', 'can:team.management.view'])
+        ->middleware('auth')
         ->name('users.add');
 
     Route::put('/users/{user}', [UserController::class, 'update'])
@@ -5210,6 +5864,43 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/users/{user}/toggle-salary-visibility', [UserController::class, 'toggleSalaryVisibility'])
         ->middleware('auth')
         ->name('users.toggleSalaryVisibility');
+
+    // Bank details: update only (blank fields are ignored so nothing is ever wiped)
+    Route::post('/users/{user}/bank', [UserController::class, 'updateBank'])
+        ->middleware('auth')
+        ->name('users.bank.update');
+
+    // Resume file (view restricted to president/hr; edit restricted to hr — enforced in controller)
+    Route::get('/users/{user}/resume', [UserController::class, 'showResume'])
+        ->middleware('auth')
+        ->name('users.resume.show');
+
+    Route::post('/users/{user}/resume', [UserController::class, 'uploadResume'])
+        ->middleware('auth')
+        ->name('users.resume.upload');
+
+    Route::delete('/users/{user}/resume', [UserController::class, 'deleteResume'])
+        ->middleware('auth')
+        ->name('users.resume.delete');
+
+    // Docs: multiple links/files per user (view restricted to president/hr; edit to hr — enforced in controller)
+    Route::get('/users/{user}/docs', [UserController::class, 'listDocs'])
+        ->middleware('auth')
+        ->name('users.docs.index');
+
+    Route::post('/users/{user}/docs', [UserController::class, 'storeDoc'])
+        ->middleware('auth')
+        ->name('users.docs.store');
+
+    Route::get('/users/{user}/docs/{doc}/download', [UserController::class, 'downloadDoc'])
+        ->middleware('auth')
+        ->whereNumber('doc')
+        ->name('users.docs.download');
+
+    Route::delete('/users/{user}/docs/{doc}', [UserController::class, 'deleteDoc'])
+        ->middleware('auth')
+        ->whereNumber('doc')
+        ->name('users.docs.delete');
 
     Route::get('/users/export', [UserController::class, 'exportData'])
         ->middleware('auth')
@@ -5234,12 +5925,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/month/{payrollMonth}/release-payslips', [PayrollController::class, 'releasePayslips'])->name('month.release-payslips');
         Route::post('/month/{payrollMonth}/release-it', [PayrollController::class, 'releaseItStatements'])->name('month.release-it');
         Route::get('/month/{payrollMonth}/export', [PayrollController::class, 'exportMonth'])->name('month.export');
+        Route::get('/month/{payrollMonth}/payout-sheet', [PayrollController::class, 'exportPayoutSheet'])->name('month.payout-sheet');
         Route::put('/employee-salary/{payrollEmployeeSalary}', [PayrollController::class, 'updateEmployeeSalary'])->name('employee-salary.update');
         Route::put('/components/{payrollSalaryComponent}', [PayrollController::class, 'updateComponent'])->name('components.update');
         Route::delete('/components/{payrollSalaryComponent}', [PayrollController::class, 'destroyComponent'])->name('components.destroy');
         Route::delete('/payments/{payrollPaymentDeduction}', [PayrollController::class, 'destroyPaymentDeduction'])->name('payments.destroy');
         Route::get('/payslip/{payrollPayslip}', [PayrollController::class, 'viewPayslip'])->name('payslip.view');
         Route::get('/payslip/{payrollPayslip}/print', [PayrollController::class, 'viewPayslipPrint'])->name('payslip.print');
+        Route::get('/month/{payrollMonth}/salary-slip/{user}', [PayrollController::class, 'downloadSalarySlip'])->name('salary-slip.download');
         Route::get('/previous-records', [PayrollController::class, 'previousRecords'])->name('previous-records');
         Route::post('/previous-records', [PayrollController::class, 'storePreviousRecord'])->name('previous-records.store');
         Route::post('/previous-records/import', [PayrollController::class, 'importPreviousCsv'])->name('previous-records.import');
@@ -5401,6 +6094,100 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
  
 
 });
+
+
+
+// =============================================================================
+// eBay Push Microservice — LOCAL MOCK ENDPOINT (for testing only)
+// -----------------------------------------------------------------------------
+// Use this to test the full price-push flow before the real cPanel microservice
+// at businessnew.5coremanagement.com is deployed.
+//
+// HOW TO USE:
+//   1. In .env set:
+//        EBAY_PUSH_MICROSERVICE_URL=http://localhost/invent/public
+//   2. Push a price from the tabulator UI
+//   3. Check storage/logs/laravel.log for [MockMicroservice] entries
+//   4. Once the real microservice is live, revert the URL and remove this block
+// =============================================================================
+Route::post('/mock-push-ebay-price', function (\Illuminate\Http\Request $request) {
+    // 1. Verify Bearer token (must match EBAY_PUSH_MICROSERVICE_TOKEN in .env)
+    $expectedToken = config('services.ebay_push_microservice.token', '');
+    $providedToken = $request->bearerToken();
+
+    if (empty($expectedToken) || !$providedToken || !hash_equals($expectedToken, $providedToken)) {
+        \Illuminate\Support\Facades\Log::warning('[MockMicroservice] Unauthorized request', ['ip' => $request->ip()]);
+        return response()->json(['success' => false, 'message' => 'Unauthorized.'], 401);
+    }
+
+    // 2. Validate payload
+    $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+        'sku'          => 'required|string',
+        'price'        => 'required|numeric|min:0.01|max:10000',
+        'ebay_item_id' => 'required|string',
+        'quantity'     => 'nullable|integer|min:0',
+        'title'        => 'nullable|string',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json([
+            'success' => false,
+            'message' => $validator->errors()->first(),
+            'errors'  => [['code' => 'ValidationError', 'message' => $validator->errors()->first()]],
+        ], 422);
+    }
+
+    $data   = $validator->validated();
+    $itemId = (string) $data['ebay_item_id'];
+    $price  = round((float) $data['price'], 2);
+    $qty    = isset($data['quantity']) ? (int) $data['quantity'] : null;
+
+    \Illuminate\Support\Facades\Log::info('[MockMicroservice] Received push — forwarding to EbayApiService', [
+        'sku'     => $data['sku'],
+        'item_id' => $itemId,
+        'price'   => $price,
+    ]);
+
+    // 3. Call real eBay Trading API (same as the real microservice will do)
+    try {
+        $ebay   = new \App\Services\EbayApiService();
+        $result = $ebay->reviseFixedPriceItem($itemId, $price, $qty);
+    } catch (\Throwable $e) {
+        \Illuminate\Support\Facades\Log::error('[MockMicroservice] EbayApiService exception', ['error' => $e->getMessage()]);
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage(),
+            'errors'  => [['code' => 'Exception', 'message' => $e->getMessage()]],
+        ], 500);
+    }
+
+    // 4. Return normalized JSON (same shape the real microservice will return)
+    if (!empty($result['success'])) {
+        \Illuminate\Support\Facades\Log::info('[MockMicroservice] Push succeeded', ['sku' => $data['sku'], 'price' => $price]);
+        return response()->json(['success' => true, 'message' => 'Price updated successfully.', 'data' => $result]);
+    }
+
+    $rawErrors = (is_array($result['errors'] ?? null) && !empty($result['errors']))
+        ? $result['errors']
+        : [['code' => 'UnknownError', 'message' => $result['message'] ?? 'Failed to update price']];
+
+    $errors = array_map(fn($e) => !is_array($e)
+        ? ['code' => 'APIError', 'message' => (string) $e]
+        : [
+            'code'    => (string) ($e['ErrorCode'] ?? $e['code'] ?? 'APIError'),
+            'message' => $e['LongMessage'] ?? $e['ShortMessage'] ?? $e['message'] ?? 'Unknown error',
+        ], $rawErrors);
+
+    \Illuminate\Support\Facades\Log::error('[MockMicroservice] Push failed', ['sku' => $data['sku'], 'errors' => $errors]);
+
+    return response()->json([
+        'success'           => false,
+        'message'           => $errors[0]['message'] ?? 'Failed to update price',
+        'errors'            => $errors,
+        'accountRestricted' => (bool) ($result['accountRestricted'] ?? false),
+    ], 400);
+});
+
 
 // Shopify Meta Campaigns Routes (Facebook & Instagram)
 Route::prefix('shopify/meta-campaigns')->middleware(['auth'])->group(function () {

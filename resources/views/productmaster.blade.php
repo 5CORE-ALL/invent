@@ -917,6 +917,9 @@
                                     <button type="button" class="btn btn-success" id="viewArchivedBtn">
                                         <i class="fas fa-eye me-1"></i> DC
                                     </button>
+                                    <button type="button" class="btn btn-primary" id="cpAllHistoryBtn" title="CP change history for all SKUs">
+                                        <i class="fas fa-clock-rotate-left me-1"></i> CP History
+                                    </button>
                                     <button type="button" class="btn btn-warning" id="importFromApiBtn" hidden>
                                         <i class="fas fa-cloud-download-alt me-1"></i> Import from API Sheet
                                     </button>
@@ -1001,7 +1004,7 @@
                                     <th>Temu Ship</th>
                                     <th>Unit</th>
                                     <th>UPC</th>
-                                    <th>MOQ</th>
+                                    <th title="Minimum Order Quantity">MOQ</th>
                                     </tr>
                                 </thead>
                                 <tbody id="missingImagesTableBody">
@@ -1113,7 +1116,8 @@
                                                         style="color: #4A5568;">CP</label>
                                                     <input type="text" class="form-control" id="cp"
                                                         placeholder="Enter cp"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
+                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: #EDF2F7;"
+                                                        readonly>
                                                     <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
@@ -1186,7 +1190,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="moq" class="form-label fw-bold"
-                                                        style="color: #4A5568;">MOQ</label>
+                                                        style="color: #4A5568;" title="Minimum Order Quantity">MOQ</label>
                                                     <input type="text" class="form-control" id="moq"
                                                         placeholder="Enter MOQ"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -1637,6 +1641,142 @@
                         </div>
                     </div>
 
+                    <!-- CP (Cost Price) Manager Modal -->
+                    <div class="modal fade" id="cpModal" tabindex="-1" aria-labelledby="cpModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-lg modal-dialog-scrollable" style="max-width: 960px;">
+                            <div class="modal-content" style="border:none; border-radius:0; box-shadow:0 10px 30px rgba(0,0,0,0.2);">
+                                <div class="modal-header" style="background: linear-gradient(135deg, #6B73FF 0%, #000DFF 100%); border-bottom:4px solid #4D55E6; padding:1.25rem;">
+                                    <h5 class="modal-title" id="cpModalLabel" style="color:white; font-weight:800; letter-spacing:0.5px;">
+                                        <i class="fas fa-dollar-sign me-2"></i>COST PRICE (CP)
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body" style="background-color:#F8FAFF; padding:1.5rem;">
+                                    <input type="hidden" id="cpModalSku">
+                                    <input type="hidden" id="cpModalCurrent">
+
+                                    <div id="cpEditSection">
+                                    <div class="row mb-3">
+                                        <div class="col-md-7">
+                                            <label class="form-label fw-bold" style="color:#4A5568;">SKU</label>
+                                            <div id="cpModalSkuDisplay" class="form-control"
+                                                style="border:2px solid #E2E8F0; border-radius:6px; padding:0.75rem; background-color:#EDF2F7; font-weight:600;">—</div>
+                                        </div>
+                                        <div class="col-md-5">
+                                            <label class="form-label fw-bold" style="color:#4A5568;">Current CP</label>
+                                            <div id="cpModalCurrentDisplay" class="form-control"
+                                                style="border:2px solid #E2E8F0; border-radius:6px; padding:0.75rem; background-color:#EDF2F7; font-weight:600;">—</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="row mb-3">
+                                        <div class="col-md-5">
+                                            <label for="cpModalInput" class="form-label fw-bold" style="color:#4A5568;">New CP <span class="text-danger">*</span></label>
+                                            <input type="number" step="0.01" min="0" class="form-control" id="cpModalInput"
+                                                placeholder="Enter CP"
+                                                style="border:2px solid #E2E8F0; border-radius:6px; padding:0.75rem; background-color:white;">
+                                            <div class="invalid-feedback" id="cpModalInputFeedback"></div>
+                                        </div>
+                                    </div>
+
+                                    <div class="row mb-3" id="cpReasonWrapper" style="display:none;">
+                                        <div class="col-12">
+                                            <div class="alert py-2 mb-2" style="font-size:0.9rem; color:#dc3545; background-color:#f8d7da; border:1px solid #f5c2c7;">
+                                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                                The new CP is <strong>higher</strong> than the current CP. A reason for the increase is mandatory.
+                                            </div>
+                                            <label for="cpReasonInput" class="form-label fw-bold" style="color:#4A5568;">Reason for increase <span class="text-danger">*</span></label>
+                                            <textarea class="form-control" id="cpReasonInput" rows="2"
+                                                placeholder="Explain why the cost price is increasing"
+                                                style="border:2px solid #E2E8F0; border-radius:6px; padding:0.75rem; background-color:white;"></textarea>
+                                            <div class="invalid-feedback" id="cpReasonFeedback"></div>
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex gap-2 mb-3">
+                                        <button type="button" class="btn btn-primary" id="cpSaveBtn">
+                                            <i class="fas fa-save me-1"></i>Save CP
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary" id="cpHistoryBtn">
+                                            <i class="fas fa-clock-rotate-left me-1"></i>History
+                                        </button>
+                                    </div>
+                                    </div>
+
+                                    <div id="cpHistorySection" style="display:none;">
+                                        <hr>
+                                        <h6 class="fw-bold mb-2" style="color:#4A5568;">CP Change History <small class="text-muted">(current → oldest)</small></h6>
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-bordered align-middle" style="font-size:0.85rem;">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th>Date</th>
+                                                        <th>Old → New</th>
+                                                        <th>Change</th>
+                                                        <th>%</th>
+                                                        <th>Reason</th>
+                                                        <th>User</th>
+                                                        <th>Approval</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="cpHistoryBody">
+                                                    <tr><td colspan="7" class="text-center text-muted">No history yet.</td></tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- All-SKU CP History Modal -->
+                    <div class="modal fade" id="cpAllHistoryModal" tabindex="-1" aria-labelledby="cpAllHistoryModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width: 95%;">
+                            <div class="modal-content" style="border:none; border-radius:0; box-shadow:0 10px 30px rgba(0,0,0,0.2);">
+                                <div class="modal-header" style="background: linear-gradient(135deg, #6B73FF 0%, #000DFF 100%); border-bottom:4px solid #4D55E6; padding:1.25rem;">
+                                    <h5 class="modal-title" id="cpAllHistoryModalLabel" style="color:white; font-weight:800; letter-spacing:0.5px;">
+                                        <i class="fas fa-clock-rotate-left me-2"></i>CP CHANGE HISTORY — ALL SKUs
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body" style="background-color:#F8FAFF; padding:1.5rem;">
+                                    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                                        <small class="text-muted">Latest changes on top. Approving an entry archives it.</small>
+                                        <div class="d-flex align-items-center gap-3">
+                                            <div class="form-check mb-0">
+                                                <input class="form-check-input" type="checkbox" id="cpShowArchived">
+                                                <label class="form-check-label" for="cpShowArchived">Show archived</label>
+                                            </div>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" id="cpAllHistoryRefresh">
+                                                <i class="fas fa-sync-alt me-1"></i>Refresh
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-bordered align-middle" style="font-size:0.85rem;">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Date</th>
+                                                    <th>SKU</th>
+                                                    <th>Old → New</th>
+                                                    <th>Change</th>
+                                                    <th>%</th>
+                                                    <th>Reason</th>
+                                                    <th>User</th>
+                                                    <th>Approval</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="cpAllHistoryBody">
+                                                <tr><td colspan="8" class="text-center text-muted">No history yet.</td></tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Selection actions bar -->
                     <div class="selection-actions" id="selectionActions">
                         <span class="selection-count">0 items selected</span>
@@ -1683,7 +1823,7 @@
                                     <th>FRGHT</th>
                                     <th>SHIP</th>
                                     <th>TEMU SHIP</th>
-                                    <th>MOQ</th>
+                                    <th title="Minimum Order Quantity">MOQ</th>
                                     <th>EBAY2 SHIP</th>
                                     {{-- <th>INITIAL QUANTITY</th> --}}
                                     <th>Label QTY</th>
@@ -2521,6 +2661,15 @@
                                 const isParentPlaceholder = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
                                 cell.innerHTML = `
                         <div class="d-inline-flex">
+                            ${!isParentPlaceholder ?
+                                `<button type="button" class="btn btn-sm btn-outline-primary cp-btn me-1" data-sku="${escapeHtml(item.SKU)}" title="Manage Cost Price (CP)">
+                                                        CP
+                                                    </button>
+                                 <button type="button" class="btn btn-sm btn-outline-info cp-history-btn me-1" data-sku="${escapeHtml(item.SKU)}" title="CP change history">
+                                                        <i class="bi bi-clock-history"></i>
+                                                    </button>`
+                                : ''
+                            }
                             ${hasEditPermission ? 
                                 `<button type="button" class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
                                                         <i class="bi bi-pencil-square"></i>
@@ -2539,7 +2688,7 @@
                                                     </button>` 
                                 : ''
                             }
-                            ${(!hasEditPermission && !hasDeletePermission) ? '-' : ''}
+                            ${(!hasEditPermission && !hasDeletePermission && isParentPlaceholder) ? '-' : ''}
                         </div>
                     `;
                                 break;
@@ -3278,6 +3427,10 @@
                 `;
                         }
 
+                        if (colName === "MOQ") {
+                            th.title = "Minimum Order Quantity";
+                        }
+
                         thead.appendChild(th);
                     }
                 });
@@ -3587,6 +3740,15 @@
                             const isParentPlaceholder = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
                             cell.innerHTML = `
                     <div class="d-inline-flex">
+                        ${!isParentPlaceholder ?
+                            `<button type="button" class="btn btn-sm btn-outline-primary cp-btn me-1" data-sku="${escapeHtml(item.SKU)}" title="Manage Cost Price (CP)">
+                                                                            CP
+                                                                        </button>
+                             <button type="button" class="btn btn-sm btn-outline-info cp-history-btn me-1" data-sku="${escapeHtml(item.SKU)}" title="CP change history">
+                                                                            <i class="bi bi-clock-history"></i>
+                                                                        </button>`
+                            : ''
+                        }
                         ${hasEditPermission ? 
                             `<button type="button" class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
                                                                             <i class="bi bi-pencil-square"></i>
@@ -3605,7 +3767,7 @@
                                                                         </button>` 
                             : ''
                         }
-                        ${(!hasEditPermission && !hasDeletePermission) ? '-' : ''}
+                        ${(!hasEditPermission && !hasDeletePermission && isParentPlaceholder) ? '-' : ''}
                     </div>
                 `;
                             break;
@@ -3664,6 +3826,429 @@
                 setupBulkActionsModal();
                 setupDuplicateProductModal();
                 setupMissingDataButtons();
+                setupCpManager();
+            }
+
+            // ---------------------------------------------------------------
+            // CP (Cost Price) manager: edit CP, require reason on increase,
+            // view change history (newest first) and approve changes.
+            // ---------------------------------------------------------------
+            const CP_APPROVER_EMAILS = ['inventory@5core.com', 'president@5core.com'];
+            const canApproveCp = CP_APPROVER_EMAILS.includes(String(currentUserEmail || '').toLowerCase());
+
+            function cpFmt(v) {
+                if (v === null || v === undefined || v === '' || isNaN(parseFloat(v))) return '—';
+                return parseFloat(v).toFixed(2);
+            }
+
+            function setupCpManager() {
+                if (window.__cpManagerBound) return;
+                window.__cpManagerBound = true;
+
+                const csrf = document.querySelector('meta[name="csrf-token"]').content;
+
+                // Open the CP modal (delegated so it works across all render paths).
+                document.addEventListener('click', function(e) {
+                    const btn = e.target.closest('.cp-btn');
+                    if (!btn) return;
+                    e.preventDefault();
+                    openCpModal(btn.getAttribute('data-sku'));
+                });
+
+                // History icon: open the CP modal with the history section expanded.
+                document.addEventListener('click', function(e) {
+                    const hb = e.target.closest('.cp-history-btn');
+                    if (!hb) return;
+                    e.preventDefault();
+                    const sku = hb.getAttribute('data-sku');
+                    openCpModal(sku);
+                    // History-only view: hide the edit portion, show just the history.
+                    const editSection = document.getElementById('cpEditSection');
+                    if (editSection) editSection.style.display = 'none';
+                    const section = document.getElementById('cpHistorySection');
+                    if (section) section.style.display = 'block';
+                    loadCpHistory(sku);
+                });
+
+                const inputEl = document.getElementById('cpModalInput');
+                if (inputEl) {
+                    inputEl.addEventListener('input', toggleCpReason);
+                }
+
+                const saveBtn = document.getElementById('cpSaveBtn');
+                if (saveBtn) saveBtn.addEventListener('click', saveCp);
+
+                const histBtn = document.getElementById('cpHistoryBtn');
+                if (histBtn) histBtn.addEventListener('click', function() {
+                    const section = document.getElementById('cpHistorySection');
+                    const isHidden = section.style.display === 'none' || !section.style.display;
+                    section.style.display = isHidden ? 'block' : 'none';
+                    if (isHidden) loadCpHistory(document.getElementById('cpModalSku').value);
+                });
+
+                // Approve buttons inside the history table (delegated).
+                document.addEventListener('click', function(e) {
+                    const ab = e.target.closest('.cp-approve-btn');
+                    if (!ab) return;
+                    e.preventDefault();
+                    approveCp(ab.getAttribute('data-id'), ab);
+                });
+
+                // Approve (and archive) buttons inside the all-SKU history table.
+                document.addEventListener('click', function(e) {
+                    const ab = e.target.closest('.cp-approve-all-btn');
+                    if (!ab) return;
+                    e.preventDefault();
+                    approveCpAll(ab.getAttribute('data-id'), ab);
+                });
+
+                // Unarchive buttons inside the all-SKU history table.
+                document.addEventListener('click', function(e) {
+                    const ub = e.target.closest('.cp-unarchive-all-btn');
+                    if (!ub) return;
+                    e.preventDefault();
+                    unarchiveCpAll(ub.getAttribute('data-id'), ub);
+                });
+
+                // Global "CP History" (all SKUs).
+                const allBtn = document.getElementById('cpAllHistoryBtn');
+                if (allBtn) allBtn.addEventListener('click', function() {
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('cpAllHistoryModal')).show();
+                    loadAllCpHistory();
+                });
+                const allRefresh = document.getElementById('cpAllHistoryRefresh');
+                if (allRefresh) allRefresh.addEventListener('click', loadAllCpHistory);
+                const showArchived = document.getElementById('cpShowArchived');
+                if (showArchived) showArchived.addEventListener('change', loadAllCpHistory);
+            }
+
+            async function loadAllCpHistory() {
+                const body = document.getElementById('cpAllHistoryBody');
+                if (!body) return;
+                const includeArchived = document.getElementById('cpShowArchived') && document.getElementById('cpShowArchived').checked ? 1 : 0;
+                body.innerHTML = '<tr><td colspan="8" class="text-center py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>';
+                try {
+                    const res = await fetch('/product-master/cp-all-history?include_archived=' + includeArchived, {
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    const data = await res.json();
+                    if (!data.success || !Array.isArray(data.history) || data.history.length === 0) {
+                        body.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No history yet.</td></tr>';
+                        return;
+                    }
+                    body.innerHTML = data.history.map(renderAllCpHistoryRow).join('');
+                } catch (err) {
+                    body.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Failed to load history.</td></tr>';
+                }
+            }
+
+            async function approveCpAll(id, btnEl) {
+                if (btnEl) {
+                    btnEl.disabled = true;
+                    btnEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+                }
+                try {
+                    const res = await fetch('/product-master/cp-approve', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ id: id })
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                        showToast('danger', data.message || 'Failed to approve.');
+                        if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = '<i class="fas fa-check me-1"></i>Approve'; }
+                        return;
+                    }
+                    showToast('success', data.message || 'Approved and archived.');
+                    loadAllCpHistory();
+                } catch (err) {
+                    showToast('danger', 'Error: ' + err.message);
+                    if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = '<i class="fas fa-check me-1"></i>Approve'; }
+                }
+            }
+
+            async function unarchiveCpAll(id, btnEl) {
+                if (btnEl) {
+                    btnEl.disabled = true;
+                    btnEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+                }
+                try {
+                    const res = await fetch('/product-master/cp-unarchive', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ id: id })
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                        showToast('danger', data.message || 'Failed to unarchive.');
+                        if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = '<i class="fas fa-rotate-left me-1"></i>Unarchive'; }
+                        return;
+                    }
+                    showToast('success', data.message || 'Unarchived.');
+                    loadAllCpHistory();
+                } catch (err) {
+                    showToast('danger', 'Error: ' + err.message);
+                    if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = '<i class="fas fa-rotate-left me-1"></i>Unarchive'; }
+                }
+            }
+
+            function renderAllCpHistoryRow(h) {
+                const arrow = h.is_increase
+                    ? '<span style="color:#dc3545;font-weight:700;">▲ Increase</span>'
+                    : '<span style="color:#198754;font-weight:700;">▼ Lower/First</span>';
+                const oldNew = `${cpFmt(h.old_cp)} → <strong>${cpFmt(h.new_cp)}</strong>`;
+
+                let pct;
+                const oldVal = parseFloat(h.old_cp);
+                const newVal = parseFloat(h.new_cp);
+                if (isNaN(oldVal) || oldVal === 0) {
+                    pct = '<span class="text-muted">—</span>';
+                } else {
+                    const change = ((newVal - oldVal) / oldVal) * 100;
+                    const color = change > 0 ? '#dc3545' : (change < 0 ? '#198754' : '#6c757d');
+                    const sign = change > 0 ? '+' : '';
+                    pct = `<span style="color:${color};font-weight:700;">${sign}${change.toFixed(2)}%</span>`;
+                }
+
+                const reason = h.reason ? escapeHtml(h.reason) : '<span class="text-muted">—</span>';
+                const changedBy = h.changed_by ? escapeHtml(h.changed_by) : '<span class="text-muted">—</span>';
+
+                let approval;
+                if (h.approved) {
+                    const unarchiveBtn = canApproveCp
+                        ? `<div class="mt-1"><button type="button" class="btn btn-sm btn-outline-warning cp-unarchive-all-btn" data-id="${h.id}" title="Move back to pending">
+                                    <i class="fas fa-rotate-left me-1"></i>Unarchive</button></div>`
+                        : '';
+                    approval = `<span class="badge bg-secondary" title="Approved by ${escapeHtml(h.approved_by || '')} on ${escapeHtml(h.approved_at || '')}">
+                                    <i class="fas fa-box-archive me-1"></i>Archived</span>
+                                <div class="small text-muted mt-1">${escapeHtml(h.approved_by || '')}</div>${unarchiveBtn}`;
+                } else if (canApproveCp) {
+                    approval = `<button type="button" class="btn btn-sm btn-success cp-approve-all-btn" data-id="${h.id}">
+                                    <i class="fas fa-check me-1"></i>Approve</button>`;
+                } else {
+                    approval = '<span class="badge bg-warning text-dark">Pending</span>';
+                }
+
+                return `<tr>
+                            <td>${escapeHtml(h.created_at || '—')}</td>
+                            <td class="text-nowrap fw-semibold">${escapeHtml(h.sku || '—')}</td>
+                            <td class="text-nowrap">${oldNew}</td>
+                            <td>${arrow}</td>
+                            <td class="text-nowrap">${pct}</td>
+                            <td>${reason}</td>
+                            <td>${changedBy}</td>
+                            <td>${approval}</td>
+                        </tr>`;
+            }
+
+            function openCpModal(sku) {
+                const product = productMap.get(sku);
+                const currentCp = product ? (product.cp ?? (product.Values ? product.Values.cp : null)) : null;
+
+                document.getElementById('cpModalSku').value = sku || '';
+                document.getElementById('cpModalCurrent').value = (currentCp ?? '');
+                document.getElementById('cpModalSkuDisplay').textContent = sku || '—';
+                document.getElementById('cpModalCurrentDisplay').textContent = cpFmt(currentCp);
+
+                const input = document.getElementById('cpModalInput');
+                input.value = (currentCp !== null && currentCp !== undefined && currentCp !== '') ? parseFloat(currentCp).toFixed(2) : '';
+                input.classList.remove('is-invalid');
+
+                document.getElementById('cpReasonInput').value = '';
+                document.getElementById('cpReasonInput').classList.remove('is-invalid');
+                document.getElementById('cpReasonWrapper').style.display = 'none';
+
+                document.getElementById('cpHistorySection').style.display = 'none';
+                document.getElementById('cpEditSection').style.display = 'block';
+
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('cpModal')).show();
+                toggleCpReason();
+            }
+
+            function toggleCpReason() {
+                const current = parseFloat(document.getElementById('cpModalCurrent').value);
+                const next = parseFloat(document.getElementById('cpModalInput').value);
+                const wrapper = document.getElementById('cpReasonWrapper');
+                // Reason only required when there is an existing CP and the new one is higher.
+                const isIncrease = !isNaN(current) && !isNaN(next) && next > current;
+                wrapper.style.display = isIncrease ? 'block' : 'none';
+            }
+
+            async function saveCp() {
+                const sku = document.getElementById('cpModalSku').value;
+                const input = document.getElementById('cpModalInput');
+                const reasonEl = document.getElementById('cpReasonInput');
+                const newCp = input.value.trim();
+
+                input.classList.remove('is-invalid');
+                reasonEl.classList.remove('is-invalid');
+
+                if (newCp === '' || isNaN(parseFloat(newCp)) || parseFloat(newCp) < 0) {
+                    document.getElementById('cpModalInputFeedback').textContent = 'Please enter a valid CP.';
+                    input.classList.add('is-invalid');
+                    return;
+                }
+
+                const current = parseFloat(document.getElementById('cpModalCurrent').value);
+                const isIncrease = !isNaN(current) && parseFloat(newCp) > current;
+                const reason = reasonEl.value.trim();
+
+                if (isIncrease && reason === '') {
+                    document.getElementById('cpReasonFeedback').textContent = 'A reason is required when the CP increases.';
+                    reasonEl.classList.add('is-invalid');
+                    return;
+                }
+
+                const saveBtn = document.getElementById('cpSaveBtn');
+                const originalHtml = saveBtn.innerHTML;
+                saveBtn.disabled = true;
+                saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
+
+                try {
+                    const res = await fetch('/product-master/cp-update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ sku: sku, cp: newCp, reason: reason })
+                    });
+                    const data = await res.json();
+
+                    if (!res.ok || !data.success) {
+                        if (data.requires_reason) {
+                            document.getElementById('cpReasonWrapper').style.display = 'block';
+                            document.getElementById('cpReasonFeedback').textContent = data.message || 'Reason required.';
+                            reasonEl.classList.add('is-invalid');
+                        } else {
+                            showToast('danger', data.message || 'Failed to update CP.');
+                        }
+                        return;
+                    }
+
+                    showToast('success', data.message || 'CP updated.');
+
+                    // Reflect the new value locally and in the modal.
+                    const product = productMap.get(sku);
+                    if (product) {
+                        product.cp = data.current_cp;
+                        if (product.Values) product.Values.cp = data.current_cp;
+                    }
+                    document.getElementById('cpModalCurrent').value = data.current_cp ?? '';
+                    document.getElementById('cpModalCurrentDisplay').textContent = cpFmt(data.current_cp);
+                    toggleCpReason();
+
+                    if (document.getElementById('cpHistorySection').style.display === 'block') {
+                        loadCpHistory(sku);
+                    }
+
+                    if (typeof loadData === 'function') loadData();
+                } catch (err) {
+                    showToast('danger', 'Error: ' + err.message);
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = originalHtml;
+                }
+            }
+
+            async function loadCpHistory(sku) {
+                const body = document.getElementById('cpHistoryBody');
+                body.innerHTML = '<tr><td colspan="7" class="text-center py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>';
+                try {
+                    const res = await fetch('/product-master/cp-history?sku=' + encodeURIComponent(sku), {
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    const data = await res.json();
+                    if (!data.success || !Array.isArray(data.history) || data.history.length === 0) {
+                        body.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No history yet.</td></tr>';
+                        return;
+                    }
+                    body.innerHTML = data.history.map(renderCpHistoryRow).join('');
+                } catch (err) {
+                    body.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Failed to load history.</td></tr>';
+                }
+            }
+
+            function renderCpHistoryRow(h) {
+                const arrow = h.is_increase
+                    ? '<span style="color:#dc3545;font-weight:700;">▲ Increase</span>'
+                    : '<span style="color:#198754;font-weight:700;">▼ Lower/First</span>';
+                const oldNew = `${cpFmt(h.old_cp)} → <strong>${cpFmt(h.new_cp)}</strong>`;
+
+                // % change over the last price (red = up, green = down).
+                let pct;
+                const oldVal = parseFloat(h.old_cp);
+                const newVal = parseFloat(h.new_cp);
+                if (isNaN(oldVal) || oldVal === 0) {
+                    pct = '<span class="text-muted">—</span>';
+                } else {
+                    const change = ((newVal - oldVal) / oldVal) * 100;
+                    const color = change > 0 ? '#dc3545' : (change < 0 ? '#198754' : '#6c757d');
+                    const sign = change > 0 ? '+' : '';
+                    pct = `<span style="color:${color};font-weight:700;">${sign}${change.toFixed(2)}%</span>`;
+                }
+                const reason = h.reason ? escapeHtml(h.reason) : '<span class="text-muted">—</span>';
+                const changedBy = h.changed_by ? escapeHtml(h.changed_by) : '<span class="text-muted">—</span>';
+
+                let approval;
+                if (h.approved) {
+                    approval = `<span class="badge bg-success" title="Approved by ${escapeHtml(h.approved_by || '')} on ${escapeHtml(h.approved_at || '')}">
+                                    <i class="fas fa-check me-1"></i>Approved</span>
+                                <div class="small text-muted mt-1">${escapeHtml(h.approved_by || '')}</div>`;
+                } else if (canApproveCp) {
+                    approval = `<button type="button" class="btn btn-sm btn-success cp-approve-btn" data-id="${h.id}">
+                                    <i class="fas fa-check me-1"></i>Approve</button>`;
+                } else {
+                    approval = '<span class="badge bg-secondary">Pending</span>';
+                }
+
+                return `<tr>
+                            <td>${escapeHtml(h.created_at || '—')}</td>
+                            <td class="text-nowrap">${oldNew}</td>
+                            <td>${arrow}</td>
+                            <td class="text-nowrap">${pct}</td>
+                            <td>${reason}</td>
+                            <td>${changedBy}</td>
+                            <td>${approval}</td>
+                        </tr>`;
+            }
+
+            async function approveCp(id, btnEl) {
+                if (btnEl) {
+                    btnEl.disabled = true;
+                    btnEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+                }
+                try {
+                    const res = await fetch('/product-master/cp-approve', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ id: id })
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                        showToast('danger', data.message || 'Failed to approve.');
+                        if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = '<i class="fas fa-check me-1"></i>Approve'; }
+                        return;
+                    }
+                    showToast('success', data.message || 'Approved.');
+                    loadCpHistory(document.getElementById('cpModalSku').value);
+                } catch (err) {
+                    showToast('danger', 'Error: ' + err.message);
+                    if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = '<i class="fas fa-check me-1"></i>Approve'; }
+                }
             }
 
             $.ajaxSetup({

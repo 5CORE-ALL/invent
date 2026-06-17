@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -174,13 +175,32 @@ class EbayTokenController extends Controller
                         'token_length' => strlen($data['refresh_token']),
                     ]);
 
+                    // Persist the new refresh token straight into .env and refresh
+                    // the cached config so the running app picks it up immediately.
+                    $envKey = $envKeys['refresh_token'];
+                    $envUpdated = $this->updateEnvValue($envKey, $data['refresh_token']);
+                    $envError = null;
+
+                    if ($envUpdated) {
+                        try {
+                            Artisan::call('config:clear');
+                        } catch (\Throwable $e) {
+                            Log::warning('config:clear failed after eBay token update', ['error' => $e->getMessage()]);
+                        }
+                    } else {
+                        $envError = 'Could not write to the .env file automatically (it may be missing or not writable). Please update it manually with the value below.';
+                        Log::warning("eBay{$account} refresh token could not be written to .env", ['env_key' => $envKey]);
+                    }
+
                     return view('ebay-token-result', [
                         'success' => true,
                         'refreshToken' => $data['refresh_token'],
                         'accessToken' => $data['access_token'] ?? null,
                         'expiresIn' => $data['expires_in'] ?? null,
                         'account' => $account,
-                        'envKey' => $envKeys['refresh_token'],
+                        'envKey' => $envKey,
+                        'envUpdated' => $envUpdated,
+                        'envError' => $envError,
                     ]);
                 } else {
                     return view('ebay-token-result', [
@@ -213,6 +233,39 @@ class EbayTokenController extends Controller
                 'exceptionTrace' => config('app.debug') ? $e->getTraceAsString() : null,
             ]);
         }
+    }
+
+    /**
+     * Write (or append) a key in the project .env file.
+     *
+     * The value is always wrapped in double quotes because eBay refresh tokens
+     * contain characters such as "#" that would otherwise be treated as a comment.
+     */
+    private function updateEnvValue(string $key, string $value): bool
+    {
+        $path = base_path('.env');
+
+        if (!is_file($path) || !is_writable($path)) {
+            return false;
+        }
+
+        $contents = file_get_contents($path);
+        if ($contents === false) {
+            return false;
+        }
+
+        $escaped = '"' . str_replace(['\\', '"'], ['\\\\', '\\"'], $value) . '"';
+        $line = $key . '=' . $escaped;
+
+        $pattern = '/^' . preg_quote($key, '/') . '=.*$/m';
+
+        if (preg_match($pattern, $contents)) {
+            $contents = preg_replace_callback($pattern, fn () => $line, $contents, 1);
+        } else {
+            $contents = rtrim($contents, "\n") . "\n" . $line . "\n";
+        }
+
+        return file_put_contents($path, $contents) !== false;
     }
 
     /**

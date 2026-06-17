@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\AliexpressMetric;
@@ -609,5 +610,370 @@ class AliExpressApiService
             'message' => (string) ($res['message'] ?? 'AliExpress product edit failed.'),
             'response' => $res['response'] ?? $res,
         ];
+    }
+
+    /**
+     * Single product detail — aliexpress.solution.product.info.get (SKU list + prices).
+     */
+    public function getProductInfo(string $productId): array
+    {
+        $raw = $this->callSync('aliexpress.solution.product.info.get', [
+            'product_id' => (string) $productId,
+        ]);
+
+        if (empty($raw['success'])) {
+            return $raw;
+        }
+
+        $payload = $this->unwrapSolutionEnvelope($raw['data'] ?? []);
+        $result = is_array($payload['result'] ?? null) ? $payload['result'] : $payload;
+
+        return [
+            'success' => true,
+            'status' => $raw['status'] ?? 200,
+            'data' => $result,
+            'request_id' => $raw['request_id'] ?? null,
+        ];
+    }
+
+    /**
+     * Order list — aliexpress.solution.order.get (param0 = OrderQuery JSON).
+     *
+     * @param  array<string, mixed>  $query  create_date_start/end, modified_date_*, current_page, page_size, order_status, …
+     */
+    public function getOrders(int $page = 1, int $pageSize = 20, array $query = []): array
+    {
+        $orderQuery = array_merge([
+            'current_page' => $page,
+            'page_size' => $pageSize,
+        ], $query);
+
+        $raw = $this->callSync('aliexpress.solution.order.get', [
+            'param0' => $this->encodeRequestPayload($orderQuery),
+        ]);
+
+        if (empty($raw['success'])) {
+            return $raw;
+        }
+
+        $payload = $this->unwrapSolutionEnvelope($raw['data'] ?? []);
+        $parsed = $this->parseSolutionOrderListResponse($payload);
+
+        return [
+            'success' => true,
+            'status' => $raw['status'] ?? 200,
+            'data' => $parsed,
+            'raw' => $payload,
+            'request_id' => $raw['request_id'] ?? null,
+        ];
+    }
+
+    /**
+     * Daily sales for one product (last 30 days) — aliexpress.data.redefining.queryproductsalesinfoeverydaybyid.
+     */
+    public function getProductDailySales(string $productId, string $startDate, string $endDate, int $page = 1, int $pageSize = 50): array
+    {
+        $raw = $this->callSync('aliexpress.data.redefining.queryproductsalesinfoeverydaybyid', [
+            'product_id' => (string) $productId,
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'current_page' => $page,
+            'page_size' => $pageSize,
+        ]);
+
+        if (empty($raw['success'])) {
+            return $raw;
+        }
+
+        $payload = $this->unwrapSolutionEnvelope($raw['data'] ?? []);
+        $resultJson = $payload['result'] ?? null;
+        $parsed = is_string($resultJson) ? json_decode($resultJson, true) : (is_array($resultJson) ? $resultJson : $payload);
+
+        return [
+            'success' => true,
+            'data' => is_array($parsed) ? $parsed : [],
+            'request_id' => $raw['request_id'] ?? null,
+        ];
+    }
+
+    /**
+     * @return array<int, array{sku: string, price: float, stock: int|null, product_id: string, product_name: string|null}>
+     */
+    public function extractSkuRowsFromListItem(array $item, bool $fetchDetail = false): array
+    {
+        $item = $this->normalizeApiRow($item);
+        $productId = (string) ($item['product_id'] ?? $item['id'] ?? '');
+        if ($productId === '') {
+            return [];
+        }
+
+        $productName = $this->extractProductName($item);
+        $rows = [];
+
+        if ($fetchDetail) {
+            $info = $this->getProductInfo($productId);
+            if (! empty($info['success']) && is_array($info['data'] ?? null)) {
+                $rows = $this->extractSkuRowsFromProductInfo($info['data'], $productId, $productName);
+
+                return $rows;
+            }
+        }
+
+        $nested = $item['aeop_ae_product_sku_list']
+            ?? $item['aeop_ae_product_s_k_us']
+            ?? $item['aeop_aeop_product_skus']
+            ?? $item['skus']
+            ?? $item['product_skus']
+            ?? null;
+
+        if (is_array($nested) && $nested !== []) {
+            foreach ($this->normalizeList($nested) as $skuRow) {
+                $skuRow = $this->normalizeApiRow($skuRow);
+                $sku = trim((string) ($skuRow['sku_code'] ?? $skuRow['sku'] ?? ''));
+                $price = $this->extractPriceFromRow($skuRow);
+                if ($sku === '' && $price <= 0) {
+                    continue;
+                }
+                $rows[] = [
+                    'product_id' => $productId,
+                    'sku' => $sku !== '' ? $sku : $productId,
+                    'price' => $price > 0 ? $price : $this->extractListPrice($item),
+                    'stock' => $this->extractStockFromRow($skuRow),
+                    'product_name' => $productName,
+                ];
+            }
+
+            if ($rows !== []) {
+                return $rows;
+            }
+        }
+
+        $price = $this->extractListPrice($item);
+        $stock = $this->extractStockFromRow($item);
+        if ($price > 0 || $productName !== null || $stock !== null) {
+            $rows[] = [
+                'product_id' => $productId,
+                'sku' => $productId,
+                'price' => $price,
+                'stock' => $stock,
+                'product_name' => $productName,
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return array<int, array{sku: string, price: float, stock: int|null, product_id: string, product_name: string|null}>
+     */
+    public function extractSkuRowsFromProductInfo(array $info, string $productId, ?string $productName = null): array
+    {
+        $info = $this->normalizeApiRow($info);
+        $productName = $productName ?? $this->extractProductName($info);
+        $rows = [];
+
+        $skus = $info['aeop_ae_product_sku_list']
+            ?? $info['aeop_ae_product_s_k_us']
+            ?? $info['aeop_a_e_product_s_k_u_list']
+            ?? [];
+
+        foreach ($this->normalizeList($skus) as $skuRow) {
+            $skuRow = $this->normalizeApiRow($skuRow);
+            $sku = trim((string) ($skuRow['sku_code'] ?? $skuRow['sku'] ?? ''));
+            $price = $this->extractPriceFromRow($skuRow);
+            if ($sku === '' && $price <= 0) {
+                continue;
+            }
+            $rows[] = [
+                'product_id' => $productId,
+                'sku' => $sku !== '' ? $sku : $productId,
+                'price' => $price,
+                'stock' => $this->extractStockFromRow($skuRow),
+                'product_name' => $productName,
+            ];
+        }
+
+        if ($rows === []) {
+            $price = $this->extractListPrice($info);
+            $stock = $this->extractStockFromRow($info);
+            if ($price > 0 || $stock !== null) {
+                $rows[] = [
+                    'product_id' => $productId,
+                    'sku' => $productId,
+                    'price' => $price,
+                    'stock' => $stock,
+                    'product_name' => $productName,
+                ];
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Normalize order list payload to a flat list of orders with product lines.
+     */
+    private function parseSolutionOrderListResponse(array $payload): array
+    {
+        $result = $payload['result'] ?? $payload;
+        if (! is_array($result)) {
+            $result = [];
+        }
+
+        $orders = $result['target_list']
+            ?? $result['order_list']
+            ?? $result['orders']
+            ?? [];
+
+        $orders = $this->normalizeList($orders);
+
+        return [
+            'orders' => $orders,
+            'total_count' => $result['total_count'] ?? $result['totalCount'] ?? null,
+            'current_page' => $result['current_page'] ?? null,
+            'page_size' => $result['page_size'] ?? null,
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function extractOrderProductLines(array $order): array
+    {
+        $order = $this->normalizeApiRow($order);
+        $products = $order['product_list']['order_product_dto']
+            ?? $order['product_list']['aeop_order_product_dto']
+            ?? $order['product_list']
+            ?? $order['child_order_list']
+            ?? [];
+
+        $lines = [];
+        foreach ($this->normalizeList($products) as $product) {
+            $product = $this->normalizeApiRow($product);
+            $lines[] = [
+                'product_id' => (string) ($product['product_id'] ?? ''),
+                'sku_code' => (string) ($product['sku_code'] ?? $product['sku'] ?? ''),
+                'product_count' => (int) ($product['product_count'] ?? $product['quantity'] ?? 1),
+                'product_unit_price' => [
+                    'amount' => $this->extractPriceFromRow($product),
+                ],
+                'product_name' => $product['product_name'] ?? $product['subject'] ?? null,
+            ];
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Build order query date range (US Pacific) for the last N days.
+     *
+     * @return array{create_date_start: string, create_date_end: string}
+     */
+    public function buildOrderDateRange(int $days): array
+    {
+        $end = Carbon::now('America/Los_Angeles');
+        $start = $end->copy()->subDays(max(1, $days));
+
+        return [
+            'create_date_start' => $start->format('Y-m-d H:i:s'),
+            'create_date_end' => $end->format('Y-m-d H:i:s'),
+        ];
+    }
+
+    private function extractListPrice(array $item): float
+    {
+        $item = $this->normalizeApiRow($item);
+        foreach (['product_min_price', 'product_max_price', 'price', 'sale_price'] as $key) {
+            if (isset($item[$key]) && is_numeric($item[$key])) {
+                return (float) $item[$key];
+            }
+        }
+
+        return $this->extractPriceFromRow($item);
+    }
+
+    private function extractStockFromRow(array $row): ?int
+    {
+        $row = $this->normalizeApiRow($row);
+        foreach (['ipm_sku_stock', 'sku_stock', 'stock', 'inventory', 'available_stock', 'sku_inventory', 'quantity'] as $key) {
+            if (! array_key_exists($key, $row)) {
+                continue;
+            }
+            $val = $row[$key];
+            if ($val === true || $val === 'true') {
+                return 1;
+            }
+            if ($val === false || $val === 'false' || $val === null || $val === '') {
+                continue;
+            }
+            if (is_numeric($val)) {
+                return max(0, (int) $val);
+            }
+        }
+
+        return null;
+    }
+
+    private function extractPriceFromRow(array $row): float
+    {
+        $row = $this->normalizeApiRow($row);
+        foreach (['sku_price', 'price', 'product_min_price', 'product_max_price', 'sale_price', 'unit_price'] as $key) {
+            if (isset($row[$key]) && is_numeric($row[$key])) {
+                return (float) $row[$key];
+            }
+        }
+        if (isset($row['product_unit_price']) && is_array($row['product_unit_price'])) {
+            $amount = $row['product_unit_price']['amount'] ?? null;
+            if ($amount !== null && is_numeric($amount)) {
+                return (float) $amount;
+            }
+        }
+
+        return 0.0;
+    }
+
+    private function extractProductName(array $item): ?string
+    {
+        $item = $this->normalizeApiRow($item);
+        foreach (['subject', 'product_name', 'title', 'product_title'] as $key) {
+            if (! empty($item[$key]) && is_string($item[$key])) {
+                return trim($item[$key]);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function normalizeApiRow(mixed $row): array
+    {
+        if (is_array($row)) {
+            return $row;
+        }
+        if (is_object($row)) {
+            return json_decode(json_encode($row), true) ?: [];
+        }
+
+        return [];
+    }
+
+    /**
+     * @return array<int, mixed>
+     */
+    private function normalizeList(mixed $list): array
+    {
+        if (! is_array($list)) {
+            return [];
+        }
+        if ($list === []) {
+            return [];
+        }
+        if (! isset($list[0]) && (isset($list['product_id']) || isset($list['sku_code']) || isset($list['order_id']))) {
+            return [$list];
+        }
+
+        return array_values($list);
     }
 }

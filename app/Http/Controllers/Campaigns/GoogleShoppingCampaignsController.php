@@ -27,6 +27,22 @@ class GoogleShoppingCampaignsController extends Controller
         ]);
     }
 
+    /**
+     * Scope the raw grid to non-SERP Shopping campaigns: exclude names containing
+     * the word "SEARCH" (e.g. "DRUM THRONES SEARCH" or "PARENT GS REST SEARCH.").
+     * Those rows live on the dedicated /google/shopping/google-serp page via
+     * {@see GoogleSerpCampaignsController::applyCampaignNameScope()}.
+     *
+     * Leading space gives word-boundary matching so substrings like "RESEARCH" are
+     * not affected. Subclasses (SERP) override this to flip the condition.
+     *
+     * @param  \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder  $query
+     */
+    protected function applyCampaignNameScope($query, string $columnExpression = 'campaign_name'): void
+    {
+        $query->whereRaw("UPPER({$columnExpression}) NOT LIKE ?", ['% SEARCH%']);
+    }
+
     public function getRule(): JsonResponse
     {
         return response()->json([
@@ -60,8 +76,8 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
-     * Run `budget:update-shopping` — writes daily Shopping budgets from the persisted SBGT rule (same as cron).
-     * Request JSON: `{ "campaign_ids": ["…"] }` — when sent from the raw grid, only those SHOPPING campaigns are updated (max 1000).
+     * Run `budget:update-shopping` — writes daily Shopping budgets from the persisted SBGT rule   (same as cron).
+     * Request JSON: `{ "campaign_ids": ["…"] }` — when sent from the raw grid, only those SHOPPING  campaigns are updated (max 1000).
      */
     public function pushSbgtShoppingBudgets(Request $request): JsonResponse
     {
@@ -78,8 +94,8 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
-     * Run `sbid:update` — updates Shopping campaign SBIDs from the persisted SBID rule (same as cron).
-     * Request JSON: `{ "campaign_ids": ["…"] }` — when sent from the raw grid, only those campaigns are considered (max 1000).
+     * Run `sbid:update` — updates Shopping campaign SBIDs from the persisted SBID rule (same as cron). 
+     * Request JSON: `{ "campaign_ids": ["…"] }` — when sent from the raw grid, only those campaigns  are considered (max 1000).
      */
     public function pushSbidShopping(Request $request): JsonResponse
     {
@@ -374,6 +390,7 @@ class GoogleShoppingCampaignsController extends Controller
         if ($campaignIds !== []) {
             $query->whereIn('campaign_id', array_keys($campaignIds));
         }
+        $this->applyCampaignNameScope($query);
 
         $rows = $query
             ->groupBy('date')
@@ -473,60 +490,70 @@ class GoogleShoppingCampaignsController extends Controller
 
         $sumSub = DB::table('google_ads_campaigns');
         $applyBounds($sumSub);
+        $this->applyCampaignNameScope($sumSub);
         $sumSub->whereNotNull('campaign_id')
             ->selectRaw('campaign_id, SUM(metrics_cost_micros) as sum_micros')
             ->groupBy('campaign_id');
 
         $sumL7Sub = DB::table('google_ads_campaigns');
         $applyL7Bounds($sumL7Sub);
+        $this->applyCampaignNameScope($sumL7Sub);
         $sumL7Sub->whereNotNull('campaign_id')
             ->selectRaw('campaign_id, SUM(metrics_cost_micros) as sum_micros_l7')
             ->groupBy('campaign_id');
 
         $sumL2Sub = DB::table('google_ads_campaigns');
         $applyL2Bounds($sumL2Sub);
+        $this->applyCampaignNameScope($sumL2Sub);
         $sumL2Sub->whereNotNull('campaign_id')
             ->selectRaw('campaign_id, SUM(metrics_cost_micros) as sum_micros_l2')
             ->groupBy('campaign_id');
 
         $sumL1Sub = DB::table('google_ads_campaigns');
         $applyL1Bounds($sumL1Sub);
+        $this->applyCampaignNameScope($sumL1Sub);
         $sumL1Sub->whereNotNull('campaign_id')
             ->selectRaw('campaign_id, SUM(metrics_cost_micros) as sum_micros_l1')
             ->groupBy('campaign_id');
 
         $clicks30Sub = DB::table('google_ads_campaigns');
         $applyBounds($clicks30Sub);
+        $this->applyCampaignNameScope($clicks30Sub);
         $clicks30Sub->whereNotNull('campaign_id')
             ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_30')
             ->groupBy('campaign_id');
 
         $clicksL7Sub = DB::table('google_ads_campaigns');
         $applyL7Bounds($clicksL7Sub);
+        $this->applyCampaignNameScope($clicksL7Sub);
         $clicksL7Sub->whereNotNull('campaign_id')
             ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_l7')
             ->groupBy('campaign_id');
 
         $clicksL2Sub = DB::table('google_ads_campaigns');
         $applyL2Bounds($clicksL2Sub);
+        $this->applyCampaignNameScope($clicksL2Sub);
         $clicksL2Sub->whereNotNull('campaign_id')
             ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_l2')
             ->groupBy('campaign_id');
 
         $clicksL1Sub = DB::table('google_ads_campaigns');
         $applyL1Bounds($clicksL1Sub);
+        $this->applyCampaignNameScope($clicksL1Sub);
         $clicksL1Sub->whereNotNull('campaign_id')
             ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_l1')
             ->groupBy('campaign_id');
 
         $ga30Sub = DB::table('google_ads_campaigns');
         $applyBounds($ga30Sub);
+        $this->applyCampaignNameScope($ga30Sub);
         $ga30Sub->whereNotNull('campaign_id')
             ->selectRaw('campaign_id, SUM(ga4_actual_revenue) as sum_ga4_actual, SUM(ga4_ad_sales) as sum_ga4_ads, SUM(ga4_actual_sold_units) as sum_ga4_actual_sold')
             ->groupBy('campaign_id');
 
         $latestSub = DB::table('google_ads_campaigns');
         $applyBounds($latestSub);
+        $this->applyCampaignNameScope($latestSub);
         $latestSub->whereNotNull('campaign_id')
             ->selectRaw('campaign_id, MAX(`date`) as max_d')
             ->groupBy('campaign_id');
@@ -565,6 +592,7 @@ class GoogleShoppingCampaignsController extends Controller
             })
             ->whereNotNull('g.campaign_id');
         $applyBounds($query);
+        $this->applyCampaignNameScope($query, 'g.campaign_name');
 
         $query->select('g.*')
             ->addSelect(DB::raw('cSpend.sum_micros as spend_window_micros'))
@@ -596,6 +624,12 @@ class GoogleShoppingCampaignsController extends Controller
         $ub1 = $this->normalizeUbColorFilter($request->input('filter_ub1'));
         $acos = $this->normalizeAcosColorFilter($request->input('filter_acos'));
         $stat = $this->normalizeStatFilter($request->input('filter_stat'));
+        $searchQ = $this->normalizeCampaignSearchQuery($request->input('q'));
+
+        if ($searchQ !== '') {
+            $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], strtoupper($searchQ)).'%';
+            $query->whereRaw('UPPER(g.campaign_name) LIKE ? ESCAPE \'\\\\\'', [$like]);
+        }
 
         $ub7Expr = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL7.sum_micros_l7, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 7.0) * 100.0 ELSE 0 END)';
         $ub2Expr = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL2.sum_micros_l2, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 2.0) * 100.0 ELSE 0 END)';
@@ -623,6 +657,23 @@ class GoogleShoppingCampaignsController extends Controller
         $v = is_string($value) ? strtolower(trim($value)) : 'all';
 
         return in_array($v, ['green', 'pink', 'red'], true) ? $v : 'all';
+    }
+
+    /**
+     * Trim, cap length, and reject control characters so the search input can't
+     * blow up the LIKE clause on a hostile request.
+     */
+    private function normalizeCampaignSearchQuery(mixed $value): string
+    {
+        if (! is_string($value)) {
+            return '';
+        }
+        $v = trim(preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $value) ?? '');
+        if ($v === '') {
+            return '';
+        }
+
+        return mb_substr($v, 0, 100);
     }
 
     /**

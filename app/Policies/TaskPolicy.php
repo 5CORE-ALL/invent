@@ -10,26 +10,38 @@ class TaskPolicy
 {
     /**
      * Emails with this permission can delete or modify anybody's task (case-insensitive).
+     * president@5core.com and software5@5core.com (plus each task's own assignor) may
+     * edit/delete tasks.
      */
     private const SPECIAL_TASK_DELETE_MODIFY_EMAILS = [
-        'ritu.kaur013@gmail.com',
-        'sr.manager@5core.com',
-        'sjoy7486@gmail.com',
-        'inventory@5core.com',
         'president@5core.com',
-        'ineetkalra@5core.com',
         'software5@5core.com',
     ];
 
     /**
      * Names from the users table that get the same full-access permission as the
-     * special emails above. Matched case-insensitively against either the full
-     * `users.name` or the first token of it, so DB rows like "Hritiksha Deb"
-     * still resolve. Keep this list small; prefer emails when possible.
+     * special emails above. Intentionally empty — only the president override and
+     * the task's assignor may edit/delete.
      */
-    private const SPECIAL_TASK_DELETE_MODIFY_NAMES = [
-        'hritiksha',
+    private const SPECIAL_TASK_DELETE_MODIFY_NAMES = [];
+
+    /** Cleanup Missed Daily, Today Deleted, and related revert/archive tools. */
+    private const TASK_MAINTENANCE_TOOL_EMAILS = [
+        'president@5core.com',
+        'presiden@5core.com',
+        'software5@5core.com',
     ];
+
+    public static function userCanAccessTaskMaintenanceTools(?User $user): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        $email = strtolower(trim((string) ($user->email ?? '')));
+
+        return $email !== '' && in_array($email, self::TASK_MAINTENANCE_TOOL_EMAILS, true);
+    }
 
     /**
      * Check if user is admin
@@ -126,17 +138,12 @@ class TaskPolicy
      */
     public function update(User $user, Task $task): bool
     {
-        // Admin can update all tasks
-        if ($this->isAdmin($user)) {
-            return true;
-        }
-
-        // Special permission: listed emails can modify any task
+        // President override can modify any task.
         if (self::userHasSpecialTaskPermission($user)) {
             return true;
         }
 
-        // User can update only if they are the assignor (task creator) - old table uses emails
+        // Otherwise only the assignor (task creator) can edit their own task.
         return $task->assignor === $user->email;
     }
 

@@ -152,7 +152,7 @@ class TopDawgSyncController extends Controller
      */
     public function getSalesData(Request $request): JsonResponse
     {
-        if (!Schema::hasTable('topdawg_order_metrics')) {
+        if (! Schema::hasTable('topdawg_order_metrics')) {
             return response()->json([]);
         }
 
@@ -160,6 +160,7 @@ class TopDawgSyncController extends Controller
             $sku = strtoupper(trim((string) $sku));
             $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
             $sku = preg_replace('/\s+/', ' ', $sku);
+
             return $sku;
         };
 
@@ -201,7 +202,6 @@ class TopDawgSyncController extends Controller
             $quantity = $quantity >= 1 ? $quantity : 1;
             $unitPrice = $quantity > 0 ? $amount / $quantity : 0;
             $cogs = $lp * $quantity;
-            // PFT = (price * 0.95 - lp) * quantity (margin 0.95, no ship)
             $pft = ($unitPrice * 0.95 - $lp) * $quantity;
 
             $result[] = [

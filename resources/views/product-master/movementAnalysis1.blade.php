@@ -141,7 +141,7 @@
                 {title: "INV", field: "INV", hozAlign: "right"},
                 // {title: "Total Month", field: "total_months"},
                 {title: "Avg M", field: "monthly_average"},
-                {title: "MOQ", field: "moq"},
+                {title: "MOQ", field: "moq", headerTooltip: "Minimum Order Quantity"},
                 {title: "MSL", field: "msl"},
                 {
                     title: "TOTAL INV AMT", 

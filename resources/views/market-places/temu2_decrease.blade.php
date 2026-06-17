@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Temu 2 Pricing', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Temu 2 - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -67,6 +67,11 @@
             background: none !important;
         }
 
+        .dil-percent-value.purple {
+            color: #d63384 !important;
+            background: none !important;
+        }
+
         .status-circle {
             display: inline-block;
             width: 12px;
@@ -126,14 +131,13 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Temu 2 Pricing',
-        'sub_title' => 'Temu 2 (temu2_daily_data)',
+        'page_title' => 'Temu 2 - Analytics',
+        'sub_title' => '',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Temu 2 Pricing</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Inventory Filter -->
                     <div>
@@ -159,9 +163,8 @@
                         <select id="cvr-filter" class="form-select form-select-sm" style="width: 112px;">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
-                            <option value="0-2">0-2%</option>
-                            <option value="2-4">2-4%</option>
-                            <option value="4-7">4-7%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
                             <option value="7-13">7-13%</option>
                             <option value="13plus">13%+</option>
                         </select>
@@ -174,9 +177,7 @@
                             <option value="lt40">&lt; 40%</option>
                             <option value="40-75">40–75%</option>
                             <option value="75-125">75–125%</option>
-                            <option value="125-175">125–175%</option>
-                            <option value="175-250">175–250%</option>
-                            <option value="gt250">&gt; 250%</option>
+                            <option value="gt125">125%+</option>
                         </select>
                     </div>
 
@@ -285,7 +286,7 @@
                         <i class="fa fa-link"></i> Temu LMP
                     </a>
 
-                    <button id="inc-dec-btn" class="btn btn-sm btn-secondary" title="Cycle: INC / DEC → Decrease → Increase → INC / DEC">
+                    <button id="inc-dec-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         INC / DEC
                     </button>
                     
@@ -297,9 +298,6 @@
                     </button>
                     <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
                         <i class="fa fa-dollar-sign"></i> Up Pricing
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-dark" id="sync-temu2-dataview-btn" title="Copy SPRICE / JSON from temu_data_view into temu2_data_view (e.g. after Temu 2 split). Optional: one SKU only.">
-                        <i class="fa fa-clone"></i> Sync data view (Temu → Temu 2)
                     </button>
                 </div>
 
@@ -336,12 +334,15 @@
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span id="selected-skus-count" class="badge bg-primary">0 SKUs selected</span>
+                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
+                        <span id="discount-type-select-wrap">
                         <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
                             <option value="percentage">Percentage</option>
                             <option value="dollar">Dollar</option>
                         </select>
+                        </span>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
                                placeholder="Enter %" style="width: 150px;" step="0.01" min="0">
                         <button id="apply-discount-btn" class="btn btn-sm btn-warning">
@@ -549,9 +550,8 @@
                             <i class="fa fa-exclamation-triangle me-2"></i>
                             <strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading new data!
                             <br>
-                            <a href="{{ route('temu.addata.sample') }}" class="alert-link">
-                                <i class="fa fa-download"></i> Download Sample File
-                            </a>
+                            <i class="fa fa-info-circle me-1"></i>
+                            Upload the Temu Ads report Excel directly (as exported from Temu).
                         </div>
                     </form>
                 </div>
@@ -802,6 +802,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="temu2EditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="temu2EditLinksSku">
+                    <p class="mb-3"><strong>SKU:</strong> <span id="temu2EditLinksSkuDisplay"></span></p>
+                    <div class="mb-3">
+                        <label for="temu2EditSellerLink" class="form-label">S Link (Seller)</label>
+                        <input type="url" class="form-control" id="temu2EditSellerLink" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label for="temu2EditBuyerLink" class="form-label">B Link (Buyer)</label>
+                        <input type="url" class="form-control" id="temu2EditBuyerLink" placeholder="https://...">
+                    </div>
+                    <div id="temu2EditLinksError" class="text-danger small" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="temu2SaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -811,6 +840,7 @@
     let table = null;
     let decreaseModeActive = false;
     let increaseModeActive = false;
+    let samePriceModeActive = false;
     let selectedSkus = new Set();
     let soldSpriceBlankFilterActive = false;
     let latestAvgViews = 0;
@@ -1599,41 +1629,68 @@
             if (typeof showToast === 'function') showToast('Goods ID copied', 'success');
         });
 
-        // Discount type dropdown change handler
-        $('#discount-type-select').on('change', function() {
-            const discountType = $(this).val();
+        // Swap the discount-input panel between %/$ and Same Price modes.
+        function syncDiscountInputUi() {
             const $input = $('#discount-percentage-input');
-            
-            if (discountType === 'percentage') {
-                $input.attr('placeholder', 'Enter %');
+            if (samePriceModeActive) {
+                $('#discount-type-select-wrap').hide();
+                $('#discount-input-label').removeClass('d-none');
+                $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
+                $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Same Price');
             } else {
-                $input.attr('placeholder', 'Enter $');
+                $('#discount-type-select-wrap').show();
+                $('#discount-input-label').addClass('d-none');
+                const t = $('#discount-type-select').val();
+                $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
+                $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply');
             }
-        });
+        }
 
-        // INC / DEC: one button, cycle neutral → decrease → increase → neutral
+        // Discount type dropdown change handler
+        $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
+
+        // INC / DEC: one button, cycle Off → DEC → INC → SAME → Off
         $('#inc-dec-btn').on('click', function() {
             const selectColumn = table.getColumn('_select');
             const $btn = $(this);
 
-            if (!decreaseModeActive && !increaseModeActive) {
+            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                // Off → DEC
                 decreaseModeActive = true;
+                increaseModeActive = false;
+                samePriceModeActive = false;
                 selectColumn.show();
-                $btn.removeClass('btn-secondary').addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
+                $btn.removeClass('btn-secondary btn-success btn-info').addClass('btn-danger')
+                    .html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
             } else if (decreaseModeActive) {
+                // DEC → INC
                 decreaseModeActive = false;
                 increaseModeActive = true;
-                $btn.removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> INC <i class="fas fa-times ms-1" title="Click again to reset"></i>');
-            } else {
+                samePriceModeActive = false;
+                $btn.removeClass('btn-danger btn-info btn-secondary').addClass('btn-success')
+                    .html('<i class="fas fa-arrow-up"></i> INC <i class="fas fa-times ms-1" title="Click again for SAME"></i>');
+            } else if (increaseModeActive) {
+                // INC → SAME PRICE
+                decreaseModeActive = false;
                 increaseModeActive = false;
+                samePriceModeActive = true;
+                $btn.removeClass('btn-danger btn-success btn-secondary').addClass('btn-info')
+                    .html('<i class="fas fa-equals"></i> SAME <i class="fas fa-times ms-1" title="Click again to reset"></i>');
+            } else {
+                // SAME → Off
+                decreaseModeActive = false;
+                increaseModeActive = false;
+                samePriceModeActive = false;
                 selectColumn.hide();
                 selectedSkus.clear();
                 soldSpriceBlankFilterActive = false;
                 updateSelectedCount();
                 updateSelectAllCheckbox();
                 applyFilters();
-                $btn.removeClass('btn-danger btn-success').addClass('btn-secondary').html('INC / DEC');
+                $btn.removeClass('btn-danger btn-success btn-info').addClass('btn-secondary')
+                    .html('INC / DEC');
             }
+            syncDiscountInputUi();
         });
 
         $(document).on('change', '#select-all-checkbox', function() {
@@ -1706,6 +1763,17 @@
         let missingBadgeFilterActive = false;
         let mapBadgeFilterActive = false;
         let notMapBadgeFilterActive = false;
+
+        // Map tolerance — matches amazon-tabulator-view (amazonInvWithinMapTolerance):
+        // |INV − stock| <= 3 units OR <= 3% of INV. INV <= 0 always counts as mapped.
+        function temuInvWithinMapTolerance(inv, stock) {
+            const invNum = parseFloat(inv) || 0;
+            const stockNum = parseFloat(stock) || 0;
+            if (invNum <= 0) return true;
+            const diff = Math.abs(invNum - stockNum);
+            if (diff <= 3 + 1e-9) return true;
+            return diff <= (invNum * 0.03) + 1e-9;
+        }
 
         $('#zero-sold-count-badge').on('click', function() {
             zeroSoldFilterActive = !zeroSoldFilterActive;
@@ -1829,12 +1897,16 @@
             const rawInput = $('#discount-percentage-input').val();
             const discountValue = parseFloat(String(rawInput).replace(',', '.')) || 0;
             const discountType = $('#discount-type-select').val();
-            
-            if (isNaN(discountValue) || discountValue <= 0) {
-                showToast('Please enter a valid discount value', 'error');
+
+            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                showToast('Turn on Decrease, Increase, or Same Price mode first', 'error');
                 return;
             }
-            if (discountType === 'percentage' && discountValue > 100 && !increaseModeActive) {
+            if (isNaN(discountValue) || discountValue <= 0) {
+                showToast(samePriceModeActive ? 'Please enter a price (e.g. 19.99)' : 'Please enter a valid discount value', 'error');
+                return;
+            }
+            if (!samePriceModeActive && discountType === 'percentage' && discountValue > 100 && !increaseModeActive) {
                 showToast('Discount percentage cannot exceed 100%', 'error');
                 return;
             }
@@ -1853,10 +1925,15 @@
                 const sku = row['sku'];
                 if (selectedSkus.has(sku)) {
                     const currentPrice = parseFloat(row['base_price']) || 0;
-                    if (currentPrice > 0) {
+                    // Same Price applies even when base_price is empty;
+                    // Decrease / Increase modes still need a positive base price to compute.
+                    if (samePriceModeActive || currentPrice > 0) {
                         let newSPrice;
-                        
-                        if (discountType === 'percentage') {
+
+                        if (samePriceModeActive) {
+                            // The ONE price the user typed, applied verbatim to every selected SKU.
+                            newSPrice = Math.max(0.01, discountValue);
+                        } else if (discountType === 'percentage') {
                             if (increaseModeActive) {
                                 newSPrice = currentPrice * (1 + discountValue / 100);
                             } else {
@@ -1869,11 +1946,13 @@
                                 newSPrice = currentPrice - discountValue;
                             }
                         }
-                        
+
                         newSPrice = Math.max(0.01, newSPrice);
                         const originalPrice = currentPrice;
                         newSPrice = roundToRetailPrice(newSPrice);
-                        if (newSPrice.toFixed(2) === originalPrice.toFixed(2)) {
+                        // Only auto-bump to .49 when Decrease/Increase would produce an
+                        // unchanged price. Same Price honors the typed value exactly.
+                        if (!samePriceModeActive && newSPrice.toFixed(2) === originalPrice.toFixed(2)) {
                             newSPrice = roundToRetailPrice49(newSPrice);
                         }
                         const newPriceNum = parseFloat(newSPrice.toFixed(2));
@@ -1893,14 +1972,15 @@
                             tableRow.reformat();
                         }
                         
+                        const actionLabel = samePriceModeActive ? 'Same Price' : (increaseModeActive ? 'Increase' : 'Discount');
                         saveSpriceWithRetry(sku, newPriceNum, tableRow)
                             .then((response) => {
                                 updatedCount++;
                                 if (updatedCount + errorCount === totalSkus) {
                                     if (errorCount === 0) {
-                                        showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s)`, 'success');
+                                        showToast(`${actionLabel} applied to ${updatedCount} SKU(s)`, 'success');
                                     } else {
-                                        showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
+                                        showToast(`${actionLabel} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
                                     }
                                 }
                             })
@@ -1911,7 +1991,7 @@
                                     tableRow.reformat();
                                 }
                                 if (updatedCount + errorCount === totalSkus) {
-                                    showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
+                                    showToast(`${actionLabel} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
                                 }
                             });
                     }
@@ -2186,9 +2266,9 @@
                 const selectColumn = table.getColumn('_select');
                 selectColumn.show();
                 
-                if (!decreaseModeActive && !increaseModeActive) {
+                if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
                     decreaseModeActive = true;
-                    $('#inc-dec-btn').removeClass('btn-secondary').addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
+                    $('#inc-dec-btn').removeClass('btn-secondary btn-info btn-success').addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
                 }
                 
                 if (newlySelectedCount > 0) {
@@ -2338,27 +2418,20 @@
                     zeroSoldCount++;
                 }
                 
-                // Count missing SKUs (only count if INV > 0)
-                if (missing === 'M' && inventory > 0) {
+                const nrReq = (row['nr_req'] || 'REQ').toString().toUpperCase();
+
+                // Missing L: not listed (missing === 'M'), INV > 0, exclude NR/NRL (matches amazon-tabulator-view)
+                if (missing === 'M' && inventory > 0 && nrReq !== 'NR' && nrReq !== 'NRL') {
                     missingCount++;
                 }
-                
-                // Count MAP status - ONLY for items that exist in Temu (not missing)
-                // Tolerance: |INV − Temu Stock| <= 3 counts as mapped (not Missing M)
-                const invTemuDiff2 = Math.abs(inventory - temuStock);
-                if (missing !== 'M' && goodsId && goodsId !== '') {
-                    if (inventory > 0 && temuStock > 0) {
-                        if (inventory === temuStock || invTemuDiff2 <= 3) {
-                            mappedCount++;
-                        } else {
-                            notMappedCount++;
-                        }
-                    } else if (inventory > 0 && temuStock === 0) {
-                        if (invTemuDiff2 > 3) {
-                            notMappedCount++;
-                        } else {
-                            mappedCount++;
-                        }
+
+                // Map / Missing M: REQ, listed, price > 0 — tolerance = |INV − stock| <= 3 OR <= 3% of INV
+                // (mirrors amazonInvWithinMapTolerance + map count conditions)
+                if (inventory > 0 && nrReq === 'REQ' && missing !== 'M' && temuPrice > 0) {
+                    if (temuInvWithinMapTolerance(inventory, temuStock)) {
+                        mappedCount++;
+                    } else {
+                        notMappedCount++;
                     }
                 }
                 
@@ -2469,10 +2542,11 @@
 
         const getRoiColor = (value) => {
             const percent = parseFloat(value);
-            if (percent < 50) return 'red';
-            if (percent >= 50 && percent < 75) return 'yellow';
-            if (percent >= 75 && percent <= 125) return 'green';
-            return 'pink';
+            if (isNaN(percent)) return 'red';
+            if (percent >= 125) return 'purple';
+            if (percent >= 75) return 'green';
+            if (percent >= 40) return 'yellow';
+            return 'red';
         };
 
         let totalCampaignCountFromBackend = 0;
@@ -2540,6 +2614,31 @@
                         if (!sku) return '';
                         
                         return `${sku} <button type="button" class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price trend" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
+                    }
+                },
+                {
+                    title: "Links", field: "links_column", frozen: true, width: 55, hozAlign: "center", headerSort: false,
+                    tooltip: "Double-click to add / edit links",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        const buyerLink = d.buyer_link || '';
+                        const sellerLink = d.seller_link || '';
+                        let html = '<div style="display:flex;flex-direction:column;gap:4px;align-items:center;">';
+                        if (sellerLink) {
+                            html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> S</a>`;
+                        }
+                        if (buyerLink) {
+                            html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> B</a>`;
+                        }
+                        if (!sellerLink && !buyerLink) {
+                            html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                        }
+                        html += '</div>';
+                        return html;
+                    },
+                    cellDblClick: function(e, cell) {
+                        e.stopPropagation();
+                        openTemu2EditLinksModal(cell.getRow());
                     }
                 },
                 {
@@ -2724,24 +2823,17 @@
                         
                         const temuStock = parseFloat(rowData['temu_stock']) || 0;
                         const inv = parseFloat(rowData['inventory']) || 0;
-                        
-                        if (inv > 0 && temuStock === 0) {
-                            if (inv <= 3) {
-                                return '<span style="color: #28a745; font-weight: bold;" title="Within tolerance (≤3)">MP</span>';
+
+                        if (inv > 0) {
+                            // Tolerance: |INV − stock| <= 3 units OR <= 3% of INV (matches amazon-tabulator-view)
+                            if (temuInvWithinMapTolerance(inv, temuStock)) {
+                                return '<span style="color: #28a745; font-weight: bold;" title="Within tolerance (3 units or 3%)">MP</span>';
                             }
-                            return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${inv})</span>`;
+                            const diff = inv - temuStock;
+                            const sign = diff > 0 ? '+' : '';
+                            return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
                         }
-                        
-                        if (inv > 0 && temuStock > 0) {
-                            if (inv === temuStock || Math.abs(inv - temuStock) <= 3) {
-                                return '<span style="color: #28a745; font-weight: bold;" title="Within ≤3: counts as MP">MP</span>';
-                            } else {
-                                const diff = inv - temuStock;
-                                const sign = diff > 0 ? '+' : '';
-                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
-                            }
-                        }
-                        
+
                         return '';
                     }
                 },
@@ -3506,9 +3598,10 @@
                 table.addFilter(function(data) {
                     const groi = parseFloat(data.roi_percent) || 0;
                     if (groiFilter === 'lt40') return groi < 40;
-                    if (groiFilter === 'gt250') return groi > 250;
-                    const [min, max] = groiFilter.split('-').map(Number);
-                    return groi >= min && groi <= max;
+                    if (groiFilter === '40-75') return groi >= 40 && groi < 75;
+                    if (groiFilter === '75-125') return groi >= 75 && groi < 125;
+                    if (groiFilter === 'gt125') return groi >= 125;
+                    return true;
                 });
             }
 
@@ -3519,9 +3612,8 @@
                     const cvrRounded = Math.round(cvr * 100) / 100;
                     
                     if (cvrFilter === '0-0') return cvrRounded === 0;
-                    if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                    if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                    if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                    if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                    if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                     if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                     if (cvrFilter === '13plus') return cvrRounded > 13;
                     return true;
@@ -3627,13 +3719,6 @@
                 });
             }
 
-            // Missing badge filter (clickable badge only - no dropdown)
-            if (missingBadgeFilterActive) {
-                table.addFilter(function(data) {
-                    return data['missing'] === 'M';
-                });
-            }
-
             // 0 Sold badge filter (only INV > 0)
             if (zeroSoldFilterActive) {
                 table.addFilter(function(data) {
@@ -3643,37 +3728,38 @@
                 });
             }
 
-            // Missing badge filter (only INV > 0)
+            // Missing L badge filter — not listed (missing='M'), INV > 0, exclude NR/NRL (matches amazon-tabulator-view)
             if (missingBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
-                    return data['missing'] === 'M' && inv > 0;
+                    const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
+                    return data['missing'] === 'M' && inv > 0 && nrReq !== 'NR' && nrReq !== 'NRL';
                 });
             }
 
-            // Map badge — |INV−Temu Stock| <= 3 counts as mapped
+            // Map badge — REQ, listed, price > 0; within tolerance (3 units OR 3% of INV)
             if (mapBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
                     const missing = data['missing'];
-                    const goodsId = data['goods_id'];
-                    if (missing === 'M' || !goodsId || goodsId === '' || inv === 0) return false;
+                    const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
+                    const price = parseFloat(data['temu_price']) || 0;
+                    if (inv <= 0 || nrReq !== 'REQ' || missing === 'M' || price <= 0) return false;
                     const temuStock = parseFloat(data['temu_stock']) || 0;
-                    if (temuStock < 0) return false;
-                    return Math.abs(inv - temuStock) <= 3;
+                    return temuInvWithinMapTolerance(inv, temuStock);
                 });
             }
 
+            // Missing M badge — REQ, listed, price > 0; NOT within tolerance (3 units OR 3% of INV)
             if (notMapBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
                     const missing = data['missing'];
-                    const goodsId = data['goods_id'];
-                    if (missing === 'M' || !goodsId || goodsId === '' || inv === 0) return false;
+                    const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
+                    const price = parseFloat(data['temu_price']) || 0;
+                    if (inv <= 0 || nrReq !== 'REQ' || missing === 'M' || price <= 0) return false;
                     const temuStock = parseFloat(data['temu_stock']) || 0;
-                    const d = Math.abs(inv - temuStock);
-                    if (d <= 3) return false;
-                    return inv > 0 && (temuStock === 0 || (temuStock > 0 && inv !== temuStock));
+                    return !temuInvWithinMapTolerance(inv, temuStock);
                 });
             }
 
@@ -4063,6 +4149,49 @@
                     }
                     showToast(msg, 'error');
                 }
+            });
+        });
+
+        // ---- Edit B/S Links (double-click on Links cell) ----
+        let temu2EditLinksRow = null;
+        window.openTemu2EditLinksModal = function(row) {
+            if (!row) return;
+            temu2EditLinksRow = row;
+            const d = row.getData();
+            $('#temu2EditLinksSku').val(d.sku);
+            $('#temu2EditLinksSkuDisplay').text(d.sku);
+            $('#temu2EditSellerLink').val(d.seller_link || '');
+            $('#temu2EditBuyerLink').val(d.buyer_link || '');
+            $('#temu2EditLinksError').hide().text('');
+            new bootstrap.Modal(document.getElementById('temu2EditLinksModal')).show();
+        };
+
+        $(document).on('click', '#temu2SaveLinksBtn', function() {
+            const sku = $('#temu2EditLinksSku').val();
+            const sellerLink = $('#temu2EditSellerLink').val().trim();
+            const buyerLink = $('#temu2EditBuyerLink').val().trim();
+            const $err = $('#temu2EditLinksError');
+            $err.hide().text('');
+            const $btn = $(this).prop('disabled', true);
+            $.ajax({
+                url: '/temu2-decrease/save-links',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { sku: sku, seller_link: sellerLink, buyer_link: buyerLink },
+                success: function(res) {
+                    if (temu2EditLinksRow) {
+                        temu2EditLinksRow.update({ seller_link: res.seller_link || '', buyer_link: res.buyer_link || '' })
+                            .then(function() { temu2EditLinksRow.reformat(); })
+                            .catch(function() { temu2EditLinksRow.reformat(); });
+                    }
+                    showToast(sku + ': links saved', 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('temu2EditLinksModal'))?.hide();
+                },
+                error: function(xhr) {
+                    const msg = xhr.responseJSON?.message || 'Failed to save links.';
+                    $err.text(msg).show();
+                },
+                complete: function() { $btn.prop('disabled', false); }
             });
         });
 

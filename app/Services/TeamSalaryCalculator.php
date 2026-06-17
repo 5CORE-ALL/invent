@@ -66,18 +66,20 @@ class TeamSalaryCalculator
         );
     }
 
-    /** @return array{salary_pp: float, increment: float, salary_lm: float, hours_lm: float, other: float, adv_inc_other: float, amount_lm: float, amount_lm_display: int, amount_p: float, amount_p_rounded: float, amount_p_display: int} */
+    /** @return array{salary_pp: float, increment: float, salary_lm: float, hours_lm: float, other: float, adv_inc_other: float, incentive: float, amount_lm: float, amount_lm_display: int, amount_p: float, amount_p_rounded: float, amount_p_display: int} */
     public function calculateFromValues(
         float $hoursLm,
         float $salaryPp,
         float $increment,
         float $other = 0,
-        float $advIncOther = 0
+        float $advIncOther = 0,
+        float $incentive = 0
     ): array {
         $divisor = $this->hoursDivisor();
         $salaryLm = $salaryPp + $increment;
         $amountLm = ($hoursLm * $salaryLm) / $divisor;
-        $amountP = $amountLm + $other - $advIncOther;
+        // Amount = ((Salary PP + Increment) * Hours LM / 200) - Advance + Other + Incentive
+        $amountP = $amountLm - $advIncOther + $other + $incentive;
         $amountPRounded = $this->roundAmountP($amountP);
 
         return [
@@ -87,6 +89,7 @@ class TeamSalaryCalculator
             'hours_lm' => $hoursLm,
             'other' => $other,
             'adv_inc_other' => $advIncOther,
+            'incentive' => $incentive,
             'amount_lm' => $amountLm,
             'amount_lm_display' => (int) round($amountLm),
             'amount_p' => $amountP,

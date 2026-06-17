@@ -16,15 +16,23 @@ use Illuminate\Support\Facades\Cache;
  */
 class SyncEbayCampaignListings extends Command
 {
-    protected $signature   = 'ebay:sync-campaign-listings {--dry-run : Show what would be inserted without writing}';
+    protected $signature   = 'ebay:sync-campaign-listings {--dry-run : Show what would be inserted without writing} {--eligible-only : Skip campaign fetch and only sync eligible (non-campaign) listings} {--bids-only : Skip campaign fetch and eligible sync; only refresh suggested_bid (ES bid) for existing listings}';
     protected $description = 'Sync ALL eBay campaign ad listings into inventory_db.ebay_campaign_ads (no product_master filter)';
 
     public function handle()
     {
         $dryRun = $this->option('dry-run');
+        $eligibleOnly = $this->option('eligible-only');
+        $bidsOnly = $this->option('bids-only');
 
         if ($dryRun) {
             $this->warn('=== DRY RUN — nothing written ===');
+        }
+        if ($eligibleOnly) {
+            $this->warn('=== ELIGIBLE-ONLY — skipping campaign fetch (Step 1) and suggested-bid refresh (Step 3) ===');
+        }
+        if ($bidsOnly) {
+            $this->warn('=== BIDS-ONLY — skipping campaign fetch (Step 1) and eligible sync (Step 2); only refreshing suggested bids (Step 3) ===');
         }
 
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -38,15 +46,17 @@ class SyncEbayCampaignListings extends Command
         }
         $this->info('✓ Token obtained');
 
+        $inserted = 0;
+        $updated  = 0;
+        $skipped  = 0;
+
+        // ── Step 1: Fetch ALL campaigns and their ads (skipped in --eligible-only / --bids-only) ──
+        if (!$eligibleOnly && !$bidsOnly) {
         // Fetch ALL campaigns (paginated)
         $this->info('Fetching all campaigns...');
         $campaigns = $this->fetchAllCampaigns($token);
         $this->info('Found ' . count($campaigns) . ' campaigns.');
         $this->line('');
-
-        $inserted = 0;
-        $updated  = 0;
-        $skipped  = 0;
 
         foreach ($campaigns as $campaign) {
             $campaignId     = $campaign['campaignId']     ?? null;
@@ -115,9 +125,10 @@ class SyncEbayCampaignListings extends Command
                 }
             }
         }
+        } // end Step 1 (!$eligibleOnly)
 
         // ── Step 2: Fetch eligible non-campaign listings from ebay_metrics ──
-        if (!$dryRun) {
+        if (!$dryRun && !$bidsOnly) {
             $this->line('');
             $this->info('🔍 Fetching eligible listings not yet in any campaign...');
 
@@ -208,7 +219,7 @@ class SyncEbayCampaignListings extends Command
         }
 
         // ── Step 3: Fetch suggested_bid for all listings (batch 20 per API call) ──
-        if (!$dryRun) {
+        if (!$dryRun && !$eligibleOnly) {
             $this->line('');
             $this->info('🔍 Fetching suggested bids from Recommendation API (batches of 20)...');
 
@@ -357,7 +368,10 @@ class SyncEbayCampaignListings extends Command
             CURLOPT_POSTFIELDS     => http_build_query([
                 'grant_type'    => 'refresh_token',
                 'refresh_token' => $refreshToken,
-                'scope'         => 'https://api.ebay.com/oauth/api_scope/sell.marketing',
+                // sell.marketing → ad_campaign/ad endpoints (Step 1);
+                // sell.inventory → Recommendation API findListingRecommendations
+                // (Steps 2 & 3). Without sell.inventory those calls return 403.
+                'scope'         => 'https://api.ebay.com/oauth/api_scope/sell.marketing https://api.ebay.com/oauth/api_scope/sell.inventory',
             ]),
             CURLOPT_HTTPHEADER => [
                 'Content-Type: application/x-www-form-urlencoded',

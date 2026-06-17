@@ -73,6 +73,7 @@
             <div class="card shadow-sm">
                 <div class="card-body pb-2 d-flex flex-column">
                     <div class="mb-3 d-flex align-items-center gap-3">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'approval_required'])
                         <!-- Play/Pause Controls -->
                         <div class="d-flex align-items-center me-3">
                             <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
@@ -843,6 +844,7 @@
                 {
                     title: "MOQ",
                     field: "MOQ",
+                    headerTooltip: "Minimum Order Quantity",
                     accessor: row => row["MOQ"],
                     headerSort: false,
                     formatter: function(cell) {

@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Temu Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Temu - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -6,6 +6,53 @@
         <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 
     <style>
+        /* NRP cell — show just a colored dot by default; clicking opens a native
+           <select> that's positioned absolutely on top with opacity:0 so the dropdown
+           menu appears right where the dot is. Same UX/CSS as /forecast.analysis. */
+        .temu-nrp-cell {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 28px;
+            min-width: 44px;
+        }
+        .temu-nrp-cell .temu-nrp-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+        }
+        .temu-nrp-cell .temu-nrp-select {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+            margin: 0 !important;
+            border: 0 !important;
+            padding: 0 !important;
+            background: transparent !important;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        /* Summary Statistics badges — bumped to 1.2x size for readability.
+           Targets every .badge inside #summary-stats so new badges added later
+           pick the size up automatically. fs-6 = 1rem default → 1.2rem here.
+           Padding is also bumped by the same 1.2x to keep proportions, and the
+           container gap is widened slightly so the larger badges don't touch. */
+        #summary-stats .badge {
+            font-size: 1.2rem !important;
+            padding: 0.6rem 0.72rem !important; /* p-2 (.5rem) × 1.2 */
+            line-height: 1.2;
+        }
+        #summary-stats .d-flex.gap-2 {
+            gap: 0.6rem !important; /* matches 1.2× the default gap-2 */
+        }
+
         .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
@@ -64,6 +111,11 @@
 
         .dil-percent-value.pink {
             color: #e83e8c !important;
+            background: none !important;
+        }
+
+        .dil-percent-value.purple {
+            color: #d63384 !important;
             background: none !important;
         }
 
@@ -126,14 +178,13 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Temu Analytics',
-        'sub_title' => 'Temu Analytics',
+        'page_title' => 'Temu - Analytics',
+        'sub_title' => '',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Temu Analytics</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Inventory Filter -->
                     <div>
@@ -153,15 +204,13 @@
                             <option value="10-20">10-20%</option>
                             <option value="20-30">20-30%</option>
                             <option value="30-40">30-40%</option>
-                            <option value="40-50">40-50%</option>
-                            <option value="50plus">Above 50%</option>
+                            <option value="40plus">Above 40%</option>
                         </select>
                         <select id="cvr-filter" class="form-select form-select-sm">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
-                            <option value="0-2">0-2%</option>
-                            <option value="2-4">2-4%</option>
-                            <option value="4-7">4-7%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
                             <option value="7-13">7-13%</option>
                             <option value="13plus">13%+</option>
                         </select>
@@ -174,9 +223,7 @@
                             <option value="lt40">&lt; 40%</option>
                             <option value="40-75">40–75%</option>
                             <option value="75-125">75–125%</option>
-                            <option value="125-175">125–175%</option>
-                            <option value="175-250">175–250%</option>
-                            <option value="gt250">&gt; 250%</option>
+                            <option value="gt125">125%+</option>
                         </select>
                     </div>
 
@@ -242,6 +289,40 @@
                         </select>
                     </div>
 
+                    {{-- Target ROI% bulk control — back-solves SPRICE for selected rows so SROI = Target ROI%. --}}
+                    {{-- stemuPrice = (LP × (1 + ROI%/100) + temu_ship) / margin; then sprice = stemuPrice or stemuPrice − 2.99 (Temu adds a $2.99 ship bumper when sprice ≤ $26.99). --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-roi-controls"
+                        title="Target ROI% — sets SPRICE so the on-page SROI column equals the target (accounts for Temu fees, temu_ship, and the $2.99 ship bumper on prices ≤ $26.99)">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target ROI%:
+                        </label>
+                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply SPRICE'">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save SPRICE so SROI column = Target ROI% for every selected row">
+                            <i class="fas fa-calculator"></i> Apply SPRICE
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves SPRICE for selected rows so SGPRFT = Target GPFT%. --}}
+                    {{-- Formula: stemuPrice = (LP + temu_ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100 (else denominator ≤ 0). --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-gpft-controls"
+                        title="Target GPFT% — sets SPRICE so the on-page SGPRFT column equals the target (accounts for Temu fees, temu_ship, and the $2.99 ship bumper on prices ≤ $26.99)">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target GPFT%:
+                        </label>
+                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply SPRICE'. Must be less than the Temu take-home margin (e.g. < 96%).">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save SPRICE so SGPRFT column = Target GPFT% for every selected row">
+                            <i class="fas fa-calculator"></i> Apply SPRICE
+                        </button>
+                    </div>
+
                     <!-- Ads Req Filter -->
                     <div>
                         <select id="ads-req-filter" class="form-select form-select-sm" style="width: 130px;">
@@ -264,6 +345,18 @@
                             <option value="all">ALL</option>
                             <option value="NRL">NRL</option>
                             <option value="REQ" selected>REQ</option>
+                        </select>
+                    </div>
+
+                    {{-- NRP Filter — filters by the NRP column (mirrors forecast_analysis.nr).
+                         Defaults to ALL; toolbar reads option values that match what's stored
+                         on each row's `nrp` field (REQ / NR / LATER). --}}
+                    <div>
+                        <select id="nrp-filter" class="form-select form-select-sm" style="width: 110px;" title="Filter by NRP">
+                            <option value="all">NRP: ALL</option>
+                            <option value="REQ">REQ</option>
+                            <option value="NR">2BDC</option>
+                            <option value="LATER">LATER</option>
                         </select>
                     </div>
 
@@ -296,9 +389,6 @@
                     <button type="button" class="btn btn-sm btn-success" id="export-btn">
                         <i class="fa fa-download"></i> Export L30
                     </button>
-                    <button type="button" class="btn btn-sm btn-info" id="export-l7-btn">
-                        <i class="fa fa-download"></i> Export L7
-                    </button>
                     <a href="{{ route('temu.tabulator') }}" class="btn btn-sm btn-outline-primary" title="View order-level sales data (Order ID, status, line items)">
                         <i class="fa fa-list-alt"></i> Order Data
                     </a>
@@ -313,22 +403,50 @@
                         <i class="fa fa-link"></i> Temu LMP
                     </a>
 
-                    <button id="inc-dec-btn" class="btn btn-sm btn-secondary" title="Cycle: INC / DEC → Decrease → Increase → INC / DEC">
+                    <button id="inc-dec-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         INC / DEC
                     </button>
                     
-                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
-                        <i class="fa fa-eye"></i> Up View Data
-                    </button>
-                    <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#uploadAdDataModal">
-                        <i class="fa fa-chart-line"></i> Up Ad Data
-                    </button>
-                    <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#uploadRPricingModal">
-                        <i class="fa fa-tags"></i> Up R Pricing
-                    </button>
-                    <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
-                        <i class="fa fa-dollar-sign"></i> Up Pricing
-                    </button>
+                    {{-- All four upload flows merged into a single dropdown.
+                         Each item still opens its own modal via data-bs-toggle="modal";
+                         the modals themselves were not touched. --}}
+                    <div class="dropdown d-inline-block">
+                        <button type="button" class="btn btn-sm btn-primary dropdown-toggle"
+                            id="temuUploadDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Upload Temu data files">
+                            <i class="fa fa-upload"></i> Upload
+                        </button>
+                        <ul class="dropdown-menu shadow-sm" aria-labelledby="temuUploadDropdown">
+                            <li>
+                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                    data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
+                                    <i class="fa fa-eye text-success" style="width: 18px;"></i>
+                                    <span>Up View Data</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                    data-bs-toggle="modal" data-bs-target="#uploadAdDataModal">
+                                    <i class="fa fa-chart-line text-warning" style="width: 18px;"></i>
+                                    <span>Up Ad Data</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                    data-bs-toggle="modal" data-bs-target="#uploadRPricingModal">
+                                    <i class="fa fa-tags text-danger" style="width: 18px;"></i>
+                                    <span>Up R Pricing</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                    data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
+                                    <i class="fa fa-dollar-sign text-info" style="width: 18px;"></i>
+                                    <span>Up Pricing</span>
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
                     <button type="button" id="toggle-ads-columns-btn" class="btn btn-sm btn-secondary">
                         <i class="fa fa-filter"></i> Ads Section
                     </button>
@@ -356,35 +474,6 @@
                         <span class="badge fs-6 p-2 temu-ads-badge" id="temu-avg-acos-badge" data-ads-filter="avg-acos" style="color: black; font-weight: bold; background-color: #ffe69c; cursor: pointer;" title="Click to filter: has spend/sales">Avg ACOS: 0%</span>
                         <span class="badge fs-6 p-2 temu-ads-badge" id="temu-roas-badge" data-ads-filter="roas" style="color: black; font-weight: bold; background-color: #a3cfbb; cursor: pointer;" title="Click to filter: has spend/sales">ROAS: 0.00</span>
                     </div>
-                    <div class="d-flex align-items-center gap-2 mt-2 pt-2 border-top">
-                        <label class="form-label mb-0 me-1 text-nowrap" style="font-size: 0.8rem;"><i class="fa-solid fa-upload me-1"></i>Campaign:</label>
-                        <input type="file" id="temu-l7-upload-file" accept=".xlsx,.xls,.csv" class="form-control form-control-sm d-none" style="width: 0;">
-                        <button type="button" id="temu-l7-upload-btn" class="btn btn-sm btn-primary" title="Upload L7 Report" style="font-size: 0.75rem;">
-                            <i class="fa-solid fa-upload me-1"></i>L7
-                        </button>
-                        <input type="file" id="temu-l30-upload-file" accept=".xlsx,.xls,.csv" class="form-control form-control-sm d-none" style="width: 0;">
-                        <button type="button" id="temu-l30-upload-btn" class="btn btn-sm btn-primary" title="Upload L30 Report" style="font-size: 0.75rem;">
-                            <i class="fa-solid fa-upload me-1"></i>L30
-                        </button>
-                        <input type="file" id="temu-l60-upload-file" accept=".xlsx,.xls,.csv" class="form-control form-control-sm d-none" style="width: 0;">
-                        <button type="button" id="temu-l60-upload-btn" class="btn btn-sm btn-primary" title="Upload L60 Report" style="font-size: 0.75rem;">
-                            <i class="fa-solid fa-upload me-1"></i>L60
-                        </button>
-                        <span id="temu-upload-status-container" class="ms-2" style="font-size: 0.7rem;"></span>
-                    </div>
-                    <div class="d-flex align-items-center gap-2 mt-2 pt-2 border-top">
-                        <label class="form-label mb-0 me-1 text-nowrap" style="font-size: 0.8rem;"><i class="fa-solid fa-upload me-1"></i>Sales:</label>
-                        <input type="file" id="temu-l7-sales-upload-file" accept=".xlsx,.xls,.csv" class="form-control form-control-sm d-none" style="width: 0;">
-                        <button type="button" id="temu-l7-sales-upload-btn" class="btn btn-sm btn-info" title="Upload L7 Sales (same format as L30)" style="font-size: 0.75rem;">
-                            <i class="fa-solid fa-upload me-1"></i>L7 Sales
-                        </button>
-                        <input type="file" id="temu-l60-sales-upload-file" accept=".xlsx,.xls,.csv" class="form-control form-control-sm d-none" style="width: 0;">
-                        <button type="button" id="temu-l60-sales-upload-btn" class="btn btn-sm btn-success" title="Upload L60 Sales (order data, same format as L30)" style="font-size: 0.75rem;">
-                            <i class="fa-solid fa-upload me-1"></i>L60 Sales
-                        </button>
-                        <span id="temu-l7-sales-upload-status" class="ms-2" style="font-size: 0.7rem;"></span>
-                        <span id="temu-l60-sales-upload-status" class="ms-2" style="font-size: 0.7rem;"></span>
-                    </div>
                 </div>
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
@@ -394,14 +483,15 @@
                         <!-- Basic Counts (sales summary = same as tabulator sales page) -->
                         <span class="badge bg-success fs-6 p-2 temu-badge-history" id="total-revenue-badge" data-badge-metric="total_sales" data-badge-label="Sales" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">Sales: $0</span>
                         <span class="badge bg-primary fs-6 p-2 temu-badge-history" id="total-orders-badge" data-badge-metric="total_orders" data-badge-label="Orders" style="color: white; font-weight: bold; cursor: pointer;" title="Click to view history">Orders: 0</span>
-                        <span class="badge bg-primary fs-6 p-2 temu-badge-history" id="total-products-badge" data-badge-metric="sku_count" data-badge-label="SKU" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">SKU: 0</span>
                         <span class="badge bg-success fs-6 p-2 temu-badge-history" id="total-quantity-badge" data-badge-metric="total_quantity" data-badge-label="QTY" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">QTY: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items (INV>0)">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; background-color: #dc3545; cursor: pointer;" title="Click to filter missing SKUs (INV>0)">Missing L: 0</span>
                         <span class="badge fs-6 p-2" id="not-mapped-count-badge" style="color: white; font-weight: bold; background-color: #dc3545; cursor: pointer;" title="Click to filter not mapped SKUs (INV>0)">Missing M: 0</span>
+                        {{-- Red Alert badge: rows where Temu Price < Amazon × 0.85 OR Temu Price < eBay × 0.90.
+                             Click to toggle filtering to just those rows. Computed via temuIsRedAlert(rd). --}}
+                        <span class="badge fs-6 p-2" id="temu-red-alert-badge" style="color: white; font-weight: bold; background-color: #a00211; cursor: pointer;" title="Click to filter Red Alert rows: Temu Price &lt; Amazon × 0.85 OR &lt; eBay 1 × 0.90 OR &lt; eBay 2 × 0.90">Red Alert: 0</span>
                         
                         <!-- Pricing & Performance -->
-                        <span class="badge bg-info fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">AVG: $0.00</span>
                         <span class="badge bg-warning fs-6 p-2 temu-badge-history" id="avg-cvr-badge" data-badge-metric="avg_cvr_pct" data-badge-label="CVR %" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">CVR: 0.0%</span>
                         
                         <!-- Financial Totals -->
@@ -428,12 +518,15 @@
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span id="selected-skus-count" class="badge bg-primary">0 SKUs selected</span>
+                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
+                        <span id="discount-type-select-wrap">
                         <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
                             <option value="percentage">Percentage</option>
                             <option value="dollar">Dollar</option>
                         </select>
+                        </span>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
                                placeholder="Enter %" style="width: 150px;" step="0.01" min="0">
                         <button id="apply-discount-btn" class="btn btn-sm btn-warning">
@@ -641,9 +734,8 @@
                             <i class="fa fa-exclamation-triangle me-2"></i>
                             <strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading new data!
                             <br>
-                            <a href="{{ route('temu.addata.sample') }}" class="alert-link">
-                                <i class="fa fa-download"></i> Download Sample File
-                            </a>
+                            <i class="fa fa-info-circle me-1"></i>
+                            Upload the Temu Ads report Excel directly (as exported from Temu).
                         </div>
                     </form>
                 </div>
@@ -894,14 +986,47 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="temuEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="temuEditLinksSku">
+                    <p class="mb-3"><strong>SKU:</strong> <span id="temuEditLinksSkuDisplay"></span></p>
+                    <div class="mb-3">
+                        <label for="temuEditSellerLink" class="form-label">S Link (Seller)</label>
+                        <input type="url" class="form-control" id="temuEditSellerLink" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label for="temuEditBuyerLink" class="form-label">B Link (Buyer)</label>
+                        <input type="url" class="form-control" id="temuEditBuyerLink" placeholder="https://...">
+                    </div>
+                    <div id="temuEditLinksError" class="text-danger small" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="temuSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
 <script>
     const COLUMN_VIS_KEY = "temu_decrease_column_visibility";
+    /** Stored in DB table channel_tabulator_column_settings (shared across all users — same pattern as amazon/ebay1/ebay2/ebay3/mfrg tabulators). */
+    const TABULATOR_COLUMN_CHANNEL = 'temu_decrease';
+    const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
     let table = null;
     let decreaseModeActive = false;
     let increaseModeActive = false;
+    let samePriceModeActive = false;
     let selectedSkus = new Set();
     let soldSpriceBlankFilterActive = false;
     let latestAvgViews = 0;
@@ -1690,41 +1815,68 @@
             if (typeof showToast === 'function') showToast('Goods ID copied', 'success');
         });
 
-        // Discount type dropdown change handler
-        $('#discount-type-select').on('change', function() {
-            const discountType = $(this).val();
+        // Swap the discount-input panel between %/$ and Same Price modes.
+        function syncDiscountInputUi() {
             const $input = $('#discount-percentage-input');
-            
-            if (discountType === 'percentage') {
-                $input.attr('placeholder', 'Enter %');
+            if (samePriceModeActive) {
+                $('#discount-type-select-wrap').hide();
+                $('#discount-input-label').removeClass('d-none');
+                $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
+                $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Same Price');
             } else {
-                $input.attr('placeholder', 'Enter $');
+                $('#discount-type-select-wrap').show();
+                $('#discount-input-label').addClass('d-none');
+                const t = $('#discount-type-select').val();
+                $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
+                $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply');
             }
-        });
+        }
 
-        // INC / DEC: one button, cycle neutral → decrease → increase → neutral
+        // Discount type dropdown change handler
+        $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
+
+        // INC / DEC: one button, cycle Off → DEC → INC → SAME → Off
         $('#inc-dec-btn').on('click', function() {
             const selectColumn = table.getColumn('_select');
             const $btn = $(this);
 
-            if (!decreaseModeActive && !increaseModeActive) {
+            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                // Off → DEC
                 decreaseModeActive = true;
+                increaseModeActive = false;
+                samePriceModeActive = false;
                 selectColumn.show();
-                $btn.removeClass('btn-secondary').addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
+                $btn.removeClass('btn-secondary btn-success btn-info').addClass('btn-danger')
+                    .html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
             } else if (decreaseModeActive) {
+                // DEC → INC
                 decreaseModeActive = false;
                 increaseModeActive = true;
-                $btn.removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> INC <i class="fas fa-times ms-1" title="Click again to reset"></i>');
-            } else {
+                samePriceModeActive = false;
+                $btn.removeClass('btn-danger btn-info btn-secondary').addClass('btn-success')
+                    .html('<i class="fas fa-arrow-up"></i> INC <i class="fas fa-times ms-1" title="Click again for SAME"></i>');
+            } else if (increaseModeActive) {
+                // INC → SAME PRICE
+                decreaseModeActive = false;
                 increaseModeActive = false;
+                samePriceModeActive = true;
+                $btn.removeClass('btn-danger btn-success btn-secondary').addClass('btn-info')
+                    .html('<i class="fas fa-equals"></i> SAME <i class="fas fa-times ms-1" title="Click again to reset"></i>');
+            } else {
+                // SAME → Off
+                decreaseModeActive = false;
+                increaseModeActive = false;
+                samePriceModeActive = false;
                 selectColumn.hide();
                 selectedSkus.clear();
                 soldSpriceBlankFilterActive = false;
                 updateSelectedCount();
                 updateSelectAllCheckbox();
                 applyFilters();
-                $btn.removeClass('btn-danger btn-success').addClass('btn-secondary').html('INC / DEC');
+                $btn.removeClass('btn-danger btn-success btn-info').addClass('btn-secondary')
+                    .html('INC / DEC');
             }
+            syncDiscountInputUi();
         });
 
         $(document).on('change', '#select-all-checkbox', function() {
@@ -1790,6 +1942,256 @@
             }
         });
 
+        /*
+         * ============================================================================
+         * Target ROI% / Target GPFT% bulk apply for SPRICE  (Temu Decrease)
+         * ----------------------------------------------------------------------------
+         * Pick rows, type a target %, click Apply SPRICE → back-solve the desired
+         * S Temu Price (the displayed selling price) so the on-page SROI / SGPRFT
+         * column equals the target after Temu margin + temu_ship are paid out, then
+         * derive what `sprice` to store using the inverse of the backend's $2.99
+         * ship bumper:
+         *
+         *   - target S Temu Price ≤ 29.98  →  sprice = stemuPrice − 2.99
+         *     (backend adds the 2.99 back; final stemuPrice matches the target,
+         *      so SROI / SGPRFT land exactly on the target value)
+         *   - target S Temu Price >  29.98  →  sprice = stemuPrice  (no bumper)
+         *
+         * Backend math (mirrors saveTemuSprice):
+         *   SROI%   = ((stemuPrice * margin − lp − temu_ship) / lp)         * 100
+         *      -> stemuPrice = (lp * (1 + roi%/100) + temu_ship) / margin
+         *   SGPRFT% = ((stemuPrice * margin − lp − temu_ship) / stemuPrice) * 100
+         *      -> stemuPrice = (lp + temu_ship) / (margin − gpft%/100)
+         *      Constraint: (margin − gpft%/100) must be > 0 (else infinite/neg price).
+         *
+         * `margin` is per-row (rowData.percentage, same value the backend GROI calc
+         * uses). Falls back to TEMU_MARGIN_FALLBACK only when missing.
+         *
+         * All POSTs go through the existing /temu-pricing/save-sprice endpoint so
+         * SGPRFT / SROI get recomputed server-side exactly like an inline SPRICE
+         * edit. Selection is cleared after each batch so the next run starts fresh.
+         * ============================================================================
+         */
+        // Temu margin fallback used both for back-solve and skip-decisions. 0.96 matches
+        // the backend default when MarketplacePercentage 'TemuTwo' has no row.
+        const TEMU_MARGIN_FALLBACK = 0.96;
+
+        // Inverse of the backend's `stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice`
+        // transformation: returns the sprice that would produce `desiredStemuPrice`
+        // after the backend applies its bumper. Used so the SPRICE column ends up at
+        // `target − 2.99` for low targets and the displayed S Temu Price lands exactly
+        // on the target.
+        function temuStemuPriceToSprice(desiredStemuPrice) {
+            if (!isFinite(desiredStemuPrice) || desiredStemuPrice <= 0) return null;
+            if (desiredStemuPrice <= 29.98) {
+                const sprice = +(desiredStemuPrice - 2.99).toFixed(2);
+                if (sprice <= 0) return null;
+                return sprice;
+            }
+            return +desiredStemuPrice.toFixed(2);
+        }
+
+        /**
+         * Red Alert rule — flag rows where the live Temu price is unprofitably below
+         * the comparison prices on Amazon / eBay 1 / eBay 2. Used both by the Temu
+         * Price column formatter (to color the cell red) and the Red Alert toolbar
+         * badge filter so the two surfaces never disagree.
+         *
+         *   Red when:  temuPrice  <  Amazon × 0.85
+         *         OR   temuPrice  <  eBay 1 × 0.90
+         *         OR   temuPrice  <  eBay 2 × 0.90
+         *
+         * `temuPrice` mirrors the same $2.99-bumper rule used elsewhere in this view
+         * (basePrice ≤ 26.99 ? basePrice + 2.99 : basePrice). Rows without a base
+         * price, or without any Amazon / eBay reference price to compare against,
+         * are never red.
+         */
+        function temuIsRedAlert(rd) {
+            if (!rd) return false;
+            const base = parseFloat(rd['base_price']) || 0;
+            if (base <= 0) return false;
+            const temuPrice = base <= 26.99 ? base + 2.99 : base;
+            const amz = parseFloat(rd['a_price']) || 0;
+            const e   = parseFloat(rd['e_price']) || 0;
+            const e2  = parseFloat(rd['e2_price']) || 0;
+            const underAmz = amz > 0 && temuPrice < amz * 0.85;
+            const underE   = e   > 0 && temuPrice < e   * 0.90;
+            const underE2  = e2  > 0 && temuPrice < e2  * 0.90;
+            return underAmz || underE || underE2;
+        }
+
+        // Reveal the row-select checkbox column on demand. It's `visible: false` in the
+        // Tabulator config and the INC/DEC button is what normally shows it — but the
+        // Target ROI% / Target GPFT% flow needs the same checkboxes, so we call this from
+        // input focus + the Apply handler to make sure users can actually pick rows.
+        function temuEnsureSelectColumnVisible() {
+            if (!table) return;
+            const selectCol = table.getColumn('_select');
+            if (selectCol && !selectCol.isVisible()) {
+                selectCol.show();
+            }
+        }
+
+        // Show the select column as soon as the user interacts with either Target input
+        // (clicking, focusing, or typing), so checkboxes are already visible by the time
+        // they want to pick rows.
+        $('#target-roi-input, #target-gpft-input, #apply-target-roi-btn, #apply-target-gpft-btn')
+            .on('focus click', temuEnsureSelectColumnVisible);
+
+        function temuApplyTargetSpriceBatch(opts) {
+            // opts: { label, $btn, btnHtml, computeStemuPrice(rd) -> {stemuPrice, skipReason?} }
+            //   `stemuPrice` is the desired displayed S Temu Price (back-solved against
+            //   the target %). It runs through temuStemuPriceToSprice(...) so we end up
+            //   storing `sprice = stemuPrice − 2.99` for low prices (≤ 29.98) and
+            //   `sprice = stemuPrice` for higher prices — letting the backend's $2.99
+            //   bumper land the final S Temu Price exactly on the target.
+            const $btn = opts.$btn;
+
+            // Safety net: ensure the select column is visible even if the focus listeners
+            // above didn't fire (e.g. button focused programmatically).
+            temuEnsureSelectColumnVisible();
+
+            if (typeof selectedSkus === 'undefined' || selectedSkus.size === 0) {
+                showToast('Tick the checkboxes on the left to select SKUs first', 'error');
+                return;
+            }
+
+            const rowsToProcess = [];
+            const skipped = [];
+            table.getRows().forEach(function(r) {
+                const rd = r.getData();
+                const sku = rd['sku'];
+                if (!sku || !selectedSkus.has(sku)) return;
+                const res = opts.computeStemuPrice(rd);
+                if (!res || res.skipReason) {
+                    if (res && res.skipReason) skipped.push({ sku: sku, reason: res.skipReason });
+                    return;
+                }
+                const sprice = temuStemuPriceToSprice(res.stemuPrice);
+                if (sprice == null || !isFinite(sprice) || sprice <= 0) return;
+                rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
+            });
+
+            if (rowsToProcess.length === 0) {
+                if (skipped.length > 0) {
+                    showToast(`Cannot apply: ${skipped[0].reason}`, 'error');
+                } else {
+                    showToast('No selected rows have a usable LP > 0', 'warning');
+                }
+                return;
+            }
+
+            let confirmMsg = `Compute & save SPRICE for ${rowsToProcess.length} selected SKU(s) using ${opts.label}?`;
+            if (skipped.length > 0) {
+                confirmMsg += `\n\nNote: ${skipped.length} row(s) will be skipped (${skipped[0].reason}).`;
+            }
+            if (!confirm(confirmMsg)) return;
+
+            let successCount = 0;
+            let errorCount = 0;
+            const total = rowsToProcess.length;
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+
+            rowsToProcess.forEach(function(item) {
+                $.ajax({
+                    url: '/temu-pricing/save-sprice',
+                    method: 'POST',
+                    data: {
+                        sku: item.sku,
+                        sprice: item.sprice,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        successCount++;
+                        // Field names match the existing saveSpriceWithRetry update payload.
+                        item.row.update({
+                            sprice: item.sprice,
+                            sgprft_percent: response.sgprft_percent,
+                            sroi_percent: response.sroi_percent,
+                            sprice_status: 'saved'
+                        });
+                        item.row.reformat();
+                    },
+                    error: function() { errorCount++; },
+                    complete: function() {
+                        if (successCount + errorCount === total) {
+                            $btn.prop('disabled', false).html(opts.btnHtml);
+                            if (errorCount === 0) {
+                                showToast(`SPRICE saved for ${successCount} SKU(s) @ ${opts.label}`, 'success');
+                            } else {
+                                showToast(`Saved ${successCount} of ${total} (${errorCount} failed)`, 'error');
+                            }
+                            // Wipe selection so the next batch starts clean.
+                            selectedSkus.clear();
+                            $('.sku-select-checkbox').prop('checked', false);
+                            $('#select-all-checkbox').prop('checked', false);
+                            if (typeof updateSelectedCount === 'function') {
+                                updateSelectedCount();
+                            }
+                        }
+                    }
+                });
+            });
+        }
+
+        // Target ROI%
+        $('#apply-target-roi-btn').on('click', function() {
+            const $btn = $(this);
+            const raw = $('#target-roi-input').val();
+            const targetRoiPct = parseFloat(String(raw).replace(',', '.'));
+            if (raw === '' || raw == null) { showToast('Please enter a Target ROI%', 'error'); return; }
+            if (!isFinite(targetRoiPct)) { showToast('Target ROI% must be a number', 'error'); return; }
+            const roiMultiplier = 1 + (targetRoiPct / 100);
+            temuApplyTargetSpriceBatch({
+                label: `Target ROI ${targetRoiPct}%`,
+                $btn: $btn,
+                btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
+                computeStemuPrice: function(rd) {
+                    const lp = parseFloat(rd.lp) || 0;
+                    if (lp <= 0) return null;
+                    const temuShip = parseFloat(rd.temu_ship) || 0;
+                    // Use per-row margin (same as backend GROI calc) so the post-save SROI
+                    // lines up. Falls back to the global default if the row didn't carry it.
+                    const marginRaw = parseFloat(rd.percentage);
+                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN_FALLBACK;
+                    return { stemuPrice: (lp * roiMultiplier + temuShip) / margin };
+                }
+            });
+        });
+        $('#target-roi-input').on('keypress', function(e) {
+            if (e.which === 13) $('#apply-target-roi-btn').click();
+        });
+
+        // Target GPFT%
+        $('#apply-target-gpft-btn').on('click', function() {
+            const $btn = $(this);
+            const raw = $('#target-gpft-input').val();
+            const targetGpftPct = parseFloat(String(raw).replace(',', '.'));
+            if (raw === '' || raw == null) { showToast('Please enter a Target GPFT%', 'error'); return; }
+            if (!isFinite(targetGpftPct)) { showToast('Target GPFT% must be a number', 'error'); return; }
+            const targetFraction = targetGpftPct / 100;
+            temuApplyTargetSpriceBatch({
+                label: `Target GPFT ${targetGpftPct}%`,
+                $btn: $btn,
+                btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
+                computeStemuPrice: function(rd) {
+                    const lp = parseFloat(rd.lp) || 0;
+                    if (lp <= 0) return null;
+                    const temuShip = parseFloat(rd.temu_ship) || 0;
+                    const marginRaw = parseFloat(rd.percentage);
+                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN_FALLBACK;
+                    const denom = margin - targetFraction;
+                    if (denom <= 0) {
+                        return { skipReason: `Target GPFT% ${targetGpftPct}% \u2265 Temu take-home margin (~${Math.round(margin * 100)}%)` };
+                    }
+                    return { stemuPrice: (lp + temuShip) / denom };
+                }
+            });
+        });
+        $('#target-gpft-input').on('keypress', function(e) {
+            if (e.which === 13) $('#apply-target-gpft-btn').click();
+        });
+
         // Badge click handlers for filtering
         let zeroSoldFilterActive = false;
         let lessAmzFilterActive = false;
@@ -1797,9 +2199,20 @@
         let missingBadgeFilterActive = false;
         let mapBadgeFilterActive = false;
         let notMapBadgeFilterActive = false;
+        let redAlertFilterActive = false;
 
         $('#zero-sold-count-badge').on('click', function() {
             zeroSoldFilterActive = !zeroSoldFilterActive;
+            applyFilters();
+        });
+
+        // Red Alert badge toggle — filters to only rows where temuIsRedAlert(rd) is true.
+        // Highlights the badge with a yellow outline while active so users see at a glance
+        // that a filter is on (matches the visual cue used elsewhere on this page).
+        $('#temu-red-alert-badge').on('click', function() {
+            redAlertFilterActive = !redAlertFilterActive;
+            $(this).css('outline', redAlertFilterActive ? '3px solid #ffc107' : '');
+            $(this).css('outline-offset', redAlertFilterActive ? '2px' : '');
             applyFilters();
         });
 
@@ -1920,12 +2333,16 @@
             const rawInput = $('#discount-percentage-input').val();
             const discountValue = parseFloat(String(rawInput).replace(',', '.')) || 0;
             const discountType = $('#discount-type-select').val();
-            
-            if (isNaN(discountValue) || discountValue <= 0) {
-                showToast('Please enter a valid discount value', 'error');
+
+            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                showToast('Turn on Decrease, Increase, or Same Price mode first', 'error');
                 return;
             }
-            if (discountType === 'percentage' && discountValue > 100 && !increaseModeActive) {
+            if (isNaN(discountValue) || discountValue <= 0) {
+                showToast(samePriceModeActive ? 'Please enter a price (e.g. 19.99)' : 'Please enter a valid discount value', 'error');
+                return;
+            }
+            if (!samePriceModeActive && discountType === 'percentage' && discountValue > 100 && !increaseModeActive) {
                 showToast('Discount percentage cannot exceed 100%', 'error');
                 return;
             }
@@ -1944,10 +2361,15 @@
                 const sku = row['sku'];
                 if (selectedSkus.has(sku)) {
                     const currentPrice = parseFloat(row['base_price']) || 0;
-                    if (currentPrice > 0) {
+                    // Same Price applies even when base_price is empty;
+                    // Decrease / Increase modes still need a positive base price to compute.
+                    if (samePriceModeActive || currentPrice > 0) {
                         let newSPrice;
-                        
-                        if (discountType === 'percentage') {
+
+                        if (samePriceModeActive) {
+                            // The ONE price the user typed, applied verbatim to every selected SKU.
+                            newSPrice = Math.max(0.01, discountValue);
+                        } else if (discountType === 'percentage') {
                             if (increaseModeActive) {
                                 newSPrice = currentPrice * (1 + discountValue / 100);
                             } else {
@@ -1960,11 +2382,14 @@
                                 newSPrice = currentPrice - discountValue;
                             }
                         }
-                        
+
                         newSPrice = Math.max(0.01, newSPrice);
                         const originalPrice = currentPrice;
                         newSPrice = roundToRetailPrice(newSPrice);
-                        if (newSPrice.toFixed(2) === originalPrice.toFixed(2)) {
+                        // Only auto-bump to .49 when the computed price equals the source price
+                        // (avoids producing a blank SPRC after Decrease/Increase). Same Price honors
+                        // the typed value exactly (rounded by retail .99 only when >= $20.99).
+                        if (!samePriceModeActive && newSPrice.toFixed(2) === originalPrice.toFixed(2)) {
                             newSPrice = roundToRetailPrice49(newSPrice);
                         }
                         const newPriceNum = parseFloat(newSPrice.toFixed(2));
@@ -1984,14 +2409,15 @@
                             tableRow.reformat();
                         }
                         
+                        const actionLabel = samePriceModeActive ? 'Same Price' : (increaseModeActive ? 'Increase' : 'Discount');
                         saveSpriceWithRetry(sku, newPriceNum, tableRow)
                             .then((response) => {
                                 updatedCount++;
                                 if (updatedCount + errorCount === totalSkus) {
                                     if (errorCount === 0) {
-                                        showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s)`, 'success');
+                                        showToast(`${actionLabel} applied to ${updatedCount} SKU(s)`, 'success');
                                     } else {
-                                        showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
+                                        showToast(`${actionLabel} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
                                     }
                                 }
                             })
@@ -2002,7 +2428,7 @@
                                     tableRow.reformat();
                                 }
                                 if (updatedCount + errorCount === totalSkus) {
-                                    showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
+                                    showToast(`${actionLabel} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
                                 }
                             });
                     }
@@ -2275,9 +2701,9 @@
                 const selectColumn = table.getColumn('_select');
                 selectColumn.show();
                 
-                if (!decreaseModeActive && !increaseModeActive) {
+                if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
                     decreaseModeActive = true;
-                    $('#inc-dec-btn').removeClass('btn-secondary').addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
+                    $('#inc-dec-btn').removeClass('btn-secondary btn-info btn-success').addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
                 }
                 
                 if (newlySelectedCount > 0) {
@@ -2338,8 +2764,6 @@
             
             let totalProducts = data.length;
             let totalQuantity = 0;
-            let totalPriceWeighted = 0;
-            let totalQty = 0;
             let totalRevenue = 0;
             let totalProfit = 0;
             let totalLp = 0;
@@ -2363,6 +2787,7 @@
             let notMappedCount = 0;
             let lessAmzCount = 0;
             let moreAmzCount = 0;
+            let redAlertCount = 0;
             
             data.forEach(row => {
                 const temuL30 = parseInt(row['temu_l30']) || 0;
@@ -2372,8 +2797,6 @@
                 const temuShip = parseFloat(row['temu_ship']) || 0;
 
                 totalQuantity += temuL30;
-                totalPriceWeighted += price * temuL30;
-                totalQty += temuL30;
 
                 // Only include rows with sales (Temu L30 > 0 and basePrice > 0) in PFT/revenue/COGS
                 // Match marketplace_daily_metrics calculation: fbPrice = (basePrice * quantity < 27) ? basePrice + 2.99 : basePrice
@@ -2423,6 +2846,7 @@
                 const missing = row['missing'];
                 const goodsId = row['goods_id'];
                 const temuStock = parseFloat(row['temu_stock']) || 0;
+                const nrReq = (row['nr_req'] || 'REQ').toString().toUpperCase();
                 
                 totalInv += parseInt(row['inventory']) || 0;
                 
@@ -2431,28 +2855,31 @@
                     zeroSoldCount++;
                 }
                 
-                // Count missing SKUs (only count if INV > 0)
-                if (missing === 'M' && inventory > 0) {
+                // Missing L: not listed (missing='M'), INV > 0, REQ only — same rule as /map-issues.
+                if (missing === 'M' && inventory > 0 && nrReq === 'REQ') {
                     missingCount++;
                 }
+
+                // Red Alert: same rule the formatter uses (Temu Price < Amazon × 0.85
+                // or < eBay × 0.90). Count drives the toolbar badge.
+                if (temuIsRedAlert(row)) {
+                    redAlertCount++;
+                }
                 
-                // Count MAP status - ONLY for items that exist in Temu (not missing)
-                // Skip missing items - same logic as eBay (only count if exists in marketplace)
-                // Tolerance: |INV − Temu Stock| <= 3 counts as mapped (not Missing M)
-                const invTemuDiff = Math.abs(inventory - temuStock);
-                if (missing !== 'M' && goodsId && goodsId !== '') {
-                    if (inventory > 0 && temuStock > 0) {
-                        if (inventory === temuStock || invTemuDiff <= 3) {
-                            mappedCount++; // MP (Mapped) or within tolerance
-                        } else {
-                            notMappedCount++; // N MP (Not Mapped - mismatch)
-                        }
-                    } else if (inventory > 0 && temuStock === 0) {
-                        if (invTemuDiff > 3) {
-                            notMappedCount++; // N MP (Not Mapped - no Temu stock)
-                        } else {
-                            mappedCount++;
-                        }
+                // Map / Missing M (N Map): listed, REQ, both sides with stock — same rule as /map-issues.
+                // Tolerance: < 3 units when 3% of INV < 3, else rounded % > 3.
+                if (missing !== 'M' && goodsId && goodsId !== '' && nrReq === 'REQ' && inventory > 0 && temuStock > 0) {
+                    const invTemuDiff = Math.abs(inventory - temuStock);
+                    let isNotMap;
+                    if (inventory * 0.03 < 3) {
+                        isNotMap = invTemuDiff > 3;
+                    } else {
+                        isNotMap = Math.round((invTemuDiff / inventory) * 100) > 3;
+                    }
+                    if (isNotMap) {
+                        notMappedCount++; // N MP (Not Mapped - mismatch)
+                    } else {
+                        mappedCount++; // MP (Mapped) or within tolerance
                     }
                 }
                 
@@ -2470,7 +2897,6 @@
             });
             
             // Calculate averages
-            const avgPrice = totalQty > 0 ? totalPriceWeighted / totalQty : 0;
             // Avg GPRFT% = (Total Profit / Total Revenue) * 100 — profit from PFT formula (Temu Price * 0.96 - lp - temuship) / Temu Price
             const avgGprft = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : (totalProducts > 0 ? totalGprft / totalProducts : 0);
             // Weighted GROI% = (Total Profit / Total LP/COGS) × 100
@@ -2531,24 +2957,23 @@
                 $('#total-quantity-badge').text('QTY: ' + totalQuantity.toLocaleString());
                 $('#total-revenue-badge').text('Sales: $' + Math.round(totalRevenue).toLocaleString());
             }
-            $('#total-products-badge').text('SKU: ' + totalProducts.toLocaleString());
             $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
             $('#missing-count-badge').text('Missing L: ' + missingCount.toLocaleString());
             $('#not-mapped-count-badge').text('Missing M: ' + notMappedCount.toLocaleString());
-            $('#avg-price-badge').text('AVG: $' + avgPrice.toFixed(2));
+            $('#temu-red-alert-badge').text('Red Alert: ' + redAlertCount.toLocaleString());
             $('#avg-cvr-badge').text('CVR: ' + qtyPerViews.toFixed(1) + '%');
             $('#avg-dil-badge').text('Avg DIL: ' + Math.round(avgDil) + '%');
             // Total Revenue badge set above from sales_summary or table
             $('#total-profit-badge').text('PFT: $' + Math.round(totalProfit).toLocaleString());
             $('#total-lp-badge').text('Total LP: $' + Math.round(totalLp).toLocaleString());
-            $('#avg-gprft-badge').text('GPFT: ' + avgGprft.toFixed(1) + '%');
+            $('#avg-gprft-badge').text('GPFT: ' + Math.round(avgGprft) + '%');
             $('#avg-groi-badge').text('GROI: ' + Math.round(avgGroi) + '%');
-            $('#total-spend-badge').text('Spend: $' + totalSpend.toFixed(2));
+            $('#total-spend-badge').text('Spend: $' + Math.round(totalSpend).toLocaleString());
             // Use badgeAvgAds (aggregate Ads% from backend) for badge display (matches all-marketplace-master)
             const displayAdsPercent = (badgeAvgAds != null) ? badgeAvgAds : adsPercentForNpft;
             $('#avg-ads-badge').text('Ads: ' + displayAdsPercent.toFixed(1) + '%');
-            $('#avg-npft-badge').text('NPFT: ' + avgNpft.toFixed(1) + '%');
-            $('#avg-nroi-badge').text('NROI: ' + avgNroi.toFixed(1) + '%');
+            $('#avg-npft-badge').text('NPFT: ' + Math.round(avgNpft) + '%');
+            $('#avg-nroi-badge').text('NROI: ' + Math.round(avgNroi) + '%');
             $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
             $('#avg-views-badge').text('AVG views: ' + Math.round(avgViews));
         }
@@ -2650,10 +3075,11 @@
 
         const getRoiColor = (value) => {
             const percent = parseFloat(value);
-            if (percent < 50) return 'red';
-            if (percent >= 50 && percent < 75) return 'yellow';
-            if (percent >= 75 && percent <= 125) return 'green';
-            return 'pink';
+            if (isNaN(percent)) return 'red';
+            if (percent >= 125) return 'purple';
+            if (percent >= 75) return 'green';
+            if (percent >= 40) return 'yellow';
+            return 'red';
         };
 
         let totalCampaignCountFromBackend = 0;
@@ -2724,11 +3150,39 @@
                     }
                 },
                 {
+                    title: "Links", field: "links_column", frozen: true, width: 55, hozAlign: "center", headerSort: false,
+                    tooltip: "Double-click to add / edit links",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        const buyerLink = d.buyer_link || '';
+                        const sellerLink = d.seller_link || '';
+                        let html = '<div style="display:flex;flex-direction:column;gap:4px;align-items:center;">';
+                        if (sellerLink) {
+                            html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> S</a>`;
+                        }
+                        if (buyerLink) {
+                            html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> B</a>`;
+                        }
+                        if (!sellerLink && !buyerLink) {
+                            html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                        }
+                        html += '</div>';
+                        return html;
+                    },
+                    cellDblClick: function(e, cell) {
+                        e.stopPropagation();
+                        openTemuEditLinksModal(cell.getRow());
+                    }
+                },
+                {
                     title: "Goods ID",
                     field: "goods_id",
                     hozAlign: "left",
                     sorter: "string",
                     width: 120,
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    visible: false,
                     accessorDownload: function(value, data) {
                         const g = (data && data.goods_id != null && data.goods_id !== '') ? String(data.goods_id) : '';
                         // Leading tab forces Excel to treat as text (avoids scientific notation)
@@ -2782,6 +3236,9 @@
                     hozAlign: "center",
                     sorter: "number",
                     width: 60,
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    visible: false,
                     formatter: function(cell) {
                         const val = parseFloat(cell.getValue()) || 0;
                         let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
@@ -2794,6 +3251,8 @@
                     hozAlign: "center",
                     sorter: "number",
                     width: 60,
+                    // Hidden by default — users can re-enable via the Col dropdown.
+                    visible: false,
                     formatter: function(cell) {
                         const val = parseFloat(cell.getValue()) || 0;
                         let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
@@ -2842,6 +3301,9 @@
                     hozAlign: "center",
                     width: 50,
                     sorter: "number",
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    visible: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         return Math.round(parseFloat(value) || 0);
@@ -2853,6 +3315,8 @@
                     hozAlign: "center",
                     width: 50,
                     sorter: "number",
+                    // Hidden by default — users can re-enable via the Col dropdown.
+                    visible: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         return Math.round(parseFloat(value) || 0);
@@ -2926,44 +3390,79 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const missing = rowData['missing'];
-                        
-                        // IMPORTANT: Only show MAP if SKU exists in Temu (not missing)
-                        // Same logic as eBay - check if item exists before showing MAP
-                        if (missing === 'M' || !rowData['goods_id'] || rowData['goods_id'] === '') {
-                            return ''; // Don't show MAP for missing items
+                        const nrReq = (rowData['nr_req'] || 'REQ').toString().toUpperCase();
+
+                        // Map / N Map only for listed (not missing) REQ rows with stock on both
+                        // sides — same gate as /map-issues. Otherwise leave blank.
+                        if (missing === 'M' || !rowData['goods_id'] || rowData['goods_id'] === '' || nrReq !== 'REQ') {
+                            return '';
                         }
-                        
+
                         const temuStock = parseFloat(rowData['temu_stock']) || 0;
                         const inv = parseFloat(rowData['inventory']) || 0;
-                        
-                        // Show "N MP" with INV if Temu Stock is 0 but INV exists (and diff > 3)
-                        if (inv > 0 && temuStock === 0) {
-                            if (inv <= 3) {
-                                return '<span style="color: #28a745; font-weight: bold;" title="Within tolerance (≤3)">MP</span>';
-                            }
-                            return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${inv})</span>`;
+                        if (inv <= 0 || temuStock <= 0) {
+                            return '';
                         }
-                        
-                        // Only show if both INV and Temu Stock exist
-                        if (inv > 0 && temuStock > 0) {
-                            if (inv === temuStock || Math.abs(inv - temuStock) <= 3) {
-                                // Perfect match or within tolerance — Green "MP"
-                                return '<span style="color: #28a745; font-weight: bold;" title="Within ≤3: counts as MP">MP</span>';
-                            } else {
-                                // Mismatch - Red "N MP" with difference
-                                const diff = inv - temuStock;
-                                const sign = diff > 0 ? '+' : '';
-                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
-                            }
+
+                        // Tolerance: < 3 units when 3% of INV < 3, else rounded % > 3.
+                        const diffUnits = Math.abs(inv - temuStock);
+                        let isNotMap;
+                        if (inv * 0.03 < 3) {
+                            isNotMap = diffUnits > 3;
+                        } else {
+                            isNotMap = Math.round((diffUnits / inv) * 100) > 3;
                         }
-                        
-                        return '';
+                        if (!isNotMap) {
+                            return '<span style="color: #28a745; font-weight: bold;" title="Within tolerance: counts as MP">MP</span>';
+                        }
+                        const diff = inv - temuStock;
+                        const sign = diff > 0 ? '+' : '';
+                        return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
+                    }
+                },
+                {
+                    // NRP — mirrors /forecast.analysis (forecast_analysis.nr). Editable here:
+                    // shows only a colored dot, but the whole cell is a transparent <select>
+                    // overlay so clicking the dot opens the native dropdown (REQ / 2BDC / LATER).
+                    // Saves go to the same /update-forecast-data endpoint forecast.analysis uses,
+                    // so both pages stay in sync. See change handler bound below.
+                    title: "NRP",
+                    field: "nrp",
+                    hozAlign: "center",
+                    width: 56,
+                    headerSort: true,
+                    sorter: "string",
+                    cssClass: "temu-nrp-col",
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        let raw = cell.getValue();
+                        let value = (raw == null) ? '' : String(raw).trim().toUpperCase();
+                        if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') value = 'REQ';
+                        let dot = '#22c55e', tip = 'REQ';
+                        if (value === 'NR')    { dot = '#dc3545'; tip = '2BDC'; }
+                        if (value === 'LATER') { dot = '#facc15'; tip = 'LATER'; }
+                        const sku = (row.sku || '').toString().replace(/'/g, '&#39;');
+                        const parent = (row.parent || '').toString().replace(/'/g, '&#39;');
+                        return `
+                            <div class="temu-nrp-cell" title="NRP: ${tip} (click to change)">
+                                <span class="temu-nrp-dot" style="background-color:${dot};" aria-hidden="true"></span>
+                                <select class="temu-nrp-select" data-sku='${sku}' data-parent='${parent}' aria-label="NRP: ${tip}">
+                                    <option value="REQ"   ${value === 'REQ'   ? 'selected' : ''}>REQ</option>
+                                    <option value="NR"    ${value === 'NR'    ? 'selected' : ''}>2BDC</option>
+                                    <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
+                                </select>
+                            </div>`;
                     }
                 },
                 {
                     title: "NRL/REQ",
                     field: "nr_req",
                     hozAlign: "center",
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    // The NRL/REQ filter dropdown in the toolbar still works since it
+                    // reads row.nr_req from the data, not from the visible column.
+                    visible: false,
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const nrl = row['nr_req'] || '';
@@ -3039,26 +3538,21 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const basePrice = parseFloat(cell.getRow().getData()['base_price']) || 0;
                         const rowData = cell.getRow().getData();
-                        const amazonPrice = parseFloat(rowData['a_price']) || 0;
-                        const ePrice = parseFloat(rowData['e_price']) || 0;
-                        
+                        const basePrice = parseFloat(rowData['base_price']) || 0;
+
                         // Only calculate Temu Price if base_price > 0 (item exists in Temu)
                         if (basePrice === 0) {
                             return '$0.00';
                         }
                         const temuPrice = basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
-                        
-                        // Red only when Temu price exceeds (Amz price × 0.85) OR (E price × 0.90)
-                        const amzThreshold = amazonPrice * 0.85;
-                        const eThreshold = ePrice * 0.90;
-                        const overAmz = amazonPrice > 0 && temuPrice > amzThreshold;
-                        const overE = ePrice > 0 && temuPrice > eThreshold;
-                        if (overAmz || overE) {
-                            return `<span style="color: #a00211; font-weight: 600;">$${temuPrice.toFixed(2)}</span>`;
+
+                        // Red Alert: Temu Price < Amazon × 0.85 OR < eBay × 0.90.
+                        // Driven by temuIsRedAlert(rd) so the toolbar filter + summary
+                        // count + cell color always agree on which rows count.
+                        if (temuIsRedAlert(rowData)) {
+                            return `<span style="color: #a00211; font-weight: 600;" title="Red Alert: Temu price is below 85% of Amazon or 90% of eBay 1 / eBay 2">$${temuPrice.toFixed(2)}</span>`;
                         }
-                        
                         return '$' + temuPrice.toFixed(2);
                     }
                 },
@@ -3091,6 +3585,23 @@
                     }
                 },
                 {
+                    // Sibling to "E Prc" — eBay 2 listing price from ebay_2_metrics.ebay_price,
+                    // surfaced here so Temu pricing can be compared against both eBay stores
+                    // alongside Amazon (A Prc) in one row.
+                    title: "E2 Prc",
+                    field: "e2_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 70,
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue());
+                        if (value === null || value === 0 || isNaN(value)) {
+                            return '<span style="color: #6c757d;">-</span>';
+                        }
+                        return `$${value.toFixed(2)}`;
+                    }
+                },
+                {
                     title: "PRFT AMT",
                     field: "profit",
                     hozAlign: "center",
@@ -3106,6 +3617,10 @@
                     title: "GPRFT %",
                     field: "profit_percent",
                     hozAlign: "center",
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    // GPRFT badge in the summary stats still reflects the underlying data.
+                    visible: false,
                     sorter: function(a, b, aRow, bRow) {
                         const calc = (row) => {
                             const price = parseFloat(row['temu_price']) || 0;
@@ -3133,6 +3648,10 @@
                     title: "ADS%",
                     field: "ads_percent",
                     hozAlign: "center",
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    // Ads% data still loads and drives the NPFT/NROI calcs + the Ads summary badge.
+                    visible: false,
                     sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
                         // Custom sorter to handle the 100% case properly
                         const aData = aRow.getData();
@@ -3201,6 +3720,10 @@
                     field: "npft_percent",
                     hozAlign: "center",
                     sorter: "number",
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    // NPFT badge in the summary stats still reflects the underlying data.
+                    visible: false,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku || '';
@@ -3332,6 +3855,9 @@
                     field: "sgprft_percent",
                     hozAlign: "center",
                     sorter: "number",
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    visible: false,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = parseFloat(rowData['sprice']) || 0;
@@ -3358,6 +3884,9 @@
                     field: "spft_percent",
                     hozAlign: "center",
                     sorter: "number",
+                    // Hidden by default — users can re-enable via the Col dropdown
+                    // (persists in channel_tabulator_column_settings as 'temu_decrease').
+                    visible: false,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = parseFloat(rowData['sprice']) || 0;
@@ -3421,7 +3950,14 @@
                         const stemuPrice = isSameAsCurrentTemuPrice
                             ? sprice
                             : (sprice <= 26.99 ? sprice + 2.99 : sprice);
-                        const sroi = ((stemuPrice * 0.96 - lp - temuShip) / lp) * 100;
+                        // Use the SAME marketplace take-home % the backend GROI calc used
+                        // (delivered with each row as `percentage`). Falls back to 0.96 only
+                        // when the field is missing, matching the backend default. This keeps
+                        // SROI and GROI on identical margins so the only legit difference is
+                        // sprice vs current temu_price — not a margin mismatch.
+                        const marginRaw = parseFloat(rowData['percentage']);
+                        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.96;
+                        const sroi = ((stemuPrice * margin - lp - temuShip) / lp) * 100;
                         const colorClass = getRoiColor(sroi);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(sroi)}%</span>`;
                     }
@@ -3876,19 +4412,8 @@
                 }
             });
         }
-        $('#temu-l7-upload-btn').on('click', function() {
-            $('#temu-l7-upload-file').off('change').on('change', function() {
-                doTemuUploadReport(this, 'L7', 'temu-upload-status-container');
-            });
-            $('#temu-l7-upload-file')[0].click();
-        });
-        $('#temu-l30-upload-btn').on('click', function() {
-            $('#temu-l30-upload-file').off('change').on('change', function() {
-                doTemuUploadReport(this, 'L30', 'temu-upload-status-container');
-            });
-            $('#temu-l30-upload-file')[0].click();
-        });
 
+        // L60 column toggle (info icon in Spend L60 column header)
         let l60ColumnsVisible = false;
         const l60ColumnFields = ['ad_sold_l60', 'ad_sales_l60', 'l60_vs_l30'];
         function toggleL60Columns(show) {
@@ -3901,123 +4426,6 @@
             e.stopPropagation();
             l60ColumnsVisible = !l60ColumnsVisible;
             toggleL60Columns(l60ColumnsVisible);
-        });
-
-        $('#temu-l60-upload-btn').on('click', function() {
-            $('#temu-l60-upload-file').off('change').on('change', function() {
-                doTemuUploadReport(this, 'L60', 'temu-upload-status-container');
-            });
-            $('#temu-l60-upload-file')[0].click();
-        });
-
-        // L7 Sales upload (same format as L30, stored in temu_daily_data_l7)
-        $('#temu-l7-sales-upload-btn').on('click', function() {
-            $('#temu-l7-sales-upload-file').off('change').on('change', function() {
-                const file = this.files[0];
-                if (!file) return;
-                const $status = $('#temu-l7-sales-upload-status');
-                $status.text('Uploading...').css('color', '');
-                const totalChunks = 5;
-                const uploadId = 'temu_l7_' + Date.now();
-                let currentChunk = 0;
-                let totalImported = 0;
-
-                function uploadNextChunk() {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    formData.append('chunk', currentChunk);
-                    formData.append('totalChunks', totalChunks);
-                    formData.append('uploadId', uploadId);
-                    formData.append('_token', '{{ csrf_token() }}');
-
-                    $.ajax({
-                        url: '/temu/upload-daily-data-l7-chunk',
-                        type: 'POST',
-                        data: formData,
-                        processData: false,
-                        contentType: false,
-                        success: function(response) {
-                            if (response.success) {
-                                totalImported += response.imported || 0;
-                                $status.text('Chunk ' + (currentChunk + 1) + '/' + totalChunks + '...');
-                                if (currentChunk < totalChunks - 1) {
-                                    currentChunk++;
-                                    setTimeout(uploadNextChunk, 300);
-                                } else {
-                                    $status.text('Done. ' + totalImported + ' rows.').css('color', 'green');
-                                    showToast('L7 Sales upload completed. ' + totalImported + ' records.', 'success');
-                                    if (currentCampaignPeriod === 'L7' && table) table.setData('/temu-decrease-data-l7');
-                                }
-                            } else {
-                                $status.text('Error').css('color', 'red');
-                                showToast(response.message || 'Upload failed', 'error');
-                            }
-                        },
-                        error: function(xhr) {
-                            const msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Upload failed';
-                            $status.text('Error').css('color', 'red');
-                            showToast(msg, 'error');
-                        }
-                    });
-                }
-                uploadNextChunk();
-            });
-            $('#temu-l7-sales-upload-file')[0].click();
-        });
-
-        // L60 Sales upload (same format as L30, stored in temu_daily_data_l60)
-        $('#temu-l60-sales-upload-btn').on('click', function() {
-            $('#temu-l60-sales-upload-file').off('change').on('change', function() {
-                const file = this.files[0];
-                if (!file) return;
-                const $status = $('#temu-l60-sales-upload-status');
-                $status.text('Uploading...').css('color', '');
-                const totalChunks = 5;
-                const uploadId = 'temu_l60_' + Date.now();
-                let currentChunk = 0;
-                let totalImported = 0;
-
-                function uploadNextChunk() {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    formData.append('chunk', currentChunk);
-                    formData.append('totalChunks', totalChunks);
-                    formData.append('uploadId', uploadId);
-                    formData.append('_token', '{{ csrf_token() }}');
-
-                    $.ajax({
-                        url: '/temu/upload-daily-data-l60-chunk',
-                        type: 'POST',
-                        data: formData,
-                        processData: false,
-                        contentType: false,
-                        success: function(response) {
-                            if (response.success) {
-                                totalImported += response.imported || 0;
-                                $status.text('Chunk ' + (currentChunk + 1) + '/' + totalChunks + '...');
-                                if (currentChunk < totalChunks - 1) {
-                                    currentChunk++;
-                                    setTimeout(uploadNextChunk, 300);
-                                } else {
-                                    $status.text('Done. ' + totalImported + ' rows.').css('color', 'green');
-                                    showToast('L60 Sales upload completed. ' + totalImported + ' records.', 'success');
-                                    if (table) table.setData('/temu-decrease-data');
-                                }
-                            } else {
-                                $status.text('Error').css('color', 'red');
-                                showToast(response.message || 'Upload failed', 'error');
-                            }
-                        },
-                        error: function(xhr) {
-                            const msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Upload failed';
-                            $status.text('Error').css('color', 'red');
-                            showToast(msg, 'error');
-                        }
-                    });
-                }
-                uploadNextChunk();
-            });
-            $('#temu-l60-sales-upload-file')[0].click();
         });
 
         $('#sku-search').on('keyup', function() {
@@ -4076,8 +4484,7 @@
                     if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
                     if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
                     if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
-                    if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
-                    if (gpftFilter === '50plus') return gpft >= 50;
+                    if (gpftFilter === '40plus') return gpft >= 40;
                     return true;
                 });
             }
@@ -4087,9 +4494,10 @@
                 table.addFilter(function(data) {
                     const groi = parseFloat(data.roi_percent) || 0;
                     if (groiFilter === 'lt40') return groi < 40;
-                    if (groiFilter === 'gt250') return groi > 250;
-                    const [min, max] = groiFilter.split('-').map(Number);
-                    return groi >= min && groi <= max;
+                    if (groiFilter === '40-75') return groi >= 40 && groi < 75;
+                    if (groiFilter === '75-125') return groi >= 75 && groi < 125;
+                    if (groiFilter === 'gt125') return groi >= 125;
+                    return true;
                 });
             }
 
@@ -4100,9 +4508,8 @@
                     const cvrRounded = Math.round(cvr * 100) / 100;
                     
                     if (cvrFilter === '0-0') return cvrRounded === 0;
-                    if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                    if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                    if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                    if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                    if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                     if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                     if (cvrFilter === '13plus') return cvrRounded > 13;
                     return true;
@@ -4224,41 +4631,63 @@
                 });
             }
 
-            // Missing badge filter (only INV > 0)
+            // Missing L badge filter — not listed, INV > 0, REQ only (same as /map-issues).
             if (missingBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
-                    return data['missing'] === 'M' && inv > 0;
+                    const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
+                    return data['missing'] === 'M' && inv > 0 && nrReq === 'REQ';
                 });
             }
 
-            // Map badge filter (only INV > 0) — include |INV−Temu Stock| <= 3 as mapped
+            // Map badge filter — listed, REQ, both sides with stock, within tolerance (same as /map-issues).
             if (mapBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
                     const missing = data['missing'];
                     const goodsId = data['goods_id'];
-                    if (missing === 'M' || !goodsId || goodsId === '' || inv === 0) return false;
-                    
+                    const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
                     const temuStock = parseFloat(data['temu_stock']) || 0;
-                    if (temuStock < 0) return false;
-                    const d = Math.abs(inv - temuStock);
-                    return d <= 3;
+                    if (missing === 'M' || !goodsId || goodsId === '' || nrReq !== 'REQ' || inv <= 0 || temuStock <= 0) return false;
+
+                    const diffUnits = Math.abs(inv - temuStock);
+                    let isNotMap;
+                    if (inv * 0.03 < 3) {
+                        isNotMap = diffUnits > 3;
+                    } else {
+                        isNotMap = Math.round((diffUnits / inv) * 100) > 3;
+                    }
+                    return !isNotMap;
                 });
             }
 
-            // Not Map badge filter (only INV > 0) — exclude |diff| <= 3
+            // Red Alert badge filter — rows where Temu Price falls below Amazon × 0.85
+            // or eBay × 0.90 (driven by temuIsRedAlert so cell color, filter, and badge
+            // count never get out of sync).
+            if (redAlertFilterActive) {
+                table.addFilter(function(data) {
+                    return temuIsRedAlert(data);
+                });
+            }
+
+            // Not Map (Missing M) badge filter — listed, REQ, both sides with stock, out of tolerance (same as /map-issues).
             if (notMapBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
                     const missing = data['missing'];
                     const goodsId = data['goods_id'];
-                    if (missing === 'M' || !goodsId || goodsId === '' || inv === 0) return false;
-                    
+                    const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
                     const temuStock = parseFloat(data['temu_stock']) || 0;
-                    const d = Math.abs(inv - temuStock);
-                    if (d <= 3) return false;
-                    return inv > 0 && (temuStock === 0 || (temuStock > 0 && inv !== temuStock));
+                    if (missing === 'M' || !goodsId || goodsId === '' || nrReq !== 'REQ' || inv <= 0 || temuStock <= 0) return false;
+
+                    const diffUnits = Math.abs(inv - temuStock);
+                    let isNotMap;
+                    if (inv * 0.03 < 3) {
+                        isNotMap = diffUnits > 3;
+                    } else {
+                        isNotMap = Math.round((diffUnits / inv) * 100) > 3;
+                    }
+                    return isNotMap;
                 });
             }
 
@@ -4362,6 +4791,18 @@
                     // Handle both NR and NRL as same value
                     const dataValue = (nr_req === 'NR' || nr_req === 'NRL') ? 'NRL' : nr_req;
                     return dataValue === nrReqFilter;
+                });
+            }
+
+            // NRP filter — matches the same values stored on row.nrp (REQ/NR/LATER).
+            // Empty / unknown values are treated as REQ to mirror the NRP column formatter,
+            // so the filter and the dot color always agree.
+            const nrpFilter = $('#nrp-filter').val();
+            if (nrpFilter && nrpFilter !== 'all') {
+                table.addFilter(function(data) {
+                    let v = String(data['nrp'] || '').trim().toUpperCase();
+                    if (v !== 'REQ' && v !== 'NR' && v !== 'LATER') v = 'REQ';
+                    return v === nrpFilter;
                 });
             }
 
@@ -4599,7 +5040,7 @@
             });
         });
 
-        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter, #nr-req-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter, #nr-req-filter, #nrp-filter').on('change', function() {
             applyFilters();
         });
 
@@ -4751,6 +5192,62 @@
 
         });
 
+        /*
+         * NRP dropdown change handler — saves to the SAME endpoint /forecast.analysis
+         * uses (POST /update-forecast-data with column='NR'), so both pages stay in
+         * sync and you can edit from either side. Optimistically updates the row's
+         * `nrp` field + reformats the cell so the dot color flips instantly; if the
+         * AJAX fails we revert and show an error toast.
+         */
+        $(document).on('change', '.temu-nrp-select', function() {
+            const $select = $(this);
+            const newValue = String($select.val() || '').trim().toUpperCase();
+            const sku = $select.data('sku');
+            const parent = $select.data('parent') || '';
+            if (!sku) return;
+            if (!['REQ', 'NR', 'LATER'].includes(newValue)) return;
+
+            // Find the Tabulator row and remember the old value so we can revert on failure.
+            const tabRow = table ? table.getRows().find(function(r) { return (r.getData().sku || '') === sku; }) : null;
+            const oldValue = tabRow ? ((tabRow.getData().nrp || '') || 'REQ') : 'REQ';
+
+            // Optimistic update so the dot flips immediately.
+            if (tabRow) {
+                tabRow.update({ nrp: newValue });
+                tabRow.reformat();
+            }
+
+            $.ajax({
+                url: '/update-forecast-data',
+                method: 'POST',
+                data: {
+                    sku: sku,
+                    parent: parent,
+                    column: 'NR',
+                    value: newValue,
+                    _token: $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function(res) {
+                    if (!res || res.success === false) {
+                        if (tabRow) {
+                            tabRow.update({ nrp: oldValue });
+                            tabRow.reformat();
+                        }
+                        showToast((res && res.message) || 'Failed to save NRP', 'error');
+                        return;
+                    }
+                    showToast(`NRP saved: ${newValue === 'NR' ? '2BDC' : newValue} for ${sku}`, 'success');
+                },
+                error: function() {
+                    if (tabRow) {
+                        tabRow.update({ nrp: oldValue });
+                        tabRow.reformat();
+                    }
+                    showToast('Failed to save NRP', 'error');
+                }
+            });
+        });
+
         // NR/REQ dropdown change handler (Amazon style)
         $(document).on('change', '.nr-select', function() {
             const $select = $(this);
@@ -4775,6 +5272,49 @@
                 error: function(xhr) {
                     showToast('Failed to update NR/REQ', 'error');
                 }
+            });
+        });
+
+        // ---- Edit B/S Links (double-click on Links cell) ----
+        let temuEditLinksRow = null;
+        window.openTemuEditLinksModal = function(row) {
+            if (!row) return;
+            temuEditLinksRow = row;
+            const d = row.getData();
+            $('#temuEditLinksSku').val(d.sku);
+            $('#temuEditLinksSkuDisplay').text(d.sku);
+            $('#temuEditSellerLink').val(d.seller_link || '');
+            $('#temuEditBuyerLink').val(d.buyer_link || '');
+            $('#temuEditLinksError').hide().text('');
+            new bootstrap.Modal(document.getElementById('temuEditLinksModal')).show();
+        };
+
+        $(document).on('click', '#temuSaveLinksBtn', function() {
+            const sku = $('#temuEditLinksSku').val();
+            const sellerLink = $('#temuEditSellerLink').val().trim();
+            const buyerLink = $('#temuEditBuyerLink').val().trim();
+            const $err = $('#temuEditLinksError');
+            $err.hide().text('');
+            const $btn = $(this).prop('disabled', true);
+            $.ajax({
+                url: '/temu-decrease/save-links',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { sku: sku, seller_link: sellerLink, buyer_link: buyerLink },
+                success: function(res) {
+                    if (temuEditLinksRow) {
+                        temuEditLinksRow.update({ seller_link: res.seller_link || '', buyer_link: res.buyer_link || '' })
+                            .then(function() { temuEditLinksRow.reformat(); })
+                            .catch(function() { temuEditLinksRow.reformat(); });
+                    }
+                    showToast(sku + ': links saved', 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('temuEditLinksModal'))?.hide();
+                },
+                error: function(xhr) {
+                    const msg = xhr.responseJSON?.message || 'Failed to save links.';
+                    $err.text(msg).show();
+                },
+                complete: function() { $btn.prop('disabled', false); }
             });
         });
 
@@ -4829,22 +5369,34 @@
         // Initialize iconClicked flag for IN ROAS
         window.iconClicked = false;
 
+        /*
+         * Column visibility (every column for this page) persists in the shared DB table
+         * `channel_tabulator_column_settings` under channel = 'temu_decrease'. We hit the
+         * same /tabulator-column-visibility endpoint used by the amazon / ebay1 / ebay2 /
+         * ebay3 / mfrg tabulators so a single row owns the show/hide map for everyone
+         * on this view.
+         */
         function buildColumnDropdown() {
             const menu = document.getElementById("column-dropdown-menu");
+            if (!menu) return;
             menu.innerHTML = '';
 
-            fetch('/temu-decrease-column-visibility', {
+            fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                 method: 'GET',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 }
             })
             .then(response => response.json())
             .then(savedVisibility => {
+                const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
                 table.getColumns().forEach(col => {
                     const def = col.getDefinition();
                     if (def.field && def.field !== '_select') {
-                        const visible = savedVisibility[def.field] !== undefined ? savedVisibility[def.field] : def.visible !== false;
+                        // Prefer saved value; anything explicitly false in the DB map = hidden.
+                        // Otherwise fall back to the column's natural visibility flag.
+                        const visible = map.hasOwnProperty(def.field) ? (map[def.field] !== false) : (def.visible !== false);
                         const li = document.createElement('li');
                         li.className = 'dropdown-item';
                         li.innerHTML = `
@@ -4859,7 +5411,8 @@
                         menu.appendChild(li);
                     }
                 });
-            });
+            })
+            .catch(err => console.error('Error loading column visibility:', err));
         }
 
         function saveColumnVisibilityToServer() {
@@ -4871,30 +5424,33 @@
                 }
             });
 
-            fetch('/temu-decrease-column-visibility', {
+            fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 },
                 body: JSON.stringify({
+                    channel: TABULATOR_COLUMN_CHANNEL,
                     visibility: visibility
                 })
-            });
+            }).catch(err => console.error('Error saving column visibility:', err));
         }
 
         function applyColumnVisibilityFromServer() {
-            fetch('/temu-decrease-column-visibility', {
+            fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                 method: 'GET',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 }
             })
             .then(response => response.json())
             .then(savedVisibility => {
+                if (!savedVisibility || typeof savedVisibility !== 'object') return;
                 table.getColumns().forEach(col => {
                     const field = col.getField();
-                    if (field && savedVisibility[field] !== undefined) {
+                    if (field && savedVisibility.hasOwnProperty(field)) {
                         if (savedVisibility[field]) {
                             col.show();
                         } else {
@@ -4902,7 +5458,8 @@
                         }
                     }
                 });
-            });
+            })
+            .catch(err => console.error('Error applying column visibility:', err));
         }
 
         table.on('tableBuilt', function() {
@@ -4964,7 +5521,6 @@
         function updateCampaignPeriodUi() {
             const isL7 = currentCampaignPeriod === 'L7';
             $('#export-btn').prop('disabled', isL7).toggleClass('disabled', isL7);
-            $('#export-l7-btn').prop('disabled', !isL7).toggleClass('disabled', !isL7);
 
             const temuSalesCol = table.getColumn('temu_l30');
             if (temuSalesCol) {
@@ -5020,104 +5576,6 @@
                 return;
             }
             table.download("csv", "temu_decrease_data_l30.csv");
-        });
-
-        // Export L7: current table rows only (respects filters, column visibility, Ads Section) — same as L30 export pattern
-        $('#export-l7-btn').on('click', function() {
-            if (currentCampaignPeriod !== 'L7') {
-                showToast('Switch Campaign Data to L7 to export L7 data', 'warning');
-                return;
-            }
-            table.download('csv', 'temu_l7_data.csv');
-        });
-
-        // Export L7 — same JSON + columns as L30; load L7 endpoint, then Tabulator CSV (respects Ads Section toggle)
-        $('#export-l7-btn').on('click', function() {
-            console.log('Export L7: /temu-decrease-data-l7, adsSection=' + (typeof adsColumnsVisible !== 'undefined' && adsColumnsVisible));
-            const $btn = $(this);
-            const originalHtml = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Loading...');
-
-            suppressDataLoadedHandler = true;
-            table.setData('/temu-decrease-data-l7').then(function() {
-                applyFilters();
-                table.download("csv", "temu_l7_data.csv");
-                // Allow full dataLoaded on L30 restore so fullDataset and summary refresh
-                suppressDataLoadedHandler = false;
-                return table.setData('/temu-decrease-data');
-            }).then(function() {
-                applyFilters();
-                if (typeof showToast === 'function') {
-                    showToast('L7 export completed (same format as L30)', 'success');
-                }
-            }).catch(function(err) {
-                console.error('Export L7 error', err);
-                suppressDataLoadedHandler = false;
-                return table.setData('/temu-decrease-data').then(function() {
-                    applyFilters();
-                }).then(function() {
-                    if (typeof showToast === 'function') {
-                        showToast('Failed to export L7 data', 'error');
-                    }
-                });
-            }).finally(function() {
-                $btn.prop('disabled', false).html(originalHtml);
-            });
-        });
-
-        // L7 Sales upload (same format as L30, stored in temu_daily_data_l7)
-        $('#temu-l7-sales-upload-btn').on('click', function() {
-            $('#temu-l7-sales-upload-file').off('change').on('change', function() {
-                const file = this.files[0];
-                if (!file) return;
-                const $status = $('#temu-l7-sales-upload-status');
-                $status.text('Uploading...').css('color', '');
-                const totalChunks = 5;
-                const uploadId = 'temu_l7_' + Date.now();
-                let currentChunk = 0;
-                let totalImported = 0;
-
-                function uploadNextChunk() {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    formData.append('chunk', currentChunk);
-                    formData.append('totalChunks', totalChunks);
-                    formData.append('uploadId', uploadId);
-                    formData.append('_token', '{{ csrf_token() }}');
-
-                    $.ajax({
-                        url: '/temu/upload-daily-data-l7-chunk',
-                        type: 'POST',
-                        data: formData,
-                        processData: false,
-                        contentType: false,
-                        success: function(response) {
-                            if (response.success) {
-                                totalImported += response.imported || 0;
-                                $status.text('Chunk ' + (currentChunk + 1) + '/' + totalChunks + '...');
-                                if (currentChunk < totalChunks - 1) {
-                                    currentChunk++;
-                                    setTimeout(uploadNextChunk, 300);
-                                } else {
-                                    $status.text('Done. ' + totalImported + ' rows.').css('color', 'green');
-                                    showToast('L7 Sales upload completed. ' + totalImported + ' records.', 'success');
-                                    if (table) table.setData('/temu-decrease-data');
-                                }
-                            } else {
-                                $status.text('Error').css('color', 'red');
-                                showToast(response.message || 'Upload failed', 'error');
-                            }
-                        },
-                        error: function(xhr) {
-                            const msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Upload failed';
-                            $status.text('Error').css('color', 'red');
-                            showToast(msg, 'error');
-                        }
-                    });
-                }
-                uploadNextChunk();
-            });
-            $('#temu-l7-sales-upload-file')[0].click();
         });
 
         // Single-badge history modal: click on a badge opens history for that metric

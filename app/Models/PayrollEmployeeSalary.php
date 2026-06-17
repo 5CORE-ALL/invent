@@ -11,10 +11,13 @@ class PayrollEmployeeSalary extends Model
         'payroll_month_id',
         'user_id',
         'salary_pp',
+        'salary_pp_overridden',
         'increment',
         'other',
         'adv_inc_other',
+        'incentive',
         'hours_worked',
+        'hours_overridden',
         'gross_amount',
         'lop_amount',
         'arrears_amount',
@@ -25,6 +28,8 @@ class PayrollEmployeeSalary extends Model
         'bank_2',
         'upi_id',
         'is_new_hire',
+        'edited_by',
+        'edited_at',
     ];
 
     protected $casts = [
@@ -32,6 +37,7 @@ class PayrollEmployeeSalary extends Model
         'increment' => 'decimal:2',
         'other' => 'decimal:2',
         'adv_inc_other' => 'decimal:2',
+        'incentive' => 'decimal:2',
         'hours_worked' => 'decimal:2',
         'gross_amount' => 'decimal:2',
         'lop_amount' => 'decimal:2',
@@ -40,6 +46,9 @@ class PayrollEmployeeSalary extends Model
         'deductions_total' => 'decimal:2',
         'net_amount' => 'decimal:2',
         'is_new_hire' => 'boolean',
+        'salary_pp_overridden' => 'boolean',
+        'hours_overridden' => 'boolean',
+        'edited_at' => 'datetime',
     ];
 
     public function payrollMonth(): BelongsTo

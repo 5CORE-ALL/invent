@@ -86,6 +86,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ route('map.issues') }}" class="side-nav-link">
+                    <i class="ri-node-tree"></i>
+                    <span>Map Issues</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a href="{{ route('compliance-certificates.index') }}" class="side-nav-link">
                     <i class="ri-shield-check-line"></i>
                     <span>Compliance Certificates</span>
@@ -337,10 +344,16 @@
                             <a href="{{ route('customer.care.dispatch.issues') }}">All Issues</a>
                         </li>
                         <li>
+                            <a href="{{ route('customer.care.dispatch.issues.only') }}">Dispatch Issues</a>
+                        </li>
+                        <li>
                             <a href="{{ route('customer.care.dispatch.carrier.and.claim') }}">Carrier and Claim</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.dispatch.carrier.issue') }}">Carrier Issue</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.dispatch.chargeback.issues') }}">Chargeback Issues</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.listing.issue') }}">Listing Issue</a>
@@ -519,6 +532,16 @@
                                 <i class="ri-shopping-cart-2-line me-2"></i>Sales by Source
                             </a>
                         </li>
+                        <li>
+                            <a href="{{ route('shopify-raw-data.index') }}">
+                                <i class="ri-database-2-line me-2"></i>All Orders
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('shopify.index') }}">
+                                <i class="ri-shopify-line me-2"></i>Shopify
+                            </a>
+                        </li>
                     </ul>
                 </div>
             </li>
@@ -619,6 +642,12 @@
                                             Google Competitors
                                         </a>
                                     </li>
+                                    <li>
+                                        <a href="{{ url('/repricer/amz-comp-jungle') }}"
+                                            class="{{ request()->is('repricer/amz-comp-jungle*') ? 'active' : '' }}">
+                                            Amz Comp Jungle
+                                        </a>
+                                    </li>
                                 </ul>
                 </div>
             </li>
@@ -634,7 +663,59 @@
                 <div class="collapse" id="sidebarFacebookSheets">
                     <ul class="side-nav-second-level">
                         <li>
-                            <a href="{{ route('facebook.all.ads.sheet') }}">Facebook All Ads Sheet</a>
+                            <a href="{{ route('facebook.all.ads.sheet') }}">Meta Ads All</a>
+                        </li>
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarFacebookAdsTypes" aria-expanded="false"
+                                aria-controls="sidebarFacebookAdsTypes">
+                                <span>Facebook</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarFacebookAdsTypes">
+                                <ul class="side-nav-third-level">
+                                    <li>
+                                        <a href="{{ route('facebook.ads.channel') }}">All</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('facebook.ads.channel.group.video') }}">G Video</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('facebook.ads.channel.group.carousal') }}">G Carousal</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('facebook.ads.channel.parent.video') }}">P Video</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('facebook.ads.channel.parent.carousal') }}">P Carousal</a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </li>
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarInstagramAdsTypes" aria-expanded="false"
+                                aria-controls="sidebarInstagramAdsTypes">
+                                <span>Instagram</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarInstagramAdsTypes">
+                                <ul class="side-nav-third-level">
+                                    <li>
+                                        <a href="{{ route('instagram.ads.channel') }}">All</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('instagram.ads.channel.group.video') }}">G Video</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('instagram.ads.channel.group.carousal') }}">G Carousal</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('instagram.ads.channel.parent.video') }}">P Video</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('instagram.ads.channel.parent.carousal') }}">P Carousal</a>
+                                    </li>
+                                </ul>
+                            </div>
                         </li>
                         <li>
                             <a href="{{ route('facebook.video.ads.sheet') }}">Facebook Video Ads Sheet</a>
@@ -644,6 +725,22 @@
                         </li>
                     </ul>
                 </div>
+            </li>
+
+            {{-- ── TikTok ───────────────────────────────────────── --}}
+            <li class="side-nav-item">
+                <a href="{{ route('tiktok.video.ads') }}" class="side-nav-link">
+                    <i class="ri-music-2-line"></i>
+                    <span>TikTok Video Ads</span>
+                </a>
+            </li>
+
+            {{-- ── YouTube ──────────────────────────────────────── --}}
+            <li class="side-nav-item">
+                <a href="{{ route('youtube.video.ads') }}" class="side-nav-link">
+                    <i class="ri-youtube-line"></i>
+                    <span>YouTube Video Ads</span>
+                </a>
             </li>
 
             <li class="side-nav-item">
@@ -1063,6 +1160,9 @@
                                     <li>
                                         <a href="{{ route('ebaycvrLQS.master') }}">Ebay LQS - CVR</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('lqs.amz.view') }}">LQS Amz</a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>
@@ -1133,7 +1233,7 @@
 
                                     <li>
 
-                                        <a href="{{ url('/amazon-tabulator-view') }}">Amz FBM
+                                        <a href="{{ url('/amazon-tabulator-view') }}">Amazon Analytics
                                         </a>
                                     </li>
                                     <li>
@@ -1352,7 +1452,7 @@
                                     </li>
 
                                     <li>
-                                        <a href="{{ url('ebay-tabulator-view') }}">Ebay Pricing
+                                        <a href="{{ url('ebay-tabulator-view') }}">Ebay - Analytics
                                         </a>
                                     </li>
 
@@ -1472,7 +1572,7 @@
 
                                     <li>
                                         <a href="{{ url('/shopify-b2c-pricing') }}">
-                                            Shopify Pricing - CVR</a>
+                                            Shopify B2C - Analytics</a>
                                     </li>
 
                                     <li>
@@ -1506,7 +1606,7 @@
                                         <a href="{{ route('listing.audit.macy') }}">Listing Audit Macy's</a>
                                     </li>
                                     <li>
-                                        <a href="{{ url('/macys-pricing') }}">Macy's Pricing </a>
+                                        <a href="{{ url('/macys-pricing') }}">Macys - Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('macy.low.visibility.view') }}">Macy's
@@ -1529,7 +1629,7 @@
                             <div class="collapse" id="sidebarDepop">
                                 <ul class="side-nav-third-level">
                                     <li>
-                                        <a href="{{ route('depop.pricing') }}">Depop Pricing</a>
+                                        <a href="{{ route('depop.pricing') }}">Depop - Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('depop.sheet') }}">Depop Sales Data</a>
@@ -1547,7 +1647,7 @@
                             <div class="collapse" id="sidebarPurchasingPower">
                                 <ul class="side-nav-third-level">
                                     <li>
-                                        <a href="{{ url('/purchasing-power-pricing') }}">Purchasing Power Pricing</a>
+                                        <a href="{{ url('/purchasing-power-pricing') }}">Purchasing Power - Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ url('/purchasing-power-sales') }}">Purchasing Power Sales</a>
@@ -1566,7 +1666,7 @@
                                 <ul class="side-nav-third-level">
                                    
                                     <li>
-                                        <a href="{{ route('wayfair.pricing.view') }}">Wayfair Analytics</a>
+                                        <a href="{{ route('wayfair.pricing.view') }}">Wayfair - Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('wayfair.zero.view') }}">Wayfair 0 View</a>
@@ -1594,13 +1694,31 @@
                             <div class="collapse" id="sidebarReverb">
                                 <ul class="side-nav-third-level">
                                     <li>
-                                        <a href="{{ url('reverb-pricing') }}">Reverb Analytics</a>
+                                        <a href="{{ url('reverb-pricing') }}">Reverb - Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ url('reverb-sales') }}">Reverb Sales Data</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('listing.reverb') }}">Listing Reverb</a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </li>
+
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarTopDawg" aria-expanded="false"
+                                aria-controls="sidebarTopDawg">
+                                <span> TopDawg </span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarTopDawg">
+                                <ul class="side-nav-third-level">
+                                    <li>
+                                        <a href="{{ route('topdawg.pricing') }}">TopDawg - Analytics</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('topdawg.sales.dashboard') }}">TopDawg Sales Data</a>
                                     </li>
                                 </ul>
                             </div>
@@ -1622,7 +1740,7 @@
                                         <a href="{{ route('listing.temu') }}">Listing Temu</a>
                                     </li>
                                     <li>
-                                        <a href="{{ url('temu-decrease') }}">Temu Analytics </a>
+                                        <a href="{{ url('temu-decrease') }}">Temu - Analytics</a>
                                     </li>
 
 
@@ -1645,7 +1763,7 @@
                             <div class="collapse" id="sidebarTemu2Analytics">
                                 <ul class="side-nav-third-level">
                                     <li>
-                                        <a href="{{ url('temu2-decrease') }}">Temu 2 Pricing</a>
+                                        <a href="{{ url('temu2-decrease') }}">Temu 2 - Analytics</a>
                                     </li>
                                 </ul>
                             </div>
@@ -1677,7 +1795,7 @@
                                     </li>
 
                                     <li>
-                                        <a href="{{ url('doba-tabulator') }}">Doba pricing</a>
+                                        <a href="{{ url('doba-tabulator') }}">Doba - Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('doba.withoutship') }}">Doba without ship</a>
@@ -1725,7 +1843,7 @@
                                             </ul>
                                         </div>
                                     </li>
-                                    <li> <a href="{{ url('ebay2-tabulator-view') }}">Ebay 2 Analytics</a>
+                                    <li> <a href="{{ url('ebay2-tabulator-view') }}">Ebay 2 - Analytics</a>
                                     </li>
                                     <li> <a href="{{ url('ebay2op-tabulator-view') }}">Ebay 2 Open Box </a>
                                     </li>
@@ -1736,6 +1854,9 @@
 
                                     <li>
                                         <a href="{{ route('ebay2.pmt.ads') }}">PMT Ads</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('ebay2.campaign.ads') }}">eBay 2 Campaign Ads (Raw)</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('ebay2.running.ads') }}">Running Ads</a>
@@ -1782,7 +1903,7 @@
                                         </div>
                                     </li>
                                     <li>
-                                        <a href="{{ url('ebay3-tabulator-view') }}">Ebay 3 Analytics</a>
+                                        <a href="{{ url('ebay3-tabulator-view') }}">Ebay 3 - Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('listing.ebayThree') }}">Listing Ebay 3</a>
@@ -1842,6 +1963,9 @@
                                     <li>
                                         <a href="{{ route('ebay3.pmt.ads') }}">Ebay 3 PMT Ads</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('ebay3.campaign.ads') }}">eBay 3 Campaign Ads (Raw)</a>
+                                    </li>
                                     {{-- <li>
                                         <a href="{{ route('ebay3.keywords.ads') }}">Ebay 3 Keywords Ads</a>
                                     </li>
@@ -1891,7 +2015,7 @@
                                             <span class="menu-arrow"></span>
                                         </a>
                                     <li>
-                                        <a href="{{ route('walmart.sheet.upload') }}">Walmart Pricing</a>
+                                        <a href="{{ route('walmart.sheet.upload') }}">Walmart - Analytics</a>
                                     </li>
                                     <div class="collapse" id="walmartSubmenu">
                                         <ul class="side-nav-fourth-level">
@@ -1930,6 +2054,9 @@
                         
                         <li>
                             <a href="{{ route('google.shopping.campaigns') }}">Google Shopping</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('google.serp.campaigns') }}">Google SERP Campaigns</a>
                         </li>
                         <li>
                             <a href="{{ route('google.serp.list') }}">Google SERP</a>
@@ -1980,7 +2107,7 @@
                         <li><a href="{{ route('listing.aliexpress') }}">Listing Aliexpress</a>
                         </li>
 
-                        <li><a href="{{ route('aliexpress.pricing.view') }}">Aliexpress Analytics</a>
+                        <li><a href="{{ route('aliexpress.pricing.view') }}">Aliexpress - Analytics</a>
                         </li>
                         <li><a href="{{ route('aliexpress.lmp') }}">Aliexpress LMP</a></li>
                     </ul>
@@ -2017,7 +2144,7 @@
                 </a>
                 <div class="collapse" id="sidebarFaire">
                     <ul class="side-nav-third-level">
-                        <li><a href="{{ route('faire.pricing.view') }}">Faire Analytics</a></li>
+                        <li><a href="{{ route('faire.pricing.view') }}">Faire - Analytics</a></li>
                         <li><a href="{{ route('zero.faire') }}">Faire 0 view</a></li>
                         <li><a href="{{ route('listing.faire') }}">Listing Faire</a></li>
                     </ul>
@@ -2040,9 +2167,9 @@
                         </li>
                         {{-- <li><a href="{{ route('tiktokshop.ads') }}">Tiktok Shop Ads</a>
                                     </li> --}}
-                        <li><a href="{{ route('tiktok.pricing') }}">TikTok Shop Analytics</a>
+                        <li><a href="{{ route('tiktok.pricing') }}">TikTok Shop - Analytics</a>
                         </li>
-                        <li><a href="{{ route('tiktok2.pricing') }}">TikTok 2 Shop Analytics</a>
+                        <li><a href="{{ route('tiktok2.pricing') }}">TikTok 2 Shop - Analytics</a>
                         </li>
                         <li><a href="{{ route('tiktok.utilized') }}">TikTok Shop Ads</a>
                         </li>
@@ -2058,7 +2185,8 @@
                 </a>
                 <div class="collapse" id="sidebarMercariWShip">
                     <ul class="side-nav-third-level">
-                        <li><a href="{{ url('mercariAnalysis') }}">Mercari w Ship Analytics</a></li>
+                        <li><a href="{{ route('mercari.wship.tabulator.view') }}">Mercari w Ship - Analytics</a></li>
+
 
                         <li>
                             <a href="{{ route('zero.mercariwship') }}">Mercari w Ship 0 view</a>
@@ -2124,7 +2252,7 @@
                     <ul class="side-nav-third-level">
                         <li><a href="{{ url('plsAnalysis') }}">PLS Analytics</a></li>
 
-                        <li><a href="{{ route('pls.pricing') }}">PLS Pricing</a></li>
+                        <li><a href="{{ route('pls.pricing') }}">PLS - Analytics</a></li>
 
                         <li><a href="{{ route('pls.sales') }}">PLS Sales (30 Days)</a></li>
 
@@ -2147,8 +2275,7 @@
                 </a>
                 <div class="collapse" id="sidebarMercariWoShip">
                     <ul class="side-nav-third-level">
-                        <li><a href="{{ url('mercariwoshipAnalysis') }}">Mercari w/o Ship Analytics</a>
-                        </li>
+                        <li><a href="{{ route('mercari.woship.tabulator.view') }}">Mercari w/o Ship - Analytics</a></li>
 
                         <li>
                             <a href="{{ route('zero.mercariwoship') }}">Mercari w/o Ship 0
@@ -2177,7 +2304,7 @@
 
                         <li><a href="{{ route('listing.tiendamia') }}">Listing Tiendamia</a>
                         </li>
-                        <li><a href="{{ route('tiendamia.pricing') }}">Tiendamia Pricing</a></li>
+                        <li><a href="{{ route('tiendamia.pricing') }}">Tiendamia - Analytics</a></li>
                     </ul>
                 </div>
             </li>
@@ -2356,6 +2483,7 @@
                             </a>
                             <div class="collapse" id="sidebarMarketplaceTopDawg">
                                 <ul class="side-nav-third-level">
+                                    <li><a href="{{ route('topdawg.pricing') }}">Pricing / Analytics</a></li>
                                     <li><a href="{{ route('topdawg.sales.dashboard') }}">Sales Dashboard</a></li>
                                     <li><a href="{{ route('marketplace.products', 'topdawg') }}">Products</a></li>
                                     <li><a href="{{ route('marketplace.orders', 'topdawg') }}">Orders</a></li>
@@ -2948,6 +3076,12 @@
                         <li>
                             <a href="{{ route('inventory.index') }}">Inventory Warehouse</a>
                         </li>
+                        <li>
+                            <a href="{{ route('scope-of-improvement.index') }}">Scope of Improvement</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('dar.index') }}">DAR</a>
+                        </li>
                     </ul>
                 </div>
             </li>
@@ -2956,6 +3090,13 @@
                 <a href="{{ route('resources.index') }}" class="side-nav-link {{ request()->routeIs('resources.*') ? 'active' : '' }}">
                     <i class="ri-folder-shared-line"></i>
                     <span> Resources </span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
+                <a href="{{ route('help-desk-faqs.index') }}" class="side-nav-link {{ request()->routeIs('help-desk-faqs.*') ? 'active' : '' }}">
+                    <i class="ri-question-answer-line"></i>
+                    <span> Help Desk FAQs, FFP </span>
                 </a>
             </li>
 
@@ -3051,6 +3192,10 @@
                         <li><a href="{{ url('shopify-b2b/daily-sales') }}">Shopify B2B Sales</a></li>
 
                         <li><a href="{{ route('bestbuy.daily.sales') }}">Best Buy Sales Data</a></li>
+
+                        <li><a href="{{ route('newegg.daily.sales') }}">Newegg Sales Data</a></li>
+
+                        <li><a href="{{ route('newegg.pricing.view') }}">Newegg Pricing</a></li>
 
                         <li><a href="{{ route('macys.daily.sales') }}">Macy's Sales Data</a></li>
 

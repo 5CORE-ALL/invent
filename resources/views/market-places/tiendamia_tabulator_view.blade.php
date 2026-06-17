@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Tiendamia Pricing Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Tiendamia - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -153,8 +153,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Tiendamia Pricing Analytics',
-        'sub_title' => 'Tiendamia Pricing Analytics',
+        'page_title' => 'Tiendamia - Analytics',
+        'sub_title' => '',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -228,9 +228,7 @@
                         <option value="lt40">&lt;40%</option>
                         <option value="40-75">40 to 75%</option>
                         <option value="75-125">75 to 125%</option>
-                        <option value="125-175">125 to 175%</option>
-                        <option value="175-250">175 to 250%</option>
-                        <option value="gt250">&gt;250%</option>
+                        <option value="gt125">125%+</option>
                     </select>
 
                     <select id="ad-click-filter" class="form-select form-select-sm" style="width: 130px;">
@@ -290,7 +288,7 @@
                     </button>
 
                     <button id="price-mode-btn" class="btn btn-sm btn-secondary"
-                        title="Cycle mode: Off → Decrease → Increase">
+                        title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         <i class="fas fa-exchange-alt"></i> Price Mode
                     </button>
 
@@ -427,14 +425,17 @@
             <div class="card-body" style="padding: 0;">
                 <!-- Discount Input Box -->
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span id="selected-skus-count" class="fw-bold"></span>
+                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
+                        <span id="discount-type-select-wrap">
                         <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
                             <option value="percentage">Percentage</option>
                             <option value="value">Value ($)</option>
                         </select>
+                        </span>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm"
-                            placeholder="Enter %" step="0.01" style="width: 100px;">
+                            placeholder="Enter %" step="0.01" style="width: 140px;">
                         <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
                         <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
                             <i class="fas fa-eraser"></i> Clear SPRICE
@@ -509,6 +510,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="tiendamiaEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="tiendamiaEditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="tiendamiaSellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="tiendamiaBuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="tiendamiaSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @php
@@ -516,6 +546,7 @@
         'dataJson' => route('tiendamia.data.json'),
         'saveSprice' => route('tiendamia.save.sprice'),
         'saveNrp' => route('tiendamia.save.nrp'),
+        'saveLinks' => route('tiendamia.save.links'),
         'columnGet' => route('tiendamia.column.get'),
         'columnSet' => route('tiendamia.column.set'),
         'summaryChannel' => 'tiendamia',
@@ -536,6 +567,7 @@
         let totalDistinctCampaigns = 0; // from API: COUNT(DISTINCT campaign_name) in tiendamia_campaign_reports
         let decreaseModeActive = false;
         let increaseModeActive = false;
+        let samePriceModeActive = false;
         let selectedSkus = new Set();
 
         // Toast notification function
@@ -858,51 +890,68 @@
                 loadTtBadgeChart();
             });
 
-            // Discount type dropdown change handler
-            $('#discount-type-select').on('change', function() {
-                const discountType = $(this).val();
+            // Swap the discount-input panel between %/$ and Same Price modes.
+            function syncDiscountInputUi() {
                 const $input = $('#discount-percentage-input');
-
-                if (discountType === 'percentage') {
-                    $input.attr('placeholder', 'Enter %');
+                if (samePriceModeActive) {
+                    $('#discount-type-select-wrap').hide();
+                    $('#discount-input-label').removeClass('d-none');
+                    $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
+                    $('#apply-discount-btn').text('Apply Same Price');
                 } else {
-                    $input.attr('placeholder', 'Enter $');
+                    $('#discount-type-select-wrap').show();
+                    $('#discount-input-label').addClass('d-none');
+                    const t = $('#discount-type-select').val();
+                    $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
+                    $('#apply-discount-btn').text('Apply');
                 }
-            });
+            }
 
-            // Single Price Mode button: Off -> Decrease ON -> Increase ON -> Off
+            // Discount type dropdown change handler
+            $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
+
+            // Single Price Mode cycle: Off → Decrease → Increase → Same Price → Off
             function syncPriceModeUi() {
                 const $btn = $('#price-mode-btn');
                 const selectColumn = table.getColumn('_select');
                 if (decreaseModeActive) {
-                    $btn.removeClass('btn-secondary btn-primary').addClass('btn-danger')
+                    $btn.removeClass('btn-secondary btn-primary btn-info').addClass('btn-danger')
                         .html('<i class="fas fa-arrow-down"></i> Decrease ON');
                     selectColumn.show();
+                    syncDiscountInputUi();
                     return;
                 }
                 if (increaseModeActive) {
-                    $btn.removeClass('btn-secondary btn-danger').addClass('btn-primary')
+                    $btn.removeClass('btn-secondary btn-danger btn-info').addClass('btn-primary')
                         .html('<i class="fas fa-arrow-up"></i> Increase ON');
                     selectColumn.show();
+                    syncDiscountInputUi();
                     return;
                 }
-                $btn.removeClass('btn-danger btn-primary').addClass('btn-secondary')
+                if (samePriceModeActive) {
+                    $btn.removeClass('btn-secondary btn-danger btn-primary').addClass('btn-info')
+                        .html('<i class="fas fa-equals"></i> Same Price ON');
+                    selectColumn.show();
+                    syncDiscountInputUi();
+                    return;
+                }
+                $btn.removeClass('btn-danger btn-primary btn-info').addClass('btn-secondary')
                     .html('<i class="fas fa-exchange-alt"></i> Price Mode');
                 selectColumn.hide();
                 selectedSkus.clear();
                 updateSelectedCount();
+                syncDiscountInputUi();
             }
 
             $('#price-mode-btn').on('click', function() {
-                if (!decreaseModeActive && !increaseModeActive) {
-                    decreaseModeActive = true;
-                    increaseModeActive = false;
+                if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                    decreaseModeActive = true;  increaseModeActive = false; samePriceModeActive = false;
                 } else if (decreaseModeActive) {
-                    decreaseModeActive = false;
-                    increaseModeActive = true;
+                    decreaseModeActive = false; increaseModeActive = true;  samePriceModeActive = false;
+                } else if (increaseModeActive) {
+                    decreaseModeActive = false; increaseModeActive = false; samePriceModeActive = true;
                 } else {
-                    decreaseModeActive = false;
-                    increaseModeActive = false;
+                    decreaseModeActive = false; increaseModeActive = false; samePriceModeActive = false;
                 }
                 syncPriceModeUi();
             });
@@ -1188,13 +1237,17 @@
                 return roundedDollar - 0.01;
             }
 
-            // Apply discount to selected SKUs
+            // Apply discount / same-price to selected SKUs
             function applyDiscount() {
                 const discountType = $('#discount-type-select').val();
                 const discountValue = parseFloat($('#discount-percentage-input').val());
 
-                if (isNaN(discountValue) || discountValue === 0) {
-                    showToast('Please enter a valid discount value', 'error');
+                if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                    showToast('Turn on Decrease, Increase, or Same Price mode first', 'error');
+                    return;
+                }
+                if (isNaN(discountValue) || discountValue <= 0) {
+                    showToast(samePriceModeActive ? 'Please enter a price (e.g. 19.99)' : 'Please enter a valid discount value', 'error');
                     return;
                 }
 
@@ -1214,10 +1267,14 @@
                         const rowData = row.getData();
                         const currentPrice = parseFloat(rowData['Tiendamia Price']) || 0;
 
-                        if (currentPrice > 0) {
+                        // Same Price applies even when Tiendamia Price is empty;
+                        // Decrease / Increase still need a positive Tiendamia Price.
+                        if (samePriceModeActive || currentPrice > 0) {
                             let newSprice;
 
-                            if (discountType === 'percentage') {
+                            if (samePriceModeActive) {
+                                newSprice = Math.max(0.99, discountValue);
+                            } else if (discountType === 'percentage') {
                                 if (increaseModeActive) {
                                     newSprice = currentPrice * (1 + discountValue / 100);
                                 } else {
@@ -1266,9 +1323,9 @@
                     saveSpriceUpdates(updates);
                 }
 
-                showToast(
-                    `${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s) based on TT Price`,
-                    'success');
+                const action = samePriceModeActive ? 'Same Price' : (increaseModeActive ? 'Increase' : 'Discount');
+                const suffix = samePriceModeActive ? '' : ' based on Tiendamia Price';
+                showToast(`${action} applied to ${updatedCount} SKU(s)${suffix}`, 'success');
                 $('#discount-percentage-input').val('');
             }
 
@@ -1520,6 +1577,40 @@
                             return '<span class="fw-bold">' + displaySku +
                                 '</span> <i class="fa fa-copy text-secondary copy-sku-btn" style="cursor:pointer;margin-left:8px;font-size:14px;" data-sku="' +
                                 safe(sku) + '" title="Copy SKU"></i>';
+                        }
+                    },
+                    {
+                        title: "Links",
+                        field: "links_column",
+                        width: 55,
+                        frozen: true,
+                        hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "Double-click to add / edit links",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            const isParent = d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT '));
+                            if (isParent) return '';
+                            const b = d['B Link'] || '';
+                            const s = d['S Link'] || '';
+                            let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
+                            if (s) {
+                                html += '<a href="' + String(s).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';
+                            }
+                            if (b) {
+                                html += '<a href="' + String(b).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>';
+                            }
+                            if (!s && !b) {
+                                html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                            }
+                            html += '</div>';
+                            return html;
+                        },
+                        cellDblClick: function(e, cell) {
+                            const d = cell.getRow().getData();
+                            const isParent = d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT '));
+                            if (isParent) return;
+                            openTiendamiaEditLinksModal(cell.getRow());
                         }
                     },
                     {
@@ -1971,10 +2062,10 @@
                             if (isNaN(percent)) return isParent ?
                                 '<span style="color:#6c757d;">-</span>' : '';
                             let color = '';
-                            if (percent < 50) color = '#a00211';
-                            else if (percent >= 50 && percent < 100) color = '#ffc107';
-                            else if (percent >= 100 && percent < 150) color = '#28a745';
-                            else color = '#e83e8c';
+                            if (percent < 40) color = '#a00211';
+                            else if (percent < 75) color = '#ffc107';
+                            else if (percent < 125) color = '#28a745';
+                            else color = '#d63384';
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
                         width: 50
@@ -2188,10 +2279,10 @@
                             const percent = parseFloat(value);
                             let color = '';
 
-                            if (percent < 50) color = '#a00211';
-                            else if (percent >= 50 && percent < 100) color = '#ffc107';
-                            else if (percent >= 100 && percent < 150) color = '#28a745';
-                            else color = '#e83e8c';
+                            if (percent < 40) color = '#a00211';
+                            else if (percent < 75) color = '#ffc107';
+                            else if (percent < 125) color = '#28a745';
+                            else color = '#d63384';
 
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         }
@@ -2587,9 +2678,7 @@
                         if (roiFilter === 'lt40') return roi < 40;
                         if (roiFilter === '40-75') return roi >= 40 && roi < 75;
                         if (roiFilter === '75-125') return roi >= 75 && roi < 125;
-                        if (roiFilter === '125-175') return roi >= 125 && roi < 175;
-                        if (roiFilter === '175-250') return roi >= 175 && roi < 250;
-                        if (roiFilter === 'gt250') return roi >= 250;
+                        if (roiFilter === 'gt125') return roi >= 125;
                         return true;
                     });
                 }
@@ -3187,6 +3276,69 @@
                 document.body.removeChild(link);
 
                 showToast('Export downloaded successfully!', 'success');
+            });
+        });
+
+        // ===== Edit Links (Buyer / Seller) =====
+        let tiendamiaEditLinksRow = null;
+
+        function openTiendamiaEditLinksModal(row) {
+            tiendamiaEditLinksRow = row;
+            const d = row.getData();
+            const sku = d['(Child) sku'] || d['Child_sku'] || '';
+            document.getElementById('tiendamiaEditLinksSku').textContent = sku;
+            document.getElementById('tiendamiaSellerLinkInput').value = d['S Link'] || '';
+            document.getElementById('tiendamiaBuyerLinkInput').value = d['B Link'] || '';
+            const modalEl = document.getElementById('tiendamiaEditLinksModal');
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+        }
+
+        $(document).on('click', '#tiendamiaSaveLinksBtn', function() {
+            if (!tiendamiaEditLinksRow) return;
+            const d = tiendamiaEditLinksRow.getData();
+            const sku = d['(Child) sku'] || d['Child_sku'] || '';
+            const sellerLink = document.getElementById('tiendamiaSellerLinkInput').value.trim();
+            const buyerLink = document.getElementById('tiendamiaBuyerLinkInput').value.trim();
+            const $btn = $(this);
+            $btn.prop('disabled', true).text('Saving...');
+
+            $.ajax({
+                url: TTP_CFG.saveLinks,
+                method: 'POST',
+                data: {
+                    sku: sku,
+                    buyer_link: buyerLink,
+                    seller_link: sellerLink
+                },
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function(res) {
+                    if (res && res.success) {
+                        tiendamiaEditLinksRow.update({
+                            'S Link': res.seller_link || '',
+                            'B Link': res.buyer_link || ''
+                        }).then(function() {
+                            tiendamiaEditLinksRow.reformat();
+                        }).catch(function() {
+                            tiendamiaEditLinksRow.reformat();
+                        });
+                        showToast('Links saved', 'success');
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById(
+                            'tiendamiaEditLinksModal')).hide();
+                    } else {
+                        showToast((res && res.message) || 'Error saving links', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    let msg = 'Error saving links';
+                    if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                    showToast(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text('Save');
+                }
             });
         });
     </script>

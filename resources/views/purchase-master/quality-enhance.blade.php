@@ -66,9 +66,12 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h4 class="mb-0">Quality Enhance</h4>
-                    <button id="add-new-row" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#qualityEnhance">
+                    <div class="d-flex align-items-center gap-2">
+                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'quality_enhance'])
+                        <button id="add-new-row" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#qualityEnhance">
                         <i class="fas fa-plus-circle me-1"></i>Add Quality Enhance
                     </button>
+                    </div>
                 </div>
                 <div id="quality-enhance"></div>
             </div>

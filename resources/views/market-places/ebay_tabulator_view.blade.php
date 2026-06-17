@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'eBay Data', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Ebay - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -291,7 +291,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'eBay Data',
+        'page_title' => 'Ebay - Analytics',
         'sub_title' => 'Tabulator view — pricing, ads, and inventory',
     ])
     <div class="ebay-tabulator-page">
@@ -299,7 +299,6 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>eBay Data</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <select id="section-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -311,9 +310,9 @@
 
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">All E Stock</option>
-                        <option value="zero">0 E Stock</option>
-                        <option value="more" selected>E Stock &gt; 0</option>
+                        <option value="all">All INV</option>
+                        <option value="zero">0 INV</option>
+                        <option value="more" selected>INV &gt; 0</option>
                     </select>
 
                     <select id="el30-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
@@ -413,16 +412,14 @@
                             <option value="10-20">10-20%</option>
                             <option value="20-30">20-30%</option>
                             <option value="30-40">30-40%</option>
-                            <option value="40-50">40-50%</option>
-                            <option value="50plus">Above 50%</option>
+                            <option value="40plus">Above 40%</option>
                         </select>
                         <select id="cvr-filter" class="form-select form-select-sm"
                             style="width: auto; display: inline-block;">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
-                            <option value="0-2">0-2%</option>
-                            <option value="2-4">2-4%</option>
-                            <option value="4-7">4-7%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
                             <option value="7-13">7-13%</option>
                             <option value="13plus">13%+</option>
                         </select>
@@ -434,9 +431,7 @@
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
-                        <option value="125-175">125–175%</option>
-                        <option value="175-250">175–250%</option>
-                        <option value="gt250">&gt; 250%</option>
+                        <option value="gt125">125%+</option>
                     </select>
 
                     <select id="cvr-trend-filter" class="form-select form-select-sm pricing-filter-item"
@@ -452,6 +447,40 @@
                         <option value="all">SPRICE</option>
                         <option value="blank">Blank SPRICE only</option>
                     </select>
+
+                    {{-- Target ROI% bulk control — back-solves SPRICE for selected rows so SGROI = Target ROI%. --}}
+                    {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin  (margin = MarketplacePercentage take-home for eBay) --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
+                        id="target-roi-controls"
+                        title="Target ROI% — sets SPRICE = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (accounts for eBay fees + shipping)">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target ROI%:
+                        </label>
+                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply SPRICE'">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save SPRICE = (LP \u00d7 (1 + Target ROI%/100) + Ship) / margin for every selected row">
+                            <i class="fas fa-calculator"></i> Apply SPRICE
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves SPRICE for selected rows so SGPFT = Target GPFT%. --}}
+                    {{-- Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100 (else denominator ≤ 0). --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
+                        id="target-gpft-controls"
+                        title="Target GPFT% — sets SPRICE = (LP + Ship) / (margin − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target GPFT%:
+                        </label>
+                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply SPRICE'. Must be less than the eBay take-home margin (e.g. < 85%).">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save SPRICE = (LP + Ship) / (margin \u2212 Target GPFT%/100) for every selected row">
+                            <i class="fas fa-calculator"></i> Apply SPRICE
+                        </button>
+                    </div>
 
                     <!-- DIL Filter -->
                     <div class="manual-dropdown-container pricing-filter-item" id="dil-filter-wrapper">
@@ -679,6 +708,10 @@
                         <i class="fa fa-file-excel"></i> Export
                     </button>
 
+                    <button id="export-lmp-btn" class="btn btn-sm btn-warning pricing-filter-item">
+                        <i class="fas fa-file-export"></i> Export LMP
+                    </button>
+
                     <button type="button" class="btn btn-sm btn-primary pricing-filter-item" data-bs-toggle="modal"
                         data-bs-target="#importModal">
                         <i class="fas fa-upload"></i> Import Ratings
@@ -765,6 +798,9 @@
                         <!-- Financial Metrics -->
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge"
                             style="color: black; font-weight: bold;">Sales: $0</span>
+                        <span class="badge fs-6 p-2" id="ebay1-shopify-sales-badge"
+                            style="background-color: #0f766e; color: white; font-weight: bold;"
+                            title="eBay1 sales from Shopify raw data (L30, excludes cancelled)">EShp: $0</span>
 
                         <!-- Percentage Metrics -->
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge"
@@ -786,9 +822,12 @@
                             style="color: black; font-weight: bold;">Views: 0</span>
 
                         <!-- Badge Filters -->
-                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge"
+                        <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter missing SKUs (INV>0)">Missing: 0</span>
+                            title="Click to filter Missing L (INV>0, not listed on eBay, REQ)">Missing L: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="missing-m-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Click to filter Missing M (listed, INV>0, REQ, INV vs eBay Stock mismatch)">Missing M: 0</span>
                     </div>
                 </div>
             </div>
@@ -998,7 +1037,10 @@
                                 style="width: 100px; font-size: 13px;">
                                 <option value="all">All</option>
                                 <option value="parent">Parent</option>
-                                <option value="sku">SKU</option>
+                                {{-- Default selection: hide parent summary rows on initial load.
+                                     Filter logic (applyFilters) already drops parent rows
+                                     when this value is 'sku', so nothing else needs to change. --}}
+                                <option value="sku" selected>SKU</option>
                             </select>
                         </div>
                         <div class="d-flex align-items-center gap-1">
@@ -1213,6 +1255,9 @@
 @section('script-bottom')
     <script>
         const COLUMN_VIS_KEY = "ebay_tabulator_column_visibility";
+        /** Stored in DB table channel_tabulator_column_settings (shared across all users — same pattern as ebay2/ebay3/mfrg/amazon tabulators). */
+        const TABULATOR_COLUMN_CHANNEL = 'ebay1_tabulator';
+        const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
         /** Channel Ads% — getEbayMasterAdsPercent() / all-marketplace-master (same as AD% on each row) */
         const EBAY_CHANNEL_ADS_PCT = {{ number_format((float) ($channelAdsPercent ?? 0), 4, '.', '') }};
         /** App base path (XAMPP subdir / public): root-relative "/ebay-data-json" would 404 */
@@ -1371,7 +1416,8 @@
         // Badge filter state variables
         let zeroSoldFilterActive = false;
         let moreSoldFilterActive = false;
-        let missingFilterActive = false;
+        let missingLFilterActive = false;
+        let missingMFilterActive = false;
 
         /**
          * When any narrowing filter/search is on, header "select all" should include every filtered row (all pages).
@@ -1397,7 +1443,7 @@
             } catch (eDil) {
                 /* ignore */ }
             if (dil !== 'all') return true;
-            if (zeroSoldFilterActive || moreSoldFilterActive || missingFilterActive) return true;
+            if (zeroSoldFilterActive || moreSoldFilterActive || missingLFilterActive || missingMFilterActive) return true;
 
             var sec = $('#section-filter').val();
             if (sec === 'kw_ads') {
@@ -1871,6 +1917,179 @@
                 }
             });
 
+            /*
+             * ============================================================================
+             * Target ROI% / Target GPFT% bulk apply for SPRICE
+             * ----------------------------------------------------------------------------
+             * Same UX as the amazon-tabulator-view: pick rows, type the target %, click
+             * Apply SPRICE → back-solve a sale price that makes the on-page SGROI / SGPFT
+             * column match the target after eBay margin + shipping are paid out.
+             *
+             * Math (mirrors the backend's SGPFT / SGROI formulas in EbayController@saveSpriceToDatabase):
+             *   SGROI%  = ((sprice * margin - lp - ship) / lp) * 100
+             *      -> sprice = (lp * (1 + roi%/100) + ship) / margin
+             *
+             *   SGPFT%  = ((sprice * margin - ship - lp) / sprice) * 100
+             *      -> sprice = (lp + ship) / (margin - gpft%/100)
+             *      Constraint: (margin - gpft%/100) must be > 0 (else infinite/neg price).
+             *
+             * `margin` is the per-row take-home rate (row.percentage, e.g. ~0.85 for eBay)
+             * with a 0.85 fallback. Both handlers POST through the existing
+             * /ebay-one/save-sprice endpoint so SGPFT/SPFT/SGROI/SROI get recomputed
+             * server-side exactly like an inline SPRICE edit. Rounding is plain 2-decimal.
+             *
+             * Selection cleanup: after each batch we wipe selectedSkus + every visible
+             * checkbox so the next batch starts fresh (avoids carryover between runs).
+             * ============================================================================
+             */
+            function ebayApplyTargetSpriceBatch(opts) {
+                // opts: { targetPct, computeSprice(rd) -> {sprice, skipReason?}, label, $btn, btnHtml }
+                const $btn = opts.$btn;
+                if (typeof selectedSkus === 'undefined' || selectedSkus.size === 0) {
+                    showToast('error', 'Please select at least one SKU');
+                    return;
+                }
+
+                const rowsToProcess = [];
+                const skipped = [];
+                table.getRows().forEach(function(r) {
+                    const rd = r.getData();
+                    const sku = rd['(Child) sku'];
+                    if (!sku || !selectedSkus.has(sku)) return;
+                    if (rd.is_parent_summary || rd.is_parent_row) return;
+                    const res = opts.computeSprice(rd);
+                    if (!res || res.skipReason) {
+                        if (res && res.skipReason) skipped.push({ sku: sku, reason: res.skipReason });
+                        return;
+                    }
+                    const sprice = +Number(res.sprice).toFixed(2);
+                    if (!isFinite(sprice) || sprice <= 0) return;
+                    rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
+                });
+
+                if (rowsToProcess.length === 0) {
+                    if (skipped.length > 0) {
+                        showToast('error', `Cannot apply: ${skipped[0].reason}`);
+                    } else {
+                        showToast('warning', 'No selected rows have a usable LP > 0');
+                    }
+                    return;
+                }
+
+                let confirmMsg = `Compute & save SPRICE for ${rowsToProcess.length} selected SKU(s) using ${opts.label}?`;
+                if (skipped.length > 0) {
+                    confirmMsg += `\n\nNote: ${skipped.length} row(s) will be skipped (${skipped[0].reason}).`;
+                }
+                if (!confirm(confirmMsg)) return;
+
+                let successCount = 0;
+                let errorCount = 0;
+                const total = rowsToProcess.length;
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+
+                rowsToProcess.forEach(function(item) {
+                    $.ajax({
+                        url: '/ebay-one/save-sprice',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        data: { sku: item.sku, sprice: item.sprice },
+                        success: function(response) {
+                            successCount++;
+                            // Field names match the existing eBay saveSpriceWithRetry update payload.
+                            const updateData = {
+                                SPRICE: item.sprice,
+                                SPFT: response.spft_percent != null ? response.spft_percent : 0,
+                                SROI: response.sroi_percent != null ? response.sroi_percent : 0,
+                                SGROI: response.sgroi_percent != null ? response.sgroi_percent : 0,
+                                SGPFT: response.sgpft_percent != null ? response.sgpft_percent : 0,
+                                SPRICE_STATUS: 'saved',
+                                has_custom_sprice: true
+                            };
+                            item.row.update(updateData);
+                            item.row.reformat();
+                        },
+                        error: function() { errorCount++; },
+                        complete: function() {
+                            if (successCount + errorCount === total) {
+                                $btn.prop('disabled', false).html(opts.btnHtml);
+                                if (errorCount === 0) {
+                                    showToast('success', `SPRICE saved for ${successCount} SKU(s) @ ${opts.label}`);
+                                } else {
+                                    showToast('error', `Saved ${successCount} of ${total} (${errorCount} failed)`);
+                                }
+                                // Wipe selection so the next batch starts clean.
+                                selectedSkus.clear();
+                                $('.sku-select-checkbox').prop('checked', false);
+                                $('#select-all-checkbox').prop('checked', false);
+                                if (typeof updateSelectedCount === 'function') {
+                                    updateSelectedCount();
+                                } else if (typeof updateSelectionUI === 'function') {
+                                    updateSelectionUI();
+                                }
+                            }
+                        }
+                    });
+                });
+            }
+
+            // Target ROI%
+            $('#apply-target-roi-btn').on('click', function() {
+                const $btn = $(this);
+                const raw = $('#target-roi-input').val();
+                const targetRoiPct = parseFloat(String(raw).replace(',', '.'));
+                if (raw === '' || raw == null) { showToast('error', 'Please enter a Target ROI%'); return; }
+                if (!isFinite(targetRoiPct)) { showToast('error', 'Target ROI% must be a number'); return; }
+                const roiMultiplier = 1 + (targetRoiPct / 100);
+                ebayApplyTargetSpriceBatch({
+                    targetPct: targetRoiPct,
+                    label: `Target ROI ${targetRoiPct}%`,
+                    $btn: $btn,
+                    btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
+                    computeSprice: function(rd) {
+                        const lp = parseFloat(rd.LP_productmaster) || 0;
+                        if (lp <= 0) return null;
+                        const ship = parseFloat(rd.Ship_productmaster) || 0;
+                        const marginRaw = parseFloat(rd.percentage);
+                        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+                        return { sprice: (lp * roiMultiplier + ship) / margin };
+                    }
+                });
+            });
+            $('#target-roi-input').on('keypress', function(e) {
+                if (e.which === 13) $('#apply-target-roi-btn').click();
+            });
+
+            // Target GPFT%
+            $('#apply-target-gpft-btn').on('click', function() {
+                const $btn = $(this);
+                const raw = $('#target-gpft-input').val();
+                const targetGpftPct = parseFloat(String(raw).replace(',', '.'));
+                if (raw === '' || raw == null) { showToast('error', 'Please enter a Target GPFT%'); return; }
+                if (!isFinite(targetGpftPct)) { showToast('error', 'Target GPFT% must be a number'); return; }
+                const targetFraction = targetGpftPct / 100;
+                ebayApplyTargetSpriceBatch({
+                    targetPct: targetGpftPct,
+                    label: `Target GPFT ${targetGpftPct}%`,
+                    $btn: $btn,
+                    btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
+                    computeSprice: function(rd) {
+                        const lp = parseFloat(rd.LP_productmaster) || 0;
+                        if (lp <= 0) return null;
+                        const ship = parseFloat(rd.Ship_productmaster) || 0;
+                        const marginRaw = parseFloat(rd.percentage);
+                        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+                        const denom = margin - targetFraction;
+                        if (denom <= 0) {
+                            return { skipReason: `Target GPFT% ${targetGpftPct}% \u2265 eBay take-home margin (~${Math.round(margin * 100)}%)` };
+                        }
+                        return { sprice: (lp + ship) / denom };
+                    }
+                });
+            });
+            $('#target-gpft-input').on('keypress', function(e) {
+                if (e.which === 13) $('#apply-target-gpft-btn').click();
+            });
+
             // Badge click handlers for filtering
             $('#zero-sold-count-badge').on('click', function() {
                 zeroSoldFilterActive = !zeroSoldFilterActive;
@@ -1884,8 +2103,17 @@
                 applyFilters();
             });
 
-            $('#missing-count-badge').on('click', function() {
-                missingFilterActive = !missingFilterActive;
+            $('#missing-l-count-badge').on('click', function() {
+                missingLFilterActive = !missingLFilterActive;
+                $(this).toggleClass('bg-secondary', !missingLFilterActive)
+                       .toggleClass('bg-danger', missingLFilterActive);
+                applyFilters();
+            });
+
+            $('#missing-m-count-badge').on('click', function() {
+                missingMFilterActive = !missingMFilterActive;
+                $(this).toggleClass('bg-secondary', !missingMFilterActive)
+                       .toggleClass('bg-danger', missingMFilterActive);
                 applyFilters();
             });
 
@@ -3245,9 +3473,9 @@
                         title: "Links",
                         field: "links_column",
                         frozen: true,
-                        width: 100,
+                        width: 55,
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const buyerLink = rowData['B Link'] || '';
@@ -3258,13 +3486,13 @@
 
                             if (sellerLink) {
                                 html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size: 12px; text-decoration: none;">
-                                    <i class="fa fa-link"></i> S Link
+                                    <i class="fa fa-link"></i> S
                                 </a>`;
                             }
 
                             if (buyerLink) {
                                 html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size: 12px; text-decoration: none;">
-                                    <i class="fa fa-link"></i> B Link
+                                    <i class="fa fa-link"></i> B
                                 </a>`;
                             }
 
@@ -3322,6 +3550,7 @@
                     {
                         title: "CVR 60",
                         field: "CVR_60",
+                        visible: false,
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
@@ -3335,6 +3564,7 @@
                     {
                         title: "CVR 45",
                         field: "CVR_45",
+                        visible: false,
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
@@ -3472,6 +3702,7 @@
                     {
                         title: "E L60",
                         field: "eBay L60",
+                        visible: false,
                         hozAlign: "center",
                         width: 50,
                         sorter: "number",
@@ -3484,6 +3715,7 @@
                     {
                         title: "E L45",
                         field: "eBay L45",
+                        visible: false,
                         hozAlign: "center",
                         width: 50,
                         sorter: "number",
@@ -3584,17 +3816,15 @@
                             }
                             const ebayStock = parseFloat(rowData['eBay Stock']) || 0;
                             const inv = parseFloat(rowData['INV']) || 0;
-                            if (inv > 0 && ebayStock === 0) {
-                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${inv})</span>`;
-                            }
+                            // Same as /map-issues: both sides must have stock to be Map / N Map.
                             if (inv > 0 && ebayStock > 0) {
-                                if (inv === ebayStock) {
+                                // Mapped (green) when within /map-issues tolerance (3 units or rounded 3%)
+                                if (ebayInvWithinMapTolerance(inv, ebayStock)) {
                                     return '<span style="color: #28a745; font-weight: bold;">MP</span>';
-                                } else {
-                                    const diff = inv - ebayStock;
-                                    const sign = diff > 0 ? '+' : '';
-                                    return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
                                 }
+                                const diff = inv - ebayStock;
+                                const sign = diff > 0 ? '+' : '';
+                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
                             }
                             return '';
                         }
@@ -3813,10 +4043,10 @@
                             let color = '';
 
                             // getRoiColor logic from inc/dec page
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            if (percent < 40) color = '#a00211'; // red
+                            else if (percent < 75) color = '#ffc107'; // yellow
+                            else if (percent < 125) color = '#28a745'; // green
+                            else color = '#d63384'; // magenta
 
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -3888,11 +4118,7 @@
                             if (value == null || value === '' || isNaN(spriceNum) || sprice <= 0)
                                 return '';
 
-                            // Show blank if price and SPRICE match (same as eBay Price)
-                            if (currentPrice > 0 && sprice > 0 && currentPrice.toFixed(2) === sprice
-                                .toFixed(2)) {
-                                return '';
-                            }
+                            // Always show SPRICE when it has a value — even if it equals the eBay price.
 
                             const formattedValue = `$${Number(sprice).toFixed(2)}`;
                             if (hasCustomSprice === false) {
@@ -4043,6 +4269,7 @@
                     {
                         title: "S GPFT",
                         field: "SGPFT",
+                        visible: false,
                         hozAlign: "center",
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -4065,6 +4292,7 @@
                     {
                         title: "S PFT",
                         field: "SPFT",
+                        visible: false,
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
@@ -4101,10 +4329,10 @@
 
                             let color = '';
                             // Same as GROI% / ROI% color logic
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            if (percent < 40) color = '#a00211'; // red
+                            else if (percent < 75) color = '#ffc107'; // yellow
+                            else if (percent < 125) color = '#28a745'; // green
+                            else color = '#d63384'; // magenta
 
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -4123,10 +4351,10 @@
 
                             let color = '';
                             // Same as ROI% color logic
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            if (percent < 40) color = '#a00211'; // red
+                            else if (percent < 75) color = '#ffc107'; // yellow
+                            else if (percent < 125) color = '#28a745'; // green
+                            else color = '#d63384'; // magenta
 
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -4732,10 +4960,10 @@
                             var ebayL30 = parseFloat(rd['eBay L30']) || 0;
                             var scvr = views > 0 ? (ebayL30 / views) * 100 : 0;
                             var color;
-                            if (scvr <= 4) color = 'red';
-                            else if (scvr <= 7) color = '#daa520';
-                            else if (scvr <= 13) color = 'green';
-                            else color = '#E83E8C';
+                            if (scvr <= 4) color = '#a00211';
+                            else if (scvr <= 7) color = '#ffc107';
+                            else if (scvr <= 13) color = '#28a745';
+                            else color = '#e83e8c';
                             return '<span style="color:' + color + '; font-weight: 600;">' + scvr
                                 .toFixed(2) + '%</span>';
                         },
@@ -5426,12 +5654,71 @@
                 }
             });
 
+            /**
+             * Inventory mapping tolerance — same rule as /map-issues:
+             * when 3% of INV is below 3 units, require an absolute gap > 3 units to be a mismatch;
+             * otherwise apply the rounded 3% rule. Mapped (green) when within tolerance.
+             */
+            function ebayInvWithinMapTolerance(inv, stock) {
+                const invNum = parseFloat(inv) || 0;
+                const stockNum = parseFloat(stock) || 0;
+                if (invNum <= 0) {
+                    return true;
+                }
+                const diff = Math.abs(invNum - stockNum);
+                let isNotMap;
+                if (invNum * 0.03 < 3) {
+                    isNotMap = diff > 3;
+                } else {
+                    isNotMap = Math.round((diff / invNum) * 100) > 3;
+                }
+                return !isNotMap;
+            }
+
+            /**
+             * Missing M (eBay) — same logic as /map-issues N Map (mapping mismatch):
+             * listed (has eBay item_id), REQ, INV > 0, eBay Stock > 0, and INV vs eBay Stock is OUTSIDE the map tolerance.
+             */
+            function isEbayMissingM(data) {
+                var d = data || {};
+                if (d.is_parent_summary === true) return false;
+                var parent = d['Parent'];
+                if (parent && String(parent).toUpperCase().startsWith('PARENT')) return false;
+                var itemId = d['eBay_item_id'];
+                if (!itemId || itemId === null || itemId === '') return false; // not listed -> handled by Missing L
+                // REQ only — match the default "REQ Only" view (nr_req can also be NRL / LATER / NR).
+                var nr = (d['nr_req'] || '').toString().trim().toUpperCase();
+                if (nr !== 'REQ') return false;
+                var inv = parseFloat(d['INV'] || 0) || 0;
+                if (inv <= 0) return false;
+                var ebayStock = parseFloat(d['eBay Stock'] || 0) || 0;
+                if (ebayStock <= 0) return false; // same as /map-issues: both sides must have stock
+                return !ebayInvWithinMapTolerance(inv, ebayStock);
+            }
+
             /** eBay listing qty: API uses `eBay Stock` (column field); legacy code used `E Stock`. */
             function rowEbayStockQty(data) {
                 var d = data || {};
                 var v = d['eBay Stock'];
                 if (v === undefined || v === null || v === '') v = d['E Stock'];
                 return parseFloat(v || 0) || 0;
+            }
+
+            /**
+             * Missing L (eBay) — same logic as amazon-tabulator-view Missing L:
+             * row is NOT listed (no eBay item_id), NR/REQ is not 'NR', INV > 0, and not a parent row.
+             */
+            function isEbayMissingL(data) {
+                var d = data || {};
+                if (d.is_parent_summary === true) return false;
+                var parent = d['Parent'];
+                if (parent && String(parent).toUpperCase().startsWith('PARENT')) return false;
+                var itemId = d['eBay_item_id'];
+                var notListed = (!itemId || itemId === null || itemId === '');
+                // REQ only — match the default "REQ Only" view (nr_req can also be NRL / LATER / NR).
+                var nr = (d['nr_req'] || '').toString().trim().toUpperCase();
+                var inv = parseFloat(d['INV'] || 0) || 0;
+                return notListed && nr === 'REQ' && inv > 0;
             }
 
             // Apply filters
@@ -5486,11 +5773,11 @@
 
                 if (inventoryFilter === 'zero') {
                     table.addFilter(function(data) {
-                        return rowEbayStockQty(data) === 0;
+                        return (parseFloat(data['INV']) || 0) === 0;
                     });
                 } else if (inventoryFilter === 'more') {
                     table.addFilter(function(data) {
-                        return rowEbayStockQty(data) > 0;
+                        return (parseFloat(data['INV']) || 0) > 0;
                     });
                 }
 
@@ -5547,8 +5834,7 @@
                         if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
                         if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
                         if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
-                        if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
-                        if (gpftFilter === '50plus') return gpft >= 50;
+                        if (gpftFilter === '40plus') return gpft >= 40;
                         return true;
                     });
                 }
@@ -5557,9 +5843,10 @@
                     table.addFilter(function(data) {
                         const roiVal = parseFloat(data['ROI%']) || 0;
                         if (roiFilter === 'lt40') return roiVal < 40;
-                        if (roiFilter === 'gt250') return roiVal > 250;
-                        const [min, max] = roiFilter.split('-').map(Number);
-                        return roiVal >= min && roiVal <= max;
+                        if (roiFilter === '40-75') return roiVal >= 40 && roiVal < 75;
+                        if (roiFilter === '75-125') return roiVal >= 75 && roiVal < 125;
+                        if (roiFilter === 'gt125') return roiVal >= 125;
+                        return true;
                     });
                 }
 
@@ -5577,9 +5864,8 @@
                         const cvrRounded = Math.round(cvr * 100) / 100;
 
                         if (cvrFilter === '0-0') return cvrRounded === 0;
-                        if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                        if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                        if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                        if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                        if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                         if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                         if (cvrFilter === '13plus') return cvrRounded > 13;
                         return true;
@@ -5644,11 +5930,15 @@
                     });
                 }
 
-                if (missingFilterActive) {
+                if (missingLFilterActive) {
                     table.addFilter(function(data) {
-                        const itemId = data['eBay_item_id'];
-                        const estock = rowEbayStockQty(data);
-                        return (!itemId || itemId === null || itemId === '') && estock > 0;
+                        return isEbayMissingL(data);
+                    });
+                }
+
+                if (missingMFilterActive) {
+                    table.addFilter(function(data) {
+                        return isEbayMissingM(data);
                     });
                 }
 
@@ -6388,9 +6678,9 @@
             // Define column groups for each section
             // Columns that are ONLY in pricing section (will be hidden when KW Ads is selected)
             var pricingOnlyColumns = [
-                'image_path', 'Missing', 'eBay Stock', 'MAP', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
+                'image_path', 'Missing', 'eBay Stock', 'MAP', 'nr_req', 'SCVR',
                 'GPFT%', 'AD%', 'PFT %', 'ROI%',
-                'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SGROI', 'SROI'
+                'lmp_price', 'SPRICE', '_accept', 'SGROI', 'SROI'
             ];
             // Columns that are ONLY in KW Ads section (will be hidden in pricing view)
             var kwAdsOnlyColumns = [
@@ -6407,9 +6697,17 @@
             ];
             // Columns shared between sections (shown in both pricing and KW Ads)
             var sharedColumns = [
-                '_select', 'INV', 'L30', 'E Dil%', 'eBay Price', 'eBay L60', 'eBay L45', 'eBay L30',
+                '_select', 'INV', 'L30', 'E Dil%', 'eBay Price', 'eBay L30',
                 'growth_percent', 'views'
             ];
+
+            // Columns that should ALWAYS stay hidden, regardless of section or saved state.
+            var alwaysHiddenColumns = ['CVR_60', 'CVR_45', 'eBay L60', 'eBay L45', 'SGPFT', 'SPFT'];
+            function enforceAlwaysHiddenColumns() {
+                alwaysHiddenColumns.forEach(function(col) {
+                    try { table.hideColumn(col); } catch (e) {}
+                });
+            }
 
             // Helper: apply column visibility for a given section
             function applySectionColumnVisibility(sectionVal) {
@@ -6477,6 +6775,7 @@
                         } catch (e) {}
                     });
                 }
+                enforceAlwaysHiddenColumns();
                 table.redraw(true);
             }
 
@@ -6827,17 +7126,21 @@
                 let dilCount = 0;
                 let zeroSoldCount = 0;
                 let moreSoldCount = 0;
-                let missingCount = 0;
                 filteredData.forEach(row => {
                     const estock = rowEbayStockQty(row);
                     const ebayL30 = parseFloat(row['eBay L30'] || 0);
+                    const isParent = row['Parent'] && String(row['Parent']).toUpperCase().startsWith('PARENT');
 
-                    if (estock > 0) {
+                    // Financial totals: include ALL sold items (even out-of-stock) so Sales reflects
+                    // true eBay sales. Exclude parent summary rows to avoid double counting.
+                    if (!isParent) {
                         totalPftAmt += parseFloat(row['Total_pft'] || 0);
                         totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
                         totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * ebayL30;
                         totalFbaL30 += ebayL30;
+                    }
 
+                    if (estock > 0) {
                         // Count 0 Sold and > 0 Sold (only E Stock > 0)
                         if (ebayL30 === 0) {
                             zeroSoldCount++;
@@ -6850,13 +7153,6 @@
                             totalDilPercent += dil;
                             dilCount++;
                         }
-
-                        // Count Missing (only E Stock > 0)
-                        const itemId = row['eBay_item_id'];
-                        if (!itemId || itemId === null || itemId === '') {
-                            missingCount++;
-                        }
-
                     }
                 });
 
@@ -6910,16 +7206,29 @@
                 $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
                 $('#more-sold-count-badge').text('> 0 Sold: ' + moreSoldCount.toLocaleString());
 
-                $('#missing-count-badge').text('Missing: ' + missingCount.toLocaleString());
+                // Missing L (same logic as amazon-tabulator-view): not listed on eBay, REQ, INV > 0.
+                let missingLCount = 0;
+                let missingMCount = 0;
+                allData.forEach(row => {
+                    if (isEbayMissingL(row)) missingLCount++;
+                    if (isEbayMissingM(row)) missingMCount++;
+                });
+                $('#missing-l-count-badge').text('Missing L: ' + missingLCount.toLocaleString());
+                $('#missing-m-count-badge').text('Missing M: ' + missingMCount.toLocaleString());
             }
 
-            // Build Column Visibility Dropdown
+            /*
+             * Column visibility (every column for this page) persists in the shared DB table
+             * `channel_tabulator_column_settings` under channel = 'ebay1_tabulator'. We hit the
+             * same /tabulator-column-visibility endpoint used by the ebay2 / ebay3 / mfrg /
+             * amazon tabulators so a single row owns the show/hide map for everyone on this view.
+             */
             function buildColumnDropdown() {
                 const menu = document.getElementById("column-dropdown-menu");
                 if (!menu) return;
                 menu.innerHTML = '';
 
-                fetch('/ebay-column-visibility', {
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
@@ -6928,6 +7237,7 @@
                     })
                     .then(response => response.json())
                     .then(savedVisibility => {
+                        const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
                         table.getColumns().forEach(col => {
                             const def = col.getDefinition();
                             if (!def.field) return;
@@ -6941,7 +7251,9 @@
                             const checkbox = document.createElement("input");
                             checkbox.type = "checkbox";
                             checkbox.value = def.field;
-                            checkbox.checked = savedVisibility[def.field] !== false;
+                            // Prefer saved value; anything explicitly false in the DB map = hidden.
+                            // Otherwise fall back to the column's current visibility.
+                            checkbox.checked = map.hasOwnProperty(def.field) ? (map[def.field] !== false) : col.isVisible();
                             checkbox.style.marginRight = "8px";
 
                             label.appendChild(checkbox);
@@ -6949,7 +7261,8 @@
                             li.appendChild(label);
                             menu.appendChild(li);
                         });
-                    });
+                    })
+                    .catch(err => console.error('Error loading column visibility:', err));
             }
 
             function saveColumnVisibilityToServer() {
@@ -6961,20 +7274,21 @@
                     }
                 });
 
-                fetch('/ebay-column-visibility', {
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                     },
                     body: JSON.stringify({
+                        channel: TABULATOR_COLUMN_CHANNEL,
                         visibility: visibility
                     })
-                });
+                }).catch(err => console.error('Error saving column visibility:', err));
             }
 
             function applyColumnVisibilityFromServer() {
-                fetch('/ebay-column-visibility', {
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
@@ -6983,21 +7297,48 @@
                     })
                     .then(response => response.json())
                     .then(savedVisibility => {
-                        table.getColumns().forEach(col => {
-                            const def = col.getDefinition();
-                            if (def.field && savedVisibility[def.field] === false) {
-                                col.hide();
-                            }
-                        });
-                    });
+                        if (savedVisibility && typeof savedVisibility === 'object') {
+                            table.getColumns().forEach(col => {
+                                const def = col.getDefinition();
+                                if (def.field && savedVisibility.hasOwnProperty(def.field)) {
+                                    if (savedVisibility[def.field]) {
+                                        col.show();
+                                    } else {
+                                        col.hide();
+                                    }
+                                }
+                            });
+                        }
+                        enforceAlwaysHiddenColumns();
+                    })
+                    .catch(err => console.error('Error applying column visibility:', err));
             }
 
             // Wait for table to be built
+            // eBay1 sales (from shopify_raw_orders, L30, excludes cancelled / other eBay stores)
+            function loadEbay1ShopifySales() {
+                fetch('{{ route('shopify-raw-data.ebay1-sales') }}', {
+                        method: 'GET',
+                        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' }
+                    })
+                    .then(r => r.json())
+                    .then(d => {
+                        const sales = parseFloat(d.sales || 0);
+                        $('#ebay1-shopify-sales-badge')
+                            .text('EShp: $' + Math.round(sales).toLocaleString())
+                            .attr('title', 'eBay1 sales from Shopify raw data ' +
+                                (d.date_from || '') + ' to ' + (d.date_to || '') +
+                                ' (excludes cancelled). Orders: ' + (d.orders || 0) + ', Qty: ' + (d.qty || 0));
+                    })
+                    .catch(() => {});
+            }
+
             table.on('tableBuilt', function() {
                 applySectionColumnVisibility($('#section-filter').val() || 'all');
                 applyColumnVisibilityFromServer();
                 buildColumnDropdown();
                 applyFilters();
+                loadEbay1ShopifySales();
 
                 // Set up periodic background retry check (every 30 seconds)
                 setInterval(() => {
@@ -7596,5 +7937,103 @@
                 tooltip.style.visibility = 'hidden';
             }
         }
+
+        // Export LMP — flatten all competitor entries for every SKU into one CSV
+        $('#export-lmp-btn').on('click', function() {
+            if (!table) {
+                alert('Table not loaded');
+                return;
+            }
+
+            const allRows = table.getData();
+            const lmpRows = [];
+
+            allRows.forEach(function(row) {
+                if (row.is_parent_summary) return;
+                const sku = row['(Child) sku'] || '';
+                const currentPrice = row['eBay Price'] || '';
+                const entries = row.lmp_entries || [];
+
+                if (entries.length === 0) {
+                    lmpRows.push({
+                        sku: sku,
+                        current_price: currentPrice,
+                        lmp_lowest: row.lmp_price || '',
+                        comp_asin: '',
+                        comp_title: '',
+                        comp_price: '',
+                        comp_seller: '',
+                        comp_rating: '',
+                        comp_reviews: '',
+                        comp_monthly_revenue: '',
+                        comp_monthly_units: '',
+                        comp_buy_box_owner: '',
+                        comp_seller_type: '',
+                        comp_link: ''
+                    });
+                } else {
+                    entries.forEach(function(comp) {
+                        lmpRows.push({
+                            sku: sku,
+                            current_price: currentPrice,
+                            lmp_lowest: row.lmp_price || '',
+                            comp_asin: comp.asin || '',
+                            comp_title: comp.title || comp.product_title || '',
+                            comp_price: comp.price !== null && comp.price !== undefined ? comp.price : '',
+                            comp_seller: comp.seller_name || '',
+                            comp_rating: comp.rating !== null && comp.rating !== undefined ? comp.rating : '',
+                            comp_reviews: comp.reviews !== null && comp.reviews !== undefined ? comp.reviews : '',
+                            comp_monthly_revenue: comp.monthly_revenue !== null && comp.monthly_revenue !== undefined ? comp.monthly_revenue : '',
+                            comp_monthly_units: comp.monthly_units_sold !== null && comp.monthly_units_sold !== undefined ? comp.monthly_units_sold : '',
+                            comp_buy_box_owner: comp.buy_box_owner || '',
+                            comp_seller_type: comp.seller_type || '',
+                            comp_link: comp.link || comp.product_link || ''
+                        });
+                    });
+                }
+            });
+
+            if (lmpRows.length === 0) {
+                alert('No LMP data to export');
+                return;
+            }
+
+            const headers = [
+                'SKU', 'Current Price', 'LMP Lowest', 'Comp ASIN', 'Comp Title',
+                'Comp Price', 'Comp Seller', 'Rating', 'Reviews',
+                'Monthly Revenue', 'Monthly Units', 'Buy Box Owner', 'Seller Type', 'Link'
+            ];
+            const fields = [
+                'sku', 'current_price', 'lmp_lowest', 'comp_asin', 'comp_title',
+                'comp_price', 'comp_seller', 'comp_rating', 'comp_reviews',
+                'comp_monthly_revenue', 'comp_monthly_units', 'comp_buy_box_owner', 'comp_seller_type', 'comp_link'
+            ];
+
+            function escapeCsvCell(val) {
+                val = String(val === null || val === undefined ? '' : val);
+                val = val.replace(/"/g, '""');
+                if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+                    val = '"' + val + '"';
+                }
+                return val;
+            }
+
+            let csv = headers.map(escapeCsvCell).join(',') + '\n';
+            lmpRows.forEach(function(r) {
+                csv += fields.map(function(f) { return escapeCsvCell(r[f]); }).join(',') + '\n';
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'eBay_LMP_Export_' + new Date().toISOString().split('T')[0] + '.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+
+            showToast('success', 'Exported LMP data for ' + lmpRows.length + ' competitor rows');
+        });
     </script>
 @endsection

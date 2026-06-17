@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Reverb Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Reverb - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -26,6 +26,10 @@
         
         .tabulator .tabulator-header .tabulator-col {
             height: 80px !important;
+        }
+
+        #summary-stats .badge.active-filter {
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.85), 0 0 0 5px currentColor;
         }
 
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
@@ -125,14 +129,13 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Reverb Analytics',
-        'sub_title' => 'Reverb Analytics',
+        'page_title' => 'Reverb - Analytics',
+        'sub_title' => '',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Reverb Data</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: 130px;">
@@ -169,9 +172,8 @@
                         <select id="cvr-filter" class="form-select form-select-sm">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
-                            <option value="0-2">0-2%</option>
-                            <option value="2-4">2-4%</option>
-                            <option value="4-7">4-7%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
                             <option value="7-13">7-13%</option>
                             <option value="13plus">13%+</option>
                         </select>
@@ -182,9 +184,7 @@
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
-                        <option value="125-175">125–175%</option>
-                        <option value="175-250">175–250%</option>
-                        <option value="gt250">&gt; 250%</option>
+                        <option value="gt125">125%+</option>
                     </select>
 
                     <!-- DIL Filter (Walmart-style dropdown) -->
@@ -237,6 +237,9 @@
                     <button id="increase-btn" class="btn btn-sm btn-success">
                         <i class="fas fa-arrow-up"></i> Increase Mode
                     </button>
+                    <button id="same-price-btn" class="btn btn-sm btn-info" title="Apply ONE price (entered in the box) to every selected SKU">
+                        <i class="fas fa-equals"></i> Same Price Mode
+                    </button>
                     <button id="show-ads-column-btn" class="btn btn-sm btn-outline-primary" title="First click: ads columns only. Second click: show all columns.">
                         <i class="fa fa-bullhorn"></i> Show Ads Column
                     </button>
@@ -256,22 +259,26 @@
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;" title="Order dollars: (Σ RD sales − Σ COGS) ÷ Σ COGS; RD sales = per-SKU reverb_daily qty×amount">ROI (orders): 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs">MISSING: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="inv-r-stock-badge" style="color: white; font-weight: bold; cursor: pointer;" title="INV vs R Stock mismatch &gt; 3 (same tolerance as other channels)">N Map: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing listings (REQ + INV&gt;0 + RV Price = 0)">Missing L: 0</span>
+                        <span class="badge fs-6 p-2" id="map-count-badge" style="background-color: #198754; color: white; font-weight: bold; cursor: pointer;" title="Click to filter mapped stock (REQ + INV&gt;0 + |INV − R Stock| ≤ 3)">Map: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="inv-r-stock-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter stock mismatch (REQ + INV&gt;0 + |INV − R Stock| &gt; 3)">N Map: 0</span>
                     </div>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
                 <!-- Discount Input Box (shown when SKUs are selected) -->
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span id="selected-skus-count" class="fw-bold"></span>
+                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
+                        <span id="discount-type-select-wrap">
                         <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
                             <option value="percentage">Percentage</option>
                             <option value="value">Value ($)</option>
                         </select>
+                        </span>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
-                            placeholder="Enter %" step="0.01" style="width: 100px;">
+                            placeholder="Enter %" step="0.01" style="width: 140px;">
                         <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
                         <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
                             <i class="fas fa-copy"></i> Sugg Amz Prc
@@ -292,6 +299,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="reverbEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="reverbEditLinksSku">
+                    <p class="mb-3"><strong>SKU:</strong> <span id="reverbEditLinksSkuDisplay"></span></p>
+                    <div class="mb-3">
+                        <label for="reverbEditSellerLink" class="form-label">S Link (Seller)</label>
+                        <input type="url" class="form-control" id="reverbEditSellerLink" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label for="reverbEditBuyerLink" class="form-label">B Link (Buyer)</label>
+                        <input type="url" class="form-control" id="reverbEditBuyerLink" placeholder="https://...">
+                    </div>
+                    <div id="reverbEditLinksError" class="text-danger small" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="reverbSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -301,6 +337,7 @@
     let table = null;
     let decreaseModeActive = false;
     let increaseModeActive = false;
+    let samePriceModeActive = false;
     let selectedSkus = new Set();
     
     // Toast notification function
@@ -323,53 +360,103 @@
         toast.addEventListener('hidden.bs.toast', () => toast.remove());
     }
 
-    $(document).ready(function() {
-        // Discount type dropdown change handler
-        $('#discount-type-select').on('change', function() {
-            const discountType = $(this).val();
-            const $input = $('#discount-percentage-input');
-            
-            if (discountType === 'percentage') {
-                $input.attr('placeholder', 'Enter %');
-            } else {
-                $input.attr('placeholder', 'Enter $');
-            }
-        });
+    // Mode button visual resets — keep each in their idle styling.
+    function resetDecreaseBtn() {
+        $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning')
+            .html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+    }
+    function resetIncreaseBtn() {
+        $('#increase-btn').removeClass('btn-danger').addClass('btn-success')
+            .html('<i class="fas fa-arrow-up"></i> Increase Mode');
+    }
+    function resetSamePriceBtn() {
+        $('#same-price-btn').removeClass('btn-danger').addClass('btn-info')
+            .html('<i class="fas fa-equals"></i> Same Price Mode');
+    }
+    // Swap the discount-input panel between %/$ and Same Price modes.
+    function syncDiscountInputUi() {
+        const $input = $('#discount-percentage-input');
+        if (samePriceModeActive) {
+            $('#discount-type-select-wrap').hide();
+            $('#discount-input-label').removeClass('d-none');
+            $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
+            $('#apply-discount-btn').text('Apply Same Price');
+        } else {
+            $('#discount-type-select-wrap').show();
+            $('#discount-input-label').addClass('d-none');
+            const t = $('#discount-type-select').val();
+            $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
+            $('#apply-discount-btn').text('Apply');
+        }
+    }
 
-        // Decrease button toggle
+    $(document).ready(function() {
+        $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
+
+        // Decrease Mode Toggle
         $('#decrease-btn').on('click', function() {
             decreaseModeActive = !decreaseModeActive;
             increaseModeActive = false;
+            samePriceModeActive = false;
             const selectColumn = table.getColumn('_select');
-            
+
+            resetIncreaseBtn();
+            resetSamePriceBtn();
             if (decreaseModeActive) {
-                $(this).removeClass('btn-warning').addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> Decrease ON');
+                $(this).removeClass('btn-warning').addClass('btn-danger')
+                    .html('<i class="fas fa-arrow-down"></i> Decrease ON');
                 selectColumn.show();
-                $('#increase-btn').removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> Increase Mode');
             } else {
-                $(this).removeClass('btn-danger').addClass('btn-warning').html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+                resetDecreaseBtn();
                 selectColumn.hide();
                 selectedSkus.clear();
                 updateSelectedCount();
             }
+            syncDiscountInputUi();
         });
-        
+
         // Increase Mode Toggle
         $('#increase-btn').on('click', function() {
             increaseModeActive = !increaseModeActive;
             decreaseModeActive = false;
+            samePriceModeActive = false;
             const selectColumn = table.getColumn('_select');
-            
+
+            resetDecreaseBtn();
+            resetSamePriceBtn();
             if (increaseModeActive) {
-                $(this).removeClass('btn-success').addClass('btn-danger').html('<i class="fas fa-arrow-up"></i> Increase ON');
+                $(this).removeClass('btn-success').addClass('btn-danger')
+                    .html('<i class="fas fa-arrow-up"></i> Increase ON');
                 selectColumn.show();
-                $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning').html('<i class="fas fa-arrow-down"></i> Decrease Mode');
             } else {
-                $(this).removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> Increase Mode');
+                resetIncreaseBtn();
                 selectColumn.hide();
                 selectedSkus.clear();
                 updateSelectedCount();
             }
+            syncDiscountInputUi();
+        });
+
+        // Same Price Mode Toggle — entered price applies to ALL selected SKUs.
+        $('#same-price-btn').on('click', function() {
+            samePriceModeActive = !samePriceModeActive;
+            decreaseModeActive = false;
+            increaseModeActive = false;
+            const selectColumn = table.getColumn('_select');
+
+            resetDecreaseBtn();
+            resetIncreaseBtn();
+            if (samePriceModeActive) {
+                $(this).removeClass('btn-info').addClass('btn-danger')
+                    .html('<i class="fas fa-equals"></i> Same Price ON');
+                selectColumn.show();
+            } else {
+                resetSamePriceBtn();
+                selectColumn.hide();
+                selectedSkus.clear();
+                updateSelectedCount();
+            }
+            syncDiscountInputUi();
         });
 
         // Select all checkbox handler
@@ -459,19 +546,94 @@
             applyFilters();
         });
 
-        // Missing badge click handler - filter SKUs missing in Reverb
+        // Missing / Map / N Map badge filters (also opened from all-marketplace-master ?badge=)
         let missingFilterActive = false;
+        let mapFilterActive = false;
+        let invRStockFilterActive = false;
+
+        function clearReverbBadgeFilters() {
+            missingFilterActive = mapFilterActive = invRStockFilterActive = false;
+            zeroSoldFilterActive = moreSoldFilterActive = false;
+        }
+
+        function syncReverbBadgeFilterStyles() {
+            $('#missing-count-badge').toggleClass('active-filter', missingFilterActive);
+            $('#map-count-badge').toggleClass('active-filter', mapFilterActive);
+            $('#inv-r-stock-badge').toggleClass('active-filter', invRStockFilterActive);
+        }
+
+        // Columns hidden while the "Missing L" badge filter is active
+        const missingHiddenColumnFields = [
+            'RV Price',
+            'GPFT%', 'PFT %', 'ROI%', 'SPRICE', 'SGPFT', 'SPFT', 'SROI',
+            'RV L30', 'reverb_daily_qty', 'reverb_daily_qty_x_subtotal', 'reverb_daily_qty_x_amount', 'R Stock',
+            'Views', 'CVR',
+            'L30', 'RV Dil%', 'MAP', 'Profit', 'Sales L30', 'LP_productmaster', 'Ship_productmaster'
+        ];
+
+        // Remember each column's visibility before the filter hid it, so we can restore it
+        let missingColumnPrevVisibility = null;
+
+        function applyMissingColumnVisibility() {
+            if (!table) return;
+            if (missingFilterActive) {
+                if (!missingColumnPrevVisibility) {
+                    missingColumnPrevVisibility = {};
+                    missingHiddenColumnFields.forEach(function(field) {
+                        const col = table.getColumn(field);
+                        if (col) missingColumnPrevVisibility[field] = col.isVisible();
+                    });
+                }
+                missingHiddenColumnFields.forEach(function(field) {
+                    const col = table.getColumn(field);
+                    if (col) col.hide();
+                });
+            } else if (missingColumnPrevVisibility) {
+                missingHiddenColumnFields.forEach(function(field) {
+                    const col = table.getColumn(field);
+                    if (!col) return;
+                    if (missingColumnPrevVisibility[field]) col.show();
+                    else col.hide();
+                });
+                missingColumnPrevVisibility = null;
+            }
+            buildColumnDropdown();
+        }
+
+        function applyReverbUrlBadgeFilter() {
+            const badge = (new URLSearchParams(window.location.search).get('badge') || '').toLowerCase();
+            if (badge && table) {
+                clearReverbBadgeFilters();
+                if (badge === 'missing') missingFilterActive = true;
+                else if (badge === 'map') mapFilterActive = true;
+                else if (badge === 'nmap') invRStockFilterActive = true;
+                else if (badge === 'zero_sold') zeroSoldFilterActive = true;
+                else if (badge === 'more_sold') moreSoldFilterActive = true;
+                syncReverbBadgeFilterStyles();
+                applyMissingColumnVisibility();
+            }
+            applyFilters();
+        }
+
         $('#missing-count-badge').on('click', function() {
             missingFilterActive = !missingFilterActive;
-            invRStockFilterActive = false;
+            mapFilterActive = invRStockFilterActive = false;
+            syncReverbBadgeFilterStyles();
+            applyMissingColumnVisibility();
             applyFilters();
         });
 
-        // INV > R Stock badge click handler - filter SKUs where INV > R Stock
-        let invRStockFilterActive = false;
+        $('#map-count-badge').on('click', function() {
+            mapFilterActive = !mapFilterActive;
+            missingFilterActive = invRStockFilterActive = false;
+            syncReverbBadgeFilterStyles();
+            applyFilters();
+        });
+
         $('#inv-r-stock-badge').on('click', function() {
             invRStockFilterActive = !invRStockFilterActive;
-            missingFilterActive = false; // Deactivate other filters
+            missingFilterActive = mapFilterActive = false;
+            syncReverbBadgeFilterStyles();
             applyFilters();
         });
 
@@ -554,37 +716,44 @@
             return roundedDollar - 0.01;
         }
 
-        // Apply discount to selected SKUs (based on RV Price)
+        // Apply discount / same-price to selected SKUs (based on RV Price for %/$).
         function applyDiscount() {
             const discountType = $('#discount-type-select').val();
             const discountValue = parseFloat($('#discount-percentage-input').val());
-            
-            if (isNaN(discountValue) || discountValue === 0) {
-                showToast('Please enter a valid discount value', 'error');
+
+            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                showToast('Turn on Decrease, Increase, or Same Price mode first', 'error');
                 return;
             }
-
+            if (isNaN(discountValue) || discountValue <= 0) {
+                showToast(samePriceModeActive ? 'Please enter a price (e.g. 19.99)' : 'Please enter a valid value', 'error');
+                return;
+            }
             if (selectedSkus.size === 0) {
                 showToast('Please select at least one SKU', 'error');
                 return;
             }
-            
+
             let updatedCount = 0;
             const updates = []; // Store updates for backend saving
-            
+
             // Loop through selected SKUs
             selectedSkus.forEach(sku => {
                 const rows = table.searchRows("(Child) sku", "=", sku);
-                
+
                 if (rows.length > 0) {
                     const row = rows[0];
                     const rowData = row.getData();
                     const currentPrice = parseFloat(rowData['RV Price']) || 0;
-                    
-                    if (currentPrice > 0) {
+
+                    // Same Price mode applies even when RV Price is empty;
+                    // %/$ modes still require a positive RV Price to compute against.
+                    if (samePriceModeActive || currentPrice > 0) {
                         let newSprice;
-                        
-                        if (discountType === 'percentage') {
+
+                        if (samePriceModeActive) {
+                            newSprice = Math.max(0.99, discountValue);
+                        } else if (discountType === 'percentage') {
                             if (increaseModeActive) {
                                 newSprice = currentPrice * (1 + discountValue / 100);
                             } else {
@@ -597,22 +766,22 @@
                                 newSprice = currentPrice - discountValue;
                             }
                         }
-                        
+
                         // Apply retail price rounding (round to .99 endings)
                         newSprice = roundToRetailPrice(newSprice);
-                        
+
                         // Ensure minimum price
                         newSprice = Math.max(0.99, newSprice);
-                        
+
                         // Calculate SGPFT, SPFT, SROI
                         const percentage = rowData['percentage'] || 0.85;
                         const lp = rowData['LP_productmaster'] || 0;
                         const ship = rowData['Ship_productmaster'] || 0;
-                        
+
                         const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
                         const spft = sgpft;
                         const sroi = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
-                        
+
                         // Update SPRICE and calculated values in table
                         row.update({
                             SPRICE: newSprice,
@@ -621,24 +790,26 @@
                             SROI: sroi,
                             has_custom_sprice: true
                         });
-                        
+
                         // Store update for backend saving
                         updates.push({
                             sku: sku,
                             sprice: newSprice
                         });
-                        
+
                         updatedCount++;
                     }
                 }
             });
-            
+
             // Save to backend if there are updates
             if (updates.length > 0) {
                 saveSpriceUpdates(updates);
             }
-            
-            showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s) based on RV Price`, 'success');
+
+            const action = samePriceModeActive ? 'Same Price' : (increaseModeActive ? 'Increase' : 'Discount');
+            const suffix = samePriceModeActive ? '' : ' based on RV Price';
+            showToast(`${action} applied to ${updatedCount} SKU(s)${suffix}`, 'success');
             $('#discount-percentage-input').val('');
         }
 
@@ -849,6 +1020,15 @@
         table = new Tabulator("#reverb-table", {
             ajaxURL: "/reverb-data-json",
             ajaxSorting: false,
+            ajaxResponse: function(url, params, response) {
+                if (response && response.map_miss_summary) {
+                    applyMapMissSummary(response.map_miss_summary);
+                }
+                if (response && Array.isArray(response.data)) {
+                    return response.data;
+                }
+                return response;
+            },
             layout: "fitDataStretch",
             pagination: true,
             paginationSize: 100,
@@ -922,9 +1102,10 @@
                     title: "Links",
                     field: "links_column",
                     frozen: true,
-                    width: 100,
+                    width: 55,
                     hozAlign: "center",
-                    visible: false,
+                    visible: true,
+                    tooltip: "Double-click to add / edit links",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const buyerLink = rowData['B Link'] || '';
@@ -934,13 +1115,13 @@
                         
                         if (sellerLink) {
                             html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size: 12px; text-decoration: none;">
-                                <i class="fa fa-link"></i> S Link
+                                <i class="fa fa-link"></i> S
                             </a>`;
                         }
                         
                         if (buyerLink) {
                             html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size: 12px; text-decoration: none;">
-                                <i class="fa fa-link"></i> B Link
+                                <i class="fa fa-link"></i> B
                             </a>`;
                         }
                         
@@ -950,6 +1131,10 @@
                         
                         html += '</div>';
                         return html;
+                    },
+                    cellDblClick: function(e, cell) {
+                        e.stopPropagation();
+                        openReverbEditLinksModal(cell.getRow());
                     },
                     headerSort: false
                 },
@@ -1105,7 +1290,7 @@
                     }
                 },
                 {
-                    title: "Missing",
+                    title: "Missing L",
                     field: "Missing",
                     hozAlign: "center",
                     width: 70,
@@ -1163,9 +1348,9 @@
                         const cvr = (l30 / adjustedViews) * 100;
                         let color = '';
                         
-                        if (cvr < 1) color = '#a00211';
-                        else if (cvr >= 1 && cvr < 3) color = '#ffc107';
-                        else if (cvr >= 3 && cvr < 5) color = '#28a745';
+                        if (cvr <= 4) color = '#a00211';
+                        else if (cvr > 4 && cvr <= 7) color = '#ffc107';
+                        else if (cvr > 7 && cvr <= 13) color = '#28a745';
                         else color = '#e83e8c';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
@@ -1289,10 +1474,10 @@
                         const percent = parseFloat(value);
                         let color = '';
                         
-                        if (percent < 50) color = '#a00211';
-                        else if (percent >= 50 && percent < 100) color = '#ffc107';
-                        else if (percent >= 100 && percent < 150) color = '#28a745';
-                        else color = '#e83e8c';
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
@@ -1440,10 +1625,10 @@
                         const percent = parseFloat(value);
                         let color = '';
                         
-                        if (percent < 50) color = '#a00211';
-                        else if (percent >= 50 && percent < 100) color = '#ffc107';
-                        else if (percent >= 100 && percent < 150) color = '#28a745';
-                        else color = '#e83e8c';
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
@@ -1482,6 +1667,48 @@
                 error: function(xhr) {
                     showToast(`Failed to update status for ${sku}`, 'error');
                 }
+            });
+        });
+
+        // ---- Edit B/S Links (double-click on Links cell) ----
+        let reverbEditLinksRow = null;
+        function openReverbEditLinksModal(row) {
+            if (!row) return;
+            reverbEditLinksRow = row;
+            const d = row.getData();
+            $('#reverbEditLinksSku').val(d['(Child) sku']);
+            $('#reverbEditLinksSkuDisplay').text(d['(Child) sku']);
+            $('#reverbEditSellerLink').val(d['S Link'] || '');
+            $('#reverbEditBuyerLink').val(d['B Link'] || '');
+            $('#reverbEditLinksError').hide().text('');
+            new bootstrap.Modal(document.getElementById('reverbEditLinksModal')).show();
+        }
+
+        $(document).on('click', '#reverbSaveLinksBtn', function() {
+            const sku = $('#reverbEditLinksSku').val();
+            const sellerLink = $('#reverbEditSellerLink').val().trim();
+            const buyerLink = $('#reverbEditBuyerLink').val().trim();
+            const $err = $('#reverbEditLinksError');
+            $err.hide().text('');
+            const $btn = $(this).prop('disabled', true);
+            $.ajax({
+                url: '{{ url("/reverb-save-links") }}',
+                method: 'POST',
+                data: { sku: sku, seller_link: sellerLink, buyer_link: buyerLink, _token: '{{ csrf_token() }}' },
+                success: function(res) {
+                    if (reverbEditLinksRow) {
+                        reverbEditLinksRow.update({ 'S Link': res.seller_link || '', 'B Link': res.buyer_link || '' })
+                            .then(function() { reverbEditLinksRow.reformat(); })
+                            .catch(function() { reverbEditLinksRow.reformat(); });
+                    }
+                    showToast(`${sku}: links saved`, 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('reverbEditLinksModal'))?.hide();
+                },
+                error: function(xhr) {
+                    const msg = xhr.responseJSON?.message || 'Failed to save links.';
+                    $err.text(msg).show();
+                },
+                complete: function() { $btn.prop('disabled', false); }
             });
         });
 
@@ -1607,9 +1834,10 @@
                 table.addFilter(function(data) {
                     const roiVal = parseFloat(data['ROI%']) || 0;
                     if (roiFilter === 'lt40') return roiVal < 40;
-                    if (roiFilter === 'gt250') return roiVal > 250;
-                    const [min, max] = roiFilter.split('-').map(Number);
-                    return roiVal >= min && roiVal <= max;
+                    if (roiFilter === '40-75') return roiVal >= 40 && roiVal < 75;
+                    if (roiFilter === '75-125') return roiVal >= 75 && roiVal < 125;
+                    if (roiFilter === 'gt125') return roiVal >= 125;
+                    return true;
                 });
             }
 
@@ -1624,9 +1852,8 @@
                     const cvrPercent = adjustedViews > 0 ? (wl30 / adjustedViews) * 100 : 0;
 
                     if (cvrFilter === '0-0') return cvrPercent === 0;
-                    if (cvrFilter === '0-2') return cvrPercent > 0 && cvrPercent <= 2;
-                    if (cvrFilter === '2-4') return cvrPercent > 2 && cvrPercent <= 4;
-                    if (cvrFilter === '4-7') return cvrPercent > 4 && cvrPercent <= 7;
+                    if (cvrFilter === '0-3') return cvrPercent > 0 && cvrPercent <= 3;
+                    if (cvrFilter === '3-7') return cvrPercent > 3 && cvrPercent <= 7;
                     if (cvrFilter === '7-13') return cvrPercent > 7 && cvrPercent <= 13;
                     if (cvrFilter === '13plus') return cvrPercent > 13;
                     return true;
@@ -1686,6 +1913,17 @@
                 });
             }
 
+            // Map filter — listed SKUs with INV matched to R Stock (|INV − R Stock| ≤ 3)
+            if (mapFilterActive) {
+                table.addFilter(function(data) {
+                    const mapValue = data['MAP'] || '';
+                    const inv = parseFloat(data['INV']) || 0;
+                    const nrReq = data['nr_req'] || 'REQ';
+                    const isMissing = (data['Missing'] || '') === 'M';
+                    return mapValue === 'Map' && nrReq === 'REQ' && inv > 0 && !isMissing;
+                });
+            }
+
             // N Map filter - show SKUs where stocks don't match (REQ items with INV > 0 and NOT Missing)
             if (invRStockFilterActive) {
                 table.addFilter(function(data) {
@@ -1721,17 +1959,41 @@
                 });
         }
 
+        // Full table rows (ignore Tabulator filters — used when server summary unavailable)
+        function getSummaryRows() {
+            if (!table) return [];
+            const rows = table.getRows();
+            const data = (rows && rows.length)
+                ? rows.map(r => r.getData())
+                : (table.getData() || []);
+            return data.filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+        }
+
+        // Filtered rows for GPFT / sold / Amz badges
+        function getFilteredSummaryRows() {
+            if (!table) return [];
+            const rows = table.getRows('active');
+            const data = (rows && rows.length)
+                ? rows.map(r => r.getData())
+                : (table.getData('active') || []);
+            return data.filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+        }
+
+        // Server counts for Missing L / Map / N Map (matches all-marketplace-master)
+        function applyMapMissSummary(summary) {
+            if (!summary) return;
+            $('#missing-count-badge').text('Missing L: ' + (parseInt(summary.miss, 10) || 0).toLocaleString());
+            $('#map-count-badge').text('Map: ' + (parseInt(summary.map, 10) || 0).toLocaleString());
+            $('#inv-r-stock-badge').text('N Map: ' + (parseInt(summary.nmap, 10) || 0).toLocaleString());
+        }
+
         // Update summary badges
         function updateSummary() {
-            const data = table.getData('active').filter(row => {
-                // Don't filter by INV for summary - respect the dropdown filter instead
-                return !(row.Parent && row.Parent.startsWith('PARENT'));
-            });
+            const data = getFilteredSummaryRows();
 
             let totalGpft = 0;
             let zeroSoldCount = 0, moreSoldCount = 0;
             let lessAmzCount = 0, moreAmzCount = 0;
-            let missingCount = 0, invRStockCount = 0;
             let totalRdQty = 0, totalRdCogs = 0, totalRdSales = 0;
             let totalRevenueQtyPrice = 0;
             let totalProfitLive = 0;
@@ -1774,21 +2036,6 @@
                 if (amzPrice > 0 && rvPrice > 0 && rvPrice > amzPrice) {
                     moreAmzCount++;
                 }
-                
-                const inv = parseFloat(row['INV']) || 0;
-                const nrReq = row['nr_req'] || 'REQ';
-                const isMissing = row['Missing'] === 'M';
-                
-                // Count Missing (only REQ items with INV > 0)
-                if (isMissing && nrReq === 'REQ' && inv > 0) {
-                    missingCount++;
-                }
-                
-                const mapValue = row['MAP'] || '';
-                // Count N Map (only REQ items with INV > 0 and NOT Missing)
-                if (mapValue.includes('N Map|') && nrReq === 'REQ' && inv > 0 && !isMissing) {
-                    invRStockCount++;
-                }
             });
 
             const avgGpftListing = data.length > 0 ? totalGpft / data.length : 0;
@@ -1823,8 +2070,6 @@
             );
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount}`);
-            $('#missing-count-badge').text(`MISSING: ${missingCount}`);
-            $('#inv-r-stock-badge').text('N Map: ' + invRStockCount.toLocaleString());
         }
 
         // Build Column Visibility Dropdown
@@ -1904,7 +2149,7 @@
 
         table.on('dataLoaded', function() {
             setTimeout(function() {
-                applyFilters();
+                applyReverbUrlBadgeFilter();
                 updateSummary();
                 loadReverbDailyTotalsBadges();
             }, 100);

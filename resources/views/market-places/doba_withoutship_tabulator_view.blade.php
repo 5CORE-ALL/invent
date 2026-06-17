@@ -318,6 +318,7 @@
                     </select>
 
                     <select id="dws-inv-filter" class="form-select form-select-sm" style="width:110px;" title="Inventory (INV)">
+                        <option value="all">All INV</option>
                         <option value="zero">0 INV</option>
                         <option value="more" selected>&gt; 0 INV</option>
                     </select>
@@ -381,7 +382,6 @@
                         </ul>
                     </div>
                     </div>
-                    <input type="text" id="dws-sku-search" class="form-control form-control-sm" style="max-width:220px; min-width:180px;" placeholder="Search SKU..." autocomplete="off">
                 </div>
 
                 {{-- Row 2: actions (same order feel as /aliexpress-pricing) --}}
@@ -406,9 +406,6 @@
                             title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         <i class="fas fa-exchange-alt"></i> Price %
                     </button>
-                    <button id="push-to-doba-btn" class="btn btn-sm btn-primary" style="display: none;">
-                        <i class="fas fa-upload"></i> Push to Doba
-                    </button>
                 </div>
 
                 {{-- Row 3: summary KPIs (/aliexpress-pricing style) --}}
@@ -419,6 +416,7 @@
                         <span id="zero-sold-count" class="badge bg-danger fs-6 p-2" style="font-weight:700; color: white !important;">L30 0 Sold: 0</span>
                         <span id="sold-count" class="badge bg-success fs-6 p-2" style="font-weight:700; color: white !important;">SOLD: 0</span>
                         <span id="missing-count" class="badge fs-6 p-2" style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
+                        <span id="nmap-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter inventory mismatch (Shop INV vs D INV)">N Map: 0</span>
                         <span id="disc-vs-amz-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter non-competitive items"><i class="fas fa-chart-line"></i> VS AMZ: 0</span>
                         <span id="growth-sales-badge" class="badge fs-6 p-2" style="background-color: #28a745; color: white; font-weight:700;">GROWTH: 0%</span>
                         <span id="pft-percentage-badge" class="badge bg-danger fs-6 p-2" style="color: white; font-weight:700;">L30 GPFT %: 0%</span>
@@ -460,8 +458,40 @@
                         <span id="selected-skus-count" class="text-muted ms-2"></span>
                     </div>
                 </div>
+                <div class="p-2 bg-light border-bottom">
+                    <input type="text" id="dws-sku-search" class="form-control" placeholder="Search SKU..." autocomplete="off">
+                </div>
                 <div id="doba-withoutship-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <div id="doba-withoutship-table" style="flex: 1;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Links Modal -->
+    <div class="modal fade" id="dwsEditLinksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Links</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">SKU: <span id="dwsEditLinksSku" class="fw-bold"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Seller Link (S)</label>
+                        <input type="url" class="form-control" id="dwsSellerLinkInput" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Buyer Link (B)</label>
+                        <input type="url" class="form-control" id="dwsBuyerLinkInput" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="dwsSaveLinksBtn">Save</button>
                 </div>
             </div>
         </div>
@@ -490,6 +520,26 @@
                 .replace(/'/g, '&#39;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
+        }
+        /** Shop INV vs D INV counts as Map if diff <= 3 units OR <= 3% of Shopify INV (same rule as Amazon). */
+        function dobaInvWithinMapTolerance(shopInv, dInv) {
+            const shopNum = parseFloat(shopInv) || 0;
+            const dNum = parseFloat(dInv) || 0;
+            if (shopNum <= 0) return true;
+            const diff = Math.abs(shopNum - dNum);
+            if (diff <= 3 + 1e-9) return true;
+            return diff <= (shopNum * 0.03) + 1e-9;
+        }
+        /** N Map (Missing M): listed row with Shop INV > 0 and Doba price > 0 whose D INV is out of tolerance. */
+        function dobaInvMismatch(rowData) {
+            if (!rowData || rowData.is_parent) return false;
+            if (rowData.is_missing_doba) return false;
+            const shopInv = parseFloat(rowData.shopify_inv) || 0;
+            if (shopInv <= 0) return false;
+            const dobaPrice = parseFloat(rowData.self_pick_price) || 0;
+            if (dobaPrice <= 0) return false;
+            const dInv = parseFloat(rowData.INV) || 0;
+            return !dobaInvWithinMapTolerance(shopInv, dInv);
         }
         let table = null; // Global table reference
         let decreaseModeActive = false; // Track decrease mode state
@@ -580,10 +630,6 @@
                     }
                     document.body.removeChild(ta);
                 }
-            });
-
-            $('#dws-sku-search').on('input', function() {
-                applyFilters();
             });
 
             // Discount type dropdown change handler
@@ -1210,324 +1256,6 @@
                 }
             });
 
-            // Save push status to database
-            function savePushStatusToDatabase(sku, pushStatus, rowData) {
-                return $.ajax({
-                    url: '/doba/save-sprice',
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                    },
-                    data: {
-                        sku: sku,
-                        sprice: rowData.sprice || 0,
-                        spft_percent: rowData.spft || 0,
-                        sroi_percent: rowData.sroi || 0,
-                        s_self_pick: rowData.s_self_pick || 0,
-                        push_status: pushStatus,
-                        _token: $('meta[name="csrf-token"]').attr('content')
-                    }
-                });
-            }
-
-            // Push price to Doba API with retry functionality (5 retries, 1 minute gap)
-            function pushPriceToDobaWithRetry(sku, price, selfPickPrice = null, maxRetries = 5, delay = 5000) {
-                return new Promise((resolve, reject) => {
-                    let attempt = 0;
-                    
-                    function attemptPush() {
-                        attempt++;
-                        console.log(`Attempt ${attempt}/${maxRetries} for SKU ${sku}`);
-                        
-                        const requestData = {
-                            sku: sku,
-                            price: price,
-                            _token: $('meta[name="csrf-token"]').attr('content')
-                        };
-                        
-                        // Add self_pick_price if provided
-                        if (selfPickPrice !== null && selfPickPrice > 0) {
-                            requestData.self_pick_price = selfPickPrice;
-                        }
-                        
-                        $.ajax({
-                            url: '/doba/push-price',
-                            method: 'POST',
-                            headers: {
-                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                            },
-                            data: requestData,
-                            success: function(response) {
-                                console.log(`Attempt ${attempt} response for SKU ${sku}:`, response);
-                                
-                                if (response.errors && response.errors.length > 0) {
-                                    const errorMsg = response.errors[0].message || 'Unknown error';
-                                    console.error(`Attempt ${attempt} for SKU ${sku} failed:`, errorMsg);
-                                    
-                                    if (attempt < maxRetries) {
-                                        console.log(`Retry ${attempt + 1}/${maxRetries} for SKU ${sku} in ${delay/1000} seconds...`);
-                                        setTimeout(attemptPush, delay);
-                                    } else {
-                                        console.error(`Max retries (${maxRetries}) reached for SKU ${sku}`);
-                                        reject({ error: true, response: response, message: errorMsg });
-                                    }
-                                } else if (response.success === false) {
-                                    const errorMsg = response.errors?.[0]?.message || 'Push failed';
-                                    console.error(`Attempt ${attempt} for SKU ${sku} failed:`, errorMsg);
-                                    
-                                    if (attempt < maxRetries) {
-                                        console.log(`Retry ${attempt + 1}/${maxRetries} for SKU ${sku} in ${delay/1000} seconds...`);
-                                        setTimeout(attemptPush, delay);
-                                    } else {
-                                        console.error(`Max retries (${maxRetries}) reached for SKU ${sku}`);
-                                        reject({ error: true, response: response, message: errorMsg });
-                                    }
-                                } else {
-                                    console.log(`Successfully pushed price for SKU ${sku} on attempt ${attempt}`);
-                                    resolve({ success: true, response: response });
-                                }
-                            },
-                            error: function(xhr) {
-                                const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr.responseText || 'Network error';
-                                console.error(`Attempt ${attempt} for SKU ${sku} failed:`, errorMsg);
-                                
-                                if (attempt < maxRetries) {
-                                    console.log(`Retry ${attempt + 1}/${maxRetries} for SKU ${sku} in ${delay/1000} seconds...`);
-                                    setTimeout(attemptPush, delay);
-                                } else {
-                                    console.error(`Max retries (${maxRetries}) reached for SKU ${sku}`);
-                                    reject({ error: true, xhr: xhr, message: errorMsg });
-                                }
-                            }
-                        });
-                    }
-                    
-                    attemptPush();
-                });
-            }
-
-            // Push to Doba button handler
-            $('#push-to-doba-btn').on('click', function() {
-                // Get all SKUs that have SPRICE set
-                const skusWithSprice = [];
-                
-                table.getRows().forEach(row => {
-                    const data = row.getData();
-                    if (!data.is_parent && data.sprice && data.sprice > 0) {
-                        skusWithSprice.push({
-                            sku: data['(Child) sku'],
-                            price: data.sprice,
-                            selfPickPrice: data.s_self_pick || null, // Use calculated S (PP) (SPRICE - SHIP)
-                            row: row
-                        });
-                    }
-                });
-                
-                if (skusWithSprice.length === 0) {
-                    showToast('warning', 'No SKUs with SPRICE found. Please set SPRICE first.');
-                    return;
-                }
-                
-                // Confirm before pushing
-                if (!confirm(`Are you sure you want to push prices for ${skusWithSprice.length} SKU(s) to Doba?`)) {
-                    return;
-                }
-                
-                const $btn = $(this);
-                const originalHtml = $btn.html();
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
-                
-                let currentIndex = 0;
-                let successCount = 0;
-                let errorCount = 0;
-                
-                function processNextSku() {
-                    if (currentIndex >= skusWithSprice.length) {
-                        // All done
-                        $btn.prop('disabled', false).html(originalHtml);
-                        
-                        if (successCount > 0 && errorCount === 0) {
-                            showToast('success', `Successfully pushed prices for ${successCount} SKU(s) to Doba`);
-                        } else if (successCount > 0 && errorCount > 0) {
-                            showToast('warning', `Pushed ${successCount} SKU(s), ${errorCount} failed`);
-                        } else {
-                            showToast('danger', `Failed to push prices for ${errorCount} SKU(s)`);
-                        }
-                        return;
-                    }
-                    
-                    const { sku, price, selfPickPrice, row } = skusWithSprice[currentIndex];
-                    
-                    // Update status to show processing
-                    $btn.html(`<i class="fas fa-spinner fa-spin"></i> ${currentIndex + 1}/${skusWithSprice.length}`);
-                    
-                    // Update row status to pushing
-                    row.update({ push_status: 'pushing' });
-                    
-                    // 5 retries with 5 second gap
-                    pushPriceToDobaWithRetry(sku, price, selfPickPrice, 5, 5000)
-                        .then((result) => {
-                            successCount++;
-                            console.log(`SKU ${sku}: Price pushed successfully`);
-                            row.update({ push_status: 'pushed', apply_status: null });
-                            
-                            // Force update the cell to show double tick immediately
-                            const pushCell = row.getCell('_push');
-                            if (pushCell) {
-                                pushCell.getElement().innerHTML = '<i class="fa-solid fa-check-double" style="color: #28a745;" title="Pushed to Doba"></i>';
-                            }
-                            
-                            // Get fresh row data for saving
-                            const freshRowData = row.getData();
-                            
-                            // Save pushed status to database
-                            savePushStatusToDatabase(sku, 'pushed', freshRowData)
-                                .done(function() {
-                                    console.log(`Push status 'pushed' saved to DB for SKU ${sku}`);
-                                })
-                                .fail(function(err) {
-                                    console.error(`Failed to save push status to DB for SKU ${sku}:`, err);
-                                });
-                            
-                            // Process next SKU with delay to avoid rate limiting
-                            currentIndex++;
-                            setTimeout(processNextSku, 2000);
-                        })
-                        .catch((error) => {
-                            errorCount++;
-                            console.error(`SKU ${sku}: Failed to push price after all retries`);
-                            row.update({ push_status: 'error', apply_status: null });
-                            
-                            // Force update the cell to show error button
-                            const pushCell = row.getCell('_push');
-                            if (pushCell) {
-                                pushCell.getElement().innerHTML = `<button class="push-single-btn" data-sku="${sku}" data-price="${price}" style="border: none; background: none; color: #dc3545; cursor: pointer;" title="Push failed - Click to retry">
-                                    <i class="fa-solid fa-x"></i>
-                                </button>`;
-                            }
-                            
-                            // Uncheck the checkbox (like Amazon)
-                            selectedSkus.delete(sku);
-                            
-                            // Get fresh row data for saving
-                            const freshRowData = row.getData();
-                            
-                            // Save error status to database
-                            savePushStatusToDatabase(sku, 'error', freshRowData)
-                                .done(function() {
-                                    console.log(`Push status 'error' saved to DB for SKU ${sku}`);
-                                })
-                                .fail(function(err) {
-                                    console.error(`Failed to save push status to DB for SKU ${sku}:`, err);
-                                });
-                            
-                            // Process next SKU with delay
-                            currentIndex++;
-                            setTimeout(processNextSku, 2000);
-                        });
-                }
-                
-                // Start processing
-                processNextSku();
-            });
-
-            // Single push button click handler
-            $(document).on('click', '.push-single-btn', function(e) {
-                e.stopPropagation();
-                
-                const $btn = $(this);
-                const sku = $btn.data('sku');
-                const price = $btn.data('price');
-                
-                if (!sku || !price) {
-                    showToast('danger', 'Invalid SKU or price');
-                    return;
-                }
-                
-                // Immediately show spinner on button (like Amazon)
-                $btn.prop('disabled', true);
-                $btn.html('<i class="fas fa-spinner fa-spin" style="color: #ffc107;"></i>');
-                
-                // Find the row
-                let row = null;
-                table.getRows().forEach(r => {
-                    if (r.getData()['(Child) sku'] === sku) {
-                        row = r;
-                    }
-                });
-                
-                if (!row) {
-                    showToast('danger', 'Row not found');
-                    $btn.prop('disabled', false);
-                    $btn.html('<i class="fas fa-upload"></i>');
-                    return;
-                }
-                
-                // Get S (PP) from row data (calculated as SPRICE - SHIP)
-                const rowData = row.getData();
-                const selfPickPrice = rowData.s_self_pick || null;
-                
-                // Update status to pushing (this also updates the cell formatter)
-                row.update({ push_status: 'pushing' });
-                
-                // 5 retries with 5 second gap
-                pushPriceToDobaWithRetry(sku, price, selfPickPrice, 5, 5000)
-                    .then((result) => {
-                        // Success - update row immediately
-                        row.update({ push_status: 'pushed', apply_status: null });
-                        
-                        // Force update the cell to show double tick immediately
-                        const pushCell = row.getCell('_push');
-                        if (pushCell) {
-                            pushCell.getElement().innerHTML = '<i class="fa-solid fa-check-double" style="color: #28a745;" title="Pushed to Doba"></i>';
-                        }
-                        
-                        // Get fresh row data for saving
-                        const freshRowData = row.getData();
-                        
-                        // Save pushed status to database so it persists after refresh
-                        savePushStatusToDatabase(sku, 'pushed', freshRowData)
-                            .done(function() {
-                                console.log(`Push status 'pushed' saved to DB for SKU ${sku}`);
-                            })
-                            .fail(function(err) {
-                                console.error(`Failed to save push status to DB for SKU ${sku}:`, err);
-                            });
-                        
-                        showToast('success', `Price pushed successfully for ${sku}`);
-                    })
-                    .catch((error) => {
-                        // Failed after all retries - update row
-                        row.update({ push_status: 'error', apply_status: null });
-                        
-                        // Force update the cell to show error button immediately
-                        const pushCell = row.getCell('_push');
-                        if (pushCell) {
-                            pushCell.getElement().innerHTML = `<button class="push-single-btn" data-sku="${sku}" data-price="${price}" style="border: none; background: none; color: #dc3545; cursor: pointer;" title="Push failed - Click to retry">
-                                <i class="fa-solid fa-x"></i>
-                            </button>`;
-                        }
-                        
-                        // Uncheck the checkbox (like Amazon)
-                        selectedSkus.delete(sku);
-                        
-                        // Get fresh row data for saving
-                        const freshRowData = row.getData();
-                        
-                        // Save error status to database so it persists after refresh
-                        savePushStatusToDatabase(sku, 'error', freshRowData)
-                            .done(function() {
-                                console.log(`Push status 'error' saved to DB for SKU ${sku}`);
-                            })
-                            .fail(function(err) {
-                                console.error(`Failed to save push status to DB for SKU ${sku}:`, err);
-                            });
-                        
-                        const errorMsg = error.message || 'Unknown error after 5 retries';
-                        showToast('danger', `Failed to push price for ${sku}: ${errorMsg}`);
-                    });
-            });
-
             table = new Tabulator("#doba-withoutship-table", {
                 ajaxURL: "/doba-data-view-withoutship",
                 ajaxConfig: "GET",
@@ -1577,6 +1305,8 @@
                                 '(Child) sku': item['(Child) sku'] || '',
                                 'R&A': item['R&A'] !== undefined ? item['R&A'] : '',
                                 INV: inv,
+                                shopify_inv: Number(item.shopify_inv) || 0,
+                                is_missing_doba: !!item.is_missing_doba,
                                 L30: l30,
                                 ov_dil: ovDil,
                                 'doba L30': dobaL30,
@@ -1681,15 +1411,79 @@
                             return '<div class="d-flex align-items-center gap-1 flex-wrap"><span class="sku-text">' + dwsEscapeHtml(value) + '</span>' + copyBtn + '</div>';
                         }
                     },
+                    {
+                        title: "B/S",
+                        field: "links_column",
+                        width: 55,
+                        frozen: true,
+                        hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "Double-click to add / edit links",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const raw = d.raw_data || {};
+                            const b = raw['B Link'] || d['B Link'] || '';
+                            const s = raw['S Link'] || d['S Link'] || '';
+                            let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
+                            if (s) html += '<a href="' + dwsAttrEscape(s) + '" target="_blank" rel="noopener noreferrer" style="font-size:11px;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';
+                            if (b) html += '<a href="' + dwsAttrEscape(b) + '" target="_blank" rel="noopener noreferrer" style="font-size:11px;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>';
+                            if (!s && !b) html += '<span class="text-muted" style="font-size:12px;">-</span>';
+                            html += '</div>';
+                            return html;
+                        },
+                        cellDblClick: function(e, cell) {
+                            if (cell.getRow().getData().is_parent) return;
+                            openDwsEditLinksModal(cell.getRow());
+                        }
+                    },
                     
                     {
-                        title: "INV",
+                        title: "Shop INV",
+                        field: "shopify_inv",
+                        width: 80,
+                        sorter: "number",
+                        formatter: function(cell, formatterParams) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            return value.toString();
+                        }
+                    },
+                    {
+                        title: "D INV",
                         field: "INV",
                         width: 70,
                         sorter: "number",
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return value.toString();
+                        }
+                    },
+                    {
+                        title: "Map",
+                        field: "map_sync",
+                        width: 60,
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent) return '';
+                            // Not listed on Doba -> blank (same as Amazon)
+                            if (rowData.is_missing_doba) return '';
+                            // Inventory check uses Shopify INV (Shop INV)
+                            const shopInv = parseFloat(rowData.shopify_inv) || 0;
+                            if (shopInv <= 0) return '';
+                            // Blank when price is missing/zero (same as Amazon: can't evaluate)
+                            const dobaPrice = parseFloat(rowData.self_pick_price) || 0;
+                            if (dobaPrice <= 0) return '';
+                            const dInv = parseFloat(rowData.INV) || 0;
+                            const difference = Math.abs(shopInv - dInv);
+                            if (dobaInvWithinMapTolerance(shopInv, dInv)) {
+                                return `<span style="font-size: 20px; color: #28a745;">🟢</span>`;
+                            }
+                            return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                                    <span style="font-size: 16px; color: #dc3545;">🔴</span>
+                                    <span style="font-size: 11px; color: #dc3545; font-weight: 600;">${Math.round(difference)}</span>
+                                </div>`;
                         }
                     },
                     {
@@ -1716,25 +1510,6 @@
                             else style = 'color: #e83e8c; font-weight: 800;'; // pink - bold
                             
                             return `<span style="${style}">${Math.round(percent)}%</span>`;
-                        }
-                    },
-                    {
-                        title: "L60",
-                        field: "doba L60",
-                        width: 70,
-                        sorter: "number",
-                        visible: true,
-                        formatter: function(cell, formatterParams) {
-                            return cell.getValue() || 0;
-                        }
-                    },
-                    {
-                        title: "L45",
-                        field: "doba L45",
-                        width: 70,
-                        sorter: "number",
-                        formatter: function(cell, formatterParams) {
-                            return parseInt(cell.getValue(), 10) || 0;
                         }
                     },
                     {
@@ -1849,24 +1624,18 @@
                     {
                         title: "Missing",
                         field: "missing",
-                        width: 80,
+                        width: 70,
                         hozAlign: "center",
-                        visible: false,
+                        headerSort: false,
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
-                            const inv = parseFloat(rowData.INV) || 0;
-                            const dobaL30 = parseFloat(rowData['doba L30']) || 0;
-                            
-                            // Red badge: Has inventory but not selling (INV > 0 AND L30 = 0)
-                            if (inv > 0 && dobaL30 === 0) {
-                                return '<span class="badge" style="background-color: #b02a37; color: white;"><i class="fas fa-exclamation-triangle"></i></span>';
+                            if (rowData.is_parent) return '';
+                            const nrVal = rowData.NR || '';
+                            const shopInv = parseFloat(rowData.shopify_inv) || 0;
+                            // Missing = has inventory but not listed on Doba, excluding NR rows
+                            if (rowData.is_missing_doba && nrVal !== 'NR' && shopInv > 0) {
+                                return '<span style="font-size: 16px; color: #dc3545; font-weight: bold;">M</span>';
                             }
-                            
-                            // Yellow dot: 0 inventory (out of stock)
-                            if (inv === 0) {
-                                return '<span style="color: #ffc107; font-size: 24px; font-weight: bold;">●</span>';
-                            }
-                            
                             return '';
                         }
                     },
@@ -1921,9 +1690,9 @@
                             let style = '';
                             
                             // getRoiColor logic from pricing CVR
-                            if (value < 50) style = 'color: #dc3545; font-weight: 800;'; // red - extra bold
-                            else if (value >= 50 && value < 75) style = 'color: #ffc107; font-weight: bold;'; // yellow
-                            else if (value >= 75 && value <= 125) style = 'color: #28a745; font-weight: bold;'; // green
+                            if (value < 40) style = 'color: #dc3545; font-weight: 800;'; // red - extra bold
+                            else if (value < 75) style = 'color: #ffc107; font-weight: bold;'; // yellow
+                            else if (value < 125) style = 'color: #28a745; font-weight: bold;'; // green
                             else style = 'color: #e83e8c; font-weight: 800;'; // pink - extra bold
                             
                             return `<span style="${style}">${Math.round(value)}%</span>`;
@@ -2010,56 +1779,11 @@
                             if (value === 0) return '';
                             let style = '';
                             // Match ROI coloring
-                            if (value < 50) style = 'color: #dc3545; font-weight: 800;'; // red - extra bold
-                            else if (value >= 50 && value < 75) style = 'color: #ffc107; font-weight: bold;'; // yellow
-                            else if (value >= 75 && value <= 125) style = 'color: #28a745; font-weight: bold;'; // green
+                            if (value < 40) style = 'color: #dc3545; font-weight: 800;'; // red - extra bold
+                            else if (value < 75) style = 'color: #ffc107; font-weight: bold;'; // yellow
+                            else if (value < 125) style = 'color: #28a745; font-weight: bold;'; // green
                             else style = 'color: #e83e8c; font-weight: 800;'; // pink - extra bold
                             return `<span style="${style}">${Math.round(value)}%</span>`;
-                        }
-                    },
-                    {
-                        title: "Push",
-                        field: "_push",
-                        width: 50,
-                        hozAlign: "center",
-                        headerSort: false,
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const isParent = rowData.is_parent;
-                            const sprice = parseFloat(rowData.sprice) || 0;
-                            const pushStatus = rowData.push_status || null;
-                            const applyStatus = rowData.apply_status || null;
-                            
-                            if (isParent || sprice <= 0) return '';
-                            
-                            const sku = rowData['(Child) sku'];
-                            
-                            // Show spinner while applying discount
-                            if (applyStatus === 'applying') {
-                                return '<i class="fas fa-clock fa-spin" style="color: #ffc107;" title="Applying discount..."></i>';
-                            }
-                            
-                            // Show spinner while pushing
-                            if (pushStatus === 'pushing') {
-                                return '<i class="fas fa-spinner fa-spin" style="color: #ffc107;" title="Pushing..."></i>';
-                            }
-                            
-                            // Show double tick only if pushed successfully
-                            if (pushStatus === 'pushed') {
-                                return '<i class="fa-solid fa-check-double" style="color: #28a745;" title="Pushed to Doba"></i>';
-                            }
-                            
-                            // Show error with retry button
-                            if (pushStatus === 'error') {
-                                return `<button class="push-single-btn" data-sku="${sku}" data-price="${sprice}" style="border: none; background: none; color: #dc3545; cursor: pointer;" title="Push failed - Click to retry">
-                                    <i class="fa-solid fa-x"></i>
-                                </button>`;
-                            }
-                            
-                            // Default: show push button (for new SPRICE, after discount applied, or null status)
-                            return `<button class="push-single-btn" data-sku="${sku}" data-price="${sprice}" style="border: none; background: none; color: #0d6efd; cursor: pointer;" title="Push to Doba">
-                                <i class="fas fa-upload"></i>
-                            </button>`;
                         }
                     },
                     {
@@ -2105,12 +1829,10 @@
                 footer.insertBefore(el, footer.firstChild);
             }
 
-            // Apply filters (AliExpress-style controls)
             function applyFilters() {
                 if (!table) return;
                 table.clearFilter();
 
-                const skuSearch = ($('#dws-sku-search').val() || '').toLowerCase().trim();
                 const rowType = $('#dws-row-type-filter').val();
                 const invFilter = $('#dws-inv-filter').val();
                 const gpftFilter = $('#dws-gpft-filter').val();
@@ -2118,13 +1840,7 @@
                 const al30Filter = $('#dws-al30-filter').val();
                 const mapFilter = $('#dws-map-filter').val();
                 const dilColor = $('.dws-dil-item.active').data('color') || 'all';
-
-                if (skuSearch) {
-                    table.addFilter(function(data) {
-                        const sku = (data['(Child) sku'] || '').toLowerCase();
-                        return sku.includes(skuSearch);
-                    });
-                }
+                const skuSearch = ($('#dws-sku-search').val() || '').trim().toLowerCase();
 
                 if (rowType === 'parents') {
                     table.addFilter(function(data) { return data.is_parent === true; });
@@ -2132,10 +1848,22 @@
                     table.addFilter(function(data) { return !data.is_parent; });
                 }
 
-                if (invFilter === 'zero') {
-                    table.addFilter(function(data) { return (parseFloat(data.INV) || 0) === 0; });
-                } else {
-                    table.addFilter(function(data) { return (parseFloat(data.INV) || 0) > 0; });
+                if (skuSearch !== '') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent) return false;
+                        const sku = String(data['(Child) sku'] || '').toLowerCase();
+                        return sku.indexOf(skuSearch) !== -1;
+                    });
+                }
+
+                // D INV dropdown filter is bypassed while Missing badge is active
+                // (not-listed items have D INV = 0 but are matched by Shop INV > 0)
+                if (!missingBadgeFilterActive) {
+                    if (invFilter === 'zero') {
+                        table.addFilter(function(data) { return (parseFloat(data.INV) || 0) === 0; });
+                    } else if (invFilter === 'more') {
+                        table.addFilter(function(data) { return (parseFloat(data.INV) || 0) > 0; });
+                    }
                 }
 
                 if (gpftFilter !== 'all') {
@@ -2220,9 +1948,8 @@
 
                 if (missingBadgeFilterActive) {
                     table.addFilter(function(data) {
-                        const inv = parseFloat(data.INV) || 0;
-                        const dobaL30 = parseFloat(data['doba L30']) || 0;
-                        return inv > 0 && dobaL30 === 0;
+                        if (data.is_parent) return false;
+                        return !!data.is_missing_doba && (data.NR || '') !== 'NR' && (parseFloat(data.shopify_inv) || 0) > 0;
                     });
                 }
 
@@ -2251,6 +1978,10 @@
             }
 
             $('#dws-row-type-filter, #dws-inv-filter, #dws-gpft-filter, #dws-roi-filter, #dws-al30-filter, #dws-map-filter, #dws-growth-sign-filter').on('change', function() {
+                applyFilters();
+            });
+
+            $('#dws-sku-search').on('keyup input', function() {
                 applyFilters();
             });
 
@@ -2289,6 +2020,7 @@
                 let l30ZeroSold = 0;
                 let sold = 0;
                 let missing = 0;
+                let nmap = 0;
                 let discVsAmzCount = 0;
                 let totalL30Sales = 0;
                 let totalL60Sales = 0;
@@ -2296,6 +2028,10 @@
                 let totalL30Shipping = 0;
                 let totalL60COGS = 0;
                 let totalL60Shipping = 0;
+
+                allNonParentData.forEach(row => {
+                    if (dobaInvMismatch(row)) nmap++;
+                });
 
                 filteredData.forEach(row => {
                     const inv = parseFloat(row.INV) || 0;
@@ -2323,8 +2059,8 @@
                     const dobaPrice = parseFloat(row.self_pick_price) || 0;
                     const amazonPrice = parseFloat(row.amazon_price) || 0;
                     
-                    // Missing: Has inventory but no sales in L30 (items that need attention)
-                    if (inv > 0 && dobaL30 === 0) missing++;
+                    // Missing: has inventory but not listed on Doba, excluding NR rows
+                    if (row.is_missing_doba && (row.NR || '') !== 'NR' && (parseFloat(row.shopify_inv) || 0) > 0) missing++;
                     
                     // DISC VS AMZ: Count items with discount > -30% (red color items)
                     if (amazonPrice > 0 && dobaPrice > 0) {
@@ -2385,6 +2121,7 @@
                 $('#zero-sold-count').text('L30 0 Sold: ' + l30ZeroSold);
                 $('#sold-count').text('SOLD: ' + sold);
                 $('#missing-count').html('<i class="fas fa-exclamation-triangle"></i> Missing: ' + missing);
+                $('#nmap-count').text('N Map: ' + nmap);
                 $('#disc-vs-amz-count').html('<i class="fas fa-chart-line"></i> VS AMZ: ' + discVsAmzCount);
                 
                 const growthSign = growthPercent > 0 ? '+' : '';
@@ -2455,24 +2192,14 @@
                         const sSelfPick = sprice - ship;
                         
                         // Update row data with all calculated values
-                        // Reset push_status to null so push button shows again (like Amazon)
                         cell.getRow().update({
                             spft: spft,
                             sroi: sroi,
                             s_self_pick: sSelfPick,
-                            push_status: null,
                             apply_status: null
                         });
                         
-                        // Force refresh the _push cell to show upload button immediately
-                        const pushCell = cell.getRow().getCell('_push');
-                        if (pushCell) {
-                            pushCell.getElement().innerHTML = `<button class="push-single-btn" data-sku="${sku}" data-price="${sprice}" style="border: none; background: none; color: #0d6efd; cursor: pointer;" title="Push to Doba">
-                                <i class="fas fa-upload"></i>
-                            </button>`;
-                        }
-                        
-                        // Save to backend with S(PP) and reset push_status
+                        // Save to backend with S(PP)
                         $.ajax({
                             url: '/doba/save-sprice',
                             method: 'POST',
@@ -2536,26 +2263,8 @@
                 }, 100);
             });
 
-            // Update Push to Doba button visibility based on SELECTED SKUs with SPRICE (like Amazon)
-            function updatePushButtonVisibility() {
-                // Only count selected SKUs that have SPRICE > 0
-                let spriceCount = 0;
-                selectedSkus.forEach(sku => {
-                    const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
-                    if (row) {
-                        const data = row.getData();
-                        if (!data.is_parent && data.sprice && data.sprice > 0) {
-                            spriceCount++;
-                        }
-                    }
-                });
-                
-                if (spriceCount > 0) {
-                    $('#push-to-doba-btn').show().html(`<i class="fas fa-upload"></i> Push to Doba (${spriceCount})`);
-                } else {
-                    $('#push-to-doba-btn').hide();
-                }
-            }
+            // Pushing has been removed from this page; kept as a no-op so existing callers don't break.
+            function updatePushButtonVisibility() {}
 
             // Toggle column from dropdown
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
@@ -2605,6 +2314,63 @@
                 setTimeout(() => toast.remove(), 5000);
             }
 
+            // ---- Edit Links (Buyer / Seller) ----
+            let dwsEditLinksRow = null;
+            window.openDwsEditLinksModal = function(row) {
+                dwsEditLinksRow = row;
+                const d = row.getData();
+                const raw = d.raw_data || {};
+                $('#dwsEditLinksSku').text(d['(Child) sku'] || '');
+                $('#dwsSellerLinkInput').val(raw['S Link'] || d['S Link'] || '');
+                $('#dwsBuyerLinkInput').val(raw['B Link'] || d['B Link'] || '');
+                const modalEl = document.getElementById('dwsEditLinksModal');
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            };
+
+            $('#dwsSaveLinksBtn').on('click', function() {
+                if (!dwsEditLinksRow) return;
+                const sku = dwsEditLinksRow.getData()['(Child) sku'];
+                const sellerLink = $('#dwsSellerLinkInput').val().trim();
+                const buyerLink = $('#dwsBuyerLinkInput').val().trim();
+                const $btn = $(this);
+                $btn.prop('disabled', true).text('Saving...');
+                $.ajax({
+                    url: '/doba/save-links',
+                    method: 'POST',
+                    data: {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        sku: sku,
+                        seller_link: sellerLink,
+                        buyer_link: buyerLink
+                    },
+                    success: function(res) {
+                        if (res && res.success) {
+                            const existingRaw = dwsEditLinksRow.getData().raw_data || {};
+                            dwsEditLinksRow.update({
+                                'S Link': res.seller_link || '',
+                                'B Link': res.buyer_link || '',
+                                'raw_data': Object.assign({}, existingRaw, { 'S Link': res.seller_link || '', 'B Link': res.buyer_link || '' })
+                            }).then(function() {
+                                dwsEditLinksRow.reformat();
+                            }).catch(function() {
+                                dwsEditLinksRow.reformat();
+                            });
+                            showToast('success', 'Links saved successfully');
+                            bootstrap.Modal.getOrCreateInstance(document.getElementById('dwsEditLinksModal')).hide();
+                        } else {
+                            showToast('danger', (res && res.message) || 'Failed to save links');
+                        }
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save links';
+                        showToast('danger', msg);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).text('Save');
+                    }
+                });
+            });
+
             // Missing filter toggle on badge click
             $('#missing-count').on('click', function() {
                 missingBadgeFilterActive = !missingBadgeFilterActive;
@@ -2619,6 +2385,25 @@
                     showToast('info', 'Showing all items');
                 }
             });
+
+            // N Map (Missing M) filter toggle on badge click — show only inventory mismatches
+            let nmapFilterActive = false;
+            $('#nmap-count').on('click', function() {
+                if (nmapFilterActive) {
+                    table.removeFilter(dobaNmapFilterFn);
+                    $(this).css({ 'background-color': '#dc3545', 'color': '#ffffff' });
+                    showToast('info', 'Showing all items');
+                } else {
+                    table.addFilter(dobaNmapFilterFn);
+                    $(this).css({ 'background-color': '#ffc107', 'color': '#000' });
+                    const filteredCount = table.getData("active").filter(r => !r.is_parent).length;
+                    showToast('warning', `Filtered to ${filteredCount} inventory mismatches`);
+                }
+                nmapFilterActive = !nmapFilterActive;
+            });
+            function dobaNmapFilterFn(data) {
+                return dobaInvMismatch(data);
+            }
 
             // DISC VS AMZ filter toggle on badge click
             $('#disc-vs-amz-count').on('click', function() {

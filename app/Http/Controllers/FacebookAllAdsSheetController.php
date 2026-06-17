@@ -20,10 +20,20 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
  */
 class FacebookAllAdsSheetController extends Controller
 {
-    /** Allowed ad-type values for each page-type filter. */
+    /**
+     * Allowed ad-type values for each page-type filter. The first two keys
+     * (`video` / `carousal`) are the legacy combined buckets that back the
+     * standalone `/facebook-video-ads-sheet` + `/facebook-carousal-ads-sheet`
+     * pages. The four single-type keys back the per-ad_type child pages
+     * under `/facebook-ads/*` and `/instagram-ads/*`.
+     */
     private const TYPE_FILTERS = [
-        'video'    => ['GROUP VIDEO',    'PARENT VIDEO'],
-        'carousal' => ['GROUP CAROUSAL', 'PARENT CAROUSAL'],
+        'video'           => ['GROUP VIDEO',    'PARENT VIDEO'],
+        'carousal'        => ['GROUP CAROUSAL', 'PARENT CAROUSAL'],
+        'group-video'     => ['GROUP VIDEO'],
+        'group-carousal'  => ['GROUP CAROUSAL'],
+        'parent-video'    => ['PARENT VIDEO'],
+        'parent-carousal' => ['PARENT CAROUSAL'],
     ];
 
     /** All-ads page (no ad_type filter, full dropdown). */
@@ -31,9 +41,10 @@ class FacebookAllAdsSheetController extends Controller
     {
         return view('facebook-all-ads-sheet', [
             'pageType'       => 'all',
-            'pageTitle'      => 'Facebook All Ads Sheet',
+            'pageTitle'      => 'Meta Ads All',
             'pageSubtitle'   => 'Generic CSV / Excel / TSV importer — upload any sheet and view it as a table',
             'allowedAdTypes' => FacebookAllAdsSheet::AD_TYPES,
+            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
         ]);
     }
 
@@ -45,7 +56,102 @@ class FacebookAllAdsSheetController extends Controller
             'pageTitle'      => 'Facebook Video Ads Sheet',
             'pageSubtitle'   => 'Rows tagged GROUP VIDEO or PARENT VIDEO',
             'allowedAdTypes' => self::TYPE_FILTERS['video'],
+            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
         ]);
+    }
+
+    /** Facebook channel page — same sheet, lensed to CH = "FB" rows. */
+    public function facebookIndex()
+    {
+        return view('facebook-all-ads-sheet', [
+            'pageType'       => 'all',
+            'pageTitle'      => 'Facebook',
+            'pageSubtitle'   => 'Campaigns tagged CH = FB',
+            'allowedAdTypes' => FacebookAllAdsSheet::AD_TYPES,
+            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
+            'chFilter'       => 'FB',
+        ]);
+    }
+
+    /**
+     * Render a child page lensed to a single (CH, ad_type) pair. Backs the eight
+     * `/facebook-ads/*` and `/instagram-ads/*` single-type children. The shared
+     * blade only needs `pageType` + `chFilter` + an `allowedAdTypes` whitelist.
+     */
+    private function renderTypedChannelChild(string $chFilter, string $typeKey, string $shortLabel): \Illuminate\View\View
+    {
+        $allowed = self::TYPE_FILTERS[$typeKey] ?? FacebookAllAdsSheet::AD_TYPES;
+        $channelLabel = $chFilter === 'FB' ? 'Facebook' : 'Instagram';
+
+        return view('facebook-all-ads-sheet', [
+            'pageType'       => $typeKey,
+            'pageTitle'      => $channelLabel.' — '.$shortLabel,
+            'pageSubtitle'   => 'CH = '.$chFilter.' · '.implode(' / ', $allowed).' rows',
+            'allowedAdTypes' => $allowed,
+            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
+            'chFilter'       => $chFilter,
+        ]);
+    }
+
+    /** Facebook → G VIDEO child page: CH = "FB" + ad_type = "GROUP VIDEO". */
+    public function facebookGroupVideoIndex(): \Illuminate\View\View
+    {
+        return $this->renderTypedChannelChild('FB', 'group-video', 'G Video');
+    }
+
+    /** Facebook → G CAROUSAL child page: CH = "FB" + ad_type = "GROUP CAROUSAL". */
+    public function facebookGroupCarousalIndex(): \Illuminate\View\View
+    {
+        return $this->renderTypedChannelChild('FB', 'group-carousal', 'G Carousal');
+    }
+
+    /** Facebook → P VIDEO child page: CH = "FB" + ad_type = "PARENT VIDEO". */
+    public function facebookParentVideoIndex(): \Illuminate\View\View
+    {
+        return $this->renderTypedChannelChild('FB', 'parent-video', 'P Video');
+    }
+
+    /** Facebook → P CAROUSAL child page: CH = "FB" + ad_type = "PARENT CAROUSAL". */
+    public function facebookParentCarousalIndex(): \Illuminate\View\View
+    {
+        return $this->renderTypedChannelChild('FB', 'parent-carousal', 'P Carousal');
+    }
+
+    /** Instagram channel page — same sheet, lensed to CH = "Insta" rows. */
+    public function instagramIndex()
+    {
+        return view('facebook-all-ads-sheet', [
+            'pageType'       => 'all',
+            'pageTitle'      => 'Instagram',
+            'pageSubtitle'   => 'Campaigns tagged CH = Insta',
+            'allowedAdTypes' => FacebookAllAdsSheet::AD_TYPES,
+            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
+            'chFilter'       => 'Insta',
+        ]);
+    }
+
+    /** Instagram → G VIDEO child page: CH = "Insta" + ad_type = "GROUP VIDEO". */
+    public function instagramGroupVideoIndex(): \Illuminate\View\View
+    {
+        return $this->renderTypedChannelChild('Insta', 'group-video', 'G Video');
+    }
+
+    /** Instagram → G CAROUSAL child page: CH = "Insta" + ad_type = "GROUP CAROUSAL". */
+    public function instagramGroupCarousalIndex(): \Illuminate\View\View
+    {
+        return $this->renderTypedChannelChild('Insta', 'group-carousal', 'G Carousal');
+    }
+
+    /** Instagram → P VIDEO child page: CH = "Insta" + ad_type = "PARENT VIDEO". */
+    public function instagramParentVideoIndex(): \Illuminate\View\View
+    {
+        return $this->renderTypedChannelChild('Insta', 'parent-video', 'P Video');
+    }
+
+    /** Instagram → P CAROUSAL child page: CH = "Insta" + ad_type = "PARENT CAROUSAL". */
+    public function instagramParentCarousalIndex(): \Illuminate\View\View
+    {
+        return $this->renderTypedChannelChild('Insta', 'parent-carousal', 'P Carousal');
     }
 
     /** Carousal-only page — shows GROUP CAROUSAL + PARENT CAROUSAL rows. */
@@ -56,6 +162,7 @@ class FacebookAllAdsSheetController extends Controller
             'pageTitle'      => 'Facebook Carousal Ads Sheet',
             'pageSubtitle'   => 'Rows tagged GROUP CAROUSAL or PARENT CAROUSAL',
             'allowedAdTypes' => self::TYPE_FILTERS['carousal'],
+            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
         ]);
     }
 
@@ -70,12 +177,17 @@ class FacebookAllAdsSheetController extends Controller
         $view     = $request->query('view');     // 'merged' | null
         $typeKey  = $request->query('type');     // 'video' | 'carousal' | null
         $typeList = self::TYPE_FILTERS[$typeKey] ?? null;
+        // Channel lens — 'FB' | 'Insta' (Facebook / Instagram pages).
+        $chFilter = $request->query('ch');
+        if (! in_array($chFilter, FacebookAllAdsSheet::CH_OPTIONS, true)) {
+            $chFilter = null;
+        }
 
         // Merged view: join the most recent Campaign batch with the most
         // recent Spend batch by `Campaign ID`. Default when no specific batch
         // is asked for, so the user sees one unified table out of the box.
         if ($batchId === null && ($view === 'merged' || $view === null)) {
-            $merged = $this->getMergedView($typeList);
+            $merged = $this->getMergedView($typeList, $chFilter);
             if ($merged !== null) {
                 return response()->json($merged);
             }
@@ -86,6 +198,10 @@ class FacebookAllAdsSheetController extends Controller
 
         if ($typeList) {
             $query->whereIn('ad_type', $typeList);
+        }
+
+        if ($chFilter) {
+            $query->where('ch', $chFilter);
         }
 
         if ($batchId) {
@@ -100,7 +216,7 @@ class FacebookAllAdsSheetController extends Controller
             ]);
         }
 
-        $rows = $query->get(['id', 'row_index', 'row_data', 'ad_type', 'source_filename', 'created_at']);
+        $rows = $query->get(['id', 'row_index', 'row_data', 'ad_type', 'ch', 'source_filename', 'created_at']);
 
         // Build column list from the union of keys observed in this batch.
         // Skip any `__*` meta keys (e.g. `__upload_type`) — those are
@@ -136,6 +252,7 @@ class FacebookAllAdsSheetController extends Controller
                     '_row_index'   => $r->row_index,
                     '_upload_type' => $uploadType,
                     'ad_type'      => $r->ad_type,
+                    'ch'           => $r->ch,
                 ],
                 $cleanedData
             );
@@ -173,7 +290,7 @@ class FacebookAllAdsSheetController extends Controller
      * Type filtering (`$typeList` from /facebook-{video|carousal}-… pages)
      * is applied to the merged set just like it is to individual batches.
      */
-    private function getMergedView(?array $typeList): ?array
+    private function getMergedView(?array $typeList, ?string $chFilter = null): ?array
     {
         $latestByType = $this->latestBatchPerType();
         if (empty($latestByType)) {
@@ -187,7 +304,7 @@ class FacebookAllAdsSheetController extends Controller
         if ($typeList) {
             $rowsQ->whereIn('ad_type', $typeList);
         }
-        $rows = $rowsQ->get(['id', 'row_index', 'row_data', 'ad_type', 'import_batch_id']);
+        $rows = $rowsQ->get(['id', 'row_index', 'row_data', 'ad_type', 'ch', 'import_batch_id']);
 
         // Build a `lowercase Campaign name → Campaign ID` lookup from the
         // Campaign batch. Used as a fallback for Spend / Sales rows whose
@@ -237,6 +354,7 @@ class FacebookAllAdsSheetController extends Controller
                     '_upload_type' => $uploadType,
                     '_campaign_id' => $cid,
                     'ad_type'      => $r->ad_type,
+                    'ch'           => $r->ch,
                 ];
             }
 
@@ -256,6 +374,7 @@ class FacebookAllAdsSheetController extends Controller
             if ($uploadType === 'campaign') {
                 $merged[$cid]['_id']     = $r->id;
                 $merged[$cid]['ad_type'] = $r->ad_type;
+                $merged[$cid]['ch']      = $r->ch;
             }
         }
 
@@ -294,6 +413,7 @@ class FacebookAllAdsSheetController extends Controller
                 '_upload_type' => $row['_upload_type'],
                 '_campaign_id' => $row['_campaign_id'],
                 'ad_type'      => $row['ad_type'],
+                'ch'           => $row['ch'] ?? null,
             ];
             // Pass 1 — sources
             foreach (self::MERGED_COLUMNS as $col) {
@@ -386,6 +506,16 @@ class FacebookAllAdsSheetController extends Controller
             \Log::warning('FAAS snapshot failed: ' . $e->getMessage());
         }
 
+        // Channel lens — keep only campaigns tagged with the requested CH
+        // (FB / Insta). Applied after the snapshot pass so the daily
+        // history still records every campaign regardless of the lens.
+        if ($chFilter) {
+            $projected = array_values(array_filter(
+                $projected,
+                fn($r) => ($r['ch'] ?? null) === $chFilter
+            ));
+        }
+
         $columnList = array_map(
             fn($c) => ['title' => $c['title'], 'field' => $c['title']],
             self::MERGED_COLUMNS
@@ -445,6 +575,36 @@ class FacebookAllAdsSheetController extends Controller
             ));
             if ($cid !== null && $cid !== '' && ! isset($map[$cid])) {
                 $map[$cid] = $r->ad_type;
+            }
+        }
+        return $map;
+    }
+
+    /**
+     * Build a `Campaign ID → ch` map so new uploads inherit the channel
+     * (FB / Insta) a campaign was previously tagged with. Mirrors
+     * {@see buildAdTypeCarryMap()} — CH is a campaign-level attribute too.
+     *
+     * @return array<string, string>
+     */
+    private function buildChCarryMap(): array
+    {
+        $rows = FacebookAllAdsSheet::query()
+            ->whereNotNull('ch')
+            ->where('ch', '!=', '')
+            ->orderByDesc('id')
+            ->get(['ch', 'row_data']);
+
+        $map = [];
+        foreach ($rows as $r) {
+            $rd  = $r->row_data ?? [];
+            $cid = $this->findCampaignId(array_filter(
+                $rd,
+                fn($_, $k) => ! str_starts_with($k, '__'),
+                ARRAY_FILTER_USE_BOTH
+            ));
+            if ($cid !== null && $cid !== '' && ! isset($map[$cid])) {
+                $map[$cid] = $r->ch;
             }
         }
         return $map;
@@ -724,6 +884,8 @@ class FacebookAllAdsSheetController extends Controller
             'latest'    => $latest ? [
                 'score_pct'       => (int) $latest->score_pct,
                 'checks'          => json_decode($latest->checks, true) ?: new \stdClass(),
+                'notes'           => (isset($latest->notes) ? json_decode($latest->notes, true) : null) ?: new \stdClass(),
+                'custom_items'    => (isset($latest->custom_items) ? json_decode($latest->custom_items, true) : null) ?: [],
                 'comments'        => $latest->comments,
                 'audited_at'      => $latest->audited_at,
                 'audited_by_name' => $latest->audited_by_name,
@@ -742,6 +904,8 @@ class FacebookAllAdsSheetController extends Controller
         $cid          = trim((string) $request->input('campaign_id', ''));
         $campaignName = (string) $request->input('campaign_name', '');
         $checks       = $request->input('checks', []);
+        $notes        = $request->input('notes', []);
+        $customItems  = $request->input('custom_items', []);
         $comments     = (string) $request->input('comments', '');
 
         if ($cid === '' || !preg_match('/^\d{6,}$/', $cid)) {
@@ -750,13 +914,51 @@ class FacebookAllAdsSheetController extends Controller
         if (!is_array($checks)) {
             return response()->json(['success' => false, 'error' => 'checks must be an object.'], 422);
         }
+        if (!is_array($notes)) {
+            $notes = [];
+        }
+        if (!is_array($customItems)) {
+            $customItems = [];
+        }
+
+        // Sanitise the manually-added checks: each needs a label and a
+        // non-negative integer weight; a stable key is generated when the
+        // client didn't supply one so notes/checks can map back to it.
+        $cleanCustom = [];
+        foreach ($customItems as $i => $ci) {
+            if (!is_array($ci)) {
+                continue;
+            }
+            $label = trim((string) ($ci['label'] ?? ''));
+            if ($label === '') {
+                continue;
+            }
+            $key = trim((string) ($ci['key'] ?? ''));
+            if ($key === '') {
+                $key = 'custom_' . ($i + 1);
+            }
+            $cleanCustom[] = [
+                'key'     => $key,
+                'label'   => mb_substr($label, 0, 255),
+                'weight'  => max(0, (int) ($ci['weight'] ?? 0)),
+                'checked' => ! empty($ci['checked']),
+                'note'    => mb_substr(trim((string) ($ci['note'] ?? '')), 0, 1000),
+            ];
+        }
 
         // Score = sum(weights of items with key set to true) / sum(all weights) × 100.
+        // Both the built-in checklist and any manually-added custom checks count.
         $totalWeight = 0;
         $earned      = 0;
         foreach (self::AUDIT_CHECKLIST as $item) {
             $totalWeight += (int) $item['weight'];
             if (! empty($checks[$item['key']])) {
+                $earned += (int) $item['weight'];
+            }
+        }
+        foreach ($cleanCustom as $item) {
+            $totalWeight += (int) $item['weight'];
+            if ($item['checked']) {
                 $earned += (int) $item['weight'];
             }
         }
@@ -769,6 +971,8 @@ class FacebookAllAdsSheetController extends Controller
             'campaign_id'      => $cid,
             'campaign_name'    => $campaignName !== '' ? $campaignName : null,
             'checks'           => json_encode($checks),
+            'notes'            => json_encode((object) $notes),
+            'custom_items'     => json_encode($cleanCustom),
             'score_pct'        => $score,
             'comments'         => $comments !== '' ? $comments : null,
             'audited_by'       => $user->id ?? null,
@@ -1314,6 +1518,140 @@ class FacebookAllAdsSheetController extends Controller
     }
 
     /**
+     * Persist the CH (channel) chosen from the dropdown. Propagates the
+     * value (or NULL when cleared) to every row that shares the same
+     * Campaign ID, so CH behaves as a campaign-level attribute — exactly
+     * like {@see updateAdType()}. Accepts an empty string to clear.
+     */
+    public function updateCh(Request $request, int $id)
+    {
+        $request->validate([
+            'ch' => ['nullable', 'string', 'in:' . implode(',', FacebookAllAdsSheet::CH_OPTIONS)],
+        ]);
+
+        $row   = FacebookAllAdsSheet::findOrFail($id);
+        $newCh = $request->input('ch') ?: null;
+
+        $cid = $this->findCampaignId(array_filter(
+            (array) ($row->row_data ?? []),
+            fn($_, $k) => ! str_starts_with($k, '__'),
+            ARRAY_FILTER_USE_BOTH
+        ));
+
+        $propagated = 1;
+        if ($cid !== null && $cid !== '') {
+            $like1 = '%"' . str_replace('%', '\\%', $cid) . '"%';
+
+            $propagated = FacebookAllAdsSheet::query()
+                ->where('row_data', 'like', $like1)
+                ->get(['id', 'row_data'])
+                ->filter(function ($r) use ($cid) {
+                    $rd = (array) ($r->row_data ?? []);
+                    $rowCid = $this->findCampaignId(array_filter(
+                        $rd,
+                        fn($_, $k) => ! str_starts_with($k, '__'),
+                        ARRAY_FILTER_USE_BOTH
+                    ));
+                    return $rowCid === $cid;
+                })
+                ->each(function ($r) use ($newCh) {
+                    $r->ch = $newCh;
+                    $r->save();
+                })
+                ->count();
+        } else {
+            $row->ch = $newCh;
+            $row->save();
+        }
+
+        return response()->json([
+            'success'    => true,
+            'id'         => $row->id,
+            'ch'         => $newCh,
+            'campaign_id'=> $cid,
+            'propagated' => $propagated,
+        ]);
+    }
+
+    /**
+     * Bulk-set the CH (channel) column for a list of campaign ids.
+     *
+     * Frontend sends `{ ch: 'FB'|'Insta'|'', campaign_ids: [...] }`.
+     * For every supplied campaign id we update every row that shares it
+     * (same per-campaign propagation as {@see updateCh()}). An empty `ch`
+     * clears the value. Returns how many campaigns and rows were touched.
+     */
+    public function bulkCh(Request $request)
+    {
+        $request->validate([
+            'ch'             => ['nullable', 'string', 'in:' . implode(',', FacebookAllAdsSheet::CH_OPTIONS)],
+            'campaign_ids'   => ['required', 'array', 'min:1'],
+            'campaign_ids.*' => ['string'],
+        ]);
+
+        $newCh = $request->input('ch') ?: null;
+        $cids  = collect($request->input('campaign_ids', []))
+            ->map(fn($c) => trim((string) $c))
+            ->filter(fn($c) => $c !== '')
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($cids)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No valid campaign ids supplied.',
+            ], 422);
+        }
+
+        $campaignsUpdated = 0;
+        $rowsUpdated      = 0;
+
+        DB::beginTransaction();
+        try {
+            foreach ($cids as $cid) {
+                $like = '%"' . str_replace('%', '\\%', $cid) . '"%';
+
+                $touched = FacebookAllAdsSheet::query()
+                    ->where('row_data', 'like', $like)
+                    ->get(['id', 'row_data'])
+                    ->filter(function ($r) use ($cid) {
+                        $rowCid = $this->findCampaignId(array_filter(
+                            (array) ($r->row_data ?? []),
+                            fn($_, $k) => ! str_starts_with($k, '__'),
+                            ARRAY_FILTER_USE_BOTH
+                        ));
+                        return $rowCid === $cid;
+                    })
+                    ->each(function ($r) use ($newCh) {
+                        $r->ch = $newCh;
+                        $r->save();
+                    })
+                    ->count();
+
+                if ($touched > 0) {
+                    $campaignsUpdated++;
+                    $rowsUpdated += $touched;
+                }
+            }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Bulk CH update failed: ' . $e->getMessage(),
+            ], 500);
+        }
+
+        return response()->json([
+            'success'           => true,
+            'ch'                => $newCh,
+            'campaigns_updated' => $campaignsUpdated,
+            'rows_updated'      => $rowsUpdated,
+        ]);
+    }
+
+    /**
      * List every distinct upload batch so the page can offer a switcher.
      */
     public function batches()
@@ -1419,28 +1757,13 @@ class FacebookAllAdsSheetController extends Controller
     ];
 
     /**
-     * Audit checklist — the items the user ticks in the Audit modal.
-     * Each item carries a key (saved verbatim into facebook_campaign_audits.checks),
-     * a human label, and a point weight. Score = sum(weights of ticked) /
-     * sum(all weights) × 100.
-     *
-     * Tweak this list freely; old rows store whichever keys they had at
-     * audit time, so dropping a key won't break the history.
+     * Audit checklist — intentionally empty. The Audit modal has no
+     * built-in/static checks: every check is manually added by the user
+     * via the "Add custom check" box and stored in custom_items. Old rows
+     * keep whatever built-in keys they had at audit time, so history is
+     * unaffected.
      */
-    private const AUDIT_CHECKLIST = [
-        ['key' => 'objective',       'label' => 'Campaign objective is set correctly',                'weight' => 10],
-        ['key' => 'audience',        'label' => 'Audience targeting is defined (age / geo / interests)', 'weight' => 10],
-        ['key' => 'budget',          'label' => 'Daily budget set within the Sbgt recommendation',     'weight' => 10],
-        ['key' => 'creative_count',  'label' => 'Ad set has at least 3 active creatives',              'weight' => 10],
-        ['key' => 'creative_quality','label' => 'Creatives meet image / video quality guidelines',     'weight' => 10],
-        ['key' => 'utm',             'label' => 'UTM parameters present on the destination URL',       'weight' => 10],
-        ['key' => 'pixel',           'label' => 'Meta Pixel / Conversion API tracking is firing',      'weight' => 10],
-        ['key' => 'bid_strategy',    'label' => 'Bid strategy matches campaign goal',                  'weight' => 5],
-        ['key' => 'schedule',        'label' => 'Schedule / start-stop dates set correctly',           'weight' => 5],
-        ['key' => 'name_convention', 'label' => 'Naming convention followed (PARENT / GROUP …)',       'weight' => 5],
-        ['key' => 'duplicates',      'label' => 'No duplicate / overlapping ad sets',                  'weight' => 5],
-        ['key' => 'performance',     'label' => 'Performance KPIs (ACOS / ROAS) are within target',    'weight' => 10],
-    ];
+    private const AUDIT_CHECKLIST = [];
 
     /**
      * Header-signature rules used by {@see validateUploadFormat()} to make
@@ -1565,6 +1888,7 @@ class FacebookAllAdsSheetController extends Controller
         // user previously set on rows with the same Campaign ID. Without
         // this, every new Campaign upload silently wipes those tags.
         $prevAdTypeByCid = $this->buildAdTypeCarryMap();
+        $prevChByCid     = $this->buildChCarryMap();
 
         DB::beginTransaction();
         try {
@@ -1587,6 +1911,7 @@ class FacebookAllAdsSheetController extends Controller
                 // detection works the same as on previously-stored rows.)
                 $rowCid     = $this->findCampaignId($assoc);
                 $carriedAdType = $rowCid !== null ? ($prevAdTypeByCid[$rowCid] ?? null) : null;
+                $carriedCh     = $rowCid !== null ? ($prevChByCid[$rowCid] ?? null) : null;
 
                 // Tuck the upload type inside the existing `row_data` JSON
                 // (under a double-underscore meta key) so we don't need a new
@@ -1599,6 +1924,7 @@ class FacebookAllAdsSheetController extends Controller
                     'row_index'       => $headerRowIdx + 2 + $i,
                     'row_data'        => $assoc,
                     'ad_type'         => $carriedAdType,
+                    'ch'              => $carriedCh,
                     'uploaded_by'     => $userId,
                 ]);
                 $imported++;

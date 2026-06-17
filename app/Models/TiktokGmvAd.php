@@ -18,5 +18,6 @@ class TiktokGmvAd extends Model
         'spend',
         'budget',
         'status',
+        'approval',
     ];
 }

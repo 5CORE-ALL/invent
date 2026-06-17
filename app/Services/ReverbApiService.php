@@ -140,6 +140,15 @@ class ReverbApiService
         return $state ? strtolower(trim((string) $state)) : 'unknown';
     }
 
+    /** Ended / out_of_stock / suspended listings => 0 inventory for pricing & N Map. */
+    public static function effectiveInventoryQuantity(int $qty, ?string $listingState): int
+    {
+        $state = $listingState ? strtolower(trim((string) $listingState)) : 'live';
+        $zeroStates = ['ended', 'out_of_stock', 'suspended'];
+
+        return in_array($state, $zeroStates, true) ? 0 : max(0, $qty);
+    }
+
     /**
      * Fetch ALL Reverb listings (including ended) and update ProductStockMapping + ReverbListingStatus.
      * Uses state=all&per_page=100. Ended/out_of_stock/suspended => inventory_reverb=0; live => actual quantity.

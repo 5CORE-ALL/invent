@@ -1,0 +1,349 @@
+<?php
+
+namespace App\Console\Commands;
+
+use App\Models\NeweggItem;
+use App\Services\NeweggApiService;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Artisan;
+
+class FetchNeweggItems extends Command
+{
+    /**
+     * Pull the seller's full listed-item catalog from Newegg via the async
+     * Item Basic Information Report, store it in newegg_items, and (optionally)
+     * fetch each listed SKU's price + inventory into newegg_pricing.
+     *
+     *   php artisan newegg:items --save
+     *   php artisan newegg:items --save --with-price        (also fill newegg_pricing)
+     *   php artisan newegg:items --status=1 --save          (active listings only)
+     */
+    protected $signature = 'newegg:items
+        {--status=0 : 0 All, 1 Active, 2 Inactive}
+        {--request-id= : Reuse an already-submitted report RequestID (skips submit)}
+        {--save : Persist the catalog into newegg_items}
+        {--with-price : After saving the catalog, run newegg:item-data --save for all listed SKUs}
+        {--poll=10 : Seconds between report status polls}
+        {--max-wait=600 : Maximum seconds to wait for the report to be ready}
+        {--raw : Dump API responses}';
+
+    protected $description = 'Fetch the listed-item catalog (all SKUs) from Newegg and store it';
+
+    public function handle(NeweggApiService $newegg): int
+    {
+        $status    = (int) $this->option('status');
+        $requestId = $this->option('request-id') ? trim((string) $this->option('request-id')) : null;
+
+        $this->line('  SellerID: ' . (config('services.newegg.seller_id') ?: '(not set)'));
+
+        if ($requestId) {
+            $this->info('Reusing existing report RequestID (skipping submit)...');
+        } else {
+            $this->info('Submitting Item Basic Information report request...');
+
+            $submit = $newegg->submitItemBasicInfoReport($status, 'CSV');
+            if ($submit['blocked_by_cloudflare']) {
+                $this->error('Blocked by Cloudflare. Run this from a Newegg-whitelisted server.');
+                return self::FAILURE;
+            }
+            if ($this->option('raw')) {
+                $this->line(json_encode($submit['json'], JSON_UNESCAPED_SLASHES));
+            }
+
+            $requestId = $this->findValue($submit['json'], [
+                'ResponseBody.ResponseList.0.RequestId',
+                'NeweggAPIResponse.ResponseBody.ResponseList.0.RequestId',
+                'ResponseBody.RequestId',
+                'NeweggAPIResponse.ResponseBody.RequestId',
+            ]);
+
+            if (!$requestId) {
+                $this->error('Could not get a RequestID from the submit response:');
+                $this->line(json_encode($submit['json'] ?? $submit['raw'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                return self::FAILURE;
+            }
+        }
+
+        $this->line('  RequestID: ' . $requestId);
+        $this->newLine();
+
+        // Poll for the report file URL.
+        $poll    = max((int) $this->option('poll'), 2);
+        $maxWait = max((int) $this->option('max-wait'), $poll);
+        $waited  = 0;
+        $fileUrl = null;
+
+        $this->info('Waiting for the report to be generated...');
+        while ($waited <= $maxWait) {
+            $res = $newegg->getReportResult($requestId, 'ItemBasicInfoReportRequest');
+            if ($res['blocked_by_cloudflare']) {
+                $this->error('Blocked by Cloudflare while polling.');
+                return self::FAILURE;
+            }
+            if ($this->option('raw')) {
+                $this->line(json_encode($res['json'], JSON_UNESCAPED_SLASHES));
+            }
+
+            $fileUrl = $this->findValue($res['json'], [
+                'NeweggAPIResponse.ResponseBody.ReportFileURL',
+                'ResponseBody.ReportFileURL',
+                'ReportFileURL',
+            ]);
+
+            if ($fileUrl) {
+                break;
+            }
+
+            $this->line("  ...not ready yet ({$waited}s elapsed), waiting {$poll}s");
+            sleep($poll);
+            $waited += $poll;
+        }
+
+        if (!$fileUrl) {
+            $this->error("Report not ready after {$maxWait}s. Re-run later (the RequestID stays valid): {$requestId}");
+            return self::FAILURE;
+        }
+
+        $this->line('  ReportFileURL: ' . preg_replace('#://[^@]+@#', '://***:***@', $fileUrl));
+        $this->newLine();
+
+        // Download + unpack the report file.
+        $content = $this->downloadReport($fileUrl);
+        if ($content === null) {
+            $this->error('Failed to download or unpack the report file.');
+            return self::FAILURE;
+        }
+
+        $rows = $this->parseReport($content);
+        if (empty($rows)) {
+            $this->warn('Report downloaded but no item rows were parsed.');
+            return self::FAILURE;
+        }
+
+        $this->info('Parsed ' . count($rows) . ' listed item(s).');
+
+        $saved = 0;
+        if ($this->option('save')) {
+            foreach ($rows as $row) {
+                $sku = trim((string) ($row['sellerpart'] ?? ''));
+                if ($sku === '') {
+                    continue;
+                }
+
+                NeweggItem::updateOrCreate(
+                    ['seller_part_number' => $this->cap($sku, 100)],
+                    [
+                        'newegg_item_number'       => $this->cap($row['neitem'] ?? null, 60),
+                        'title'                    => $this->cap($row['websiteshorttitle'] ?? ($row['title'] ?? null), 500),
+                        'manufacturer_part_number' => $this->cap($row['manufacturerpart'] ?? null, 100),
+                        'upc'                      => $this->cap($row['upc'] ?? null, 60),
+                        'status'                   => $this->cap($row['status'] ?? null, 20),
+                        'platform'                 => $this->cap($row['platform'] ?? null, 20),
+                        'item_weight'              => is_numeric($row['itemweight'] ?? null) ? (float) $row['itemweight'] : null,
+                        'date_created'             => $this->cap($row['datecreated'] ?? null, 30),
+                        'raw_json'                 => $row,
+                    ]
+                );
+                $saved++;
+            }
+            $this->info("Saved/updated {$saved} rows in newegg_items.");
+        } else {
+            $this->comment('Use --save to persist into newegg_items.');
+            $this->table(
+                ['Seller Part #', 'NE Item #', 'Status', 'Title'],
+                collect($rows)->take(20)->map(fn ($r) => [
+                    $r['sellerpart'] ?? '',
+                    $r['neitem'] ?? '',
+                    $r['status'] ?? '',
+                    \Illuminate\Support\Str::limit($r['websiteshorttitle'] ?? '', 40),
+                ])->all()
+            );
+        }
+
+        if ($this->option('save') && $this->option('with-price')) {
+            $this->newLine();
+            $this->info('Fetching price + inventory for all listed SKUs...');
+            Artisan::call('newegg:item-data', ['--save' => true, '--source' => 'catalog'], $this->getOutput());
+        }
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Find the first non-empty value among several candidate dot-paths.
+     *
+     * @param  array<mixed>|null  $json
+     * @param  list<string>  $paths
+     */
+    private function findValue(?array $json, array $paths): ?string
+    {
+        if (!is_array($json)) {
+            return null;
+        }
+        foreach ($paths as $path) {
+            $val = data_get($json, $path);
+            if (is_string($val) && $val !== '') {
+                return $val;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Download the report file (ftp:// or http(s)://) and return its text content.
+     * Handles ZIP archives transparently.
+     */
+    private function downloadReport(string $url): ?string
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'negg_rpt_');
+
+        $ch = curl_init($url);
+        $fp = fopen($tmp, 'w');
+        curl_setopt_array($ch, [
+            CURLOPT_FILE           => $fp,
+            CURLOPT_CONNECTTIMEOUT => 30,
+            CURLOPT_TIMEOUT        => 300,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_FTP_USE_EPSV   => false,
+        ]);
+        $ok    = curl_exec($ch);
+        $errNo = curl_errno($ch);
+        $err   = curl_error($ch);
+        curl_close($ch);
+        fclose($fp);
+
+        if ($ok === false || $errNo !== 0) {
+            $this->error("Download error: {$err}");
+            @unlink($tmp);
+            return null;
+        }
+
+        $bytes = file_get_contents($tmp);
+        @unlink($tmp);
+
+        if ($bytes === false || $bytes === '') {
+            return null;
+        }
+
+        // Detect ZIP (PK\x03\x04 magic) or .zip extension.
+        $isZip = str_starts_with($bytes, "PK\x03\x04")
+            || str_ends_with(strtolower(parse_url($url, PHP_URL_PATH) ?? ''), '.zip');
+
+        if ($isZip && class_exists(\ZipArchive::class)) {
+            return $this->extractFirstFileFromZip($bytes);
+        }
+
+        return $bytes;
+    }
+
+    private function extractFirstFileFromZip(string $zipBytes): ?string
+    {
+        $tmpZip = tempnam(sys_get_temp_dir(), 'negg_zip_') . '.zip';
+        file_put_contents($tmpZip, $zipBytes);
+
+        $zip = new \ZipArchive();
+        if ($zip->open($tmpZip) !== true) {
+            @unlink($tmpZip);
+            return null;
+        }
+
+        $content = null;
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = $zip->getNameIndex($i);
+            if ($name && !str_ends_with($name, '/')) {
+                $content = $zip->getFromIndex($i);
+                break;
+            }
+        }
+        $zip->close();
+        @unlink($tmpZip);
+
+        return $content !== false ? $content : null;
+    }
+
+    /**
+     * Parse a delimited report (CSV or TAB) into rows keyed by normalized headers.
+     *
+     * @return list<array<string,?string>>
+     */
+    private function parseReport(string $content): array
+    {
+        // Strip a UTF-8 BOM if present.
+        $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
+
+        // Newegg report files are commonly Windows-1252 / Latin-1, not UTF-8.
+        // Normalize so JSON encoding of raw rows won't fail on bad bytes.
+        if (!mb_check_encoding($content, 'UTF-8')) {
+            $content = mb_convert_encoding($content, 'UTF-8', 'Windows-1252');
+        }
+
+        // Detect the delimiter from the header line only.
+        $firstLine = strtok($content, "\r\n");
+        if ($firstLine === false) {
+            return [];
+        }
+        $delimiter = substr_count($firstLine, "\t") > substr_count($firstLine, ',') ? "\t" : ',';
+
+        // Parse with fgetcsv so quoted fields containing commas AND embedded
+        // newlines (Newegg titles/descriptions) are handled correctly.
+        $fh = fopen('php://temp', 'r+');
+        fwrite($fh, $content);
+        rewind($fh);
+
+        $headerCols = fgetcsv($fh, 0, $delimiter, '"', '');
+        if ($headerCols === false) {
+            fclose($fh);
+            return [];
+        }
+        $headers = array_map([$this, 'normalizeHeader'], $headerCols);
+
+        $rows = [];
+        while (($cols = fgetcsv($fh, 0, $delimiter, '"', '')) !== false) {
+            // Skip fully blank lines.
+            if ($cols === [null] || (count($cols) === 1 && trim((string) $cols[0]) === '')) {
+                continue;
+            }
+            $row = [];
+            foreach ($headers as $idx => $h) {
+                if ($h === '') {
+                    continue;
+                }
+                $row[$h] = isset($cols[$idx]) ? $this->clean($cols[$idx]) : null;
+            }
+            $rows[] = $row;
+        }
+        fclose($fh);
+
+        return $rows;
+    }
+
+    /** Trim and guarantee a valid UTF-8 string (drops any remaining bad bytes). */
+    private function clean(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        if (!mb_check_encoding($value, 'UTF-8')) {
+            $value = mb_convert_encoding($value, 'UTF-8', 'Windows-1252');
+        }
+        // Final safety net for any byte that still isn't valid UTF-8.
+        $value = (string) iconv('UTF-8', 'UTF-8//IGNORE', $value);
+
+        return trim($value);
+    }
+
+    private function normalizeHeader(string $header): string
+    {
+        return strtolower(preg_replace('/[^a-z0-9]/i', '', $header));
+    }
+
+    /** Truncate a string to a column's max length (multibyte-safe). */
+    private function cap(?string $value, int $length): ?string
+    {
+        if ($value === null || $value === '') {
+            return $value === '' ? null : $value;
+        }
+
+        return mb_substr($value, 0, $length);
+    }
+}

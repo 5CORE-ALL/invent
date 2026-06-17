@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\ProductMaster;
 use App\Models\EbayTwoDataView;
 use App\Services\Ebay2ApiService;
+use App\Services\EbayPushService;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Models\MarketplacePercentage;
@@ -22,6 +23,7 @@ use App\Models\Ebay2Order;
 use App\Models\Ebay2OrderItem;
 use App\Models\AmazonDatasheet;
 use App\Models\EbaySkuCompetitor;
+use App\Models\TemuPricing;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -120,13 +122,43 @@ class EbayTwoController extends Controller
             ->values()
             ->all();
 
-        // Fetch ALL ebay2_metrics (including Open Box items not in product_masters)
+        // Fetch ALL ebay2_metrics (including Open Box items not in product_masters).
+        // Key by NBSP / Unicode space–safe normalized SKU: ebay2_metrics.sku can contain
+        // non-breaking spaces (U+00A0) while product_masters.sku uses normal spaces, which
+        // otherwise breaks the lookup (item_id/price missing → row wrongly shows as Missing L).
         $ebayMetrics = Ebay2Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'l7_views', 'item_id', 'ebay_stock')
             ->get()
-            ->keyBy("sku");
+            ->keyBy(function ($metric) {
+                return ShopifySku::normalizeSkuForShopifyLookup($metric->sku);
+            });
         
         // Fetch Amazon prices for comparison
         $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)->pluck('price', 'sku');
+
+        // Temu Price lookup (mirrors TemuController::getTemuDecreaseData logic):
+        //   - SKU normalized identically to /temu-decrease so "2 PCS"/"2 PC"/spaces/NBSP all match
+        //   - Temu Price = base_price + 2.99 if base_price <= 26.99, else base_price
+        //   - 0 when SKU is missing from temu_pricing or base_price <= 0
+        $temuPriceNormalizer = static function ($value) {
+            $value = strtoupper(trim(str_replace("\u{00a0}", ' ', (string) $value)));
+            $value = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $value);
+            $value = preg_replace('/\s+/', ' ', $value);
+            return (string) $value;
+        };
+        $temuPriceByNormalizedSku = [];
+        foreach (TemuPricing::select('sku', 'base_price')->get() as $temuRow) {
+            $basePrice = (float) ($temuRow->base_price ?? 0);
+            if ($basePrice <= 0) {
+                continue;
+            }
+            $key = $temuPriceNormalizer($temuRow->sku);
+            if ($key === '' || isset($temuPriceByNormalizedSku[$key])) {
+                continue;
+            }
+            $temuPriceByNormalizedSku[$key] = $basePrice <= 26.99
+                ? round($basePrice + 2.99, 2)
+                : round($basePrice, 2);
+        }
         
         // Add OPEN BOX and USED items from ebay2_metrics to processing list
         foreach ($ebayMetrics as $metric) {
@@ -398,7 +430,7 @@ class EbayTwoController extends Controller
             $parent = $pm->parent;
 
             $shopify = $shopifyData->get($pm->sku);
-            $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
+            $ebayMetric = $ebayMetrics[ShopifySku::normalizeSkuForShopifyLookup($pm->sku)] ?? null;
             // Try both lowercase and original case for listing status lookup
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? $listingStatusData[$pm->sku] ?? null;
 
@@ -447,6 +479,9 @@ class EbayTwoController extends Controller
             
             // Amazon Price for comparison
             $row['A Price'] = isset($amazonPrices[$pm->sku]) ? floatval($amazonPrices[$pm->sku]) : 0;
+
+            // Temu Price (computed from temu_pricing.base_price, normalized SKU match — see /temu-decrease)
+            $row['Temu Price'] = $temuPriceByNormalizedSku[$temuPriceNormalizer($pm->sku)] ?? 0;
 
             EbaySkuCompetitor::applyToRow($row, $pm->sku, $lmpLowestLookup, $lmpDetailsLookup, $row['base_sku'] ?: null);
 
@@ -713,6 +748,10 @@ class EbayTwoController extends Controller
                 $row['eBay_item_id'] = $metric->item_id ?? null;
                 $row['E Stock'] = $metric->ebay_stock ?? 0;
 
+                // Temu Price for OPEN BOX / USED rows: fall back to the base SKU since temu_pricing keys on the original listing SKU.
+                $temuLookupSku = $row['base_sku'] !== '' ? $row['base_sku'] : $metricSku;
+                $row['Temu Price'] = $temuPriceByNormalizedSku[$temuPriceNormalizer($temuLookupSku)] ?? 0;
+
                 EbaySkuCompetitor::applyToRow($row, $metricSku, $lmpLowestLookup, $lmpDetailsLookup, $row['base_sku'] ?: null);
 
                 $ebayL30ForDilM = floatval($row["eBay L30"] ?? 0);
@@ -921,6 +960,49 @@ class EbayTwoController extends Controller
         $dataView->save();
 
         return response()->json(['success' => true, 'data' => $dataView]);
+    }
+
+    /**
+     * Save buyer / seller links for a SKU into ebay2_listing_statuses.value JSON.
+     * Empty strings clear the link (URL validation only applies to non-empty values).
+     */
+    public function saveLinks(Request $request)
+    {
+        $sku = $request->input('sku');
+        if (!$sku) {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $buyerLink = trim((string) $request->input('buyer_link', ''));
+        $sellerLink = trim((string) $request->input('seller_link', ''));
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $field => $val) {
+            if ($val !== '' && !filter_var($val, FILTER_VALIDATE_URL)) {
+                return response()->json(['success' => false, 'message' => 'Invalid URL for ' . $field], 422);
+            }
+        }
+
+        $status = EbayTwoListingStatus::whereRaw('LOWER(sku) = ?', [strtolower($sku)])->first();
+        if (!$status) {
+            $status = new EbayTwoListingStatus();
+            $status->sku = $sku;
+        }
+
+        $existing = is_array($status->value)
+            ? $status->value
+            : (json_decode($status->value, true) ?: []);
+
+        $existing['buyer_link'] = $buyerLink !== '' ? $buyerLink : null;
+        $existing['seller_link'] = $sellerLink !== '' ? $sellerLink : null;
+
+        $status->value = $existing;
+        $status->save();
+
+        return response()->json([
+            'success' => true,
+            'buyer_link' => $existing['buyer_link'],
+            'seller_link' => $existing['seller_link'],
+        ]);
     }
 
 
@@ -1568,68 +1650,84 @@ class EbayTwoController extends Controller
 
     public function pushEbay2Price(Request $request)
     {
-        $sku = strtoupper(trim($request->input('sku')));
+        $sku   = strtoupper(trim($request->input('sku')));
         $price = $request->input('price');
 
         if (empty($sku)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'SKU is required'
-            ], 400);
+            $this->saveSpriceStatus($sku, 'failed');
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 400);
         }
 
         $priceFloat = floatval($price);
         if (!is_numeric($price) || $priceFloat <= 0) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid price value'
-            ], 400);
+            $this->saveSpriceStatus($sku, 'failed');
+            return response()->json(['success' => false, 'message' => 'Invalid price value'], 400);
         }
+
+        if ($priceFloat < 0.01 || $priceFloat > 10000) {
+            $this->saveSpriceStatus($sku, 'failed');
+            return response()->json(['success' => false, 'message' => 'Price must be between $0.01 and $10,000.'], 400);
+        }
+
+        $priceFloat = round($priceFloat, 2);
 
         try {
             $ebayMetric = Ebay2Metric::where('sku', $sku)->first();
-            
+
             if (!$ebayMetric || !$ebayMetric->item_id) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Item ID not found for SKU: ' . $sku
-                ], 404);
+                $this->saveSpriceStatus($sku, 'failed');
+                Log::error('[EbayTwoController] eBay2 item_id not found', ['sku' => $sku]);
+                return response()->json(['success' => false, 'message' => 'Item ID not found for SKU: ' . $sku], 404);
             }
 
+            // Push price DIRECTLY to eBay via the local Ebay2ApiService (no microservice).
+            // The service returns ['success' => bool, 'errors' => ..., 'message' => ...].
             $service = new Ebay2ApiService();
-            $response = $service->reviseFixedPriceItem(
-                itemId: $ebayMetric->item_id,
-                price: $priceFloat
-            );
+            $result  = $service->reviseFixedPriceItem(itemId: $ebayMetric->item_id, price: $priceFloat);
 
-            if (isset($response['Ack']) && ($response['Ack'] === 'Success' || $response['Ack'] === 'Warning')) {
+            if (isset($result['success']) && $result['success']) {
                 $ebayMetric->ebay_price = $priceFloat;
                 $ebayMetric->save();
 
-                $this->saveSpriceStatus($sku, 'success');
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Price updated successfully on eBay2',
-                    'new_price' => $priceFloat
+                $this->saveSpriceStatus($sku, 'pushed');
+                Log::info('[EbayTwoController] eBay2 price push successful via microservice', [
+                    'sku'     => $sku,
+                    'price'   => $priceFloat,
+                    'item_id' => $ebayMetric->item_id,
                 ]);
-            } else {
-                $errorMessage = $response['Errors'][0]['LongMessage'] ?? 'Unknown error from eBay2 API';
-                
-                $this->saveSpriceStatus($sku, 'failed');
-
                 return response()->json([
-                    'success' => false,
-                    'message' => $errorMessage
-                ], 400);
+                    'success'   => true,
+                    'message'   => 'Price updated successfully on eBay2',
+                    'new_price' => $priceFloat,
+                ]);
             }
-        } catch (\Exception $e) {
-            $this->saveSpriceStatus($sku, 'failed');
+
+            // Failure — forward normalized errors from microservice
+            $isAccountRestricted = (bool) ($result['accountRestricted'] ?? false);
+            $this->saveSpriceStatus($sku, $isAccountRestricted ? 'account_restricted' : 'failed');
+
+            $errors  = $result['errors'] ?? [];
+            $message = $errors[0]['message'] ?? ($result['message'] ?? 'Failed to update price on eBay2');
+
+            Log::error('[EbayTwoController] eBay2 price push failed via microservice', [
+                'sku'    => $sku,
+                'price'  => $priceFloat,
+                'errors' => $errors,
+            ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
-            ], 500);
+                'message' => $message,
+                'errors'  => $errors,
+            ], 400);
+
+        } catch (\Exception $e) {
+            $this->saveSpriceStatus($sku, 'failed');
+            Log::error('[EbayTwoController] Exception in pushEbay2Price', [
+                'sku'   => $sku,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json(['success' => false, 'message' => 'Error: ' . $e->getMessage()], 500);
         }
     }
 

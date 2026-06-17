@@ -90,7 +90,7 @@ class HealthController extends Controller
             's_link' => 'nullable|string',
             'user_id' => 'nullable|string',
             'action_req' => 'nullable|string',
-        ]);
+        ]);  
         // Save Data to Database
         try {
             $channel = ChannelMaster::create($validatedData);

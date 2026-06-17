@@ -354,12 +354,24 @@
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                            data-bs-auto-close="outside">
                             <i class="fas fa-columns"></i> Columns
                         </button>
-                        <ul class="dropdown-menu" id="column-dropdown-menu" aria-labelledby="columnVisibilityDropdown">
-                            <!-- Populated dynamically -->
-                        </ul>
+                        <div class="dropdown-menu p-0" id="column-dropdown-menu"
+                            aria-labelledby="columnVisibilityDropdown"
+                            style="max-height:none; overflow:visible;">
+                            <ul id="column-dropdown-list" class="list-unstyled mb-0 px-2 py-1"
+                                style="max-height:320px; overflow-y:auto;">
+                                <!-- Populated dynamically -->
+                            </ul>
+                            <div class="border-top px-2 py-2 bg-white"
+                                style="position:sticky; bottom:0;">
+                                <button type="button" id="save-columns-btn" class="btn btn-sm btn-primary w-100">
+                                    <i class="fas fa-save"></i> Save
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
@@ -420,7 +432,7 @@
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
                             views: <span id="total-views-badge">0</span>
                         </span>
-                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="Listing CVR (all channels): (sum of L30 Orders) ÷ (sum of Total Views) × 100. Total Views = listing/Map traffic (e.g. ov_l30, eBay Views) — not ad clicks. Not the same as column &quot;AD CVR&quot; (ad sold ÷ ad clicks). The ratio can move sharply if views jump (new SKUs, sync) or order windows differ by channel (e.g. Amazon 32-day orders vs views from live tabulator).">
+                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="Listing CVR (all channels): (sum of L30 Orders) ÷ (sum of Total Views) × 100. Total Views = listing/Map traffic (e.g. ov_l30, eBay Views) — not ad clicks. Not the same as column &quot;AD CVR&quot; (ad sold ÷ ad clicks). The ratio can move sharply if views jump (new SKUs, sync) or order windows differ by channel (e.g. Amazon {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day orders vs views from live tabulator).">
                             CVR: <span id="cvr-pct-badge">0%</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="pft" style="color: black; font-weight: bold; cursor:pointer;" title="Net profit $ = sum(rolling Sales×Gprofit% − Ad spend); same as Sales × (G% − Ad Spend/Sales) per channel">
@@ -486,6 +498,24 @@
                             <input type="text" class="form-control" id="channelName" required>
                         </div>
                         <div class="mb-3">
+                            <label for="channelAlias" class="form-label">Alias</label>
+                            <input type="text" class="form-control" id="channelAlias" maxlength="190"
+                                placeholder="Short display name">
+                            <small class="text-muted">Shown in the Alias column; click it to open this channel's view.</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="channelPromotions" class="form-label">Promotions (%)</label>
+                            <input type="number" class="form-control" id="channelPromotions" step="0.01"
+                                min="0" placeholder="e.g. 10">
+                            <small class="text-muted">Manual promotions percentage for this channel.</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="channelComplianceCount" class="form-label">Compliance Count</label>
+                            <input type="number" class="form-control" id="channelComplianceCount" step="1"
+                                min="0" placeholder="e.g. 5">
+                            <small class="text-muted">Manual compliance count for this channel.</small>
+                        </div>
+                        <div class="mb-3">
                             <label for="channelLogo" class="form-label">Channel Logo</label>
                             <div class="d-flex align-items-center gap-2">
                                 <div id="channelLogoPreview" class="channel-logo-preview">
@@ -509,10 +539,6 @@
                             <input type="url" class="form-control" id="channelUrl">
                         </div>
                         <div class="mb-3">
-                            <label for="additionSheet" class="form-label">Addition Sheet</label>
-                            <input type="url" class="form-control" id="additionSheet" placeholder="https://...">
-                        </div>
-                        <div class="mb-3">
                             <label for="type" class="form-label">Type</label>
                             <select class="form-control" id="type">
                                 <option value="">Select Type</option>
@@ -522,11 +548,11 @@
                             </select>
                         </div>
                         <div class="mb-3">
-                            <label for="channelUpdate" class="form-label">Update</label>
+                            <label for="channelUpdate" class="form-label">Data Source</label>
                             <select class="form-control" id="channelUpdate">
                                 <option value="">Select</option>
-                                <option value="A">A</option>
-                                <option value="S">S</option>
+                                <option value="A">API</option>
+                                <option value="S">GS</option>
                             </select>
                         </div>
                     </form>
@@ -551,9 +577,37 @@
                     <form id="editChannelForm" enctype="multipart/form-data">
                         <input type="hidden" id="originalChannel" name="original_channel">
                         <input type="hidden" id="editExistingLogo">
+                        @php
+                            $canEditChannelName = in_array(strtolower(trim((string) (auth()->user()->email ?? ''))), [
+                                'support@5core.com',
+                                'president@5core.com',
+                                'software5@5core.com',
+                            ], true);
+                        @endphp
                         <div class="mb-3">
                             <label for="editChannelName" class="form-label">Channel Name</label>
-                            <input type="text" class="form-control" id="editChannelName" readonly>
+                            <input type="text" class="form-control" id="editChannelName" {{ $canEditChannelName ? '' : 'readonly' }}>
+                            @unless ($canEditChannelName)
+                                <small class="text-muted">Channel name editing is restricted.</small>
+                            @endunless
+                        </div>
+                        <div class="mb-3">
+                            <label for="editChannelAlias" class="form-label">Alias</label>
+                            <input type="text" class="form-control" id="editChannelAlias" maxlength="190"
+                                placeholder="Short display name">
+                            <small class="text-muted">Shown in the Alias column; click it to open this channel's view.</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editChannelPromotions" class="form-label">Promotions (%)</label>
+                            <input type="number" class="form-control" id="editChannelPromotions" step="0.01"
+                                min="0" placeholder="e.g. 10">
+                            <small class="text-muted">Manual promotions percentage for this channel.</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editChannelComplianceCount" class="form-label">Compliance Count</label>
+                            <input type="number" class="form-control" id="editChannelComplianceCount" step="1"
+                                min="0" placeholder="e.g. 5">
+                            <small class="text-muted">Manual compliance count for this channel.</small>
                         </div>
                         <div class="mb-3">
                             <label for="editChannelLogo" class="form-label">Channel Logo</label>
@@ -588,25 +642,16 @@
                             </select>
                         </div>
                         <div class="mb-3">
-                            <label for="editTarget" class="form-label">Target</label>
-                            <input type="number" class="form-control" id="editTarget" step="0.01">
-                        </div>
-                        <div class="mb-3">
                             <label for="editMissingLink" class="form-label">Blade page link</label>
                             <input type="url" class="form-control" id="editMissingLink" placeholder="https://...">
                             <small class="text-muted">This link will open when clicking channel name</small>
                         </div>
                         <div class="mb-3">
-                            <label for="editAdditionSheet" class="form-label">Addition Sheet</label>
-                            <input type="url" class="form-control" id="editAdditionSheet" placeholder="https://...">
-                            <small class="text-muted">This link will open when clicking the Missing L column</small>
-                        </div>
-                        <div class="mb-3">
-                            <label for="editChannelUpdate" class="form-label">Update</label>
+                            <label for="editChannelUpdate" class="form-label">Data Source</label>
                             <select class="form-control" id="editChannelUpdate">
                                 <option value="">Select</option>
-                                <option value="A">A</option>
-                                <option value="S">S</option>
+                                <option value="A">API</option>
+                                <option value="S">GS</option>
                             </select>
                         </div>
                     </form>
@@ -829,9 +874,9 @@
                     <div class="d-flex align-items-center gap-2">
                         <select id="adChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
                             <option value="7">7 Days</option>
-                            <option value="30">30 Days</option>
-                            <option value="31">31 Days</option>
-                            <option value="32" selected>32 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="31" >31 Days</option>
+                            <option value="32">32 Days</option>
                             <option value="35">35 Days</option>
                             <option value="60">60 Days</option>
                             <option value="90">90 Days</option>
@@ -953,6 +998,33 @@
             if (typeof value === 'number') return value;
             const cleaned = String(value).replace(/[^0-9.-]/g, '');
             return parseFloat(cleaned) || 0;
+        }
+
+        // Yesterday's date formatted in America/Los_Angeles (e.g. "Jun 14"). The current PT
+        // day is still in progress so its rolling-window data isn't final yet — every "data
+        // through …" label we surface points at the last COMPLETED Pacific day instead.
+        function caLastCompletedMdy() {
+            try {
+                const fmt = new Intl.DateTimeFormat('en-US', {
+                    timeZone: 'America/Los_Angeles',
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+                const parts = fmt.formatToParts(new Date());
+                const y = parseInt(parts.find(p => p.type === 'year').value, 10);
+                const mShort = parts.find(p => p.type === 'month').value;
+                const d = parseInt(parts.find(p => p.type === 'day').value, 10);
+                // Build a UTC date at PT midnight today, subtract one day, then format short.
+                const monthIdx = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(mShort);
+                const dt = new Date(Date.UTC(y, monthIdx, d));
+                dt.setUTCDate(dt.getUTCDate() - 1);
+                return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(dt);
+            } catch (e) {
+                const d = new Date();
+                d.setDate(d.getDate() - 1);
+                return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            }
         }
         // Normalize percentage for display: backend may send 0.15 or 15; always show as 0-100 scale with %
         function asPercent(value) {
@@ -1088,6 +1160,22 @@
             }
         }
 
+        const AC_PRICING_FILTER_CHANNELS = ['Shein', 'Aliexpress', 'Faire', 'Reverb', 'TopDawg'];
+        let acPricingCellHoverTimer = null;
+
+        function acOpenPricingPageWithBadge(missingLink, badge) {
+            if (!missingLink || !badge) return;
+            const sep = missingLink.indexOf('?') >= 0 ? '&' : '?';
+            window.open(missingLink + sep + 'badge=' + encodeURIComponent(badge), '_blank');
+        }
+
+        function acPricingHoverCellHtml(channel, chartMetric, filterBadge, valueHtml, extraStyle) {
+            if (!AC_PRICING_FILTER_CHANNELS.includes(channel)) {
+                return `<span style="${extraStyle || ''}">${valueHtml}</span>`;
+            }
+            return `<span class="ac-pricing-hover-cell" data-channel="${channel}" data-chart-metric="${chartMetric}" data-filter-badge="${filterBadge}" style="${extraStyle || ''}cursor:pointer;" title="Hover for trend · Click to filter on pricing page">${valueHtml}</span>`;
+        }
+
         $(document).ready(function() {
             // Initialize Tabulator
             table = new Tabulator("#marketplace-table", {
@@ -1186,6 +1274,27 @@
                         }
                     },
                     {
+                        // Alias: short display label set per channel in the Edit modal.
+                        // Clicking it opens the channel's tabulator view (the same
+                        // "Blade page link" / missing_link used by the channel name).
+                        title: "Alias",
+                        field: "alias",
+                        hozAlign: "center",
+                        headerTooltip: "Channel alias — click to open this channel's view.",
+                        formatter: function(cell) {
+                            const alias = (cell.getValue() || '').toString().trim();
+                            if (!alias) {
+                                return '<span style="color:#adb5bd;">-</span>';
+                            }
+                            const rowData = cell.getRow().getData();
+                            const viewLink = rowData['missing_link'] || '';
+                            if (viewLink) {
+                                return `<a href="${viewLink}" target="_blank" class="channel-alias-link" style="color:#0d6efd;font-weight:600;text-decoration:none;cursor:pointer;" title="Open ${alias} view">${alias}</a>`;
+                            }
+                            return `<span style="font-weight:600;">${alias}</span>`;
+                        }
+                    },
+                    {
                         title: "Missing L",
                         field: "Miss",
                         hozAlign: "center",
@@ -1207,12 +1316,21 @@
                                 return `<a href="${additionSheet}" target="_blank" style="${style}text-decoration:none;cursor:pointer;" title="Click to open addition sheet">${value}</a>${chartIcon}`;
                             }
 
-                            return `<span style="${style}">${value}</span>${chartIcon}`;
+                            const valueHtml = String(value);
+                            const body = acPricingHoverCellHtml(channel, 'missing_l', 'missing', valueHtml, style);
+                            return body + chartIcon;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
                                 var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                                return;
+                            }
+                            const hoverEl = e.target.closest('.ac-pricing-hover-cell');
+                            if (hoverEl) {
+                                e.stopPropagation();
+                                const rowData = cell.getRow().getData();
+                                acOpenPricingPageWithBadge(rowData['missing_link'] || '', hoverEl.getAttribute('data-filter-badge'));
                             }
                         },
                         bottomCalc: "sum",
@@ -1233,12 +1351,20 @@
                             const dotColor = value === 0 ? DEFAULT_DOT_GRAY : '#198754';
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="map" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             const style = value === 0 ? 'color:#6c757d;font-weight:600;' : 'color:#198754;font-weight:600;';
-                            return `<span style="${style}">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                            const valueHtml = value.toLocaleString('en-US');
+                            return acPricingHoverCellHtml(channel, 'map', 'map', valueHtml, style) + chartIcon;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
                                 var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                                return;
+                            }
+                            const hoverEl = e.target.closest('.ac-pricing-hover-cell');
+                            if (hoverEl) {
+                                e.stopPropagation();
+                                const rowData = cell.getRow().getData();
+                                acOpenPricingPageWithBadge(rowData['missing_link'] || '', hoverEl.getAttribute('data-filter-badge'));
                             }
                         },
                         bottomCalc: "sum",
@@ -1260,13 +1386,22 @@
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="nmap" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
 
                             const color = value === 0 ? 'green' : 'red';
+                            const style = `color:${color};font-weight:bold;`;
+                            const valueHtml = String(value);
 
-                            return `<span style="color:${color};font-weight:bold;">${value}</span>${chartIcon}`;
+                            return acPricingHoverCellHtml(channel, 'nmap', 'nmap', valueHtml, style) + chartIcon;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
                                 var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                                return;
+                            }
+                            const hoverEl = e.target.closest('.ac-pricing-hover-cell');
+                            if (hoverEl) {
+                                e.stopPropagation();
+                                const rowData = cell.getRow().getData();
+                                acOpenPricingPageWithBadge(rowData['missing_link'] || '', hoverEl.getAttribute('data-filter-badge'));
                             }
                         },
                         bottomCalc: "sum",
@@ -1313,6 +1448,33 @@
                         }
                     },
                     {
+                        title: "L60 Sales",
+                        field: "L-60 Sales",
+                        headerTooltip: "Sales from days 31-60 (previous 30-day period: {{ \Carbon\Carbon::now()->subDays(60)->format('M d, Y') }} – {{ \Carbon\Carbon::now()->subDays(31)->format('M d, Y') }}). Used for Growth calculation.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        visible: true,
+                        formatter: function(cell) {
+                            const value = Math.round(parseNumber(cell.getValue()));
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'l60_sales');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l60_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View L60 Sales Chart"></i>`;
+                            return `<span style="font-weight: 600;">$${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = Math.round(parseNumber(cell.getValue()));
+                            return `<strong>$${value.toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
                         title: "Sales",
                         field: "L30 Sales",
                         headerTooltip: "Rolling sales per channel. Amazon = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific — same formula as Amazon Daily Sales (AMAZON_SALES_TOTAL_MODE; Canceled/Cancelled excluded).",
@@ -1339,30 +1501,33 @@
                         }
                     },
                     {
-                        title: "L60 Sales",
-                        field: "L-60 Sales",
-                        headerTooltip: "Sales from days 31-60 (previous 30-day period). Used for Growth calculation.",
+                        title: "L60 Orders",
+                        field: "L60 Orders",
+                        headerTooltip: "Order count from the previous 30-day period (L60 window). AliExpress/Shein: from L60 sales upload table when populated.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
                         visible: true,
                         formatter: function(cell) {
-                            const value = Math.round(parseNumber(cell.getValue()));
+                            const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const dotColor = getMetricDotColor(channel, 'l60_sales');
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l60_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View L60 Sales Chart"></i>`;
-                            return `<span style="font-weight: 600;">$${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                            const dotColor = getMetricDotColor(channel, 'l60_orders');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l60_orders" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View L60 Orders Chart"></i>`;
+                            if (!value) return `<span style="color:#adb5bd;">—</span>${chartIcon}`;
+                            return `<span style="font-weight: 600;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                                var cv = cell.getElement().querySelector('span');
+                                cv = cv ? parseFloat(cv.textContent.replace(/[,$%\s]/g, '')) : null;
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
-                            const value = Math.round(parseNumber(cell.getValue()));
-                            return `<strong>$${value.toLocaleString('en-US')}</strong>`;
+                            const value = parseNumber(cell.getValue());
+                            return `<strong>${value.toLocaleString('en-US')}</strong>`;
                         }
                     },
                     {
@@ -1447,12 +1612,21 @@
                         width: 90,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue() || 0);
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'y_sales');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="y_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             if (!value || value === 0) {
                                 // NYS = "No Yesterday Sales" — shown whenever a channel had
                                 // zero revenue on the prior PST day.
-                                return '<span style="color:#adb5bd;font-weight:600;" title="No Yesterday Sales">NYS</span>';
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No Yesterday Sales">NYS</span>${chartIcon}`;
                             }
-                            return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>`;
+                            return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1467,7 +1641,7 @@
                         // channel_master.update — see ChannelMasterController::update().
                         title: "Source",
                         field: "Update",
-                        headerTooltip: "Data source tag for this channel. A = Auto, S = Sheet. Set in the channel's Edit modal.",
+                        headerTooltip: "Data source tag for this channel. A = API, S = GS. Set in the channel's Edit modal.",
                         hozAlign: "center",
                         width: 80,
                         sorter: function(a, b) {
@@ -1484,8 +1658,25 @@
                             }
                             // Color-coded chip so the two values are scannable at a glance.
                             const bg    = v === 'A' ? '#198754' : '#fd7e14';
-                            const label = v === 'A' ? 'Auto'    : 'Sheet';
-                            return `<span class="badge" style="background-color:${bg};color:#fff;font-weight:600;min-width:24px;" title="${label}">${v}</span>`;
+                            const label = v === 'A' ? 'API'     : 'GS';
+                            return `<span class="badge" style="background-color:${bg};color:#fff;font-weight:600;min-width:24px;" title="${label}">${label}</span>`;
+                        }
+                    },
+                    {
+                        // Manual Promotions % entered per channel in the Edit modal.
+                        title: "Promotions",
+                        field: "promotions",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        headerTooltip: "Manual promotions percentage — set in the channel's Edit modal.",
+                        formatter: function(cell) {
+                            const raw = cell.getValue();
+                            if (raw === null || raw === undefined || raw === '' || isNaN(parseFloat(raw))) {
+                                return '<span style="color:#adb5bd;">-</span>';
+                            }
+                            const val = parseFloat(raw);
+                            return `<span style="font-weight:600;">${val.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 2})}%</span>`;
                         }
                     },
                     {
@@ -1499,7 +1690,12 @@
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             if (totalSpent === 0) return '-';
                             const dotColor = getMetricDotColor(channel, 'ad_spend');
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="ad_spend" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            // Trend dot compares the last two COMPLETED Pacific days — today's
+                            // PT date is excluded because its rolling-window value is still
+                            // accruing. The tooltip surfaces that date so the value is read
+                            // correctly across timezones.
+                            const dotTitle = `Data through ${caLastCompletedMdy()} PT. Click to view chart.`;
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="ad_spend" style="cursor:pointer;color:${dotColor};font-size:8px;" title="${dotTitle}"></i>`;
                             const infoIcon =
                                 `<i class="fas fa-chevron-right ad-spend-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle Spend Breakdown"></i>`;
                             return `<span style="font-weight:600;">$${Math.round(totalSpent).toLocaleString('en-US')}</span>${chartIcon}${infoIcon}`;
@@ -1575,7 +1771,8 @@
                             const pct = (orders / views) * 100;
                             const dotColor = getMetricDotColor(channel, 'cvr');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="cvr" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View CVR trend"></i>`;
-                            return `<span style="font-weight:600;color:${dotColor};">${pct.toFixed(1)}%</span>${chartIcon}`;
+                            // 2 decimals so day-to-day movement on a rolling window is visible (matches chart precision).
+                            return `<span style="font-weight:600;color:${dotColor};">${pct.toFixed(2)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -1592,7 +1789,7 @@
                                 totalViews += parseNumber(row['Total Views'] || 0);
                             });
                             if (totalViews === 0) return '-';
-                            return '<strong>' + ((totalOrders / totalViews) * 100).toFixed(1) + '%</strong>';
+                            return '<strong>' + ((totalOrders / totalViews) * 100).toFixed(2) + '%</strong>';
                         }
                     },
                     {
@@ -3059,7 +3256,7 @@
                         headerSort: false,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const channel = rowData['Channel '] || '';
+                            const channel = rowData['Channel '] || rowData['Channel'] || '';
                             return `
                                 <div class="d-flex justify-content-center gap-1">
                                     <button class="btn btn-sm btn-outline-primary edit-channel-btn" 
@@ -3100,19 +3297,18 @@
                                     const channel = rowData['Channel '] || rowData['Channel'] || '';
                                     const sheetUrl = rowData['sheet_link'] || '';
                                     const type = rowData['type'] || '';
-                                    const target = rowData['target'] || 0;
                                     const missingLink = rowData['missing_link'] || '';
-                                    const additionSheet = rowData['addition_sheet'] || '';
                                     const logo = rowData['logo'] || '';
                                     const sellerLink = rowData['seller_link'] || '';
 
                                     // Populate modal
                                     $('#editChannelName').val(channel);
+                                    $('#editChannelAlias').val(rowData['alias'] || '');
+                                    $('#editChannelPromotions').val(rowData['promotions'] ?? '');
+                                    $('#editChannelComplianceCount').val(rowData['compliance_count'] ?? '');
                                     $('#editChannelUrl').val(sheetUrl);
                                     $('#editType').val(type);
-                                    $('#editTarget').val(target);
                                     $('#editMissingLink').val(missingLink);
-                                    $('#editAdditionSheet').val(additionSheet);
                                     $('#editChannelSellerLink').val(sellerLink);
                                     $('#originalChannel').val(channel);
 
@@ -3216,11 +3412,27 @@
                             return `<a href="${link}" target="_blank" class="btn btn-sm btn-success">🔗</a>`;
                         }
                     },
+                    {
+                        // Manual Compliance Count entered per channel in the Edit modal.
+                        title: "Compliance Count",
+                        field: "compliance_count",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 110,
+                        headerTooltip: "Manual compliance count — set in the channel's Edit modal.",
+                        formatter: function(cell) {
+                            const raw = cell.getValue();
+                            if (raw === null || raw === undefined || raw === '' || isNaN(parseInt(raw))) {
+                                return '<span style="color:#adb5bd;">-</span>';
+                            }
+                            return `<span style="font-weight:600;">${parseInt(raw).toLocaleString('en-US')}</span>`;
+                        }
+                    },
                 ]
             });
 
             // Initial load only: set column dot color from last-two values (same red/green/gray logic as chart).
-            var metricDotMetricKeys = ['missing_l','map','nmap','l30_sales','ad_spend','l30_orders','qty','gprofit','groi','ads_pct','npft','nroi','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp'];
+            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','ad_spend','l30_orders','qty','gprofit','groi','ads_pct','npft','nroi','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp'];
             function loadMetricDotTrends(tableData) {
                 if (typeof lastDotColorByKey === 'undefined') return;
                 var data = tableData && Array.isArray(tableData) ? tableData : (typeof table !== 'undefined' && table.getData ? table.getData() : []);
@@ -3379,9 +3591,11 @@
                 $('#total-ad-spend').text('$' + Math.round(totalAdSpend).toLocaleString('en-US'));
                 $('#avg-ads-percent').text(avgAdsPercent.toFixed(1) + '%');
                 $('#total-views-badge').text(Math.round(totalViews).toLocaleString('en-US'));
-                // Listing CVR (overall): Σ L30 Orders / Σ Total Views — not ad conversion; see badge title
+                // Listing CVR (overall): Σ L30 Orders / Σ Total Views — not ad conversion; see badge title.
+                // 2 decimals so the badge value shifts day-over-day instead of holding the same
+                // rounded number for 3+ days (rolling-window CVR moves <0.05% per day).
                 const cvrPct = totalViews > 0 ? (totalL30Orders / totalViews) * 100 : null;
-                $('#cvr-pct-badge').text(cvrPct !== null ? cvrPct.toFixed(1) + '%' : '-');
+                $('#cvr-pct-badge').text(cvrPct !== null ? cvrPct.toFixed(2) + '%' : '-');
                 // NPFT $ = gross profit $ − total ad spend (= L30 × (G% − Ad Spend/Sales) in aggregate)
                 $('#total-pft').text('$' + Math.round(netProfit).toLocaleString('en-US'));
                 $('#avg-npft').text(avgNpft.toFixed(1) + '%');
@@ -3445,9 +3659,68 @@
                 applyMasterFilters();
             });
 
-            // Build Column Visibility Dropdown
+            // ---- Persisted column visibility (channel_tabulator_column_settings) ----
+            const COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+            // Per-user key so each user keeps their own saved column layout and
+            // gets their latest selection back when they reopen the page.
+            const COLUMN_VISIBILITY_CHANNEL = 'all_marketplace_master_user_{{ auth()->id() ?? 'guest' }}';
+            const columnCsrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+            let savedColumnVisibility = {};
+
+            function fetchColumnVisibility() {
+                return fetch(`${COLUMN_VISIBILITY_URL}?channel=${encodeURIComponent(COLUMN_VISIBILITY_CHANNEL)}`, {
+                        credentials: 'same-origin'
+                    })
+                    .then(r => r.json())
+                    .then(map => {
+                        savedColumnVisibility = (map && typeof map === 'object' && !Array.isArray(map)) ? map : {};
+                        return savedColumnVisibility;
+                    })
+                    .catch(() => {
+                        savedColumnVisibility = {};
+                        return {};
+                    });
+            }
+
+            function applyColumnVisibility() {
+                if (!table || !savedColumnVisibility || !Object.keys(savedColumnVisibility).length) return;
+                table.getColumns().forEach(col => {
+                    const def = col.getDefinition();
+                    if (!def.field) return;
+                    if (savedColumnVisibility[def.field] === false) col.hide();
+                    else if (savedColumnVisibility[def.field] === true) col.show();
+                });
+            }
+
+            function saveColumnVisibility() {
+                if (!table) return Promise.resolve();
+                const visibility = {};
+                table.getColumns().forEach(col => {
+                    const def = col.getDefinition();
+                    if (def.field) visibility[def.field] = col.isVisible();
+                });
+                savedColumnVisibility = visibility;
+                return fetch(COLUMN_VISIBILITY_URL, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': columnCsrfToken,
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        channel: COLUMN_VISIBILITY_CHANNEL,
+                        visibility: visibility,
+                    }),
+                }).then(r => {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json().catch(() => ({}));
+                });
+            }
+
+            // Build Column Visibility Dropdown — lists every column with a field.
             function buildColumnDropdown() {
-                const menu = document.getElementById("column-dropdown-menu");
+                const menu = document.getElementById("column-dropdown-list");
                 if (!menu) return;
 
                 menu.innerHTML = '';
@@ -3464,6 +3737,29 @@
                     menu.appendChild(li);
                 });
             }
+
+            // Persist current selection (Save keeps the latest changes for everyone).
+            document.getElementById("save-columns-btn")?.addEventListener("click", function() {
+                const btn = this;
+                const original = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+                saveColumnVisibility()
+                    .then(() => {
+                        btn.innerHTML = '<i class="fas fa-check"></i> Saved';
+                        if (typeof showToast === 'function') showToast('success', 'Column settings saved.');
+                    })
+                    .catch(() => {
+                        btn.innerHTML = '<i class="fas fa-times"></i> Failed';
+                        if (typeof showToast === 'function') showToast('error', 'Failed to save column settings.');
+                    })
+                    .finally(() => {
+                        setTimeout(() => {
+                            btn.disabled = false;
+                            btn.innerHTML = original;
+                        }, 1200);
+                    });
+            });
 
             // Column visibility toggle
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
@@ -3565,9 +3861,12 @@
                 }
             });
 
-            // Table built event
+            // Table built event — load saved column visibility, apply it, then build the menu.
             table.on('tableBuilt', function() {
-                buildColumnDropdown();
+                fetchColumnVisibility().then(() => {
+                    applyColumnVisibility();
+                    buildColumnDropdown();
+                });
             });
 
             // Table data loaded: rebuild dropdown; dot colors are loaded from ajaxResponse on first data load.
@@ -3919,7 +4218,8 @@
             let currentChartChannel = '';
             let currentChartAdType = '';
             let currentChartMetric = 'spend';
-            let currentChartDays = 32;
+            // Trend chart default range — fixed at 30 days (matches the modal dropdown's pre-selected option).
+            let currentChartDays = 30;
             let adChartAjax = null; // track in-flight request
             let currentChartMode = 'ad'; // 'ad' = ad breakdown, 'metric' = channel metric
             let currentMetricKey = ''; // metric key for channel metric mode
@@ -4093,7 +4393,9 @@
             // Metric label map for titles
             const metricLabels = {
                 'l60_sales': 'L60 Sales',
+                'l60_orders': 'L60 Orders',
                 'l30_sales': 'Sales',
+                'y_sales': 'Y Sales',
                 'l30_orders': 'Orders',
                 'qty': 'Qty',
                 'gprofit': 'Gprofit%',
@@ -4124,10 +4426,11 @@
                 currentChartChannel = channel.toLowerCase().replace(/[^a-z0-9]/g, '');
                 currentMetricKey = metricKey;
                 currentChartMetric = metricKey; // for fmtVal formatting
-                currentChartDays = 32; // align with Amazon Daily Sales / channel rolling window
+                // Trend chart default range — always opens at 30 days regardless of any other window.
+                currentChartDays = 30;
                 currentCellValue = (cellValue !== undefined && cellValue !== null && !isNaN(cellValue)) ? cellValue : null;
 
-                $('#adChartRangeSelect').val('32');
+                $('#adChartRangeSelect').val('30');
 
                 // Set title
                 const label = metricLabels[metricKey] || metricKey;
@@ -4151,6 +4454,31 @@
                 titleEl.text(titleEl.text().replace(/\(Rolling [^)]+\)/, `(Rolling ${adChartRangeLabel(days)})`));
 
                 loadAdBreakdownChart();
+            });
+
+            // Shein / Aliexpress / Faire: hover Miss|Map|NMap cell → trend chart; click → pricing page filter
+            $(document).on('mouseenter', '#marketplace-table .ac-pricing-hover-cell', function() {
+                const $el = $(this);
+                const channel = $el.data('channel');
+                const metric = $el.data('chart-metric');
+                if (!channel || !metric) return;
+                if (acPricingCellHoverTimer) clearTimeout(acPricingCellHoverTimer);
+                const cv = parseFloat(String($el.text()).replace(/,/g, '')) || null;
+                acPricingCellHoverTimer = setTimeout(function() {
+                    showMetricChart(channel, metric, cv);
+                }, 500);
+            });
+            $(document).on('mouseleave', '#marketplace-table .ac-pricing-hover-cell', function() {
+                if (acPricingCellHoverTimer) {
+                    clearTimeout(acPricingCellHoverTimer);
+                    acPricingCellHoverTimer = null;
+                }
+            });
+            $(document).on('mousedown', '#marketplace-table .ac-pricing-hover-cell', function() {
+                if (acPricingCellHoverTimer) {
+                    clearTimeout(acPricingCellHoverTimer);
+                    acPricingCellHoverTimer = null;
+                }
             });
 
             // Badge click handler — show overall (all channels) metric trend
@@ -4195,10 +4523,15 @@
                 // --- Format helper (no decimals for spend/sales) ---
                 const fmtVal = (v) => {
                     const m = currentChartMetric;
-                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp') {
+                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp') {
                         return '$' + Math.round(v).toLocaleString('en-US');
                     }
-                    if (m === 'acos' || m === 'cvr' || m === 'ads_cvr' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'nroi') {
+                    // Listing CVR / Ads CVR shift slowly inside a rolling window — show 2 decimals
+                    // so adjacent days don't display as the same number (avoids a flat trend).
+                    if (m === 'cvr' || m === 'ads_cvr') {
+                        return v.toFixed(2) + '%';
+                    }
+                    if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'nroi') {
                         return v.toFixed(1) + '%';
                     }
                     if (m === 'tat') return v.toFixed(2);
@@ -4383,9 +4716,7 @@
                     const channel = rowData['Channel '] || rowData['Channel'] || '';
                     const sheetUrl = rowData['sheet_link'] || '';
                     const type = rowData['type'] || '';
-                    const target = rowData['target'] || 0;
                     const missingLink = rowData['missing_link'] || '';
-                    const additionSheet = rowData['addition_sheet'] || '';
                     const logo = rowData['logo'] || '';
                     const sellerLink = rowData['seller_link'] || '';
                     // Row exposes the value as 'Update' (see per-channel data builders).
@@ -4396,11 +4727,12 @@
 
                     // Populate modal fields
                     $('#editChannelName').val(channel);
+                    $('#editChannelAlias').val(rowData['alias'] || '');
+                    $('#editChannelPromotions').val(rowData['promotions'] ?? '');
+                    $('#editChannelComplianceCount').val(rowData['compliance_count'] ?? '');
                     $('#editChannelUrl').val(sheetUrl);
                     $('#editType').val(type);
-                    $('#editTarget').val(target);
                     $('#editMissingLink').val(missingLink);
-                    $('#editAdditionSheet').val(additionSheet);
                     $('#editChannelSellerLink').val(sellerLink);
                     $('#editChannelUpdate').val(updateFlag);
                     $('#originalChannel').val(channel);
@@ -4429,41 +4761,6 @@
                 } catch (error) {
                     console.error('Error opening edit modal:', error);
                     showToast('error', 'Error opening edit form: ' + error.message);
-                }
-            });
-
-            // Delete channel button handler
-            $(document).on('click', '.delete-channel-btn', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const channel = $(this).data('channel');
-
-                if (confirm(
-                        `Are you sure you want to archive channel: ${channel}?\n\nThis will set the channel status to "Inactive" and it will no longer appear in the list.`
-                        )) {
-                    $.ajax({
-                        url: '/channel-archive',
-                        method: 'POST',
-                        data: {
-                            channel: channel,
-                            _token: '{{ csrf_token() }}'
-                        },
-                        success: function(response) {
-                            if (response.success) {
-                                showToast('success', 'Channel archived successfully');
-                                // Reload the table
-                                table.replaceData();
-                            } else {
-                                showToast('error', response.message ||
-                                    'Failed to archive channel');
-                            }
-                        },
-                        error: function(xhr) {
-                            showToast('error', 'Error archiving channel: ' + (xhr.responseJSON
-                                ?.message || 'Unknown error'));
-                        }
-                    });
                 }
             });
 
@@ -4525,7 +4822,6 @@
             $(document).on('click', '#saveChannelBtn', function() {
                 const channelName = $('#channelName').val().trim();
                 const channelUrl = $('#channelUrl').val().trim();
-                const additionSheet = $('#additionSheet').val().trim();
                 const type = $('#type').val().trim();
                 const sellerLink = $('#channelSellerLink').val().trim();
                 const updateFlag = $('#channelUpdate').val();
@@ -4538,8 +4834,10 @@
 
                 const formData = new FormData();
                 formData.append('channel', channelName);
+                formData.append('alias', $('#channelAlias').val().trim());
+                formData.append('promotions', $('#channelPromotions').val().trim());
+                formData.append('compliance_count', $('#channelComplianceCount').val().trim());
                 formData.append('sheet_link', channelUrl);
-                formData.append('addition_sheet', additionSheet);
                 formData.append('type', type);
                 formData.append('seller_link', sellerLink);
                 formData.append('update', updateFlag);
@@ -4581,11 +4879,12 @@
             // Update channel form handler
             $(document).on('click', '#updateChannelBtn', function() {
                 const channel = $('#editChannelName').val().trim();
+                const alias = $('#editChannelAlias').val().trim();
+                const promotions = $('#editChannelPromotions').val().trim();
+                const complianceCount = $('#editChannelComplianceCount').val().trim();
                 const sheetUrl = $('#editChannelUrl').val().trim();
                 const type = $('#editType').val();
-                const target = $('#editTarget').val().trim();
                 const missingLink = $('#editMissingLink').val().trim();
-                const additionSheet = $('#editAdditionSheet').val().trim();
                 const originalChannel = $('#originalChannel').val().trim();
                 const sellerLink = $('#editChannelSellerLink').val().trim();
                 const updateFlag = $('#editChannelUpdate').val();
@@ -4598,11 +4897,12 @@
 
                 const formData = new FormData();
                 formData.append('channel', channel);
+                formData.append('alias', alias);
+                formData.append('promotions', promotions);
+                formData.append('compliance_count', complianceCount);
                 formData.append('sheet_url', sheetUrl);
                 formData.append('type', type);
-                formData.append('target', target);
                 formData.append('missing_link', missingLink);
-                formData.append('addition_sheet', additionSheet);
                 formData.append('original_channel', originalChannel);
                 formData.append('seller_link', sellerLink);
                 formData.append('update', updateFlag);

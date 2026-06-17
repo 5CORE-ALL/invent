@@ -28,11 +28,14 @@ use App\Models\TemuRPricing;
 use App\Models\TemuLmp;
 use App\Models\TemuListingStatus;
 use App\Models\TemuCampaignReport;
+use App\Services\TemuShopifySalesService;
 use App\Models\TemuBadgeDailyData;
 use App\Models\EbayMetric;
+use App\Models\Ebay2Metric;
 use App\Models\MarketplaceDailyMetric;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -427,6 +430,54 @@ class TemuController extends Controller
         ]);
     }
 
+    /** Save Buyer (B) / Seller (S) links for a SKU into temu_listing_statuses.value JSON (preserves nr_req etc.). */
+    public function saveTemuDecreaseLinks(Request $request)
+    {
+        $validated = $request->validate([
+            'sku'         => 'required|string',
+            'buyer_link'  => 'nullable|string|max:1000',
+            'seller_link' => 'nullable|string|max:1000',
+        ]);
+
+        $sku = trim($validated['sku']);
+
+        $buyerLink  = isset($validated['buyer_link']) ? trim((string) $validated['buyer_link']) : '';
+        $sellerLink = isset($validated['seller_link']) ? trim((string) $validated['seller_link']) : '';
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $label => $link) {
+            if ($link !== '' && !filter_var($link, FILTER_VALIDATE_URL)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => ucfirst(str_replace('_', ' ', $label)) . ' must be a valid URL.',
+                ], 422);
+            }
+        }
+
+        $status   = TemuListingStatus::where('sku', $sku)->first();
+        $rawValue = $status ? $status->getRawOriginal('value') : null;
+        $existing = $status ? $status->value : [];
+        if (!is_array($existing)) {
+            $existing = is_string($rawValue) && $rawValue !== ''
+                ? (json_decode($rawValue, true) ?: [])
+                : [];
+        }
+
+        $existing['buyer_link']  = $buyerLink;
+        $existing['seller_link'] = $sellerLink;
+
+        TemuListingStatus::updateOrCreate(
+            ['sku' => $sku],
+            ['value' => $existing]
+        );
+
+        return response()->json([
+            'success'     => true,
+            'message'     => 'Links saved.',
+            'buyer_link'  => $buyerLink,
+            'seller_link' => $sellerLink,
+        ]);
+    }
+
     /**
      * Temu 2: persist nr_req / listed / links inside temu2_data_view.value (same JSON as SPRICE).
      */
@@ -474,6 +525,57 @@ class TemuController extends Controller
             'status' => 'success',
             'message' => 'NR/REQ updated (temu2_data_view)',
             'nr_req' => $existing['nr_req'] ?? null,
+        ]);
+    }
+
+    /** Temu 2: save Buyer (B) / Seller (S) links into temu2_data_view.value JSON (preserves nr_req etc.). */
+    public function saveTemu2DecreaseLinks(Request $request)
+    {
+        $validated = $request->validate([
+            'sku'         => 'required|string',
+            'buyer_link'  => 'nullable|string|max:1000',
+            'seller_link' => 'nullable|string|max:1000',
+        ]);
+
+        $sku = trim((string) $validated['sku']);
+
+        $buyerLink  = isset($validated['buyer_link']) ? trim((string) $validated['buyer_link']) : '';
+        $sellerLink = isset($validated['seller_link']) ? trim((string) $validated['seller_link']) : '';
+
+        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $label => $link) {
+            if ($link !== '' && !filter_var($link, FILTER_VALIDATE_URL)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => ucfirst(str_replace('_', ' ', $label)) . ' must be a valid URL.',
+                ], 422);
+            }
+        }
+
+        $row = Temu2DataView::firstOrNew(['sku' => $sku]);
+        $row->sku = $sku;
+
+        $existing = is_array($row->value)
+            ? $row->value
+            : (is_string($row->value) ? json_decode($row->value, true) : []);
+        if (!is_array($existing)) {
+            $raw = $row->getRawOriginal('value');
+            $existing = is_string($raw) && $raw !== '' ? (json_decode($raw, true) ?: []) : [];
+        }
+        if (!is_array($existing)) {
+            $existing = [];
+        }
+
+        $existing['buyer_link']  = $buyerLink;
+        $existing['seller_link'] = $sellerLink;
+
+        $row->value = $existing;
+        $row->save();
+
+        return response()->json([
+            'success'     => true,
+            'message'     => 'Links saved.',
+            'buyer_link'  => $buyerLink,
+            'seller_link' => $sellerLink,
         ]);
     }
 
@@ -879,6 +981,7 @@ class TemuController extends Controller
                 if (file_exists($filePath)) {
                     unlink($filePath);
                 }
+                $this->refreshTemuMetricsAfterDailyUpload(false);
             }
 
             return response()->json([
@@ -1015,6 +1118,9 @@ class TemuController extends Controller
 
             if ($chunk == $totalChunks - 1 && file_exists($filePath)) {
                 unlink($filePath);
+            }
+            if ($chunk == $totalChunks - 1) {
+                $this->refreshTemuMetricsAfterDailyUpload(false);
             }
 
             return response()->json([
@@ -1274,6 +1380,9 @@ class TemuController extends Controller
             if ($chunk == $totalChunks - 1 && file_exists($filePath)) {
                 unlink($filePath);
             }
+            if ($chunk == $totalChunks - 1) {
+                $this->refreshTemuMetricsAfterDailyUpload(true);
+            }
             return response()->json([
                 'success' => true,
                 'message' => "Chunk $chunk processed successfully",
@@ -1391,6 +1500,9 @@ class TemuController extends Controller
             }
             if ($chunk == $totalChunks - 1 && file_exists($filePath)) {
                 unlink($filePath);
+            }
+            if ($chunk == $totalChunks - 1) {
+                $this->refreshTemuMetricsAfterDailyUpload(true);
             }
             return response()->json([
                 'success' => true,
@@ -1656,293 +1768,54 @@ class TemuController extends Controller
 
     /**
      * Get daily data for Temu tabulator (sales page).
-     * Order data is taken from temu_daily_data and matched by SKU (contribution_sku,
-     * normalized to ProductMaster SKU). LP and temu_ship come from ProductMaster.
+     * Source: apicentral.shopify_order_items — same Temu identification as /shopify-orders.
      */
     public function getDailyData(Request $request)
     {
         try {
-            $normalizeSku = function ($sku) {
-                $sku = strtoupper(trim((string) $sku));
-                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
-                $sku = preg_replace('/\s+/', ' ', $sku);
-                return $sku;
-            };
+            // Source: temu_orders table (Temu API order-wise data), last 30 days.
+            $start = Carbon::now()->subDays(30)->startOfDay();
+            $end = Carbon::now()->endOfDay();
+            $result = TemuShopifySalesService::getOrdersTableRows($start, $end);
 
-            // 1. Get ProductMaster SKUs (excluding PARENT) - same universe as analytic/decrease page
-            $productMasterSkus = ProductMaster::orderBy('parent', 'asc')
-                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-                ->orderBy('sku', 'asc')
-                ->pluck('sku')
-                ->filter(function ($sku) {
-                    return stripos($sku, 'PARENT') === false;
-                })
-                ->unique()
-                ->values()
-                ->all();
-
-            $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
-                return [$normalizeSku($s) => true];
-            })->all();
-
-            // 2. Include orders whose contribution_sku normalizes to a ProductMaster SKU (so "abc" matches "ABC")
-            $allowedRawSkus = TemuDailyData::select('contribution_sku')->distinct()
-                ->get()
-                ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
-                    return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
-                })
-                ->pluck('contribution_sku')
-                ->unique()
-                ->values()
-                ->all();
-
-            $allTemuData = TemuDailyData::whereIn('contribution_sku', $allowedRawSkus)
-                ->orderBy('purchase_date', 'desc')
-                ->orderBy('order_id', 'desc')
-                ->get();
-
-            Log::info('Temu data fetched', [
-                'total_records' => $allTemuData->count(),
-                'unique_skus_in_temu' => $allTemuData->pluck('contribution_sku')->unique()->count()
-            ]);
-
-            // 3. ProductMaster keyed by normalized SKU for lookup (order "abc" -> PM "ABC")
-            $productMasters = ProductMaster::whereIn('sku', $productMasterSkus)->get();
-            $pmByNormalized = $productMasters->keyBy(function ($pm) use ($normalizeSku) {
-                return $normalizeSku($pm->sku);
-            });
-
-            // 5. Build result array
-            $result = [];
-
-            foreach ($allTemuData as $item) {
-                $sku = $item->contribution_sku;
-                $pm = $pmByNormalized[$normalizeSku($sku ?? '')] ?? null;
-                
-                // Get parent from ProductMaster if available
-                $parent = $pm ? $pm->parent : '';
-                
-                // Extract LP and Temu Ship from ProductMaster Values (only if PM exists)
-                $lp = 0;
-                $temuShip = 0;
-                
-                if ($pm) {
-                    $values = is_array($pm->Values) 
-                        ? $pm->Values 
-                        : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    
-                    // Get LP
-                    foreach ($values as $k => $v) {
-                        if (strtolower($k) === "lp") {
-                            $lp = floatval($v);
-                            break;
-                        }
-                    }
-                    if ($lp === 0 && isset($pm->lp)) {
-                        $lp = floatval($pm->lp);
-                    }
-
-                    // Get Temu Ship
-                    $temuShip = isset($values["temu_ship"]) 
-                        ? floatval($values["temu_ship"]) 
-                        : (isset($pm->temu_ship) ? floatval($pm->temu_ship) : 0);
-                }
-                
-                // Get base price and quantity from Temu data
-                $basePrice = $item->base_price_total !== null ? (float)$item->base_price_total : 0;
-                $quantity = $item->quantity_purchased !== null ? (int)$item->quantity_purchased : 0;
-                $total = $basePrice * $quantity;
-                
-                // Calculate FB Price (if total < 27, add 2.99)
-                $fbPrice = $total < 27 ? ($basePrice + 2.99) : $basePrice;
-                // Calculate PFT = (FB Prc * 0.96 - LP - Temu Ship) * Quantity (margin 96)
-                $pft = ($fbPrice * 0.96 - $lp - $temuShip) * $quantity;
-
-                $row = [
-                    'Parent' => $parent,
-                    'contribution_sku' => $item->contribution_sku ?? '',
-                    'order_id' => $item->order_id ?? '',
-                    'product_name_by_customer_order' => $item->product_name_by_customer_order ?? '',
-                    'variation' => $item->variation ?? '',
-                    'quantity_purchased' => $quantity,
-                    'quantity_shipped' => (int)($item->quantity_shipped ?? 0),
-                    'quantity_to_ship' => (int)($item->quantity_to_ship ?? 0),
-                    'base_price_total' => $basePrice,
-                    'fb_price' => round($fbPrice, 2),
-                    'lp' => $lp,
-                    'temu_ship' => $temuShip,
-                    'pft' => round($pft, 2),
-                    'order_status' => $item->order_status ?? '',
-                    'fulfillment_mode' => $item->fulfillment_mode ?? '',
-                    'tracking_number' => $item->tracking_number ?? '',
-                    'carrier' => $item->carrier ?? '',
-                    'created_at' => $item->purchase_date ? $item->purchase_date->format('Y-m-d H:i:s') : null,
-                ];
-
-                $result[] = $row;
-            }
-
-            Log::info('Temu daily data fetched (exact count match)', [
+            Log::info('Temu daily data fetched from temu_orders', [
                 'result_count' => count($result),
-                'temu_data_count' => $allTemuData->count(),
-                'unique_temu_skus' => count($allowedRawSkus),
-                'product_master_matches' => $productMasters->count(),
-                'match_check' => count($result) === $allTemuData->count() ? 'MATCH' : 'MISMATCH'
             ]);
+
             return response()->json($result);
         } catch (\Exception $e) {
-            Log::error('Error fetching Temu daily data: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
+            Log::error('Error fetching Temu daily data from temu_orders: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json(['error' => 'Failed to fetch data: ' . $e->getMessage()], 500);
         }
     }
 
     /**
-     * Get daily data for Temu L60 tabulator (sales page). Same logic as getDailyData but uses temu_daily_data_l60.
+     * Get L60 daily data for Temu tabulator — prior 30-day shopify_order_items window.
      */
     public function getDailyDataL60(Request $request)
     {
         try {
-            $normalizeSku = function ($sku) {
-                $sku = strtoupper(trim((string) $sku));
-                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
-                $sku = preg_replace('/\s+/', ' ', $sku);
-                return $sku;
-            };
+            // Source: temu_orders table, prior 30-day window (days 31–60).
+            [$start, $end] = TemuShopifySalesService::channelMasterL60Window();
+            $result = TemuShopifySalesService::getOrdersTableRows($start, $end);
 
-            // 1. Get ProductMaster SKUs (excluding PARENT) - same universe as analytic/decrease page
-            $productMasterSkus = ProductMaster::orderBy('parent', 'asc')
-                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-                ->orderBy('sku', 'asc')
-                ->pluck('sku')
-                ->filter(function ($sku) {
-                    return stripos($sku, 'PARENT') === false;
-                })
-                ->unique()
-                ->values()
-                ->all();
-
-            $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
-                return [$normalizeSku($s) => true];
-            })->all();
-
-            // 2. Include orders whose contribution_sku normalizes to a ProductMaster SKU (so "abc" matches "ABC")
-            $allowedRawSkus = TemuDailyDataL60::select('contribution_sku')->distinct()
-                ->get()
-                ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
-                    return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
-                })
-                ->pluck('contribution_sku')
-                ->unique()
-                ->values()
-                ->all();
-
-            $allTemuData = TemuDailyDataL60::whereIn('contribution_sku', $allowedRawSkus)
-                ->orderBy('purchase_date', 'desc')
-                ->orderBy('order_id', 'desc')
-                ->get();
-
-            Log::info('Temu L60 data fetched', [
-                'total_records' => $allTemuData->count(),
-                'unique_skus_in_temu' => $allTemuData->pluck('contribution_sku')->unique()->count()
-            ]);
-
-            // 3. ProductMaster keyed by normalized SKU for lookup (order "abc" -> PM "ABC")
-            $productMasters = ProductMaster::whereIn('sku', $productMasterSkus)->get();
-            $pmByNormalized = $productMasters->keyBy(function ($pm) use ($normalizeSku) {
-                return $normalizeSku($pm->sku);
-            });
-
-            // 5. Build result array
-            $result = [];
-
-            foreach ($allTemuData as $item) {
-                $sku = $item->contribution_sku;
-                $pm = $pmByNormalized[$normalizeSku($sku ?? '')] ?? null;
-                
-                // Get parent from ProductMaster if available
-                $parent = $pm ? $pm->parent : '';
-                
-                // Extract LP and Temu Ship from ProductMaster Values (only if PM exists)
-                $lp = 0;
-                $temuShip = 0;
-                
-                if ($pm) {
-                    $values = is_array($pm->Values) 
-                        ? $pm->Values 
-                        : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    
-                    // Get LP
-                    foreach ($values as $k => $v) {
-                        if (strtolower($k) === "lp") {
-                            $lp = floatval($v);
-                            break;
-                        }
-                    }
-                    if ($lp === 0 && isset($pm->lp)) {
-                        $lp = floatval($pm->lp);
-                    }
-
-                    // Get Temu Ship
-                    $temuShip = isset($values["temu_ship"]) 
-                        ? floatval($values["temu_ship"]) 
-                        : (isset($pm->temu_ship) ? floatval($pm->temu_ship) : 0);
-                }
-                
-                // Get base price and quantity from Temu data
-                $basePrice = $item->base_price_total !== null ? (float)$item->base_price_total : 0;
-                $quantity = $item->quantity_purchased !== null ? (int)$item->quantity_purchased : 0;
-                $total = $basePrice * $quantity;
-                
-                // Calculate FB Price (if total < 27, add 2.99)
-                $fbPrice = $total < 27 ? ($basePrice + 2.99) : $basePrice;
-                // Calculate PFT = (FB Prc * 0.96 - LP - Temu Ship) * Quantity (margin 96)
-                $pft = ($fbPrice * 0.96 - $lp - $temuShip) * $quantity;
-
-                $row = [
-                    'Parent' => $parent,
-                    'contribution_sku' => $item->contribution_sku ?? '',
-                    'order_id' => $item->order_id ?? '',
-                    'product_name_by_customer_order' => $item->product_name_by_customer_order ?? '',
-                    'variation' => $item->variation ?? '',
-                    'quantity_purchased' => $quantity,
-                    'quantity_shipped' => (int)($item->quantity_shipped ?? 0),
-                    'quantity_to_ship' => (int)($item->quantity_to_ship ?? 0),
-                    'base_price_total' => $basePrice,
-                    'fb_price' => round($fbPrice, 2),
-                    'lp' => $lp,
-                    'temu_ship' => $temuShip,
-                    'pft' => round($pft, 2),
-                    'order_status' => $item->order_status ?? '',
-                    'fulfillment_mode' => $item->fulfillment_mode ?? '',
-                    'tracking_number' => $item->tracking_number ?? '',
-                    'carrier' => $item->carrier ?? '',
-                    'created_at' => $item->purchase_date ? $item->purchase_date->format('Y-m-d H:i:s') : null,
-                ];
-
-                $result[] = $row;
-            }
-
-            Log::info('Temu L60 daily data fetched (exact count match)', [
+            Log::info('Temu L60 daily data fetched from temu_orders', [
                 'result_count' => count($result),
-                'temu_data_count' => $allTemuData->count(),
-                'unique_temu_skus' => count($allowedRawSkus),
-                'product_master_matches' => $productMasters->count(),
-                'match_check' => count($result) === $allTemuData->count() ? 'MATCH' : 'MISMATCH'
             ]);
+
             return response()->json($result);
         } catch (\Exception $e) {
-            Log::error('Error fetching Temu L60 daily data: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
+            Log::error('Error fetching Temu L60 daily data from temu_orders: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json(['error' => 'Failed to fetch data: ' . $e->getMessage()], 500);
         }
     }
 
-    /**
-     * Get daily data for Temu 2 tabulator (sales page). Same logic as getDailyData but uses temu2_daily_data.
-     */
     public function getTemu2DailyData(Request $request)
     {
         try {
@@ -3089,8 +2962,9 @@ class TemuController extends Controller
             // Fetch shopify data for inventory
             $shopifyData = ShopifySku::mapByProductSkus($skus);
 
-            // L30 = orders from temu_daily_data matched by SKU (contribution_sku normalized to ProductMaster)
-            // Same source as tabulator; normalized so "abc" on orders matches "ABC" on ProductMaster
+            // L30 = orders matched by SKU (contribution_sku normalized to ProductMaster).
+            // Temu 1 pulls from the temu_orders API table (same source as the tabulator); Temu 2 from temu2_daily_data.
+            // Normalized so "abc" on orders matches "ABC" on ProductMaster
             $normalizedPmSkus = collect($skus)->mapWithKeys(function ($sku) use ($normalizeSku) {
                 return [$normalizeSku($sku) => $sku];
             })->all();
@@ -3103,26 +2977,28 @@ class TemuController extends Controller
                     $noSpaceToNormalized[$noSpace] = $nk;
                 }
             }
+            // Temu 1 sources order data from the temu_orders API table (same as /temu-tabulator
+            // and the Channel Master sales badges); Temu 2 keeps using its uploaded temu2_daily_data tables.
             if ($isTemu2Pricing) {
                 $hasL7Rows = $isL7Period
                     && Schema::hasTable('temu2_daily_data_l7')
                     && Temu2DailyDataL7::query()->exists();
-            } else {
-                $hasL7Rows = $isL7Period
-                    && Schema::hasTable('temu_daily_data_l7')
-                    && TemuDailyDataL7::query()->exists();
-            }
-            $orderRowsQuery = $hasL7Rows
-                ? ($isTemu2Pricing
+
+                $orderRowsQuery = $hasL7Rows
                     ? Temu2DailyDataL7::select('contribution_sku', 'quantity_purchased')
-                    : TemuDailyDataL7::select('contribution_sku', 'quantity_purchased'))
-                : ($isTemu2Pricing
-                    ? Temu2DailyData::select('contribution_sku', 'quantity_purchased')
-                    : TemuDailyData::select('contribution_sku', 'quantity_purchased'));
-            if ($isL7Period && !$hasL7Rows) {
-                $orderRowsQuery->where('purchase_date', '>=', Carbon::now()->subDays(7));
+                    : Temu2DailyData::select('contribution_sku', 'quantity_purchased');
+                if ($isL7Period && !$hasL7Rows) {
+                    $orderRowsQuery->where('purchase_date', '>=', Carbon::now()->subDays(7));
+                }
+                $orderRows = $orderRowsQuery->get();
+            } else {
+                $hasL7Rows = $isL7Period;
+                [$apiStart, $apiEnd] = $isL7Period
+                    ? [Carbon::now()->subDays(7)->startOfDay(), Carbon::now()->endOfDay()]
+                    : [Carbon::now()->subDays(30)->startOfDay(), Carbon::now()->endOfDay()];
+                $orderRows = collect(TemuShopifySalesService::getOrdersTableRows($apiStart, $apiEnd))
+                    ->map(fn ($r) => (object) $r);
             }
-            $orderRows = $orderRowsQuery->get();
             foreach ($orderRows as $row) {
                 $raw = trim((string) ($row->contribution_sku ?? ''));
                 if ($raw === '') {
@@ -3144,11 +3020,15 @@ class TemuController extends Controller
                 return [$sku => (object) ['sku' => $sku, 'temu_l30' => $temuL30]];
             });
 
-            // L60 = orders from temu_daily_data_l60 or temu2_daily_data_l60 (same structure as L30, separate table)
+            // L60 = prior 30-day window. Temu 1: temu_orders (days 31–60); Temu 2: temu2_daily_data_l60.
             $l60ByNormalizedSku = array_fill_keys(array_keys($normalizedPmSkus), 0);
-            $orderRowsL60 = $isTemu2Pricing
-                ? Temu2DailyDataL60::select('contribution_sku', 'quantity_purchased')->get()
-                : TemuDailyDataL60::select('contribution_sku', 'quantity_purchased')->get();
+            if ($isTemu2Pricing) {
+                $orderRowsL60 = Temu2DailyDataL60::select('contribution_sku', 'quantity_purchased')->get();
+            } else {
+                [$l60Start, $l60End] = TemuShopifySalesService::channelMasterL60Window();
+                $orderRowsL60 = collect(TemuShopifySalesService::getOrdersTableRows($l60Start, $l60End))
+                    ->map(fn ($r) => (object) $r);
+            }
             foreach ($orderRowsL60 as $row) {
                 $raw = trim((string) ($row->contribution_sku ?? ''));
                 if ($raw === '') {
@@ -3170,13 +3050,16 @@ class TemuController extends Controller
             $normalizedPmSet = collect($skus)->mapWithKeys(function ($s) use ($normalizeSku) {
                 return [$normalizeSku($s) => true];
             })->all();
-            $salesSource = $hasL7Rows
-                ? ($isTemu2Pricing ? Temu2DailyDataL7::query() : TemuDailyDataL7::query())
-                : ($isTemu2Pricing ? Temu2DailyData::query() : TemuDailyData::query());
-            if ($isL7Period && !$hasL7Rows) {
-                $salesSource->where('purchase_date', '>=', Carbon::now()->subDays(7));
+            if ($isTemu2Pricing) {
+                $salesSource = $hasL7Rows ? Temu2DailyDataL7::query() : Temu2DailyData::query();
+                if ($isL7Period && !$hasL7Rows) {
+                    $salesSource->where('purchase_date', '>=', Carbon::now()->subDays(7));
+                }
+                $salesOrderRows = $salesSource->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
+            } else {
+                // Reuse the same temu_orders window already loaded for the L30/L7 table rows.
+                $salesOrderRows = $orderRows;
             }
-            $salesOrderRows = $salesSource->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
             $salesTotalOrders = 0;
             $salesTotalQuantity = 0;
             $salesTotalRevenue = 0.0;
@@ -3222,55 +3105,50 @@ class TemuController extends Controller
             $goodsIds = $pricingData->pluck('goods_id')->filter()->unique()->values()->all();
             $campaignRange = $isL7Period ? 'L7' : 'L30';
             if (!$isTemu2Pricing) {
-                // Fetch ad data (temu_ad_data) — period-agnostic snapshot from "Up Ad Data" upload
-                $adData = TemuAdData::select(
-                    'goods_id',
-                    'spend',
-                    'net_roas',
-                    'acos_ad',
-                    'clicks',
-                    'target',
-                    'impressions',
-                    'add_to_cart_number'
-                )
-                    ->get()
+                // Single source of truth for Temu ad metrics: temu_campaign_reports.
+                // Matched by goods_id (primary) OR by sku (fallback for rows that share
+                // a parent goods_id or were uploaded from a TSV where goods_id differs).
+                $campaignReportL30Raw = TemuCampaignReport::where('report_range', $campaignRange)
+                    ->selectRaw('goods_id, sku,
+                        SUM(spend) as spend_l30,
+                        SUM(clicks) as clicks_l30,
+                        AVG(roas) as roas_l30,
+                        AVG(net_roas) as net_roas_l30,
+                        AVG(in_roas) as in_roas_l30,
+                        AVG(acos_ad) as acos_ad_l30,
+                        MAX(status) as status_l30,
+                        SUM(COALESCE(base_price_sales, 0)) as ad_sales_l30,
+                        SUM(COALESCE(sub_orders, 0)) as ad_sold_l30,
+                        SUM(COALESCE(impressions, 0)) as impressions_l30,
+                        SUM(COALESCE(add_to_cart_number, 0)) as add_to_cart_l30,
+                        AVG(target) as target_l30')
+                    ->groupBy('goods_id', 'sku')
+                    ->get();
+
+                // Primary index: by normalized goods_id
+                $campaignReportL30 = $campaignReportL30Raw
                     ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
                     ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
 
-                // Fetch campaign report data (period-aware) for saved status, in_roas, out_roas, ad_sales, ad_sold
-                $campaignReportL30 = TemuCampaignReport::whereIn('goods_id', $goodsIds)
-                    ->where('report_range', $campaignRange)
-                    ->selectRaw('goods_id,
-                    SUM(spend) as spend_l30,
-                    SUM(clicks) as clicks_l30,
-                    AVG(roas) as roas_l30,
-                    AVG(in_roas) as in_roas_l30,
-                    AVG(acos_ad) as acos_ad_l30,
-                    MAX(status) as status_l30,
-                    SUM(COALESCE(base_price_sales, 0)) as ad_sales_l30,
-                    SUM(COALESCE(sub_orders, 0)) as ad_sold_l30,
-                    SUM(COALESCE(impressions, 0)) as impressions_l30,
-                    SUM(COALESCE(add_to_cart_number, 0)) as add_to_cart_l30')
-                    ->groupBy('goods_id')
-                    ->get()
-                    ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
-                    ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
+                // Fallback index: by normalized SKU (upper-trim, PCS fold)
+                $campaignReportL30BySku = $campaignReportL30Raw
+                    ->filter(fn ($r) => !empty(trim((string)($r->sku ?? ''))))
+                    ->keyBy(fn ($r) => $normalizeSku($r->sku));
 
-                // Fetch campaign report data (L60) for spend, ad sold, ad sales (use sub_orders like L30; ad_sales from base_price_sales with net_declared_sales fallback)
-                $campaignReportL60 = TemuCampaignReport::whereIn('goods_id', $goodsIds)
-                    ->where('report_range', 'L60')
+                // L60
+                $campaignReportL60 = TemuCampaignReport::where('report_range', 'L60')
                     ->selectRaw('goods_id,
-                    SUM(spend) as spend_l60,
-                    SUM(COALESCE(sub_orders, 0)) as ad_sold_l60,
-                    SUM(COALESCE(NULLIF(base_price_sales, 0), net_declared_sales, 0)) as ad_sales_l60')
+                        SUM(spend) as spend_l60,
+                        SUM(COALESCE(sub_orders, 0)) as ad_sold_l60,
+                        SUM(COALESCE(NULLIF(base_price_sales, 0), net_declared_sales, 0)) as ad_sales_l60')
                     ->groupBy('goods_id')
                     ->get()
                     ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
                     ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
             } else {
-                $adData = collect();
-                $campaignReportL30 = collect();
-                $campaignReportL60 = collect();
+                $campaignReportL30      = collect();
+                $campaignReportL30BySku = collect();
+                $campaignReportL60      = collect();
             }
 
             // Fetch saved SPRICE values (Temu 2 uses temu2_data_view)
@@ -3294,7 +3172,14 @@ class TemuController extends Controller
             $ebayData = $isTemu2Pricing
                 ? collect()
                 : EbayMetric::whereIn('sku', $skus)->select('sku', 'ebay_price')->get()->keyBy('sku');
-            
+
+            // eBay 2 listing price (from ebay_2_metrics.ebay_price). Same shape as $ebayData so
+            // the per-row lookup mirrors the eBay 1 path; loaded for Temu 1 only (Temu 2 pricing
+            // intentionally hides marketplace comparison columns, same as a_price / e_price).
+            $ebay2Data = $isTemu2Pricing
+                ? collect()
+                : Ebay2Metric::whereIn('sku', $skus)->select('sku', 'ebay_price')->get()->keyBy('sku');
+
             // Temu 1: temu_listing_statuses. Temu 2: same keys live in temu2_data_view JSON (value).
             $statusData = $isTemu2Pricing
                 ? collect()
@@ -3310,8 +3195,32 @@ class TemuController extends Controller
                 }
             }
 
+            // NRP (forecast_analysis.nr) per SKU — same source the /forecast.analysis page
+            // shows in its NRP column. Values: REQ (default) / NR (= 2BDC on screen) / LATER.
+            // Keyed by normalized SKU so spacing variants ("DP 200 1 Pcs" vs "DP200 1PC") match.
+            // When multiple rows exist for the same SKU we prefer one with a non-empty `nr`,
+            // mirroring the precedence rule in ForecastAnalysisController::forecastAnalysis().
+            $nrByNormalizedSku = [];
+            DB::table('forecast_analysis')
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->select('sku', 'nr')
+                ->get()
+                ->each(function ($row) use (&$nrByNormalizedSku, $normalizeSku) {
+                    $nk = $normalizeSku($row->sku);
+                    if ($nk === '') return;
+                    $val = $row->nr !== null ? strtoupper(trim((string) $row->nr)) : '';
+                    if (!in_array($val, ['REQ', 'NR', 'LATER'], true)) {
+                        $val = '';
+                    }
+                    // Prefer a populated value over an empty one (matches ForecastAnalysisController)
+                    if (!isset($nrByNormalizedSku[$nk]) || ($nrByNormalizedSku[$nk] === '' && $val !== '')) {
+                        $nrByNormalizedSku[$nk] = $val;
+                    }
+                });
+
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $viewData, $adData, $temuDataViewData, $amazonData, $ebayData, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL60, $temuLmpByNormalizedSku, $isTemu2Pricing) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $viewData, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL60, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -3366,38 +3275,29 @@ class TemuController extends Controller
                 $productClicks = $viewDataItem ? $viewDataItem->product_clicks : 0;
                 $ctr = $viewDataItem ? $viewDataItem->ctr : 0;
                 
-                // Join keys: normalize goods_id so Temu ad data / campaign reports match temu_pricing (Excel float issues)
+                // Join keys: normalize goods_id so campaign reports match temu_pricing (Excel float issues)
                 $goodsIdKey = $goodsId ? TemuGoodsIdHelper::normalizeKey($goodsId) : null;
 
-                // Get ad data by goods_id (temu_ad_data — "Up Ad Data" snapshot)
-                $adDataItem = $goodsIdKey ? $adData->get($goodsIdKey) : null;
-                $spend = $adDataItem ? (float) $adDataItem->spend : 0.0;
-                $netRoas = $adDataItem ? (float) $adDataItem->net_roas : 0.0;
-                $acosAd = $adDataItem ? (float) $adDataItem->acos_ad : 0.0;
-                $adClicks = $adDataItem ? (int) $adDataItem->clicks : 0;
-                $target = $adDataItem ? (float) $adDataItem->target : 0.0;
-                $impressionsVal = $adDataItem ? (int) $adDataItem->impressions : 0;
-                $addToCartVal = $adDataItem ? (int) $adDataItem->add_to_cart_number : 0;
+                // Campaign report: primary match by goods_id, fallback by SKU.
+                // SKU fallback is essential when the file was uploaded as TSV with
+                // sku column, or when goods_id wasn't captured correctly.
+                $campaignReportItem = ($goodsIdKey ? $campaignReportL30->get($goodsIdKey) : null)
+                    ?? $campaignReportL30BySku->get($normalizeSku($sku));
 
-                // Campaign report (period = L7 or L30 from temu_campaign_reports — "L7/L30/L60" upload in Temu Ads)
-                $campaignReportItem = $goodsIdKey ? $campaignReportL30->get($goodsIdKey) : null;
-                $inRoasL30 = $campaignReportItem ? round((float) $campaignReportItem->in_roas_l30, 2) : 0;
-                $outRoasL30 = $campaignReportItem ? round((float) $campaignReportItem->roas_l30, 2) : ($netRoas > 0 ? round($netRoas, 2) : 0);
-                $spendL30 = $campaignReportItem ? round((float) ($campaignReportItem->spend_l30 ?? 0), 2) : 0;
-                $clicksL30 = $campaignReportItem ? (int) ($campaignReportItem->clicks_l30 ?? 0) : 0;
+                $spend         = $campaignReportItem ? round((float) ($campaignReportItem->spend_l30 ?? 0), 2)        : 0.0;
+                $adClicks      = $campaignReportItem ? (int) ($campaignReportItem->clicks_l30 ?? 0)                   : 0;
+                $acosAd        = $campaignReportItem ? round((float) ($campaignReportItem->acos_ad_l30 ?? 0), 2)      : 0.0;
+                $netRoas       = $campaignReportItem ? round((float) ($campaignReportItem->net_roas_l30 ?? $campaignReportItem->roas_l30 ?? 0), 2) : 0.0;
+                $impressionsVal= $campaignReportItem ? (int) ($campaignReportItem->impressions_l30 ?? 0)              : 0;
+                $addToCartVal  = $campaignReportItem ? (int) ($campaignReportItem->add_to_cart_l30 ?? 0)              : 0;
+                $target        = $campaignReportItem ? (float) ($campaignReportItem->target_l30 ?? 0)                 : 0.0;
+
+                $inRoasL30  = $campaignReportItem ? round((float) $campaignReportItem->in_roas_l30, 2) : 0;
+                $outRoasL30 = $campaignReportItem ? round((float) $campaignReportItem->roas_l30, 2)    : 0;
+                $spendL30   = $spend;
+                $clicksL30  = $adClicks;
                 $adSalesL30 = $campaignReportItem ? round((float) ($campaignReportItem->ad_sales_l30 ?? 0), 2) : 0;
-                $adSoldL30 = $campaignReportItem ? (int) ($campaignReportItem->ad_sold_l30 ?? 0) : 0;
-
-                // Primary Spend / ACOS / Clicks / Impressions: use period campaign report when present (matches L7/L30 Excel campaign upload)
-                if ($campaignReportItem !== null) {
-                    $spend = round((float) ($campaignReportItem->spend_l30 ?? 0), 2);
-                    $adClicks = (int) ($campaignReportItem->clicks_l30 ?? 0);
-                    $acosAd = round((float) ($campaignReportItem->acos_ad_l30 ?? 0), 2);
-                    $netRoas = round((float) ($campaignReportItem->roas_l30 ?? 0), 2);
-                    $outRoasL30 = $netRoas;
-                    $impressionsVal = (int) ($campaignReportItem->impressions_l30 ?? 0);
-                    $addToCartVal = (int) ($campaignReportItem->add_to_cart_l30 ?? 0);
-                }
+                $adSoldL30  = $campaignReportItem ? (int) ($campaignReportItem->ad_sold_l30 ?? 0)              : 0;
                 $campaignStatus = null;
                 // Get campaign report data (L60) for spend, ad sold, ad sales
                 $l60Item = $goodsIdKey ? $campaignReportL60->get($goodsIdKey) : null;
@@ -3489,6 +3389,10 @@ class TemuController extends Controller
                 // Get eBay price from EbayMetric (same as EbayController / ebay tabulator Prc column)
                 $ebayMetric = $ebayData->get($sku);
                 $ebayPrice = $ebayMetric ? floatval($ebayMetric->ebay_price ?? 0) : 0;
+
+                // Get eBay 2 price from Ebay2Metric (mirrors eBay 1 lookup; same `ebay_price` column).
+                $ebay2Metric = $ebay2Data->get($sku);
+                $ebay2Price = $ebay2Metric ? floatval($ebay2Metric->ebay_price ?? 0) : 0;
                 
                 // Get recommended_base_price from R Pricing by SKU
                 $rPricingItem = $rPricingData->get($sku);
@@ -3585,6 +3489,16 @@ class TemuController extends Controller
                     'temu_price' => round($temuPrice, 2),
                     'a_price' => $amazonPrice,
                     'e_price' => $ebayPrice,
+                    'e2_price' => $ebay2Price,
+                    // Pass the live marketplace take-home % (decimal, e.g. 0.96) on every row
+                    // so the front-end SROI formatter can use the SAME margin the backend
+                    // GROI calc uses. Prevents GROI / SROI from disagreeing on the rate.
+                    'percentage' => (float) $percentage,
+                    // NRP — mirrors the same column on /forecast.analysis. Falls back to ''
+                    // (front-end formatter defaults to 'REQ' for display) when this SKU has
+                    // no row in forecast_analysis. Looked up by normalized SKU so spacing
+                    // variants match the same way the LMP join above does.
+                    'nrp' => $nrByNormalizedSku[$normalizeSku($sku)] ?? '',
                     'profit' => round($profit, 2),
                     'profit_percent' => round($profitPercent, 2),
                     'roi_percent' => round($roiPercent, 2),
@@ -3916,6 +3830,15 @@ class TemuController extends Controller
 
             DB::beginTransaction();
             try {
+                // Replace-all upload: wipe the existing view-data rows so the table
+                // ends up being exactly what's in this file. Done inside the
+                // transaction so a failed import below rolls back the truncate too
+                // — we never end up with an empty table on error.
+                // truncate() implicitly commits in MySQL when called directly, so use
+                // delete() which is transactional. Keeps autoincrement IDs growing,
+                // which is fine since there are no FKs pointing here.
+                $deletedCount = TemuViewData::query()->delete();
+
                 foreach ($rows as $row) {
                     if (empty($row[0]) || empty($row[1])) {
                         $skipped++;
@@ -3952,7 +3875,9 @@ class TemuController extends Controller
                         'ctr' => $ctr,
                     ];
 
-                    // Upsert: Update if date + goods_id exists, else insert
+                    // After the wipe above this is always an insert — keep updateOrCreate
+                    // anyway so duplicate (date, goods_id) rows within the same file are
+                    // collapsed instead of failing on the unique key.
                     TemuViewData::updateOrCreate(
                         ['date' => $date, 'goods_id' => $goodsId],
                         $viewData
@@ -3962,7 +3887,7 @@ class TemuController extends Controller
 
                 DB::commit();
 
-                return back()->with('success', "Successfully imported $imported records! ($skipped skipped)");
+                return back()->with('success', "Successfully imported $imported records! ($skipped skipped, replaced $deletedCount existing rows)");
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;
@@ -4082,6 +4007,17 @@ class TemuController extends Controller
 
                 return floatval(str_replace('%', '', $value));
             };
+            // Read a value by trying the new Temu export header first, then legacy aliases.
+            $col = function (array $rowData, array $aliases) {
+                foreach ($aliases as $a) {
+                    if (array_key_exists($a, $rowData) && $rowData[$a] !== null && $rowData[$a] !== '') {
+                        return $rowData[$a];
+                    }
+                }
+
+                return null;
+            };
+            $parseInt = fn ($value) => (int) str_replace(',', '', (string) ($value ?? 0));
 
             $imported = 0;
             $highestRow = (int) $sheet->getHighestDataRow();
@@ -4118,30 +4054,31 @@ class TemuController extends Controller
                         continue;
                     }
 
+                    // Map each field to the new Temu export columns (Ad variants), legacy headers as fallback.
                     $adData = [
-                        'goods_name' => $rowData['Goods name'] ?? null,
+                        'goods_name' => $col($rowData, ['Goods name']),
                         'goods_id' => $goodsIdNormalized,
-                        'spend' => $parseCurrency($rowData['Spend'] ?? null),
-                        'base_price_sales' => $parseCurrency($rowData['Base price sales'] ?? null),
-                        'roas' => floatval($rowData['ROAS'] ?? 0),
-                        'acos_ad' => $parsePercent($rowData['ACOS(AD)'] ?? null),
-                        'cost_per_transaction' => $parseCurrency($rowData['Cost per transaction'] ?? null),
-                        'sub_orders' => ! empty($rowData['Sub-Orders']) ? (int) $rowData['Sub-Orders'] : 0,
-                        'items' => ! empty($rowData['Items']) ? (int) $rowData['Items'] : 0,
-                        'net_total_cost' => $parseCurrency($rowData['Net total cost'] ?? null),
-                        'net_declared_sales' => $parseCurrency($rowData['Net declared sales'] ?? null),
-                        'net_roas' => floatval($rowData['Net advertising return on investment (ROAS)'] ?? 0),
-                        'net_acos_ad' => $parsePercent($rowData['Net advertising cost ratio (advertising)'] ?? null),
-                        'net_cost_per_transaction' => $parseCurrency($rowData['Net cost per transaction'] ?? null),
-                        'net_orders' => ! empty($rowData['Net Orders']) ? (int) $rowData['Net Orders'] : 0,
-                        'net_number_pieces' => ! empty($rowData['Net number of pieces']) ? (int) $rowData['Net number of pieces'] : 0,
-                        'impressions' => ! empty($rowData['Impressions']) ? (int) str_replace(',', '', $rowData['Impressions']) : 0,
-                        'clicks' => ! empty($rowData['Clicks']) ? (int) str_replace(',', '', $rowData['Clicks']) : 0,
-                        'ctr' => $parsePercent($rowData['CTR'] ?? null),
-                        'cvr' => $parsePercent($rowData['Conversion Rate (CVR)'] ?? null),
-                        'add_to_cart_number' => ! empty($rowData['Add-to-cart number']) ? (int) str_replace(',', '', $rowData['Add-to-cart number']) : 0,
-                        'weekly_roas' => floatval($rowData['Weekly ROAS'] ?? 0),
-                        'target' => floatval($rowData['Target'] ?? 0),
+                        'spend' => $parseCurrency($col($rowData, ['Spend'])),
+                        'base_price_sales' => $parseCurrency($col($rowData, ['Base Price Sales (Ad)', 'Base price sales'])),
+                        'roas' => floatval($col($rowData, ['ROAS (Ad)', 'ROAS']) ?? 0),
+                        'acos_ad' => $parsePercent($col($rowData, ['ACOS (Ad)', 'ACOS(AD)'])),
+                        'cost_per_transaction' => $parseCurrency($col($rowData, ['Cost Per Order (Ad)', 'Cost per transaction'])),
+                        'sub_orders' => $parseInt($col($rowData, ['Sub Order Count (Ad)', 'Sub-Orders'])),
+                        'items' => $parseInt($col($rowData, ['Item Quantity (Ad)', 'Items'])),
+                        'net_total_cost' => $parseCurrency($col($rowData, ['Net total cost'])),
+                        'net_declared_sales' => $parseCurrency($col($rowData, ['Net Base Price Sales (Ad)', 'Net declared sales'])),
+                        'net_roas' => floatval($col($rowData, ['Net ROAS (Ad)', 'Net advertising return on investment (ROAS)']) ?? 0),
+                        'net_acos_ad' => $parsePercent($col($rowData, ['Net ACOS (Ad)', 'Net advertising cost ratio (advertising)'])),
+                        'net_cost_per_transaction' => $parseCurrency($col($rowData, ['Net Cost Per Order (Ad)', 'Net cost per transaction'])),
+                        'net_orders' => $parseInt($col($rowData, ['Net Sub Order Count (Ad)', 'Net Orders'])),
+                        'net_number_pieces' => $parseInt($col($rowData, ['Net Item Quantity (Ad)', 'Net number of pieces'])),
+                        'impressions' => $parseInt($col($rowData, ['Impressions (Ad)', 'Impressions'])),
+                        'clicks' => $parseInt($col($rowData, ['Clicks (Ad)', 'Clicks'])),
+                        'ctr' => $parsePercent($col($rowData, ['Click Through Rate (Ad)', 'CTR'])),
+                        'cvr' => $parsePercent($col($rowData, ['Conversion Rate (Ad)', 'Conversion Rate (CVR)'])),
+                        'add_to_cart_number' => $parseInt($col($rowData, ['Add To Cart (Ad)', 'Add-to-cart number'])),
+                        'weekly_roas' => floatval($col($rowData, ['Natural Week ROAS (Ad)', 'Weekly ROAS']) ?? 0),
+                        'target' => floatval($col($rowData, ['Natural Week Target ROAS (Ad)', 'Target']) ?? 0),
                     ];
 
                     TemuAdData::create($adData);
@@ -4159,98 +4096,6 @@ class TemuController extends Controller
             Log::error('Error uploading Temu ad data: ' . $e->getMessage());
             return back()->with('error', 'Error uploading file: ' . $e->getMessage());
         }
-    }
-
-    /**
-     * Download Temu Ad Data Sample File
-     */
-    public function downloadTemuAdDataSample()
-    {
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-
-        // Header Row - matches Temu export format
-        $headers = [
-            'Goods name',
-            'Goods ID',
-            'Spend',
-            'Base price sales',
-            'ROAS',
-            'ACOS(AD)',
-            'Cost per transaction',
-            'Sub-Orders',
-            'Items',
-            'Net total cost',
-            'Net declared sales',
-            'Net advertising return on investment (ROAS)',
-            'Net advertising cost ratio (advertising)',
-            'Net cost per transaction',
-            'Net Orders',
-            'Net number of pieces',
-            'Impressions',
-            'Clicks',
-            'CTR',
-            'Conversion Rate (CVR)',
-            'Add-to-cart number',
-            'Weekly ROAS',
-            'Target'
-        ];
-        
-        $sheet->fromArray($headers, NULL, 'A1');
-
-        // Sample Data
-        $sampleData = [
-            [
-                '5Core 12" Subwoofer 1200W PA DJ',
-                '603186094008569',
-                '$78.01',
-                '$954.55',
-                '12.24',
-                '8.17%',
-                '$3.13',
-                '25',
-                '25',
-                '$74.74',
-                '$842.98',
-                '11.28',
-                '8.86%',
-                '$3.40',
-                '22',
-                '22',
-                '48283',
-                '1452',
-                '3.00%',
-                '1.72%',
-                '164',
-                '0.00',
-                '0.00'
-            ]
-        ];
-
-        $sheet->fromArray($sampleData, NULL, 'A2');
-
-        // Set column widths
-        foreach (range('A', 'W') as $col) {
-            $sheet->getColumnDimension($col)->setWidth(20);
-        }
-
-        // Style header row
-        $headerStyle = [
-            'font' => ['bold' => true],
-            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']]
-        ];
-        $sheet->getStyle('A1:W1')->applyFromArray($headerStyle);
-
-        // Output Download
-        $fileName = 'Temu_Ad_Data_Sample_' . date('Y-m-d') . '.xlsx';
-
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment;filename="' . $fileName . '"');
-        header('Cache-Control: max-age=0');
-
-        $writer = new Xlsx($spreadsheet);
-        $writer->save('php://output');
-        exit;
     }
 
     /**
@@ -5362,6 +5207,34 @@ class TemuController extends Controller
         } catch (\Exception $e) {
             // Don't break the main response if summary save fails
             Log::error('Error saving daily Temu summary: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * After Temu / Temu 2 daily sales upload, refresh marketplace_daily_metrics and
+     * channel_master_calculated_data so /all-marketplace-master stays in sync with tabulator.
+     */
+    private function refreshTemuMetricsAfterDailyUpload(bool $isTemu2): void
+    {
+        try {
+            $php = PHP_BINARY;
+            $artisan = base_path('artisan');
+            $metricsCmd = escapeshellarg($php).' '.escapeshellarg($artisan).' app:update-marketplace-daily-metrics';
+            $channelCmd = escapeshellarg($php).' '.escapeshellarg($artisan).' channel:calculate-data --force';
+
+            if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+                pclose(popen('start /B '.$metricsCmd, 'r'));
+                pclose(popen('start /B '.$channelCmd, 'r'));
+            } else {
+                exec($metricsCmd.' > /dev/null 2>&1 &');
+                exec($channelCmd.' > /dev/null 2>&1 &');
+            }
+
+            Log::info('Queued Temu channel master refresh after daily upload', ['temu2' => $isTemu2]);
+        } catch (\Throwable $e) {
+            Log::warning('Temu channel master refresh after upload failed: '.$e->getMessage(), [
+                'temu2' => $isTemu2,
+            ]);
         }
     }
 }

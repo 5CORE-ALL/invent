@@ -56,6 +56,7 @@ class DepopController extends Controller
                     'product_master.sku as sku',
                     'product_master.parent as parent',
                     'depop_pricing.price as price',
+                    'depop_pricing.sprice as sprice',
                     'depop_pricing.l30 as l30',
                 ]);
 
@@ -82,8 +83,9 @@ class DepopController extends Controller
                     'inv'       => $inv,
                     'ov_l30'    => $ovL30,
                     'dil'       => $dil,
-                    'price'     => $r->price !== null ? (float) $r->price : null,
-                    'l30'       => $r->l30   !== null ? (int)   $r->l30   : null,
+                    'price'     => $r->price  !== null ? (float) $r->price  : null,
+                    'sprice'    => $r->sprice !== null ? (float) $r->sprice : null,
+                    'l30'       => $r->l30    !== null ? (int)   $r->l30    : null,
                 ];
             });
 
@@ -259,6 +261,55 @@ class DepopController extends Controller
                 DB::rollBack();
             }
             Log::error('Depop pricing importCsv failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Persist SPRICE updates from the Depop Analytics page pricing modes
+     * (Decrease / Increase / Same Price). Accepts an array of { sku, sprice }
+     * pairs and upserts each into depop_pricing keyed by sku. A null/blank
+     * `sprice` clears the saved value for that SKU (used by Clear SPRICE).
+     */
+    public function saveSprice(Request $request)
+    {
+        $request->validate([
+            'updates'              => 'required|array|min:1',
+            'updates.*.sku'        => 'required|string|max:255',
+            'updates.*.sprice'     => 'nullable|numeric',
+        ]);
+
+        $updates = $request->input('updates', []);
+        $saved   = 0;
+
+        try {
+            DB::beginTransaction();
+            foreach ($updates as $u) {
+                $sku = trim((string) ($u['sku'] ?? ''));
+                if ($sku === '' || stripos($sku, 'PARENT') === 0) {
+                    continue;
+                }
+                $raw    = $u['sprice'] ?? null;
+                $sprice = ($raw === null || $raw === '') ? null : round((float) $raw, 2);
+
+                DepopPricing::updateOrCreate(
+                    ['sku' => $sku],
+                    ['sprice' => $sprice]
+                );
+                $saved++;
+            }
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'updated' => $saved,
+                'message' => "Saved SPRICE for {$saved} SKU(s)",
+            ]);
+        } catch (\Throwable $e) {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+            Log::error('Depop pricing saveSprice failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }

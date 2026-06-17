@@ -8,6 +8,8 @@ use App\Http\Controllers\ApiController;
 use App\Models\ChannelMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\MercariWShipDataView;
+use App\Models\MercariWShipPriceSoldData;
+use App\Models\MercariWShipListingStatus;
 use App\Models\MercariDailyData;
 use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
@@ -25,6 +27,228 @@ class MercariWShipController extends Controller
     public function __construct(ApiController $apiController)
     {
         $this->apiController = $apiController;
+    }
+
+    public function mercariWshipTabulatorView(Request $request)
+    {
+        return view('market-places.mercari_with_ship_tabulator_view');
+    }
+
+    public function getMercariWshipTabulatorData(Request $request)
+    {
+        $productMasterRows = ProductMaster::all();
+        $skus = $productMasterRows->pluck('sku')->toArray();
+
+        // Fetch Shopify data (inventory + image) for these SKUs
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
+
+        // Fetch Mercari with-ship price & sold data keyed by SKU
+        $priceSoldData = MercariWShipPriceSoldData::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        // Fetch listing statuses (buyer/seller links) keyed by SKU
+        $listingStatusData = MercariWShipListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        // Build ProductMaster lookup map for SKU matching against Mercari order titles
+        $productMastersBySku = $productMasterRows->mapWithKeys(function ($pm) {
+            $skuUpper = strtoupper(trim($pm->sku));
+            $skuNoSpaces = str_replace([' ', '-', '_'], '', $skuUpper);
+            return [
+                $skuUpper => $pm,
+                $skuNoSpaces => $pm,
+            ];
+        });
+
+        // Get L30 sold counts from MercariDailyData (mercari-with-ship daily sales)
+        $l30Data = $this->getL30OrderCounts($skus, $productMastersBySku);
+        $orderCounts = $l30Data['orderCounts'];
+
+        // MercariWShip percentage (profit factor) from marketplace_percentages
+        $percentage = MarketplacePercentage::where('marketplace', 'MercariWShip')->value('percentage');
+        $factor = ($percentage !== null ? (float) $percentage : 100) / 100;
+
+        $data = [];
+        foreach ($productMasterRows as $productMaster) {
+            $sku = $productMaster->sku;
+
+            // Skip parent rows
+            if (stripos($sku, 'PARENT') !== false) {
+                continue;
+            }
+
+            $values = is_array($productMaster->Values)
+                ? $productMaster->Values
+                : (json_decode($productMaster->Values, true) ?: []);
+            $shopifyItem = $shopifyData[$sku] ?? null;
+            $priceSold = $priceSoldData[$sku] ?? null;
+            $soldL30 = $orderCounts[$sku] ?? 0;
+
+            // Buyer/Seller links from listing status
+            $statusValue = $listingStatusData[$sku]->value ?? [];
+            if (is_string($statusValue)) {
+                $statusValue = json_decode($statusValue, true) ?: [];
+            }
+
+            $price = (float) ($priceSold->price ?? 0);
+            $lp = (float) ($values['lp'] ?? 0);
+            $ship = (float) ($values['ship'] ?? 0);
+            $inv = (float) ($shopifyItem->inv ?? 0);
+
+            // NR/REQ: default to REQ when INV > 0, else NR (same as listing page)
+            $nrReq = $statusValue['nr_req'] ?? ($inv > 0 ? 'REQ' : 'NR');
+
+            // PFT% and ROI% calculations
+            $pft = $price > 0 ? (($price * $factor - $lp - $ship) / $price) * 100 : 0;
+            $roi = $lp > 0 ? (($price * $factor - $lp - $ship) / $lp) * 100 : 0;
+
+            // S Price (manual, saved in listing status) and its SPFT/SROI
+            $sprice = isset($statusValue['sprice']) && $statusValue['sprice'] !== '' && $statusValue['sprice'] !== null
+                ? (float) $statusValue['sprice']
+                : null;
+            $spft = ($sprice !== null && $sprice > 0) ? (($sprice * $factor - $lp - $ship) / $sprice) * 100 : 0;
+            $sroi = ($sprice !== null && $lp > 0) ? (($sprice * $factor - $lp - $ship) / $lp) * 100 : 0;
+
+            $data[] = [
+                'Parent' => $productMaster->parent ?? null,
+                'image_path' => $shopifyItem->image_src ?? ($values['image_path'] ?? null),
+                'sku' => $sku,
+                'INV' => $shopifyItem->inv ?? 0,
+                'L30' => $shopifyItem->quantity ?? 0,
+                'price' => $price,
+                'sold' => $soldL30,
+                'PFT' => round($pft, 2),
+                'ROI' => round($roi, 2),
+                'sprice' => $sprice,
+                'SPFT' => round($spft, 2),
+                'SROI' => round($sroi, 2),
+                'nr_req' => $nrReq,
+                'lp' => $lp,
+                'ship' => $ship,
+                'factor' => $factor,
+                'buyer_link' => $statusValue['buyer_link'] ?? null,
+                'seller_link' => $statusValue['seller_link'] ?? null,
+            ];
+        }
+
+        return response()->json(['data' => $data]);
+    }
+
+    public function saveMercariWshipStatus(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string',
+        ]);
+
+        $sku = $request->input('sku');
+
+        $status = MercariWShipListingStatus::firstOrNew(['sku' => $sku]);
+        $value = is_array($status->value)
+            ? $status->value
+            : (json_decode($status->value, true) ?: []);
+
+        // Only update fields present in the request
+        foreach (['sprice', 'nr_req'] as $field) {
+            if ($request->has($field)) {
+                $value[$field] = $request->input($field);
+            }
+        }
+
+        $status->value = $value;
+        $status->save();
+
+        return response()->json(['success' => true]);
+    }
+
+    public function importMercariWshipPriceSold(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv'
+        ]);
+
+        try {
+            $file = $request->file('excel_file');
+            $spreadsheet = IOFactory::load($file->getPathName());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            // Clean headers
+            $headers = array_map(function ($header) {
+                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $header)));
+            }, $rows[0]);
+
+            unset($rows[0]);
+
+            $allSkus = [];
+            foreach ($rows as $row) {
+                if (!empty($row[0])) {
+                    $allSkus[] = $row[0];
+                }
+            }
+
+            $existingSkus = array_flip(
+                ProductMaster::whereIn('sku', $allSkus)->pluck('sku')->toArray()
+            );
+
+            $importCount = 0;
+            foreach ($rows as $row) {
+                if (empty($row[0])) {
+                    continue;
+                }
+
+                $rowData = array_pad(array_slice($row, 0, count($headers)), count($headers), null);
+                $data = array_combine($headers, $rowData);
+
+                if (empty($data['sku']) || !isset($existingSkus[$data['sku']])) {
+                    continue;
+                }
+
+                MercariWShipPriceSoldData::updateOrCreate(
+                    ['sku' => $data['sku']],
+                    [
+                        'price' => isset($data['price']) && $data['price'] !== null && $data['price'] !== ''
+                            ? (float) preg_replace('/[^0-9.\-]/', '', (string) $data['price'])
+                            : null,
+                        'sold' => isset($data['sold']) && $data['sold'] !== null && $data['sold'] !== ''
+                            ? (int) preg_replace('/[^0-9\-]/', '', (string) $data['sold'])
+                            : null,
+                    ]
+                );
+
+                $importCount++;
+            }
+
+            return back()->with('success', "Successfully imported $importCount price & sold records!");
+        } catch (\Exception $e) {
+            return back()->with('error', 'Error importing file: ' . $e->getMessage());
+        }
+    }
+
+    public function downloadMercariWshipPriceSoldSample()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $headers = ['SKU', 'Price'];
+        $sheet->fromArray($headers, NULL, 'A1');
+
+        $sampleData = [
+            ['SKU001', 19.99],
+            ['SKU002', 24.50],
+            ['SKU003', 9.99],
+        ];
+        $sheet->fromArray($sampleData, NULL, 'A2');
+
+        $sheet->getColumnDimension('A')->setWidth(20);
+        $sheet->getColumnDimension('B')->setWidth(12);
+
+        $fileName = 'MercariWShip_PriceSold_Sample.xlsx';
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="' . $fileName . '"');
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
     }
 
      public function overallMercariWship(Request $request)

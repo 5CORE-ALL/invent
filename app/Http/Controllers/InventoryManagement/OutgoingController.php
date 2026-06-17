@@ -109,7 +109,7 @@ class OutgoingController extends Controller
             'reason' => 'required|string',
             'channel' => ($requireChannel ? 'required' : 'nullable') . '|string|max:255',
             'comment' => 'nullable|string|max:80',
-            'replacement_tracking' => 'nullable|string|max:22',
+            'replacement_tracking' => 'nullable|string|max:40',
             'order_id' => 'nullable|string|max:128',
         ]);
 
@@ -763,4 +763,178 @@ class OutgoingController extends Controller
         return response()->json(['available_quantity' => $available]);
     }
 
+    /**
+     * Programmatic entry point for the All Issues "Outgoing needed?" flow.
+     *
+     * Mirrors the per-row work done inside store(): resolves the SKU's Shopify
+     * inventory_item_id + location_id, calls `inventory_levels/adjust.json`
+     * with `available_adjustment = -$qty`, then writes a row into `inventories`
+     * (type=outgoing, is_approved=true) so it shows on /outgoing-view.
+     *
+     * @return array{success: bool, inventory_id: int|null, error: string|null}
+     */
+    public function processOutgoingFromIssue(string $sku, int $qty, array $opts = []): array
+    {
+        $sku = trim($sku);
+        if ($sku === '' || $qty <= 0) {
+            return ['success' => false, 'inventory_id' => null, 'error' => 'SKU and positive qty are required.'];
+        }
+
+        $warehouseId = (int) ($opts['warehouse_id'] ?? 0);
+        if ($warehouseId <= 0 || ! Warehouse::where('id', $warehouseId)->exists()) {
+            return ['success' => false, 'inventory_id' => null, 'error' => 'A valid warehouse is required.'];
+        }
+
+        $reason = trim((string) ($opts['reason'] ?? 'Replacement (All Issues)'));
+        if ($reason === '') {
+            $reason = 'Replacement (All Issues)';
+        }
+        // Auto-create the reason once so /outgoing-view filters keep working.
+        if (! OutgoingReason::where('name', $reason)->exists()) {
+            $maxOrder = OutgoingReason::max('sort_order') ?? 0;
+            OutgoingReason::create(['name' => $reason, 'sort_order' => $maxOrder + 1]);
+        }
+
+        $comment             = isset($opts['comment']) ? trim((string) $opts['comment']) : null;
+        if ($comment === '') {
+            $comment = null;
+        }
+        $replacementTracking = isset($opts['replacement_tracking']) ? trim((string) $opts['replacement_tracking']) : null;
+        if ($replacementTracking === '') {
+            $replacementTracking = null;
+        }
+        $channel             = isset($opts['channel']) ? trim((string) $opts['channel']) : null;
+        if ($channel === '') {
+            $channel = null;
+        }
+        $orderId             = isset($opts['order_id']) ? trim((string) $opts['order_id']) : null;
+        if ($orderId === '') {
+            $orderId = null;
+        }
+
+        $normalizedSku = strtoupper(preg_replace('/\s+/u', ' ', $sku));
+
+        // ── Step 1: resolve Shopify inventory_item_id ────────────────────────
+        $inventoryItemId = null;
+        try {
+            $shopifyRow = ShopifySku::whereRaw('LOWER(sku) = ?', [strtolower($normalizedSku)])->first();
+            if ($shopifyRow && ! empty($shopifyRow->variant_id)) {
+                $variantResp = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                    ->timeout(30)
+                    ->retry(3, 2000)
+                    ->get("https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$shopifyRow->variant_id}.json");
+                if ($variantResp->successful()) {
+                    $inventoryItemId = $variantResp->json('variant.inventory_item_id') ?? null;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Issue Outgoing: variant lookup failed', ['sku' => $normalizedSku, 'error' => $e->getMessage()]);
+        }
+
+        if (! $inventoryItemId) {
+            $pageInfo = null;
+            try {
+                do {
+                    $params = ['limit' => 250, 'fields' => 'variants'];
+                    if ($pageInfo) {
+                        $params['page_info'] = $pageInfo;
+                    }
+                    $response = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                        ->timeout(30)
+                        ->retry(3, 2000)
+                        ->get("https://{$this->shopifyDomain}/admin/api/2025-01/products.json", $params);
+                    if (! $response->successful()) {
+                        return ['success' => false, 'inventory_id' => null, 'error' => 'Failed to fetch products from Shopify.'];
+                    }
+                    foreach (($response->json('products') ?? []) as $product) {
+                        foreach ($product['variants'] ?? [] as $variant) {
+                            $variantSku = strtoupper(preg_replace('/\s+/u', ' ', trim($variant['sku'] ?? '')));
+                            if ($variantSku === $normalizedSku) {
+                                $inventoryItemId = $variant['inventory_item_id'];
+                                break 2;
+                            }
+                        }
+                    }
+                    $linkHeader = $response->header('Link');
+                    $pageInfo = null;
+                    if ($linkHeader && preg_match('/<([^>]+page_info=([^&>]+)[^>]*)>; rel="next"/', $linkHeader, $m)) {
+                        $pageInfo = $m[2];
+                    }
+                } while (! $inventoryItemId && $pageInfo);
+            } catch (\Throwable $e) {
+                Log::error('Issue Outgoing: product search failed', ['sku' => $normalizedSku, 'error' => $e->getMessage()]);
+                return ['success' => false, 'inventory_id' => null, 'error' => 'Error searching SKU on Shopify: ' . $e->getMessage()];
+            }
+        }
+
+        if (! $inventoryItemId) {
+            return ['success' => false, 'inventory_id' => null, 'error' => "SKU not found in Shopify: {$normalizedSku}"];
+        }
+
+        // ── Step 2: resolve location_id and adjust Shopify inventory ─────────
+        try {
+            $invLevelResp = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                ->timeout(30)
+                ->retry(3, 2000)
+                ->get("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json", [
+                    'inventory_item_ids' => $inventoryItemId,
+                ]);
+            if (! $invLevelResp->successful()) {
+                return ['success' => false, 'inventory_id' => null, 'error' => 'Failed to fetch Shopify inventory levels.'];
+            }
+            $levels = $invLevelResp->json('inventory_levels');
+            $locationId = $levels[0]['location_id'] ?? null;
+            if (! $locationId) {
+                return ['success' => false, 'inventory_id' => null, 'error' => "Shopify location not found for SKU: {$normalizedSku}"];
+            }
+
+            $adjustResp = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                ->timeout(30)
+                ->retry(3, 2000)
+                ->post("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
+                    'inventory_item_id'    => $inventoryItemId,
+                    'location_id'          => $locationId,
+                    'available_adjustment' => -$qty,
+                ]);
+            if (! $adjustResp->successful()) {
+                Log::error('Issue Outgoing: Shopify adjust failed', ['sku' => $normalizedSku, 'response' => $adjustResp->body()]);
+                return ['success' => false, 'inventory_id' => null, 'error' => 'Shopify rejected the inventory adjustment.'];
+            }
+        } catch (\Throwable $e) {
+            Log::error('Issue Outgoing: Shopify adjust exception', ['sku' => $normalizedSku, 'error' => $e->getMessage()]);
+            return ['success' => false, 'inventory_id' => null, 'error' => 'Error contacting Shopify: ' . $e->getMessage()];
+        }
+
+        // ── Step 3: create the inventories row so /outgoing-view sees it ────
+        try {
+            $inv = Inventory::create([
+                'sku'                  => $sku,
+                'verified_stock'       => $qty,
+                'to_adjust'            => -$qty,
+                'reason'               => $reason,
+                'comment'              => $comment,
+                'replacement_tracking' => $replacementTracking,
+                'channel'              => $channel,
+                'is_approved'          => true,
+                'approved_by'          => Auth::user()->name ?? 'System',
+                'approved_at'          => Carbon::now('America/New_York'),
+                'type'                 => 'outgoing',
+                'warehouse_id'         => $warehouseId,
+            ]);
+            if ($orderId !== null) {
+                OutgoingOrderMeta::updateOrCreate(
+                    ['inventory_id' => $inv->id],
+                    ['order_id' => $orderId]
+                );
+            }
+            return ['success' => true, 'inventory_id' => (int) $inv->id, 'error' => null];
+        } catch (\Throwable $e) {
+            Log::error('Issue Outgoing: failed to write inventories row after Shopify adjust', [
+                'sku' => $normalizedSku,
+                'error' => $e->getMessage(),
+            ]);
+            // Shopify already adjusted; surface a warning but don't try to roll back.
+            return ['success' => false, 'inventory_id' => null, 'error' => 'Shopify adjusted but local outgoing record could not be saved: ' . $e->getMessage()];
+        }
+    }
 }

@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Task;
 use App\Models\User;
+use App\Support\TaskBusinessTime;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Console\Command;
@@ -11,13 +12,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Auto-expire daily automated tasks that were not completed the same day.
+ * Auto-expire daily automated tasks that were not completed within their missed window.
  *
- * For every daily automate-task instance whose start_date day (Asia/Kolkata) is BEFORE today and whose
- * status is not Done/Archived: mark it missed, archive a copy to deleted_tasks, then soft-delete the
- * row from tasks. The Missed-badge stat reads from both tables so the count stays visible for 30 days.
+ * A daily automate-task instance becomes missed 24 hours after its generated start time
+ * (start_date), in the business timezone (see config tasks.missed_after_hours.daily). When the
+ * window elapses and status is not Done/Archived: mark missed, archive to deleted_tasks, soft-delete.
  *
- * Scheduled daily at 00:05 IST in {@see \App\Console\Kernel::schedule()}. Manual trigger:
+ * Scheduled hourly in {@see config('tasks.business_timezone')} — see Kernel. Manual trigger:
  * {@see \App\Http\Controllers\TaskController::expireDailyAutomatedTasks()}.
  */
 class ExpireDailyAutomatedTasks extends Command
@@ -32,14 +33,11 @@ class ExpireDailyAutomatedTasks extends Command
         $this->info('Expiring incomplete daily automated tasks' . ($dryRun ? ' [DRY RUN]' : '') . '...');
 
         try {
-            try {
-                DB::statement("SET time_zone = '+05:30'");
-            } catch (\Throwable $e) {
-                Log::warning('ExpireDailyAutomatedTasks: could not set session time_zone to Asia/Kolkata: ' . $e->getMessage());
-            }
+            TaskBusinessTime::applyDatabaseSession();
 
-            $now = Carbon::now('Asia/Kolkata');
-            $todayStart = Carbon::today('Asia/Kolkata')->startOfDay();
+            $now = TaskBusinessTime::now();
+            // Daily auto-task is missed 24h (configurable) after its generated start time.
+            $cutoff = $now->copy()->subHours(TaskBusinessTime::missedAfterHours('daily'));
 
             $expired = 0;
             $archived = 0;
@@ -49,11 +47,12 @@ class ExpireDailyAutomatedTasks extends Command
             // and task_type='automate_task', so the LOWER(schedule_type)='daily' check is the ONLY
             // safe way to exclude them. See App\Console\Commands\ExecuteAutomatedTasks for how
             // weekly/monthly instances are created with their own schedule_type.
+            // Normal/manual tasks (is_automate_task = 0) are NEVER affected.
             Task::query()
                 ->where('is_automate_task', 1)
                 ->whereRaw('LOWER(schedule_type) = ?', ['daily'])
                 ->whereNotNull('start_date')
-                ->where('start_date', '<', $todayStart)
+                ->where('start_date', '<=', $cutoff)
                 ->whereNotIn('status', ['Done', 'Archived'])
                 ->orderBy('id')
                 ->chunkById(100, function ($tasks) use ($now, $dryRun, &$expired, &$archived, &$failed) {

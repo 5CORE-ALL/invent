@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon FBM', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Amazon Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -180,8 +180,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Amazon FBM',
-        'sub_title' => 'Amazon FBM',
+        'page_title' => 'Amazon Analytics',
+        'sub_title' => 'Amazon Analytics',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -213,16 +213,14 @@
                         <option value="10-20">10-20%</option>
                         <option value="20-30">20-30%</option>
                         <option value="30-40">30-40%</option>
-                        <option value="40-50">40-50%</option>
-                        <option value="50plus">Above 50%</option>
+                        <option value="40plus">Above 40%</option>
                     </select>
                     <select id="cvr-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">All CVR%</option>
                         <option value="0-0">0%</option>
-                        <option value="0-2">0-2%</option>
-                        <option value="2-4">2-4%</option>
-                        <option value="4-7">4-7%</option>
+                        <option value="0-3">0-3%</option>
+                        <option value="3-7">3-7%</option>
                         <option value="7-13">7-13%</option>
                         <option value="13plus">13%+</option>
                     </select>
@@ -233,9 +231,15 @@
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
-                        <option value="125-175">125–175%</option>
-                        <option value="175-250">175–250%</option>
-                        <option value="gt250">&gt; 250%</option>
+                        <option value="gt125">&gt; 125%</option>
+                    </select>
+
+                    <select id="diff-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">Diff%</option>
+                        <option value="lt80">&lt; 80%</option>
+                        <option value="80-100">80–100%</option>
+                        <option value="gt100">&gt; 100%</option>
                     </select>
 
                     <select id="cvr-trend-filter" class="form-select form-select-sm"
@@ -265,9 +269,12 @@
 
                     <select id="parent-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all" selected>All Rows</option>
+                        <option value="all">All Rows</option>
                         <option value="parents">Parents</option>
-                        <option value="skus">SKUs</option>
+                        {{-- Default selection: hide parent summary rows on initial load.
+                             Filter logic (applyFilters in script-bottom) already drops parent rows
+                             when this value is 'skus', so nothing else needs to change. --}}
+                        <option value="skus" selected>SKUs</option>
                     </select>
 
                     <select id="status-filter" class="form-select form-select-sm"
@@ -291,6 +298,40 @@
                         <option value="all">S PRC</option>
                         <option value="blank">Blank S PRC only</option>
                     </select>
+
+                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%. --}}
+                    {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin  (margin = take-home %, e.g. 0.80 for Amazon) --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-roi-controls"
+                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (accounts for Amazon fees + shipping)">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target ROI%:
+                        </label>
+                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP \u00d7 (1 + Target ROI%/100) + Ship) / margin for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%. --}}
+                    {{-- Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100 (else denominator ≤ 0). --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-gpft-controls"
+                        title="Target GPFT% — sets S PRC = (LP + Ship) / (margin − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target GPFT%:
+                        </label>
+                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Amazon take-home margin (e.g. < 80%).">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP + Ship) / (margin \u2212 Target GPFT%/100) for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
 
                     <!-- Selected Rows Count -->
                     <span class="badge bg-primary fs-6 p-2 ms-2" id="selected-rows-count" style="display: none;">
@@ -365,6 +406,10 @@
                         <i class="fas fa-download"></i> Export view
                     </button>
 
+                    <button id="export-lmp-btn" class="btn btn-sm btn-warning">
+                        <i class="fas fa-file-export"></i> Export LMP
+                    </button>
+
                     <a href="{{ url('/amazon-export-sprice-upload') }}" class="btn btn-sm btn-info">
                         <i class="fas fa-download"></i> SPRICE N Upload
                     </a>
@@ -376,6 +421,7 @@
                         <ul class="dropdown-menu dropdown-menu-end" id="price-pct-dropdown">
                             <li><a class="dropdown-item" href="#" data-mode="decrease"><i class="fas fa-minus-circle text-warning"></i> Decrease</a></li>
                             <li><a class="dropdown-item" href="#" data-mode="increase"><i class="fas fa-plus-circle text-success"></i> Increase</a></li>
+                            <li><a class="dropdown-item" href="#" data-mode="same"><i class="fas fa-equals text-info"></i> Same Price</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="#" data-mode="cancel"><i class="fas fa-times"></i> Cancel</a></li>
                         </ul>
@@ -411,6 +457,9 @@
                         <span class="badge bg-success fs-6 p-2 missing-amz-nonfba-filter-badge" id="missing-amazon-nonfba-badge" data-filter="missing-amazon-nonfba" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing M FBM">
                             Missing M FBM: <span id="missing-amazon-nonfba-count">0</span>
                         </span>
+                        <span class="badge bg-dark fs-6 p-2 missing-l-amz-filter-badge" id="missing-l-amz-badge" data-filter="missing-l-amz" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing L (not listed on Amazon, REQ, INV > 0) — same as /map-issues">
+                            Missing L: <span id="missing-l-amz-count">0</span>
+                        </span>
                         <span class="badge bg-success fs-6 p-2" id="variation-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Variation (NRL count)">
                             Variation: <span id="variation-count">0</span>
                         </span>
@@ -442,11 +491,13 @@
                 <!-- Price % input: how much to decrease or increase (shown when Decrease/Increase is active) -->
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
                     <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <span class="text-muted fw-bold me-1">By how much:</span>
+                        <span id="discount-input-label" class="text-muted fw-bold me-1">By how much:</span>
+                        <span id="discount-type-select-wrap">
                         <select id="discount-type-select" class="form-select form-select-sm" style="width: 140px;">
                             <option value="percentage">Percentage (%)</option>
                             <option value="value">Value ($)</option>
                         </select>
+                        </span>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
                             placeholder="e.g. 10 or 2.50" step="0.1" min="0" 
                             style="width: 140px;" title="Enter % or $ amount to decrease/increase price">
@@ -671,6 +722,9 @@
 @section('script-bottom')
     <script>
         const COLUMN_VIS_KEY = "amazon_tabulator_column_visibility";
+        /** Stored in DB table channel_tabulator_column_settings (shared across all users — same pattern as ebay2/ebay3/mfrg tabulators). */
+        const TABULATOR_COLUMN_CHANNEL = 'amazon_tabulator';
+        const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
         let skuMetricsChart = null;
         let skuChartFirstSeriesStats = null; // { values, median, dataMin, dataMax, dotColors, labelColors } for ref panel & plugins
         let currentSkuChartMetric = 'price';  // 'price' | 'cvr' - which metric the SKU chart modal shows
@@ -678,6 +732,7 @@
         let table = null; // Global table reference
         let decreaseModeActive = false; // Track decrease mode state
         let increaseModeActive = false; // Track increase mode state
+        let samePriceModeActive = false; // Track Same Price mode (one price for all selected rows)
         let selectedSkus = new Set(); // Track selected SKUs across all pages
         let soldFilterActive = 'all'; // Track sold filter state: 'all', 'sold', 'zero'
         let priceFilterActive = false; // Track price filter state: true = show only Prc > LMP
@@ -685,6 +740,7 @@
         let missingAmazonFilterActive = false;   // Track Missing L (all) — header dot
         let missingAmazonFbaFilterActive = false;    // Track Missing L FBA filter
         let missingAmazonNonFbaFilterActive = false; // Track Missing M FBM (non-FBA listing) filter
+        let missingLAmzFilterActive = false;         // Track Missing L (all) — same as /map-issues
 
         // Escape string for safe use in HTML attribute (fixes SKUs with " e.g. WF 8"-890 1PC)
         function escAttr(s) {
@@ -692,7 +748,24 @@
             return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
-        /** INV vs INV_AMZ counts as Map if diff <= 3 units OR diff <= 3% of Shopify INV (same as saveDailySummaryIfNeeded). */
+        // LMP base price + parsed shipping fee from lmp_delivery text (FREE => 0).
+        // Used by the LMP column, Diff column and Diff filter so they all agree.
+        function lmpWithShipping(rowData) {
+            const base = parseFloat(rowData.lmp_price || 0) || 0;
+            if (!base || base <= 0) return base;
+            let shipCost = 0;
+            if (rowData.lmp_delivery) {
+                const m = String(rowData.lmp_delivery).match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
+                if (m) shipCost = parseFloat(m[1].replace(/,/g, '')) || 0;
+            }
+            return base + shipCost;
+        }
+
+        /**
+         * INV vs INV_AMZ map tolerance — same rule as /map-issues:
+         * when 3% of INV is below 3 units, require an absolute gap > 3 units to be a mismatch;
+         * otherwise apply the rounded 3% rule. Mapped when within tolerance.
+         */
         function amazonInvWithinMapTolerance(inv, invAmz) {
             const invNum = parseFloat(inv) || 0;
             const amzNum = parseFloat(invAmz) || 0;
@@ -700,11 +773,13 @@
                 return true;
             }
             const diff = Math.abs(invNum - amzNum);
-            if (diff <= 3 + 1e-9) {
-                return true;
+            let isNotMap;
+            if (invNum * 0.03 < 3) {
+                isNotMap = diff > 3;
+            } else {
+                isNotMap = Math.round((diff / invNum) * 100) > 3;
             }
-            const tolerance = invNum * 0.03;
-            return diff <= tolerance + 1e-9;
+            return !isNotMap;
         }
 
         /** FBA row: fba flag or SKU/Parent contains "FBA" (aligns with rowIsFba in filters). */
@@ -714,6 +789,22 @@
             if (fbaFlag === 1 || fbaFlag === '1' || fbaFlag === true) return true;
             const sku = String(rowData['(Child) sku'] || rowData['Parent'] || '').toUpperCase();
             return sku.indexOf('FBA') !== -1;
+        }
+
+        /** Missing L — same rule as /map-issues: not listed on Amazon, REQ, INV > 0, non-parent (FBA + FBM). */
+        function isAmazonMissingL(rowData) {
+            if (!rowData) return false;
+            if (rowData.is_parent_summary === true || rowData.is_parent_summary === 1) return false;
+            const sku = String(rowData['(Child) sku'] || rowData['Parent'] || '').trim().toUpperCase();
+            if (sku.indexOf('PARENT ') === 0 || sku === 'PARENT') return false;
+            // REQ by default — only exclude rows explicitly flagged NR/NRL (matches /map-issues isReq()).
+            const nr = String(rowData.NR || '').trim().toUpperCase();
+            if (nr === 'NR' || nr === 'NRL') return false;
+            const inv = parseFloat(rowData['INV'] || 0) || 0;
+            if (inv <= 0) return false;
+            // "Not listed on Amazon" = no live price (price <= 0), same rule as Reverb (RV Price <= 0).
+            const price = parseFloat(rowData['price'] || 0) || 0;
+            return price <= 0;
         }
 
         /** Parent group key: Parent/parent field, or "PARENT xxx" pseudo-SKU on summary rows (matches table filters). */
@@ -1552,6 +1643,9 @@
                 } else {
                     // Set new filter
                     mapFilterActive = filter;
+                    // Map badge is mutually exclusive with the Missing L (all) badge
+                    missingLAmzFilterActive = false;
+                    $('#missing-l-amz-badge').removeClass('bg-info').addClass('bg-dark').css('color', 'white');
                     // Update badge appearance
                     $('.map-filter-badge').each(function() {
                         const badgeFilter = $(this).data('filter');
@@ -1577,6 +1671,8 @@
                 if (missingAmazonFbaFilterActive) {
                     missingAmazonNonFbaFilterActive = false;
                     missingAmazonFilterActive = false;
+                    missingLAmzFilterActive = false;
+                    $('#missing-l-amz-badge').removeClass('bg-info').addClass('bg-dark').css('color', 'white');
                     $(this).removeClass('bg-secondary bg-warning').addClass('bg-info').css('color', 'black');
                     $('#missing-amazon-nonfba-badge').removeClass('bg-info').addClass('bg-success').css('color', 'white');
                     mapFilterActive = 'all';
@@ -1597,6 +1693,8 @@
                 if (missingAmazonNonFbaFilterActive) {
                     missingAmazonFbaFilterActive = false;
                     missingAmazonFilterActive = false;
+                    missingLAmzFilterActive = false;
+                    $('#missing-l-amz-badge').removeClass('bg-info').addClass('bg-dark').css('color', 'white');
                     $(this).removeClass('bg-success bg-warning').addClass('bg-info').css('color', 'black');
                     $('#missing-amazon-fba-badge').removeClass('bg-info').addClass('bg-secondary').css('color', 'white');
                     mapFilterActive = 'all';
@@ -1607,6 +1705,29 @@
                     });
                 } else {
                     $(this).removeClass('bg-info').addClass('bg-success').css('color', 'white');
+                }
+                applyFilters();
+            });
+
+            // Missing L (all) badge click — show not-listed-on-Amazon rows (REQ, INV > 0), same as /map-issues
+            $(document).on('click', '.missing-l-amz-filter-badge', function() {
+                missingLAmzFilterActive = !missingLAmzFilterActive;
+                if (missingLAmzFilterActive) {
+                    // Deactivate the other mutually-exclusive missing/map filters
+                    missingAmazonFbaFilterActive = false;
+                    missingAmazonNonFbaFilterActive = false;
+                    missingAmazonFilterActive = false;
+                    mapFilterActive = 'all';
+                    $('#missing-amazon-fba-badge').removeClass('bg-info').addClass('bg-secondary').css('color', 'white');
+                    $('#missing-amazon-nonfba-badge').removeClass('bg-info').addClass('bg-success').css('color', 'white');
+                    $('.map-filter-badge').each(function() {
+                        const badgeFilter = $(this).data('filter');
+                        if (badgeFilter === 'mapped') $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
+                        else $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
+                    });
+                    $(this).removeClass('bg-dark').addClass('bg-info').css('color', 'black');
+                } else {
+                    $(this).removeClass('bg-info').addClass('bg-dark').css('color', 'white');
                 }
                 applyFilters();
             });
@@ -1632,10 +1753,11 @@
                 }
             });
 
-            // Price % (Decrease / Increase) — single dropdown
+            // Price % (Decrease / Increase / Same Price) — single dropdown
             function exitPricePctMode() {
                 decreaseModeActive = false;
                 increaseModeActive = false;
+                samePriceModeActive = false;
                 if (table) {
                     const col = table.getColumn('_select');
                     if (col) col.hide();
@@ -1645,9 +1767,14 @@
                 if ($('#select-all-checkbox').length) $('#select-all-checkbox').prop('checked', false);
                 $('#discount-input-container').hide();
                 $('#clear-sprice-btn').hide();
-                $('#price-pct-btn').removeClass('btn-danger btn-warning btn-success').addClass('btn-primary')
+                $('#price-pct-btn').removeClass('btn-danger btn-warning btn-success btn-info').addClass('btn-primary')
                     .html('<i class="fas fa-percent"></i> Price %');
                 $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply');
+                $('#discount-type-select-wrap').show();
+                $('#discount-input-label').text('By how much:');
+                $('#discount-percentage-input')
+                    .attr('placeholder', 'e.g. 10 or 2.50')
+                    .attr('title', 'Enter % or $ amount to decrease/increase price');
             }
 
             function setPricePctMode(mode) {
@@ -1662,18 +1789,39 @@
 
                 decreaseModeActive = (mode === 'decrease');
                 increaseModeActive = (mode === 'increase');
+                samePriceModeActive  = (mode === 'same');
                 selectColumn.show();
                 $('#clear-sprice-btn').show();
                 $('#discount-input-container').show();
                 $('#discount-percentage-input').val('');
+
                 if (mode === 'decrease') {
-                    $('#price-pct-btn').removeClass('btn-primary btn-success').addClass('btn-warning')
+                    $('#discount-type-select-wrap').show();
+                    $('#discount-input-label').text('By how much:');
+                    $('#discount-percentage-input')
+                        .attr('placeholder', 'e.g. 10 or 2.50')
+                        .attr('title', 'Enter % or $ amount to decrease price');
+                    $('#price-pct-btn').removeClass('btn-primary btn-success btn-info').addClass('btn-warning')
                         .html('<i class="fas fa-minus-circle"></i> Decrease');
                     $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Decrease');
-                } else {
-                    $('#price-pct-btn').removeClass('btn-primary btn-warning').addClass('btn-success')
+                } else if (mode === 'increase') {
+                    $('#discount-type-select-wrap').show();
+                    $('#discount-input-label').text('By how much:');
+                    $('#discount-percentage-input')
+                        .attr('placeholder', 'e.g. 10 or 2.50')
+                        .attr('title', 'Enter % or $ amount to increase price');
+                    $('#price-pct-btn').removeClass('btn-primary btn-warning btn-info').addClass('btn-success')
                         .html('<i class="fas fa-plus-circle"></i> Increase');
                     $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Increase');
+                } else if (mode === 'same') {
+                    $('#discount-type-select-wrap').hide();
+                    $('#discount-input-label').text('Same Price ($):');
+                    $('#discount-percentage-input')
+                        .attr('placeholder', 'Enter price (e.g. 19.99)')
+                        .attr('title', 'This single price will be applied to every selected SKU');
+                    $('#price-pct-btn').removeClass('btn-primary btn-warning btn-success').addClass('btn-info')
+                        .html('<i class="fas fa-equals"></i> Same Price');
+                    $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Same Price');
                 }
             }
 
@@ -1702,7 +1850,7 @@
             function updateSelectedCount() {
                 const selectedCount = selectedSkus.size;
                 // Keep input container visible when in Price % mode; only hide when exiting mode
-                if (decreaseModeActive || increaseModeActive) {
+                if (decreaseModeActive || increaseModeActive || samePriceModeActive) {
                     $('#discount-input-container').show();
                 }
                 $('#selected-skus-count').text(selectedCount > 0 ? `(${selectedCount} SKU${selectedCount > 1 ? 's' : ''} selected)` : '(select SKUs in table)');
@@ -2282,13 +2430,13 @@
                 return +(roundedDollar - 0.51).toFixed(2);
             }
 
-            // Apply Discount/Increase Button
+            // Apply Discount/Increase/Same-Price Button
             $('#apply-discount-btn').on('click', function() {
                 const rawInput = $('#discount-percentage-input').val();
                 const inputValue = parseFloat(String(rawInput).replace(',', '.'));
                 
                 if (rawInput === '' || rawInput == null) {
-                    showToast('error', 'Please enter a value (% or $)');
+                    showToast('error', samePriceModeActive ? 'Please enter a price' : 'Please enter a value (% or $)');
                     return;
                 }
                 if (isNaN(inputValue) || inputValue < 0) {
@@ -2297,7 +2445,7 @@
                 }
                 
                 const discountType = $('#discount-type-select').val();
-                if (discountType === 'percentage' && inputValue > 100) {
+                if (!samePriceModeActive && discountType === 'percentage' && inputValue > 100) {
                     showToast('error', 'Percentage cannot exceed 100');
                     return;
                 }
@@ -2307,12 +2455,12 @@
                     return;
                 }
                 
-                if (!decreaseModeActive && !increaseModeActive) {
-                    showToast('error', 'Please activate Decrease or Increase mode first');
+                if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                    showToast('error', 'Please activate Decrease, Increase, or Same Price mode first');
                     return;
                 }
                 
-                const mode = increaseModeActive ? 'increase' : 'decrease';
+                const mode = samePriceModeActive ? 'same' : (increaseModeActive ? 'increase' : 'decrease');
                 let successCount = 0;
                 let errorCount = 0;
                 let totalToProcess = selectedSkus.size;
@@ -2334,11 +2482,14 @@
                         const rowData = row.getData();
                         const originalPrice = parseFloat(rowData.price) || 0;
                         
-                        if (originalPrice > 0) {
+                        // Same Price mode applies even when the live price column is empty.
+                        if (mode === 'same' || originalPrice > 0) {
                             let newPrice;
-                            
-                            // Use selected type (percentage or value)
-                            if (discountType === 'percentage') {
+
+                            if (mode === 'same') {
+                                // One fixed price for every selected row, regardless of current price.
+                                newPrice = Math.max(0.01, inputValue);
+                            } else if (discountType === 'percentage') {
                                 // Treat as percentage
                                 const decimal = inputValue / 100;
                                 if (mode === 'decrease') {
@@ -2357,7 +2508,7 @@
 
                             // Round to retail .99; when that would match current price, use .49 so S PRC doesn’t show blank
                             newPrice = roundToRetailPrice(newPrice);
-                            if (newPrice.toFixed(2) === originalPrice.toFixed(2)) {
+                            if (mode !== 'same' && newPrice.toFixed(2) === originalPrice.toFixed(2)) {
                                 newPrice = roundToRetailPrice49(newPrice);
                             }
                             const newPriceNum = parseFloat(newPrice.toFixed(2));
@@ -2397,7 +2548,7 @@
                                     
                                     // Check if all requests are complete
                                     if (successCount + errorCount === totalToProcess) {
-                                        const actionText = mode === 'increase' ? 'Increase' : 'Discount';
+                                        const actionText = mode === 'same' ? 'Same Price' : (mode === 'increase' ? 'Increase' : 'Discount');
                                         $('#apply-discount-btn').prop('disabled', false).html(`<i class="fas fa-check"></i> Apply ${actionText}`);
                                         if (errorCount === 0) {
                                             showToast('success', `${actionText} applied successfully to ${successCount} SKU${successCount > 1 ? 's' : ''}`);
@@ -2409,7 +2560,7 @@
                                 error: function(xhr) {
                                     errorCount++;
                                     if (successCount + errorCount === totalToProcess) {
-                                        const actionText = mode === 'increase' ? 'Increase' : 'Discount';
+                                        const actionText = mode === 'same' ? 'Same Price' : (mode === 'increase' ? 'Increase' : 'Discount');
                                         $('#apply-discount-btn').prop('disabled', false).html(`<i class="fas fa-check"></i> Apply ${actionText}`);
                                         showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
                                     }
@@ -2418,7 +2569,7 @@
                         } else {
                             errorCount++;
                             if (successCount + errorCount === totalToProcess) {
-                                const actionText = mode === 'increase' ? 'Increase' : 'Discount';
+                                const actionText = mode === 'same' ? 'Same Price' : (mode === 'increase' ? 'Increase' : 'Discount');
                                 $('#apply-discount-btn').prop('disabled', false).html(`<i class="fas fa-check"></i> Apply ${actionText}`);
                                 showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
                             }
@@ -2426,7 +2577,7 @@
                     } else {
                         errorCount++;
                         if (successCount + errorCount === totalToProcess) {
-                            const actionText = mode === 'increase' ? 'Increase' : 'Discount';
+                            const actionText = mode === 'same' ? 'Same Price' : (mode === 'increase' ? 'Increase' : 'Discount');
                             $('#apply-discount-btn').prop('disabled', false).html(`<i class="fas fa-check"></i> Apply ${actionText}`);
                             showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
                         }
@@ -2439,6 +2590,299 @@
                 if (e.which === 13) { // Enter key
                     $('#apply-discount-btn').click();
                 }
+            });
+
+            /*
+             * Target ROI% bulk apply
+             * -----------------------
+             * For every selected row with a usable LP, back-solve the sale price so that the
+             * resulting SROI column matches Target ROI% after Amazon takes its margin and
+             * after shipping is paid out:
+             *     sprice = (LP * (1 + targetRoi% / 100) + Ship) / margin
+             * `margin` is the row's take-home rate (row.percentage, e.g. 0.80 for Amazon),
+             * with a 0.80 fallback matching the backend's hard-coded SROI rate. The save
+             * goes through the existing /save-amazon-sprice endpoint so SGPFT / SPFT / SROI
+             * get recomputed server-side exactly like an inline S PRC edit. Rounding is
+             * plain 2-decimal — no .99 / .49 retail snapping.
+             */
+            $('#apply-target-roi-btn').on('click', function() {
+                const $btn = $(this);
+                const rawInput = $('#target-roi-input').val();
+                const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                if (rawInput === '' || rawInput == null) {
+                    showToast('error', 'Please enter a Target ROI%');
+                    return;
+                }
+                if (!isFinite(targetRoiPct)) {
+                    showToast('error', 'Target ROI% must be a number');
+                    return;
+                }
+
+                // This view tracks selections in TWO parallel Sets:
+                //   - selectedSkus  ← .sku-select-checkbox (Apply Discount / Clear SPRICE flow)
+                //   - selectedRows  ← .row-select-checkbox (leftmost header checkbox / Bulk Actions)
+                // Honor the union so the Target-ROI button works regardless of which checkbox the user clicked.
+                const effectiveSelected = new Set();
+                if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.forEach) {
+                    selectedSkus.forEach(function(s) { if (s) effectiveSelected.add(s); });
+                }
+                if (typeof selectedRows !== 'undefined' && selectedRows && selectedRows.forEach) {
+                    selectedRows.forEach(function(s) { if (s) effectiveSelected.add(s); });
+                }
+
+                if (effectiveSelected.size === 0) {
+                    showToast('error', 'Please select at least one SKU');
+                    return;
+                }
+
+                const roiMultiplier = 1 + (targetRoiPct / 100);
+
+                // Pre-collect targets so we know the batch size up front (drives the
+                // success/error progress callback) and we never iterate the table twice.
+                //
+                // We back-solve sprice so the resulting SROI column matches Target ROI%:
+                //     ROI% = ((sprice * margin - ship - lp) / lp) * 100   (same formula the
+                //     backend uses in saveSpriceToDatabase)
+                //   -> sprice = (lp * (1 + ROI%/100) + ship) / margin
+                // `margin` is the take-home rate on the row (row.percentage, e.g. 0.80 for
+                // Amazon). Falls back to 0.80 if the row didn't carry the field, matching
+                // the hard-coded backend value used for SROI/SGPFT.
+                const rowsToProcess = [];
+                table.getRows().forEach(function(r) {
+                    const rd = r.getData();
+                    const sku = rd['(Child) sku'];
+                    if (!effectiveSelected.has(sku) || rd.is_parent_summary) return;
+                    const lp = parseFloat(rd.LP_productmaster) || 0;
+                    if (lp <= 0) return; // skip rows without a usable cost
+                    const ship = parseFloat(rd.Ship_productmaster) || 0;
+                    const marginRaw = parseFloat(rd.percentage);
+                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
+                    const candidate = (lp * roiMultiplier + ship) / margin;
+                    const sprice = +candidate.toFixed(2);
+                    if (!isFinite(sprice) || sprice <= 0) return;
+                    rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
+                });
+
+                if (rowsToProcess.length === 0) {
+                    showToast('warning', 'No selected rows have a usable LP > 0');
+                    return;
+                }
+
+                if (!confirm(`Compute & save S PRC for ${rowsToProcess.length} selected SKU(s) using (LP \u00d7 (1 + ${targetRoiPct}%/100) + Ship) / margin?`)) {
+                    return;
+                }
+
+                let successCount = 0;
+                let errorCount = 0;
+                const total = rowsToProcess.length;
+
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+
+                rowsToProcess.forEach(function(item) {
+                    $.ajax({
+                        url: '/save-amazon-sprice',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        data: { sku: item.sku, sprice: item.sprice },
+                        success: function(response) {
+                            successCount++;
+                            const updateData = {
+                                'SPRICE': response.data || item.sprice,
+                                'has_custom_sprice': true,
+                                'SPRICE_STATUS': response.SPRICE_STATUS != null ? response.SPRICE_STATUS : null
+                            };
+                            if (response.sgpft_percent !== undefined) updateData['SGPFT'] = response.sgpft_percent;
+                            if (response.spft_percent !== undefined) updateData['Spft%'] = response.spft_percent;
+                            if (response.sroi_percent !== undefined) updateData['SROI'] = response.sroi_percent;
+                            item.row.update(updateData);
+                            item.row.reformat();
+                        },
+                        error: function() {
+                            errorCount++;
+                        },
+                        complete: function() {
+                            if (successCount + errorCount === total) {
+                                $btn.prop('disabled', false).html('<i class="fas fa-calculator"></i> Apply S PRC');
+                                if (errorCount === 0) {
+                                    showToast('success', `S PRC saved for ${successCount} SKU(s) @ Target ROI ${targetRoiPct}%`);
+                                } else {
+                                    showToast('error', `Saved ${successCount} of ${total} (${errorCount} failed)`);
+                                }
+
+                                // Clear BOTH selection systems + every visible checkbox so the
+                                // next batch starts fresh. Without this, the previous run's SKUs
+                                // stay in the Sets (Tabulator re-renders checkboxes on paging /
+                                // filter changes, so the UI looked unchecked but the underlying
+                                // Set still held them — re-running the button would re-apply to
+                                // the old rows too).
+                                if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.clear) {
+                                    selectedSkus.clear();
+                                }
+                                if (typeof selectedRows !== 'undefined' && selectedRows && selectedRows.clear) {
+                                    selectedRows.clear();
+                                }
+                                $('.sku-select-checkbox').prop('checked', false);
+                                $('.row-select-checkbox').prop('checked', false);
+                                $('#select-all-checkbox').prop('checked', false);
+                                $('#select-all-rows').prop('checked', false).prop('indeterminate', false);
+                                if (typeof updateSelectedCount === 'function') {
+                                    updateSelectedCount();
+                                }
+                            }
+                        }
+                    });
+                });
+            });
+
+            // Enter inside the Target ROI% input triggers Apply S PRC
+            $('#target-roi-input').on('keypress', function(e) {
+                if (e.which === 13) $('#apply-target-roi-btn').click();
+            });
+
+            /*
+             * Target GPFT% bulk apply
+             * ------------------------
+             * Mirrors the Target-ROI flow but back-solves so the resulting SGPFT column equals
+             * Target GPFT% after Amazon takes its margin and after shipping is paid out:
+             *     GPFT% = ((sprice * margin - ship - lp) / sprice) * 100   (same formula the
+             *     backend uses in saveSpriceToDatabase for SGPFT)
+             *   -> sprice = (lp + ship) / (margin - GPFT%/100)
+             * Constraint: the denominator (margin − target/100) must be > 0. With an Amazon
+             * take-home of 0.80 that means Target GPFT% must be strictly < 80; anything ≥ the
+             * margin would require an infinite/negative price, so those targets are rejected
+             * up-front instead of silently producing absurd values.
+             */
+            $('#apply-target-gpft-btn').on('click', function() {
+                const $btn = $(this);
+                const rawInput = $('#target-gpft-input').val();
+                const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                if (rawInput === '' || rawInput == null) {
+                    showToast('error', 'Please enter a Target GPFT%');
+                    return;
+                }
+                if (!isFinite(targetGpftPct)) {
+                    showToast('error', 'Target GPFT% must be a number');
+                    return;
+                }
+
+                // Honor BOTH selection systems (same union as the Target-ROI handler).
+                const effectiveSelected = new Set();
+                if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.forEach) {
+                    selectedSkus.forEach(function(s) { if (s) effectiveSelected.add(s); });
+                }
+                if (typeof selectedRows !== 'undefined' && selectedRows && selectedRows.forEach) {
+                    selectedRows.forEach(function(s) { if (s) effectiveSelected.add(s); });
+                }
+
+                if (effectiveSelected.size === 0) {
+                    showToast('error', 'Please select at least one SKU');
+                    return;
+                }
+
+                const targetFraction = targetGpftPct / 100;
+
+                const rowsToProcess = [];
+                const skippedHighGpft = []; // rows where target >= margin (denominator <= 0)
+                table.getRows().forEach(function(r) {
+                    const rd = r.getData();
+                    const sku = rd['(Child) sku'];
+                    if (!effectiveSelected.has(sku) || rd.is_parent_summary) return;
+                    const lp = parseFloat(rd.LP_productmaster) || 0;
+                    if (lp <= 0) return; // need a cost to back-solve
+                    const ship = parseFloat(rd.Ship_productmaster) || 0;
+                    const marginRaw = parseFloat(rd.percentage);
+                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
+                    const denom = margin - targetFraction;
+                    if (denom <= 0) {
+                        skippedHighGpft.push(sku);
+                        return;
+                    }
+                    const candidate = (lp + ship) / denom;
+                    const sprice = +candidate.toFixed(2);
+                    if (!isFinite(sprice) || sprice <= 0) return;
+                    rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
+                });
+
+                if (rowsToProcess.length === 0) {
+                    if (skippedHighGpft.length > 0) {
+                        showToast('error', `Target GPFT% ${targetGpftPct}% is too high \u2014 must be less than the Amazon take-home margin (e.g. < 80%).`);
+                    } else {
+                        showToast('warning', 'No selected rows have a usable LP > 0');
+                    }
+                    return;
+                }
+
+                let confirmMsg = `Compute & save S PRC for ${rowsToProcess.length} selected SKU(s) using (LP + Ship) / (margin \u2212 ${targetGpftPct}%/100)?`;
+                if (skippedHighGpft.length > 0) {
+                    confirmMsg += `\n\nNote: ${skippedHighGpft.length} row(s) will be skipped because Target GPFT% ${targetGpftPct}% \u2265 their take-home margin.`;
+                }
+                if (!confirm(confirmMsg)) {
+                    return;
+                }
+
+                let successCount = 0;
+                let errorCount = 0;
+                const total = rowsToProcess.length;
+
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+
+                rowsToProcess.forEach(function(item) {
+                    $.ajax({
+                        url: '/save-amazon-sprice',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        data: { sku: item.sku, sprice: item.sprice },
+                        success: function(response) {
+                            successCount++;
+                            const updateData = {
+                                'SPRICE': response.data || item.sprice,
+                                'has_custom_sprice': true,
+                                'SPRICE_STATUS': response.SPRICE_STATUS != null ? response.SPRICE_STATUS : null
+                            };
+                            if (response.sgpft_percent !== undefined) updateData['SGPFT'] = response.sgpft_percent;
+                            if (response.spft_percent !== undefined) updateData['Spft%'] = response.spft_percent;
+                            if (response.sroi_percent !== undefined) updateData['SROI'] = response.sroi_percent;
+                            item.row.update(updateData);
+                            item.row.reformat();
+                        },
+                        error: function() {
+                            errorCount++;
+                        },
+                        complete: function() {
+                            if (successCount + errorCount === total) {
+                                $btn.prop('disabled', false).html('<i class="fas fa-calculator"></i> Apply S PRC');
+                                if (errorCount === 0) {
+                                    showToast('success', `S PRC saved for ${successCount} SKU(s) @ Target GPFT ${targetGpftPct}%`);
+                                } else {
+                                    showToast('error', `Saved ${successCount} of ${total} (${errorCount} failed)`);
+                                }
+
+                                // Same cleanup as the Target-ROI handler: wipe BOTH selection
+                                // Sets and every visible checkbox so the next batch starts clean.
+                                if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.clear) {
+                                    selectedSkus.clear();
+                                }
+                                if (typeof selectedRows !== 'undefined' && selectedRows && selectedRows.clear) {
+                                    selectedRows.clear();
+                                }
+                                $('.sku-select-checkbox').prop('checked', false);
+                                $('.row-select-checkbox').prop('checked', false);
+                                $('#select-all-checkbox').prop('checked', false);
+                                $('#select-all-rows').prop('checked', false).prop('indeterminate', false);
+                                if (typeof updateSelectedCount === 'function') {
+                                    updateSelectedCount();
+                                }
+                            }
+                        }
+                    });
+                });
+            });
+
+            // Enter inside the Target GPFT% input triggers Apply S PRC
+            $('#target-gpft-input').on('keypress', function(e) {
+                if (e.which === 13) $('#apply-target-gpft-btn').click();
             });
 
             // Apply Price to Amazon button - delegated event handler
@@ -3039,7 +3483,7 @@
                             else if (cvr > 7 && cvr <= 13) color = '#28a745'; // green
                             else color = '#e83e8c'; // pink
                             
-                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(cvr)}%</span>`;
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const calcCVR = (row) => {
@@ -3073,7 +3517,7 @@
                             else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
                             else if (cvr > 7 && cvr <= 13) color = '#28a745'; // green
                             else color = '#e83e8c'; // pink
-                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(cvr)}%</span>`;
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const calcCVR = (row) => {
@@ -3136,7 +3580,7 @@
                             else if (cvr > 4 && cvr <= 7) color = '#ffc107';
                             else if (cvr > 7 && cvr <= 13) color = '#28a745';
                             else color = '#e83e8c';
-                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span> ${arrowHtml}`.trim();
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(cvr)}%</span> ${arrowHtml}`.trim();
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const calcCVR = (row) => {
@@ -3188,10 +3632,8 @@
                             // Empty for parent rows
                             if (rowData.is_parent_summary) return '';
                             
-                            const isMissingAmazon = rowData.is_missing_amazon || false;
-                            const nrVal = rowData.NR || '';
-                            // Missing L badge/column: exclude NR and FBA from "datasheet missing" indicator
-                            if (isMissingAmazon && nrVal !== 'NR' && !amazonRowIsFba(rowData)) {
+                            // Missing L: same rule as the filter/count (REQ + INV>0 + price<=0, like Reverb)
+                            if (isAmazonMissingL(rowData)) {
                                 return `<span style="font-size: 16px; color: #dc3545; font-weight: bold;">M</span>`;
                             }
                             
@@ -3223,6 +3665,8 @@
                             if (isMissingAmazon || rowPrice <= 0) return '';
                             
                             const invAmz = parseFloat(rowData.INV_AMZ) || 0;
+                            // Same as /map-issues: both sides must have stock to be Map / Missing M.
+                            if (invAmz <= 0) return '';
                             const difference = Math.abs(inv - invAmz);
                             
                             if (amazonInvWithinMapTolerance(inv, invAmz)) {
@@ -3661,13 +4105,17 @@
 
                             let html = '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">';
                             
-                            // Show lowest price OUTSIDE modal
+                            // Show lowest price OUTSIDE modal (incl. shipping if applied)
                             if (lmpPrice) {
-                                const priceFormatted = '$' + parseFloat(lmpPrice).toFixed(2);
+                                const base = parseFloat(lmpPrice) || 0;
+                                const finalPrice = lmpWithShipping(rowData);
+                                const shipCost = finalPrice - base;
+                                const priceFormatted = '$' + finalPrice.toFixed(2);
                                 const currentPrice = parseFloat(rowData.price || 0);
-                                const priceColor = (lmpPrice < currentPrice) ? '#dc3545' : '#28a745';
-                                
-                                html += `<span style="color: ${priceColor}; font-weight: 600; font-size: 14px;">${priceFormatted}</span>`;
+                                const priceColor = (finalPrice < currentPrice) ? '#dc3545' : '#28a745';
+
+                                const shipTip = shipCost > 0 ? ` title="$${base.toFixed(2)} + $${shipCost.toFixed(2)} ship"` : '';
+                                html += `<span style="color: ${priceColor}; font-weight: 600; font-size: 14px;"${shipTip}>${priceFormatted}</span>`;
                             }
                             
                             // Show link to open modal with all competitors
@@ -3682,6 +4130,41 @@
                             return html;
                         },
                         width: 100
+                    },
+                    {
+                        title: "Diff",
+                        field: "lmp_diff_pct",
+                        hozAlign: "center",
+                        width: 80,
+                        headerSortStartingDir: "desc",
+                        sorter: function(a, b, aRow, bRow) {
+                            const calc = function(rd) {
+                                const lmp = lmpWithShipping(rd);
+                                const price = parseFloat(rd.price || 0);
+                                if (!lmp || lmp <= 0) return -Infinity;
+                                return ((lmp - price) / lmp) * 100;
+                            };
+                            return calc(aRow.getData()) - calc(bRow.getData());
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+
+                            // Empty for parent rows
+                            if (rowData.is_parent_summary) return '';
+
+                            const lmp = lmpWithShipping(rowData);
+                            const price = parseFloat(rowData.price || 0);
+
+                            if (!lmp || lmp <= 0) {
+                                return '<span style="color: #999;">N/A</span>';
+                            }
+
+                            // (LMP incl. shipping - Amazon price) / LMP, as a percentage
+                            const diff = ((lmp - price) / lmp) * 100;
+                            const color = diff < 0 ? '#dc3545' : '#28a745';
+
+                            return `<span style="color: ${color}; font-weight: 600;">${diff.toFixed(1)}%</span>`;
+                        }
                     },
                     {
                         title: "Select",
@@ -4524,6 +5007,7 @@
                 const nrlFilter = $('#nrl-filter').val();
                 const gpftFilter = $('#gpft-filter').val();
                 const roiFilter = $('#roi-filter').val();
+                const diffFilter = $('#diff-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
                 const cvrTrendFilter = $('#cvr-trend-filter').val();
                 const dilFilter = $('#dil-filter').val();
@@ -4599,8 +5083,7 @@
                         if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
                         if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
                         if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
-                        if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
-                        if (gpftFilter === '50plus') return gpft >= 50;
+                        if (gpftFilter === '40plus') return gpft >= 40;
                         return true;
                     });
                 }
@@ -4610,9 +5093,23 @@
                         if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         const roiVal = parseFloat(data['GROI%']) || 0;
                         if (roiFilter === 'lt40') return roiVal < 40;
-                        if (roiFilter === 'gt250') return roiVal > 250;
+                        if (roiFilter === 'gt125') return roiVal > 125;
                         const [min, max] = roiFilter.split('-').map(Number);
                         return roiVal >= min && roiVal <= max;
+                    });
+                }
+
+                if (diffFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
+                        const lmp = lmpWithShipping(data);
+                        const price = parseFloat(data.price || 0);
+                        if (!lmp || lmp <= 0) return false;
+                        const diff = ((lmp - price) / lmp) * 100;
+                        if (diffFilter === 'lt80') return diff < 80;
+                        if (diffFilter === '80-100') return diff >= 80 && diff <= 100;
+                        if (diffFilter === 'gt100') return diff > 100;
+                        return true;
                     });
                 }
 
@@ -4625,9 +5122,8 @@
                         const cvrRounded = Math.round(cvr * 100) / 100;
 
                         if (cvrFilter === '0-0') return cvrRounded === 0;
-                        if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                        if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                        if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                        if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                        if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                         if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                         if (cvrFilter === '13plus') return cvrRounded > 13;
                         return true;
@@ -4704,12 +5200,14 @@
 
                 // Play / Pause filter is applied at top of applyFilters when isProductNavigationActive (early return)
 
-                // SKU search: match SKU (or Parent for parent rows)
-                var searchVal = ($('#sku-search').val() || '').trim().toLowerCase();
+                // SKU search: match SKU (or Parent for parent rows).
+                // Normalize away all whitespace + case so inconsistently formatted SKUs
+                // (e.g. "CAPO BLUE 2 Pcs" vs "CAPO BLUE 2PCS") still match.
+                var searchVal = ($('#sku-search').val() || '').replace(/\s+/g, '').toLowerCase();
                 if (searchVal) {
                     table.addFilter(function(data) {
                         var sku = (data.is_parent_summary ? (data.Parent || data['(Child) sku'] || data.sku || '') : (data['(Child) sku'] || data.sku || ''));
-                        sku = (sku + '').toLowerCase();
+                        sku = (sku + '').replace(/\s+/g, '').toLowerCase();
                         return sku.indexOf(searchVal) !== -1;
                     });
                 }
@@ -4787,6 +5285,8 @@
                         if (inv <= 0 || nrValue !== 'REQ' || isMissingAmazon || price <= 0) return false;
                         
                         const invAmz = parseFloat(data.INV_AMZ) || 0;
+                        // Same as /map-issues: both sides must have stock to be Map / N Map.
+                        if (invAmz <= 0) return false;
                         
                         if (mapFilterActive === 'mapped') {
                             return amazonInvWithinMapTolerance(inv, invAmz);
@@ -4828,12 +5328,16 @@
                         return !!(data.is_missing_amazon && !rowIsFba(data) && nr !== 'NR');
                     });
                 }
-                // Missing L filter — all (header dot): not listed on Amazon. Exclude parent, NR, and FBA (same as badge logic).
+                // Missing L filter — all (header dot): same Reverb-style rule as the column 'M' and badge (REQ + INV>0 + price<=0).
                 if (missingAmazonFilterActive) {
                     table.addFilter(function(data) {
-                        if (isParentRow(data)) return false;
-                        const nr = data.NR || '';
-                        return !!(data.is_missing_amazon && nr !== 'NR' && !rowIsFba(data));
+                        return isAmazonMissingL(data);
+                    });
+                }
+                // Missing L (all) badge — same rule as /map-issues: not listed, REQ, INV > 0 (FBA + FBM).
+                if (missingLAmzFilterActive) {
+                    table.addFilter(function(data) {
+                        return isAmazonMissingL(data);
                     });
                 }
 
@@ -4846,7 +5350,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #sprice-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #diff-filter, #cvr-filter, #cvr-trend-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #sprice-filter').on('change', function() {
                 applyFilters();
             });
 
@@ -4970,6 +5474,7 @@
                 let missingCount = 0;
                 let missingAmazonFbaCount = 0;
                 let missingAmazonNonFbaCount = 0;
+                let missingLAmzCount = 0;
                 let variationCount = 0;
                 
                 // Variation count (NRL / red dot rows - all rows including parents)
@@ -5014,13 +5519,16 @@
                             missingAmazonNonFbaCount++;
                         }
                         
-                        // Map / Missing M: REQ, listed, price > 0; FBA rows excluded from mismatch count only
+                        // Map / Missing M: REQ, listed, price > 0, Amazon stock > 0 (same as /map-issues);
+                        // FBA rows excluded from mismatch count only
                         if (inv > 0 && nrValue === 'REQ' && !isMissingAmazon && rowPrice > 0) {
                             const invAmzNum = parseFloat(row['INV_AMZ'] || 0);
-                            if (amazonInvWithinMapTolerance(inv, invAmzNum)) {
-                                mapCount++;
-                            } else if (!amazonRowIsFba(row)) {
-                                missingCount++; // Inventory mismatch beyond 3% tolerance (non-FBA only)
+                            if (invAmzNum > 0) {
+                                if (amazonInvWithinMapTolerance(inv, invAmzNum)) {
+                                    mapCount++;
+                                } else if (!amazonRowIsFba(row)) {
+                                    missingCount++; // Inventory mismatch beyond tolerance (non-FBA only)
+                                }
                             }
                         }
                         
@@ -5068,6 +5576,13 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 // Update Missing L FBA and Missing M FBM counts
                 $('#missing-amazon-fba-count').text(missingAmazonFbaCount.toLocaleString());
                 $('#missing-amazon-nonfba-count').text(missingAmazonNonFbaCount.toLocaleString());
+
+                // Missing L (all, same as /map-issues): not listed on Amazon, REQ, INV > 0 (FBA + FBM).
+                // Counted over the FULL dataset so not-listed rows hidden by active filters are included.
+                table.getData().forEach(function(row) {
+                    if (isAmazonMissingL(row)) missingLAmzCount++;
+                });
+                $('#missing-l-amz-count').text(missingLAmzCount.toLocaleString());
                 var $missingFbaBadge = $('#missing-amazon-fba-badge');
                 var $missingNonFbaBadge = $('#missing-amazon-nonfba-badge');
                 if (missingAmazonFbaCount > 0) {
@@ -5132,25 +5647,35 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 }
             }
 
-            // Build Column Visibility Dropdown
+            /*
+             * Column visibility (every column for this page) persists in the shared DB table
+             * `channel_tabulator_column_settings` under channel = 'amazon_tabulator'. We hit the
+             * same /tabulator-column-visibility endpoint used by the ebay2/ebay3/mfrg tabulators
+             * so a single row owns the show/hide map for everyone on this view.
+             */
             function buildColumnDropdown() {
                 const menu = document.getElementById("column-dropdown-menu");
+                if (!menu) return;
                 menu.innerHTML = '';
 
-                fetch('/amazon-column-visibility', {
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                         method: 'GET',
                         headers: {
+                            'Content-Type': 'application/json',
                             'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                         }
                     })
                     .then(res => res.json())
-                    .then(visibility => {
+                    .then(savedVisibility => {
+                        const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
                         table.getColumns().forEach(col => {
                             const def = col.getDefinition();
                             const field = def.field;
                             if (!field) return;
 
-                            const isVisible = col.isVisible();
+                            // Prefer the saved value; fall back to the column's current visibility.
+                            // Anything explicitly set to false in the table = hidden.
+                            const isVisible = map.hasOwnProperty(field) ? (map[field] !== false) : col.isVisible();
                             const li = document.createElement("li");
                             li.innerHTML =
                                 `<label class="dropdown-item"><input type="checkbox" ${isVisible ? 'checked' : ''} data-field="${field}"> ${def.title}</label>`;
@@ -5169,31 +5694,34 @@ $('#nmap-count').text(missingCount.toLocaleString());
                     }
                 });
 
-                fetch('/amazon-column-visibility', {
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
                     method: 'POST',
                     headers: {
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                     },
                     body: JSON.stringify({
-                        visibility
+                        channel: TABULATOR_COLUMN_CHANNEL,
+                        visibility: visibility
                     })
                 }).catch(err => console.error('Error saving column visibility:', err));
             }
 
             function applyColumnVisibilityFromServer() {
-                fetch('/amazon-column-visibility', {
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                         method: 'GET',
                         headers: {
+                            'Content-Type': 'application/json',
                             'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                         }
                     })
                     .then(res => res.json())
-                    .then(visibility => {
+                    .then(savedVisibility => {
+                        if (!savedVisibility || typeof savedVisibility !== 'object') return;
                         table.getColumns().forEach(col => {
                             const field = col.getDefinition().field;
-                            if (field && visibility.hasOwnProperty(field)) {
-                                if (visibility[field]) {
+                            if (field && savedVisibility.hasOwnProperty(field)) {
+                                if (savedVisibility[field]) {
                                     col.show();
                                 } else {
                                     col.hide();
@@ -5857,6 +6385,7 @@ $('#nmap-count').text(missingCount.toLocaleString());
                             <th style="width: 60px;">Type</th>
                             <th style="width: 70px;">Rating</th>
                             <th style="width: 70px;">Reviews</th>
+                            <th style="width: 140px;">Delivery</th>
                             <th style="width: 60px;">Link</th>
                             <th style="width: 80px;">Actions</th>
                         </tr>
@@ -5865,12 +6394,26 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 `;
                 
                 competitors.forEach((item, index) => {
+                    const basePrice = parseFloat(item.price) || 0;
+
+                    let shipCost = 0;
+                    if (item.delivery) {
+                        const paidMatch = String(item.delivery).match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
+                        if (paidMatch) {
+                            shipCost = parseFloat(paidMatch[1].replace(/,/g, '')) || 0;
+                        }
+                    }
+                    const totalPrice = basePrice + shipCost;
+
                     const isLowest = Math.abs(parseFloat(item.price) - parseFloat(lowestPrice)) < 0.01;
                     const rowClass = isLowest ? 'table-success' : '';
-                    const priceFormatted = '$' + parseFloat(item.price).toFixed(2);
-                    const priceBadge = isLowest ? 
-                        `<span class="badge bg-success">${priceFormatted} <i class="fa fa-trophy"></i></span>` : 
-                        `<strong>${priceFormatted}</strong>`;
+                    const totalFormatted = '$' + totalPrice.toFixed(2);
+                    const priceInner = shipCost > 0
+                        ? `${totalFormatted}<br><small style="color:#888;font-weight:400;">$${basePrice.toFixed(2)} + $${shipCost.toFixed(2)} ship</small>`
+                        : totalFormatted;
+                    const priceBadge = isLowest ?
+                        `<span class="badge bg-success">${priceInner} <i class="fa fa-trophy"></i></span>` :
+                        `<strong>${priceInner}</strong>`;
                     
                     const productLink = item.link || item.product_link || '#';
                     const productTitle = item.title || item.product_title || 'N/A';
@@ -5885,6 +6428,19 @@ $('#nmap-count').text(missingCount.toLocaleString());
                     
                     const rating = item.rating ? `<span style="color: #ffc107;">${parseFloat(item.rating).toFixed(1)} <i class="fa fa-star"></i></span>` : '<span style="color: #999;">—</span>';
                     const reviews = item.reviews ? `<span>${parseInt(item.reviews).toLocaleString()}</span>` : '<span style="color: #999;">—</span>';
+
+                    let deliveryHtml = '<span style="color: #999;">—</span>';
+                    if (item.delivery) {
+                        const isFree = /free/i.test(item.delivery);
+                        const paidMatch = String(item.delivery).match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
+                        if (paidMatch) {
+                            deliveryHtml = `<span style="color: #dc3545; font-weight: 600;" title="${escAttr(item.delivery)}">$${paidMatch[1]} ship</span>`;
+                        } else if (isFree) {
+                            deliveryHtml = `<span style="color: #28a745; font-weight: 600;" title="${escAttr(item.delivery)}">FREE</span>`;
+                        } else {
+                            deliveryHtml = `<span style="font-size: 10px;" title="${escAttr(item.delivery)}">${String(item.delivery).substring(0, 22)}${String(item.delivery).length > 22 ? '…' : ''}</span>`;
+                        }
+                    }
                     
                     html += `
                         <tr class="${rowClass}">
@@ -5900,8 +6456,9 @@ $('#nmap-count').text(missingCount.toLocaleString());
                             <td class="text-center">${units}</td>
                             <td style="font-size: 11px;">${buyBox}</td>
                             <td class="text-center">${sellerType}</td>
-                            <td class="text-center">${rating}</td>
+                             <td class="text-center">${rating}</td>
                             <td class="text-center">${reviews}</td>
+                            <td class="text-center">${deliveryHtml}</td>
                             <td class="text-center">
                                 <a href="${productLink}" target="_blank" class="btn btn-sm btn-info" title="View Product on Amazon">
                                     <i class="fa fa-external-link"></i>
@@ -6194,6 +6751,105 @@ $('#nmap-count').text(missingCount.toLocaleString());
             window.URL.revokeObjectURL(url);
             
             showToast('success', 'Exported ' + data.length + ' rows');
+        });
+
+        // Export LMP — flatten all competitor entries for every SKU into one CSV
+        $('#export-lmp-btn').on('click', function() {
+            if (!table) {
+                alert('Table not loaded');
+                return;
+            }
+
+            const allRows = table.getData();
+            const lmpRows = [];
+
+            allRows.forEach(function(row) {
+                if (row.is_parent_summary) return;
+                const sku = row['(Child) sku'] || '';
+                const currentPrice = row.price || '';
+                const entries = row.lmp_entries || [];
+
+                if (entries.length === 0) {
+                    // Include SKU with no competitors so every SKU is represented
+                    lmpRows.push({
+                        sku: sku,
+                        current_price: currentPrice,
+                        lmp_lowest: row.lmp_price || '',
+                        comp_asin: '',
+                        comp_title: '',
+                        comp_price: '',
+                        comp_seller: '',
+                        comp_rating: '',
+                        comp_reviews: '',
+                        comp_monthly_revenue: '',
+                        comp_monthly_units: '',
+                        comp_buy_box_owner: '',
+                        comp_seller_type: '',
+                        comp_link: ''
+                    });
+                } else {
+                    entries.forEach(function(comp) {
+                        lmpRows.push({
+                            sku: sku,
+                            current_price: currentPrice,
+                            lmp_lowest: row.lmp_price || '',
+                            comp_asin: comp.asin || '',
+                            comp_title: comp.title || comp.product_title || '',
+                            comp_price: comp.price !== null && comp.price !== undefined ? comp.price : '',
+                            comp_seller: comp.seller_name || '',
+                            comp_rating: comp.rating !== null && comp.rating !== undefined ? comp.rating : '',
+                            comp_reviews: comp.reviews !== null && comp.reviews !== undefined ? comp.reviews : '',
+                            comp_monthly_revenue: comp.monthly_revenue !== null && comp.monthly_revenue !== undefined ? comp.monthly_revenue : '',
+                            comp_monthly_units: comp.monthly_units_sold !== null && comp.monthly_units_sold !== undefined ? comp.monthly_units_sold : '',
+                            comp_buy_box_owner: comp.buy_box_owner || '',
+                            comp_seller_type: comp.seller_type || '',
+                            comp_link: comp.link || comp.product_link || ''
+                        });
+                    });
+                }
+            });
+
+            if (lmpRows.length === 0) {
+                alert('No LMP data to export');
+                return;
+            }
+
+            const headers = [
+                'SKU', 'Current Price', 'LMP Lowest', 'Comp ASIN', 'Comp Title',
+                'Comp Price', 'Comp Seller', 'Rating', 'Reviews',
+                'Monthly Revenue', 'Monthly Units', 'Buy Box Owner', 'Seller Type', 'Link'
+            ];
+            const fields = [
+                'sku', 'current_price', 'lmp_lowest', 'comp_asin', 'comp_title',
+                'comp_price', 'comp_seller', 'comp_rating', 'comp_reviews',
+                'comp_monthly_revenue', 'comp_monthly_units', 'comp_buy_box_owner', 'comp_seller_type', 'comp_link'
+            ];
+
+            function escapeCsvCell(val) {
+                val = String(val === null || val === undefined ? '' : val);
+                val = val.replace(/"/g, '""');
+                if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+                    val = '"' + val + '"';
+                }
+                return val;
+            }
+
+            let csv = headers.map(escapeCsvCell).join(',') + '\n';
+            lmpRows.forEach(function(r) {
+                csv += fields.map(function(f) { return escapeCsvCell(r[f]); }).join(',') + '\n';
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'Amazon_LMP_Export_' + new Date().toISOString().split('T')[0] + '.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+
+            showToast('success', 'Exported LMP data for ' + lmpRows.length + ' competitor rows');
         });
     </script>
 @endsection

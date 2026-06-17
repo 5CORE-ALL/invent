@@ -1,0 +1,752 @@
+@extends('layouts.vertical', ['title' => 'All Orders', 'sidenav' => 'condensed'])
+
+@section('css')
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <style>
+        .source-badge {
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            border-radius: 20px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .source-badge.active {
+            border-color: #fff;
+            box-shadow: 0 0 0 2px currentColor;
+        }
+        .stat-card {
+            border-radius: 10px;
+            padding: 14px 18px;
+            min-width: 160px;
+            flex: 1;
+        }
+        .stat-card .stat-label {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            opacity: 0.8;
+            margin-bottom: 2px;
+        }
+        .stat-card .stat-value {
+            font-size: 1.25rem;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        .stat-card .stat-sub {
+            font-size: 0.78rem;
+            opacity: 0.85;
+            margin-top: 2px;
+        }
+        #shopify-raw-table .tabulator-header .tabulator-col-title {
+            font-size: 11.5px;
+            font-weight: 600;
+        }
+        .filter-bar {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 10px 14px;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .ord-eye {
+            cursor: pointer;
+            color: #0d6efd;
+            font-size: 14px;
+        }
+        .ord-eye:hover { color: #0a58ca; }
+        #ord-pop {
+            position: fixed;
+            display: none;
+            align-items: center;
+            gap: 10px;
+            background: #212529;
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12.5px;
+            font-weight: 600;
+            white-space: nowrap;
+            z-index: 99999;
+            box-shadow: 0 2px 10px rgba(0,0,0,.35);
+        }
+        #ord-pop .ord-copy {
+            cursor: pointer;
+            color: #adb5bd;
+            transition: color .15s;
+        }
+        #ord-pop .ord-copy:hover { color: #4dd4e8; }
+    </style>
+@endsection
+
+@section('script')
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+@endsection
+
+@section('content')
+    @include('layouts.shared.page-title', [
+        'page_title' => 'All Orders',
+        'sub_title'  => 'Raw order-item records filtered by source / tag',
+    ])
+
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999;"></div>
+
+    {{-- Stats Row --}}
+    <div class="row g-3 mb-3" id="stats-row">
+        <div class="col-12">
+            <div class="d-flex flex-wrap gap-3" id="stat-cards">
+                <div class="stat-card bg-primary text-white">
+                    <div class="stat-label">Total Orders</div>
+                    <div class="stat-value" id="stat-total-orders">—</div>
+                    <div class="stat-sub">all sources</div>
+                </div>
+                <div class="stat-card bg-success text-white">
+                    <div class="stat-label">Total Revenue</div>
+                    <div class="stat-value" id="stat-total-revenue">—</div>
+                    <div class="stat-sub">all sources</div>
+                </div>
+                <div class="stat-card bg-info text-white">
+                    <div class="stat-label">Total Qty</div>
+                    <div class="stat-value" id="stat-total-qty">—</div>
+                    <div class="stat-sub">all sources</div>
+                </div>
+                {{-- per-source stat cards injected by JS --}}
+                <div id="per-source-stats" class="d-flex flex-wrap gap-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="card shadow-sm">
+            <div class="card-body py-3">
+                <h4 class="mb-3">All Orders
+                    <small class="text-muted fs-6 ms-2">— checkout-via-buy-now-button · wsaio-app · shopify_draft_order</small>
+                </h4>
+
+                {{-- Filter bar --}}
+                <div class="d-flex align-items-center filter-bar mb-3">
+                    {{-- Source tabs --}}
+                    <div class="d-flex gap-2 align-items-center flex-wrap me-3">
+                        <span class="fw-semibold text-muted me-1" style="font-size:0.82rem;">Source / Tag:</span>
+                        <span class="badge bg-dark source-badge active" data-source="all">All</span>
+                        <span class="badge source-badge" data-source="checkout-via-buy-now-button"
+                              style="background-color:#6f42c1;">Buy Now Button</span>
+                        <span class="badge source-badge" data-source="wsaio-app"
+                              style="background-color:#fd7e14;">WSAIO App</span>
+                        <span class="badge source-badge" data-source="shopify_draft_order"
+                              style="background-color:#0dcaf0; color:#000;">Draft Order</span>
+                    </div>
+
+                    <div class="vr mx-2"></div>
+
+                    {{-- Date range --}}
+                    <div class="d-flex gap-2 align-items-center flex-wrap">
+                        <label class="fw-semibold text-muted mb-0" style="font-size:0.82rem;">Date:</label>
+                        <input type="text" id="date-from" class="form-control form-control-sm" placeholder="From" style="width:130px;">
+                        <span class="text-muted">–</span>
+                        <input type="text" id="date-to" class="form-control form-control-sm" placeholder="To" style="width:130px;">
+                        <button class="btn btn-sm btn-primary" id="apply-date-btn">
+                            <i class="fa fa-filter me-1"></i>Apply
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" id="reset-date-btn">Reset</button>
+                    </div>
+
+                    <div class="vr mx-2"></div>
+
+                    {{-- Column visibility --}}
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                            id="colVisBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa fa-eye me-1"></i>Columns
+                        </button>
+                        <ul class="dropdown-menu" id="col-dropdown" style="max-height:400px;overflow-y:auto;min-width:200px;"></ul>
+                    </div>
+                    <button class="btn btn-sm btn-outline-secondary ms-1" id="show-all-cols-btn">Show All</button>
+
+                    <div class="vr mx-2"></div>
+
+                    {{-- Export --}}
+                    <button class="btn btn-sm btn-success" id="export-btn">
+                        <i class="fa fa-file-excel me-1"></i>Export CSV
+                    </button>
+                </div>
+
+                {{-- Table inline stats --}}
+                <div class="d-flex flex-wrap gap-2 mb-2" id="table-stats">
+                    <span class="badge bg-primary fs-6 p-2" id="tbl-orders">Orders: 0</span>
+                    <span class="badge bg-success fs-6 p-2" id="tbl-qty">Qty: 0</span>
+                    <span class="badge bg-secondary fs-6 p-2" id="tbl-revenue">Gross: $0.00</span>
+                    <span class="badge bg-danger fs-6 p-2" id="tbl-discount">Discount: $0.00</span>
+                    <span class="badge bg-dark fs-6 p-2" id="tbl-net">Net Sales: $0.00</span>
+                </div>
+            </div>
+
+            <div class="card-body p-0">
+                <div style="height:calc(100vh - 280px); display:flex; flex-direction:column;">
+                    <div class="p-2 bg-light border-bottom">
+                        <div class="row g-2 align-items-center">
+                            <div class="col-md-2">
+                                <input type="text" id="search-source" class="form-control form-control-sm"
+                                    placeholder="Search Source...">
+                            </div>
+                            <div class="col-md-3">
+                                <input type="text" id="search-sku" class="form-control form-control-sm"
+                                    placeholder="Search SKU...">
+                            </div>
+                            <div class="col-md-2">
+                                <input type="text" id="search-order" class="form-control form-control-sm"
+                                    placeholder="Search Order #...">
+                            </div>
+                            <div class="col-md-2">
+                                <input type="text" id="search-customer" class="form-control form-control-sm"
+                                    placeholder="Search Customer...">
+                            </div>
+                            <div class="col-md-3">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text bg-white">
+                                        <i class="fa fa-tag text-muted" style="font-size:11px;"></i>
+                                    </span>
+                                    <input type="text" id="search-tag" class="form-control form-control-sm"
+                                        placeholder="Search Tag... (e.g. wsaio-app)">
+                                    <button class="btn btn-outline-secondary btn-sm" id="clear-tag-btn" title="Clear tag search">
+                                        <i class="fa fa-times"></i>
+                                    </button>
+                                </div>
+                                <div id="tag-suggestions" class="mt-1 d-flex flex-wrap gap-1">
+                                    <span class="badge border tag-pill" data-tag="wsaio-app"
+                                          style="background:#fd7e14;color:#fff;cursor:pointer;font-size:0.72rem;">wsaio-app</span>
+                                    <span class="badge border tag-pill" data-tag="checkout-via-buy-now-button"
+                                          style="background:#6f42c1;color:#fff;cursor:pointer;font-size:0.72rem;">buy-now-button</span>
+                                    <span class="badge border tag-pill" data-tag="shopify_draft_order"
+                                          style="background:#0dcaf0;color:#000;cursor:pointer;font-size:0.72rem;">draft-order</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="shopify-raw-table" style="flex:1;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+
+@section('script-bottom')
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+    $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' } });
+
+    // ── State ──────────────────────────────────────────────────────────────
+    let table       = null;
+    let activeSource = 'all';
+    const SOURCE_COLORS = {
+        'all'                          : '#343a40',
+        'checkout-via-buy-now-button'  : '#6f42c1',
+        'wsaio-app'                    : '#fd7e14',
+        'shopify_draft_order'          : '#0dcaf0',
+    };
+    const SOURCE_LABELS = {
+        'all'                          : 'All Sources',
+        'checkout-via-buy-now-button'  : 'Buy Now Button',
+        'wsaio-app'                    : 'WSAIO App',
+        'shopify_draft_order'          : 'Draft Order',
+    };
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+    function showToast(msg, type = 'info') {
+        const wrap = document.querySelector('.toast-container');
+        if (!wrap) return;
+        const el = document.createElement('div');
+        el.className = `toast align-items-center text-white bg-${type === 'error' ? 'danger' : type} border-0`;
+        el.setAttribute('role','alert');
+        el.setAttribute('aria-live','assertive');
+        el.setAttribute('aria-atomic','true');
+        el.innerHTML = `<div class="d-flex"><div class="toast-body">${msg}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+        wrap.appendChild(el);
+        new bootstrap.Toast(el).show();
+        el.addEventListener('hidden.bs.toast', () => el.remove());
+    }
+
+    function fmtMoney(v) {
+        if (v == null || v === '') return '—';
+        return '$' + parseFloat(v).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
+
+    function fmtDate(v) {
+        if (!v) return '';
+        const d = new Date(v);
+        return isNaN(d.getTime()) ? v : d.toLocaleDateString('en-US') + ' ' + d.toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit'});
+    }
+
+    // Normalized shipment status -> badge styling (matches ShipmentTrackingService)
+    const SHIPMENT_STATUS_META = {
+        Pending:            { color: '#6c757d', label: 'Pending',     icon: 'fa-clock' },
+        InfoReceived:       { color: '#0dcaf0', label: 'Info Rcvd',   icon: 'fa-circle-info' },
+        InTransit:          { color: '#0d6efd', label: 'In Transit',  icon: 'fa-truck' },
+        OutForDelivery:     { color: '#fd7e14', label: 'Out for Del', icon: 'fa-truck-fast' },
+        AvailableForPickup: { color: '#6f42c1', label: 'Pickup',      icon: 'fa-box-open' },
+        Delivered:          { color: '#28a745', label: 'Delivered',   icon: 'fa-circle-check' },
+        DeliveryFailure:    { color: '#dc3545', label: 'Failed',      icon: 'fa-triangle-exclamation' },
+        Exception:          { color: '#dc3545', label: 'Exception',   icon: 'fa-triangle-exclamation' },
+        Expired:            { color: '#adb5bd', label: 'Expired',     icon: 'fa-hourglass-end' },
+        NotFound:           { color: '#6c757d', label: 'Not Found',   icon: 'fa-circle-question' },
+    };
+
+    // ── Date pickers ───────────────────────────────────────────────────────
+    const fpFrom = flatpickr('#date-from', { dateFormat: 'Y-m-d', defaultDate: new Date(Date.now() - 30*86400*1000) });
+    const fpTo   = flatpickr('#date-to',   { dateFormat: 'Y-m-d', defaultDate: new Date() });
+
+    // ── Build AJAX params ──────────────────────────────────────────────────
+    function buildParams() {
+        return {
+            source    : activeSource,
+            date_from : $('#date-from').val(),
+            date_to   : $('#date-to').val(),
+            page      : 'raw',   // skip marketplace exclusions — show all records
+        };
+    }
+
+    // ── Tabulator init ─────────────────────────────────────────────────────
+    function buildTable(data) {
+        if (table) { table.destroy(); }
+
+        table = new Tabulator('#shopify-raw-table', {
+            data             : data,
+            layout           : 'fitDataStretch',
+            pagination       : true,
+            paginationSize   : 100,
+            paginationSizeSelector: [25, 50, 100, 200, 500],
+            paginationCounter: 'rows',
+            height           : '100%',
+            initialSort      : [{ column: 'order_date', dir: 'desc' }],
+            langs: { default: { pagination: {
+                page_size:'Show', first:'First', last:'Last', prev:'Prev', next:'Next',
+                counter:{ showing:'Showing', of:'of', rows:'rows' }
+            }}},
+            columns: [
+                {
+                    title: 'Source', field: 'source_name', width: 140, frozen: true,
+                    formatter: function(cell) {
+                        const v      = cell.getValue() || '';
+                        const tags   = (cell.getRow().getData().tags || '').trim();
+                        const tLower = tags.toLowerCase();
+                        let display = v || 'Unknown', color = '#ffc107';
+                        if (!tags) {
+                            display = 'Unknown'; color = '#ffc107';
+                        } else if (v === 'shopify_draft_order' || tLower.includes('shopify_draft_order')) {
+                            color = '#0dcaf0'; display = 'Draft Order';
+                        } else if (v === 'wsaio-app' || tLower.includes('wsaio-app')) {
+                            color = '#fd7e14'; display = 'WSAIO App';
+                        } else if (tLower.includes('checkout-via-buy-now-button')) {
+                            color = '#6f42c1'; display = 'Buy Now Btn';
+                        }
+                        const txt = (color === '#0dcaf0' || color === '#ffc107') ? '#000' : '#fff';
+                        return `<span class="badge" style="background:${color};color:${txt};">${display}</span>`;
+                    }
+                },
+                {
+                    title: 'Ord.', field: 'order_number', width: 70, frozen: true, sorter: 'string', hozAlign: 'center',
+                    headerHozAlign: 'center',
+                    formatter: function(cell) {
+                        const v = cell.getValue() || '';
+                        if (!v) return '<span class="text-muted">—</span>';
+                        const safe = String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+                        return `<i class="fas fa-eye ord-eye" data-order="${safe}"></i>`;
+                    }
+                },
+                { title: 'Order ID', field: 'order_id',     width: 160, visible: false },
+                {
+                    title: 'SKU', field: 'sku', width: 160, frozen: true,
+                    headerFilter: 'input', headerFilterPlaceholder: 'Filter SKU…',
+                    cssClass: 'text-primary fw-bold',
+                },
+                { title: 'Product Title', field: 'product_title', width: 280, tooltip: true, visible: false },
+                { title: 'Qty',   field: 'quantity',    width: 70,  hozAlign: 'center', sorter: 'number' },
+                { title: 'Price', field: 'price',       width: 100, hozAlign: 'right',  sorter: 'number', formatter: cell => fmtMoney(cell.getValue()) },
+                { title: 'Total', field: 'total_amount',width: 110, hozAlign: 'right',  sorter: 'number', formatter: cell => fmtMoney(cell.getValue()) },
+                {
+                    title: 'Code.', field: 'discount_codes', width: 70, hozAlign: 'center', headerHozAlign: 'center',
+                    formatter: function(cell) {
+                        const v = cell.getValue();
+                        if (!v) return '<span class="text-muted">—</span>';
+                        const codes = v.split(',').map(c => c.trim()).filter(Boolean).join(', ');
+                        const safe = String(codes).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+                        return `<i class="fas fa-eye ord-eye" data-order="${safe}"></i>`;
+                    }
+                },
+                {
+                    title: 'Discount $', field: 'discount_amount', width: 105, hozAlign: 'right', sorter: 'number',
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (!v) return '<span class="text-muted">—</span>';
+                        return `<span class="text-danger">-$${v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
+                    }
+                },
+                {
+                    title: 'Net Sales', field: 'net_sales', width: 110, hozAlign: 'right', sorter: 'number',
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (isNaN(v)) return '—';
+                        return `<strong>$${v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>`;
+                    }
+                },
+                {
+                    title: 'Order Total', field: 'order_total', width: 110, hozAlign: 'right', sorter: 'number',
+                    visible: false,
+                    tooltip: 'Actual total paid for the whole order',
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (isNaN(v) || v === 0) return '<span class="text-muted">—</span>';
+                        return `<span class="badge bg-success">$${v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
+                    }
+                },
+                {
+                    title: 'Order Date', field: 'order_date', width: 100, sorter: 'datetime',
+                    formatter: function(cell) {
+                        const v = cell.getValue();
+                        if (!v) return '';
+                        const d = new Date(v);
+                        if (isNaN(d.getTime())) return v;
+                        const short = d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' });
+                        const full  = fmtDate(v).replace(/"/g, '&quot;');
+                        return `<span title="${full}">${short}</span>`;
+                    },
+                },
+                {
+                    title: 'Fin. Status', field: 'financial_status', width: 110,
+                    formatter: cell => cell.getValue() || '—'
+                },
+                {
+                    title: 'Fulfill. Status', field: 'fulfillment_status', width: 120, hozAlign: 'center', headerHozAlign: 'center',
+                    formatter: function(cell) {
+                        const v = (cell.getValue() || '').toString().trim();
+                        const fulfilled = v.toLowerCase() === 'fulfilled';
+                        const color = fulfilled ? '#28a745' : '#dc3545';
+                        const label = v || 'unfulfilled';
+                        return `<span title="${label}" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${color};"></span>`;
+                    }
+                },
+                {
+                    title: 'Customer', field: 'customer_name', width: 160,
+                    headerFilter: 'input', headerFilterPlaceholder: 'Filter…',
+                },
+                { title: 'Email',   field: 'customer_email',  width: 200, tooltip: true, visible: false },
+                { title: 'City',    field: 'shipping_city',   width: 120, visible: false },
+                { title: 'Country', field: 'shipping_country',width: 90,  visible: false },
+                { title: 'Tracking #', field: 'tracking_number',  width: 160, tooltip: true, visible: false },
+                {
+                    title: 'Track N.', field: 'track_view', width: 75, hozAlign: 'center', headerHozAlign: 'center',
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const v = cell.getRow().getData().tracking_number || '';
+                        if (!v) return '<span class="text-muted">—</span>';
+                        const safe = String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+                        return `<i class="fas fa-eye ord-eye" data-order="${safe}"></i>`;
+                    }
+                },
+                {
+                    title: 'Status', field: 'shipment_status', width: 130, hozAlign: 'center', headerHozAlign: 'center',
+                    visible: false,
+                    formatter: function(cell) {
+                        const v = (cell.getValue() || '').toString().trim();
+                        const d = cell.getRow().getData();
+                        const hasTracking = (d.tracking_number || '').toString().trim() !== '';
+                        if (!v) {
+                            return hasTracking
+                                ? '<span class="badge bg-light text-dark border" title="Not checked yet">—</span>'
+                                : '<span class="text-muted">—</span>';
+                        }
+                        const meta = SHIPMENT_STATUS_META[v] || { color: '#6c757d', label: v, icon: 'fa-circle-question' };
+                        const detail = (d.shipment_status_detail || '').toString().replace(/"/g,'&quot;');
+                        const when   = d.shipment_checked_at ? ('  ·  checked ' + fmtDate(d.shipment_checked_at)) : '';
+                        const title  = (detail || meta.label) + when;
+                        return `<span class="badge" title="${title}" style="background:${meta.color};color:#fff;">
+                            <i class="fas ${meta.icon} me-1"></i>${meta.label}</span>`;
+                    }
+                },
+                { title: 'Carrier',    field: 'tracking_company', width: 120, visible: false },
+                {
+                    title: 'Tags', field: 'tags', width: 220, tooltip: true,
+                    formatter: function(cell) {
+                        const v = cell.getValue() || '';
+                        if (!v) return '<span class="badge" style="background:#ffc107;color:#000;">Unknown</span>';
+                        return v.split(',').map(t => t.trim()).filter(Boolean)
+                            .map(t => `<span class="badge bg-light text-dark border me-1">${t}</span>`)
+                            .join('');
+                    }
+                },
+            ]
+        });
+
+        table.on('tableBuilt', () => {
+            applyColumnVisibility();
+            buildColDropdown();
+        });
+
+        table.on('dataProcessed', updateTableStats);
+        table.on('renderComplete',  updateTableStats);
+    }
+
+    // ── Load data ──────────────────────────────────────────────────────────
+    function loadData() {
+        const params = buildParams();
+        showToast('Loading raw data…', 'info');
+
+        $.get('{{ route("shopify-raw-data.get-data") }}', params)
+            .done(function(res) {
+                buildTable(res.data || []);
+                showToast(`Loaded ${(res.data||[]).length} records`, 'success');
+                applySearchFilters();
+            })
+            .fail(function(xhr) {
+                showToast('Error loading data: ' + (xhr.responseJSON?.message || 'Server error'), 'danger');
+            });
+
+        // Stats
+        $.get('{{ route("shopify-raw-data.get-stats") }}', params)
+            .done(function(res) {
+                $('#stat-total-orders').text(Number(res.total_orders).toLocaleString());
+                $('#stat-total-revenue').text(fmtMoney(res.total_revenue));
+                $('#stat-total-qty').text(Number(res.total_qty).toLocaleString());
+
+                const wrap = $('#per-source-stats').empty();
+                const colors = {
+                    'checkout-via-buy-now-button': ['#6f42c1','#fff'],
+                    'wsaio-app'                  : ['#fd7e14','#fff'],
+                    'shopify_draft_order'         : ['#0dcaf0','#000'],
+                };
+                Object.entries(res.by_source || {}).forEach(([src, d]) => {
+                    const [bg, fg] = colors[src] || ['#6c757d','#fff'];
+                    wrap.append(`
+                        <div class="stat-card text-white" style="background:${bg};color:${fg}!important;">
+                            <div class="stat-label" style="color:${fg};">${SOURCE_LABELS[src]||src}</div>
+                            <div class="stat-value" style="color:${fg};">${Number(d.count).toLocaleString()} orders</div>
+                            <div class="stat-sub" style="color:${fg};">${fmtMoney(d.revenue)}</div>
+                        </div>`);
+                });
+            });
+    }
+
+    // ── Table inline stats ─────────────────────────────────────────────────
+    function updateTableStats() {
+        if (!table) return;
+        const rows = table.getData('active');
+        let orders = 0, qty = 0, gross = 0, discount = 0, net = 0;
+        rows.forEach(r => {
+            orders++;
+            qty      += parseInt(r.quantity)        || 0;
+            gross    += parseFloat(r.total_amount)  || 0;
+            discount += parseFloat(r.discount_amount) || 0;
+            net      += parseFloat(r.net_sales)     || 0;
+        });
+        $('#tbl-orders').text('Orders: '   + orders.toLocaleString());
+        $('#tbl-qty').text('Qty: '         + qty.toLocaleString());
+        $('#tbl-revenue').text('Gross: '   + fmtMoney(gross));
+        $('#tbl-discount').text('Discount: ' + fmtMoney(discount));
+        $('#tbl-net').text('Net Sales: '   + fmtMoney(net));
+    }
+
+    // ── Column visibility ──────────────────────────────────────────────────
+    const COL_VIS_KEY = 'shopify_raw_data_col_visibility';
+
+    function applyColumnVisibility() {
+        if (!table) return;
+        try {
+            const saved = JSON.parse(localStorage.getItem(COL_VIS_KEY) || '{}');
+            table.getColumns().forEach(col => {
+                const f = col.getDefinition().field;
+                if (f && saved[f] === false) col.hide();
+            });
+        } catch(e) {}
+    }
+
+    function saveColumnVisibility() {
+        if (!table) return;
+        const vis = {};
+        table.getColumns().forEach(col => {
+            const f = col.getDefinition().field;
+            if (f) vis[f] = col.isVisible();
+        });
+        localStorage.setItem(COL_VIS_KEY, JSON.stringify(vis));
+    }
+
+    function buildColDropdown() {
+        if (!table) return;
+        const menu = document.getElementById('col-dropdown');
+        menu.innerHTML = '';
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem(COL_VIS_KEY) || '{}'); } catch(e){}
+
+        table.getColumns().forEach(col => {
+            const def = col.getDefinition();
+            if (!def.field) return;
+            const li  = document.createElement('li');
+            const lbl = document.createElement('label');
+            lbl.style.cssText = 'display:block;padding:5px 12px;cursor:pointer;';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.value = def.field;
+            cb.checked = saved[def.field] !== false;
+            cb.style.marginRight = '8px';
+            lbl.appendChild(cb);
+            lbl.appendChild(document.createTextNode(def.title));
+            li.appendChild(lbl);
+            menu.appendChild(li);
+        });
+    }
+
+    // ── Search filters ─────────────────────────────────────────────────────
+    function applySearchFilters() {
+        if (!table) return;
+        table.clearFilter();
+        const source   = $('#search-source').val().trim();
+        const sku      = $('#search-sku').val().trim();
+        const orderNum = $('#search-order').val().trim();
+        const customer = $('#search-customer').val().trim();
+        const tag      = $('#search-tag').val().trim();
+        const filters  = [];
+        if (source)   filters.push({ field:'source_name',   type:'like', value:source });
+        if (sku)      filters.push({ field:'sku',           type:'like', value:sku });
+        if (orderNum) filters.push({ field:'order_number',  type:'like', value:orderNum });
+        if (customer) filters.push({ field:'customer_name', type:'like', value:customer });
+        if (tag)      filters.push({ field:'tags',          type:'like', value:tag });
+        if (filters.length) table.setFilter(filters);
+
+        // Highlight active tag pill
+        $('.tag-pill').each(function() {
+            const pill = $(this).data('tag');
+            $(this).css('opacity', (!tag || tag.toLowerCase().includes(pill.toLowerCase()) || pill.toLowerCase().includes(tag.toLowerCase())) ? '1' : '0.4');
+        });
+    }
+
+    // ── Bootstrap ──────────────────────────────────────────────────────────
+    $(document).ready(function () {
+
+        // Initial load
+        loadData();
+
+        // Source badge clicks
+        $('.source-badge').on('click', function () {
+            $('.source-badge').removeClass('active');
+            $(this).addClass('active');
+            activeSource = $(this).data('source');
+            loadData();
+        });
+
+        // Date apply / reset
+        $('#apply-date-btn').on('click', loadData);
+        $('#reset-date-btn').on('click', function () {
+            fpFrom.setDate(new Date(Date.now() - 30*86400*1000));
+            fpTo.setDate(new Date());
+            loadData();
+        });
+
+        // Search inputs
+        $('#search-source, #search-sku, #search-order, #search-customer, #search-tag').on('keyup', applySearchFilters);
+
+        // Quick-pick tag pills
+        $(document).on('click', '.tag-pill', function() {
+            const tag = $(this).data('tag');
+            const current = $('#search-tag').val().trim();
+            // Toggle: clicking the same pill clears it
+            if (current === tag) {
+                $('#search-tag').val('');
+            } else {
+                $('#search-tag').val(tag);
+            }
+            applySearchFilters();
+        });
+
+        // Clear tag button
+        $('#clear-tag-btn').on('click', function() {
+            $('#search-tag').val('');
+            applySearchFilters();
+        });
+
+        // Column visibility dropdown changes
+        document.getElementById('col-dropdown').addEventListener('change', function (e) {
+            if (e.target.type !== 'checkbox' || !table) return;
+            const col = table.getColumn(e.target.value);
+            if (!col) return;
+            e.target.checked ? col.show() : col.hide();
+            saveColumnVisibility();
+        });
+
+        // Show all columns
+        $('#show-all-cols-btn').on('click', function () {
+            if (!table) return;
+            table.getColumns().forEach(c => c.show());
+            saveColumnVisibility();
+            buildColDropdown();
+        });
+
+        // Export
+        $('#export-btn').on('click', function () {
+            if (!table) return;
+            const src = activeSource === 'all' ? 'all' : activeSource.replace(/[^a-z0-9]/gi, '_');
+            const from = $('#date-from').val() || 'start';
+            const to   = $('#date-to').val()   || 'end';
+            table.download('csv', `shopify_raw_${src}_${from}_${to}.csv`);
+        });
+
+        // ── Order # view-icon popover (hover to reveal + copy) ─────────────────
+        initOrderPopover();
+    });
+
+    function initOrderPopover() {
+        const pop = document.createElement('div');
+        pop.id = 'ord-pop';
+        pop.innerHTML = '<span class="ord-pop-text"></span><i class="fas fa-copy ord-copy" title="Copy order #"></i>';
+        document.body.appendChild(pop);
+
+        const popText = pop.querySelector('.ord-pop-text');
+        const copyBtn = pop.querySelector('.ord-copy');
+        let currentOrder = '';
+        let hideTimer = null;
+
+        const cancelHide = () => { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } };
+        const scheduleHide = () => { cancelHide(); hideTimer = setTimeout(() => { pop.style.display = 'none'; }, 200); };
+
+        function showPopFor(eye) {
+            currentOrder = eye.getAttribute('data-order') || '';
+            popText.textContent = currentOrder;
+            pop.style.display = 'flex';
+            const r = eye.getBoundingClientRect();
+            // position to the right of the icon, vertically centered
+            let top  = r.top + r.height / 2 - pop.offsetHeight / 2;
+            let left = r.right + 8;
+            if (left + pop.offsetWidth > window.innerWidth - 8) {
+                left = r.left - pop.offsetWidth - 8; // flip to the left if no room
+            }
+            pop.style.top  = Math.max(8, top) + 'px';
+            pop.style.left = Math.max(8, left) + 'px';
+        }
+
+        // Delegated hover on dynamically-rendered eye icons
+        document.addEventListener('mouseover', function (e) {
+            const eye = e.target.closest('.ord-eye');
+            if (eye) { cancelHide(); showPopFor(eye); }
+        });
+        document.addEventListener('mouseout', function (e) {
+            if (e.target.closest('.ord-eye')) scheduleHide();
+        });
+        pop.addEventListener('mouseenter', cancelHide);
+        pop.addEventListener('mouseleave', scheduleHide);
+
+        copyBtn.addEventListener('click', function () {
+            if (!currentOrder) return;
+            navigator.clipboard.writeText(currentOrder)
+                .then(() => showToast('Order # copied: ' + currentOrder, 'success'))
+                .catch(() => showToast('Copy failed', 'error'));
+        });
+    }
+</script>
+@endsection

@@ -57,4 +57,32 @@ class TeamManagementAccess
     {
         return self::canEdit($user) && self::canViewSalary($user);
     }
+
+    /** See the Resume column on the Users table. */
+    public static function canViewResume(?User $user = null): bool
+    {
+        $user ??= auth()->user();
+        if (! $user) {
+            return false;
+        }
+
+        return self::emailMatches(
+            (string) $user->email,
+            config('team_management.resume_viewer_emails', [])
+        );
+    }
+
+    /** Add / edit / delete a user's resume file. */
+    public static function canEditResume(?User $user = null): bool
+    {
+        $user ??= auth()->user();
+        if (! $user) {
+            return false;
+        }
+
+        return self::emailMatches(
+            (string) $user->email,
+            config('team_management.resume_editor_emails', [])
+        );
+    }
 }

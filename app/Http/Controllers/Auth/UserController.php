@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\RrPortfolioUser;
 use App\Models\User;
+use App\Models\UserDoc;
 use App\Services\TeamLoggerService;
 use App\Support\TeamManagementAccess;
 use Illuminate\Http\Request;
@@ -17,27 +18,21 @@ class UserController extends Controller
     public function index()
     {
         if (! TeamManagementAccess::canView()) {
-            abort(403, 'You do not have permission to access Team Management.');
+            abort(403, 'Not Authorised');
         }
 
-        // Active users only (not deactivated)
+        // Load all users (active + inactive) for the merged table; the Active/Inactive
+        // toggle filters them client-side so there's no separate inactive page.
         // select() must run before withCount(): a later select() replaces columns and drops the count subquery.
-        $users = User::query()
-            ->where('is_active', true)
-            ->select('id', 'name', 'phone', 'email', 'designation', 'show_in_salary')
-            ->with(['userRR', 'userSalary'])
+        $allUsers = User::query()
+            ->select('id', 'name', 'phone', 'email', 'designation', 'date_of_joining', 'avatar', 'is_active', 'deactivated_at', 'show_in_salary', 'resume_path', 'resume_original_name')
+            ->with(['userRR', 'userSalary', 'docs'])
             ->withCount('rrPortfolioAssignments')
             ->orderBy('name')
             ->get();
 
-        // Get inactive users (is_active = false)
-        $inactiveUsers = User::query()
-            ->where('is_active', false)
-            ->select('id', 'name', 'phone', 'email', 'designation', 'deactivated_at', 'show_in_salary')
-            ->with(['userRR', 'userSalary'])
-            ->withCount('rrPortfolioAssignments')
-            ->orderByDesc('deactivated_at')
-            ->get();
+        // Active subset drives the salary/header totals so they stay meaningful.
+        $users = $allUsers->where('is_active', true)->values();
 
         // Calculate total salary PP for active users
         $totalSalaryPP = $users->sum(function($user) {
@@ -76,6 +71,25 @@ class UserController extends Controller
             }
         }
 
+        // Fetch TeamLogger data for the CURRENT month (used by the Hours column on the page)
+        $currentMonth = Carbon::now()->format('F Y');
+        $currentMonthData = $teamLoggerService->fetchByMonth($currentMonth, true);
+
+        $currentMonthHours = \App\Models\TeamLoggerHours::where('month', $currentMonth)->get();
+        foreach ($currentMonthHours as $record) {
+            $email = strtolower($record->employee_email);
+            if (isset($currentMonthData[$email])) {
+                $currentMonthData[$email]['hours'] = $record->productive_hours;
+            } else {
+                $currentMonthData[$email] = [
+                    'hours' => $record->productive_hours,
+                    'total_hours' => $record->total_hours ?? 0,
+                    'idle_hours' => $record->idle_hours ?? 0,
+                    'active_hours' => $record->active_hours ?? 0,
+                ];
+            }
+        }
+
         // Email mapping: Map user email to TeamLogger email if different
         $emailMapping = [
             'adexec1@5core.com' => 'support@prolightsounds.com',
@@ -88,18 +102,385 @@ class UserController extends Controller
 
         $canEdit = TeamManagementAccess::canEdit();
         $canViewSalary = TeamManagementAccess::canViewSalary();
+        $canViewResume = TeamManagementAccess::canViewResume();
+        $canEditResume = TeamManagementAccess::canEditResume();
 
         return view('pages.add-user', compact(
             'users',
+            'allUsers',
             'salaryUsers',
-            'inactiveUsers',
             'canEdit',
             'canViewSalary',
+            'canViewResume',
+            'canEditResume',
             'totalSalaryPP',
             'totalIncrement',
             'teamLoggerData',
+            'currentMonthData',
+            'currentMonth',
             'previousMonth',
             'emailMapping'
+        ));
+    }
+
+    /**
+     * Update a user's bank details. Update-only: blank fields are left untouched so
+     * existing values can never be deleted, only changed.
+     */
+    public function updateBank(Request $request, User $user)
+    {
+        if (! TeamManagementAccess::canViewSalary()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to edit bank details.',
+            ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'bank_1' => 'nullable|string|max:65535',
+            'bank_2' => 'nullable|string|max:65535',
+            'upi_id' => 'nullable|string|max:65535',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        // Only write fields that were sent with a non-empty value (never blank out existing data).
+        $bankData = [];
+        foreach (['bank_1', 'bank_2', 'upi_id'] as $field) {
+            $value = trim((string) $request->input($field, ''));
+            if ($value !== '') {
+                $bankData[$field] = $value;
+            }
+        }
+
+        if (empty($bankData)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nothing to update — enter at least one value.',
+            ], 422);
+        }
+
+        $user->userSalary()->updateOrCreate(['user_id' => $user->id], $bankData);
+        $user->load('userSalary');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Bank details updated.',
+            'bank_1' => $user->userSalary->bank_1 ?? '',
+            'bank_2' => $user->userSalary->bank_2 ?? '',
+            'upi_id' => $user->userSalary->upi_id ?? '',
+        ]);
+    }
+
+    /**
+     * Stream a user's resume file (president/hr only).
+     */
+    public function showResume(User $user)
+    {
+        if (! TeamManagementAccess::canViewResume()) {
+            abort(403, 'You do not have permission to view resumes.');
+        }
+
+        if (! $user->resume_path || ! Storage::disk('local')->exists($user->resume_path)) {
+            abort(404, 'No resume on file for this user.');
+        }
+
+        $downloadName = $user->resume_original_name
+            ?: ('resume-' . \Illuminate\Support\Str::slug($user->name) . '.' . pathinfo($user->resume_path, PATHINFO_EXTENSION));
+
+        return Storage::disk('local')->download($user->resume_path, $downloadName);
+    }
+
+    /**
+     * Upload or replace a user's resume file (hr only).
+     */
+    public function uploadResume(Request $request, User $user)
+    {
+        if (! TeamManagementAccess::canEditResume()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to manage resumes.',
+            ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'resume' => 'required|file|mimes:pdf,doc,docx|max:10240',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        // Remove the previous file (if any) before storing the new one.
+        if ($user->resume_path && Storage::disk('local')->exists($user->resume_path)) {
+            Storage::disk('local')->delete($user->resume_path);
+        }
+
+        $file = $request->file('resume');
+        $originalName = $file->getClientOriginalName();
+        $storedName = time() . '_' . \Illuminate\Support\Str::random(8) . '.' . $file->getClientOriginalExtension();
+        $path = $file->storeAs("resumes/{$user->id}", $storedName, 'local');
+
+        $user->resume_path = $path;
+        $user->resume_original_name = $originalName;
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Resume uploaded successfully.',
+            'has_resume' => true,
+            'resume_name' => $originalName,
+            'resume_url' => route('users.resume.show', $user),
+        ]);
+    }
+
+    /**
+     * Delete a user's resume file (hr only).
+     */
+    public function deleteResume(User $user)
+    {
+        if (! TeamManagementAccess::canEditResume()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to manage resumes.',
+            ], 403);
+        }
+
+        if ($user->resume_path && Storage::disk('local')->exists($user->resume_path)) {
+            Storage::disk('local')->delete($user->resume_path);
+        }
+
+        $user->resume_path = null;
+        $user->resume_original_name = null;
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Resume removed.',
+            'has_resume' => false,
+        ]);
+    }
+
+    /**
+     * Normalise a UserDoc into the shape used by the UI / JSON responses.
+     */
+    private function mapDoc(UserDoc $doc): array
+    {
+        return [
+            'id' => $doc->id,
+            'type' => $doc->type,
+            'label' => $doc->label,
+            'name' => $doc->type === 'file'
+                ? ($doc->label ?: ($doc->original_name ?: 'File'))
+                : ($doc->label ?: $doc->url),
+            'url' => $doc->type === 'link'
+                ? $doc->url
+                : route('users.docs.download', [$doc->user_id, $doc->id]),
+        ];
+    }
+
+    private function docsPayload(User $user): array
+    {
+        $user->load('docs');
+
+        return [
+            'success' => true,
+            'docs' => $user->docs->map(fn (UserDoc $d) => $this->mapDoc($d))->values(),
+            'has_docs' => $user->docs->isNotEmpty(),
+        ];
+    }
+
+    /**
+     * List a user's docs (president/hr only).
+     */
+    public function listDocs(User $user)
+    {
+        if (! TeamManagementAccess::canViewResume()) {
+            return response()->json(['success' => false, 'message' => 'Not Authorised'], 403);
+        }
+
+        return response()->json($this->docsPayload($user));
+    }
+
+    /**
+     * Add a link or upload one or more files to a user's docs (hr only).
+     */
+    public function storeDoc(Request $request, User $user)
+    {
+        if (! TeamManagementAccess::canEditResume()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to manage docs.',
+            ], 403);
+        }
+
+        // Repeatable rows: each row may carry a name, a file, and/or a link.
+        if (is_array($request->input('rows')) || is_array($request->file('rows'))) {
+            $rowsInput = $request->input('rows', []);
+            $created = 0;
+
+            foreach (array_keys($rowsInput + ($request->file('rows') ?? [])) as $i) {
+                $name = trim((string) ($rowsInput[$i]['name'] ?? ''));
+                $link = trim((string) ($rowsInput[$i]['link'] ?? ''));
+                $file = $request->file("rows.$i.file");
+
+                if ($file) {
+                    $validator = Validator::make(['file' => $file], [
+                        'file' => 'file|max:10240|mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,png,jpg,jpeg,gif,zip,txt,csv',
+                    ]);
+                    if ($validator->fails()) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Validation failed',
+                            'errors' => $validator->errors(),
+                        ], 422);
+                    }
+
+                    $storedName = time() . '_' . \Illuminate\Support\Str::random(8) . '.' . $file->getClientOriginalExtension();
+                    $path = $file->storeAs("docs/{$user->id}", $storedName, 'local');
+
+                    $user->docs()->create([
+                        'type' => 'file',
+                        'label' => $name !== '' ? $name : null,
+                        'path' => $path,
+                        'original_name' => $file->getClientOriginalName(),
+                    ]);
+                    $created++;
+                }
+
+                if ($link !== '') {
+                    $validator = Validator::make(['url' => $link], ['url' => 'url|max:2048']);
+                    if ($validator->fails()) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'One of the links is not a valid URL.',
+                            'errors' => $validator->errors(),
+                        ], 422);
+                    }
+
+                    $user->docs()->create([
+                        'type' => 'link',
+                        'label' => $name !== '' ? $name : null,
+                        'url' => $link,
+                    ]);
+                    $created++;
+                }
+            }
+
+            if ($created === 0) {
+                return response()->json(['success' => false, 'message' => 'Add at least one file or link.'], 422);
+            }
+
+            return response()->json(array_merge($this->docsPayload($user), ['message' => 'Saved.']));
+        }
+
+        $type = $request->input('type');
+
+        if ($type === 'link') {
+            $validator = Validator::make($request->all(), [
+                'url' => 'required|url|max:2048',
+                'label' => 'nullable|string|max:255',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors(),
+                ], 422);
+            }
+
+            $user->docs()->create([
+                'type' => 'link',
+                'label' => $request->input('label'),
+                'url' => $request->input('url'),
+            ]);
+        } elseif ($type === 'file') {
+            $validator = Validator::make($request->all(), [
+                'files' => 'required|array|min:1',
+                'files.*' => 'file|max:10240|mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,png,jpg,jpeg,gif,zip,txt,csv',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors(),
+                ], 422);
+            }
+
+            foreach ($request->file('files') as $file) {
+                $storedName = time() . '_' . \Illuminate\Support\Str::random(8) . '.' . $file->getClientOriginalExtension();
+                $path = $file->storeAs("docs/{$user->id}", $storedName, 'local');
+
+                $user->docs()->create([
+                    'type' => 'file',
+                    'label' => null,
+                    'path' => $path,
+                    'original_name' => $file->getClientOriginalName(),
+                ]);
+            }
+        } else {
+            return response()->json(['success' => false, 'message' => 'Invalid document type.'], 422);
+        }
+
+        return response()->json(array_merge(
+            $this->docsPayload($user),
+            ['message' => 'Saved.']
+        ));
+    }
+
+    /**
+     * Download a doc file (president/hr only).
+     */
+    public function downloadDoc(User $user, UserDoc $doc)
+    {
+        if (! TeamManagementAccess::canViewResume()) {
+            abort(403, 'Not Authorised');
+        }
+
+        if ($doc->user_id !== $user->id || $doc->type !== 'file' || ! $doc->path || ! Storage::disk('local')->exists($doc->path)) {
+            abort(404, 'File not found.');
+        }
+
+        return Storage::disk('local')->download($doc->path, $doc->original_name ?: 'document');
+    }
+
+    /**
+     * Delete a doc (hr only).
+     */
+    public function deleteDoc(User $user, UserDoc $doc)
+    {
+        if (! TeamManagementAccess::canEditResume()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to manage docs.',
+            ], 403);
+        }
+
+        if ($doc->user_id !== $user->id) {
+            return response()->json(['success' => false, 'message' => 'Document not found.'], 404);
+        }
+
+        if ($doc->type === 'file' && $doc->path && Storage::disk('local')->exists($doc->path)) {
+            Storage::disk('local')->delete($doc->path);
+        }
+
+        $doc->delete();
+
+        return response()->json(array_merge(
+            $this->docsPayload($user),
+            ['message' => 'Document removed.']
         ));
     }
 
@@ -117,6 +498,7 @@ class UserController extends Controller
             'phone' => 'nullable|string|max:20',
             'email' => 'required|email|max:255|unique:users,email,' . $user->id,
             'designation' => 'nullable|string|max:255',
+            'date_of_joining' => 'nullable|date',
             'rr_role' => 'nullable|string|max:65535',
             'training' => 'nullable|string|max:65535',
             'resources' => 'nullable|string|max:65535',
@@ -142,30 +524,44 @@ class UserController extends Controller
         $user->phone = $request->phone;
         $user->email = $request->email;
         $user->designation = $request->designation;
+        // Only update the joining date when the field is part of the submission so
+        // modals that omit it (e.g. the Users-tab quick edit) never clear it.
+        if ($request->has('date_of_joining')) {
+            $user->date_of_joining = $request->input('date_of_joining') ?: null;
+        }
         $user->save();
 
-        $user->userRR()->updateOrCreate(
-            ['user_id' => $user->id],
-            [
-                'role' => $request->input('rr_role'),
-                'training' => $request->input('training'),
-                'resources' => $request->input('resources'),
-            ]
-        );
+        // Only touch R&R fields that were actually submitted, so editing core user
+        // info (the modal omits these) never wipes existing R&R/training/resources.
+        $rrMap = ['rr_role' => 'role', 'training' => 'training', 'resources' => 'resources'];
+        $rrData = [];
+        foreach ($rrMap as $requestKey => $column) {
+            if ($request->has($requestKey)) {
+                $rrData[$column] = $request->input($requestKey);
+            }
+        }
+        if (! empty($rrData)) {
+            $user->userRR()->updateOrCreate(
+                ['user_id' => $user->id],
+                $rrData
+            );
+        }
         $user->load('userRR');
 
-        $user->userSalary()->updateOrCreate(
-            ['user_id' => $user->id],
-            [
-                'salary_pp' => $request->input('salary_pp'),
-                'increment' => $request->input('increment'),
-                'other' => $request->input('other'),
-                'adv_inc_other' => $request->input('adv_inc_other'),
-                'bank_1' => $request->input('bank_1'),
-                'bank_2' => $request->input('bank_2'),
-                'upi_id' => $request->input('upi_id'),
-            ]
-        );
+        // Only touch salary fields that were actually submitted, so editing user info
+        // (e.g. from the Users tab modal, which omits salary) never wipes salary data.
+        $salaryData = [];
+        foreach (['salary_pp', 'increment', 'other', 'adv_inc_other', 'bank_1', 'bank_2', 'upi_id'] as $salaryField) {
+            if ($request->has($salaryField)) {
+                $salaryData[$salaryField] = $request->input($salaryField);
+            }
+        }
+        if (! empty($salaryData)) {
+            $user->userSalary()->updateOrCreate(
+                ['user_id' => $user->id],
+                $salaryData
+            );
+        }
         $user->load('userSalary');
 
         // Update TeamLogger hours if provided
@@ -205,6 +601,7 @@ class UserController extends Controller
                 'phone' => $user->phone,
                 'email' => $user->email,
                 'designation' => $user->designation,
+                'date_of_joining' => $user->date_of_joining?->format('Y-m-d'),
                 'rr_role' => $user->userRR->role ?? '',
                 'training' => $user->userRR->training ?? '',
                 'resources' => $user->userRR->resources ?? '',

@@ -508,6 +508,9 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="need_approval" data-sort-type="number" title="Sort by Need Approval count" role="button" tabindex="0">
                                         Need Approval <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
+                                    <th scope="col" title="View KPI details">
+                                        KPI
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -563,15 +566,33 @@
                                         <td class="task-summary-num">{{ $row['a_task'] }}</td>
                                         <td class="task-summary-num" title="Total ETC hours (assignee) for automated tasks, rounded">{{ (int) ($row['a_task_h'] ?? 0) }}</td>
                                         <td class="task-summary-num">{{ $row['need_approval'] }}</td>
+                                        <td>
+                                            @php
+                                                $kpiData = [];
+                                                for ($k = 1; $k <= 5; $k++) {
+                                                    $kpiData[] = [
+                                                        'label' => $row['kpi_' . $k . '_label'] ?? ('KPI ' . $k),
+                                                        'value' => $row['kpi_' . $k] ?? null,
+                                                    ];
+                                                }
+                                            @endphp
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-secondary task-summary-kpi-btn"
+                                                    data-user-name="{{ e($row['team_member']) }}"
+                                                    data-kpi="{{ e(json_encode($kpiData)) }}"
+                                                    title="View KPI details for {{ e($row['team_member']) }}">
+                                                <i class="ri-bar-chart-box-line me-1" aria-hidden="true"></i>KPI
+                                            </button>
+                                        </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="10" class="text-center text-muted py-4">No team members found.</td>
+                                        <td colspan="12" class="text-center text-muted py-4">No team members found.</td>
                                     </tr>
                                 @endforelse
                                 @if (!empty($rows) && count($rows))
                                     <tr id="task-summary-filter-empty" class="d-none">
-                                        <td colspan="10" class="text-center text-muted py-4">No matching team members.</td>
+                                        <td colspan="12" class="text-center text-muted py-4">No matching team members.</td>
                                     </tr>
                                 @endif
                             </tbody>
@@ -617,6 +638,35 @@
         </div>
     </div>
 
+    <div class="modal fade" id="taskSummaryKpiModal" tabindex="-1" aria-labelledby="taskSummaryKpiModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="taskSummaryKpiModalLabel">
+                        <i class="ri-bar-chart-box-line me-2" aria-hidden="true"></i><span id="taskSummaryKpiModalName">KPI</span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col">KPI</th>
+                                    <th scope="col" class="text-end">Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="taskSummaryKpiModalBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="offcanvas offcanvas-end shadow-lg border-start" tabindex="-1" id="taskSummaryUserPanel" aria-labelledby="taskSummaryUserPanelLabel">
         <div class="offcanvas-header border-bottom py-3">
             <div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0 me-2">
@@ -632,6 +682,13 @@
         <div class="offcanvas-body d-flex flex-column p-0">
             <div class="p-3 border-bottom bg-light">
                 <div class="ts-user-panel-stat-grid" id="ts-user-panel-stats" aria-label="Summary counts for this user"></div>
+            </div>
+            <div class="p-3 border-bottom bg-white" id="ts-user-panel-kpi-wrap">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <i class="ri-bar-chart-box-line" style="color:#0d9488;" aria-hidden="true"></i>
+                    <span class="ts-lbl" style="color:#0f766e;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;font-size:0.7rem;">KPI Dashboard</span>
+                </div>
+                <div class="ts-user-panel-stat-grid" id="ts-user-panel-kpi" aria-label="KPI cards for this user"></div>
             </div>
             <div class="px-3 py-2 border-bottom d-flex flex-wrap align-items-center gap-2 bg-white">
                 <input type="search" class="form-control form-control-sm flex-grow-1" style="min-width: 140px;" id="ts-user-panel-task-search" placeholder="Filter tasks by title, status, assignee…" autocomplete="off" />
@@ -974,6 +1031,93 @@
                     }
                 });
             }
+
+            var kpiModalEl = document.getElementById('taskSummaryKpiModal');
+
+            function tsGetRowKpiList(tr) {
+                if (!tr) {
+                    return [];
+                }
+                var kpiBtn = tr.querySelector('.task-summary-kpi-btn');
+                if (!kpiBtn) {
+                    return [];
+                }
+                try {
+                    return JSON.parse(kpiBtn.getAttribute('data-kpi') || '[]');
+                } catch (err) {
+                    return [];
+                }
+            }
+
+            function tsRenderUserPanelKpi(kpiList) {
+                var grid = document.getElementById('ts-user-panel-kpi');
+                var wrap = document.getElementById('ts-user-panel-kpi-wrap');
+                if (!grid) {
+                    return;
+                }
+                grid.innerHTML = '';
+                if (!kpiList || !kpiList.length) {
+                    if (wrap) wrap.classList.add('d-none');
+                    return;
+                }
+                if (wrap) wrap.classList.remove('d-none');
+                kpiList.forEach(function (kpi) {
+                    var div = document.createElement('div');
+                    div.className = 'ts-user-panel-stat';
+                    var valStr = (kpi.value === null || kpi.value === undefined || kpi.value === '') ? '—' : String(kpi.value);
+                    var valEl = document.createElement('div');
+                    valEl.className = 'ts-val';
+                    valEl.textContent = valStr;
+                    var lblEl = document.createElement('div');
+                    lblEl.className = 'ts-lbl';
+                    lblEl.textContent = kpi.label || 'KPI';
+                    div.appendChild(valEl);
+                    div.appendChild(lblEl);
+                    grid.appendChild(div);
+                });
+            }
+
+            function openKpiModal(name, kpiList) {
+                var nameEl = document.getElementById('taskSummaryKpiModalName');
+                var bodyEl = document.getElementById('taskSummaryKpiModalBody');
+                if (nameEl) {
+                    nameEl.textContent = name ? (name + ' — KPI') : 'KPI';
+                }
+                if (bodyEl) {
+                    bodyEl.innerHTML = '';
+                    (kpiList || []).forEach(function (kpi) {
+                        var tr = document.createElement('tr');
+                        var tdLabel = document.createElement('td');
+                        tdLabel.textContent = kpi.label || '—';
+                        var tdVal = document.createElement('td');
+                        tdVal.className = 'text-end task-summary-num';
+                        tdVal.textContent = (kpi.value === null || kpi.value === undefined || kpi.value === '') ? '—' : kpi.value;
+                        tr.appendChild(tdLabel);
+                        tr.appendChild(tdVal);
+                        bodyEl.appendChild(tr);
+                    });
+                }
+                if (kpiModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(kpiModalEl).show();
+                }
+            }
+
+            tbody.addEventListener('click', function (e) {
+                var btn = e.target && e.target.closest && e.target.closest('.task-summary-kpi-btn');
+                if (!btn || !tbody.contains(btn)) {
+                    return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                var name = (btn.getAttribute('data-user-name') || '').trim();
+                var kpiList = [];
+                try {
+                    kpiList = JSON.parse(btn.getAttribute('data-kpi') || '[]');
+                } catch (err) {
+                    kpiList = [];
+                }
+                openKpiModal(name, kpiList);
+            });
 
             function runFilter() {
                 if (!input) {
@@ -1346,6 +1490,7 @@
                     }
                 }
                 tsSetUserPanelStatsLoading();
+                tsRenderUserPanelKpi(tsGetRowKpiList(tr));
                 if (tsSearchPanel) tsSearchPanel.value = '';
                 tsUserPanelTasks = [];
                 panel.show();

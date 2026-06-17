@@ -373,6 +373,9 @@
                         <pre id="gac-raw-push-result-pre" class="mb-0 small bg-white border rounded p-2" style="white-space:pre-wrap;max-height:280px;overflow:auto;"></pre>
                     </div>
                     <div id="google-ads-campaigns-raw-wrap">
+                        <div class="p-2 bg-light border rounded-top">
+                            <input type="search" id="gac-filter-search" class="form-control" placeholder="Search Campaign..." autocomplete="off" aria-label="Search by campaign name" maxlength="100">
+                        </div>
                         <div id="google-ads-campaigns-raw-table"></div>
                     </div>
                 </div>
@@ -616,6 +619,14 @@
                 return (el && el.value) ? el.value : 'all';
             }
 
+            /** Trim and cap the campaign search box; empty values are sent as ''. */
+            function gacRawSearchQueryVal() {
+                var el = document.getElementById('gac-filter-search');
+                if (!el) return '';
+                var v = String(el.value || '').replace(/\s+/g, ' ').trim();
+                return v.length > 100 ? v.slice(0, 100) : v;
+            }
+
             /** Filtered row count for badge + Tabulator remote pagination (coerce strings; prefer server fields). */
             function gacRawFilteredRowCountFromResponse(response) {
                 if (!response || typeof response !== 'object') {
@@ -666,6 +677,7 @@
                     filter_ub1: gacRawFilterParamVal('gac-filter-ub1'),
                     filter_acos: gacRawFilterParamVal('gac-filter-acos'),
                     filter_stat: gacRawFilterParamVal('gac-filter-stat'),
+                    q: gacRawSearchQueryVal(),
                 };
             }
 
@@ -684,7 +696,8 @@
                     filter_ub2: p.filter_ub2,
                     filter_ub1: p.filter_ub1,
                     filter_acos: p.filter_acos,
-                    filter_stat: p.filter_stat
+                    filter_stat: p.filter_stat,
+                    q: p.q
                 };
             }
 
@@ -737,7 +750,8 @@
                         filter_ub2: p.filter_ub2,
                         filter_ub1: p.filter_ub1,
                         filter_acos: p.filter_acos,
-                        filter_stat: p.filter_stat
+                        filter_stat: p.filter_stat,
+                        q: p.q
                     },
                     success: function(res) {
                         loadEl.classList.add('d-none');
@@ -812,7 +826,8 @@
                         filter_ub2: p.filter_ub2,
                         filter_ub1: p.filter_ub1,
                         filter_acos: p.filter_acos,
-                        filter_stat: p.filter_stat
+                        filter_stat: p.filter_stat,
+                        q: p.q
                     },
                     success: function(res) {
                         if (gacRawU7PieChart) {
@@ -950,6 +965,48 @@
                     }
                 });
             }
+
+            // Delegated copy-to-clipboard for the campaign-name copy icon.
+            (function () {
+                function copyText(text) {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        return navigator.clipboard.writeText(text);
+                    }
+                    return new Promise(function (resolve, reject) {
+                        try {
+                            var ta = document.createElement('textarea');
+                            ta.value = text;
+                            ta.style.position = 'fixed';
+                            ta.style.opacity = '0';
+                            document.body.appendChild(ta);
+                            ta.focus(); ta.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(ta);
+                            resolve();
+                        } catch (e) { reject(e); }
+                    });
+                }
+                document.addEventListener('click', function (e) {
+                    var icon = e.target.closest ? e.target.closest('.gac-copy-name') : null;
+                    if (!icon) return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    var text = icon.getAttribute('data-copy') || '';
+                    // Decode the HTML entities stored in the attribute.
+                    var tmp = document.createElement('textarea');
+                    tmp.innerHTML = text;
+                    text = tmp.value;
+                    copyText(text).then(function () {
+                        var prev = icon.className;
+                        icon.className = 'fas fa-check gac-copy-name';
+                        icon.style.color = '#22c55e';
+                        setTimeout(function () {
+                            icon.className = prev;
+                            icon.style.color = '#94a3b8';
+                        }, 1000);
+                    }).catch(function () {});
+                });
+            })();
 
             table = new Tabulator('#google-ads-campaigns-raw-table', {
                 ajaxURL: dataUrl,
@@ -1102,6 +1159,18 @@
                         var dot = '<span aria-hidden="true" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';"></span>';
                         return '<span class="gac-raw-status-cell" title="' + tipAttr + '" aria-label="' + tipAttr + '" style="display:inline-flex;align-items:center;justify-content:center;">' + dot + '</span>';
                     };
+                    /** Campaign name + a copy-to-clipboard icon. */
+                    var campaignNameFormatter = function(c) {
+                        var v = c.getValue();
+                        var s = v === null || v === undefined ? '' : String(v);
+                        var esc = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                        var attr = esc.replace(/'/g, '&#39;');
+                        var copy = '<i class="fas fa-copy gac-copy-name" role="button" tabindex="0" title="Copy campaign name"'
+                                 + ' data-copy="' + attr + '" style="margin-left:6px;color:#94a3b8;cursor:pointer;flex-shrink:0;"></i>';
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:2px;max-width:100%;">'
+                             + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc + '</span>'
+                             + copy + '</span>';
+                    };
                     /** Server-side sort whitelist — keep in sync with applyRawGridSort() in the controller. */
                     var sortableFields = {
                         campaign_name: true,
@@ -1133,6 +1202,7 @@
                         col.headerHozAlign = 'center';
                         if (col.field === 'campaign_name') {
                             col.minWidth = 141;
+                            col.formatter = campaignNameFormatter;
                         } else if (col.field === 'campaign_status') {
                             col.minWidth = 44;
                             col.width = 44;
@@ -1219,6 +1289,35 @@
                     fel.addEventListener('change', gacRawReloadGridForFilters);
                 }
             });
+
+            // Campaign-name search: debounce keystrokes so we only hit the server after 300ms of inactivity.
+            // 'search' fires on the native ✕ clear button and on Enter, both of which should reload immediately.
+            var gacRawSearchEl = document.getElementById('gac-filter-search');
+            if (gacRawSearchEl) {
+                var gacRawSearchTimer = null;
+                var gacRawLastSearchVal = gacRawSearchQueryVal();
+                var gacRawSearchScheduleReload = function(immediate) {
+                    if (gacRawSearchTimer) {
+                        clearTimeout(gacRawSearchTimer);
+                        gacRawSearchTimer = null;
+                    }
+                    var run = function() {
+                        var v = gacRawSearchQueryVal();
+                        if (v === gacRawLastSearchVal) return;
+                        gacRawLastSearchVal = v;
+                        gacRawReloadGridForFilters();
+                    };
+                    if (immediate) { run(); } else { gacRawSearchTimer = setTimeout(run, 300); }
+                };
+                gacRawSearchEl.addEventListener('input', function() { gacRawSearchScheduleReload(false); });
+                gacRawSearchEl.addEventListener('search', function() { gacRawSearchScheduleReload(true); });
+                gacRawSearchEl.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        gacRawSearchScheduleReload(true);
+                    }
+                });
+            }
 
             table.on('pageLoaded', function() {
                 gacRawRefreshTableUiSoon();

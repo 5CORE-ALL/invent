@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use App\Models\AmazonDataView;
+use App\Models\AmazonSkuCompetitor;
 use App\Models\JungleScoutProductData;
 use App\Models\Supplier;
 use App\Models\TransitContainerDetail;
@@ -302,13 +303,16 @@ class ForecastAnalysisController extends Controller
             if ($c !== '' && $readyToShipMapCanonical->has($c)) return $readyToShipMapCanonical->get($c);
             return null;
         };
-        // Single query for to_order_analysis covering all needed columns
+        // Single query for to_order_analysis covering all needed columns.
+        // `exec` is included so the forecast.analysis grid can expose an editable
+        // Exec column that reads/writes the same source-of-truth used by /update-link
+        // and the MFRG In Progress page.
         $toOrderRows = DB::table('to_order_analysis')
             ->whereNull('deleted_at')
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
             ->get(['id', 'sku', 'parent', 'approved_qty', 'updated_at', 'supplier_name',
-                   'rfq_form_link', 'rfq_report_link', 'sheet_link']);
+                   'rfq_form_link', 'rfq_report_link', 'sheet_link', 'exec']);
         $toOrderApprovedBySkuParent = collect($toOrderRows)
             ->groupBy(function ($r) use ($normalizeSku) {
                 return $normalizeSku($r->sku) . '|' . $normalizeSku($r->parent ?? '');
@@ -336,12 +340,17 @@ class ForecastAnalysisController extends Controller
                 // Latest row (rows are newest-first): same rule as To Order / to_order_analysis index
                 $latest = $rows->first();
                 $supplierName = $latest->supplier_name ?? null;
+                // Exec: prefer the first non-empty value across all rows for this SKU
+                // so a freshly-written exec on one variant doesn't get hidden by an
+                // older row that happens to come back first from the DB.
+                $exec = $pick('exec');
 
                 return (object)[
                     'rfq_form_link'  => $pick('rfq_form_link'),
                     'rfq_report_link'=> $pick('rfq_report_link'),
                     'sheet_link'     => $pick('sheet_link'),
                     'supplier_name'  => $supplierName,
+                    'exec'           => $exec,
                 ];
             });
         $mfrg = DB::table('mfrg_progress')
@@ -351,6 +360,21 @@ class ForecastAnalysisController extends Controller
                 'pkg_inst', 'u_manual', 'compliance', 'created_at',
             ])
             ->keyBy(fn($item) => $normalizeSku($item->sku));
+
+        // LMP (Lowest Market Price) lookups — same source the /amazon-tabulator-view page
+        // uses, so the LMP column on /forecast.analysis stays in lock-step with Amazon
+        // pricing master data. Built ONCE before the per-row loop; per-item attach is O(1).
+        // `details` = collection of all competitors per SKU (sorted by price ascending);
+        // `lowest` = the cheapest competitor object per SKU.
+        try {
+            $lmpLookups = AmazonSkuCompetitor::buildGroupedLookup('amazon');
+            $lmpDetailsLookup = $lmpLookups['details'] ?? collect();
+            $lmpLowestLookup  = $lmpLookups['lowest']  ?? collect();
+        } catch (\Throwable $e) {
+            Log::warning('LMP lookup failed on /forecast.analysis: ' . $e->getMessage());
+            $lmpDetailsLookup = collect();
+            $lmpLowestLookup  = collect();
+        }
         $purchases = DB::table('purchases')->whereNull('deleted_at')
             ->select('items')
             ->get()
@@ -588,6 +612,9 @@ class ForecastAnalysisController extends Controller
             $item->{'Supplier Tag'} = ($toOrderMeta !== null && $toOrderMeta->supplier_name !== null)
                 ? (string) $toOrderMeta->supplier_name
                 : $parentSupplierTag;
+            // Exec column data: from to_order_analysis.exec (same source as MFRG In
+            // Progress page and the /update-link Exec save path).
+            $item->exec = $toOrderMeta !== null ? (string) ($toOrderMeta->exec ?? '') : '';
 
             $valuesRaw = $prodData->Values ?? '{}';
             $values = json_decode($valuesRaw, true);
@@ -817,7 +844,18 @@ class ForecastAnalysisController extends Controller
             $item->mfrg_order_date = $mfrgOrderDate;
             $cbmNum = is_numeric($item->{'CBM MSL'} ?? null) ? (float)($item->{'CBM MSL'}) : 0.0;
             $item->cbm = $cbmNum;
-            $item->total_cbm = round($mfrgQtyRaw * $cbmNum, 4);
+            // total_cbm is computed below after $item->msl is finalized — formula = MSL × CBM/unit.
+
+            // LMP column data: lowest competitor price and total competitor count for this SKU.
+            // Same source/format as /amazon-tabulator-view → users see consistent LMP numbers
+            // across pages. We look up by the normalized SKU key the model builder uses.
+            $lmpKey = AmazonSkuCompetitor::normalizeSkuKey($sheetSku);
+            $lowestLmp = $lmpLowestLookup->get($lmpKey);
+            $lmpEntries = $lmpDetailsLookup->get($lmpKey);
+            $item->lmp_price = ($lowestLmp && isset($lowestLmp->price) && is_numeric($lowestLmp->price))
+                ? round((float) $lowestLmp->price, 2)
+                : null;
+            $item->lmp_entries_total = $lmpEntries ? $lmpEntries->count() : 0;
 
             // Resolve FBA data for this SKU upfront (used in MSL calculation below)
             $fbaData = $fbaMonthlyMap[$sheetSku] ?? null;
@@ -888,6 +926,13 @@ class ForecastAnalysisController extends Controller
                 $item->m_avg = 0.0;
                 $item->TAT = null;
             }
+
+            // Total CBM column on /forecast.analysis uses the formula:
+            //     total_cbm = MSL (computed safety / min stock level) × CBM per unit
+            // (previously used mfrg_qty × CBM, which represented current MIP order volume
+            // rather than the target stock volume the column is meant to show).
+            $mslForTotal = is_numeric($item->msl ?? null) ? (float) $item->msl : 0.0;
+            $item->total_cbm = round($mslForTotal * $cbmNum, 4);
 
             $item->eff_roi_pct = null;
             $tatInt = $item->TAT ?? null;
@@ -1159,6 +1204,20 @@ class ForecastAnalysisController extends Controller
                 $product->Values = $values;
                 $product->save();
                 return response()->json(['success' => true, 'message' => 'CP updated successfully']);
+            }
+            return response()->json(['success' => false, 'message' => 'Product not found']);
+        }
+
+        // Handle CBM updates: save to product_master Values->cbm
+        if (strtoupper($column) === 'CBM') {
+            $valueNum = is_numeric($value) ? (float) $value : null;
+            $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
+            if ($product) {
+                $values = is_array($product->Values) ? $product->Values : (json_decode($product->Values ?? '{}', true) ?? []);
+                $values['cbm'] = $valueNum !== null ? $valueNum : '';
+                $product->Values = $values;
+                $product->save();
+                return response()->json(['success' => true, 'message' => 'CBM updated successfully']);
             }
             return response()->json(['success' => false, 'message' => 'Product not found']);
         }

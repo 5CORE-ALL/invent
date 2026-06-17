@@ -1,14 +1,22 @@
 @extends('layouts.vertical', ['title' => 'Payroll'])
 
 @section('css')
+<link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+<link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
 <style>
     .payroll-card { border: 1px solid rgba(0,0,0,.08); border-radius: 12px; background: #fff; }
+    #employeesTable { font-size: .85rem; }
     .payroll-month-select { min-width: 220px; }
     .payroll-stat { border-radius: 10px; padding: .75rem 1rem; background: #f8f9fa; }
     .payroll-stat .val { font-size: 1.25rem; font-weight: 700; }
     .payroll-locked { background: rgba(220,53,69,.08); border: 1px solid rgba(220,53,69,.2); }
     .nav-tabs .nav-link { font-size: .875rem; }
     .table-payroll { font-size: .85rem; }
+    /* Center-align all payroll table data and headers. */
+    #payrollApp .tabulator .tabulator-cell,
+    #payrollApp .tabulator .tabulator-header .tabulator-col-title {
+        text-align: center !important;
+    }
 </style>
 @endsection
 
@@ -28,6 +36,10 @@
                         <p class="text-muted mb-0 small">Mini payroll system — months, salaries, payslips &amp; history</p>
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-2">
+                        <div class="input-group input-group-sm" style="max-width: 240px;">
+                            <span class="input-group-text bg-light border-0"><i class="ri-search-line"></i></span>
+                            <input type="text" id="payrollSearch" class="form-control border-0 bg-light" placeholder="Search employee...">
+                        </div>
                         <select class="form-select form-select-sm payroll-month-select" id="payrollMonthSelect">
                             @forelse($months as $m)
                                 <option value="{{ $m->id }}" {{ $activeMonth?->id === $m->id ? 'selected' : '' }}
@@ -51,212 +63,23 @@
                     </div>
                 </div>
                 <div class="row g-2 mt-3" id="monthStats">
-                    <div class="col-6 col-md-3"><div class="payroll-stat"><div class="text-muted small">Employees</div><div class="val" id="statEmployees">—</div></div></div>
-                    <div class="col-6 col-md-3"><div class="payroll-stat"><div class="text-muted small">Total Net</div><div class="val" id="statNet">—</div></div></div>
-                    <div class="col-6 col-md-3"><div class="payroll-stat"><div class="text-muted small">Status</div><div class="val text-capitalize" id="statStatus">—</div></div></div>
-                    <div class="col-6 col-md-3"><div class="payroll-stat" id="lockStatBox"><div class="text-muted small">Lock</div><div class="val" id="statLock">—</div></div></div>
+                    <div class="col-6 col-md-6"><div class="payroll-stat"><div class="text-muted small">Employees</div><div class="val" id="statEmployees">—</div></div></div>
+                    <div class="col-6 col-md-6"><div class="payroll-stat"><div class="text-muted small">Total Net</div><div class="val" id="statNet">—</div></div></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <ul class="nav nav-tabs nav-bordered mb-3" role="tablist">
-        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-employees">Employees</button></li>
-        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-components">Salary Components</button></li>
-        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-payments">Payments &amp; Deductions</button></li>
-        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-payslips">Payslips &amp; IT</button></li>
-        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-arrears">Arrears</button></li>
-        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-settlement">Full &amp; Final</button></li>
-        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-previous">Previous Payroll</button></li>
-        @if($canManage)
-        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-actions">Actions</button></li>
-        @endif
-    </ul>
-
-    <div class="tab-content">
-        <div class="tab-pane fade show active" id="tab-employees">
-            <div class="payroll-card p-3">
-                <div class="d-flex justify-content-between mb-2">
-                    <h6 class="mb-0">Employee Salaries</h6>
-                    @if($canManage)
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnSyncEmployees"><i class="ri-refresh-line"></i> Sync from Team</button>
-                    @endif
-                </div>
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover table-payroll" id="employeesTable">
-                        <thead><tr>
-                            <th>Name</th><th>Hours LM</th><th>Salary PP</th><th>Incr</th><th>Amt LM</th><th>Amt P</th><th></th>
-                        </tr></thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
+    <div class="payroll-card p-3">
+        <div class="d-flex justify-content-end align-items-center mb-2">
+            <div class="d-flex align-items-center gap-2">
+                @can('payroll.sheet-admin')
+                <a href="#" id="btnDownloadPayoutSheet" class="btn btn-sm btn-success py-0"><i class="ri-file-excel-2-line me-1"></i>Download Month Sheet</a>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="btnSyncEmployees"><i class="ri-refresh-line"></i> Sync from Team</button>
+                @endcan
             </div>
         </div>
-
-        <div class="tab-pane fade" id="tab-components">
-            <div class="payroll-card p-3">
-                @if($canManage)
-                <form id="formComponent" class="row g-2 mb-3">
-                    <div class="col-md-3">
-                        <select name="user_id" class="form-select form-select-sm" required>
-                            <option value="">Employee</option>
-                            @foreach($users as $u)<option value="{{ $u->id }}">{{ $u->name }}</option>@endforeach
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <select name="type" class="form-select form-select-sm"><option value="earning">Earning</option><option value="deduction">Deduction</option></select>
-                    </div>
-                    <div class="col-md-3"><input type="text" name="label" class="form-control form-control-sm" placeholder="Label" required></div>
-                    <div class="col-md-2"><input type="number" name="amount" class="form-control form-control-sm" placeholder="Amount" step="0.01" required></div>
-                    <div class="col-md-2"><button type="submit" class="btn btn-sm btn-primary w-100">Add Component</button></div>
-                </form>
-                @endif
-                <div class="table-responsive"><table class="table table-sm table-payroll" id="componentsTable"><thead><tr><th>Employee</th><th>Type</th><th>Label</th><th>Amount</th><th></th></tr></thead><tbody></tbody></table></div>
-            </div>
-        </div>
-
-        <div class="tab-pane fade" id="tab-payments">
-            <div class="payroll-card p-3">
-                @if($canManage)
-                <form id="formPayment" class="row g-2 mb-3">
-                    <div class="col-md-3">
-                        <select name="user_id" class="form-select form-select-sm" required>
-                            <option value="">Employee</option>
-                            @foreach($users as $u)<option value="{{ $u->id }}">{{ $u->name }}</option>@endforeach
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <select name="entry_type" class="form-select form-select-sm"><option value="payment">Payment</option><option value="deduction">Deduction</option></select>
-                    </div>
-                    <div class="col-md-3"><input type="text" name="label" class="form-control form-control-sm" placeholder="Label" required></div>
-                    <div class="col-md-2"><input type="number" name="amount" class="form-control form-control-sm" placeholder="Amount" required></div>
-                    <div class="col-md-2"><button type="submit" class="btn btn-sm btn-primary w-100">Add</button></div>
-                </form>
-                @endif
-                <div class="table-responsive"><table class="table table-sm table-payroll" id="paymentsTable"><thead><tr><th>Employee</th><th>Type</th><th>Label</th><th>Amount</th><th></th></tr></thead><tbody></tbody></table></div>
-            </div>
-        </div>
-
-        <div class="tab-pane fade" id="tab-payslips">
-            <div class="payroll-card p-3">
-                <p class="small text-muted">Formats: Standard, Detailed (with line items), Compact summary.</p>
-                <div class="table-responsive"><table class="table table-sm table-payroll" id="payslipsTable"><thead><tr><th>Employee</th><th>Hours</th><th>Amt LM</th><th>Format</th><th>Amt P</th><th>Released</th><th></th></tr></thead><tbody></tbody></table></div>
-            </div>
-        </div>
-
-        <div class="tab-pane fade" id="tab-arrears">
-            <div class="payroll-card p-3">
-                @if($canManage)
-                <form id="formArrear" class="row g-2 mb-3">
-                    <div class="col-md-2">
-                        <select name="user_id" class="form-select form-select-sm" required>
-                            <option value="">Employee</option>
-                            @foreach($users as $u)<option value="{{ $u->id }}">{{ $u->name }}</option>@endforeach
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <select name="adjustment_type" class="form-select form-select-sm" title="Add or deduct from final salary">
-                            <option value="add">Add to salary</option>
-                            <option value="deduct">Deduct from salary</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2"><input type="number" name="amount" class="form-control form-control-sm" placeholder="Amount" step="0.01" min="0" required></div>
-                    <div class="col-md-2">
-                        <input type="text" name="arrear_for_month" class="form-control form-control-sm" placeholder="Arrear month e.g. March 2026" title="Which month this arrear is for">
-                    </div>
-                    <div class="col-md-2"><input type="text" name="description" class="form-control form-control-sm" placeholder="Note"></div>
-                    <div class="col-md-2"><button type="submit" class="btn btn-sm btn-primary w-100">Add Arrear</button></div>
-                </form>
-                <p class="small text-muted mb-2">Paid in selected payroll month <strong id="arrearPayrollMonth">—</strong>. Use <strong>Arrear month</strong> for the period the money is owed for (e.g. March 2026).</p>
-                @endif
-                <div class="table-responsive"><table class="table table-sm table-payroll" id="arrearsTable"><thead><tr><th>Employee</th><th>Type</th><th>Amount</th><th>Arrear month</th><th>Payroll month</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div>
-            </div>
-        </div>
-
-        <div class="tab-pane fade" id="tab-settlement">
-            <div class="payroll-card p-3">
-                @if($canManage)
-                <form id="formSettlement" class="row g-2 mb-3">
-                    <div class="col-md-4">
-                        <select name="user_id" class="form-select form-select-sm" required>
-                            <option value="">Exiting employee</option>
-                            @foreach($users as $u)<option value="{{ $u->id }}">{{ $u->name }}</option>@endforeach
-                        </select>
-                    </div>
-                    <div class="col-md-3"><input type="date" name="last_working_date" class="form-control form-control-sm"></div>
-                    <div class="col-md-3"><input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes"></div>
-                    <div class="col-md-2"><button type="submit" class="btn btn-sm btn-danger w-100">Create Settlement</button></div>
-                </form>
-                @endif
-                <div class="table-responsive"><table class="table table-sm table-payroll" id="settlementsTable"><thead><tr><th>Employee</th><th>LWD</th><th>Net</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div>
-            </div>
-        </div>
-
-        <div class="tab-pane fade" id="tab-previous">
-            <div class="payroll-card p-3">
-                <h6 class="mb-2">Previous Payroll Records</h6>
-                <p class="small text-muted">Add historical payroll manually or import CSV (columns: Name/Email, Month, Net, Gross, Deductions).</p>
-                @if($canManage)
-                <div class="row g-2 mb-3">
-                    <form id="formPrevious" class="col-lg-8 row g-2">
-                        <div class="col-md-3">
-                            <select name="user_id" class="form-select form-select-sm" required>
-                                <option value="">Employee</option>
-                                @foreach($users as $u)<option value="{{ $u->id }}">{{ $u->name }}</option>@endforeach
-                            </select>
-                        </div>
-                        <div class="col-md-2"><input type="text" name="month_label" class="form-control form-control-sm" placeholder="e.g. Jan 2024" required></div>
-                        <div class="col-md-2"><input type="number" name="net_amount" class="form-control form-control-sm" placeholder="Net" required></div>
-                        <div class="col-md-2"><input type="number" name="gross_amount" class="form-control form-control-sm" placeholder="Gross"></div>
-                        <div class="col-md-3"><button type="submit" class="btn btn-sm btn-success w-100">Add Previous Record</button></div>
-                    </form>
-                    <div class="col-lg-4">
-                        <form id="formImportPrevious" enctype="multipart/form-data">
-                            <div class="input-group input-group-sm">
-                                <input type="file" name="file" class="form-control" accept=".csv,.txt" required>
-                                <button class="btn btn-outline-secondary" type="submit">Import CSV</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-                @endif
-                <div class="table-responsive"><table class="table table-sm table-payroll" id="previousTable"><thead><tr><th>Employee</th><th>Month</th><th>Gross</th><th>Deductions</th><th>Net</th><th>Imported</th></tr></thead><tbody></tbody></table></div>
-            </div>
-        </div>
-
-        @if($canManage)
-        <div class="tab-pane fade" id="tab-actions">
-            <div class="payroll-card p-3">
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label small">Payslip format</label>
-                        <select id="payslipFormatSelect" class="form-select form-select-sm">
-                            @foreach($payslipFormats as $k => $label)
-                                <option value="{{ $k }}">{{ $label }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label small">Month status</label>
-                        <select id="monthStatusSelect" class="form-select form-select-sm">
-                            @foreach($monthStatuses as $k => $label)
-                                <option value="{{ $k }}">{{ $label }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                </div>
-                <div class="d-flex flex-wrap gap-2 mt-3">
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnRecalculate"><i class="ri-calculator-line"></i> Recalculate All</button>
-                    <button type="button" class="btn btn-sm btn-outline-success" id="btnGeneratePayslips"><i class="ri-file-text-line"></i> Generate Payslips</button>
-                    <button type="button" class="btn btn-sm btn-success" id="btnReleasePayslips"><i class="ri-send-plane-line"></i> Release Payslips</button>
-                    <button type="button" class="btn btn-sm btn-info" id="btnReleaseIt"><i class="ri-file-chart-line"></i> Release IT Statements</button>
-                    <button type="button" class="btn btn-sm btn-warning" id="btnToggleLock"><i class="ri-lock-line"></i> Lock / Unlock</button>
-                    <a href="#" class="btn btn-sm btn-outline-secondary" id="btnExportCsv"><i class="ri-download-line"></i> Export CSV</a>
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnSyncNewHires"><i class="ri-user-add-line"></i> Add New Hires Only</button>
-                </div>
-            </div>
-        </div>
-        @endif
+        <div id="employeesTable"></div>
     </div>
 </div>
 
@@ -304,8 +127,13 @@
                     <div class="col-6"><label class="form-label small">Salary PP</label><input type="number" name="salary_pp" class="form-control form-control-sm" step="0.01"></div>
                     <div class="col-6"><label class="form-label small">Increment</label><input type="number" name="increment" class="form-control form-control-sm" step="0.01"></div>
                     <div class="col-6"><label class="form-label small">Other</label><input type="number" name="other" class="form-control form-control-sm" step="0.01"></div>
-                    <div class="col-6"><label class="form-label small">Adv/Inc Other</label><input type="number" name="adv_inc_other" class="form-control form-control-sm" step="0.01"></div>
-                    <div class="col-12"><label class="form-label small">Hours worked</label><input type="number" name="hours_worked" class="form-control form-control-sm" step="0.01"></div>
+                    <div class="col-6"><label class="form-label small">Advance</label><input type="number" name="adv_inc_other" class="form-control form-control-sm" step="0.01"></div>
+                    <div class="col-6"><label class="form-label small">Incentive</label><input type="number" name="incentive" class="form-control form-control-sm" step="0.01"></div>
+                    <div class="col-6">
+                        <label class="form-label small">Hours worked</label>
+                        <input type="number" name="hours_worked" class="form-control form-control-sm bg-light" step="0.01" disabled title="Edit hours from the table row (pen icon). This field is read-only here so saving other fields does not affect live API hours.">
+                        <small class="text-muted" style="font-size: 11px;">Edit from table row</small>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="submit" class="btn btn-primary btn-sm">Save</button>
@@ -318,6 +146,7 @@
 @endsection
 
 @section('script')
+<script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
 (function() {
     const app = document.getElementById('payrollApp');
@@ -346,6 +175,151 @@
 
     function fmt(n) { return '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 }); }
 
+    async function onHoursEdited(cell) {
+        const row = cell.getRow();
+        const d = row.getData();
+        const oldValue = cell.getOldValue();
+        const value = parseFloat(cell.getValue());
+        if (isNaN(value) || value < 0) {
+            cell.restoreOldValue();
+            return;
+        }
+        try {
+            const res = await api(`${base}/employee-salary/${d.id}`, 'PUT', { hours_worked: value });
+            const fresh = res.row || {};
+            // Reflect recalculated amounts immediately, without a full reload.
+            row.update({
+                hours_worked: fresh.hours_worked ?? value,
+                hours_overridden: true,
+                edited_by: fresh.edited_by ?? d.edited_by,
+                edited_at: fresh.edited_at ?? d.edited_at,
+                gross_amount: fresh.gross_amount ?? d.gross_amount,
+                amount_lm: fresh.gross_amount ?? d.amount_lm,
+                net_amount: fresh.net_amount ?? d.net_amount,
+                amount_p: fresh.net_amount ?? d.amount_p,
+            });
+            if (employeeRowsById[d.id]) Object.assign(employeeRowsById[d.id], row.getData());
+        } catch (err) {
+            cell.restoreOldValue();
+            alert((err && err.message) ? err.message : 'Failed to save hours.');
+        }
+    }
+
+    let employeesTable = null;
+    let employeesTableBuilt = false;
+    let pendingEmployeesData = [];
+    // Hours overrides stay locked until the 2nd of the next month (set per month).
+    let hoursOverrideLocked = false;
+    let hoursOverrideUnlockDate = null;
+    function renderEmployeesTable(emps, locked) {
+        const data = (emps || []).map(e => Object.assign({}, e, { _locked: locked }));
+        pendingEmployeesData = data;
+        const columns = [
+            { title: 'Name', field: 'name', minWidth: 180, formatter: (c) => {
+                const d = c.getRow().getData();
+                return (d.name || '—');
+            } },
+            { title: 'Hours LM', field: 'hours_worked', hozAlign: 'center', width: 110,
+                editor: canManage ? 'number' : false,
+                editorParams: { min: 0, step: 1, selectContents: true },
+                editable: (cell) => canManage && !cell.getRow().getData()._locked && !hoursOverrideLocked,
+                cellEdited: onHoursEdited,
+                formatter: (c) => {
+                    const d = c.getRow().getData();
+                    const v = parseFloat(c.getValue());
+                    const txt = isNaN(v) ? '—' : (Math.round(v) + 'h');
+                    // Pen tag shows ONLY when the hours were manually edited (overridden),
+                    // so live working hours stay clean and edited values stand out in bold.
+                    if (d.hours_overridden) {
+                        const who = d.edited_by ? ' title="Edited by ' + esc(d.edited_by) + '"' : '';
+                        return '<strong>' + txt + ' <i class="ri-pencil-fill text-primary"' + who + '></i></strong>';
+                    }
+                    // Until the override unlock date, show a lock hint instead of a pen.
+                    if (hoursOverrideLocked) {
+                        const tip = hoursOverrideUnlockDate ? ' title="Editable from ' + esc(hoursOverrideUnlockDate) + '"' : '';
+                        return txt + ' <i class="ri-lock-line text-muted small"' + tip + '></i>';
+                    }
+                    return txt;
+                } },
+            { title: 'Salary PP', field: 'salary_pp', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
+            { title: 'Incr', field: 'increment', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
+            { title: 'Other', field: 'other', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
+            { title: 'Incentive', field: 'incentive', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
+            { title: 'Advance', field: 'adv_inc_other', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
+            { title: 'Amount', field: 'gross_amount', hozAlign: 'right', formatter: (c) => fmt(c.getRow().getData().gross_amount ?? c.getRow().getData().amount_lm) },
+            { title: 'Payable', field: 'net_amount', hozAlign: 'right', formatter: (c) => '<strong>' + fmt(c.getRow().getData().net_amount ?? c.getRow().getData().amount_p) + '</strong>' },
+        ];
+        columns.push({
+            title: 'History', field: 'edited_at', hozAlign: 'center', headerSort: false, minWidth: 140,
+            formatter: (c) => {
+                const d = c.getRow().getData();
+                let dateTxt = '';
+                if (d.edited_at) {
+                    const dt = new Date(d.edited_at);
+                    if (!isNaN(dt)) dateTxt = dt.getDate() + ' ' + dt.toLocaleString('en-US', { month: 'short' });
+                }
+                const who = d.edited_by ? esc(d.edited_by) : '';
+                return [who, dateTxt].filter(Boolean).join(' · ') || '—';
+            }
+        });
+        columns.push({
+            title: 'Action', field: 'user_id', hozAlign: 'center', headerSort: false, width: 150,
+            formatter: (c) => {
+                const d = c.getRow().getData();
+                const url = `${base}/month/${currentMonthId()}/salary-slip/${d.user_id}`;
+                let html = '';
+                if (canManage && !d._locked) {
+                    html += '<button type="button" class="btn btn-sm btn-link btn-edit-salary p-0 me-2" data-id="' + d.id + '" title="Edit"><i class="ri-pencil-line"></i></button>';
+                }
+                html += '<a href="' + url + '?print=0" target="_blank" class="btn btn-sm btn-outline-primary py-0 me-1" title="View"><i class="ri-eye-line"></i></a>'
+                      + '<a href="' + url + '?print=1" target="_blank" class="btn btn-sm btn-success py-0" title="Download"><i class="ri-download-line"></i></a>';
+                return html;
+            }
+        });
+
+        if (!employeesTable) {
+            employeesTable = new Tabulator('#employeesTable', {
+                layout: 'fitColumns',
+                height: '500px',
+                placeholder: 'No employees — sync from Team Management.',
+                pagination: true,
+                paginationSize: 50,
+                paginationSizeSelector: [25, 50, 100, 200],
+                columns: columns,
+            });
+            employeesTable.on('tableBuilt', () => {
+                employeesTableBuilt = true;
+                employeesTable.setData(pendingEmployeesData);
+            });
+        } else if (employeesTableBuilt) {
+            // Columns already handle the locked state per-row (d._locked), so just swap the data.
+            employeesTable.setData(pendingEmployeesData);
+        }
+        // If not yet built, the tableBuilt handler will load the latest pendingEmployeesData.
+    }
+
+    function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+    const tableInstances = {};
+    function renderTable(id, columns, data, placeholder) {
+        const rows = data || [];
+        if (!tableInstances[id]) {
+            tableInstances[id] = new Tabulator('#' + id, {
+                data: rows,
+                layout: 'fitColumns',
+                maxHeight: '500px',
+                pagination: true,
+                paginationSize: 50,
+                paginationSizeSelector: [25, 50, 100, 200],
+                placeholder: placeholder || 'None',
+                columns: columns,
+            });
+        } else {
+            tableInstances[id].setColumns(columns);
+            tableInstances[id].replaceData(rows);
+        }
+    }
+
     function currentMonthId() {
         return document.getElementById('payrollMonthSelect')?.value || monthId;
     }
@@ -360,81 +334,18 @@
 
         document.getElementById('statEmployees').textContent = emps.length;
         document.getElementById('statNet').textContent = fmt(emps.reduce((s, e) => s + parseFloat(e.net_amount || 0), 0));
-        document.getElementById('statStatus').textContent = m.status || '—';
-        document.getElementById('statLock').textContent = m.is_locked ? 'Locked' : 'Open';
-        document.getElementById('lockStatBox')?.classList.toggle('payroll-locked', !!m.is_locked);
-
-        const sel = document.getElementById('payslipFormatSelect');
-        const st = document.getElementById('monthStatusSelect');
-        if (sel) sel.value = m.payslip_format || 'standard';
-        if (st) st.value = m.status || 'draft';
 
         Object.keys(employeeRowsById).forEach(k => delete employeeRowsById[k]);
         emps.forEach(e => { employeeRowsById[e.id] = e; });
 
-        const tbody = document.querySelector('#employeesTable tbody');
-        if (tbody) {
-        tbody.innerHTML = emps.map(e => `<tr>
-            <td>${e.name || '—'}${e.is_new_hire ? ' <span class="badge bg-info">New</span>' : ''}</td>
-            <td>${e.hours_worked != null ? e.hours_worked + 'h' : '—'}</td>
-            <td>${fmt(e.salary_pp)}</td>
-            <td>${fmt(e.increment)}</td>
-            <td>${fmt(e.gross_amount ?? e.amount_lm)}</td>
-            <td><strong>${fmt(e.net_amount ?? e.amount_p)}</strong></td>
-            <td>${canManage && !m.is_locked ? `<button type="button" class="btn btn-xs btn-link btn-edit-salary" data-id="${e.id}">Edit</button>` : ''}</td>
-        </tr>`).join('') || '<tr><td colspan="7" class="text-muted">No employees — sync from Team Management.</td></tr>';
-        }
+        hoursOverrideLocked = !!data.hours_override_locked;
+        hoursOverrideUnlockDate = data.hours_override_unlock_date
+            ? new Date(data.hours_override_unlock_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+            : null;
 
-        document.querySelector('#componentsTable tbody').innerHTML = (data.components || []).map(c =>
-            `<tr><td>${c.user?.name}</td><td>${c.type}</td><td>${c.label}</td><td>${fmt(c.amount)}</td>
-            <td>${canManage && !m.is_locked ? `<button class="btn btn-link btn-sm text-danger btn-del-component" data-id="${c.id}">×</button>` : ''}</td></tr>`
-        ).join('') || '<tr><td colspan="5" class="text-muted">None</td></tr>';
+        renderEmployeesTable(emps, !!m.is_locked);
 
-        document.querySelector('#paymentsTable tbody').innerHTML = (data.payments || []).map(p =>
-            `<tr><td>${p.user?.name}</td><td>${p.entry_type}</td><td>${p.label}</td><td>${fmt(p.amount)}</td>
-            <td>${canManage && !m.is_locked ? `<button class="btn btn-link btn-sm text-danger btn-del-payment" data-id="${p.id}">×</button>` : ''}</td></tr>`
-        ).join('') || '<tr><td colspan="5" class="text-muted">None</td></tr>';
-
-        document.querySelector('#payslipsTable tbody').innerHTML = (data.payslips || []).map(p => {
-            const net = p.net ?? p.data?.net ?? 0;
-            const hours = p.hours_worked != null ? p.hours_worked + 'h' : '—';
-            const amtLm = p.amount_lm != null ? fmt(p.amount_lm) : '—';
-            return `<tr><td>${p.user?.name}</td><td>${hours}</td><td>${amtLm}</td><td>${p.format}</td><td><strong>${fmt(net)}</strong></td><td>${p.released_at ? 'Yes' : 'No'}</td>
-            <td><a href="${base}/payslip/${p.id}" target="_blank" class="btn btn-sm btn-outline-primary">View</a></td></tr>`;
-        }).join('') || '<tr><td colspan="7" class="text-muted">Generate payslips from Actions tab</td></tr>';
-
-        const arrearMonthHint = document.getElementById('arrearPayrollMonth');
-        if (arrearMonthHint) arrearMonthHint.textContent = m.month_label || '—';
-
-        document.querySelector('#arrearsTable tbody').innerHTML = (data.arrears || []).map(a => {
-            const typeLabel = (a.adjustment_type === 'deduct') ? '<span class="text-danger">Deduct</span>' : '<span class="text-success">Add</span>';
-            const amt = (a.adjustment_type === 'deduct') ? '−' + fmt(a.amount) : fmt(a.amount);
-            const arrearMonth = a.arrear_for || a.month_label || '—';
-            const payMonth = a.month_label || a.payroll_month?.month_label || m.month_label || '—';
-            const actions = canManage && !m.is_locked
-                ? (a.status === 'pending'
-                    ? `<button class="btn btn-sm btn-outline-success btn-apply-arrear" data-id="${a.id}">Apply</button>`
-                    : `<button class="btn btn-sm btn-outline-warning btn-revoke-arrear" data-id="${a.id}">Remove</button>`)
-                : '';
-            return `<tr><td>${a.user?.name}</td><td>${typeLabel}</td><td>${amt}</td><td><strong>${arrearMonth}</strong></td><td>${payMonth}</td><td>${a.status}</td><td>${actions}</td></tr>`;
-        }).join('') || '<tr><td colspan="7" class="text-muted">None for this month</td></tr>';
-
-        document.getElementById('btnExportCsv')?.setAttribute('href', `${base}/month/${id}/export`);
-    }
-
-    async function loadPrevious() {
-        const data = await api(`${base}/previous-records`);
-        document.querySelector('#previousTable tbody').innerHTML = (data.records || []).map(r =>
-            `<tr><td>${r.user?.name}</td><td>${r.month_label}</td><td>${fmt(r.gross_amount)}</td><td>${fmt(r.deductions_total)}</td><td>${fmt(r.net_amount)}</td><td>${r.imported_at ? new Date(r.imported_at).toLocaleDateString() : '—'}</td></tr>`
-        ).join('') || '<tr><td colspan="6" class="text-muted">No previous payroll records</td></tr>';
-    }
-
-    async function loadSettlements() {
-        const data = await api(`${base}/settlements`);
-        document.querySelector('#settlementsTable tbody').innerHTML = (data.settlements || []).map(s =>
-            `<tr><td>${s.user?.name}</td><td>${s.last_working_date || '—'}</td><td>${fmt(s.net_settlement)}</td><td>${s.status}</td>
-            <td>${canManage && s.status === 'draft' ? `<button class="btn btn-sm btn-success btn-process-settlement" data-id="${s.id}">Process</button>` : ''}</td></tr>`
-        ).join('') || '<tr><td colspan="5" class="text-muted">None</td></tr>';
+        document.getElementById('btnDownloadPayoutSheet')?.setAttribute('href', `${base}/month/${id}/payout-sheet`);
     }
 
     document.getElementById('payrollMonthSelect')?.addEventListener('change', () => { loadMonth(); });
@@ -453,122 +364,28 @@
         alert(res.message); loadMonth();
     });
 
-    document.getElementById('btnSyncNewHires')?.addEventListener('click', async () => {
-        const res = await api(`${base}/month/${currentMonthId()}/sync-employees`, 'POST', { new_hires_only: true });
-        alert(res.message); loadMonth();
-    });
-
-    document.getElementById('formComponent')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        await api(`${base}/month/${currentMonthId()}/components`, 'POST', Object.fromEntries(fd.entries()));
-        e.target.reset(); loadMonth();
-    });
-
-    document.getElementById('formPayment')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        await api(`${base}/month/${currentMonthId()}/payments`, 'POST', Object.fromEntries(fd.entries()));
-        e.target.reset(); loadMonth();
-    });
-
-    document.getElementById('formArrear')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        const body = Object.fromEntries(fd.entries());
-        body.payroll_month_id = currentMonthId();
-        await api(`${base}/arrears`, 'POST', body);
-        e.target.reset(); loadMonth();
-    });
-
-    document.getElementById('formSettlement')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        await api(`${base}/settlements`, 'POST', Object.fromEntries(fd.entries()));
-        e.target.reset(); loadSettlements();
-    });
-
-    document.getElementById('formPrevious')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        const res = await api(`${base}/previous-records`, 'POST', Object.fromEntries(fd.entries()));
-        alert(res.success ? 'Saved' : 'Error'); loadPrevious();
-    });
-
-    document.getElementById('formImportPrevious')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        const opts = { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' }, body: fd };
-        const r = await fetch(`${base}/previous-records/import`, opts);
-        const j = await r.json();
-        alert(j.message || 'Done'); loadPrevious();
-    });
-
-    document.getElementById('btnRecalculate')?.addEventListener('click', async () => {
-        const res = await api(`${base}/month/${currentMonthId()}/recalculate`, 'POST', {});
-        alert(res.message); loadMonth();
-    });
-
-    document.getElementById('btnGeneratePayslips')?.addEventListener('click', async () => {
-        const res = await api(`${base}/month/${currentMonthId()}/generate-payslips`, 'POST', {});
-        alert(res.message); loadMonth();
-    });
-
-    document.getElementById('btnReleasePayslips')?.addEventListener('click', async () => {
-        if (!confirm('Release payslips for this month?')) return;
-        const res = await api(`${base}/month/${currentMonthId()}/release-payslips`, 'POST', {});
-        alert(res.message); loadMonth();
-    });
-
-    document.getElementById('btnReleaseIt')?.addEventListener('click', async () => {
-        const res = await api(`${base}/month/${currentMonthId()}/release-it`, 'POST', {});
-        alert(res.message); loadMonth();
-    });
-
-    document.getElementById('btnToggleLock')?.addEventListener('click', async () => {
-        const res = await api(`${base}/month/${currentMonthId()}/toggle-lock`, 'POST', {});
-        alert(res.message); location.reload();
-    });
-
-    document.getElementById('payslipFormatSelect')?.addEventListener('change', async (e) => {
-        await api(`${base}/month/${currentMonthId()}`, 'PUT', { payslip_format: e.target.value });
-    });
-
-    document.getElementById('monthStatusSelect')?.addEventListener('change', async (e) => {
-        await api(`${base}/month/${currentMonthId()}`, 'PUT', { status: e.target.value });
-    });
-
     document.addEventListener('click', async (e) => {
-        if (e.target.classList.contains('btn-edit-salary')) {
-            const row = employeeRowsById[e.target.dataset.id];
+        const editBtn = e.target.closest('.btn-edit-salary');
+        if (editBtn) {
+            const row = employeeRowsById[editBtn.dataset.id];
             if (!row) return;
             document.getElementById('editRowId').value = row.id;
             const f = document.getElementById('formEditSalary');
-            ['salary_pp','increment','other','adv_inc_other','hours_worked'].forEach(k => {
+            ['salary_pp','increment','other','adv_inc_other','incentive','hours_worked'].forEach(k => {
                 if (f[k]) f[k].value = row[k] ?? '';
             });
+            // Hours field is intentionally read-only in this modal so saving
+            // other salary fields never carries the current hours value to the
+            // server (which would mark the row as a manual override and stop
+            // the live TeamLogger refresh). Hours editing lives on the table
+            // row's pen icon — that flow already toggles override correctly.
+            if (f.hours_worked) {
+                f.hours_worked.disabled = true;
+                f.hours_worked.title = hoursOverrideLocked && hoursOverrideUnlockDate
+                    ? ('Locked until ' + hoursOverrideUnlockDate + ' — edit from table row after that.')
+                    : 'Edit hours from the table row (pen icon).';
+            }
             bootstrap.Modal.getOrCreateInstance(document.getElementById('editSalaryModal')).show();
-        }
-        if (e.target.classList.contains('btn-del-component')) {
-            await api(`${base}/components/${e.target.dataset.id}`, 'DELETE');
-            loadMonth();
-        }
-        if (e.target.classList.contains('btn-del-payment')) {
-            await api(`${base}/payments/${e.target.dataset.id}`, 'DELETE');
-            loadMonth();
-        }
-        if (e.target.classList.contains('btn-apply-arrear')) {
-            await api(`${base}/arrears/${e.target.dataset.id}/apply`, 'POST', {});
-            loadMonth();
-        }
-        if (e.target.classList.contains('btn-revoke-arrear')) {
-            if (!confirm('Remove this arrear from salary? Net pay will be recalculated.')) return;
-            await api(`${base}/arrears/${e.target.dataset.id}`, 'DELETE');
-            loadMonth();
-        }
-        if (e.target.classList.contains('btn-process-settlement')) {
-            await api(`${base}/settlements/${e.target.dataset.id}/process`, 'POST', {});
-            loadSettlements();
         }
     });
 
@@ -583,9 +400,29 @@
         loadMonth();
     });
 
+    // Top search: filter every payroll table by employee name.
+    function applyPayrollSearch() {
+        const term = (document.getElementById('payrollSearch')?.value || '').toLowerCase().trim();
+        const empFilter = (d) => !term || ['name', 'email'].some((f) => String(d[f] || '').toLowerCase().includes(term));
+        const userFilter = (d) => !term || String(d.user?.name || '').toLowerCase().includes(term);
+        if (employeesTable && employeesTableBuilt) {
+            try { term ? employeesTable.setFilter(empFilter) : employeesTable.clearFilter(); } catch (e) {}
+        }
+        Object.values(tableInstances).forEach((t) => {
+            try { term ? t.setFilter(userFilter) : t.clearFilter(); } catch (e) {}
+        });
+    }
+    document.getElementById('payrollSearch')?.addEventListener('keyup', applyPayrollSearch);
+
+    // Tables built inside hidden tabs need a redraw once their tab becomes visible.
+    document.querySelectorAll('[data-bs-toggle="tab"]').forEach((btn) => {
+        btn.addEventListener('shown.bs.tab', () => {
+            if (employeesTable) employeesTable.redraw(true);
+            Object.values(tableInstances).forEach((t) => { try { t.redraw(true); } catch (e) {} });
+        });
+    });
+
     if (currentMonthId()) loadMonth();
-    loadPrevious();
-    loadSettlements();
 })();
 </script>
 @endsection

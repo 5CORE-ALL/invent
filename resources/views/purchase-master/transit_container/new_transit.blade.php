@@ -149,7 +149,10 @@
         <div class="card">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-2">
-                  <h5 class="mb-0">Transit Container New</h5>
+                  <div class="d-flex align-items-center gap-2">
+                      @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'transit_container_new'])
+                      <h5 class="mb-0">Transit Container New</h5>
+                  </div>
                 </div>
 
                 <div style="overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none;">

@@ -86,6 +86,9 @@ use App\Models\MercariWoShipSheetdata;
 use App\Models\MercariWShipSheetdata;
 use App\Models\MercariWShipListingStatus;
 use App\Models\MercariWoShipListingStatus;
+use App\Http\Controllers\MarketPlace\AliexpressController;
+use App\Http\Controllers\MarketPlace\FaireController;
+use App\Http\Controllers\MarketPlace\SheinController;
 use App\Http\Controllers\MarketPlace\PlsController;
 use App\Http\Controllers\MarketPlace\WayfairController;
 use App\Models\PlsListingStatus;
@@ -98,7 +101,9 @@ use App\Models\SheinDailyData;
 use App\Models\SheinListingStatus;
 use App\Models\ShopifySku;
 use App\Models\TemuDailyData;
+use App\Models\TemuDailyDataL60;
 use App\Models\Temu2DailyData;
+use App\Models\Temu2DailyDataL60;
 use App\Models\TemuMetric;
 use App\Models\TemuProductSheet;
 use App\Models\TiendamiaProduct;
@@ -117,6 +122,9 @@ use App\Models\WalmartMetrics;
 use App\Models\AmazonListingStatus;
 use App\Models\EbayListingStatus;
 use App\Models\TemuListingStatus;
+use App\Services\EbayChannelMetricsService;
+use App\Services\SheinShopifySalesService;
+use App\Services\TemuShopifySalesService;
 use App\Models\BestbuyUSAListingStatus;
 use App\Models\AmazonChannelSummary;
 use Carbon\Carbon;
@@ -147,6 +155,11 @@ class ChannelMasterController extends Controller
         $paths = [
             'PLS' => '/pls-pricing',
             'Wayfair' => '/wayfair-pricing',
+            'Aliexpress' => '/aliexpress-pricing',
+            'Shein' => '/shein-pricing',
+            'Faire' => '/faire-pricing',
+            'Reverb' => '/reverb-pricing',
+            'TopDawg' => '/topdawg-pricing',
         ];
 
         $path = $paths[trim($channel)] ?? null;
@@ -221,8 +234,168 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Map / Miss (Missing L) / NMap for Temu & Temu 2 — same rules as temu_decrease / temu2_decrease badges
-     * (TemuController JSON: missing, inv×price, nr_req=NR, |INV−temu_stock|≤3 tolerance).
+     * Live Amazon Map/Miss/NMap for the all-marketplace-master, computed exactly like
+     * OverallAmazonController::saveDailySummaryIfNeeded (the amazon-tabulator-view backend),
+     * so the master page never shows stale 0s from amazon_channel_summary_data.
+     *
+     *   Valid rows: non-parent, INV > 0, NR !== 'NR'.
+     *   Miss  (Missing L): REQ and (not in amazon_datsheets OR price <= 0), non-FBA.
+     *   Map / NMap:        REQ, listed (price > 0) AND INV_AMZ > 0 (both sides have stock, like /map-issues);
+     *                      N Map when |INV - INV_AMZ| > 3 (when 3% of INV < 3) else rounded % > 3, otherwise Map.
+     *                      A listed row with 0 Amazon stock is neither Map nor N Map. FBA excluded from Miss + NMap.
+     *   Listing match uses AmazonDatasheet::normalizeSkuForLookup (spaces removed + PCS/PC fold) and
+     *   NR resolves from amazon_data_view NRL then amazon_listing_statuses.nr_req (default REQ).
+     */
+    private function getAmazonLiveMapMissNMapCounts(): array
+    {
+        try {
+            $productMasters = ProductMaster::whereNull('deleted_at')->get();
+            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
+            $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+            $listingStatus = AmazonListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+            $stockMappings = ProductStockMapping::whereIn('sku', $skus)->get()->keyBy('sku');
+
+            // Datasheets keyed by the shared Amazon normalization (spaces removed + PCS/PC fold).
+            $datasheetsByNorm = AmazonDatasheet::query()->get()->keyBy(function ($item) {
+                return AmazonDatasheet::normalizeSkuForLookup($item->sku ?? '');
+            });
+
+            $map = 0;
+            $miss = 0;
+            $nmap = 0;
+            $views = 0;
+
+            foreach ($productMasters as $pm) {
+                $sku = (string) $pm->sku;
+                if (stripos($sku, 'PARENT') === 0 || stripos($sku, 'PARENT ') !== false) {
+                    continue;
+                }
+
+                $inv = (float) ($shopifyData[$sku]->inv ?? 0);
+                if ($inv <= 0) {
+                    continue;
+                }
+
+                $nr = $this->resolveAmazonChannelNrReq($nrValues, $listingStatus, $sku);
+                if ($nr === 'NR') {
+                    continue; // RL filter: exclude NR
+                }
+
+                $sheet = $datasheetsByNorm[AmazonDatasheet::normalizeSkuForLookup($sku)] ?? null;
+                $isMissingAmazon = ($sheet === null);
+                $price = (float) ($sheet->price ?? 0);
+
+                // Views: sessions over all valid rows (same scope as the page summary).
+                $views += (float) ($sheet->sessions_l30 ?? 0);
+
+                $childSku = strtoupper($sku);
+                $parentSku = strtoupper((string) ($pm->parent ?? ''));
+                $isFbaRow = ((int) ($pm->fba ?? 0) === 1)
+                    || str_contains($childSku, 'FBA')
+                    || str_contains($parentSku, 'FBA');
+
+                // Map/Miss/NMap only for REQ rows with INV > 0.
+                if ($nr !== 'REQ') {
+                    continue;
+                }
+
+                if (($isMissingAmazon || $price <= 0) && ! $isFbaRow) {
+                    $miss++;
+                } elseif (! $isMissingAmazon && $price > 0) {
+                    $invAmzRaw = $stockMappings[$sku]->inventory_amazon ?? 0;
+                    $invAmz = is_numeric($invAmzRaw) ? (float) $invAmzRaw : 0.0;
+                    // Map / N Map only when BOTH sides have stock (same as /map-issues);
+                    // a listed row with 0 Amazon stock is neither Map nor N Map.
+                    if ($invAmz > 0) {
+                        $diff = abs($inv - $invAmz);
+                        // /map-issues tolerance: < 3 units when 3% of INV < 3, else rounded % > 3.
+                        if ($inv * 0.03 < 3) {
+                            $isNotMap = $diff > 3;
+                        } else {
+                            $isNotMap = round(($diff / $inv) * 100) > 3;
+                        }
+                        if ($isNotMap) {
+                            if (! $isFbaRow) {
+                                $nmap++;
+                            }
+                        } else {
+                            $map++;
+                        }
+                    }
+                }
+            }
+
+            return [
+                'map' => $map,
+                'miss' => $miss,
+                'nmap' => $nmap,
+                'total_views' => (int) $views,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Amazon live map/miss fallback used: ' . $e->getMessage());
+            return $this->getMapAndMissCounts('amazon');
+        }
+    }
+
+    /**
+     * Resolve Amazon REQ/NR the same way OverallAmazonController does: amazon_data_view
+     * NRL flag first ('NRL' => NR, 'REQ' => REQ), then amazon_listing_statuses.nr_req,
+     * default REQ.
+     */
+    private function resolveAmazonChannelNrReq($nrValues, $listingStatus, string $sku): string
+    {
+        if (isset($nrValues[$sku])) {
+            $raw = $nrValues[$sku];
+            if (! is_array($raw)) {
+                $raw = json_decode((string) $raw, true) ?: [];
+            }
+            $nrl = is_array($raw) ? ($raw['NRL'] ?? null) : null;
+            if ($nrl === 'NRL') {
+                return 'NR';
+            }
+            if ($nrl === 'REQ') {
+                return 'REQ';
+            }
+        }
+
+        $ls = $listingStatus[$sku] ?? null;
+        if ($ls && $ls->value) {
+            $val = is_array($ls->value) ? $ls->value : (json_decode((string) $ls->value, true) ?: []);
+            $nrReq = strtoupper((string) ($val['nr_req'] ?? ''));
+            if ($nrReq === 'NR' || $nrReq === 'NRL') {
+                return 'NR';
+            }
+            if ($nrReq === 'REQ') {
+                return 'REQ';
+            }
+        }
+
+        return 'REQ';
+    }
+
+    /**
+     * Map tolerance — matches amazon-tabulator-view / temu2_decrease:
+     * |INV − stock| <= 3 units OR <= 3% of INV. INV <= 0 always counts as mapped.
+     */
+    private function temuInvWithinMapTolerance(float $inv, float $stock): bool
+    {
+        if ($inv <= 0) {
+            return true;
+        }
+        $diff = abs($inv - $stock);
+        if ($diff <= 3 + 1e-9) {
+            return true;
+        }
+
+        return $diff <= ($inv * 0.03) + 1e-9;
+    }
+
+    /**
+     * Map / Miss (Missing L) / NMap for Temu & Temu 2 — same rules as temu_decrease / temu2_decrease
+     * badges and /map-issues: Missing L = missing='M', INV>0, REQ; Map/N Map = listed, REQ, price>0,
+     * INV>0 and temu_stock>0, tolerance < 3 units when 3% of INV < 3, else rounded % > 3.
      */
     private function getTemuLiveMapMissNMapFromDecreaseData(bool $isTemu2 = false): array
     {
@@ -257,27 +430,28 @@ class ChannelMasterController extends Controller
                 $inventory = (float) ($row['inventory'] ?? 0);
                 $temuStock = (float) ($row['temu_stock'] ?? 0);
                 $missing = (string) ($row['missing'] ?? '');
-                $goodsId = trim((string) ($row['goods_id'] ?? ''));
+                $temuPrice = (float) ($row['temu_price'] ?? 0);
+                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
                 $totalViews += (int) ($row['product_clicks'] ?? 0);
 
-                if ($missing === 'M' && $inventory > 0) {
+                // Missing L: not listed (missing='M'), INV > 0, REQ only — same rule as /map-issues.
+                if ($missing === 'M' && $inventory > 0 && $nrReq === 'REQ') {
                     $missingC++;
                 }
 
-                $invTemuDiff = abs($inventory - $temuStock);
-                if ($missing !== 'M' && $goodsId !== '') {
-                    if ($inventory > 0 && $temuStock > 0) {
-                        if ($invTemuDiff <= 3) {
-                            $mapC++;
-                        } else {
-                            $nmapC++;
-                        }
-                    } elseif ($inventory > 0 && $temuStock == 0.0) {
-                        if ($invTemuDiff > 3) {
-                            $nmapC++;
-                        } else {
-                            $mapC++;
-                        }
+                // Map / Missing M (N Map): listed, REQ, price > 0, both sides with stock — same gate as
+                // /map-issues. Tolerance: < 3 units when 3% of INV < 3, else rounded % > 3.
+                if ($inventory > 0 && $nrReq === 'REQ' && $missing !== 'M' && $temuPrice > 0 && $temuStock > 0) {
+                    $diff = abs($inventory - $temuStock);
+                    if ($inventory * 0.03 < 3) {
+                        $isNotMap = $diff > 3;
+                    } else {
+                        $isNotMap = round(($diff / $inventory) * 100) > 3;
+                    }
+                    if ($isNotMap) {
+                        $nmapC++;
+                    } else {
+                        $mapC++;
                     }
                 }
             }
@@ -294,6 +468,730 @@ class ChannelMasterController extends Controller
 
             return $this->getMapAndMissCounts($ch);
         }
+    }
+
+    /**
+     * L30 sales summary — Temu from shopify_order_items (/shopify-orders); Temu 2 from tabulator.
+     *
+     * @return array{total_orders: int, total_quantity: int, total_revenue: float}|null
+     */
+    private function getTemuLiveSalesSummaryFromTabulator(bool $isTemu2 = false): ?array
+    {
+        if (! $isTemu2) {
+            try {
+                $start = Carbon::now()->subDays(30)->startOfDay();
+                $end = Carbon::now()->endOfDay();
+                $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
+
+                return [
+                    'total_orders' => $m['orders'],
+                    'total_quantity' => $m['qty'],
+                    'total_revenue' => $m['sales'],
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('Temu orders live sales summary failed: '.$e->getMessage());
+
+                return null;
+            }
+        }
+
+        try {
+            $req = Request::create($isTemu2 ? '/temu2-decrease-data' : '/temu-decrease-data', 'GET');
+            $temuCtrl = app(\App\Http\Controllers\MarketPlace\TemuController::class);
+            $response = $isTemu2
+                ? $temuCtrl->getTemu2DecreaseData($req)
+                : $temuCtrl->getTemuDecreaseData($req);
+            $payload = json_decode($response->getContent(), true);
+            $summary = is_array($payload) ? ($payload['sales_summary'] ?? null) : null;
+            if (! is_array($summary)) {
+                return null;
+            }
+
+            return [
+                'total_orders' => (int) ($summary['total_orders'] ?? 0),
+                'total_quantity' => (int) ($summary['total_quantity'] ?? 0),
+                'total_revenue' => (float) ($summary['total_revenue'] ?? 0),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Temu live sales summary fallback: '.$e->getMessage(), ['temu2' => $isTemu2]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Sum L60 rows the same way /temu-tabulator's L60 Sales badge does
+     * (getDailyDataL60 rows + hasSales gate + fbPrice).
+     *
+     * @return array{total_orders: int, total_revenue: float}
+     */
+    private function summarizeTemuTabulatorL60Rows(array $rows): array
+    {
+        $totalRevenue = 0.0;
+        $orderIds = [];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $parent = (string) ($row['Parent'] ?? '');
+            if ($parent !== '' && stripos($parent, 'PARENT') === 0) {
+                continue;
+            }
+            $sku = trim((string) ($row['contribution_sku'] ?? ''));
+            $orderId = trim((string) ($row['order_id'] ?? ''));
+            if ($sku === '' || $orderId === '') {
+                continue;
+            }
+            $qty = (int) ($row['quantity_purchased'] ?? 0);
+            $base = (float) ($row['base_price_total'] ?? 0);
+            if ($qty <= 0 || $base <= 0) {
+                continue;
+            }
+            $lineTotal = $base * $qty;
+            $fbPrice = $lineTotal < 27 ? $base + 2.99 : $base;
+            $totalRevenue += $fbPrice * $qty;
+            $orderIds[$orderId] = true;
+        }
+
+        return [
+            'total_orders' => count($orderIds),
+            'total_revenue' => round($totalRevenue, 2),
+        ];
+    }
+
+    /**
+     * L60 sales from uploaded temu_daily_data_l60 / temu2_daily_data_l60 — same as tabulator L60 badge.
+     * Returns null when the L60 table is empty (caller should fall back to historical snapshot).
+     *
+     * @return array{total_orders: int, total_revenue: float}|null
+     */
+    private function getTemuLiveL60SalesSummary(bool $isTemu2 = false): ?array
+    {
+        try {
+            $table = $isTemu2 ? 'temu2_daily_data_l60' : 'temu_daily_data_l60';
+            if (! Schema::hasTable($table)) {
+                return null;
+            }
+
+            $modelClass = $isTemu2 ? Temu2DailyDataL60::class : TemuDailyDataL60::class;
+            if ($modelClass::count() === 0) {
+                return null;
+            }
+
+            if (! $isTemu2) {
+                $temuCtrl = app(\App\Http\Controllers\MarketPlace\TemuController::class);
+                $response = $temuCtrl->getDailyDataL60(Request::create('/temu/daily-data-l60', 'GET'));
+                $rows = json_decode($response->getContent(), true);
+
+                return is_array($rows) ? $this->summarizeTemuTabulatorL60Rows($rows) : null;
+            }
+
+            $normalizeSku = function ($sku) {
+                $sku = strtoupper(trim((string) $sku));
+                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+                $sku = preg_replace('/\s+/', ' ', $sku);
+
+                return $sku;
+            };
+
+            $productMasterSkus = ProductMaster::orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->pluck('sku')
+                ->filter(fn ($sku) => stripos($sku, 'PARENT') === false)
+                ->unique()
+                ->values()
+                ->all();
+
+            $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
+                return [$normalizeSku($s) => true];
+            })->all();
+
+            $allowedRawSkus = Temu2DailyDataL60::select('contribution_sku')->distinct()
+                ->get()
+                ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
+                    return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
+                })
+                ->pluck('contribution_sku')
+                ->unique()
+                ->values()
+                ->all();
+
+            $pmByNormalized = ProductMaster::whereIn('sku', $productMasterSkus)->get()
+                ->keyBy(fn ($pm) => $normalizeSku($pm->sku ?? ''));
+
+            $rows = [];
+            foreach (Temu2DailyDataL60::whereIn('contribution_sku', $allowedRawSkus)->get() as $item) {
+                $pm = $pmByNormalized[$normalizeSku($item->contribution_sku ?? '')] ?? null;
+                $rows[] = [
+                    'Parent' => $pm ? ($pm->parent ?? '') : '',
+                    'contribution_sku' => $item->contribution_sku,
+                    'order_id' => $item->order_id,
+                    'quantity_purchased' => $item->quantity_purchased,
+                    'base_price_total' => $item->base_price_total,
+                ];
+            }
+
+            return $this->summarizeTemuTabulatorL60Rows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Temu live L60 sales summary fallback: '.$e->getMessage(), ['temu2' => $isTemu2]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Resolve L60 sales/orders for Temu channels: uploaded L60 table first, then historical snapshot.
+     *
+     * @return array{sales: float, orders: int}
+     */
+    private function resolveTemuL60SalesAndOrders(bool $isTemu2): array
+    {
+        if (! $isTemu2) {
+            try {
+                [$start, $end] = TemuShopifySalesService::channelMasterL60Window();
+                $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
+
+                return [
+                    'sales' => (float) $m['sales'],
+                    'orders' => (int) $m['orders'],
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('Temu orders L60 failed: '.$e->getMessage());
+
+                return ['sales' => 0.0, 'orders' => 0];
+            }
+        }
+
+        $channelKey = 'temu2';
+        $l60Sales = 0.0;
+        $l60Orders = 0;
+
+        $liveL60 = $this->getTemuLiveL60SalesSummary($isTemu2);
+        if ($liveL60) {
+            return [
+                'sales' => (float) ($liveL60['total_revenue'] ?? 0),
+                'orders' => (int) ($liveL60['total_orders'] ?? 0),
+            ];
+        }
+
+        $derivedL60 = $this->deriveTemuL60FromHistoricalL30($channelKey);
+        if ($derivedL60) {
+            $l60Sales = (float) $derivedL60['sales'];
+            $l60Orders = (int) $derivedL60['orders'];
+        }
+
+        $legacyTable = $isTemu2 ? 'temu2_daily_data_l60' : 'temu_daily_data_l60';
+        if ($l60Sales <= 0 && Schema::hasTable($legacyTable)) {
+            $l60Data = DB::table($legacyTable)
+                ->select('order_id', 'base_price_total', 'quantity_purchased', 'contribution_sku')
+                ->get();
+
+            $uniqueOrders = [];
+            foreach ($l60Data as $row) {
+                $sku = trim((string) ($row->contribution_sku ?? ''));
+                $orderId = trim((string) ($row->order_id ?? ''));
+                if ($sku === '' || $orderId === '') {
+                    continue;
+                }
+                if (! in_array($orderId, $uniqueOrders, true)) {
+                    $uniqueOrders[] = $orderId;
+                    $l60Orders++;
+                }
+
+                $basePrice = (float) ($row->base_price_total ?? 0);
+                $quantity = (int) ($row->quantity_purchased ?? 0);
+                if ($quantity <= 0 || $basePrice <= 0) {
+                    continue;
+                }
+                $total = $basePrice * $quantity;
+                $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
+                $l60Sales += $fbPrice * $quantity;
+            }
+        }
+
+        return [
+            'sales' => $l60Sales,
+            'orders' => $l60Orders,
+        ];
+    }
+
+    /**
+     * Keep cached all-marketplace-master Temu / Temu 2 rows aligned with tabulator sales badges.
+     */
+    private function overlayLiveTemuMetricsOnChannelRows(array $rows): array
+    {
+        $liveByChannel = [
+            'Temu' => fn () => $this->getTemuLiveSalesSummaryFromTabulator(false),
+            'Temu 2' => fn () => $this->getTemuLiveSalesSummaryFromTabulator(true),
+        ];
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($name === '' || ! isset($liveByChannel[$name])) {
+                continue;
+            }
+
+            $isTemu2 = $name === 'Temu 2';
+            $liveSales = $liveByChannel[$name]();
+            $liveL60 = $this->resolveTemuL60SalesAndOrders($isTemu2);
+            $l60Sales = (float) $liveL60['sales'];
+
+            if ($liveSales) {
+                $l30Sales = (float) $liveSales['total_revenue'];
+                $row['L30 Sales'] = (int) round($l30Sales);
+                $row['L30 Orders'] = (int) $liveSales['total_orders'];
+                $row['Qty'] = (int) $liveSales['total_quantity'];
+            }
+
+            $row['L-60 Sales'] = (int) round($l60Sales);
+            $row['L60 Orders'] = (int) $liveL60['orders'];
+            if ($l60Sales > 0 && $liveSales) {
+                $row['Growth'] = round(((($liveSales['total_revenue'] ?? 0) - $l60Sales) / $l60Sales) * 100, 2).'%';
+            } elseif ($l60Sales > 0) {
+                $l30Cached = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L30 Sales'] ?? 0));
+                $row['Growth'] = round((($l30Cached - $l60Sales) / $l60Sales) * 100, 2).'%';
+            }
+
+            $ySales = $this->computeTemuYSalesLikeAmazon($isTemu2);
+            if ($ySales !== null) {
+                $row['Y Sales'] = $ySales;
+            }
+            $l7Sales = $this->computeTemuL7SalesLikeAmazon($isTemu2);
+            if ($l7Sales !== null) {
+                $row['L7 Sales'] = $l7Sales;
+            }
+
+            $mapMiss = $this->getTemuLiveMapMissNMapFromDecreaseData($isTemu2);
+            $row['Map'] = $mapMiss['map'];
+            $row['Miss'] = $mapMiss['miss'];
+            $row['NMap'] = $mapMiss['nmap'];
+            if (array_key_exists('total_views', $mapMiss)) {
+                $row['Total Views'] = $mapMiss['total_views'];
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Overlay live eBay 1/2/3 L30 (marketplace_daily_metrics) + L60 (orders / ebay3 dates)
+     * so cached channel_master_calculated_data stays fast but sales match latest fetch + metrics sync.
+     */
+    private function overlayLiveEbayMetricsOnChannelRows(array $rows): array
+    {
+        $displayToWhich = [
+            'eBay' => 1,
+            'EbayTwo' => 2,
+            'EbayThree' => 3,
+        ];
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($name === '' || ! isset($displayToWhich[$name])) {
+                continue;
+            }
+
+            $which = $displayToWhich[$name];
+            $live = EbayChannelMetricsService::liveChannelSummary($which);
+            if ($live === null) {
+                continue;
+            }
+
+            $l30Sales = (float) $live['l30_sales'];
+            $l60Sales = (float) $live['l60_sales'];
+
+            $row['L30 Sales'] = (int) round($l30Sales);
+            $row['L30 Orders'] = (int) $live['l30_orders'];
+            $row['Qty'] = (int) $live['qty'];
+            $row['L-60 Sales'] = (int) round($l60Sales);
+            $row['L60 Orders'] = (int) $live['l60_orders'];
+
+            if ($l60Sales > 0) {
+                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
+            }
+
+            if ($l60Sales > 0 && isset($live['l60_profit'])) {
+                $row['gprofitL60'] = round(($live['l60_profit'] / $l60Sales) * 100, 2).'%';
+            }
+
+            if (! empty($live['l60_cogs']) && isset($live['l60_profit'])) {
+                $row['G RoiL60'] = round(($live['l60_profit'] / $live['l60_cogs']) * 100, 2);
+            }
+
+            $ySales = $this->computeEbayYSalesLikeAmazon($which);
+            if ($ySales !== null) {
+                $row['Y Sales'] = $ySales;
+            }
+
+            $l7Sales = $this->computeEbayL7SalesLikeAmazon($which);
+            if ($l7Sales !== null) {
+                $row['L7 Sales'] = $l7Sales;
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Live L30/L60 from shopify_order_items — same windows as /pp-sales-stats and getPurchasingPowerChannelData().
+     *
+     * @return array{l30_sales: float, l30_orders: int, qty: int, l60_sales: float, l60_orders: int, pft: float, cogs: float, l60_pft: float, l60_cogs: float}|null
+     */
+    private function getPurchasingPowerLiveMetricsSummary(): ?array
+    {
+        try {
+            $pst = 'America/Los_Angeles';
+            $todayPst = Carbon::now($pst);
+            $l30Start = $todayPst->copy()->subDays(29)->startOfDay();
+            $l30End = $todayPst->copy()->endOfDay();
+            $l60Start = $todayPst->copy()->subDays(59)->startOfDay();
+            $l60End = $todayPst->copy()->subDays(30)->endOfDay();
+
+            $l30 = $this->computePurchasingPowerMetricsFromShopify($l30Start, $l30End);
+            $l60 = $this->computePurchasingPowerMetricsFromShopify($l60Start, $l60End);
+
+            return [
+                'l30_sales' => $l30['sales'],
+                'l30_orders' => $l30['orders'],
+                'qty' => $l30['qty'],
+                'l60_sales' => $l60['sales'],
+                'l60_orders' => $l60['orders'],
+                'pft' => $l30['pft'],
+                'cogs' => $l30['cogs'],
+                'l60_pft' => $l60['pft'],
+                'l60_cogs' => $l60['cogs'],
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Purchasing Power live metrics summary failed: '.$e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * Overlay live Purchasing Power L30/L60 from Shopify so /all-marketplace-master matches /purchasing-power-sales
+     * even when channel_master_calculated_data was built before the latest Shopify sync.
+     */
+    private function overlayLivePurchasingPowerMetricsOnChannelRows(array $rows): array
+    {
+        $live = $this->getPurchasingPowerLiveMetricsSummary();
+        if ($live === null) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($name !== 'Purchasing Power') {
+                continue;
+            }
+
+            $l30Sales = (float) $live['l30_sales'];
+            $l60Sales = (float) $live['l60_sales'];
+
+            $row['L30 Sales'] = (int) round($l30Sales);
+            $row['L30 Orders'] = (int) $live['l30_orders'];
+            $row['Qty'] = (int) $live['qty'];
+            $row['L-60 Sales'] = (int) round($l60Sales);
+            $row['L60 Orders'] = (int) $live['l60_orders'];
+
+            if ($l60Sales > 0) {
+                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
+            }
+
+            $row['Total PFT'] = round($live['pft'], 2);
+            $row['cogs'] = round($live['cogs'], 2);
+
+            if ($l30Sales > 0) {
+                $gProfitPct = round(($live['pft'] / $l30Sales) * 100, 2);
+                $row['Gprofit%'] = $gProfitPct.'%';
+                $row['N PFT'] = $gProfitPct.'%';
+            }
+
+            if ($live['cogs'] > 0) {
+                $gRoi = round(($live['pft'] / $live['cogs']) * 100, 2);
+                $row['G Roi'] = $gRoi;
+                $row['N ROI'] = $gRoi;
+            }
+
+            if ($l60Sales > 0) {
+                $row['gprofitL60'] = round(($live['l60_pft'] / $l60Sales) * 100, 2).'%';
+            }
+
+            if ($live['l60_cogs'] > 0) {
+                $row['G RoiL60'] = round(($live['l60_pft'] / $live['l60_cogs']) * 100, 2);
+            }
+
+            $ySales = $this->computePurchasingPowerYSalesLikeAmazon();
+            if ($ySales !== null) {
+                $row['Y Sales'] = $ySales;
+            }
+
+            $l7Sales = $this->computePurchasingPowerL7SalesLikeAmazon();
+            if ($l7Sales !== null) {
+                $row['L7 Sales'] = $l7Sales;
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Apply the same shopify_raw_orders exclusions as the /shopify page (ShopifyRawDataController):
+     * skips rows whose source_name/tags match a known marketplace and SKUs containing "XYZ".
+     *
+     * Note: we deliberately do NOT apply the page's "Hide Unknown" toggle (rows with empty tags).
+     * Those rows are legitimate Shopify direct sales that simply have no source tag, so they belong
+     * in the Active Channel Sales total. The /shopify page card matches this overlay when the user
+     * toggles "Show Unknown" on; with the default "Hide Unknown" toggle the page card will be lower.
+     */
+    private function applyShopifyDirectOrderExclusions($query)
+    {
+        foreach (\App\Http\Controllers\ShopifyRawDataController::EXCLUDE_SOURCES as $term) {
+            $query->whereRaw('LOWER(COALESCE(source_name,"")) NOT LIKE ?', ['%' . strtolower($term) . '%'])
+                  ->whereRaw('LOWER(COALESCE(tags,"")) NOT LIKE ?',        ['%' . strtolower($term) . '%']);
+        }
+
+        $query->where(function ($q) {
+            $q->whereNull('sku')->orWhere('sku', 'NOT LIKE', '%XYZ%');
+        });
+
+        return $query;
+    }
+
+    /**
+     * Sum net_sales (and order/qty counts) from shopify_raw_orders for a given window.
+     * Mirrors the /shopify page Net Sales card: same EXCLUDE_SOURCES + XYZ filter.
+     *
+     * Falls back to the legacy `shopify_orders` table for dates that pre-date the
+     * earliest record in `shopify_raw_orders` so L60 / longer-lookback windows still
+     * produce a meaningful total (the Shopify Admin API in this account refuses to
+     * return older `created_at` orders, so the new raw-orders table can't be
+     * backfilled past its current floor). The legacy table is per-order (not per
+     * line), stores source_name/tags inside `raw_payload`, and `total_price` is
+     * effectively the order-level net since `total_discounts` is empty there.
+     *
+     * @return array{sales: float, orders: int, qty: int}
+     */
+    private function computeShopifyDirectMetricsFromOrders(Carbon $start, Carbon $end): array
+    {
+        $startDate = $start->toDateString();
+        $endDate   = $end->toDateString();
+
+        $rawBase = DB::table('shopify_raw_orders')
+            ->where('order_date', '>=', $startDate)
+            ->where('order_date', '<=', $endDate);
+        $this->applyShopifyDirectOrderExclusions($rawBase);
+
+        $sales  = (float) (clone $rawBase)->sum('net_sales');
+        $orders = (int)   (clone $rawBase)->distinct('order_id')->count('order_id');
+        $qty    = (int)   (clone $rawBase)->sum('quantity');
+
+        // Legacy fallback for any dates in the window that pre-date
+        // shopify_raw_orders' earliest record (avoids double counting because the
+        // two tables don't currently overlap — legacy stops 2026-05-01, raw starts
+        // 2026-05-11; we still cut at raw_orders.min(order_date) - 1 day to stay
+        // safe if backfills add overlap in the future).
+        if (Schema::hasTable('shopify_orders')) {
+            try {
+                $rawMin = DB::table('shopify_raw_orders')->min('order_date');
+                if ($rawMin && Carbon::parse($rawMin)->gt($start)) {
+                    $legacyEnd = Carbon::parse($rawMin)->subDay()->endOfDay();
+                    if ($legacyEnd->gte($start)) {
+                        $legacyBase = DB::table('shopify_orders')
+                            ->where('order_date', '>=', $start->copy()->startOfDay())
+                            ->where('order_date', '<=', $legacyEnd);
+                        $this->applyShopifyDirectOrderExclusionsLegacy($legacyBase);
+                        $sales  += (float) (clone $legacyBase)->sum('total_price');
+                        $orders += (int)   (clone $legacyBase)->distinct('shopify_order_id')->count('shopify_order_id');
+                        // shopify_orders doesn't have a per-line quantity column,
+                        // so we approximate qty from line_items_count when present.
+                        $qty    += (int)   (clone $legacyBase)->sum('line_items_count');
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Shopify legacy-orders fallback failed: ' . $e->getMessage());
+            }
+        }
+
+        return [
+            'sales'  => round($sales, 2),
+            'orders' => $orders,
+            'qty'    => $qty,
+        ];
+    }
+
+    /**
+     * EXCLUDE_SOURCES filter for the legacy shopify_orders table. Standalone
+     * source_name/tags columns are empty on that table so we apply the same
+     * filter against `raw_payload->source_name` / `raw_payload->tags` JSON paths.
+     * SKU-level XYZ exclusion is skipped here because line items live inside
+     * raw_payload; the L60 fallback is small enough that this is acceptable.
+     */
+    private function applyShopifyDirectOrderExclusionsLegacy($query)
+    {
+        foreach (\App\Http\Controllers\ShopifyRawDataController::EXCLUDE_SOURCES as $term) {
+            $query->whereRaw('LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, "$.source_name")),"")) NOT LIKE ?', ['%' . strtolower($term) . '%'])
+                  ->whereRaw('LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, "$.tags")),"")) NOT LIKE ?',        ['%' . strtolower($term) . '%']);
+        }
+
+        return $query;
+    }
+
+    /**
+     * Live L30/L60 Shopify "Direct" metrics from shopify_raw_orders, matching the
+     * /shopify page Net Sales card. Used to overlay /all-marketplace-master so the
+     * "Shopify" channel Sales column reflects the same value the user sees on /shopify.
+     *
+     * Uses the server's configured timezone so the date window aligns with the
+     * /shopify page (the page's flatpickr sends date_from/date_to in the user's
+     * browser-local timezone; deploying the app in the user's timezone keeps the
+     * server-side overlay window in sync with that view).
+     *
+     * @return array{l30_sales: float, l30_orders: int, qty: int, l60_sales: float, l60_orders: int}|null
+     */
+    private function getShopifyDirectLiveMetricsSummary(): ?array
+    {
+        try {
+            $today = Carbon::now();
+
+            // L30 window matches the /shopify page default: today − 30 days … today.
+            $l30Start = $today->copy()->subDays(30)->startOfDay();
+            $l30End   = $today->copy()->endOfDay();
+
+            // L60 = prior period (days 31-60) so Growth on the Active Channel row works.
+            $l60Start = $today->copy()->subDays(60)->startOfDay();
+            $l60End   = $today->copy()->subDays(31)->endOfDay();
+
+            $l30 = $this->computeShopifyDirectMetricsFromOrders($l30Start, $l30End);
+            $l60 = $this->computeShopifyDirectMetricsFromOrders($l60Start, $l60End);
+
+            return [
+                'l30_sales'  => $l30['sales'],
+                'l30_orders' => $l30['orders'],
+                'qty'        => $l30['qty'],
+                'l60_sales'  => $l60['sales'],
+                'l60_orders' => $l60['orders'],
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Shopify Direct live metrics summary failed: ' . $e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * Y Sales for the "Shopify" Active Channel row — net_sales sum for the Pacific day
+     * before the latest order_date in shopify_raw_orders (same clock convention as
+     * other channels' Y Sales). Same exclusions as the /shopify Net Sales card.
+     */
+    private function computeShopifyDirectYSalesLikeAmazon(): ?float
+    {
+        try {
+            $latest = DB::table('shopify_raw_orders')
+                ->whereNotNull('order_date')
+                ->max('order_date');
+            if (! $latest) {
+                return null;
+            }
+
+            $pst = 'America/Los_Angeles';
+            $latestPacific = Carbon::parse($latest, $pst);
+            $yStart = $latestPacific->copy()->subDay()->startOfDay();
+            $yEnd   = $latestPacific->copy()->subDay()->endOfDay();
+
+            $q = DB::table('shopify_raw_orders')
+                ->where('order_date', '>=', $yStart->toDateString())
+                ->where('order_date', '<=', $yEnd->toDateString());
+            $this->applyShopifyDirectOrderExclusions($q);
+
+            return round((float) $q->sum('net_sales'), 2);
+        } catch (\Throwable $e) {
+            Log::warning('Shopify Direct Y Sales failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * L7 Sales for the "Shopify" Active Channel row — net_sales sum for the 7-day Pacific
+     * window ending on the same "yesterday" used by Y Sales. Same exclusions as /shopify.
+     */
+    private function computeShopifyDirectL7SalesLikeAmazon(): ?float
+    {
+        try {
+            $latest = DB::table('shopify_raw_orders')
+                ->whereNotNull('order_date')
+                ->max('order_date');
+            if (! $latest) {
+                return null;
+            }
+
+            $pst = 'America/Los_Angeles';
+            $latestPacific = Carbon::parse($latest, $pst);
+            [$l7Start, $l7End] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+            $q = DB::table('shopify_raw_orders')
+                ->where('order_date', '>=', $l7Start->toDateString())
+                ->where('order_date', '<=', $l7End->toDateString());
+            $this->applyShopifyDirectOrderExclusions($q);
+
+            return round((float) $q->sum('net_sales'), 2);
+        } catch (\Throwable $e) {
+            Log::warning('Shopify Direct L7 Sales failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Overlay live Shopify Net Sales (from /shopify shopify_raw_orders) onto the "Shopify"
+     * Active Channel row so /all-marketplace-master Sales column matches the /shopify page
+     * Net Sales card. Without this overlay the row shows 0 because channel_master only
+     * knows about "Shopify B2C" / "Shopify B2B" controllers.
+     */
+    private function overlayLiveShopifyDirectMetricsOnChannelRows(array $rows): array
+    {
+        $live = $this->getShopifyDirectLiveMetricsSummary();
+        if ($live === null) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            // Match the channel_master row literally named "Shopify" (id 60).
+            if (strcasecmp($name, 'Shopify') !== 0) {
+                continue;
+            }
+
+            $l30Sales = (float) $live['l30_sales'];
+            $l60Sales = (float) $live['l60_sales'];
+
+            $row['L30 Sales']  = (int) round($l30Sales);
+            $row['L30 Orders'] = (int) $live['l30_orders'];
+            $row['Qty']        = (int) $live['qty'];
+            $row['L-60 Sales'] = (int) round($l60Sales);
+            $row['L60 Orders'] = (int) $live['l60_orders'];
+
+            if ($l60Sales > 0) {
+                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2) . '%';
+            }
+
+            $ySales = $this->computeShopifyDirectYSalesLikeAmazon();
+            if ($ySales !== null) {
+                $row['Y Sales'] = $ySales;
+            }
+
+            $l7Sales = $this->computeShopifyDirectL7SalesLikeAmazon();
+            if ($l7Sales !== null) {
+                $row['L7 Sales'] = $l7Sales;
+            }
+        }
+        unset($row);
+
+        return $rows;
     }
 
     /**
@@ -332,9 +1230,17 @@ class ChannelMasterController extends Controller
     private function overlayLiveMapMissNMapOnChannelRows(array $rows): array
     {
         $liveByChannel = [
+            'Amazon' => fn () => $this->getAmazonLiveMapMissNMapCounts(),
             'Macys' => fn () => $this->getMacysLiveMapMissNMapFromPricingData(),
             'PLS' => fn () => $this->getPlsLiveMapMissNMapFromPricingData(),
             'Wayfair' => fn () => $this->getWayfairLiveMapMissNMapFromPricingData(),
+            'Aliexpress' => fn () => $this->getAliexpressLiveMapMissNMapFromPricingData(),
+            'Shein' => fn () => $this->getSheinLiveMapMissNMapFromPricingData(),
+            'Faire' => fn () => $this->getFaireLiveMapMissNMapFromPricingData(Request::create('/faire/pricing-data', 'GET')),
+            'Reverb' => fn () => $this->getReverbLiveMapMissNMapFromPricingData(Request::create('/reverb-data-json', 'GET')),
+            'TopDawg' => fn () => $this->getTopDawgLiveMapMissNMapFromPricingData(),
+            'Temu' => fn () => $this->getTemuLiveMapMissNMapFromDecreaseData(false),
+            'Temu 2' => fn () => $this->getTemuLiveMapMissNMapFromDecreaseData(true),
         ];
 
         foreach ($rows as &$row) {
@@ -397,6 +1303,46 @@ class ChannelMasterController extends Controller
             Log::warning('Wayfair live map/miss/nmap fallback: ' . $e->getMessage());
 
             return $this->getMapAndMissCounts('wayfair');
+        }
+    }
+
+    /**
+     * Map / Miss / NMap for AliExpress — same rules as aliexpress-pricing badges.
+     */
+    private function getAliexpressLiveMapMissNMapFromPricingData(): array
+    {
+        try {
+            $response = app(AliexpressController::class)->getPricingData(Request::create('/aliexpress/pricing-data', 'GET'));
+            $rows = json_decode($response->getContent(), true);
+            if (! is_array($rows)) {
+                return $this->getMapAndMissCounts('aliexpress');
+            }
+
+            return AliexpressController::countAliexpressPricingBadgeTotals($rows);
+        } catch (\Throwable $e) {
+            Log::warning('AliExpress live map/miss/nmap fallback: ' . $e->getMessage());
+
+            return $this->getMapAndMissCounts('aliexpress');
+        }
+    }
+
+    /**
+     * Map / Miss / NMap for Shein — same rules as shein-pricing badges.
+     */
+    private function getSheinLiveMapMissNMapFromPricingData(): array
+    {
+        try {
+            $response = app(SheinController::class)->getSheinPricingData(Request::create('/shein/pricing-data', 'GET'));
+            $rows = json_decode($response->getContent(), true);
+            if (! is_array($rows)) {
+                return $this->getMapAndMissCounts('shein');
+            }
+
+            return SheinController::countSheinPricingBadgeTotals($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Shein live map/miss/nmap fallback: ' . $e->getMessage());
+
+            return $this->getMapAndMissCounts('shein');
         }
     }
 
@@ -468,9 +1414,11 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Map / Miss / NMap for Reverb — same rules as reverb-pricing (Missing badge + MAP / N MP column, |INV − R Stock| ≤ 3).
-     * Miss: REQ + INV>0 + not listed on Reverb (Missing === 'M').
-     * Map / NMap: REQ + INV>0 + listed + |INV − R Stock| ≤ 3 (map) or > 3 (NMap). Total Views summed for those listed rows.
+     * Map / Miss / NMap for Reverb — same rules as reverb-pricing (Missing L badge + MAP / N MP column).
+     * Miss: REQ + INV>0 + RV Price=0 (no live Reverb listing; same as Macys MC Price / Best Buy BB Price).
+     * Map / NMap: REQ + INV>0 + listed (RV Price>0) + R Stock>0, using the same 3% tolerance as /map-issues
+     *   (absolute gap > 3 units when 3% of INV is below 3 units, otherwise rounded % > 3). Map = within tolerance,
+     *   NMap = exceeds tolerance. Total Views summed for those listed rows.
      */
     private function getReverbLiveMapMissNMapFromPricingData(Request $request): array
     {
@@ -482,55 +1430,34 @@ class ChannelMasterController extends Controller
                 return $this->getMapAndMissCounts('reverb');
             }
 
-            $map = 0;
-            $miss = 0;
-            $nmap = 0;
-            $views = 0;
-
-            foreach ($rows as $row) {
-                if (is_object($row)) {
-                    $row = (array) $row;
-                }
-                if (! is_array($row)) {
-                    continue;
-                }
-
-                $parent = trim((string) ($row['Parent'] ?? ''));
-                if ($parent !== '' && str_starts_with(strtoupper($parent), 'PARENT')) {
-                    continue;
-                }
-
-                $inv = (float) ($row['INV'] ?? 0);
-                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
-                $isReq = ($nrReq === 'REQ');
-                $isMissing = (($row['Missing'] ?? '') === 'M');
-
-                if ($isMissing && $isReq && $inv > 0) {
-                    $miss++;
-                }
-
-                if ($isReq && $inv > 0 && ! $isMissing) {
-                    $rStock = (float) ($row['R Stock'] ?? 0);
-                    $diff = abs($inv - $rStock);
-                    if ($diff <= 3) {
-                        $map++;
-                    } else {
-                        $nmap++;
-                    }
-                    $views += (int) ($row['Views'] ?? 0);
-                }
-            }
-
-            return [
-                'map' => $map,
-                'miss' => $miss,
-                'nmap' => $nmap,
-                'total_views' => $views,
-            ];
+            return app(\App\Http\Controllers\MarketPlace\ReverbController::class)
+                ->computeReverbMapMissCounts($rows);
         } catch (\Throwable $e) {
             Log::warning('Reverb live map/miss/nmap fallback: ' . $e->getMessage());
 
             return $this->getMapAndMissCounts('reverb');
+        }
+    }
+
+    /**
+     * Map / Miss / NMap for TopDawg — same rules as topdawg-pricing (Missing L + |INV − TD Stock| ≤ 3).
+     */
+    private function getTopDawgLiveMapMissNMapFromPricingData(): array
+    {
+        try {
+            $response = app(\App\Http\Controllers\MarketPlace\TopDawgPricingController::class)
+                ->getViewTopDawgTabularData(Request::create('/topdawg-data-json', 'GET'));
+            $payload = json_decode($response->getContent(), true);
+            $rows = $payload['data'] ?? [];
+            if (! is_array($rows)) {
+                return $this->getMapAndMissCounts('topdawg');
+            }
+
+            return \App\Http\Controllers\MarketPlace\TopDawgPricingController::countTopDawgPricingBadgeTotals($rows);
+        } catch (\Throwable $e) {
+            Log::warning('TopDawg live map/miss/nmap fallback: ' . $e->getMessage());
+
+            return $this->getMapAndMissCounts('topdawg');
         }
     }
 
@@ -735,53 +1662,33 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Map / Miss / NMap for Faire — same rules as /faire-pricing (|INV − Faire stock| ≤ 3 → Map; miss = Missing L).
+     * Map / Miss / NMap for Faire — same rules as /faire-pricing (Amazon-aligned: REQ + INV>0 + no price → Missing L; Map if |INV−stock| ≤ 3 or ≤ 3% INV).
      */
     private function getFaireLiveMapMissNMapFromPricingData(Request $request): array
     {
         try {
-            $response = app(\App\Http\Controllers\MarketPlace\FaireController::class)->getFairePricingData($request);
-            $raw = json_decode($response->getContent(), true);
-            if (! is_array($raw) || isset($raw['error'])) {
+            $response = app(FaireController::class)->getFairePricingData($request);
+            $rows = json_decode($response->getContent(), true);
+            if (! is_array($rows) || isset($rows['error'])) {
                 return $this->getMapAndMissCounts('faire');
             }
 
-            $map = 0;
-            $miss = 0;
-            $nmap = 0;
+            $totals = FaireController::countFairePricingBadgeTotals($rows);
             $views = 0;
-
-            foreach ($raw as $row) {
+            foreach ($rows as $row) {
                 if (is_object($row)) {
                     $row = (array) $row;
                 }
-                if (! is_array($row)) {
+                if (! is_array($row) || ! empty($row['is_parent'])) {
                     continue;
                 }
-                if (! empty($row['is_parent'])) {
-                    continue;
-                }
-
                 $views += (int) ($row['ov_l30'] ?? 0);
-
-                if (strtoupper(trim((string) ($row['missing'] ?? ''))) === 'M') {
-                    $miss++;
-
-                    continue;
-                }
-
-                $mapVal = (string) ($row['map'] ?? '');
-                if ($mapVal === 'Map') {
-                    $map++;
-                } elseif (str_starts_with($mapVal, 'N Map|')) {
-                    $nmap++;
-                }
             }
 
             return [
-                'map' => $map,
-                'miss' => $miss,
-                'nmap' => $nmap,
+                'map' => $totals['map'],
+                'miss' => $totals['miss'],
+                'nmap' => $totals['nmap'],
                 'total_views' => $views,
             ];
         } catch (\Throwable $e) {
@@ -2474,34 +3381,61 @@ class ChannelMasterController extends Controller
             // pre-calculated table doesn't need extra columns of its own.
             $logoMap = [];
             $sellerLinkMap = [];
+            $aliasMap = [];
+            $promotionsMap = [];
+            $complianceCountMap = [];
             $hasLogo = Schema::hasColumn('channel_master', 'logo');
             $hasSellerLink = Schema::hasColumn('channel_master', 'seller_link');
+            $hasAlias = Schema::hasColumn('channel_master', 'alias');
+            $hasPromotions = Schema::hasColumn('channel_master', 'promotions');
+            $hasComplianceCount = Schema::hasColumn('channel_master', 'compliance_count');
 
-            if ($hasLogo || $hasSellerLink) {
-                $names = $channels->pluck('channel')->filter()->unique()->values();
-                if ($names->isNotEmpty()) {
-                    $select = ['channel'];
-                    if ($hasLogo) $select[] = 'logo';
-                    if ($hasSellerLink) $select[] = 'seller_link';
+            if ($hasLogo || $hasSellerLink || $hasAlias || $hasPromotions || $hasComplianceCount) {
+                $select = ['channel', 'status'];
+                if ($hasLogo) $select[] = 'logo';
+                if ($hasSellerLink) $select[] = 'seller_link';
+                if ($hasAlias) $select[] = 'alias';
+                if ($hasPromotions) $select[] = 'promotions';
+                if ($hasComplianceCount) $select[] = 'compliance_count';
 
-                    $rows = ChannelMaster::whereIn('channel', $names)->get($select);
-                    foreach ($rows as $r) {
-                        if ($hasLogo) {
-                            $logoMap[$r->channel] = $r->logo ?: null;
-                        }
-                        if ($hasSellerLink) {
-                            $sellerLinkMap[$r->channel] = $r->seller_link ?: null;
-                        }
+                // Load every channel_master row and key by a canonical name so
+                // duplicate/aliased rows resolve correctly. Active rows are taken
+                // first, and an empty logo/link never overwrites a real one.
+                $rows = ChannelMaster::query()
+                    ->orderByRaw("CASE WHEN LOWER(TRIM(status)) = 'active' THEN 0 ELSE 1 END")
+                    ->orderBy('id', 'asc')
+                    ->get($select);
+
+                foreach ($rows as $r) {
+                    $key = $this->canonicalChannelKey($r->channel);
+                    if ($hasLogo && !empty($r->logo) && empty($logoMap[$key])) {
+                        $logoMap[$key] = $r->logo;
+                    }
+                    if ($hasSellerLink && !empty($r->seller_link) && empty($sellerLinkMap[$key])) {
+                        $sellerLinkMap[$key] = $r->seller_link;
+                    }
+                    if ($hasAlias && !empty($r->alias) && empty($aliasMap[$key])) {
+                        $aliasMap[$key] = $r->alias;
+                    }
+                    if ($hasPromotions && $r->promotions !== null && !isset($promotionsMap[$key])) {
+                        $promotionsMap[$key] = $r->promotions;
+                    }
+                    if ($hasComplianceCount && $r->compliance_count !== null && !isset($complianceCountMap[$key])) {
+                        $complianceCountMap[$key] = $r->compliance_count;
                     }
                 }
             }
 
             // Format data for frontend (match expected format)
-            $formattedData = $channels->map(function($channel) use ($logoMap, $sellerLinkMap) {
+            $formattedData = $channels->map(function($channel) use ($logoMap, $sellerLinkMap, $aliasMap, $promotionsMap, $complianceCountMap) {
+                $canonicalKey = $this->canonicalChannelKey($channel->channel);
                 return [
                     'Channel ' => $channel->channel,
-                    'logo' => $logoMap[$channel->channel] ?? null,
-                    'seller_link' => $sellerLinkMap[$channel->channel] ?? null,
+                    'alias' => $aliasMap[$canonicalKey] ?? null,
+                    'promotions' => $promotionsMap[$canonicalKey] ?? null,
+                    'compliance_count' => $complianceCountMap[$canonicalKey] ?? null,
+                    'logo' => $logoMap[$canonicalKey] ?? null,
+                    'seller_link' => $sellerLinkMap[$canonicalKey] ?? null,
                     'sheet_link' => $channel->sheet_link,
                     'channel_percentage' => $channel->channel_percentage,
                     'type' => $channel->type,
@@ -2593,6 +3527,14 @@ class ChannelMasterController extends Controller
 
             // Map/Miss/NMap: overlay live pricing-page counts so badges match macys-pricing (etc.)
             $formattedData = $this->overlayLiveMapMissNMapOnChannelRows($formattedData);
+            // Temu / Temu 2: overlay live L30/Y/L7 sales from tabulator (cached table can lag metrics sync)
+            $formattedData = $this->overlayLiveTemuMetricsOnChannelRows($formattedData);
+            // eBay 1/2/3: overlay L30 metrics + L60 orders (matches fetch-ebay-orders + update-marketplace-daily-metrics)
+            $formattedData = $this->overlayLiveEbayMetricsOnChannelRows($formattedData);
+            // Purchasing Power: overlay live L30/L60 from Shopify (matches /purchasing-power-sales)
+            $formattedData = $this->overlayLivePurchasingPowerMetricsOnChannelRows($formattedData);
+            // Shopify: overlay live Net Sales from shopify_raw_orders (matches /shopify Net Sales card)
+            $formattedData = $this->overlayLiveShopifyDirectMetricsOnChannelRows($formattedData);
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
             
             // Get summary data from cache
@@ -2634,6 +3576,15 @@ class ChannelMasterController extends Controller
         $columns = ['channel', 'sheet_link', 'channel_percentage', 'type'];
         
         // Check optional columns before adding them
+        if (Schema::hasColumn('channel_master', 'alias')) {
+            $columns[] = 'alias';
+        }
+        if (Schema::hasColumn('channel_master', 'promotions')) {
+            $columns[] = 'promotions';
+        }
+        if (Schema::hasColumn('channel_master', 'compliance_count')) {
+            $columns[] = 'compliance_count';
+        }
         if (Schema::hasColumn('channel_master', 'base')) {
             $columns[] = 'base';
         }
@@ -2698,41 +3649,30 @@ class ChannelMasterController extends Controller
         }
         // ─────────────────────────────────────────────────────────────────────
 
-        // Amazon Y Sales: single-day revenue for the day before the latest order date in amazon_orders.
-        // "Yesterday" is relative to the latest date present in the table (not wall-clock yesterday),
-        // so if the latest order date is April 2, Y Sales shows April 1 revenue.
+        // Amazon Y Sales & L7 Sales — anchored to WALL-CLOCK yesterday in America/Los_Angeles.
+        // Definition: if California "today" is Jun 15 (still in progress), Y Sales = full
+        // Pacific Jun 14 — independent of whether today's orders have been synced yet.
+        // Previously we used (latest order_date − 1 day), which slipped a day back whenever
+        // the Amazon order sync lagged: with no Jun 15 rows yet, "yesterday" became Jun 13
+        // instead of Jun 14, and the badge showed a too-small number (e.g. $1,358).
+        //
+        // Uses AmazonOrder::badgeTotalSalesByOrderDate so the formula and status filter
+        // match the Amazon Daily Sales badge exactly (AMAZON_SALES_TOTAL_MODE; both
+        // 'Canceled' and 'Cancelled' excluded).
         try {
-            $amazonLatestOrderDate = DB::table('amazon_orders')
-                ->where(function ($q) {
-                    $q->whereNull('status')->orWhere('status', '!=', 'Canceled');
-                })
-                ->max('order_date');
+            // Today PT (start of day) — passed to pacificL7WindowEndingYesterday which subtracts
+            // a day internally. Y Sales uses the explicit start/end-of-day for yesterday PT.
+            $todayPacific = Carbon::now('America/Los_Angeles')->startOfDay();
+            $yesterdayPacific = $todayPacific->copy()->subDay();
+            $yStartPacific = $yesterdayPacific->copy()->startOfDay();
+            $yEndPacific   = $yesterdayPacific->copy()->endOfDay();
 
-            if ($amazonLatestOrderDate) {
-                $latestPacific = Carbon::parse($amazonLatestOrderDate)->setTimezone('America/Los_Angeles');
-                $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
-                $yEndPacific   = $latestPacific->copy()->subDay()->endOfDay();
+            $amazonYSales = AmazonOrder::badgeTotalSalesByOrderDate($yStartPacific, $yEndPacific);
+            $yesterdaySummaries['amazon'] = round($amazonYSales, 2);
 
-                $amazonYSales = (float) DB::table('amazon_orders')
-                    ->where('order_date', '>=', $yStartPacific)
-                    ->where('order_date', '<=', $yEndPacific)
-                    ->where(function ($q) {
-                        $q->whereNull('status')->orWhere('status', '!=', 'Canceled');
-                    })
-                    ->sum('total_amount');
-
-                $yesterdaySummaries['amazon'] = round($amazonYSales, 2);
-
-                [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
-                $amazonL7Sales = (float) DB::table('amazon_orders')
-                    ->where('order_date', '>=', $l7StartPacific)
-                    ->where('order_date', '<=', $l7EndPacific)
-                    ->where(function ($q) {
-                        $q->whereNull('status')->orWhere('status', '!=', 'Canceled');
-                    })
-                    ->sum('total_amount');
-                $l7Summaries['amazon'] = round($amazonL7Sales, 2);
-            }
+            [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($todayPacific);
+            $amazonL7Sales = AmazonOrder::badgeTotalSalesByOrderDate($l7StartPacific, $l7EndPacific);
+            $l7Summaries['amazon'] = round($amazonL7Sales, 2);
         } catch (\Throwable $e) {
             Log::warning('Amazon Y Sales calculation failed: ' . $e->getMessage());
         }
@@ -2844,6 +3784,7 @@ class ChannelMasterController extends Controller
             [fn () => $this->computeMercariYSalesLikeAmazon(true), 'mercariwship', 'Mercari w ship Y Sales'],
             [fn () => $this->computeMercariYSalesLikeAmazon(false), 'mercariwoship', 'Mercari wo ship Y Sales'],
             [fn () => $this->computeTopDawgYSalesLikeAmazon(), 'topdawg', 'TopDawg Y Sales'],
+            [fn () => $this->computeNeweggYSalesLikeAmazon(), 'newegg', 'Newegg Y Sales'],
         ];
         foreach ($extendedYs as [$fn, $key, $label]) {
             try {
@@ -2986,6 +3927,7 @@ class ChannelMasterController extends Controller
             [fn () => $this->computeMercariL7SalesLikeAmazon(true), 'mercariwship', 'Mercari w ship L7 Sales'],
             [fn () => $this->computeMercariL7SalesLikeAmazon(false), 'mercariwoship', 'Mercari wo ship L7 Sales'],
             [fn () => $this->computeTopDawgL7SalesLikeAmazon(), 'topdawg', 'TopDawg L7 Sales'],
+            [fn () => $this->computeNeweggL7SalesLikeAmazon(), 'newegg', 'Newegg L7 Sales'],
         ];
         foreach ($extendedL7 as [$fn, $key, $label]) {
             try {
@@ -3054,6 +3996,7 @@ class ChannelMasterController extends Controller
             'macys'     => 'getMacysChannelData',
             'tiendamia' => 'getTiendamiaChannelData',
             'bestbuyusa'=> 'getBestbuyUsaChannelData',
+            'newegg'    => 'getNeweggChannelData',
             'reverb'    => 'getReverbChannelData',
             'doba'      => 'getDobaChannelData',
             'temu'      => 'getTemuChannelData',
@@ -3095,6 +4038,9 @@ class ChannelMasterController extends Controller
             
             $row = [
                 'Channel '       => ucfirst($channel),
+                'alias'          => $channelRow->alias ?? null,
+                'promotions'     => $channelRow->promotions ?? null,
+                'compliance_count' => $channelRow->compliance_count ?? null,
                 'logo'           => $channelRow->logo ?? null,
                 'seller_link'    => $channelRow->seller_link ?? null,
                 'Link'           => null,
@@ -3273,6 +4219,11 @@ class ChannelMasterController extends Controller
             $finalData[] = $row;
         }
 
+        // Shopify: overlay live Net Sales from shopify_raw_orders (matches /shopify Net Sales card)
+        // so the "Shopify" Active Channel row Sales column reflects the same value the user sees
+        // on /shopify. Applied before daily snapshot + chart aggregation so both pick it up.
+        $finalData = $this->overlayLiveShopifyDirectMetricsOnChannelRows($finalData);
+
         // Sum of (inventory * Amazon price) for INV Val badge and TAT (save in first row for daily history)
         $inventoryValueAmazon = $this->getInventoryValueAmazon();
         if (!empty($finalData)) {
@@ -3323,7 +4274,11 @@ class ChannelMasterController extends Controller
      */
     private function computeTemuYSalesLikeAmazon(bool $isTemu2): ?float
     {
-        $modelClass = $isTemu2 ? Temu2DailyData::class : TemuDailyData::class;
+        if (! $isTemu2) {
+            return TemuShopifySalesService::computeYSalesFromOrders();
+        }
+
+        $modelClass = Temu2DailyData::class;
 
         try {
             $latest = $modelClass::whereNotNull('purchase_date')->max('purchase_date');
@@ -3600,7 +4555,7 @@ class ChannelMasterController extends Controller
      */
     private function computeFaireYSalesLikeAmazon(): ?float
     {
-        // Sourced from shopify_order_items (apicentral) so Faire's Y Sales uses the same
+        // Sourced from shopify_raw_orders (inventory_db) so Faire's Y Sales uses the same
         // pipeline as the all-marketplace-master Faire row and /faire-tabulator page.
         // Previously this queried `faire_daily_data` (manual Excel uploads) which had a
         // different latest-order anchor and could disagree with the L30/L60 numbers.
@@ -3610,7 +4565,7 @@ class ChannelMasterController extends Controller
               ->orWhere('tags', 'LIKE', '%Faire%');
         };
 
-        $latestRaw = DB::connection('apicentral')->table('shopify_order_items')
+        $latestRaw = DB::table('shopify_raw_orders')
             ->where($faireWhere)
             ->whereNotNull('order_date')
             ->max('order_date');
@@ -3622,7 +4577,7 @@ class ChannelMasterController extends Controller
         $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
         $yEndPacific   = $latestPacific->copy()->subDay()->endOfDay();
 
-        $sum = (float) DB::connection('apicentral')->table('shopify_order_items')
+        $sum = (float) DB::table('shopify_raw_orders')
             ->where($faireWhere)
             ->where('order_date', '>=', $yStartPacific)
             ->where('order_date', '<=', $yEndPacific)
@@ -3992,7 +4947,11 @@ class ChannelMasterController extends Controller
      */
     private function computeTemuL7SalesLikeAmazon(bool $isTemu2): ?float
     {
-        $modelClass = $isTemu2 ? Temu2DailyData::class : TemuDailyData::class;
+        if (! $isTemu2) {
+            return TemuShopifySalesService::computeL7SalesFromOrders();
+        }
+
+        $modelClass = Temu2DailyData::class;
 
         try {
             $latest = $modelClass::whereNotNull('purchase_date')->max('purchase_date');
@@ -4528,6 +5487,7 @@ class ChannelMasterController extends Controller
         'macys'     => 'getMacysChannelData',
         'tiendamia' => 'getTiendamiaChannelData',
         'bestbuyusa'=> 'getBestbuyUsaChannelData',
+        'newegg'    => 'getNeweggChannelData',
         'reverb'    => 'getReverbChannelData',
         'doba'      => 'getDobaChannelData',
         'temu'      => 'getTemuChannelData',
@@ -4736,8 +5696,9 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Amazon')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('amazon');
+        // Live Amazon Map/Miss/NMap (matches amazon-tabulator-view backend), with a
+        // fallback to the stored amazon_channel_summary_data inside the live method.
+        $mapMissCounts = $this->getAmazonLiveMapMissNMapCounts();
 
         $result[] = [
             'Channel '   => 'Amazon',
@@ -5033,40 +5994,25 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated)
-        $metrics = MarketplaceDailyMetric::where('channel', 'eBay')->latest('date')->first();
-        
-        // Get L60 data from orders for comparison
-        $l60OrdersQuery = EbayOrder::where('period', 'l60');
-        $l60Orders = $l60OrdersQuery->count();
-        
-        // Calculate L60 Sales
-        $sixtyDaysAgo = now()->subDays(60);
-        $thirtyDaysAgo = now()->subDays(30);
-        $l60OrderItems = EbayOrder::where('order_date', '>=', $sixtyDaysAgo)
-            ->where('order_date', '<', $thirtyDaysAgo)
-            ->join('ebay_order_items', 'ebay_orders.id', '=', 'ebay_order_items.ebay_order_id')
-            ->select('ebay_order_items.price', 'ebay_order_items.quantity')
-            ->get();
-        
-        $l60Sales = 0;
-        foreach ($l60OrderItems as $item) {
-            $quantity = (float) $item->quantity;
-            if ($quantity > 0) {
-                $l60Sales += (float) $item->price;
-            }
-        }
+        // L30: marketplace_daily_metrics (app:update-marketplace-daily-metrics + period l30 orders)
+        $metrics = EbayChannelMetricsService::latestDailyMetrics('eBay');
 
-        $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
-        $tacosPercentage = $metrics->tacos_percentage ?? 0;
-        $nPft = $metrics->n_pft ?? 0;
-        $nRoi = $metrics->n_roi ?? 0;
+        $l60 = EbayChannelMetricsService::summarizeL60Orders(1);
+        $l60Orders = $l60['orders'];
+        $l60Sales = $l60['sales'];
+        $totalProfitL60 = $l60['total_profit'];
+        $totalCogsL60 = $l60['total_cogs'];
+
+        $l30Sales = $metrics?->total_sales ?? 0;
+        $l30Orders = $metrics?->total_orders ?? 0;
+        $totalQuantity = $metrics?->total_quantity ?? 0;
+        $totalProfit = $metrics?->total_pft ?? 0;
+        $totalCogs = $metrics?->total_cogs ?? 0;
+        $gProfitPct = $metrics?->pft_percentage ?? 0;
+        $gRoi = $metrics?->roi_percentage ?? 0;
+        $tacosPercentage = $metrics?->tacos_percentage ?? 0;
+        $nPft = $metrics?->n_pft ?? 0;
+        $nRoi = $metrics?->n_roi ?? 0;
 
         $tabL30Units = $this->getEbayTabulatorL30UnitsForCvr('ebay');
         if ($tabL30Units !== null) {
@@ -5081,10 +6027,9 @@ class ChannelMasterController extends Controller
         
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
-        
-        // L60 profit percentage (still needs calculation if needed)
-        $gprofitL60 = 0;
-        $gRoiL60 = 0;
+
+        $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
+        $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
         // Calculate Ads %
         $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
@@ -5142,81 +6087,24 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated, same as Amazon)
-        $metrics = MarketplaceDailyMetric::where('channel', 'eBay 2')->latest('date')->first();
-        
-        // Get L60 data from orders for comparison
-        $ordersL60 = Ebay2Order::with('items')
-            ->where('period', 'l60')
-            ->get();
+        $metrics = EbayChannelMetricsService::latestDailyMetrics('eBay 2');
 
-        // Calculate L60 Sales and metrics
-        $l60Orders = 0;
-        $l60Sales = 0;
-        $totalProfitL60 = 0;
-        $totalCogsL60 = 0;
+        $l60 = EbayChannelMetricsService::summarizeL60Orders(2);
+        $l60Orders = $l60['orders'];
+        $l60Sales = $l60['sales'];
+        $totalProfitL60 = $l60['total_profit'];
+        $totalCogsL60 = $l60['total_cogs'];
 
-        // Get eBay 2 marketing percentage
-        $percentage = ChannelMaster::where('channel', 'EbayTwo')->value('channel_percentage') ?? 85;
-        $percentageDecimal = $percentage / 100;
-
-        // Load product masters (lp, ship) keyed by SKU
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
-        foreach ($ordersL60 as $order) {
-            foreach ($order->items as $item) {
-                if (!$item->sku || $item->sku === '') continue;
-
-                $l60Orders++;
-                $quantity = (int) ($item->quantity ?? 1);
-                $price = (float) ($item->price ?? 0);
-                $l60Sales += $price;
-
-                $unitPrice = $quantity > 0 ? $price / $quantity : 0;
-
-                $sku = strtoupper($item->sku);
-                $lp = 0;
-                $ship = 0;
-
-                if (isset($productMasters[$sku])) {
-                    $pm = $productMasters[$sku];
-                    $values = is_array($pm->Values) ? $pm->Values :
-                            (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                    foreach ($values as $k => $v) {
-                        if (strtolower($k) === "lp") {
-                            $lp = floatval($v);
-                            break;
-                        }
-                    }
-                    if ($lp === 0 && isset($pm->lp)) {
-                        $lp = floatval($pm->lp);
-                    }
-
-                    $ship = isset($values["ebay2_ship"]) && $values["ebay2_ship"] !== null 
-                        ? floatval($values["ebay2_ship"]) 
-                        : (isset($values["ship"]) ? floatval($values["ship"]) : 0);
-                }
-
-                $totalCogsL60 += ($lp * $quantity);
-                $pftEach = ($unitPrice * $percentageDecimal) - $lp - $ship;
-                $totalProfitL60 += ($pftEach * $quantity);
-            }
-        }
-
-        // Use pre-calculated metrics from MarketplaceDailyMetric (same as Amazon)
-        $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
-        $tacosPercentage = $metrics->tacos_percentage ?? 0;
-        $nPft = $metrics->n_pft ?? 0;
-        $nRoi = $metrics->n_roi ?? 0;
+        $l30Sales = $metrics?->total_sales ?? 0;
+        $l30Orders = $metrics?->total_orders ?? 0;
+        $totalQuantity = $metrics?->total_quantity ?? 0;
+        $totalProfit = $metrics?->total_pft ?? 0;
+        $totalCogs = $metrics?->total_cogs ?? 0;
+        $gProfitPct = $metrics?->pft_percentage ?? 0;
+        $gRoi = $metrics?->roi_percentage ?? 0;
+        $tacosPercentage = $metrics?->tacos_percentage ?? 0;
+        $nPft = $metrics?->n_pft ?? 0;
+        $nRoi = $metrics?->n_roi ?? 0;
 
         $tabL30Units2 = $this->getEbayTabulatorL30UnitsForCvr('ebay2');
         if ($tabL30Units2 !== null) {
@@ -5333,77 +6221,24 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated, same as Amazon/eBay 2)
-        $metrics = MarketplaceDailyMetric::where('channel', 'eBay 3')->latest('date')->first();
-        
-        // Calculate L60 Sales using date range (same as eBay 1) - NOT using period field
-        $sixtyDaysAgo = now()->subDays(60);
-        $thirtyDaysAgo = now()->subDays(30);
-        
-        $ordersL60 = DB::table('ebay3_daily_data')
-            ->where('creation_date', '>=', $sixtyDaysAgo)
-            ->where('creation_date', '<', $thirtyDaysAgo)
-            ->where('quantity', '>', 0)  // Only include orders with quantity > 0
-            ->get();
+        $metrics = EbayChannelMetricsService::latestDailyMetrics('eBay 3');
 
-        // Load product masters (lp, ship) keyed by SKU
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
+        $l60 = EbayChannelMetricsService::summarizeEbay3L60();
+        $l60Orders = $l60['orders'];
+        $l60Sales = $l60['sales'];
+        $totalProfitL60 = $l60['total_profit'];
+        $totalCogsL60 = $l60['total_cogs'];
 
-        // Get eBay marketing percentage from marketplace_percentages (85% for eBay 3)
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'EbayThree')->first();
-        $percentageDecimal = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.85;
-
-        // Calculate L60 metrics
-        $l60Orders = 0;
-        $uniqueOrders = [];
-        $l60Sales = 0;
-        $totalProfitL60 = 0;
-        $totalCogsL60 = 0;
-
-        foreach ($ordersL60 as $order) {
-            // Count unique orders
-            if ($order->order_id && !in_array($order->order_id, $uniqueOrders)) {
-                $uniqueOrders[] = $order->order_id;
-                $l60Orders++;
-            }
-            
-            $sku = strtoupper($order->sku ?? '');
-            if (empty($sku)) continue;
-
-            $qty = floatval($order->quantity ?? 1);
-            $price = floatval($order->unit_price ?? 0);
-            
-            // Apply marketplace percentage to sales (seller gets 85%, eBay takes 15%)
-            $l60Sales += ($price * $qty) * $percentageDecimal;
-
-            $lp = 0;
-            $ship = 0;
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
-            }
-
-            $pftPerUnit = ($price * $percentageDecimal) - $lp - $ship;
-            $totalProfitL60 += $pftPerUnit * $qty;
-            $totalCogsL60 += $lp * $qty;
-        }
-
-        // Use pre-calculated metrics from MarketplaceDailyMetric (same as Amazon/eBay 2)
-        $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
-        $tacosPercentage = $metrics->tacos_percentage ?? 0;
-        $nPft = $metrics->n_pft ?? 0;
-        $nRoi = $metrics->n_roi ?? 0;
+        $l30Sales = $metrics?->total_sales ?? 0;
+        $l30Orders = $metrics?->total_orders ?? 0;
+        $totalQuantity = $metrics?->total_quantity ?? 0;
+        $totalProfit = $metrics?->total_pft ?? 0;
+        $totalCogs = $metrics?->total_cogs ?? 0;
+        $gProfitPct = $metrics?->pft_percentage ?? 0;
+        $gRoi = $metrics?->roi_percentage ?? 0;
+        $tacosPercentage = $metrics?->tacos_percentage ?? 0;
+        $nPft = $metrics?->n_pft ?? 0;
+        $nRoi = $metrics?->n_roi ?? 0;
 
         $tabL30Units3 = $this->getEbayTabulatorL30UnitsForCvr('ebay3');
         if ($tabL30Units3 !== null) {
@@ -5512,25 +6347,31 @@ class ChannelMasterController extends Controller
                 $itemId = $row['eBay_item_id'] ?? null;
                 $hasItem = !($itemId === null || trim((string)$itemId) === '');
                 $nrReq = strtoupper(trim((string)($row['nr_req'] ?? 'REQ')));
-                $isNr = $nrReq === 'NR';
-                if (!$isNr && !$hasItem) {
-                    $missing++;
-                }
 
                 $views += (float)($row['views'] ?? 0);
 
                 $inv = $this->parseEbay3InvForMapMiss((string)($row['INV'] ?? '0'));
                 $eStock = (float)($row['eBay Stock'] ?? ($row['E Stock'] ?? 0));
-                if ($nrReq !== 'REQ' || $inv <= 0 || $eStock <= 0) {
-                    continue;
+                if (abs($eStock) < $eps) {
+                    $eStock = 0.0;
                 }
 
-                $isMap = abs($inv - $eStock) <= 3.0 + $eps;
-                if ($isMap) {
-                    $map++;
-                } elseif ($hasItem) {
-                    // Missing listing rows should not inflate NMap.
-                    $nmap++;
+                // Missing L: in stock (INV>0) but not listed (no item id); exclude NR — same as ebay3 tabulator badge
+                if ($inv > 0 && !$hasItem && $nrReq !== 'NR') {
+                    $missing++;
+                }
+
+                // Map / N Map — same rule as ebay2/ebay3 tabulator badges (listed item, REQ, INV>0)
+                if ($nrReq === 'REQ' && $hasItem && $inv > 0) {
+                    if ($eStock > 0) {
+                        if (abs($inv - $eStock) <= 3.0 + $eps) {
+                            $map++;
+                        } else {
+                            $nmap++;
+                        }
+                    } elseif ($inv > 3) {
+                        $nmap++;
+                    }
                 }
             }
 
@@ -5569,10 +6410,12 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Keep all-marketplace-master eBay Map/Miss/NMap aligned with ebay tabulator default view.
-     * Same scope: child rows, E Stock &gt; 0, nr_req = REQ, parent summaries skipped.
-     * Missing: no listing item_id (per JS truthy rules) with E Stock &gt; 0.
-     * Map / NMap: has item, INV &gt; 0, and |INV − eBay Stock| &le; 3 (map) or &gt; 3 (NMap).
+     * Keep all-marketplace-master eBay Map/Miss/NMap aligned with the ebay-tabulator-view badges
+     * (Missing L / Missing M), counted over the full dataset like the tabulator badges (allData),
+     * not the default "E Stock > 0" view filter.
+     *   Missing L (miss): not listed (no item_id), nr_req != 'NR', INV > 0, non-parent.
+     *   Map / N Map (Missing M): listed, REQ, INV > 0, eBay Stock > 0; mapped within the same
+     *   /map-issues tolerance (abs gap > 3 units when 3% of INV < 3, else rounded % > 3 = N Map).
      */
     private function getEbayLiveMapMissCountsFromTabulator(Request $request): array
     {
@@ -5606,28 +6449,40 @@ class ChannelMasterController extends Controller
                 $eStock = is_numeric($eStockRaw) ? (float) $eStockRaw : 0.0;
                 $rawItemId = $row['eBay_item_id'] ?? null;
                 $hasItem = $this->ebayTabulatorRowHasListingItemId($rawItemId);
-                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
+                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? '')));
                 $isReq = ($nrReq === 'REQ');
 
-                // Match default eBay tabulator view: "E Stock > 0" (listing qty) and REQ.
+                // Views: traffic to live listings (E Stock > 0, REQ) — unchanged scope.
+                if ($eStock > 0 && $isReq) {
+                    $views += (float) ($row['views'] ?? 0);
+                }
+
+                // Both Missing L and Missing M are REQ only (nr_req can also be NRL / LATER / NR) and INV > 0.
+                if (! $isReq || $inv <= 0) {
+                    continue;
+                }
+
+                if (! $hasItem) {
+                    // Missing L: in stock but not listed on eBay.
+                    $missing++;
+                    continue;
+                }
+
+                // Listed: Map vs N Map / Missing M — same rule as /map-issues. Both sides must
+                // have stock (eBay Stock > 0); otherwise the row is neither Map nor N Map.
                 if ($eStock <= 0) {
                     continue;
                 }
-                if (! $isReq) {
-                    continue;
+                $diff = abs($inv - $eStock);
+                if ($inv * 0.03 < 3) {
+                    $isNotMap = $diff > 3;
+                } else {
+                    $isNotMap = round(($diff / $inv) * 100) > 3;
                 }
-
-                $views += (float) ($row['views'] ?? 0);
-
-                if (! $hasItem) {
-                    $missing++;
-                } elseif ($inv > 0) {
-                    $diff = abs($inv - $eStock);
-                    if ($diff <= 3) {
-                        $map++;
-                    } else {
-                        $nmap++;
-                    }
+                if ($isNotMap) {
+                    $nmap++;
+                } else {
+                    $map++;
                 }
             }
 
@@ -5644,8 +6499,11 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Keep all-marketplace-master eBay 2 Map/Miss/NMap aligned with ebay2-tabulator-view.
-     * Same rules as eBay 1 tabulator: E Stock &gt; 0, nr_req = REQ; |INV − E Stock| ≤ 3 → map.
+     * Keep all-marketplace-master eBay 2 Map/Miss/NMap aligned with the ebay2-tabulator-view badges
+     * (Missing L / Missing M), counted over the full dataset like the tabulator badges.
+     *   Missing L (miss): not listed (no item_id), REQ, INV > 0, non-parent.
+     *   Map / N Map (Missing M): listed, REQ, INV > 0, eBay Stock > 0; mapped within the same
+     *   /map-issues tolerance (abs gap > 3 units when 3% of INV < 3, else rounded % > 3 = N Map).
      */
     private function getEbay2LiveMapMissCountsFromTabulator(Request $request): array
     {
@@ -5682,27 +6540,40 @@ class ChannelMasterController extends Controller
                 $eStock = is_numeric($eStockRaw) ? (float) $eStockRaw : 0.0;
                 $rawItemId = $row['eBay_item_id'] ?? null;
                 $hasItem = $this->ebayTabulatorRowHasListingItemId($rawItemId);
-                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
+                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? '')));
                 $isReq = ($nrReq === 'REQ');
 
+                // Views: traffic to live listings (E Stock > 0, REQ) — unchanged scope.
+                if ($eStock > 0 && $isReq) {
+                    $views += (float) ($row['views'] ?? 0);
+                }
+
+                // Both Missing L and Missing M are REQ only (nr_req can also be NRL / LATER / NR) and INV > 0.
+                if (! $isReq || $inv <= 0) {
+                    continue;
+                }
+
+                if (! $hasItem) {
+                    // Missing L: in stock but not listed on eBay.
+                    $missing++;
+                    continue;
+                }
+
+                // Listed: Map vs N Map / Missing M — same rule as /map-issues. Both sides must
+                // have stock (eBay Stock > 0); otherwise the row is neither Map nor N Map.
                 if ($eStock <= 0) {
                     continue;
                 }
-                if (! $isReq) {
-                    continue;
+                $diff = abs($inv - $eStock);
+                if ($inv * 0.03 < 3) {
+                    $isNotMap = $diff > 3;
+                } else {
+                    $isNotMap = round(($diff / $inv) * 100) > 3;
                 }
-
-                $views += (float) ($row['views'] ?? 0);
-
-                if (! $hasItem) {
-                    $missing++;
-                } elseif ($inv > 0) {
-                    $diff = abs($inv - $eStock);
-                    if ($diff <= 3) {
-                        $map++;
-                    } else {
-                        $nmap++;
-                    }
+                if ($isNotMap) {
+                    $nmap++;
+                } else {
+                    $map++;
                 }
             }
 
@@ -5811,24 +6682,18 @@ class ChannelMasterController extends Controller
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
 
-        // L60 Sales = previous 30-day period (days 31-60) from mirakl_daily_data
-        // (channel_name = "Macy's, Inc." in Mirakl feed).
-        $thirtyDaysAgo = Carbon::now()->subDays(30);
-        $sixtyDaysAgo  = Carbon::now()->subDays(60);
-        $l60Agg = \App\Models\MiraklDailyData::where('channel_name', "Macy's, Inc.")
-            ->where('status', '!=', 'CLOSED')
-            ->whereBetween('order_created_at', [$sixtyDaysAgo, $thirtyDaysAgo])
-            ->selectRaw('COUNT(*) as order_count, COALESCE(SUM(unit_price * quantity), 0) as total_sales')
-            ->first();
-        $l60Orders = (int) ($l60Agg->order_count ?? 0);
-        $l60Sales  = (float) ($l60Agg->total_sales ?? 0);
+        // L60 = previous 30-day period (days 31–60) from mirakl_daily_data, same filter (!= CLOSED)
+        // as before so existing numbers don't shift. PFT/COGS now also computed from those rows
+        // so gprofitL60 / G RoiL60 are real (previously hardcoded to 0).
+        $l60Summary = $this->computeMacysL60SummaryFromMirakl();
+        $l60Sales = $l60Summary['sales'];
+        $l60Orders = $l60Summary['orders'];
 
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
-        // L60 profit percentage (calculate from L60 data if needed)
-        $gprofitL60 = 0;
-        $gRoiL60 = 0;
+        $gprofitL60 = $l60Sales > 0 ? ($l60Summary['pft'] / $l60Sales) * 100 : 0;
+        $gRoiL60 = $l60Summary['cogs'] > 0 ? ($l60Summary['pft'] / $l60Summary['cogs']) * 100 : 0;
 
         // N PFT = same as Gprofit% for Macys (no ads)
         $nPft = $gProfitPct;
@@ -5881,6 +6746,99 @@ class ChannelMasterController extends Controller
             'message' => 'Macys channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Macy L60 sales/orders/PFT/COGS from mirakl_daily_data, days 31–60 window (same as
+     * pre-existing L60 logic — date-range query, CLOSED-only status filter — so L60 Sales / L60 Orders
+     * stay identical to before). PFT/COGS use MacysSalesController L30 math so gprofitL60 and G RoiL60
+     * actually populate (they were hardcoded to 0 before).
+     *
+     * @return array{sales: float, orders: int, qty: int, pft: float, cogs: float}
+     */
+    private function computeMacysL60SummaryFromMirakl(): array
+    {
+        $thirtyDaysAgo = Carbon::now()->subDays(30);
+        $sixtyDaysAgo = Carbon::now()->subDays(60);
+
+        $orders = \App\Models\MiraklDailyData::where('channel_name', "Macy's, Inc.")
+            ->where('status', '!=', 'CLOSED')
+            ->whereBetween('order_created_at', [$sixtyDaysAgo, $thirtyDaysAgo])
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return ['sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
+        }
+
+        $skus = $orders->pluck('sku')->filter()->unique()->toArray();
+        $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
+        $margin = ($marketplaceData ? $marketplaceData->percentage : 76) / 100;
+
+        $sales = 0.0;
+        $orderCount = 0;
+        $qty = 0;
+        $pft = 0.0;
+        $cogs = 0.0;
+
+        foreach ($orders as $order) {
+            if (! $order->sku || $order->sku === '') {
+                continue;
+            }
+
+            $orderCount++;
+            $quantity = (float) ($order->quantity ?? 1);
+            $unitPrice = (float) ($order->unit_price ?? 0);
+            $saleAmount = $unitPrice * $quantity;
+
+            $qty += (int) $quantity;
+            $sales += $saleAmount;
+
+            $lp = 0.0;
+            $ship = 0.0;
+            $weightAct = 0.0;
+            if (isset($productMasters[$order->sku])) {
+                $pm = $productMasters[$order->sku];
+                $values = is_array($pm->Values) ? $pm->Values :
+                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === 'lp') {
+                        $lp = (float) $v;
+                        break;
+                    }
+                }
+                if ($lp === 0.0 && isset($pm->lp)) {
+                    $lp = (float) $pm->lp;
+                }
+                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0.0);
+                if (isset($values['wt_act'])) {
+                    $weightAct = (float) $values['wt_act'];
+                }
+            }
+
+            $tWeight = $weightAct * $quantity;
+            if ((int) $quantity === 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1 && $tWeight < 20) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
+            }
+
+            $cogs += $lp * $quantity;
+            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
+            $pft += $pftEach * $quantity;
+        }
+
+        return [
+            'sales' => $sales,
+            'orders' => $orderCount,
+            'qty' => $qty,
+            'pft' => $pft,
+            'cogs' => $cogs,
+        ];
     }
 
     private function getMacysMissingListingCount()
@@ -6238,6 +7196,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            'missing_link' => $channelData->missing_link ?? $this->defaultMissingLinkForChannel('Reverb'),
             ...$this->getChannelHealthAndReviewsStub(),
         ];
 
@@ -6294,16 +7253,15 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Use pre-calculated metrics from MarketplaceDailyMetric (like Amazon, eBay 2, Temu)
+        // L30 metrics from app:update-marketplace-daily-metrics
         $latestMetric = MarketplaceDailyMetric::where('channel', 'Doba')
             ->orderBy('date', 'desc')
             ->first();
 
-        // Get L60 data for comparison (60 days ago)
-        $l60Date = Carbon::today()->subDays(60)->format('Y-m-d');
-        $l60Metric = MarketplaceDailyMetric::where('channel', 'Doba')
-            ->where('date', $l60Date)
-            ->first();
+        // L60: compute directly from doba_daily_data (period = 'l60'), same rules as calculateDobaMetrics.
+        // Previous logic looked up marketplace_daily_metrics for "today - 60d", which almost never exists
+        // (command runs for today only) and even when present means "L30 ending 60d ago" rather than today's L60.
+        $l60Summary = $this->computeDobaL60SummaryFromDailyData();
 
         // Current metrics
         $l30Sales = $latestMetric ? $latestMetric->l30_sales : 0;
@@ -6316,11 +7274,11 @@ class ChannelMasterController extends Controller
         $nPftPct = $latestMetric ? $latestMetric->n_pft : 0;
         $nRoi = $latestMetric ? $latestMetric->n_roi : 0;
 
-        // L60 metrics
-        $l60Sales = $l60Metric ? $l60Metric->l30_sales : 0;
-        $l60Orders = $l60Metric ? $l60Metric->total_orders : 0;
-        $gprofitL60 = $l60Metric ? $l60Metric->pft_percentage : 0;
-        $gRoiL60 = $l60Metric ? $l60Metric->roi_percentage : 0;
+        // L60 metrics (direct from doba_daily_data)
+        $l60Sales = $l60Summary['sales'];
+        $l60Orders = $l60Summary['orders'];
+        $gprofitL60 = $l60Sales > 0 ? ($l60Summary['pft'] / $l60Sales) * 100 : 0;
+        $gRoiL60 = $l60Summary['cogs'] > 0 ? ($l60Summary['pft'] / $l60Summary['cogs']) * 100 : 0;
 
         // Growth calculation
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
@@ -6370,6 +7328,110 @@ class ChannelMasterController extends Controller
             'message' => 'Doba channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Doba L60 sales/orders/PFT/COGS from doba_daily_data (period = l60).
+     *
+     * Mirrors the L60 badge on /doba/daily-sales (DobaSalesController::getData
+     * + the page's updateSummary JS):
+     *   1. Build the "active L30 SKU set" — distinct SKUs from rows where
+     *      period = 'l30' AND sku and order_no are both non-empty (this matches
+     *      the skip-condition in the doba page's updateSummary).
+     *   2. Sum total_price for every period = 'l60' row whose SKU is in that
+     *      active set. No order_status filter — the doba page badge does not
+     *      apply one.
+     *
+     * Restricting L60 to the active L30 SKU set is what makes this match the
+     * badge ($46,109.47 in the user's snapshot); without it /all-marketplace-master
+     * was inflating L60 by ~2x with L60-only SKUs that have no L30 activity.
+     *
+     * @return array{sales: float, orders: int, qty: int, pft: float, cogs: float}
+     */
+    private function computeDobaL60SummaryFromDailyData(): array
+    {
+        $activeSkus = \App\Models\DobaDailyData::whereRaw('LOWER(period) = ?', ['l30'])
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereNotNull('order_no')
+            ->where('order_no', '!=', '')
+            ->pluck('sku')
+            ->map(fn ($s) => strtolower(trim((string) $s)))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($activeSkus)) {
+            return ['sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
+        }
+
+        $activeSkuSet = array_flip($activeSkus);
+
+        $orders = \App\Models\DobaDailyData::whereRaw('LOWER(period) = ?', ['l60'])
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return ['sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
+        }
+
+        $rawSkus = $orders->pluck('sku')->filter()->unique()->values()->toArray();
+        $productMasters = ProductMaster::whereIn('sku', $rawSkus)->get()->keyBy('sku');
+
+        $margin = 0.95;
+        $sales = 0.0;
+        $orderCount = 0;
+        $qty = 0;
+        $pft = 0.0;
+        $cogs = 0.0;
+
+        foreach ($orders as $order) {
+            $skuKey = strtolower(trim((string) ($order->sku ?? '')));
+            if ($skuKey === '' || ! isset($activeSkuSet[$skuKey])) {
+                continue;
+            }
+
+            $orderCount++;
+            $quantity = (int) ($order->quantity ?? 1);
+            $itemPrice = (float) ($order->item_price ?? 0);
+            $totalPrice = (float) ($order->total_price ?? 0);
+
+            $qty += $quantity;
+            $sales += $totalPrice;
+
+            $lp = 0.0;
+            $ship = 0.0;
+            if (isset($productMasters[$order->sku])) {
+                $pm = $productMasters[$order->sku];
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                if (isset($values['lp'])) {
+                    $lp = (float) $values['lp'];
+                }
+                if (isset($values['ship'])) {
+                    $ship = (float) $values['ship'];
+                }
+            }
+
+            $cogs += $lp * $quantity;
+
+            $shipCost = $quantity > 0 ? ($quantity === 1 ? $ship : $ship / $quantity) : $ship;
+
+            if (strtolower($order->order_type ?? '') === 'pickup with a prepaid label') {
+                $pftEach = ($itemPrice * $margin) - $lp;
+            } else {
+                $pftEach = ($itemPrice * $margin) - $shipCost - $lp;
+            }
+            $pft += $pftEach * $quantity;
+        }
+
+        return [
+            'sales' => $sales,
+            'orders' => $orderCount,
+            'qty' => $qty,
+            'pft' => $pft,
+            'cogs' => $cogs,
+        ];
     }
 
     private function getDobaMissingListingCount()
@@ -6471,126 +7533,39 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated by UpdateMarketplaceDailyMetrics)
-        $metrics = MarketplaceDailyMetric::where('channel', 'Temu')->latest('date')->first();
+        // L30 / L60 from the temu_orders table (Temu API order-wise data).
+        $l30Start = Carbon::now()->subDays(30)->startOfDay();
+        $l30End = Carbon::now()->endOfDay();
+        [$l60Start, $l60End] = TemuShopifySalesService::channelMasterL60Window();
+        $l30 = TemuShopifySalesService::computeMetricsFromOrders($l30Start, $l30End);
+        $l60 = TemuShopifySalesService::computeMetricsFromOrders($l60Start, $l60End);
 
-        // When no metrics yet (cron not run or no Temu daily data), return defaults so the page doesn't break
-        if (!$metrics) {
-            $channelData = ChannelMaster::where('channel', 'Temu')->first();
-            $mapMissCounts = $this->getTemuLiveMapMissNMapFromDecreaseData(false);
-            $result[] = [
-                'Channel '   => 'Temu',
-                'L-60 Sales' => 0,
-                'L30 Sales'  => 0,
-                'Growth'     => '0%',
-                'L60 Orders' => 0,
-                'L30 Orders' => 0,
-                'Qty'        => 0,
-                'Gprofit%'   => '0%',
-                'gprofitL60' => '0%',
-                'G Roi'      => 0,
-                'G RoiL60'   => 0,
-                'Total PFT'  => 0,
-                'N PFT'      => '0%',
-                'N ROI'      => '0%',
-                'KW Spent'   => 0,
-                'PT Spent'   => 0,
-                'HL Spent'   => 0,
-                'PMT Spent'  => 0,
-                'Shopping Spent' => 0,
-                'SERP Spent' => 0,
-                'Total Ad Spend' => 0,
-                'Ads%'       => '0%',
-                'TACOS %'    => '0%',
-                'type'       => $channelData->type ?? '',
-                'W/Ads'      => $channelData->w_ads ?? 0,
-                'NR'         => $channelData->nr ?? 0,
-                'Update'     => $channelData->update ?? 0,
-                'cogs'       => 0,
-                'Map'        => $mapMissCounts['map'],
-                'Miss'       => $mapMissCounts['miss'],
-                'NMap'       => $mapMissCounts['nmap'],
-                'Total Views' => $mapMissCounts['total_views'] ?? 0,
-                ...$this->getChannelHealthAndReviewsStub(),
-            ];
-            return response()->json([
-                'status' => 200,
-                'message' => 'Temu channel data (no metrics yet – run app:update-marketplace-daily-metrics)',
-                'data' => $result,
-            ]);
-        }
+        $l30Sales = $l30['sales'];
+        $l30Orders = $l30['orders'];
+        $totalQuantity = $l30['qty'];
+        $totalProfit = $l30['pft'];
+        $totalCogs = $l30['cogs'];
+        $l60Sales = $l60['sales'];
+        $l60Orders = $l60['orders'];
 
-        // Fetch L60 Sales and Orders.
-        // Primary source: historical L30 snapshot from ~30 days ago — by definition,
-        // L30 ending on day X equals "days 31..60 ago" once today is X+30. This makes
-        // L60 update daily instead of freezing at whatever was last manually uploaded
-        // into temu_daily_data_l60 (which is a truncate-and-replace table).
-        $l60Orders = 0;
-        $l60Sales  = 0;
+        $gProfitPct = $l30Sales > 0 ? round(($totalProfit / $l30Sales) * 100, 2) : 0.0;
+        $gRoi = $totalCogs > 0 ? round(($totalProfit / $totalCogs) * 100, 2) : 0.0;
+        $gprofitL60 = $l60Sales > 0 ? round(($l60['pft'] / $l60Sales) * 100, 2) : 0.0;
+        $gRoiL60 = $l60['cogs'] > 0 ? round(($l60['pft'] / $l60['cogs']) * 100, 2) : 0.0;
 
-        $derivedL60 = $this->deriveTemuL60FromHistoricalL30('temu');
-        if ($derivedL60) {
-            $l60Sales  = (float) $derivedL60['sales'];
-            $l60Orders = (int)   $derivedL60['orders'];
-        }
-
-        // Fallback: if no historical snapshot is available yet, use the manually-uploaded
-        // temu_daily_data_l60 file (preserves the original behavior so nothing breaks on
-        // fresh installs or before the snapshot history has accumulated).
-        if ($l60Sales <= 0 && Schema::hasTable('temu_daily_data_l60')) {
-            $l60Data = DB::table('temu_daily_data_l60')
-                ->select('order_id', 'base_price_total', 'quantity_purchased')
-                ->get();
-
-            $uniqueOrders = [];
-            foreach ($l60Data as $row) {
-                if ($row->order_id && !in_array($row->order_id, $uniqueOrders)) {
-                    $uniqueOrders[] = $row->order_id;
-                    $l60Orders++;
-                }
-
-                $basePrice = (float) ($row->base_price_total ?? 0);
-                $quantity  = (int)   ($row->quantity_purchased ?? 0);
-                $total     = $basePrice * $quantity;
-
-                // FB Price: orders under $27 carry +$2.99 shipping
-                $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
-                $l60Sales += $fbPrice * $quantity;
-            }
-        }
-
-        $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
-        $tacosPercentage = $metrics->tacos_percentage ?? 0;
-        $nPft = $metrics->n_pft ?? $gProfitPct;
-        $nRoi = $metrics->n_roi ?? $gRoi;
-        $temuSpent = $metrics->kw_spent ?? 0; // Temu ad spend is stored in kw_spent field
-
-        // Use same ad metrics source as temu_decrease badge logic.
         $temuAdMetrics = $this->fetchAdMetricsFromTables('temu');
         $totalAdSpend = (float) ($temuAdMetrics['Total Ad Spend'] ?? $this->fetchTotalAdSpendFromTables('temu'));
-        
-        // Calculate growth: ((L30 - L60) / L60) * 100
-        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
-        
-        // L60 profit percentage
-        $gprofitL60 = 0;
-        $gRoiL60 = 0;
-
-        // Ads% should match Temu page badge value.
+        $tacosPercentage = $l30Sales > 0 ? round(($totalAdSpend / $l30Sales) * 100, 2) : 0.0;
         $adsPercentage = isset($temuAdMetrics['Ads%'])
             ? (float) $temuAdMetrics['Ads%']
-            : ($l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0);
+            : $tacosPercentage;
+        $nPft = round($gProfitPct - $tacosPercentage, 2);
+        $netProfit = $totalProfit - $totalAdSpend;
+        $nRoi = $totalCogs > 0 ? round(($netProfit / $totalCogs) * 100, 2) : 0.0;
 
-        // Channel data
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
+
         $channelData = ChannelMaster::where('channel', 'Temu')->first();
-
-        // Map / Miss / NMap: same live rules as /temu-decrease (not amazon_channel_summary snapshot)
         $mapMissCounts = $this->getTemuLiveMapMissNMapFromDecreaseData(false);
 
         $result[] = [
@@ -6608,7 +7583,7 @@ class ChannelMasterController extends Controller
             'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
             'N ROI'      => round($nRoi, 2),
-            'KW Spent'   => $totalAdSpend, // Temu KW ad spend from temu_campaign_reports
+            'KW Spent'   => $totalAdSpend,
             'PT Spent'   => 0,
             'HL Spent'   => 0,
             'PMT Spent'  => 0,
@@ -6631,7 +7606,7 @@ class ChannelMasterController extends Controller
 
         return response()->json([
             'status' => 200,
-            'message' => 'Temu channel data fetched successfully',
+            'message' => 'Temu channel data fetched successfully (from shopify_order_items)',
             'data' => $result,
         ]);
     }
@@ -6689,45 +7664,16 @@ class ChannelMasterController extends Controller
             ]);
         }
 
-        // Fetch L60 Sales and Orders.
-        // Primary source: historical L30 snapshot from ~30 days ago (same rationale as Temu —
-        // see deriveTemuL60FromHistoricalL30). Eliminates the "L60 = L30" placeholder that
-        // was previously kicking in because temu2_daily_data_l60 is almost never populated.
-        $l60Orders = 0;
-        $l60Sales  = 0;
+        // L60: uploaded temu2_daily_data_l60 first, else historical snapshot.
+        $l60Resolved = $this->resolveTemuL60SalesAndOrders(true);
+        $l60Sales = $l60Resolved['sales'];
+        $l60Orders = $l60Resolved['orders'];
 
-        $derivedL60 = $this->deriveTemuL60FromHistoricalL30('temu2');
-        if ($derivedL60) {
-            $l60Sales  = (float) $derivedL60['sales'];
-            $l60Orders = (int)   $derivedL60['orders'];
-        }
-
-        // Fallback 1: manually-uploaded temu2_daily_data_l60 (legacy behavior)
-        if ($l60Sales <= 0 && Schema::hasTable('temu2_daily_data_l60')) {
-            $l60Data = DB::table('temu2_daily_data_l60')
-                ->select('order_id', 'base_price_total', 'quantity_purchased')
-                ->get();
-
-            $uniqueOrders = [];
-            foreach ($l60Data as $row) {
-                if ($row->order_id && !in_array($row->order_id, $uniqueOrders)) {
-                    $uniqueOrders[] = $row->order_id;
-                    $l60Orders++;
-                }
-
-                $basePrice = (float) ($row->base_price_total ?? 0);
-                $quantity  = (int)   ($row->quantity_purchased ?? 0);
-                $total     = $basePrice * $quantity;
-
-                // FB Price: orders under $27 carry +$2.99 shipping
-                $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
-                $l60Sales += $fbPrice * $quantity;
-            }
-        }
-
-        $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
+        // L30 sales/orders/qty: live from tabulator (same as /temu2-tabulator badge), not stale metrics cache.
+        $liveSales = $this->getTemuLiveSalesSummaryFromTabulator(true);
+        $l30Sales = $liveSales ? ($liveSales['total_revenue'] ?? 0) : ($metrics->total_sales ?? 0);
+        $l30Orders = $liveSales ? ($liveSales['total_orders'] ?? 0) : ($metrics->total_orders ?? 0);
+        $totalQuantity = $liveSales ? ($liveSales['total_quantity'] ?? 0) : ($metrics->total_quantity ?? 0);
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -7328,6 +8274,227 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Newegg channel data for /all-marketplace-master.
+     *
+     * Computed directly from newegg_orders / newegg_order_items (populated by
+     * `php artisan newegg:orders --save`). Margin comes from marketplace_percentages
+     * (Neweggb2c): margin = percentage - ad_updates. Voided orders are excluded.
+     */
+    public function getNeweggChannelData(Request $request)
+    {
+        $result = [];
+
+        $mp = MarketplacePercentage::where('marketplace', 'Neweggb2c')->first();
+        $percentage = $mp ? (float) $mp->percentage : 85;
+        $adUpdates  = $mp ? (float) $mp->ad_updates : 0;
+        $margin     = $percentage - $adUpdates;
+        $factor     = $margin > 0 ? $margin / 100 : 0.85;
+
+        // Product master costs keyed by normalized SKU (NBSP / space tolerant).
+        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+            return ShopifySku::normalizeSkuForShopifyLookup($item->sku);
+        });
+
+        $now = Carbon::now();
+        $l30 = $this->computeNeweggWindow($now->copy()->subDays(30), $now, $productMasters, $factor);
+        $l60 = $this->computeNeweggWindow($now->copy()->subDays(60), $now->copy()->subDays(30), $productMasters, $factor);
+        $l7  = $this->computeNeweggWindow($now->copy()->subDays(7), $now, $productMasters, $factor);
+        $y   = $this->computeNeweggWindow($now->copy()->subDay()->startOfDay(), $now->copy()->subDay()->endOfDay(), $productMasters, $factor);
+
+        $growth     = $l60['sales'] > 0 ? (($l30['sales'] - $l60['sales']) / $l60['sales']) * 100 : 0;
+        $gProfitPct = $l30['sales'] > 0 ? ($l30['profit'] / $l30['sales']) * 100 : 0;
+        $gRoi       = $l30['cogs'] > 0 ? ($l30['profit'] / $l30['cogs']) * 100 : 0;
+        $gprofitL60 = $l60['sales'] > 0 ? ($l60['profit'] / $l60['sales']) * 100 : 0;
+        $gRoiL60    = $l60['cogs'] > 0 ? ($l60['profit'] / $l60['cogs']) * 100 : 0;
+
+        $channelData = ChannelMaster::where('channel', 'Newegg')->first();
+
+        $result[] = [
+            'Channel '   => 'Newegg',
+            'L-60 Sales' => round($l60['sales']),
+            'L30 Sales'  => round($l30['sales']),
+            'L7 Sales'   => round($l7['sales']),
+            'Y Sales'    => round($y['sales']),
+            'Growth'     => round($growth, 2) . '%',
+            'L60 Orders' => $l60['orders'],
+            'L30 Orders' => $l30['orders'],
+            'Qty'        => intval($l30['qty']),
+            'Gprofit%'   => round($gProfitPct, 2) . '%',
+            'gprofitL60' => round($gprofitL60, 2) . '%',
+            'G Roi'      => round($gRoi, 2),
+            'G RoiL60'   => round($gRoiL60, 2),
+            'Total PFT'  => round($l30['profit'], 2),
+            'N PFT'      => round($gProfitPct, 2) . '%',
+            'N ROI'      => round($gRoi, 2),
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
+            'type'       => $channelData->type ?? 'B2C',
+            'W/Ads'      => $channelData->w_ads ?? 0,
+            'NR'         => $channelData->nr ?? 0,
+            'Update'     => $channelData->update ?? 0,
+            'cogs'       => round($l30['cogs'], 2),
+            'sheet_link' => $channelData->sheet_link ?? null,
+            'missing_link' => $channelData->missing_link ?? null,
+            'Map' => 0,
+            'Miss' => 0,
+            'NMap' => 0,
+            'Total Views' => 0,
+            ...$this->getChannelHealthAndReviewsStub(),
+        ];
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Newegg channel data fetched successfully',
+            'data' => $result,
+        ]);
+    }
+
+    /**
+     * Aggregate Newegg sales/profit for a date window from newegg_orders + items.
+     * Excludes voided orders (order_status 4).
+     *
+     * @return array{sales:float,orders:int,qty:float,profit:float,cogs:float}
+     */
+    private function computeNeweggWindow($from, $to, $productMasters, float $factor): array
+    {
+        $orders = \App\Models\NeweggOrder::with('items')
+            ->whereBetween('order_date', [$from, $to])
+            ->where(function ($q) {
+                $q->whereNull('order_status')->orWhere('order_status', '!=', 4);
+            })
+            ->get();
+
+        $sales = 0.0; $qty = 0.0; $profit = 0.0; $cogs = 0.0;
+
+        foreach ($orders as $order) {
+            foreach ($order->items as $item) {
+                $quantity  = (float) ($item->ordered_qty ?? 0);
+                $unitPrice = (float) ($item->unit_price ?? 0);
+                if ($quantity <= 0) {
+                    continue;
+                }
+
+                [$lp, $ship] = $this->neweggItemCosts($item->seller_part_number, $productMasters);
+
+                $sales  += $unitPrice * $quantity;
+                $qty    += $quantity;
+                $profit += (($unitPrice * $factor) - $lp - $ship) * $quantity;
+                $cogs   += $lp * $quantity;
+            }
+        }
+
+        return [
+            'sales'  => $sales,
+            'orders' => $orders->count(),
+            'qty'    => $qty,
+            'profit' => $profit,
+            'cogs'   => $cogs,
+        ];
+    }
+
+    /**
+     * LP + Ship for a Newegg SKU from ProductMaster.
+     *
+     * @return array{0:float,1:float} [lp, ship]
+     */
+    private function neweggItemCosts(?string $sku, $productMasters): array
+    {
+        if (!$sku) {
+            return [0.0, 0.0];
+        }
+
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        $pm = $productMasters[$norm] ?? null;
+        if (!$pm) {
+            return [0.0, 0.0];
+        }
+
+        $values = is_array($pm->Values)
+            ? $pm->Values
+            : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
+
+        $lp   = isset($values['lp']) ? (float) $values['lp'] : (float) ($pm->lp ?? 0);
+        $ship = isset($values['ship']) ? (float) $values['ship'] : (float) ($pm->ship ?? 0);
+
+        return [$lp, $ship];
+    }
+
+    /**
+     * Newegg Y Sales for /all-marketplace-master.
+     *
+     * Same clock as Amazon: revenue (unit_price × ordered_qty) for the Pacific calendar day
+     * before the latest newegg_orders.order_date. Voided orders (order_status 4) are excluded.
+     */
+    private function computeNeweggYSalesLikeAmazon(): ?float
+    {
+        $latestRaw = DB::table('newegg_orders')
+            ->whereNotNull('order_date')
+            ->where(function ($q) {
+                $q->whereNull('order_status')->orWhere('order_status', '!=', 4);
+            })
+            ->max('order_date');
+
+        if (!$latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
+        $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
+
+        return $this->sumNeweggRevenueBetween($yStartPacific, $yEndPacific);
+    }
+
+    /**
+     * Newegg L7 Sales for /all-marketplace-master.
+     *
+     * Seven-day window ending on the Y-Sales "yesterday" (day before latest order_date),
+     * revenue = unit_price × ordered_qty, voided orders excluded.
+     */
+    private function computeNeweggL7SalesLikeAmazon(): ?float
+    {
+        $latestRaw = DB::table('newegg_orders')
+            ->whereNotNull('order_date')
+            ->where(function ($q) {
+                $q->whereNull('order_status')->orWhere('order_status', '!=', 4);
+            })
+            ->max('order_date');
+
+        if (!$latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+        return $this->sumNeweggRevenueBetween($l7StartPacific, $l7EndPacific);
+    }
+
+    /**
+     * Sum Newegg order-item revenue (unit_price × ordered_qty) for a date window.
+     * Voided orders (order_status 4) are excluded.
+     */
+    private function sumNeweggRevenueBetween($from, $to): float
+    {
+        $sum = (float) DB::table('newegg_orders as o')
+            ->join('newegg_order_items as i', 'o.order_number', '=', 'i.order_number')
+            ->where('o.order_date', '>=', $from)
+            ->where('o.order_date', '<=', $to)
+            ->where(function ($q) {
+                $q->whereNull('o.order_status')->orWhere('o.order_status', '!=', 4);
+            })
+            ->selectRaw('COALESCE(SUM(i.unit_price * i.ordered_qty), 0) as revenue')
+            ->value('revenue');
+
+        return round($sum, 2);
+    }
+
+    /**
      * Calculate Missing Listing count for BestBuy USA
      * This counts SKUs with INV > 0 that are not listed and are not marked as NR
      */
@@ -7407,14 +8574,14 @@ class ChannelMasterController extends Controller
         $percentage = MarketplacePercentage::where('marketplace', 'LIKE', '%PLS%')->value('percentage') ?? 100;
         $percentage = $percentage / 100; // convert % to fraction
 
-        // Load product masters (lp, ship) keyed by SKU
+        // Load product masters (lp, ship) keyed by normalized SKU (NBSP / space tolerant)
         $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
+            return ShopifySku::normalizeSkuForShopifyLookup($item->sku);
         });
 
         // Get PLS products with current prices and L30 sales volume
         $plsProducts = \App\Models\PLSProduct::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
+            return ShopifySku::normalizeSkuForShopifyLookup($item->sku);
         });
 
         // Calculate weighted GPFT and ROI using CURRENT PRICES (same as Pricing page)
@@ -7423,7 +8590,7 @@ class ChannelMasterController extends Controller
         $totalCogs    = 0;
 
         foreach ($plsProducts as $plsProduct) {
-            $sku       = strtoupper($plsProduct->sku);
+            $skuNorm   = ShopifySku::normalizeSkuForShopifyLookup($plsProduct->sku);
             $price     = (float) $plsProduct->price;
             $plsL30    = (int) $plsProduct->p_l30;
 
@@ -7434,8 +8601,8 @@ class ChannelMasterController extends Controller
             $lp   = 0;
             $ship = 0;
 
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
+            if (isset($productMasters[$skuNorm])) {
+                $pm = $productMasters[$skuNorm];
 
                 $values = is_array($pm->Values) ? $pm->Values :
                         (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
@@ -7519,18 +8686,28 @@ class ChannelMasterController extends Controller
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
         $shopifyData = ShopifySku::mapByProductSkus($skus);
-        $statusData = PlsListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusByNorm = [];
+        foreach (PlsListingStatus::whereIn('sku', $skus)->get() as $row) {
+            $key = ShopifySku::normalizeSkuForShopifyLookup($row->sku);
+            if ($key !== '' && ! isset($statusByNorm[$key])) {
+                $statusByNorm[$key] = $row;
+            }
+        }
 
         $missingListingCount = 0;
 
         foreach ($productMasters as $item) {
             $sku = trim($item->sku);
+            $skuNorm = ShopifySku::normalizeSkuForShopifyLookup($sku);
             $isParent = stripos($sku, 'PARENT') !== false;
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($sku)?->inv ?? 0;
 
-            if ($isParent || floatval($inv) <= 0) continue;
+            if ($isParent || floatval($inv) <= 0) {
+                continue;
+            }
 
-            $status = $statusData[$sku]->value ?? null;
+            $statusRow = $statusByNorm[$skuNorm] ?? null;
+            $status = $statusRow?->value ?? null;
             if (is_string($status)) {
                 $status = json_decode($status, true);
             }
@@ -7727,15 +8904,14 @@ class ChannelMasterController extends Controller
 
     /**
      * Aggregate Faire sales/profit for a date window straight from Shopify
-     * (apicentral.shopify_order_items). Same identification logic as the
-     * faire-tabulator page so the two stay in sync.
+     * (shopify_raw_orders). Same identification logic as the faire-tabulator
+     * page so the two stay in sync.
      *
      * @return array{sales:float, orders:int, qty:int, pft:float, cogs:float}
      */
     private function computeFaireMetricsFromShopify(\Carbon\Carbon $startDate, \Carbon\Carbon $endDate): array
     {
-        $rows = DB::connection('apicentral')
-            ->table('shopify_order_items')
+        $rows = DB::table('shopify_raw_orders')
             ->whereBetween('order_date', [$startDate, $endDate])
             ->where(function ($q) {
                 $q->where('source_name', 'faire')
@@ -7807,7 +8983,7 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // L30 and L60 are computed directly from shopify_order_items (Faire source) —
+        // L30 and L60 are computed directly from shopify_raw_orders (Faire source) —
         // same data source the /faire-tabulator page uses — so the two pages match.
         // Previously this read from marketplace_daily_metrics which in turn was sourced
         // from faire_daily_data (manual Excel uploads), drifting out of sync.
@@ -7878,6 +9054,7 @@ class ChannelMasterController extends Controller
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            'missing_link' => $channelData->missing_link ?? $this->defaultMissingLinkForChannel('Faire'),
             ...$this->getChannelHealthAndReviewsStub(),
         ];
 
@@ -7893,9 +9070,9 @@ class ChannelMasterController extends Controller
      * (apicentral.shopify_order_items). Identification mirrors the shopify-orders page
      * so the all-marketplace-master row stays in sync with the Shopify dashboard.
      *
-     * Profit per line = (price × pct) − LP − ship, where pct comes from
-     * marketplace_percentages.marketplace = 'Purchase' (default 65%) — same formula as
-     * UpdateMarketplaceDailyMetrics::calculatePurchasingPowerMetrics().
+     * Profit per line = (price × pct) − LP, where pct comes from
+     * marketplace_percentages.marketplace = 'Purchase' (default 65%).
+     * Note: Ship is intentionally excluded from PP profit (matches /purchasing-power-pricing).
      *
      * @return array{sales:float, orders:int, qty:int, pft:float, cogs:float}
      */
@@ -7936,8 +9113,7 @@ class ChannelMasterController extends Controller
             $quantity = (int)   ($r->quantity ?? 0);
             if ($quantity <= 0) continue;
 
-            $lp   = 0.0;
-            $ship = 0.0;
+            $lp = 0.0;
             if ($sku !== null && $sku !== '' && isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
                 $values = is_array($pm->Values)
@@ -7950,23 +9126,17 @@ class ChannelMasterController extends Controller
                             break;
                         }
                     }
-                    if (isset($values['ship'])) {
-                        $ship = (float) $values['ship'];
-                    }
                 }
                 if ($lp === 0.0 && isset($pm->lp)) {
                     $lp = (float) $pm->lp;
-                }
-                if ($ship === 0.0 && isset($pm->ship)) {
-                    $ship = (float) $pm->ship;
                 }
             }
 
             $totalSales += $price * $quantity;
             $totalQty   += $quantity;
             $totalCogs  += $lp * $quantity;
-            // Same per-line profit as calculatePurchasingPowerMetrics()
-            $totalPft   += (($price * $pct) - $lp - $ship) * $quantity;
+            // Ship intentionally excluded to match /purchasing-power-pricing.
+            $totalPft   += (($price * $pct) - $lp) * $quantity;
             if (!empty($r->order_number)) {
                 $orderSet[$r->order_number] = true;
             }
@@ -8376,88 +9546,103 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        $agg = $this->aggregateSheinDailyDataLikeTabulator();
+        // L30 + L60 from Shopify Sen Shp (same source as /shein-tabulator).
+        // Old paths (shein_daily_data + shein_daily_data_l60 + sheet fallback) are kept as fallback
+        // only when the Shopify pull is empty, so legacy uploads don't disappear.
+        [$l30Start, $l30End] = SheinShopifySalesService::tabulatorL30Window();
+        $shopifyL30 = SheinShopifySalesService::computeChannelSummary($l30Start, $l30End);
+
         $metrics = MarketplaceDailyMetric::where('channel', 'Shein')->latest('date')->first();
-        $sheetAgg = null;
-        if ($agg === null) {
-            $sheetAgg = $this->aggregateSheinSheetSalesFallback();
-        }
+        $shopifyHasTotals = $shopifyL30['total_orders'] > 0 || $shopifyL30['total_sales'] > 0.00001;
 
-        $aggLooksEmpty = $agg !== null
-            && $agg['total_orders'] === 0
-            && ($agg['total_sales'] ?? 0) <= 0.00001
-            && SheinDailyData::query()->exists();
-
-        $metricsHasTotals = $metrics && (
-            (float) ($metrics->total_sales ?? 0) > 0.00001
-            || (int) ($metrics->total_orders ?? 0) > 0
-        );
-
-        // Prefer live daily aggregate when it has totals; if daily exists but sums to 0, use saved metrics when those have totals; then sheet; else daily zeros.
-        if ($agg !== null && ! $aggLooksEmpty) {
-            $l30Sales = $agg['total_sales'];
-            $l30Orders = $agg['total_orders'];
-            $totalQuantity = $agg['total_quantity'];
-            $totalProfit = $agg['total_pft'];
-            $totalCogs = $agg['total_cogs'];
-            $gProfitPct = $agg['pft_percentage'];
-            $gRoi = $agg['roi_percentage'];
-            $nPftValue = $totalProfit;
-            $nRoi = $gRoi;
-        } elseif ($aggLooksEmpty && $metricsHasTotals) {
-            $l30Sales = (float) ($metrics->total_sales ?? 0);
-            $l30Orders = (int) ($metrics->total_orders ?? 0);
-            $totalQuantity = (int) ($metrics->total_quantity ?? 0);
-            $totalProfit = (float) ($metrics->total_pft ?? 0);
-            $totalCogs = (float) ($metrics->total_cogs ?? 0);
-            $gProfitPct = (float) ($metrics->pft_percentage ?? 0);
-            $gRoi = (float) ($metrics->roi_percentage ?? 0);
-            $nPftValue = (float) ($metrics->n_pft ?? $totalProfit);
-            $nRoi = (float) ($metrics->n_roi ?? $gRoi);
-        } elseif ($agg !== null) {
-            $l30Sales = $agg['total_sales'];
-            $l30Orders = $agg['total_orders'];
-            $totalQuantity = $agg['total_quantity'];
-            $totalProfit = $agg['total_pft'];
-            $totalCogs = $agg['total_cogs'];
-            $gProfitPct = $agg['pft_percentage'];
-            $gRoi = $agg['roi_percentage'];
-            $nPftValue = $totalProfit;
-            $nRoi = $gRoi;
-        } elseif ($sheetAgg !== null) {
-            $l30Sales = $sheetAgg['total_sales'];
-            $l30Orders = $sheetAgg['total_orders'];
-            $totalQuantity = $sheetAgg['total_quantity'];
-            $totalProfit = $sheetAgg['total_pft'];
-            $totalCogs = $sheetAgg['total_cogs'];
-            $gProfitPct = $sheetAgg['pft_percentage'];
-            $gRoi = $sheetAgg['roi_percentage'];
+        if ($shopifyHasTotals) {
+            $l30Sales = $shopifyL30['total_sales'];
+            $l30Orders = $shopifyL30['total_orders'];
+            $totalQuantity = $shopifyL30['total_quantity'];
+            $totalProfit = $shopifyL30['total_pft'];
+            $totalCogs = $shopifyL30['total_cogs'];
+            $gProfitPct = $shopifyL30['pft_percentage'];
+            $gRoi = $shopifyL30['roi_percentage'];
             $nPftValue = $totalProfit;
             $nRoi = $gRoi;
         } else {
-            $l30Sales = (float) ($metrics?->total_sales ?? 0);
-            $l30Orders = (int) ($metrics?->total_orders ?? 0);
-            $totalQuantity = (int) ($metrics?->total_quantity ?? 0);
-            $totalProfit = (float) ($metrics?->total_pft ?? 0);
-            $totalCogs = (float) ($metrics?->total_cogs ?? 0);
-            $gProfitPct = (float) ($metrics?->pft_percentage ?? 0);
-            $gRoi = (float) ($metrics?->roi_percentage ?? 0);
-            $nPftValue = (float) ($metrics?->n_pft ?? $totalProfit);
-            $nRoi = (float) ($metrics?->n_roi ?? $gRoi);
+            // Legacy fallback chain: shein_daily_data → marketplace_daily_metrics → shein sheet.
+            $agg = $this->aggregateSheinDailyDataLikeTabulator();
+            $sheetAgg = $agg === null ? $this->aggregateSheinSheetSalesFallback() : null;
+            $aggLooksEmpty = $agg !== null
+                && $agg['total_orders'] === 0
+                && ($agg['total_sales'] ?? 0) <= 0.00001
+                && SheinDailyData::query()->exists();
+            $metricsHasTotals = $metrics && (
+                (float) ($metrics->total_sales ?? 0) > 0.00001
+                || (int) ($metrics->total_orders ?? 0) > 0
+            );
+
+            if ($agg !== null && ! $aggLooksEmpty) {
+                $l30Sales = $agg['total_sales'];
+                $l30Orders = $agg['total_orders'];
+                $totalQuantity = $agg['total_quantity'];
+                $totalProfit = $agg['total_pft'];
+                $totalCogs = $agg['total_cogs'];
+                $gProfitPct = $agg['pft_percentage'];
+                $gRoi = $agg['roi_percentage'];
+                $nPftValue = $totalProfit;
+                $nRoi = $gRoi;
+            } elseif ($aggLooksEmpty && $metricsHasTotals) {
+                $l30Sales = (float) ($metrics->total_sales ?? 0);
+                $l30Orders = (int) ($metrics->total_orders ?? 0);
+                $totalQuantity = (int) ($metrics->total_quantity ?? 0);
+                $totalProfit = (float) ($metrics->total_pft ?? 0);
+                $totalCogs = (float) ($metrics->total_cogs ?? 0);
+                $gProfitPct = (float) ($metrics->pft_percentage ?? 0);
+                $gRoi = (float) ($metrics->roi_percentage ?? 0);
+                $nPftValue = (float) ($metrics->n_pft ?? $totalProfit);
+                $nRoi = (float) ($metrics->n_roi ?? $gRoi);
+            } elseif ($sheetAgg !== null) {
+                $l30Sales = $sheetAgg['total_sales'];
+                $l30Orders = $sheetAgg['total_orders'];
+                $totalQuantity = $sheetAgg['total_quantity'];
+                $totalProfit = $sheetAgg['total_pft'];
+                $totalCogs = $sheetAgg['total_cogs'];
+                $gProfitPct = $sheetAgg['pft_percentage'];
+                $gRoi = $sheetAgg['roi_percentage'];
+                $nPftValue = $totalProfit;
+                $nRoi = $gRoi;
+            } else {
+                $l30Sales = (float) ($metrics?->total_sales ?? 0);
+                $l30Orders = (int) ($metrics?->total_orders ?? 0);
+                $totalQuantity = (int) ($metrics?->total_quantity ?? 0);
+                $totalProfit = (float) ($metrics?->total_pft ?? 0);
+                $totalCogs = (float) ($metrics?->total_cogs ?? 0);
+                $gProfitPct = (float) ($metrics?->pft_percentage ?? 0);
+                $gRoi = (float) ($metrics?->roi_percentage ?? 0);
+                $nPftValue = (float) ($metrics?->n_pft ?? $totalProfit);
+                $nRoi = (float) ($metrics?->n_roi ?? $gRoi);
+            }
         }
-        
-        // L60 sales from shein_daily_data_l60 table
-        $l60Agg = $this->aggregateSheinDailyDataL60LikeTabulator();
-        $l60Orders = 0;
-        $l60Sales = 0;
-        $gprofitL60 = 0;
-        $gRoiL60 = 0;
-        
-        if ($l60Agg !== null) {
-            $l60Orders = $l60Agg['total_orders'];
-            $l60Sales = $l60Agg['total_sales'];
-            $gprofitL60 = $l60Agg['pft_percentage'];
-            $gRoiL60 = $l60Agg['roi_percentage'];
+
+        // L60 from Shopify Sen Shp (days 31–60 PST). Fallback to legacy shein_daily_data_l60
+        // when Shopify returns nothing in that window.
+        [$l60Start, $l60End] = SheinShopifySalesService::channelMasterL60Window();
+        $shopifyL60 = SheinShopifySalesService::computeChannelSummary($l60Start, $l60End);
+
+        if ($shopifyL60['total_orders'] > 0 || $shopifyL60['total_sales'] > 0.00001) {
+            $l60Orders = $shopifyL60['total_orders'];
+            $l60Sales = $shopifyL60['total_sales'];
+            $gprofitL60 = $shopifyL60['pft_percentage'];
+            $gRoiL60 = $shopifyL60['roi_percentage'];
+        } else {
+            $l60Agg = $this->aggregateSheinDailyDataL60LikeTabulator();
+            $l60Orders = 0;
+            $l60Sales = 0;
+            $gprofitL60 = 0;
+            $gRoiL60 = 0;
+            if ($l60Agg !== null) {
+                $l60Orders = $l60Agg['total_orders'];
+                $l60Sales = $l60Agg['total_sales'];
+                $gprofitL60 = $l60Agg['pft_percentage'];
+                $gRoiL60 = $l60Agg['roi_percentage'];
+            }
         }
         
         // Calculate growth: (L30 - L60) / L60 * 100 when L60 > 0
@@ -8469,8 +9654,7 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Shein')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('shein');
+        $mapMissCounts = $this->getSheinLiveMapMissNMapFromPricingData();
 
         $result[] = [
             'Channel '   => 'Shein',
@@ -8499,6 +9683,7 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'missing_link' => $channelData->missing_link ?? $this->defaultMissingLinkForChannel('Shein'),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
@@ -9345,109 +10530,15 @@ class ChannelMasterController extends Controller
      */
     private function aggregateAliexpressDailyDataLikeTabulator(): ?array
     {
-        $data = AliexpressDailyData::all();
-        if ($data->isEmpty()) {
-            return null;
-        }
+        return app(AliexpressController::class)->aggregateOrderRowsForChannelMaster('l30');
+    }
 
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
-        $marketplaceData = ChannelMaster::where('channel', 'Aliexpress')->first();
-        $percentage = $marketplaceData !== null
-            ? (float) ($marketplaceData->channel_percentage ?? 100)
-            : 100.0;
-        if ($percentage <= 0) {
-            $percentage = 89.0;
-        }
-        $margin = $percentage / 100.0;
-
-        $totalOrders = 0;
-        $totalQuantity = 0;
-        $totalRevenue = 0.0;
-        $totalCogs = 0.0;
-        $totalPft = 0.0;
-        $totalWeightedPrice = 0.0;
-        $totalQuantityForPrice = 0;
-
-        foreach ($data as $row) {
-            $status = strtolower((string) ($row->order_status ?? ''));
-            if (str_contains($status, 'refund') || str_contains($status, 'return')
-                || str_contains($status, 'cancel') || str_contains($status, 'closed')) {
-                continue;
-            }
-
-            if (empty($row->sku_code) || empty($row->order_id)) {
-                continue;
-            }
-
-            $quantity = max(1, (int) ($row->quantity ?? 1));
-
-            $lineRevenue = (float) ($row->product_total ?? 0);
-            if ($lineRevenue <= 0) {
-                $lineRevenue = (float) ($row->supply_price ?? 0);
-            }
-            if ($lineRevenue <= 0) {
-                $lineRevenue = (float) ($row->order_amount ?? 0);
-            }
-
-            $totalOrders++;
-            $totalQuantity += $quantity;
-            $totalRevenue += $lineRevenue;
-
-            $unitPrice = $quantity > 0 ? $lineRevenue / $quantity : 0.0;
-            if ($quantity > 0 && $unitPrice > 0) {
-                $totalWeightedPrice += $unitPrice * $quantity;
-                $totalQuantityForPrice += $quantity;
-            }
-
-            $sku = strtoupper(trim((string) ($row->sku_code ?? '')));
-            $lp = 0.0;
-            $ship = 0.0;
-
-            if ($sku !== '' && isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-                $values = is_array($pm->Values)
-                    ? $pm->Values
-                    : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                foreach ($values as $k => $v) {
-                    if (strtolower((string) $k) === 'lp') {
-                        $lp = (float) $v;
-                        break;
-                    }
-                }
-                if ($lp === 0.0 && isset($pm->lp)) {
-                    $lp = (float) $pm->lp;
-                }
-
-                $ship = isset($values['ship'])
-                    ? (float) $values['ship']
-                    : (isset($pm->ship) ? (float) $pm->ship : 0.0);
-            }
-
-            $cogs = $lp * $quantity;
-            $totalCogs += $cogs;
-
-            $pft = (($unitPrice * $margin) - $lp - $ship) * $quantity;
-            $totalPft += $pft;
-        }
-
-        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0.0;
-        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0.0;
-        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
-
-        return [
-            'total_orders' => $totalOrders,
-            'total_quantity' => $totalQuantity,
-            'total_sales' => $totalRevenue,
-            'total_cogs' => $totalCogs,
-            'total_pft' => $totalPft,
-            'pft_percentage' => $pftPercentage,
-            'roi_percentage' => $roiPercentage,
-            'avg_price' => $avgPrice,
-        ];
+    /**
+     * AliExpress L60 — same rules as L30, from aliexpress_daily_data_l60 upload.
+     */
+    private function aggregateAliexpressDailyDataL60LikeTabulator(): ?array
+    {
+        return app(AliexpressController::class)->aggregateOrderRowsForChannelMaster('l60');
     }
 
     public function getAliexpressChannelData(Request $request)
@@ -9460,10 +10551,19 @@ class ChannelMasterController extends Controller
             $metrics = MarketplaceDailyMetric::where('channel', 'AliExpress')->latest('date')->first();
         }
 
-        // Get L60 data from sheet data for comparison
-        $query = AliExpressSheetData::where('sku', 'not like', '%Parent%');
-        $l60Orders = $query->sum('aliexpress_l60');
-        $l60Sales  = (clone $query)->selectRaw('SUM(aliexpress_l60 * price) as total')->value('total') ?? 0;
+        $l60Agg = $this->aggregateAliexpressDailyDataL60LikeTabulator();
+        if ($l60Agg !== null) {
+            $l60Orders = (int) ($l60Agg['total_orders'] ?? 0);
+            $l60Sales = (float) ($l60Agg['total_sales'] ?? 0);
+            $gprofitL60 = (float) ($l60Agg['pft_percentage'] ?? 0);
+            $gRoiL60 = (float) ($l60Agg['roi_percentage'] ?? 0);
+        } else {
+            $query = AliExpressSheetData::where('sku', 'not like', '%Parent%');
+            $l60Orders = (int) $query->sum('aliexpress_l60');
+            $l60Sales = (float) ((clone $query)->selectRaw('SUM(aliexpress_l60 * price) as total')->value('total') ?? 0);
+            $gprofitL60 = 0;
+            $gRoiL60 = 0;
+        }
 
         if ($agg !== null) {
             $l30Sales = $agg['total_sales'];
@@ -9487,10 +10587,6 @@ class ChannelMasterController extends Controller
         
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
-        
-        // L60 profit percentage
-        $gprofitL60 = 0;
-        $gRoiL60 = 0;
 
         // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
         $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
@@ -9498,8 +10594,7 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Aliexpress')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('aliexpress');
+        $mapMissCounts = $this->getAliexpressLiveMapMissNMapFromPricingData();
 
         $result[] = [
             'Channel '   => 'Aliexpress',
@@ -9528,6 +10623,7 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'missing_link' => $channelData->missing_link ?? $this->defaultMissingLinkForChannel('Aliexpress'),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
@@ -10344,6 +11440,7 @@ class ChannelMasterController extends Controller
                 'Miss'       => $mapMissCounts['miss'],
                 'NMap'       => $mapMissCounts['nmap'],
                 'Total Views' => $mapMissCounts['total_views'] ?? 0,
+                'missing_link' => $channelData->missing_link ?? $this->defaultMissingLinkForChannel('TopDawg'),
                 ...$this->getChannelHealthAndReviewsStub(),
             ];
 
@@ -10453,6 +11550,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            'missing_link' => $channelData->missing_link ?? $this->defaultMissingLinkForChannel('TopDawg'),
             ...$this->getChannelHealthAndReviewsStub(),
         ];
 
@@ -10715,6 +11813,9 @@ class ChannelMasterController extends Controller
         // Validate Request Data
         $validatedData = $request->validate([
             'channel' => 'required|string',
+            'alias' => 'nullable|string|max:190',
+            'promotions' => 'nullable|numeric',
+            'compliance_count' => 'nullable|integer',
             'sheet_link' => 'nullable|url',
             'addition_sheet' => 'nullable|url',
             'type' => 'nullable|string',
@@ -10736,6 +11837,21 @@ class ChannelMasterController extends Controller
         try {
             if (!Schema::hasColumn('channel_master', 'addition_sheet')) {
                 unset($validatedData['addition_sheet']);
+            }
+
+            // alias column may not exist yet (pre-migration); strip if missing
+            if (!Schema::hasColumn('channel_master', 'alias')) {
+                unset($validatedData['alias']);
+            }
+
+            // promotions column may not exist yet (pre-migration); strip if missing
+            if (!Schema::hasColumn('channel_master', 'promotions')) {
+                unset($validatedData['promotions']);
+            }
+
+            // compliance_count column may not exist yet (pre-migration); strip if missing
+            if (!Schema::hasColumn('channel_master', 'compliance_count')) {
+                unset($validatedData['compliance_count']);
             }
 
             // Logo column may not exist yet (pre-migration); strip if missing
@@ -10783,6 +11899,45 @@ class ChannelMasterController extends Controller
      * (e.g. "channel-logos/1716743521_abc.png") suitable to combine with
      * asset('storage/...') on the frontend.
      */
+    /**
+     * Normalise a channel name to a canonical key so duplicate / aliased names
+     * (e.g. "TikTok 2" vs "Tiktok Shop 2") resolve to the same logo / seller link.
+     */
+    private function canonicalChannelKey(?string $name): string
+    {
+        $key = strtolower(trim((string) $name));
+        $key = preg_replace('/\s+/', ' ', $key);
+
+        $aliases = [
+            'tiktok shop 2' => 'tiktok 2',
+            'depop.com'     => 'depop',
+        ];
+
+        return $aliases[$key] ?? $key;
+    }
+
+    /**
+     * Return every channel_master name that is an alias of the given channel
+     * (lower-cased, used for case/space-insensitive lookups).
+     */
+    private function channelAliasNames(?string $name): array
+    {
+        $key = strtolower(trim((string) $name));
+        $key = preg_replace('/\s+/', ' ', $key);
+
+        $groups = [
+            ['tiktok 2', 'tiktok shop 2'],
+        ];
+
+        foreach ($groups as $group) {
+            if (in_array($key, $group, true)) {
+                return $group;
+            }
+        }
+
+        return [$key];
+    }
+
     private function storeChannelLogo(\Illuminate\Http\UploadedFile $file): string
     {
         $ext = $file->getClientOriginalExtension() ?: $file->guessExtension() ?: 'png';
@@ -10806,6 +11961,9 @@ class ChannelMasterController extends Controller
 
         $originalChannel = $request->input('original_channel');
         $updatedChannel = $request->input('channel');
+        $alias = $request->input('alias');
+        $promotions = $request->input('promotions');
+        $complianceCount = $request->input('compliance_count');
         $sheetUrl = $request->input('sheet_url');
         $type = $request->input('type');
         $channelPercentage = $request->input('channel_percentage');
@@ -10816,10 +11974,35 @@ class ChannelMasterController extends Controller
         $sellerLink = $request->input('seller_link');
         $updateFlag = $request->input('update');
 
-        $channel = ChannelMaster::where('channel', $originalChannel)->first();
+        // Prefer the ACTIVE row when duplicate channel names exist, and resolve
+        // known aliases (e.g. "TikTok 2" stored as "Tiktok Shop 2") so the logo
+        // is saved to the row actually displayed on the page.
+        $lookupNames = $this->channelAliasNames($originalChannel);
+        $channel = ChannelMaster::query()
+            ->whereIn(DB::raw('LOWER(TRIM(channel))'), $lookupNames)
+            ->orderByRaw("CASE WHEN LOWER(TRIM(status)) = 'active' THEN 0 ELSE 1 END")
+            ->orderBy('id', 'asc')
+            ->first();
 
         if (!$channel) {
             return response()->json(['success' => false, 'message' => 'Channel not found']);
+        }
+
+        // Renaming a channel is restricted to a small allow-list of users. Any
+        // other user keeps the original name even if a different value was posted.
+        $channelRenameAllowed = [
+            'support@5core.com',
+            'president@5core.com',
+            'software5@5core.com',
+        ];
+        $currentEmail = strtolower(trim((string) (auth()->user()->email ?? '')));
+        $isRename = $updatedChannel !== null
+            && mb_strtolower(trim((string) $updatedChannel)) !== mb_strtolower(trim((string) $channel->channel));
+        if ($isRename && !in_array($currentEmail, $channelRenameAllowed, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to edit the channel name.',
+            ], 403);
         }
 
         $channel->channel = $updatedChannel;
@@ -10827,13 +12010,38 @@ class ChannelMasterController extends Controller
         $channel->type = $type;
         $channel->channel_percentage = $channelPercentage;
         $channel->base = $base;
-        $channel->target = $target;
+        // Target is no longer editable from the UI; only touch it when the
+        // request actually sends the field so existing values aren't wiped.
+        if ($request->has('target')) {
+            $channel->target = $target;
+        }
         
+        // Save alias if column exists (treat blank as NULL)
+        if (Schema::hasColumn('channel_master', 'alias') && $request->has('alias')) {
+            $channel->alias = ($alias !== '' && $alias !== null) ? $alias : null;
+        }
+
+        // Save manual Promotions % if column exists (treat blank as NULL)
+        if (Schema::hasColumn('channel_master', 'promotions') && $request->has('promotions')) {
+            $channel->promotions = ($promotions !== '' && $promotions !== null && is_numeric($promotions))
+                ? $promotions
+                : null;
+        }
+
+        // Save manual Compliance Count if column exists (treat blank as NULL)
+        if (Schema::hasColumn('channel_master', 'compliance_count') && $request->has('compliance_count')) {
+            $channel->compliance_count = ($complianceCount !== '' && $complianceCount !== null && is_numeric($complianceCount))
+                ? (int) $complianceCount
+                : null;
+        }
+
         // Save missing_link if column exists
         if (Schema::hasColumn('channel_master', 'missing_link')) {
             $channel->missing_link = $missingLink;
         }
-        if (Schema::hasColumn('channel_master', 'addition_sheet')) {
+        // Addition Sheet is no longer editable from the UI; only touch it when
+        // the request actually sends the field so existing values aren't wiped.
+        if (Schema::hasColumn('channel_master', 'addition_sheet') && $request->has('addition_sheet')) {
             $channel->addition_sheet = $additionSheet;
         }
 
@@ -10876,10 +12084,16 @@ class ChannelMasterController extends Controller
             $cachePayload = [
                 'sheet_link'     => $sheetUrl,
                 'type'           => $type,
-                'target'         => is_numeric($target) ? (float) $target : null,
                 'missing_link'   => $missingLink,
-                'addition_sheet' => $additionSheet,
             ];
+            // Only mirror Target / Addition Sheet into the cache when the form
+            // actually sent them (both fields were removed from the UI).
+            if ($request->has('target')) {
+                $cachePayload['target'] = is_numeric($target) ? (float) $target : null;
+            }
+            if ($request->has('addition_sheet')) {
+                $cachePayload['addition_sheet'] = $additionSheet;
+            }
             if (Schema::hasColumn('channel_master_calculated_data', 'update_flag')) {
                 $cachePayload['update_flag'] = ($updateFlag === 'A' || $updateFlag === 'S') ? $updateFlag : null;
             }
@@ -11877,6 +13091,8 @@ class ChannelMasterController extends Controller
 
             // Map frontend metric names to summary_data keys
             $metricMap = [
+                'l60_sales' => 'l60_sales',
+                'l60_orders' => 'l60_orders',
                 'l30_sales' => 'l30_sales',
                 // Yesterday's sales (snapshot was added later; older days will lack this key
                 // and are skipped below so the chart only shows real Y Sales history).
@@ -11917,7 +13133,10 @@ class ChannelMasterController extends Controller
             $avgMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos', 'ads_cvr', 'cvr'];
             $shouldAvg = in_array($metric, $avgMetrics);
 
-            // Determine date range
+            // Determine date range. Today's California snapshot IS included so the chart's
+            // last point matches the live table value (which is also "today, in progress").
+            // The day-over-day dot color (see getChannelMetricDotTrends) still uses only
+            // completed PT days, so an in-progress today doesn't flatten that signal.
             $query = \App\Models\ChannelMasterSummary::orderBy('snapshot_date', 'asc');
 
             if (!$isAll) {
@@ -11935,14 +13154,17 @@ class ChannelMasterController extends Controller
                 return response()->json(['success' => true, 'data' => []]);
             }
 
-            // Group by snapshot_date for "all" aggregation
+            // Group by snapshot_date for "all" aggregation.
+            // Snapshots are saved with America/Los_Angeles dates (see saveChannelDailySummaries),
+            // so we parse and format in that zone to ensure the chart's X-axis labels (Jun 14,
+            // Jun 15, …) are California/Pacific dates regardless of the app/server timezone.
             $grouped = $history->groupBy(function ($row) {
-                return Carbon::parse($row->snapshot_date)->format('Y-m-d');
+                return Carbon::parse($row->snapshot_date, 'America/Los_Angeles')->format('Y-m-d');
             })->sortKeys();
 
             $chartData = [];
             foreach ($grouped as $dateKey => $rows) {
-                $date = Carbon::parse($dateKey)->format('M d');
+                $date = Carbon::parse($dateKey, 'America/Los_Angeles')->format('M d');
 
                 if ($isAll) {
                     // Aggregate across all channels for this date
@@ -12021,7 +13243,10 @@ class ChannelMasterController extends Controller
                     } elseif ($metric === 'ads_cvr') {
                         $value = $totalClicks > 0 ? round(($totalAdSold / $totalClicks) * 100, 1) : 0;
                     } elseif ($metric === 'cvr') {
-                        $value = $totalViewsCvr > 0 ? round(($totalOrdersCvr / $totalViewsCvr) * 100, 1) : 0;
+                        // 2 decimals: rolling-window CVR moves <0.05% per day, so 1-decimal
+                        // rounding collapsed multiple consecutive days into the same value
+                        // and the trend looked flat for ~3 days at a time.
+                        $value = $totalViewsCvr > 0 ? round(($totalOrdersCvr / $totalViewsCvr) * 100, 2) : 0;
                     } elseif ($metric === 'ad_sold') {
                         $value = round($totalAdSold);
                     } elseif ($metric === 'gprofit') {
@@ -12092,7 +13317,10 @@ class ChannelMasterController extends Controller
                     } elseif ($metric === 'cvr') {
                         $orders = floatval($summaryData['l30_orders'] ?? 0);
                         $views = floatval($summaryData['total_views'] ?? 0);
-                        $value = $views > 0 ? round(($orders / $views) * 100, 1) : 0;
+                        // 2 decimals: rolling-window CVR moves <0.05% per day, so 1-decimal
+                        // rounding collapsed multiple consecutive days into the same value
+                        // and the trend looked flat for ~3 days at a time.
+                        $value = $views > 0 ? round(($orders / $views) * 100, 2) : 0;
                     } elseif ($metric === 'pft') {
                         $gprofitPercent = floatval($summaryData['gprofit_percent'] ?? 0);
                         $sales = floatval($summaryData['l30_sales'] ?? 0);
@@ -12167,7 +13395,9 @@ class ChannelMasterController extends Controller
             // Same metricMap as getChannelMetricChartData so value extraction matches chart exactly
             $metricMap = [
                 'l60_sales' => 'l60_sales',
+                'l60_orders' => 'l60_orders',
                 'l30_sales' => 'l30_sales',
+                'y_sales' => 'y_sales',
                 'l30_orders' => 'l30_orders',
                 'qty' => 'total_quantity',
                 'gprofit' => 'gprofit_percent',
@@ -12183,8 +13413,13 @@ class ChannelMasterController extends Controller
                 'total_views' => 'total_views',
                 'inv_at_lp' => 'inv_at_lp',
             ];
-            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l30_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp'];
+            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp'];
             $out = [];
+
+            // Today's California date — excluded from dot comparisons because the current PT day
+            // is still in progress. Comparing today (partial) vs yesterday (complete) yields
+            // a misleading "no change" / grey dot. We compare the two latest COMPLETED PT days.
+            $todayCa = now('America/Los_Angeles')->toDateString();
 
             foreach ($channelKeys as $channel) {
                 foreach ($metrics as $metric) {
@@ -12193,6 +13428,7 @@ class ChannelMasterController extends Controller
 
                 // Same source as chart: ChannelMasterSummary. Same key: normalized channel (table saves with this key in saveChannelDailySummaries).
                 $cmsRows = \App\Models\ChannelMasterSummary::where('channel', $channel)
+                    ->where('snapshot_date', '<', $todayCa)
                     ->orderBy('snapshot_date', 'desc')
                     ->take(2)
                     ->get();
@@ -12288,12 +13524,18 @@ class ChannelMasterController extends Controller
             if ($adSold <= 0 && $clicks > 0) {
                 $adSold = $clicks * $this->getAdCvrRatio($channel);
             }
-            return $clicks > 0 ? round(($adSold / $clicks) * 100, 1) : null;
+            // 2 decimals: must match the chart endpoint's precision (round to 2) so the
+            // table dot doesn't show grey while the chart shows a green/red trend point
+            // for the same two snapshots.
+            return $clicks > 0 ? round(($adSold / $clicks) * 100, 2) : null;
         }
         if ($metric === 'cvr') {
             $orders = floatval($summaryData['l30_orders'] ?? 0);
             $views = floatval($summaryData['total_views'] ?? 0);
-            return $views > 0 ? round(($orders / $views) * 100, 1) : null;
+            // 2 decimals: must match the chart endpoint's precision (round to 2). At
+            // 1 decimal, consecutive days like 5.22% and 5.24% both round to 5.2 →
+            // v1 === v2 → grey dot, even though the chart shows the CVR moved.
+            return $views > 0 ? round(($orders / $views) * 100, 2) : null;
         }
         if ($metric === 'nroi') {
             $groi = floatval($summaryData['groi_percent'] ?? 0);
@@ -12720,6 +13962,14 @@ class ChannelMasterController extends Controller
                     ->latest('date')
                     ->first();
                 $totalQuantity = $metrics ? ($metrics->total_quantity ?? $metrics->total_orders ?? 0) : 0;
+
+                // Fallback: channels computed directly (no marketplace_daily_metrics row,
+                // e.g. Newegg/PLS) carry their units in the page row's "Qty". Without this
+                // the qty trend dot/chart would always read 0 even though the column shows
+                // the correct number.
+                if (!$totalQuantity) {
+                    $totalQuantity = floatval($row['Qty'] ?? 0);
+                }
                 
                 // Prepare summary data
                 $summaryData = [

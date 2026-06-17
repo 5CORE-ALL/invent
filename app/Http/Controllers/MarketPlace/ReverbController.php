@@ -19,6 +19,8 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use App\Models\AmazonChannelSummary;
+use App\Models\ChannelMasterSummary;
+use App\Models\ChannelMasterCalculatedData;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
@@ -158,11 +160,11 @@ class ReverbController extends Controller
         // Fetch shopify data for these SKUs
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
-        // Fetch reverb data for these SKUs
-        $reverbData = ReverbProduct::whereIn("sku", $skus)->get()->keyBy("sku");
+        // Fetch reverb data for these SKUs (normalized lookup)
+        $reverbData = ReverbProduct::buildLookupByNormalizedSku($skus);
 
         // Fetch all required data from ReverbViewData in a single query
-        $reverbViewData = ReverbViewData::whereIn("sku", $skus)->get()->keyBy("sku");
+        $reverbViewData = ReverbProduct::buildModelLookupByNormalizedSku(ReverbViewData::class, $skus);
 
         // Process data from product master and shopify tables
         $processedData = [];
@@ -170,6 +172,7 @@ class ReverbController extends Controller
 
         foreach ($productMasterRows as $productMaster) {
             $sku = $productMaster->sku;
+            $skuNorm = $this->normalizeSkuKey($sku);
             $isParent = stripos($sku, "PARENT") !== false;
 
             // Initialize the data structure
@@ -205,8 +208,8 @@ class ReverbController extends Controller
             }
 
             // Add data from reverb_products if available
-            if (isset($reverbData[$sku])) {
-                $reverbItem = $reverbData[$sku];
+            if (isset($reverbData[$skuNorm])) {
+                $reverbItem = $reverbData[$skuNorm];
                 $reverbPrice = $reverbItem->price ?? 0;
                 $ship = $values["ship"] ?? 0;
 
@@ -226,8 +229,8 @@ class ReverbController extends Controller
             }
 
             // Add all data from reverb_view_data if available (Bump already set from reverb_products.bump_bid when present)
-            if (isset($reverbViewData[$sku])) {
-                $viewData = $reverbViewData[$sku];
+            if (isset($reverbViewData[$skuNorm])) {
+                $viewData = $reverbViewData[$skuNorm];
 
                 // Process values column (cast to array)
                 $valuesArr = $viewData->values ?: [];
@@ -709,12 +712,19 @@ class ReverbController extends Controller
     {
         try {
             $response = $this->getViewReverbTabularData($request);
-            $data = json_decode($response->getContent(), true);
+            $payload = json_decode($response->getContent(), true);
+            $rows = $payload['data'] ?? [];
 
-            // Auto-save daily summary in background (non-blocking)
-            $this->saveDailySummaryIfNeeded($data['data'] ?? []);
+            $mapMissSummary = $this->computeReverbMapMissCounts($rows);
 
-            return response()->json($data['data'] ?? []);
+            // Auto-save daily summary + history snapshots (map/miss for charts & all-marketplace-master)
+            $this->saveDailySummaryIfNeeded($rows, $mapMissSummary);
+            $this->syncReverbMapMissToChannelHistory($mapMissSummary);
+
+            return response()->json([
+                'data' => $rows,
+                'map_miss_summary' => $mapMissSummary,
+            ]);
         } catch (\Exception $e) {
             Log::error('Error fetching Reverb data for Tabulator: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to fetch data'], 500);
@@ -806,49 +816,28 @@ class ReverbController extends Controller
         // Fetch shopify data for these SKUs
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
-        // Fetch reverb data for these SKUs
-        $reverbData = ReverbProduct::whereIn("sku", $skus)->get()->keyBy("sku");
+        // Normalized lookups (spacing / case / PCS suffix — same rules as TopDawg / Shopify)
+        $reverbData = ReverbProduct::buildLookupByNormalizedSku($skus);
+        $reverbViewData = ReverbProduct::buildModelLookupByNormalizedSku(ReverbViewData::class, $skus);
+        $reverbListingStatus = [];
+        foreach (ReverbListingStatus::whereNotNull('sku')->where('sku', '!=', '')->orderBy('updated_at', 'desc')->get() as $statusRow) {
+            $key = ReverbProduct::normalizeSkuForLookup($statusRow->sku ?? '');
+            if ($key !== '' && ! isset($reverbListingStatus[$key])) {
+                $reverbListingStatus[$key] = $statusRow;
+            }
+        }
+        $amazonData = ReverbProduct::buildModelLookupByNormalizedSku(\App\Models\AmazonDatasheet::class, $skus);
 
-        // Fetch reverb view data for SPRICE
-        $reverbViewData = ReverbViewData::whereIn("sku", $skus)->get()->keyBy("sku");
-
-        // Fetch reverb listing status for NR/REQ (same table as listing page)
-        $reverbListingStatus = ReverbListingStatus::whereIn("sku", $skus)
-            ->orderBy('updated_at', 'desc')
-            ->get()
-            ->keyBy("sku");
-
-        // Fetch Amazon data for price comparison
-        $amazonData = \App\Models\AmazonDatasheet::whereIn("sku", $skus)
-            ->get()
-            ->keyBy("sku");
-
-        // reverb_daily_data: per-SKU order aggregates (from Reverb API daily fetch, matched by sku)
-        // Filter to L30 days (last 30 days including today)
-        $dailyBySku = collect();
-        if ($skus !== [] && Schema::hasTable('reverb_daily_data')) {
-            // Get the latest order_date to calculate L30 range
+        // reverb_daily_data: per-SKU order aggregates (L30), merged by normalized SKU
+        $dailyBySku = [];
+        if (Schema::hasTable('reverb_daily_data')) {
             $latestRaw = DB::table('reverb_daily_data')->whereNotNull('order_date')->max('order_date');
-            
+
             if ($latestRaw) {
                 $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
                 $l30EndDate = $latestPacific->toDateString();
                 $l30StartDate = $latestPacific->copy()->subDays(29)->toDateString();
-                
-                $dailyBySku = DB::table('reverb_daily_data')
-                    ->whereIn('sku', $skus)
-                    ->whereNotNull('sku')
-                    ->where('sku', '!=', '')
-                    ->whereNotNull('order_date')
-                    ->where('order_date', '>=', $l30StartDate)
-                    ->where('order_date', '<=', $l30EndDate)
-                    ->groupBy('sku')
-                    ->select('sku')
-                    ->selectRaw('SUM(quantity) as rd_qty')
-                    ->selectRaw('SUM(quantity * COALESCE(product_subtotal, 0)) as rd_qty_x_subtotal')
-                    ->selectRaw('SUM(quantity * COALESCE(amount, 0)) as rd_qty_x_amount')
-                    ->get()
-                    ->keyBy('sku');
+                $dailyBySku = $this->aggregateReverbDailySalesByNormalizedSku($l30StartDate, $l30EndDate);
             }
         }
 
@@ -858,6 +847,7 @@ class ReverbController extends Controller
 
         foreach ($productMasterRows as $productMaster) {
             $sku = $productMaster->sku;
+            $skuNorm = $this->normalizeSkuKey($sku);
             $isParent = stripos($sku, "PARENT") !== false;
 
             // Initialize the data structure
@@ -892,8 +882,8 @@ class ReverbController extends Controller
             }
 
             // Add data from reverb_products if available
-            if (isset($reverbData[$sku])) {
-                $reverbItem = $reverbData[$sku];
+            if (isset($reverbData[$skuNorm])) {
+                $reverbItem = $reverbData[$skuNorm];
                 $reverbPrice = $reverbItem->price ?? 0;
 
                 $processedItem["RV Price"] = $reverbPrice;
@@ -915,26 +905,25 @@ class ReverbController extends Controller
                 $processedItem["Missing"] = ''; // Will be set later based on INV and nr_req
             }
 
-            // Store temp values for MAP calculation after nr_req is set
-            $tempMissingCheck = !isset($reverbData[$sku]);
-
             // Calculate CVR percentage (L30 / Views * 100)
             $views = $processedItem["Views"];
             $rvL30 = $processedItem["RV L30"];
             $processedItem["CVR"] = $views > 0 ? round(($rvL30 / $views) * 100, 0) : 0;
 
             // Amazon Price
-            if (isset($amazonData[$sku])) {
-                $processedItem["A Price"] = $amazonData[$sku]->price ?? 0;
+            if (isset($amazonData[$skuNorm])) {
+                $processedItem["A Price"] = $amazonData[$skuNorm]->price ?? 0;
             } else {
                 $processedItem["A Price"] = 0;
             }
 
             // Get NR/REQ from reverb_listing_statuses (same table as listing page)
             $processedItem["nr_req"] = 'REQ'; // Default value
+            $processedItem["B Link"] = '';
+            $processedItem["S Link"] = '';
             
-            if (isset($reverbListingStatus[$sku])) {
-                $listingStatus = $reverbListingStatus[$sku];
+            if (isset($reverbListingStatus[$skuNorm])) {
+                $listingStatus = $reverbListingStatus[$skuNorm];
                 $statusValue = is_array($listingStatus->value) 
                     ? $listingStatus->value 
                     : (json_decode($listingStatus->value, true) ?? []);
@@ -955,32 +944,40 @@ class ReverbController extends Controller
                 } else {
                     $processedItem["nr_req"] = 'REQ'; // Default
                 }
+
+                // Buyer / Seller links from Listing Reverb
+                $processedItem["B Link"] = $statusValue['buyer_link'] ?? '';
+                $processedItem["S Link"] = $statusValue['seller_link'] ?? '';
             }
 
             // Now calculate MAP and Missing based on nr_req and INV
             $inv = $processedItem["INV"];
             $rStock = $processedItem["R Stock"];
             $nrReq = $processedItem["nr_req"];
+            $rvPrice = floatval($processedItem["RV Price"] ?? 0);
             
-            // Missing: Only for REQ items with INV > 0
+            // Missing L: REQ + INV > 0 + no live Reverb listing (RV Price = 0 — same as Macys MC Price / Best Buy BB Price)
             $isMissing = false;
-            if ($nrReq === 'REQ' && $inv > 0 && $tempMissingCheck) {
+            if ($nrReq === 'REQ' && $inv > 0 && $rvPrice <= 0) {
                 $processedItem["Missing"] = 'M';
                 $isMissing = true;
             } else {
                 $processedItem["Missing"] = '';
             }
             
-            // MAP: Only for REQ items with INV > 0 and NOT Missing (|INV − R Stock| ≤ 3 = Map, same as Best Buy / Macys / eBay)
-            if ($nrReq === 'REQ' && $inv > 0 && !$isMissing) {
+            // MAP / N Map: REQ + INV > 0 + NOT Missing + R Stock > 0, using the same
+            // 3% tolerance as /map-issues (when 3% of INV is below 3 units, require an
+            // absolute gap > 3 units; otherwise apply the rounded 3% rule).
+            if ($nrReq === 'REQ' && $inv > 0 && !$isMissing && $rStock > 0) {
                 $diff = abs((float) $inv - (float) $rStock);
-                if ($diff <= 3) {
-                    $processedItem["MAP"] = 'Map';
+                if ($inv * 0.03 < 3) {
+                    $isNotMap = $diff > 3;
                 } else {
-                    $processedItem["MAP"] = 'N Map|'.$diff;
+                    $isNotMap = round(($diff / $inv) * 100) > 3;
                 }
+                $processedItem["MAP"] = $isNotMap ? 'N Map|'.$diff : 'Map';
             } else {
-                // Don't show MAP for NR items, INV = 0, or Missing items
+                // Don't show MAP for NR items, INV = 0, Missing items, or zero R Stock
                 $processedItem["MAP"] = '';
             }
 
@@ -991,8 +988,8 @@ class ReverbController extends Controller
             $processedItem["SROI"] = 0;
             $processedItem["bump_req"] = 'REQ';
 
-            if (isset($reverbViewData[$sku])) {
-                $viewData = $reverbViewData[$sku];
+            if (isset($reverbViewData[$skuNorm])) {
+                $viewData = $reverbViewData[$skuNorm];
                 $valuesArr = $viewData->values ?: [];
                 
                 $processedItem["SPRICE"] = isset($valuesArr["SPRICE"]) ? floatval($valuesArr["SPRICE"]) : 0;
@@ -1040,7 +1037,7 @@ class ReverbController extends Controller
             $l30 = $processedItem["L30"];
             $processedItem["RV Dil%"] = $inv > 0 ? round(($l30 / $inv) * 100, 0) : 0;
 
-            $rd = $dailyBySku[$sku] ?? null;
+            $rd = $dailyBySku[$skuNorm] ?? null;
             $processedItem["reverb_daily_qty"] = $rd ? (int) $rd->rd_qty : 0;
             $processedItem["reverb_daily_qty_x_subtotal"] = $rd ? round((float) $rd->rd_qty_x_subtotal, 2) : 0;
             $processedItem["reverb_daily_qty_x_amount"] = $rd ? round((float) $rd->rd_qty_x_amount, 2) : 0;
@@ -1222,6 +1219,66 @@ class ReverbController extends Controller
         }
     }
 
+    /** Save Buyer (B) / Seller (S) links for a SKU into reverb_listing_statuses.value JSON (same table as listing page). */
+    public function saveLinks(Request $request)
+    {
+        $validated = $request->validate([
+            'sku'         => 'required|string',
+            'buyer_link'  => 'nullable|string|max:1000',
+            'seller_link' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            $sku = trim($validated['sku']);
+
+            $buyerLink  = isset($validated['buyer_link']) ? trim((string) $validated['buyer_link']) : '';
+            $sellerLink = isset($validated['seller_link']) ? trim((string) $validated['seller_link']) : '';
+
+            foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $label => $link) {
+                if ($link !== '' && !filter_var($link, FILTER_VALIDATE_URL)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => ucfirst(str_replace('_', ' ', $label)) . ' must be a valid URL.',
+                    ], 422);
+                }
+            }
+
+            // Merge into the most recent record (preserve rl_nrl, listed, etc.)
+            $listingStatus = ReverbListingStatus::where('sku', $sku)
+                ->orderBy('updated_at', 'desc')
+                ->first();
+
+            $existing = ($listingStatus && is_array($listingStatus->value))
+                ? $listingStatus->value
+                : ($listingStatus ? (json_decode($listingStatus->value, true) ?? []) : []);
+
+            if (!is_array($existing)) {
+                $existing = [];
+            }
+
+            $existing['buyer_link']  = $buyerLink;
+            $existing['seller_link'] = $sellerLink;
+
+            // Clean up duplicates, then store a single clean record.
+            ReverbListingStatus::where('sku', $sku)->delete();
+            ReverbListingStatus::create([
+                'sku'   => $sku,
+                'value' => $existing,
+            ]);
+
+            return response()->json([
+                'success'     => true,
+                'message'     => 'Links saved.',
+                'buyer_link'  => $buyerLink,
+                'seller_link' => $sellerLink,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error saving Reverb links: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
     public function getColumnVisibility(Request $request)
     {
         $userId = auth()->id() ?? 'guest';
@@ -1248,7 +1305,7 @@ class ReverbController extends Controller
      * Auto-save daily Reverb summary snapshot (channel-wise)
      * Matches JavaScript updateSummary() (MAP / N Map from row MAP field; tolerance is applied in getViewReverbTabularData).
      */
-    private function saveDailySummaryIfNeeded($products)
+    private function saveDailySummaryIfNeeded($products, ?array $mapMissSummary = null)
     {
         try {
             $today = now()->toDateString();
@@ -1267,6 +1324,8 @@ class ReverbController extends Controller
             if ($filteredData->isEmpty()) {
                 return; // No valid products
             }
+
+            $mapMissSummary = $mapMissSummary ?? $this->computeReverbMapMissCounts($products);
             
             // Initialize counters (EXACT JavaScript variable names)
             $totalSkuCount = $filteredData->count();
@@ -1286,9 +1345,6 @@ class ReverbController extends Controller
             $roiCount = 0;
             $lessAmzCount = 0;
             $moreAmzCount = 0;
-            $missingCount = 0;
-            $mapCount = 0;
-            $invRStockCount = 0;
             
             // Loop through each row (EXACT JavaScript forEach logic)
             foreach ($filteredData as $row) {
@@ -1339,27 +1395,6 @@ class ReverbController extends Controller
                         $moreAmzCount++;
                     }
                 }
-                
-                // Get variables for filtering (EXACT JavaScript updated logic)
-                $inv = floatval($row['INV'] ?? 0);
-                $nrReq = $row['nr_req'] ?? 'REQ';
-                $isMissing = ($row['Missing'] ?? '') === 'M';
-                
-                // Count Missing (only REQ items with INV > 0)
-                if ($isMissing && $nrReq === 'REQ' && $inv > 0) {
-                    $missingCount++;
-                }
-                
-                // Count Map (only REQ items with INV > 0 and NOT Missing)
-                $mapValue = $row['MAP'] ?? '';
-                if ($mapValue === 'Map' && $nrReq === 'REQ' && $inv > 0 && !$isMissing) {
-                    $mapCount++;
-                }
-                
-                // Count N Map (only REQ items with INV > 0 and NOT Missing)
-                if ($mapValue && str_contains($mapValue, 'N Map|') && $nrReq === 'REQ' && $inv > 0 && !$isMissing) {
-                    $invRStockCount++;
-                }
             }
             
             // Calculate averages and percentages (EXACT JavaScript logic)
@@ -1374,10 +1409,10 @@ class ReverbController extends Controller
                 'total_sku_count' => $totalSkuCount,
                 'sold_count' => $moreSoldCount,
                 'zero_sold_count' => $zeroSoldCount,
-                'missing_count' => $missingCount,
-                'map_count' => $mapCount,
-                'nmap_count' => $invRStockCount,  // Not mapped (inventory mismatch)
-                'inv_r_stock_count' => $invRStockCount,  // Keep for backward compatibility
+                'missing_count' => (int) ($mapMissSummary['miss'] ?? 0),
+                'map_count' => (int) ($mapMissSummary['map'] ?? 0),
+                'nmap_count' => (int) ($mapMissSummary['nmap'] ?? 0),
+                'inv_r_stock_count' => (int) ($mapMissSummary['nmap'] ?? 0),
                 'less_amz_count' => $lessAmzCount,
                 'more_amz_count' => $moreAmzCount,
                 
@@ -1428,5 +1463,174 @@ class ReverbController extends Controller
             // Don't break the main response if summary save fails
             Log::error('Error saving daily Reverb summary: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Missing L / Map / NMap totals — same rules as reverb-pricing badges and all-marketplace-master.
+     */
+    public function computeReverbMapMissCounts(array $rows): array
+    {
+        $map = 0;
+        $miss = 0;
+        $nmap = 0;
+        $views = 0;
+
+        foreach ($rows as $row) {
+            if (is_object($row)) {
+                $row = (array) $row;
+            }
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $parent = trim((string) ($row['Parent'] ?? ''));
+            if ($parent !== '' && str_starts_with(strtoupper($parent), 'PARENT')) {
+                continue;
+            }
+
+            $inv = (float) ($row['INV'] ?? 0);
+            $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
+            $isReq = ($nrReq === 'REQ');
+            $isMissing = (($row['Missing'] ?? '') === 'M');
+
+            if ($isMissing && $isReq && $inv > 0) {
+                $miss++;
+            }
+
+            if ($isReq && $inv > 0 && ! $isMissing) {
+                $mapValue = (string) ($row['MAP'] ?? '');
+                if ($mapValue === 'Map') {
+                    $map++;
+                    $views += (int) ($row['Views'] ?? 0);
+                } elseif (str_contains($mapValue, 'N Map|')) {
+                    $nmap++;
+                    $views += (int) ($row['Views'] ?? 0);
+                }
+            }
+        }
+
+        return [
+            'map' => $map,
+            'miss' => $miss,
+            'nmap' => $nmap,
+            'total_views' => $views,
+        ];
+    }
+
+    /**
+     * Push live Missing L / Map / NMap into channel_master_daily_data (history charts)
+     * and channel_master_calculated_data (all-marketplace-master fast path).
+     */
+    private function syncReverbMapMissToChannelHistory(array $counts): void
+    {
+        try {
+            $today = now('America/Los_Angeles')->toDateString();
+
+            $existing = ChannelMasterSummary::where('channel', 'reverb')
+                ->where('snapshot_date', $today)
+                ->first();
+            $summary = ($existing && is_array($existing->summary_data))
+                ? $existing->summary_data
+                : [];
+
+            $summary['miss_count'] = (int) ($counts['miss'] ?? 0);
+            $summary['map_count'] = (int) ($counts['map'] ?? 0);
+            $summary['nmap_count'] = (int) ($counts['nmap'] ?? 0);
+            $summary['total_views'] = (int) ($counts['total_views'] ?? 0);
+            $summary['map_miss_updated_at'] = now()->toDateTimeString();
+
+            ChannelMasterSummary::updateOrCreate(
+                [
+                    'channel' => 'reverb',
+                    'snapshot_date' => $today,
+                ],
+                [
+                    'summary_data' => $summary,
+                    'notes' => 'Reverb map/miss synced from reverb-pricing',
+                ]
+            );
+
+            if (Schema::hasTable('channel_master_calculated_data')) {
+                ChannelMasterCalculatedData::where('channel', 'Reverb')->update([
+                    'miss' => (int) ($counts['miss'] ?? 0),
+                    'map' => (int) ($counts['map'] ?? 0),
+                    'nmap' => (int) ($counts['nmap'] ?? 0),
+                    'total_views' => (int) ($counts['total_views'] ?? 0),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('syncReverbMapMissToChannelHistory failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Sum reverb_daily_data in an L30 window, keyed by normalized SKU (merges spacing/case variants).
+     *
+     * @return array<string, object{rd_qty: int, rd_qty_x_subtotal: float, rd_qty_x_amount: float}>
+     */
+    private function aggregateReverbDailySalesByNormalizedSku(string $l30StartDate, string $l30EndDate): array
+    {
+        $agg = [];
+
+        $rows = DB::table('reverb_daily_data')
+            ->whereNotNull('order_date')
+            ->whereBetween('order_date', [$l30StartDate, $l30EndDate])
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereNotNull('order_number')
+            ->where('order_number', '!=', '')
+            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
+            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
+            ->groupBy('sku')
+            ->select('sku')
+            ->selectRaw('SUM(quantity) as rd_qty')
+            ->selectRaw('SUM(quantity * COALESCE(product_subtotal, 0)) as rd_qty_x_subtotal')
+            ->selectRaw('SUM(quantity * COALESCE(amount, 0)) as rd_qty_x_amount')
+            ->get();
+
+        foreach ($rows as $row) {
+            $key = ReverbProduct::normalizeSkuForLookup($row->sku ?? '');
+            if ($key === '') {
+                continue;
+            }
+            if (! isset($agg[$key])) {
+                $agg[$key] = (object) [
+                    'rd_qty' => 0,
+                    'rd_qty_x_subtotal' => 0.0,
+                    'rd_qty_x_amount' => 0.0,
+                ];
+            }
+            $agg[$key]->rd_qty += (int) ($row->rd_qty ?? 0);
+            $agg[$key]->rd_qty_x_subtotal += (float) ($row->rd_qty_x_subtotal ?? 0);
+            $agg[$key]->rd_qty_x_amount += (float) ($row->rd_qty_x_amount ?? 0);
+        }
+
+        return $agg;
+    }
+
+    /**
+     * Normalize SKU for cross-table joins (Unicode spaces, case, PCS suffix — same rules as ShopifySku lookup).
+     */
+    private function normalizeSkuKey(?string $sku): string
+    {
+        return ReverbProduct::normalizeSkuForLookup($sku);
+    }
+
+    /**
+     * @param  iterable<int, object|array<string, mixed>>  $items
+     * @return array<string, mixed>
+     */
+    private function buildNormalizedSkuMap(iterable $items, string $skuAttribute = 'sku'): array
+    {
+        $out = [];
+        foreach ($items as $item) {
+            $rawSku = is_array($item) ? ($item[$skuAttribute] ?? '') : ($item->{$skuAttribute} ?? '');
+            $key = $this->normalizeSkuKey((string) $rawSku);
+            if ($key !== '' && ! isset($out[$key])) {
+                $out[$key] = $item;
+            }
+        }
+
+        return $out;
     }
 }

@@ -4,13 +4,19 @@ namespace App\Http\Controllers;
 
 use App\Models\DriverData;
 use App\Models\DriverFolder;
+use App\Models\ResourceDepartment;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ResourcesController extends Controller
 {
+    public const TAG_OPTIONS = ['SOP', 'CL', 'Form', 'Video', 'L1', 'L2'];
+
+    public const RESOURCE_OPTIONS = ['R&R Files', 'Training Resources', 'Checklist Forms', 'Media Gallery', 'Links / Videos', 'Overview'];
+
     public function index(Request $request)
     {
         $folderId = (int) $request->query('folder', 0);
@@ -21,8 +27,11 @@ class ResourcesController extends Controller
 
         $breadcrumbs = $this->breadcrumbs($folderId);
         $folderTree = $this->folderTreeData($folderId);
+        $departments = ResourceDepartment::orderBy('sort_order')->orderBy('name')->get(['id', 'slug', 'name']);
+        $tags = self::TAG_OPTIONS;
+        $resourceOptions = self::RESOURCE_OPTIONS;
 
-        return view('resources.index', compact('folderId', 'folders', 'breadcrumbs', 'folderTree'));
+        return view('resources.index', compact('folderId', 'folders', 'breadcrumbs', 'folderTree', 'departments', 'tags', 'resourceOptions'));
     }
 
     public function data(Request $request)
@@ -31,7 +40,7 @@ class ResourcesController extends Controller
         $search = trim((string) $request->query('search', ''));
 
         $query = DriverData::query()
-            ->with('creator:id,name')
+            ->with(['creator:id,name', 'department:id,slug,name'])
             ->where('folder_id', $folderId);
 
         if ($search !== '') {
@@ -45,6 +54,21 @@ class ResourcesController extends Controller
         $type = $request->query('type');
         if ($type && $type !== 'all') {
             $query->where('file_type', $type);
+        }
+
+        $department = $request->query('department');
+        if ($department !== null && $department !== '' && $department !== 'all') {
+            $query->where('department_id', (int) $department);
+        }
+
+        $tag = $request->query('tag');
+        if ($tag !== null && $tag !== '' && $tag !== 'all') {
+            $query->where('tag', $tag);
+        }
+
+        $resource = $request->query('resource');
+        if ($resource !== null && $resource !== '' && $resource !== 'all') {
+            $query->where('resource', $resource);
         }
 
         $items = $query->latest('updated_at')->paginate((int) $request->query('per_page', 24));
@@ -66,6 +90,9 @@ class ResourcesController extends Controller
             'title' => 'required|string|max:255',
             'location_url' => 'required|url|max:2000',
             'folder_id' => 'nullable|integer|min:0',
+            'department_id' => 'nullable|integer|exists:resource_departments,id',
+            'tag' => ['nullable', Rule::in(self::TAG_OPTIONS)],
+            'resource' => ['nullable', Rule::in(self::RESOURCE_OPTIONS)],
         ]);
 
         $item = DriverData::create([
@@ -73,11 +100,14 @@ class ResourcesController extends Controller
             'title' => $validated['title'],
             'location_url' => $validated['location_url'],
             'folder_id' => (int) ($validated['folder_id'] ?? 0),
-            'file_type' => 'link',
+            'department_id' => $validated['department_id'] ?? null,
+            'tag' => $validated['tag'] ?? null,
+            'resource' => $validated['resource'] ?? null,
+            'file_type' => $this->detectLinkType($validated['location_url']),
             'created_by' => $request->user()?->id,
         ]);
 
-        return response()->json(['success' => true, 'item' => $item->load('creator:id,name')]);
+        return response()->json(['success' => true, 'item' => $item->load(['creator:id,name', 'department:id,slug,name'])]);
     }
 
     public function storeFile(Request $request)
@@ -86,6 +116,9 @@ class ResourcesController extends Controller
             'title' => 'required|string|max:255',
             'file' => 'required|file|max:51200',
             'folder_id' => 'nullable|integer|min:0',
+            'department_id' => 'nullable|integer|exists:resource_departments,id',
+            'tag' => ['nullable', Rule::in(self::TAG_OPTIONS)],
+            'resource' => ['nullable', Rule::in(self::RESOURCE_OPTIONS)],
         ]);
 
         $uploaded = $request->file('file');
@@ -99,6 +132,9 @@ class ResourcesController extends Controller
             'uuid' => (string) Str::uuid(),
             'title' => $validated['title'],
             'folder_id' => (int) ($validated['folder_id'] ?? 0),
+            'department_id' => $validated['department_id'] ?? null,
+            'tag' => $validated['tag'] ?? null,
+            'resource' => $validated['resource'] ?? null,
             'file_name' => $uploaded->getClientOriginalName(),
             'file_data' => $storedName,
             'file_size' => (string) $uploaded->getSize(),
@@ -107,7 +143,7 @@ class ResourcesController extends Controller
             'created_by' => $request->user()?->id,
         ]);
 
-        return response()->json(['success' => true, 'item' => $item->load('creator:id,name')]);
+        return response()->json(['success' => true, 'item' => $item->load(['creator:id,name', 'department:id,slug,name'])]);
     }
 
     public function storeFolder(Request $request)
@@ -132,15 +168,29 @@ class ResourcesController extends Controller
             'title' => 'required|string|max:255',
             'location_url' => 'nullable|url|max:2000',
             'folder_id' => 'nullable|integer|min:0',
+            'department_id' => 'nullable|integer|exists:resource_departments,id',
+            'tag' => ['nullable', Rule::in(self::TAG_OPTIONS)],
+            'resource' => ['nullable', Rule::in(self::RESOURCE_OPTIONS)],
         ]);
 
-        $driverData->update([
+        $newUrl = $validated['location_url'] ?? $driverData->location_url;
+
+        $attributes = [
             'title' => $validated['title'],
-            'location_url' => $validated['location_url'] ?? $driverData->location_url,
+            'location_url' => $newUrl,
             'folder_id' => (int) ($validated['folder_id'] ?? $driverData->folder_id),
-        ]);
+            'department_id' => $request->has('department_id') ? ($validated['department_id'] ?? null) : $driverData->department_id,
+            'tag' => $request->has('tag') ? ($validated['tag'] ?? null) : $driverData->tag,
+            'resource' => $request->has('resource') ? ($validated['resource'] ?? null) : $driverData->resource,
+        ];
 
-        return response()->json(['success' => true, 'item' => $driverData->fresh()->load('creator:id,name')]);
+        if (in_array($driverData->file_type, ['link', 'gsheet'], true)) {
+            $attributes['file_type'] = $this->detectLinkType($newUrl);
+        }
+
+        $driverData->update($attributes);
+
+        return response()->json(['success' => true, 'item' => $driverData->fresh()->load(['creator:id,name', 'department:id,slug,name'])]);
     }
 
     public function updateFolder(Request $request, DriverFolder $folder)
@@ -154,8 +204,10 @@ class ResourcesController extends Controller
         return response()->json(['success' => true, 'folder' => $folder]);
     }
 
-    public function destroy(DriverData $driverData)
+    public function destroy(Request $request, DriverData $driverData)
     {
+        abort_unless($request->user()?->email === 'president@5core.com', 403);
+
         $driverData->deleteStoredFile();
         $driverData->delete();
 
@@ -195,6 +247,15 @@ class ResourcesController extends Controller
         }
 
         return redirect()->route('resources.download', $driverData);
+    }
+
+    protected function detectLinkType(?string $url): string
+    {
+        if ($url && preg_match('#https?://(docs|sheets)\.google\.com/spreadsheets#i', $url)) {
+            return 'gsheet';
+        }
+
+        return 'link';
     }
 
     protected function detectFileType(string $extension): string

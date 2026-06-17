@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\InventoryWarehouse;
 use App\Models\ShopifySku;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Log as FacadesLog;
@@ -256,8 +257,81 @@ class InventoryWarehouseController extends Controller
     }
 
     /**
+     * Build an authenticated Shopify HTTP client.
+     * Prefers X-Shopify-Access-Token (modern), falls back to basic auth.
+     */
+    private function shopifyHttp(): \Illuminate\Http\Client\PendingRequest
+    {
+        $token    = config('services.shopify.access_token');
+        $apiKey   = config('services.shopify.api_key');
+        $password = config('services.shopify.password');
+
+        if (!empty($token)) {
+            return Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type'           => 'application/json',
+            ]);
+        }
+
+        return Http::withBasicAuth($apiKey, $password)
+            ->withHeaders(['Content-Type' => 'application/json']);
+    }
+
+    /**
+     * Resolve the correct Shopify location_id.
+     * Prefers the configured inventory_location_id, then an "Ohio" named location,
+     * then falls back to the first available level — same logic as VerificationAdjustmentController.
+     */
+    private function resolveShopifyLocationId(string $inventoryItemId): ?string
+    {
+        $configured = config('services.shopify.inventory_location_id');
+        if (!empty($configured)) {
+            return (string) $configured;
+        }
+
+        $domain = config('services.shopify.store_url');
+
+        $response = $this->shopifyHttp()->timeout(15)
+            ->get("https://{$domain}/admin/api/2025-01/inventory_levels.json", [
+                'inventory_item_ids' => $inventoryItemId,
+            ]);
+
+        if (!$response->successful()) {
+            return null;
+        }
+
+        $levels = $response->json('inventory_levels') ?? [];
+
+        if (empty($levels)) {
+            return null;
+        }
+
+        $locationIds = array_column($levels, 'location_id');
+
+        // Try to find the preferred location by name (e.g. "Ohio")
+        if (count($locationIds) > 1) {
+            try {
+                $locResponse = $this->shopifyHttp()->timeout(15)
+                    ->get("https://{$domain}/admin/api/2025-01/locations.json");
+
+                if ($locResponse->successful()) {
+                    foreach ($locResponse->json('locations') ?? [] as $loc) {
+                        if (stripos($loc['name'] ?? '', 'Ohio') !== false && in_array($loc['id'], $locationIds)) {
+                            return (string) $loc['id'];
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Could not resolve preferred Shopify location for transit push', ['error' => $e->getMessage()]);
+            }
+        }
+
+        return isset($levels[0]['location_id']) ? (string) $levels[0]['location_id'] : null;
+    }
+
+    /**
      * Make Shopify API request with automatic retry on rate limit errors
-     * 
+     *
      * @param callable $requestCallback Function that returns the HTTP response
      * @param string $sku SKU being processed (for logging)
      * @param string $operation Operation name (for logging)
@@ -708,15 +782,18 @@ class InventoryWarehouseController extends Controller
      */
     public function pushSingleItem(Request $request)
     {
-        $row = $request->input('data');
+        $row     = $request->input('data');
         $tabName = $request->input('tab_name');
-        $userId = auth()->id();
+        $force   = (bool) $request->input('force', false);
+        $userId  = auth()->id();
 
         $rowId = (int)($row['id'] ?? 0);
         $sku = $this->normalizeSku($row['our_sku'] ?? '');
         $units = !empty($row['no_of_units']) ? (int) $row['no_of_units'] : 0;
         $ctns  = !empty($row['total_ctn']) ? (int) $row['total_ctn'] : 0;
-        $qty = $units * $ctns;
+        $pcsQty = !empty($row['pcs_qty']) ? (float) $row['pcs_qty'] : 0;
+        // Use pcs_qty directly if set, otherwise compute from units × ctns (mirrors the frontend display logic)
+        $qty = ($pcsQty > 0) ? (int) round($pcsQty) : ($units * $ctns);
 
         // Validate input
         if (!$rowId || !$sku || $qty <= 0) {
@@ -729,20 +806,22 @@ class InventoryWarehouseController extends Controller
             ]);
         }
 
-        // Check if already pushed successfully
-        $existing = InventoryWarehouse::where('tab_name', $tabName)
-            ->where('transit_container_id', $rowId)
-            ->where('push_status', 'success')
-            ->first();
+        // Check if already pushed successfully — skip only when not a forced re-push
+        if (!$force) {
+            $existing = InventoryWarehouse::where('tab_name', $tabName)
+                ->where('transit_container_id', $rowId)
+                ->where('push_status', 'success')
+                ->first();
 
-        if ($existing) {
-            return response()->json([
-                'success' => true,
-                'status' => 'skipped',
-                'row_id' => $rowId,
-                'sku' => $sku,
-                'message' => 'Already pushed successfully'
-            ]);
+            if ($existing) {
+                return response()->json([
+                    'success' => true,
+                    'status' => 'skipped',
+                    'row_id' => $rowId,
+                    'sku' => $sku,
+                    'message' => 'Already pushed successfully'
+                ]);
+            }
         }
 
         // Validate Shopify credentials
@@ -829,148 +908,78 @@ class InventoryWarehouseController extends Controller
                 ]);
             }
 
-            // Rate limiting
-            usleep(550000);
+            $domain = config('services.shopify.store_url');
 
-            // Get inventory_item_id from variant with retry
-            $variantResponse = $this->makeShopifyRequestWithRetry(function() use ($variantId) {
-                return Http::withBasicAuth(
-                    config('services.shopify.api_key'), 
-                    config('services.shopify.password')
-                )->timeout(30)->get(
-                    "https://" . config('services.shopify.store_url') . "/admin/api/2025-01/variants/{$variantId}.json"
-                );
+            // Step 1: Get inventory_item_id from variant (using proper auth)
+            usleep(550000);
+            $variantResponse = $this->makeShopifyRequestWithRetry(function() use ($variantId, $domain) {
+                return $this->shopifyHttp()->timeout(30)
+                    ->get("https://{$domain}/admin/api/2025-01/variants/{$variantId}.json");
             }, $sku, 'variant');
 
             if (!$variantResponse || !$variantResponse->successful()) {
                 InventoryWarehouse::updateOrCreate(
                     ['tab_name' => $tabName, 'transit_container_id' => $rowId],
-                    [
-                        'our_sku' => $sku,
-                        'push_status' => 'failed',
-                        'pushed' => 0,
-                        'created_by' => $userId,
-                    ]
+                    ['our_sku' => $sku, 'push_status' => 'failed', 'pushed' => 0, 'created_by' => $userId]
                 );
                 return response()->json([
-                    'success' => false,
-                    'status' => 'failed',
-                    'row_id' => $rowId,
-                    'sku' => $sku,
-                    'message' => 'Failed to fetch variant from Shopify'
+                    'success' => false, 'status' => 'failed', 'row_id' => $rowId, 'sku' => $sku,
+                    'message' => 'Failed to fetch variant from Shopify (HTTP ' . ($variantResponse?->status() ?? 'null') . ')'
                 ]);
             }
 
-            $inventoryItemId = $variantResponse->json('variant.inventory_item_id');
+            $inventoryItemId = (string) $variantResponse->json('variant.inventory_item_id');
 
             if (!$inventoryItemId) {
                 InventoryWarehouse::updateOrCreate(
                     ['tab_name' => $tabName, 'transit_container_id' => $rowId],
-                    [
-                        'our_sku' => $sku,
-                        'push_status' => 'failed',
-                        'pushed' => 0,
-                        'created_by' => $userId,
-                    ]
+                    ['our_sku' => $sku, 'push_status' => 'failed', 'pushed' => 0, 'created_by' => $userId]
                 );
                 return response()->json([
-                    'success' => false,
-                    'status' => 'failed',
-                    'row_id' => $rowId,
-                    'sku' => $sku,
-                    'message' => 'No inventory_item_id found'
+                    'success' => false, 'status' => 'failed', 'row_id' => $rowId, 'sku' => $sku,
+                    'message' => 'No inventory_item_id found for variant'
                 ]);
             }
 
-            // Rate limiting
+            // Step 2: Resolve correct location (same logic as VerificationAdjustmentController)
             usleep(550000);
-
-            // Get location_id with retry
-            $invLevelResponse = $this->makeShopifyRequestWithRetry(function() use ($inventoryItemId) {
-                return Http::withBasicAuth(
-                    config('services.shopify.api_key'), 
-                    config('services.shopify.password')
-                )->timeout(30)->get(
-                    "https://" . config('services.shopify.store_url') . "/admin/api/2025-01/inventory_levels.json",
-                    ['inventory_item_ids' => $inventoryItemId]
-                );
-            }, $sku, 'inventory_levels');
-
-            if (!$invLevelResponse || !$invLevelResponse->successful()) {
-                InventoryWarehouse::updateOrCreate(
-                    ['tab_name' => $tabName, 'transit_container_id' => $rowId],
-                    [
-                        'our_sku' => $sku,
-                        'push_status' => 'failed',
-                        'pushed' => 0,
-                        'created_by' => $userId,
-                    ]
-                );
-                return response()->json([
-                    'success' => false,
-                    'status' => 'failed',
-                    'row_id' => $rowId,
-                    'sku' => $sku,
-                    'message' => 'Failed to fetch inventory levels'
-                ]);
-            }
-
-            $levels = $invLevelResponse->json('inventory_levels') ?? [];
-            $locationId = $levels[0]['location_id'] ?? null;
+            $locationId = $this->resolveShopifyLocationId($inventoryItemId);
 
             if (!$locationId) {
                 InventoryWarehouse::updateOrCreate(
                     ['tab_name' => $tabName, 'transit_container_id' => $rowId],
-                    [
-                        'our_sku' => $sku,
-                        'push_status' => 'failed',
-                        'pushed' => 0,
-                        'created_by' => $userId,
-                    ]
+                    ['our_sku' => $sku, 'push_status' => 'failed', 'pushed' => 0, 'created_by' => $userId]
                 );
                 return response()->json([
-                    'success' => false,
-                    'status' => 'failed',
-                    'row_id' => $rowId,
-                    'sku' => $sku,
-                    'message' => 'No location found'
+                    'success' => false, 'status' => 'failed', 'row_id' => $rowId, 'sku' => $sku,
+                    'message' => 'No Shopify location found'
                 ]);
             }
 
-            // Rate limiting
+            // Step 3: Adjust inventory with proper auth
             usleep(550000);
-
-            // Adjust Shopify qty with retry
-            $adjustResponse = $this->makeShopifyRequestWithRetry(function() use ($inventoryItemId, $locationId, $qty) {
-                return Http::withBasicAuth(
-                    config('services.shopify.api_key'), 
-                    config('services.shopify.password')
-                )->timeout(30)->post(
-                    "https://" . config('services.shopify.store_url') . "/admin/api/2025-01/inventory_levels/adjust.json",
-                    [
+            $adjustResponse = $this->makeShopifyRequestWithRetry(function() use ($inventoryItemId, $locationId, $qty, $domain) {
+                return $this->shopifyHttp()->timeout(30)
+                    ->post("https://{$domain}/admin/api/2025-01/inventory_levels/adjust.json", [
                         'inventory_item_id' => $inventoryItemId,
-                        'location_id' => $locationId,
+                        'location_id'       => $locationId,
                         'available_adjustment' => $qty,
-                    ]
-                );
+                    ]);
             }, $sku, 'adjust');
 
             if (!$adjustResponse || !$adjustResponse->successful()) {
+                Log::error('Shopify adjust failed for transit push', [
+                    'sku' => $sku, 'qty' => $qty, 'location_id' => $locationId,
+                    'http_status' => $adjustResponse?->status(),
+                    'body' => $adjustResponse?->body(),
+                ]);
                 InventoryWarehouse::updateOrCreate(
                     ['tab_name' => $tabName, 'transit_container_id' => $rowId],
-                    [
-                        'our_sku' => $sku,
-                        'push_status' => 'failed',
-                        'pushed' => 0,
-                        'created_by' => $userId,
-                    ]
+                    ['our_sku' => $sku, 'push_status' => 'failed', 'pushed' => 0, 'created_by' => $userId]
                 );
                 return response()->json([
-                    'success' => false,
-                    'status' => 'failed',
-                    'row_id' => $rowId,
-                    'sku' => $sku,
-                    'message' => 'Failed to adjust inventory in Shopify'
+                    'success' => false, 'status' => 'failed', 'row_id' => $rowId, 'sku' => $sku,
+                    'message' => 'Failed to adjust inventory in Shopify (HTTP ' . ($adjustResponse?->status() ?? 'null') . ')'
                 ]);
             }
 

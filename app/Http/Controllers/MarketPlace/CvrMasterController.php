@@ -479,7 +479,8 @@ class CvrMasterController extends Controller
             ]);
 
             // Jungle Scout data for rating/reviews (SKU and ASIN lookup)
-            $allJungleScoutData = JungleScoutProductData::all();
+            // Order by updated_at DESC so the most recently synced record is checked first
+            $allJungleScoutData = JungleScoutProductData::orderBy('updated_at', 'desc')->get();
             $jungleScoutBySku = $allJungleScoutData
                 ->filter(fn ($item) => !empty($item->sku))
                 ->groupBy(fn ($item) => strtoupper(trim($item->sku)))
@@ -488,26 +489,18 @@ class CvrMasterController extends Controller
                         'all_data' => $group->map(function ($item) {
                             $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
                             return is_array($data) ? $data : [];
-                        })->toArray()
+                        })->values()->toArray()
                     ];
                 });
             $jungleScoutByAsin = $allJungleScoutData
-                ->filter(function ($item) {
-                    $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
-                    return isset($data['id']) && !empty($data['id']);
-                })
-                ->groupBy(function ($item) {
-                    $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
-                    $id = $data['id'] ?? '';
-                    $asin = str_replace('us/', '', $id);
-                    return strtoupper(trim($asin));
-                })
+                ->filter(fn ($item) => !empty($item->asin))
+                ->groupBy(fn ($item) => strtoupper(trim($item->asin)))
                 ->map(function ($group) {
                     return [
                         'all_data' => $group->map(function ($item) {
                             $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
                             return is_array($data) ? $data : [];
-                        })->toArray()
+                        })->values()->toArray()
                     ];
                 });
 
@@ -794,34 +787,49 @@ class CvrMasterController extends Controller
                 // Amazon PFT% = GPFT% - AD%
                 $amazonPFT = $amazonGPFT - $amazonAD;
 
-                // Rating/reviews and LQS from Jungle Scout (SKU then ASIN fallback)
+                // Rating/reviews and LQS from Jungle Scout
+                // Priority: 1) exact ASIN match, 2) SKU group, 3) ASIN from data id (legacy fallback)
                 $rating = null;
                 $reviews = null;
                 $listingQualityScore = null;
-                $jsData = $jungleScoutBySku->get($sku);
-                if (!$jsData && $amazonSheet && !empty($amazonSheet->asin)) {
+
+                // Build a candidate list: ASIN-exact match first, then all SKU entries
+                $jsEntries = [];
+                if ($amazonSheet && !empty($amazonSheet->asin)) {
                     $asinKey = strtoupper(trim($amazonSheet->asin));
-                    $jsData = $jungleScoutByAsin->get($asinKey);
-                }
-                if ($jsData && !empty($jsData['all_data'])) {
-                    foreach ($jsData['all_data'] as $jsEntry) {
-                        if (isset($jsEntry['rating']) && $jsEntry['rating'] > 0) {
-                            $rating = (float) $jsEntry['rating'];
-                            $reviews = isset($jsEntry['reviews']) ? (int) $jsEntry['reviews'] : null;
-                            $listingQualityScore = isset($jsEntry['listing_quality_score']) && $jsEntry['listing_quality_score'] !== ''
-                                ? (is_numeric($jsEntry['listing_quality_score']) ? (float) $jsEntry['listing_quality_score'] : $jsEntry['listing_quality_score'])
-                                : null;
-                            break;
+                    $asinData = $jungleScoutByAsin->get($asinKey);
+                    if ($asinData && !empty($asinData['all_data'])) {
+                        foreach ($asinData['all_data'] as $entry) {
+                            $jsEntries[] = $entry;
                         }
                     }
-                    // If we have JS data but no rating, still try to get LQS from first entry
-                    if ($listingQualityScore === null) {
-                        foreach ($jsData['all_data'] as $jsEntry) {
-                            if (isset($jsEntry['listing_quality_score']) && $jsEntry['listing_quality_score'] !== '') {
-                                $listingQualityScore = is_numeric($jsEntry['listing_quality_score'])
-                                    ? (float) $jsEntry['listing_quality_score'] : $jsEntry['listing_quality_score'];
-                                break;
-                            }
+                }
+                $skuData = $jungleScoutBySku->get($sku);
+                if ($skuData && !empty($skuData['all_data'])) {
+                    foreach ($skuData['all_data'] as $entry) {
+                        $jsEntries[] = $entry;
+                    }
+                }
+
+                // Pick the best entry: first one with a positive rating (most recent due to DESC ordering)
+                foreach ($jsEntries as $jsEntry) {
+                    if (isset($jsEntry['rating']) && $jsEntry['rating'] > 0) {
+                        $rating = (float) $jsEntry['rating'];
+                        $reviews = isset($jsEntry['reviews']) ? (int) $jsEntry['reviews'] : null;
+                        if (isset($jsEntry['listing_quality_score']) && $jsEntry['listing_quality_score'] !== '' && $jsEntry['listing_quality_score'] !== null) {
+                            $listingQualityScore = is_numeric($jsEntry['listing_quality_score'])
+                                ? (float) $jsEntry['listing_quality_score']
+                                : null; // discard non-numeric LQS values
+                        }
+                        break;
+                    }
+                }
+                // If no rated entry, still try to get a numeric LQS from any entry
+                if ($listingQualityScore === null) {
+                    foreach ($jsEntries as $jsEntry) {
+                        if (isset($jsEntry['listing_quality_score']) && is_numeric($jsEntry['listing_quality_score']) && $jsEntry['listing_quality_score'] !== '') {
+                            $listingQualityScore = (float) $jsEntry['listing_quality_score'];
+                            break;
                         }
                     }
                 }
@@ -1212,8 +1220,8 @@ class CvrMasterController extends Controller
                     'rating' => $rows->filter(fn ($r) => isset($r->rating) && $r->rating > 0)->isNotEmpty()
                         ? round($rows->filter(fn ($r) => isset($r->rating) && $r->rating > 0)->avg('rating'), 1) : null,
                     'reviews' => $rows->sum('reviews'),
-                    'listing_quality_score' => $rows->filter(fn ($r) => isset($r->listing_quality_score) && $r->listing_quality_score !== null)->isNotEmpty()
-                        ? round($rows->filter(fn ($r) => isset($r->listing_quality_score) && $r->listing_quality_score !== null)->avg('listing_quality_score'), 1) : null,
+                    'listing_quality_score' => $rows->filter(fn ($r) => isset($r->listing_quality_score) && is_numeric($r->listing_quality_score) && $r->listing_quality_score > 0)->isNotEmpty()
+                        ? round($rows->filter(fn ($r) => isset($r->listing_quality_score) && is_numeric($r->listing_quality_score) && $r->listing_quality_score > 0)->avg('listing_quality_score'), 1) : null,
                     'is_parent_summary' => true,
                 ];
 

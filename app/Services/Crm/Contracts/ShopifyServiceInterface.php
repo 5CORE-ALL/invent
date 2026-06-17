@@ -51,6 +51,20 @@ interface ShopifyServiceInterface
     public function syncProducts(int $pageLimit = 250): int;
 
     /**
+     * Create a Shopify customer from CRM/import data and store Shopify's returned payload locally.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function createCustomerFromCrm(array $data): ShopifyCustomer;
+
+    /**
+     * Update an existing Shopify customer from CRM/import data and store Shopify's returned payload locally.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function updateShopifyCustomerFromCrm(ShopifyCustomer $record, array $data): ShopifyCustomer;
+
+    /**
      * Ensure the Shopify customer row is linked to a CRM customer (match existing email, or auto-create if allowed).
      *
      * @throws \InvalidArgumentException When no CRM customer can be resolved
