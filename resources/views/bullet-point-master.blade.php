@@ -906,6 +906,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getBulletLinesForPush(sku, row) {
+        const modalSku = (document.getElementById('modalSku') && document.getElementById('modalSku').value) || '';
+        const editModalEl = document.getElementById('editRowModal');
+        const editModalOpen = editModalEl && editModalEl.classList.contains('show');
+        if (editModalOpen && String(modalSku) === String(sku)) {
+            const modalBullets = getBulletLinesFromModal();
+            if (modalBullets.some(Boolean)) {
+                return modalBullets;
+            }
+        }
+
         const savedBullets = [row.bullet1, row.bullet2, row.bullet3, row.bullet4, row.bullet5]
             .map(v => (v == null ? '' : String(v).trim()));
         if (savedBullets.some(Boolean)) {
@@ -1435,6 +1445,17 @@ document.addEventListener('DOMContentLoaded', () => {
             return payload;
         })
         .then(res => {
+            const row = bySku.get(String(sku));
+            if (row) {
+                [1,2,3,4,5].forEach((i) => { row['bullet' + i] = payload['bullet' + i] || ''; });
+                row.default_bullets = lines.filter(Boolean).join('\n');
+            }
+            tableData.forEach((row) => {
+                if (String(row.SKU || '') === String(sku)) {
+                    [1,2,3,4,5].forEach((i) => { row['bullet' + i] = payload['bullet' + i] || ''; });
+                    row.default_bullets = lines.filter(Boolean).join('\n');
+                }
+            });
             toast(res.message || 'Bullet points saved');
                 if (editRowModal) editRowModal.hide();
                 loadData();
