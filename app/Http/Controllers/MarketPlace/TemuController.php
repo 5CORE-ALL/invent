@@ -3801,6 +3801,15 @@ class TemuController extends Controller
 
             DB::beginTransaction();
             try {
+                // Replace-all upload: wipe the existing view-data rows so the table
+                // ends up being exactly what's in this file. Done inside the
+                // transaction so a failed import below rolls back the truncate too
+                // — we never end up with an empty table on error.
+                // truncate() implicitly commits in MySQL when called directly, so use
+                // delete() which is transactional. Keeps autoincrement IDs growing,
+                // which is fine since there are no FKs pointing here.
+                $deletedCount = TemuViewData::query()->delete();
+
                 foreach ($rows as $row) {
                     if (empty($row[0]) || empty($row[1])) {
                         $skipped++;
@@ -3837,7 +3846,9 @@ class TemuController extends Controller
                         'ctr' => $ctr,
                     ];
 
-                    // Upsert: Update if date + goods_id exists, else insert
+                    // After the wipe above this is always an insert — keep updateOrCreate
+                    // anyway so duplicate (date, goods_id) rows within the same file are
+                    // collapsed instead of failing on the unique key.
                     TemuViewData::updateOrCreate(
                         ['date' => $date, 'goods_id' => $goodsId],
                         $viewData
@@ -3847,7 +3858,7 @@ class TemuController extends Controller
 
                 DB::commit();
 
-                return back()->with('success', "Successfully imported $imported records! ($skipped skipped)");
+                return back()->with('success', "Successfully imported $imported records! ($skipped skipped, replaced $deletedCount existing rows)");
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;
