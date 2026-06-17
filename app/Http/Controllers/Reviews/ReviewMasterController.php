@@ -38,6 +38,12 @@ class ReviewMasterController extends Controller
     // Server-Side DataTable JSON
     // -------------------------------------------------------------------------
 
+    /**
+     * Return all reviews as a flat JSON array. Tabulator handles client-side
+     * paging, sorting, filtering and search, so we just stream the rows.
+     * Optional query params (?sku=, ?marketplace=, ?date_from=, ?date_to=, …)
+     * are supported so the URL can be deep-linked.
+     */
     public function getData(Request $request): JsonResponse
     {
         $query = SkuReview::query()
@@ -63,86 +69,112 @@ class ReviewMasterController extends Controller
                 'suppliers.name as supplier_name',
             ]);
 
-        // Filters
         if ($sku = $request->input('sku')) {
             $query->where('sku_reviews.sku', 'like', "%{$sku}%");
         }
-
         if ($supplier = $request->input('supplier_id')) {
             $query->where('sku_reviews.supplier_id', $supplier);
         }
-
         if ($marketplace = $request->input('marketplace')) {
             $query->where('sku_reviews.marketplace', $marketplace);
         }
-
         if ($rating = $request->input('rating')) {
             $query->where('sku_reviews.rating', $rating);
         }
-
         if ($issue = $request->input('issue_category')) {
             $query->where('sku_reviews.issue_category', $issue);
         }
-
         if ($sentiment = $request->input('sentiment')) {
             $query->where('sku_reviews.sentiment', $sentiment);
         }
-
         if ($from = $request->input('date_from')) {
             $query->where('sku_reviews.review_date', '>=', $from);
         }
-
         if ($to = $request->input('date_to')) {
             $query->where('sku_reviews.review_date', '<=', $to);
         }
 
-        // DataTables server-side params
-        $totalRecords = $query->count();
-
-        // Search
-        if ($search = $request->input('search.value')) {
-            $query->where(function ($q) use ($search) {
-                $q->where('sku_reviews.sku', 'like', "%{$search}%")
-                  ->orWhere('sku_reviews.review_title', 'like', "%{$search}%")
-                  ->orWhere('sku_reviews.review_text', 'like', "%{$search}%")
-                  ->orWhere('suppliers.name', 'like', "%{$search}%");
+        $rows = $query->orderByDesc('sku_reviews.review_date')
+            ->orderByDesc('sku_reviews.id')
+            ->get()
+            ->map(function ($r) {
+                return [
+                    'id'             => (int) $r->id,
+                    'sku'            => $r->sku,
+                    'product_name'   => $r->product_name,
+                    'marketplace'    => $r->marketplace,
+                    'rating'         => $r->rating !== null ? (int) $r->rating : null,
+                    'review_title'   => $r->review_title,
+                    'review_text'    => $r->review_text,
+                    'reviewer_name'  => $r->reviewer_name,
+                    'review_date'    => optional($r->review_date)->format('Y-m-d'),
+                    'sentiment'      => $r->sentiment,
+                    'issue_category' => $r->issue_category,
+                    'ai_summary'     => $r->ai_summary,
+                    'ai_reply'       => $r->ai_reply,
+                    'department'     => $r->department,
+                    'source_type'    => $r->source_type,
+                    'is_flagged'     => (bool) $r->is_flagged,
+                    'supplier_name'  => $r->supplier_name,
+                ];
             });
-        }
 
-        $filteredRecords = $query->count();
+        return response()->json($rows);
+    }
 
-        // Ordering
-        $orderCol = $request->input('order.0.column', 0);
-        $orderDir = $request->input('order.0.dir', 'desc');
-        $columns  = [
-            0 => 'sku_reviews.sku',
-            1 => 'product_master.title150',
-            2 => 'sku_reviews.marketplace',
-            3 => 'sku_reviews.rating',
-            4 => 'sku_reviews.review_title',
-            5 => 'sku_reviews.sentiment',
-            6 => 'sku_reviews.issue_category',
-            7 => 'suppliers.name',
-            8 => 'sku_reviews.department',
-            9 => 'sku_reviews.review_date',
+    // -------------------------------------------------------------------------
+    // Column visibility (per-user preferences stored on disk)
+    // -------------------------------------------------------------------------
+
+    public function getColumnVisibility(): JsonResponse
+    {
+        $defaults = [
+            'sku'            => true,
+            'product_name'   => true,
+            'marketplace'    => true,
+            'rating'         => true,
+            'review_title'   => true,
+            'review_text'    => true,
+            'reviewer_name'  => false,
+            'review_date'    => true,
+            'sentiment'      => true,
+            'issue_category' => true,
+            'supplier_name'  => true,
+            'department'     => false,
+            'source_type'    => false,
+            'is_flagged'     => true,
+            'actions'        => true,
         ];
 
-        if (isset($columns[$orderCol])) {
-            $query->orderBy($columns[$orderCol], $orderDir);
-        } else {
-            $query->orderByDesc('sku_reviews.id');
+        try {
+            $path = storage_path('app/reviews_column_visibility.json');
+            if (is_file($path)) {
+                $saved = json_decode((string) file_get_contents($path), true);
+                if (is_array($saved)) {
+                    return response()->json(array_merge($defaults, $saved));
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Reviews column visibility read failed: ' . $e->getMessage());
         }
 
-        $start  = (int) $request->input('start', 0);
-        $length = (int) $request->input('length', 25);
-        $data   = $query->skip($start)->take($length)->get();
+        return response()->json($defaults);
+    }
 
-        return response()->json([
-            'draw'            => intval($request->input('draw', 1)),
-            'recordsTotal'    => $totalRecords,
-            'recordsFiltered' => $filteredRecords,
-            'data'            => $data,
-        ]);
+    public function saveColumnVisibility(Request $request): JsonResponse
+    {
+        try {
+            $visibility = $request->input('visibility', []);
+            if (!is_array($visibility)) {
+                return response()->json(['success' => false, 'message' => 'Invalid payload.'], 422);
+            }
+            $path = storage_path('app/reviews_column_visibility.json');
+            file_put_contents($path, json_encode($visibility, JSON_PRETTY_PRINT));
+            return response()->json(['success' => true]);
+        } catch (\Throwable $e) {
+            Log::error('Reviews column visibility save failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Failed to save preferences.'], 500);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -371,11 +403,11 @@ class ReviewMasterController extends Controller
 
         // Validate by extension instead of MIME — browsers report CSV with many
         // different (and often unreliable) MIME types, which caused valid uploads
-        // to be rejected.
-        if (!in_array($extension, ['csv', 'txt'], true)) {
+        // to be rejected. Accept .csv, .tsv and .txt (we auto-detect delimiter).
+        if ($extension !== '' && !in_array($extension, ['csv', 'tsv', 'txt'], true)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid file type. Please upload a .csv or .txt file.',
+                'message' => 'Invalid file type. Please upload a .csv, .tsv or .txt file.',
             ], 422);
         }
 
@@ -422,8 +454,10 @@ class ReviewMasterController extends Controller
     }
 
     /**
-     * Parse an uploaded CSV/TXT file into an array of associative rows keyed by
-     * the (lower-cased, trimmed) header columns.
+     * Parse an uploaded CSV/TSV/TXT file into an array of associative rows keyed
+     * by the (lower-cased, trimmed) header columns. Auto-detects whether the
+     * delimiter is a tab or a comma so files exported as TSV (e.g. copy-pasted
+     * from Google Sheets or Excel) are handled correctly.
      */
     private function parseCsvFile(string $path): array
     {
@@ -434,10 +468,15 @@ class ReviewMasterController extends Controller
             return [];
         }
 
-        $lineNum = 0;
-        while (($data = fgetcsv($handle, 0, ',')) !== false) {
-            $lineNum++;
+        // Strip UTF-8 BOM if present so the first header isn't named "\xEF\xBB\xBFsku".
+        $bom = fread($handle, 3);
+        if ($bom !== "\xEF\xBB\xBF") {
+            rewind($handle);
+        }
 
+        $delimiter = $this->detectDelimiter($handle);
+
+        while (($data = fgetcsv($handle, 0, $delimiter, '"', '\\')) !== false) {
             // Skip fully empty lines
             if ($data === [null] || (count($data) === 1 && trim((string) $data[0]) === '')) {
                 continue;
@@ -463,6 +502,47 @@ class ReviewMasterController extends Controller
 
         fclose($handle);
         return $rows;
+    }
+
+    /**
+     * Sniff the field delimiter by peeking at the first non-empty line. Falls
+     * back to comma if neither tabs nor commas are present.
+     */
+    private function detectDelimiter($handle): string
+    {
+        $startPos = ftell($handle);
+
+        $sample = '';
+        while (($line = fgets($handle)) !== false) {
+            if (trim($line) !== '') {
+                $sample = $line;
+                break;
+            }
+        }
+
+        // Restore the read pointer so the actual parser sees the full file.
+        fseek($handle, $startPos);
+
+        if ($sample === '') {
+            return ',';
+        }
+
+        $tabCount   = substr_count($sample, "\t");
+        $commaCount = substr_count($sample, ',');
+        $semiCount  = substr_count($sample, ';');
+        $pipeCount  = substr_count($sample, '|');
+
+        $candidates = [
+            "\t" => $tabCount,
+            ','  => $commaCount,
+            ';'  => $semiCount,
+            '|'  => $pipeCount,
+        ];
+
+        arsort($candidates);
+        $best = array_key_first($candidates);
+
+        return $candidates[$best] > 0 ? $best : ',';
     }
 
     // -------------------------------------------------------------------------

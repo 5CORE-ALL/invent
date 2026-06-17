@@ -172,9 +172,38 @@ class ReviewFetchService
 
     private function parseDate(?string $dateStr): ?string
     {
-        if (!$dateStr) {
+        if ($dateStr === null) {
             return null;
         }
+
+        $dateStr = trim($dateStr);
+        if ($dateStr === '') {
+            return null;
+        }
+
+        // Try common explicit formats first so ambiguous values like 30/07/2025
+        // (DD/MM/YYYY) aren't misinterpreted by Carbon's default US parser.
+        $formats = [
+            'd/m/Y',   'd-m-Y',   'd.m.Y',
+            'd/m/y',   'd-m-y',
+            'Y-m-d',   'Y/m/d',
+            'm/d/Y',   'm-d-Y',
+            'd M Y',   'd F Y',
+            'M d, Y',  'F d, Y',
+        ];
+
+        foreach ($formats as $fmt) {
+            $dt = \DateTime::createFromFormat($fmt, $dateStr);
+            if ($dt !== false) {
+                $errors = \DateTime::getLastErrors();
+                $warn   = is_array($errors) ? ($errors['warning_count'] ?? 0) : 0;
+                $err    = is_array($errors) ? ($errors['error_count']   ?? 0) : 0;
+                if ($warn === 0 && $err === 0) {
+                    return $dt->format('Y-m-d');
+                }
+            }
+        }
+
         try {
             return Carbon::parse($dateStr)->toDateString();
         } catch (\Exception $e) {

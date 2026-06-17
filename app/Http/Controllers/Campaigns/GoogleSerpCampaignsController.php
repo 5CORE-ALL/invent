@@ -31,4 +31,9 @@ class GoogleSerpCampaignsController extends GoogleShoppingCampaignsController
     {
         $query->whereRaw("UPPER({$columnExpression}) LIKE ?", ['% SEARCH%']);
     }
+
+    // Note: L30 Sales semantics (GA4 actual revenue only — no fallback to Google Ads
+    // metrics.conversionsValue) are inherited unchanged from the parent. Both
+    // `/google/shopping/google-shopping` and `/google/shopping/google-serp` show the
+    // same GA4-only number; this page only differs in which campaigns are listed.
 }

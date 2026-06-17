@@ -100,23 +100,27 @@ class FetchGA4CampaignData extends Command
                 // exact and LIKE conditions together and took ->first(), so a loose
                 // partial match could win over the real campaign — assigning GA4 sales
                 // to the wrong campaign and leaving the correct one with no sales.
+                //
+                // We intentionally do NOT filter by advertising_channel_type here:
+                // SEARCH campaigns (e.g. "RETRO MICS SEARCH" on /google/shopping/google-serp)
+                // also need their GA4 actual revenue/purchases backfilled, otherwise the L30
+                // Sales column silently falls back to Google Ads metrics.conversionsValue
+                // for every SEARCH row.
                 $dbCampaign = DB::table('google_ads_campaigns')
-                    ->where('advertising_channel_type', 'SHOPPING')
                     ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$campaignNameUpper])
-                    ->select('campaign_id', 'campaign_name')
+                    ->select('campaign_id', 'campaign_name', 'advertising_channel_type')
                     ->distinct()
                     ->first();
 
                 if (!$dbCampaign) {
                     // Fallback: partial match, deterministically preferring the closest name.
                     $dbCampaign = DB::table('google_ads_campaigns')
-                        ->where('advertising_channel_type', 'SHOPPING')
                         ->where(function($query) use ($campaignNameUpper, $campaignNameClean) {
                             $query->where('campaign_name', 'LIKE', '%' . $campaignNameClean . '%')
                                   ->orWhereRaw('UPPER(TRIM(campaign_name)) LIKE ?', ['%' . $campaignNameUpper . '%']);
                         })
                         ->orderByRaw('CHAR_LENGTH(campaign_name) ASC')
-                        ->select('campaign_id', 'campaign_name')
+                        ->select('campaign_id', 'campaign_name', 'advertising_channel_type')
                         ->distinct()
                         ->first();
                 }
@@ -150,7 +154,11 @@ class FetchGA4CampaignData extends Command
                         DB::table('google_ads_campaigns')->insert([
                             'campaign_id' => $dbCampaign->campaign_id,
                             'campaign_name' => $dbCampaign->campaign_name,
-                            'advertising_channel_type' => 'SHOPPING',
+                            // Preserve the campaign's real channel type (SHOPPING / SEARCH / …)
+                            // discovered above, otherwise SEARCH rows inserted on a purchase-only
+                            // day would be miscategorised as SHOPPING and disappear from the
+                            // /google/shopping/google-serp grid.
+                            'advertising_channel_type' => $dbCampaign->advertising_channel_type ?? 'SHOPPING',
                             'date' => $date,
                             'ga4_actual_sold_units' => $metrics['purchases'],
                             'ga4_actual_revenue' => $metrics['revenue'],

@@ -181,6 +181,44 @@ class Kernel extends ConsoleKernel
         $log = $this->schedulerLog;
         $ist = fn ($event) => $this->istBusinessWindow($event);
 
+        /**
+         * Retry-window helper for ad-API data-fetch commands.
+         *
+         * Registers $command 5 times — once at $finalTime IST and 4 earlier hourly
+         * retries (T-4h, T-3h, T-2h, T-1h, T). Each slot uses a unique mutex name so
+         * withoutOverlapping() guards against same-slot stacking without preventing
+         * later slots from running when an earlier one fails. Idempotent fetches
+         * (Google Ads, GA4, Meta, Amazon Advertising, eBay Marketing, Temu Ads, TikTok)
+         * tolerate repeated runs because they upsert by (campaign_id, date) or similar
+         * natural keys — a successful run after a failed run simply overwrites yesterday's
+         * partial state with a complete snapshot, so dependent push / automation jobs
+         * downstream see fresh data.
+         *
+         * Push / automation / mutation commands MUST NOT use this helper because firing
+         * them five times would touch live ad accounts five times.
+         *
+         * Most of the ads-API fetch commands anchor in the morning (final slot 09:00–11:30
+         * IST); a handful (Temu / TikTok) anchor in the afternoon (final slot 15:40–15:50)
+         * — same five-attempt pattern, just shifted later in the day.
+         */
+        $retryFiveTimesUntil = function (string $command, string $baseName, string $finalTime) use ($schedule, $log) {
+            [$h, $m] = array_map('intval', explode(':', $finalTime));
+            for ($offset = 4; $offset >= 0; $offset--) {
+                $hour = $h - $offset;
+                if ($hour < 0) {
+                    continue;
+                }
+                $slot = sprintf('%02d:%02d', $hour, $m);
+                $schedule->command($command)
+                    ->dailyAt($slot)
+                    ->timezone('Asia/Kolkata')
+                    ->name($baseName . '-' . sprintf('%02d%02d', $hour, $m))
+                    ->withoutOverlapping()
+                    ->runInBackground()
+                    ->appendOutputTo($log);
+            }
+        };
+
         // Proof cron + schedule:run work: check storage/logs/scheduler-activity-*.log (one line/minute).
         // withoutOverlapping(2) guards against the rare case where logging is slow enough that two ticks
         // would otherwise stack — keeps the heartbeat truly one-per-minute.
@@ -316,29 +354,13 @@ class Kernel extends ConsoleKernel
         // $schedule->command('app:amazon-campaign-reports')
         //     ->dailyAt('04:00')
         //     ->timezone('America/Los_Angeles');
-        $ist($schedule->command('app:amazon-sp-campaign-reports')
-            ->dailyAt('09:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-sp-campaign-reports')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('app:amazon-sb-campaign-reports')
-            ->dailyAt('09:05')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-sb-campaign-reports')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('app:amazon-sd-campaign-reports')
-            ->dailyAt('09:10')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-sd-campaign-reports')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
+        // Amazon Advertising API — 5 morning runs each. Final slots (09:00 / 09:05 / 09:10
+        // IST) match the previous single-run schedule so the downstream Amazon bid /
+        // budget auto-update jobs at 12:15+ IST still see fresh report data; earlier slots
+        // back-fill any missed run before then.
+        $retryFiveTimesUntil('app:amazon-sp-campaign-reports', 'amazon-sp-campaign-reports', '09:00');
+        $retryFiveTimesUntil('app:amazon-sb-campaign-reports', 'amazon-sb-campaign-reports', '09:05');
+        $retryFiveTimesUntil('app:amazon-sd-campaign-reports', 'amazon-sd-campaign-reports', '09:10');
 
         /*
         |--------------------------------------------------------------------------
@@ -663,30 +685,12 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // eBay campaign reports
-        $ist($schedule->command('app:ebay-campaign-reports')
-            ->dailyAt('10:10')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay-campaign-reports')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('app:ebay2-campaign-reports')
-            ->dailyAt('10:15')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay2-campaign-reports')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('app:ebay3-campaign-reports')
-            ->dailyAt('10:20')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay3-campaign-reports')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
+        // eBay Marketing API campaign reports — 5 morning runs each (final slots 10:10 /
+        // 10:15 / 10:20 IST). Reports must be fresh before the eBay bid auto-update jobs
+        // at 13:15–13:21 IST.
+        $retryFiveTimesUntil('app:ebay-campaign-reports', 'ebay-campaign-reports', '10:10');
+        $retryFiveTimesUntil('app:ebay2-campaign-reports', 'ebay2-campaign-reports', '10:15');
+        $retryFiveTimesUntil('app:ebay3-campaign-reports', 'ebay3-campaign-reports', '10:20');
 
         // eBay bids update
         $ist($schedule->command('ebay:auto-update-over-bids')
@@ -721,35 +725,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Sync ALL eBay campaign ad listings into ebay_campaign_ads before the
-        // suggested-bid job (13:23) consumes them.
-        $ist($schedule->command('ebay:sync-campaign-listings')
-            ->dailyAt('11:30')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay-sync-campaign-listings')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        // Same as eBay 1 but for account 2 → fills ebay2_campaign_ads before the
-        // 13:25 ebay2:update-suggestedbid job consumes it.
-        $ist($schedule->command('ebay2:sync-campaign-listings')
-            ->dailyAt('11:32')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay2-sync-campaign-listings')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        // Same as eBay 1/2 but for account 3 → fills ebay3_campaign_ads before the
-        // 13:27 ebay3:update-suggestedbid job consumes it.
-        $ist($schedule->command('ebay3:sync-campaign-listings')
-            ->dailyAt('11:34')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay3-sync-campaign-listings')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
+        // eBay promoted-listings sync into ebay{,2,3}_campaign_ads — 5 morning runs each
+        // (final slots 11:30 / 11:32 / 11:34 IST). The downstream suggested-bid jobs at
+        // 13:23 / 13:25 / 13:27 IST consume these tables; earlier retry slots cover any
+        // failure before that consumer runs.
+        $retryFiveTimesUntil('ebay:sync-campaign-listings', 'ebay-sync-campaign-listings', '11:30');
+        $retryFiveTimesUntil('ebay2:sync-campaign-listings', 'ebay2-sync-campaign-listings', '11:32');
+        $retryFiveTimesUntil('ebay3:sync-campaign-listings', 'ebay3-sync-campaign-listings', '11:34');
 
         $ist($schedule->command('ebay:update-suggestedbid')
             ->dailyAt('13:23')
@@ -880,13 +862,19 @@ class Kernel extends ConsoleKernel
         | GOOGLE ADS & SHOPPING
         |--------------------------------------------------------------------------
         */
-        $ist($schedule->command('app:fetch-google-ads-campaigns')
-            ->dailyAt('09:00')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-google-ads-campaigns')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
+        // 5 morning runs (05:00, 06:00, 07:00, 08:00, 09:00 IST). Each retry covers any
+        // earlier slot that failed (rate limit, transient OAuth, network flake) so that by
+        // 09:18 IST — when sbid:update / budget:update-shopping start pushing — the
+        // google_ads_campaigns table has the freshest possible upstream data. The 09:00
+        // slot keeps parity with the previous single-run schedule for downstream timing.
+        $retryFiveTimesUntil('app:fetch-google-ads-campaigns', 'fetch-google-ads-campaigns', '09:00');
+
+        // GA4 actual purchases / revenue back-fill — 5 retries at 05:30, 06:30, 07:30,
+        // 08:30, 09:30 IST (offset 30m from app:fetch-google-ads-campaigns so the GA4 API
+        // call happens after each Google-Ads run has populated/refreshed the matching
+        // campaign rows it joins by name). --days=30 keeps the L30 Sales window backfilled
+        // even when a prior morning run was missed; ga4:fetch-campaign-data is upsert-safe.
+        $retryFiveTimesUntil('ga4:fetch-campaign-data --days=30', 'ga4-fetch-campaign-data', '09:30');
 
         $ist($schedule->command('sbid:update')
             ->dailyAt('09:18')
@@ -950,29 +938,17 @@ class Kernel extends ConsoleKernel
         | META / FACEBOOK ADS
         |--------------------------------------------------------------------------
         */
-        $ist($schedule->command('meta:sync-all-ads')
-            ->dailyAt('10:00')
-            ->timezone('Asia/Kolkata')
-            ->name('meta-ads-sync-daily')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
+        // 5 morning runs (06:00–10:00 IST). meta:sync-all-ads is the daily Meta
+        // campaigns/ads/insights pull — multiple retries cover Facebook Graph rate-limit
+        // hiccups so the pipeline finishes ahead of meta-ads:run-automation at 11:15 IST.
+        $retryFiveTimesUntil('meta:sync-all-ads', 'meta-ads-sync-daily', '10:00');
 
-        $ist($schedule->command('meta-ads:sync')
-            ->dailyAt('11:00')
-            ->timezone('Asia/Kolkata')
-            ->name('meta-ads-manager-full-sync')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('meta-ads:sync --insights-only')
-            ->dailyAt('11:00')
-            ->timezone('Asia/Kolkata')
-            ->name('meta-ads-manager-insights-sync')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
+        // 5 morning runs (07:00–11:00 IST). meta-ads:sync is the full Ads-Manager-style
+        // refresh; it shares an API quota with the --insights-only variant below, so the
+        // mutex names diverge by hour to avoid stacking but the two commands intentionally
+        // run on the same hourly cadence.
+        $retryFiveTimesUntil('meta-ads:sync', 'meta-ads-manager-full-sync', '11:00');
+        $retryFiveTimesUntil('meta-ads:sync --insights-only', 'meta-ads-manager-insights-sync', '11:00');
 
         $ist($schedule->command('meta-ads:run-automation')
             ->dailyAt('11:15')
@@ -982,14 +958,10 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Shopify Meta Campaigns
-        $ist($schedule->command('shopify:fetch-meta-campaigns --channel=both')
-            ->dailyAt('11:30')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-shopify-fb-campaigns-7-30-60-days')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
+        // Shopify Meta Campaigns — 5 morning runs (07:30, 08:30, 09:30, 10:30, 11:30 IST).
+        // Pulls 7/30/60-day Facebook campaign metrics for Shopify; idempotent upsert by
+        // (channel, campaign_id, window) means a recovered late slot completes prior days.
+        $retryFiveTimesUntil('shopify:fetch-meta-campaigns --channel=both', 'fetch-shopify-fb-campaigns-7-30-60-days', '11:30');
 
         $ist($schedule->command('meta:sync-all-ads')
             ->dailyAt('11:45')
@@ -1174,21 +1146,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('temu:fetch-ads-data --period=L30')
-            ->dailyAt('15:40')
-            ->timezone('Asia/Kolkata')
-            ->name('temu-ads-data-sync-l30')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('temu:fetch-ads-data --period=L60')
-            ->dailyAt('15:50')
-            ->timezone('Asia/Kolkata')
-            ->name('temu-ads-data-sync-l60')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
+        // Temu Ads API — 5 afternoon runs each (final slots 15:40 / 15:50 IST). Different
+        // anchor than the morning Google/Meta/Amazon/eBay fetches because Temu's reporting
+        // window publishes mid-afternoon; the same hourly retry pattern applies.
+        $retryFiveTimesUntil('temu:fetch-ads-data --period=L30', 'temu-ads-data-sync-l30', '15:40');
+        $retryFiveTimesUntil('temu:fetch-ads-data --period=L60', 'temu-ads-data-sync-l60', '15:50');
 
         /*
         |--------------------------------------------------------------------------
@@ -1388,13 +1350,9 @@ class Kernel extends ConsoleKernel
         | TIKTOK
         |--------------------------------------------------------------------------
         */
-        $ist($schedule->command('sync:tiktok-api-data')
-            ->dailyAt('15:45')
-            ->timezone('Asia/Kolkata')
-            ->name('sync-tiktok-api-data')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
+        // TikTok Ads API — 5 afternoon runs (final slot 15:45 IST), aligned with the
+        // Temu pulls because TikTok's publisher feed updates around the same time.
+        $retryFiveTimesUntil('sync:tiktok-api-data', 'sync-tiktok-api-data', '15:45');
 
         /*
         |--------------------------------------------------------------------------

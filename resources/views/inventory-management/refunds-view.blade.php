@@ -929,36 +929,50 @@
                 });
 
                 var $modal = $('#refundsModal');
-                $('#sku_0').select2({
-                    dropdownParent: $modal,
-                    placeholder: "Type to search SKU...",
-                    allowClear: true,
-                    width: '100%',
-                    matcher: function(params, data) {
-                        if ($.trim(params.term) === '') {
-                            return data;
-                        }
-                        if (typeof data.text === 'undefined') {
+
+                // Initialize Select2 only AFTER the modal is fully shown.
+                // Initializing while the modal is display:none causes Select2 to
+                // cache wrong offsets and the dropdown pops up far to the left,
+                // outside the modal (the "SKU glitch").
+                function initSkuSelect2() {
+                    if ($('#sku_0').data('select2')) {
+                        return; // already initialized
+                    }
+                    $('#sku_0').select2({
+                        dropdownParent: $modal,
+                        placeholder: "Type to search SKU...",
+                        allowClear: true,
+                        width: '100%',
+                        matcher: function(params, data) {
+                            if ($.trim(params.term) === '') {
+                                return data;
+                            }
+                            if (typeof data.text === 'undefined') {
+                                return null;
+                            }
+                            var searchTerm = params.term.toLowerCase().replace(/\s+/g, '');
+                            var dataText = data.text.toLowerCase().replace(/\s+/g, '');
+                            if (dataText.indexOf(searchTerm) > -1) {
+                                return data;
+                            }
+                            var words = params.term.toLowerCase().split(/\s+/);
+                            var allWordsFound = true;
+                            for (var i = 0; i < words.length; i++) {
+                                if (data.text.toLowerCase().indexOf(words[i]) === -1) {
+                                    allWordsFound = false;
+                                    break;
+                                }
+                            }
+                            if (allWordsFound) {
+                                return data;
+                            }
                             return null;
                         }
-                        var searchTerm = params.term.toLowerCase().replace(/\s+/g, '');
-                        var dataText = data.text.toLowerCase().replace(/\s+/g, '');
-                        if (dataText.indexOf(searchTerm) > -1) {
-                            return data;
-                        }
-                        var words = params.term.toLowerCase().split(/\s+/);
-                        var allWordsFound = true;
-                        for (var i = 0; i < words.length; i++) {
-                            if (data.text.toLowerCase().indexOf(words[i]) === -1) {
-                                allWordsFound = false;
-                                break;
-                            }
-                        }
-                        if (allWordsFound) {
-                            return data;
-                        }
-                        return null;
-                    }
+                    });
+                }
+
+                $modal.on('shown.bs.modal', function () {
+                    initSkuSelect2();
                 });
 
                 // Debug: Log all SKUs containing "PNB" to help find the exact SKU

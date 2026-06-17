@@ -1,186 +1,142 @@
 @extends('layouts.vertical', ['title' => 'Review Intelligence Master', 'sidenav' => 'condensed'])
 
 @section('css')
-<link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css">
-<link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.bootstrap5.min.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<style>
-    .review-badge { font-size: 0.72rem; font-weight: 600; padding: 3px 8px; border-radius: 20px; }
-    .badge-positive  { background: #d1f4e0; color: #198754; }
-    .badge-neutral   { background: #fff3cd; color: #856404; }
-    .badge-negative  { background: #f8d7da; color: #842029; }
-    .badge-quality   { background: #f8d7da; color: #842029; }
-    .badge-packaging { background: #fff3cd; color: #856404; }
-    .badge-shipping  { background: #cff4fc; color: #055160; }
-    .badge-service   { background: #e2e3e5; color: #383d41; }
-    .badge-wrong_item{ background: #212529; color: #fff; }
-    .badge-missing_parts { background: #cfe2ff; color: #084298; }
-    .badge-other     { background: #f8f9fa; color: #495057; }
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <style>
+        .tabulator-col .tabulator-col-sorter { display: none !important; }
 
-    .stat-card { border-radius: 12px; transition: transform 0.15s; }
-    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.12); }
-    .stat-card .stat-icon { width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
+        /* Compact, scannable table */
+        .tabulator { font-size: 12px; }
+        .tabulator .tabulator-header .tabulator-col { background: #1f2937; color: #fff; }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-title { font-size: 11px; font-weight: 600; padding: 6px 4px; }
+        .tabulator .tabulator-row.tabulator-row-even { background-color: #fafbfc; }
+        .tabulator .tabulator-row:hover { background-color: #eef5ff !important; }
 
-    .review-text-preview { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; cursor: pointer; }
-    .star-rating { color: #f0ad4e; font-size: 0.8rem; }
+        /* Pagination */
+        .tabulator-paginator label { margin-right: 5px; }
 
-    .alert-badge { animation: pulse 2s infinite; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+        /* Badges */
+        .pill { display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:600; line-height:1.4; }
+        .pill-positive { background:#d1f4e0; color:#198754; }
+        .pill-neutral  { background:#fff3cd; color:#856404; }
+        .pill-negative { background:#f8d7da; color:#842029; }
+        .pill-quality       { background:#f8d7da; color:#842029; }
+        .pill-packaging     { background:#fff3cd; color:#856404; }
+        .pill-shipping      { background:#cff4fc; color:#055160; }
+        .pill-service       { background:#e2e3e5; color:#383d41; }
+        .pill-wrong_item    { background:#212529; color:#fff; }
+        .pill-missing_parts { background:#cfe2ff; color:#084298; }
+        .pill-other         { background:#f8f9fa; color:#495057; border:1px solid #dee2e6; }
 
-    .flag-icon { color: #dc3545; }
-    .table-row-negative td { background: rgba(220,53,69,.04); }
-    .insights-card { border-left: 4px solid; border-radius: 8px; }
-    .insights-card.danger { border-left-color: #dc3545; }
-    .insights-card.warning { border-left-color: #ffc107; }
-    .insights-card.info { border-left-color: #0dcaf0; }
+        .stars { color:#f5b301; letter-spacing:1px; }
 
-    #reviewTable_wrapper .dataTables_filter input { border-radius: 20px; padding: 4px 14px; }
-    .chart-container { position: relative; height: 280px; }
-    .supplier-row:hover { background: rgba(13,110,253,.05); cursor: pointer; }
-</style>
+        /* Stat cards */
+        .stat-card { border:0; border-radius:10px; transition:.15s; }
+        .stat-card:hover { transform:translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,.08); }
+        .stat-card .stat-icon { width:42px; height:42px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
+
+        .review-clip { display:inline-block; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom; cursor:pointer; }
+
+        /* Modal */
+        .review-detail-section { background:#f8f9fa; border:1px solid #e9ecef; border-radius:8px; padding:14px; margin-bottom:12px; }
+    </style>
 @endsection
 
 @section('content')
-<div class="container-fluid">
+    @include('layouts.shared.page-title', [
+        'page_title' => 'Review Intelligence Master',
+        'sub_title'  => 'Centralized SKU review analytics across all marketplaces',
+    ])
 
-    {{-- ======================================================= --}}
-    {{-- PAGE HEADER --}}
-    {{-- ======================================================= --}}
-    <div class="row mb-3">
-        <div class="col-12">
-            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                <div>
-                    <h4 class="mb-0 fw-bold"><i class="ri-star-smile-line me-2 text-warning"></i>Review Intelligence Master</h4>
-                    <small class="text-muted">AI-powered review analysis, issue detection & supplier intelligence</small>
-                </div>
-                <div class="d-flex gap-2 flex-wrap">
-                    <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#alertsModal">
-                        <i class="ri-alarm-warning-line me-1"></i>Alerts
-                        @if($openAlerts > 0)
-                            <span class="badge bg-danger ms-1 alert-badge">{{ $openAlerts }}</span>
-                        @endif
-                    </button>
-                    <button class="btn btn-sm btn-outline-info" id="btnAiInsights" data-bs-toggle="modal" data-bs-target="#aiInsightsModal">
-                        <i class="ri-brain-line me-1"></i>AI Insights
-                    </button>
-                    <button class="btn btn-sm btn-outline-secondary" id="btnSupplierPanel" data-bs-toggle="modal" data-bs-target="#supplierModal">
-                        <i class="ri-user-star-line me-1"></i>Supplier Panel
-                    </button>
-                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#uploadCsvModal">
-                        <i class="ri-upload-cloud-2-line me-1"></i>Import CSV
-                    </button>
-                    <button class="btn btn-sm btn-outline-success" id="btnRefreshSummary">
-                        <i class="ri-refresh-line me-1"></i>Refresh
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <div class="toast-container"></div>
 
-    {{-- ======================================================= --}}
-    {{-- DASHBOARD STATS --}}
-    {{-- ======================================================= --}}
-    <div class="row g-3 mb-4" id="dashboardStats">
-        <div class="col-6 col-md-4 col-xl-2">
-            <div class="card stat-card h-100">
-                <div class="card-body d-flex align-items-center gap-3 p-3">
-                    <div class="stat-icon bg-primary bg-opacity-10"><i class="ri-chat-3-line text-primary"></i></div>
+    {{-- ============================ Summary Stat Cards ============================ --}}
+    <div class="row g-3 mb-3">
+        <div class="col-md-3 col-6">
+            <div class="card stat-card bg-white shadow-sm">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <div class="stat-icon bg-primary-subtle text-primary"><i class="fa fa-comment-dots"></i></div>
                     <div>
-                        <div class="fw-bold fs-5" id="stat-total">{{ number_format($dashStats['total_reviews']) }}</div>
-                        <div class="text-muted" style="font-size:.72rem">Total Reviews</div>
+                        <div class="text-muted small">Total Reviews</div>
+                        <h4 class="mb-0">{{ number_format($dashStats['total_reviews'] ?? 0) }}</h4>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-6 col-md-4 col-xl-2">
-            <div class="card stat-card h-100">
-                <div class="card-body d-flex align-items-center gap-3 p-3">
-                    <div class="stat-icon bg-danger bg-opacity-10"><i class="ri-thumb-down-line text-danger"></i></div>
+        <div class="col-md-3 col-6">
+            <div class="card stat-card bg-white shadow-sm">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <div class="stat-icon bg-danger-subtle text-danger"><i class="fa fa-triangle-exclamation"></i></div>
                     <div>
-                        <div class="fw-bold fs-5 text-danger" id="stat-neg">{{ $dashStats['negative_pct'] }}%</div>
-                        <div class="text-muted" style="font-size:.72rem">Negative Rate</div>
+                        <div class="text-muted small">Negative %</div>
+                        <h4 class="mb-0">{{ $dashStats['negative_pct'] ?? 0 }}%</h4>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-6 col-md-4 col-xl-2">
-            <div class="card stat-card h-100">
-                <div class="card-body d-flex align-items-center gap-3 p-3">
-                    <div class="stat-icon bg-warning bg-opacity-10"><i class="ri-alert-line text-warning"></i></div>
+        <div class="col-md-3 col-6">
+            <div class="card stat-card bg-white shadow-sm">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <div class="stat-icon bg-warning-subtle text-warning"><i class="fa fa-bug"></i></div>
                     <div>
-                        <div class="fw-bold text-uppercase" id="stat-issue" style="font-size:.85rem">{{ ucfirst(str_replace('_',' ',$dashStats['top_issue'])) }}</div>
-                        <div class="text-muted" style="font-size:.72rem">Top Issue</div>
+                        <div class="text-muted small">Top Issue</div>
+                        <h6 class="mb-0 text-capitalize">{{ str_replace('_',' ', $dashStats['top_issue'] ?? 'N/A') }}</h6>
+                        <small class="text-muted">{{ $dashStats['top_issue_count'] ?? 0 }} reports</small>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-6 col-md-4 col-xl-2">
-            <div class="card stat-card h-100">
-                <div class="card-body d-flex align-items-center gap-3 p-3">
-                    <div class="stat-icon bg-danger bg-opacity-10"><i class="ri-barcode-box-line text-danger"></i></div>
+        <div class="col-md-3 col-6">
+            <div class="card stat-card bg-white shadow-sm">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <div class="stat-icon bg-info-subtle text-info"><i class="fa fa-bell"></i></div>
                     <div>
-                        <div class="fw-bold" id="stat-sku" style="font-size:.85rem">{{ $dashStats['worst_sku'] }}</div>
-                        <div class="text-muted" style="font-size:.72rem">Worst SKU ({{ $dashStats['worst_sku_rate'] }}%)</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-6 col-md-4 col-xl-2">
-            <div class="card stat-card h-100">
-                <div class="card-body d-flex align-items-center gap-3 p-3">
-                    <div class="stat-icon bg-warning bg-opacity-10"><i class="ri-truck-line text-warning"></i></div>
-                    <div>
-                        <div class="fw-bold" id="stat-supplier" style="font-size:.82rem;line-height:1.2">{{ $dashStats['worst_supplier'] }}</div>
-                        <div class="text-muted" style="font-size:.72rem">Worst Supplier</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-6 col-md-4 col-xl-2">
-            <div class="card stat-card h-100">
-                <div class="card-body d-flex align-items-center gap-3 p-3">
-                    <div class="stat-icon bg-danger bg-opacity-10"><i class="ri-alarm-warning-line text-danger"></i></div>
-                    <div>
-                        <div class="fw-bold fs-5 text-danger" id="stat-alerts">{{ $dashStats['open_alerts'] }}</div>
-                        <div class="text-muted" style="font-size:.72rem">Open Alerts</div>
+                        <div class="text-muted small">Open Alerts</div>
+                        <h4 class="mb-0">{{ $dashStats['open_alerts'] ?? 0 }}</h4>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    {{-- ======================================================= --}}
-    {{-- FILTERS --}}
-    {{-- ======================================================= --}}
-    <div class="card mb-3">
-        <div class="card-body p-2">
-            <form id="filterForm">
-                <div class="row g-2 align-items-end">
-                    <div class="col-6 col-md-3 col-xl-2">
-                        <input type="text" class="form-control form-control-sm" id="filter_sku" placeholder="Search SKU...">
+    {{-- ============================ Main Card ============================ --}}
+    <div class="row">
+        <div class="card shadow-sm">
+            <div class="card-body py-3">
+                <h4 class="mb-3">SKU Reviews</h4>
+
+                <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                                id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa fa-eye"></i> Columns
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown"
+                            id="column-dropdown-menu" style="max-height: 400px; overflow-y: auto;"></ul>
                     </div>
-                    <div class="col-6 col-md-3 col-xl-2">
-                        <select class="form-select form-select-sm" id="filter_supplier">
-                            <option value="">All Suppliers</option>
-                            @foreach($suppliers as $s)
-                                <option value="{{ $s->id }}">{{ $s->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="col-6 col-md-2 col-xl-2">
-                        <select class="form-select form-select-sm" id="filter_marketplace">
+                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
+                        <i class="fa fa-eye"></i> Show All
+                    </button>
+
+                    <button type="button" class="btn btn-sm btn-success" id="export-btn">
+                        <i class="fa fa-file-excel"></i> Export
+                    </button>
+
+                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadCsvModal">
+                        <i class="fa fa-upload"></i> Import CSV
+                    </button>
+
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="refresh-btn">
+                        <i class="fa fa-rotate"></i> Refresh
+                    </button>
+
+                    <div class="ms-auto d-flex gap-2 flex-wrap align-items-center">
+                        <select id="filter_marketplace" class="form-select form-select-sm" style="width:auto">
                             <option value="">All Marketplaces</option>
-                            <option value="amazon">Amazon</option>
-                            <option value="ebay">eBay</option>
-                            <option value="walmart">Walmart</option>
-                            <option value="temu">Temu</option>
-                            <option value="shopify">Shopify</option>
-                            <option value="csv">CSV Import</option>
                         </select>
-                    </div>
-                    <div class="col-6 col-md-2 col-xl-1">
-                        <select class="form-select form-select-sm" id="filter_rating">
+                        <select id="filter_rating" class="form-select form-select-sm" style="width:auto">
                             <option value="">All Ratings</option>
                             <option value="1">★ 1</option>
                             <option value="2">★★ 2</option>
@@ -188,9 +144,13 @@
                             <option value="4">★★★★ 4</option>
                             <option value="5">★★★★★ 5</option>
                         </select>
-                    </div>
-                    <div class="col-6 col-md-2 col-xl-2">
-                        <select class="form-select form-select-sm" id="filter_issue">
+                        <select id="filter_sentiment" class="form-select form-select-sm" style="width:auto">
+                            <option value="">All Sentiments</option>
+                            <option value="positive">Positive</option>
+                            <option value="neutral">Neutral</option>
+                            <option value="negative">Negative</option>
+                        </select>
+                        <select id="filter_issue" class="form-select form-select-sm" style="width:auto">
                             <option value="">All Issues</option>
                             <option value="quality">Quality</option>
                             <option value="packaging">Packaging</option>
@@ -201,743 +161,506 @@
                             <option value="other">Other</option>
                         </select>
                     </div>
-                    <div class="col-6 col-md-2 col-xl-1">
-                        <select class="form-select form-select-sm" id="filter_sentiment">
-                            <option value="">All Sentiments</option>
-                            <option value="positive">Positive</option>
-                            <option value="neutral">Neutral</option>
-                            <option value="negative">Negative</option>
-                        </select>
-                    </div>
-                    <div class="col-12 col-md-3 col-xl-2">
-                        <input type="text" class="form-control form-control-sm" id="filter_daterange" placeholder="Date range...">
-                    </div>
-                    <div class="col-auto">
-                        <button type="button" class="btn btn-sm btn-primary" id="btnApplyFilters">
-                            <i class="ri-filter-line"></i> Filter
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="btnClearFilters">
-                            <i class="ri-close-line"></i>
-                        </button>
+                </div>
+
+                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
+                    <h6 class="mb-3">Filtered Summary</h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        <span class="badge bg-primary fs-6 p-2" id="badge-total" style="color:#fff;font-weight:bold">Total: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="badge-positive" style="color:#fff;font-weight:bold">Positive: 0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="badge-neutral" style="color:#000;font-weight:bold">Neutral: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="badge-negative" style="color:#fff;font-weight:bold">Negative: 0</span>
+                        <span class="badge bg-info fs-6 p-2" id="badge-avg" style="color:#fff;font-weight:bold">Avg Rating: 0.0</span>
+                        <span class="badge bg-dark fs-6 p-2" id="badge-flagged" style="color:#fff;font-weight:bold">Flagged: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="badge-skus" style="color:#fff;font-weight:bold">Unique SKUs: 0</span>
                     </div>
                 </div>
-            </form>
-        </div>
-    </div>
+            </div>
 
-    {{-- ======================================================= --}}
-    {{-- MAIN DATATABLE --}}
-    {{-- ======================================================= --}}
-    <div class="card">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table id="reviewTable" class="table table-sm table-hover mb-0 nowrap w-100">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>SKU</th>
-                            <th>Product</th>
-                            <th>Marketplace</th>
-                            <th>Rating</th>
-                            <th>Review</th>
-                            <th>Sentiment</th>
-                            <th>Issue</th>
-                            <th>Supplier</th>
-                            <th>Department</th>
-                            <th>Date</th>
-                            <th>Flag</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-</div><!-- /container-fluid -->
-
-{{-- ======================================================= --}}
-{{-- MODALS --}}
-{{-- ======================================================= --}}
-
-{{-- SKU Detail Modal --}}
-<div class="modal fade" id="skuDetailModal" tabindex="-1">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="ri-barcode-box-line me-2"></i>SKU Detail: <span id="skuDetailTitle"></span></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="skuDetailBody">
-                <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-{{-- Review Expand Modal --}}
-<div class="modal fade" id="reviewExpandModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="ri-chat-3-line me-2"></i>Full Review</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="reviewExpandBody"></div>
-            <div class="modal-footer">
-                <button class="btn btn-sm btn-outline-primary" id="btnGenerateReply"><i class="ri-robot-2-line me-1"></i>Generate AI Reply</button>
-                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-{{-- Alerts Modal --}}
-<div class="modal fade" id="alertsModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title"><i class="ri-alarm-warning-line me-2"></i>Active Alerts</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="alertsBody">
-                <div class="text-center py-4"><div class="spinner-border text-danger"></div></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-{{-- AI Insights Modal --}}
-<div class="modal fade" id="aiInsightsModal" tabindex="-1">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title"><i class="ri-brain-line me-2"></i>AI Insights Panel</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="aiInsightsBody">
-                <div class="text-center py-4"><div class="spinner-border text-dark"></div></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-{{-- Supplier Panel Modal --}}
-<div class="modal fade" id="supplierModal" tabindex="-1">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="ri-user-star-line me-2"></i>Supplier Intelligence Panel</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="supplierBody">
-                <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-{{-- CSV Upload Modal --}}
-<div class="modal fade" id="uploadCsvModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="ri-upload-cloud-2-line me-2"></i>Import Reviews via CSV</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="alert alert-info small">
-                    <strong>Required CSV Columns:</strong><br>
-                    <code>sku, marketplace, review_id, rating, review_title, review_text, reviewer_name, review_date</code>
-                    <div class="mt-2">
-                        <a href="{{ asset('sample_csv/reviews_sample.csv') }}" download>
-                            <i class="ri-download-2-line me-1"></i>Download sample CSV
-                        </a>
+            <div class="card-body" style="padding:0;">
+                <div id="reviews-table-wrapper" style="height: calc(100vh - 380px); display:flex; flex-direction:column;">
+                    <div class="p-2 bg-light border-bottom">
+                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search by SKU…">
                     </div>
+                    <div id="reviews-table" style="flex:1;"></div>
                 </div>
-                <form id="csvUploadForm" enctype="multipart/form-data">
-                    @csrf
-                    <div class="mb-3">
-                        <label class="form-label">Select CSV File (max 10MB)</label>
-                        <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv,.txt">
-                    </div>
-                    <div id="csvUploadMsg"></div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-primary" id="btnUploadCsv"><i class="ri-upload-2-line me-1"></i>Upload & Process</button>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
             </div>
         </div>
     </div>
-</div>
 
+    {{-- ============================ Review Detail Modal ============================ --}}
+    <div class="modal fade" id="reviewDetailModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fa fa-comment-dots me-2"></i>Review Detail</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="reviewDetailBody">
+                    <div class="text-center py-4"><div class="spinner-border text-secondary"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ============================ CSV Upload Modal ============================ --}}
+    <div class="modal fade" id="uploadCsvModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fa fa-cloud-arrow-up me-2"></i>Import Reviews via CSV / TSV</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info small">
+                        <strong>Required columns:</strong><br>
+                        <code>sku, marketplace, review_id, rating, review_title, review_text, reviewer_name, review_date</code>
+                        <div class="mt-2">
+                            <a href="{{ asset('sample_csv/reviews_sample.csv') }}" download>
+                                <i class="fa fa-download me-1"></i>Download sample CSV
+                            </a>
+                        </div>
+                    </div>
+                    <form id="csvUploadForm" enctype="multipart/form-data" onsubmit="reviewsUploadCsv(event); return false;">
+                        @csrf
+                        <div class="mb-3">
+                            <label class="form-label">Select CSV / TSV file (max 10MB)</label>
+                            <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv,.tsv,.txt">
+                        </div>
+                        <div id="csvUploadMsg"></div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" id="btnUploadCsv" onclick="reviewsUploadCsv(event)">
+                        <i class="fa fa-upload me-1"></i>Upload &amp; Process
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
-@section('scripts')
-<script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
-<script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/moment/moment.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+@section('script')
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script>
+        const REVIEWS_DATA_URL       = @json(route('reviews.data'));
+        const REVIEWS_UPLOAD_URL     = @json(route('reviews.upload-csv'));
+        const REVIEWS_COLVIS_GET_URL = @json(route('reviews.column-visibility.get'));
+        const REVIEWS_COLVIS_SET_URL = @json(route('reviews.column-visibility.save'));
+        const REVIEWS_SKU_DETAIL_URL = @json(url('/reviews/sku')); // /reviews/sku/{sku}/detail
+        const CSRF_TOKEN             = @json(csrf_token());
 
-<script>
-// ============================================================
-// CSRF + helpers
-// ============================================================
-const CSRF = '{{ csrf_token() }}';
-let currentReviewId = null;
+        // -----------------------------------------------------------------
+        // Toast helper
+        // -----------------------------------------------------------------
+        function showToast(message, type = 'info') {
+            const container = document.querySelector('.toast-container');
+            if (!container) return;
+            const color = type === 'error' ? 'danger' : (type === 'success' ? 'success' : 'info');
+            const toast = document.createElement('div');
+            toast.className = `toast align-items-center text-white bg-${color} border-0`;
+            toast.setAttribute('role', 'alert');
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>`;
+            container.appendChild(toast);
+            const bsT = new bootstrap.Toast(toast);
+            bsT.show();
+            toast.addEventListener('hidden.bs.toast', () => toast.remove());
+        }
 
-function sentimentBadge(val) {
-    if (!val) return '<span class="review-badge badge-neutral">—</span>';
-    const icons = { positive:'ri-thumb-up-fill', neutral:'ri-subtract-line', negative:'ri-thumb-down-fill' };
-    return `<span class="review-badge badge-${val}"><i class="${icons[val] || ''} me-1"></i>${val}</span>`;
-}
-
-function issueBadge(val) {
-    if (!val) return '—';
-    const label = val.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
-    return `<span class="review-badge badge-${val}">${label}</span>`;
-}
-
-function starRating(n) {
-    if (!n) return '—';
-    return '<span class="star-rating">' + '★'.repeat(n) + '☆'.repeat(5-n) + `</span> <small class="text-muted">(${n})</small>`;
-}
-
-function marketplaceBadge(val) {
-    const colors = { amazon:'primary', ebay:'warning', walmart:'info', temu:'success', shopify:'dark', csv:'secondary' };
-    const c = colors[val] || 'secondary';
-    return `<span class="badge bg-${c} bg-opacity-15 text-${c} text-capitalize">${val}</span>`;
-}
-
-// ============================================================
-// DataTable
-// ============================================================
-let reviewTable;
-let extraFilters = {};
-
-$(function () {
-    reviewTable = $('#reviewTable').DataTable({
-        processing  : true,
-        serverSide  : true,
-        responsive  : true,
-        pageLength  : 25,
-        lengthMenu  : [[15,25,50,100],[15,25,50,100]],
-        ajax: {
-            url: '{{ route("reviews.data") }}',
-            type: 'GET',
-            data: function (d) {
-                d.sku           = extraFilters.sku || '';
-                d.supplier_id   = extraFilters.supplier_id || '';
-                d.marketplace   = extraFilters.marketplace || '';
-                d.rating        = extraFilters.rating || '';
-                d.issue_category= extraFilters.issue || '';
-                d.sentiment     = extraFilters.sentiment || '';
-                d.date_from     = extraFilters.date_from || '';
-                d.date_to       = extraFilters.date_to || '';
-            }
-        },
-        columns: [
-            { data: 'sku',           name: 'sku_reviews.sku',
-              render: (v) => `<a href="javascript:void(0)" class="fw-semibold text-primary text-decoration-none sku-link" data-sku="${v}">${v}</a>` },
-            { data: 'product_name',  name: 'product_master.title150',
-              render: (v) => v ? `<span title="${v}" style="max-width:140px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v}</span>` : '—' },
-            { data: 'marketplace',   name: 'sku_reviews.marketplace', render: marketplaceBadge },
-            { data: 'rating',        name: 'sku_reviews.rating',  render: starRating },
-            { data: 'review_title',  name: 'sku_reviews.review_title',
-              render: (v, t, row) => {
-                const txt = v || row.review_text || '—';
-                const truncated = txt.length > 50 ? txt.substring(0,50)+'…' : txt;
-                return `<span class="review-text-preview text-decoration-underline review-expand-btn" data-id="${row.id}" title="Click to expand">${truncated}</span>`;
-              }
-            },
-            { data: 'sentiment',     name: 'sku_reviews.sentiment', render: sentimentBadge },
-            { data: 'issue_category',name: 'sku_reviews.issue_category', render: issueBadge },
-            { data: 'supplier_name', name: 'suppliers.name',
-              render: (v) => v || '<span class="text-muted">—</span>' },
-            { data: 'department',    name: 'sku_reviews.department',
-              render: (v) => v ? `<small class="text-info">${v}</small>` : '—' },
-            { data: 'review_date',   name: 'sku_reviews.review_date',
-              render: (v) => v ? `<small>${v}</small>` : '—' },
-            { data: 'is_flagged',    orderable: false,
-              render: (v) => v ? '<i class="ri-error-warning-fill text-danger flag-icon fs-5" title="Critical"></i>' : '' },
-            { data: null, orderable: false, searchable: false,
-              render: (v, t, row) => `
+        // -----------------------------------------------------------------
+        // Formatters
+        // -----------------------------------------------------------------
+        function escapeHtml(s) {
+            if (s === null || s === undefined) return '';
+            return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+        function pill(value, className) {
+            if (!value) return '<span class="text-muted">—</span>';
+            const label = String(value).replace(/_/g, ' ');
+            return `<span class="pill ${className}">${escapeHtml(label)}</span>`;
+        }
+        function sentimentFmt(cell) {
+            const v = cell.getValue();
+            if (!v) return '<span class="text-muted">—</span>';
+            return pill(v, 'pill-' + v);
+        }
+        function issueFmt(cell) {
+            const v = cell.getValue();
+            if (!v) return '<span class="text-muted">—</span>';
+            return pill(v, 'pill-' + v);
+        }
+        function ratingFmt(cell) {
+            const v = parseInt(cell.getValue() || 0);
+            if (!v) return '<span class="text-muted">—</span>';
+            const filled = '★'.repeat(v);
+            const empty  = '☆'.repeat(5 - v);
+            return `<span class="stars">${filled}<span class="text-muted">${empty}</span></span>`;
+        }
+        function marketplaceFmt(cell) {
+            const v = cell.getValue();
+            if (!v) return '<span class="text-muted">—</span>';
+            const colors = { amazon:'primary', ebay:'warning', ebay1:'warning', ebay2:'warning', ebay3:'warning',
+                             walmart:'info', temu:'success', 'temu 1':'success', shopify:'dark', csv:'secondary' };
+            const c = colors[v.toLowerCase()] || 'secondary';
+            return `<span class="badge bg-${c} bg-opacity-25 text-${c} text-capitalize">${escapeHtml(v)}</span>`;
+        }
+        function reviewTextFmt(cell) {
+            const row  = cell.getRow().getData();
+            const text = (cell.getValue() || row.review_text || '').toString();
+            if (!text) return '<span class="text-muted">—</span>';
+            const truncated = text.length > 60 ? text.substring(0, 60) + '…' : text;
+            return `<span class="review-clip text-decoration-underline" title="${escapeHtml(text)}">${escapeHtml(truncated)}</span>`;
+        }
+        function flagFmt(cell) {
+            return cell.getValue()
+                ? '<i class="fa fa-flag text-danger" title="Flagged"></i>'
+                : '';
+        }
+        function actionsFmt(cell) {
+            const row = cell.getRow().getData();
+            return `
                 <div class="d-flex gap-1">
-                  <button class="btn btn-xs btn-outline-secondary py-0 px-1 review-expand-btn" data-id="${row.id}" title="View"><i class="ri-eye-line"></i></button>
-                  <button class="btn btn-xs btn-outline-primary py-0 px-1 sku-link" data-sku="${row.sku}" title="SKU Detail"><i class="ri-bar-chart-2-line"></i></button>
-                </div>` }
-        ],
-        rowCallback: function(row, data) {
-            if (data.sentiment === 'negative') {
-                $(row).addClass('table-row-negative');
-            }
-        },
-        language: {
-            processing: '<div class="spinner-border spinner-border-sm text-primary" role="status"></div>',
-        },
-        order: [[9, 'desc']],
-    });
-
-    // ---- Filters ----
-    $('#btnApplyFilters').on('click', applyFilters);
-    $('#btnClearFilters').on('click', clearFilters);
-    $('#filter_sku').on('keypress', function(e){ if(e.which===13) applyFilters(); });
-
-    function applyFilters() {
-        const drp = $('#filter_daterange').data('daterangepicker');
-        extraFilters = {
-            sku         : $('#filter_sku').val().trim(),
-            supplier_id : $('#filter_supplier').val(),
-            marketplace : $('#filter_marketplace').val(),
-            rating      : $('#filter_rating').val(),
-            issue       : $('#filter_issue').val(),
-            sentiment   : $('#filter_sentiment').val(),
-            date_from   : drp && $('#filter_daterange').val() ? drp.startDate.format('YYYY-MM-DD') : '',
-            date_to     : drp && $('#filter_daterange').val() ? drp.endDate.format('YYYY-MM-DD') : '',
-        };
-        reviewTable.ajax.reload();
-    }
-
-    function clearFilters() {
-        $('#filter_sku,#filter_daterange').val('');
-        $('#filter_supplier,#filter_marketplace,#filter_rating,#filter_issue,#filter_sentiment').val('');
-        extraFilters = {};
-        reviewTable.ajax.reload();
-    }
-
-    // ---- Date range picker ----
-    $('#filter_daterange').daterangepicker({
-        autoUpdateInput: false,
-        locale: { cancelLabel: 'Clear', format: 'YYYY-MM-DD' }
-    });
-    $('#filter_daterange').on('apply.daterangepicker', function(ev, picker) {
-        $(this).val(picker.startDate.format('YYYY-MM-DD') + ' ~ ' + picker.endDate.format('YYYY-MM-DD'));
-    });
-    $('#filter_daterange').on('cancel.daterangepicker', function() {
-        $(this).val('');
-    });
-
-    // ---- SKU Detail click ----
-    $(document).on('click', '.sku-link', function() {
-        const sku = $(this).data('sku');
-        openSkuDetail(sku);
-    });
-
-    // ---- Review expand click ----
-    $(document).on('click', '.review-expand-btn', function() {
-        const id = $(this).data('id');
-        openReviewExpand(id);
-    });
-
-    // ---- Refresh summary ----
-    $('#btnRefreshSummary').on('click', function() {
-        $(this).html('<i class="ri-loader-4-line ri-spin me-1"></i>Refreshing...');
-        $.post('{{ route("reviews.refresh-summary") }}', {_token: CSRF})
-            .done(() => {
-                showToast('Summary refreshed!', 'success');
-                reviewTable.ajax.reload();
-            })
-            .fail(() => showToast('Refresh failed', 'danger'))
-            .always(() => $(this).html('<i class="ri-refresh-line me-1"></i>Refresh'));
-    });
-
-    // ---- Alerts modal ----
-    $('#alertsModal').on('show.bs.modal', loadAlerts);
-
-    // ---- AI Insights modal ----
-    $('#aiInsightsModal').on('show.bs.modal', loadAiInsights);
-
-    // ---- Supplier Panel modal ----
-    $('#supplierModal').on('show.bs.modal', loadSupplierPanel);
-
-    // ---- CSV Upload ----
-    $('#btnUploadCsv').on('click', function() {
-        const fileInput = $('#csv_file')[0];
-        if (!fileInput || !fileInput.files.length) {
-            $('#csvUploadMsg').html('<div class="alert alert-warning small mb-0">Please select a CSV file first.</div>');
-            return;
-        }
-
-        const form = new FormData($('#csvUploadForm')[0]);
-        const $btn = $(this);
-        const original = $btn.html();
-        $btn.html('<i class="ri-loader-4-line ri-spin"></i> Uploading...').prop('disabled', true);
-        $('#csvUploadMsg').html('');
-
-        $.ajax({
-            url: '{{ route("reviews.upload-csv") }}',
-            method: 'POST',
-            data: form,
-            processData: false,
-            contentType: false,
-            headers: { 'X-CSRF-TOKEN': CSRF },
-        }).done(res => {
-            $('#csvUploadMsg').html('<div class="alert alert-success small mb-0">' + (res.message || 'Upload complete.') + '</div>');
-            $('#csv_file').val('');
-            if (typeof reviewTable !== 'undefined') {
-                reviewTable.ajax.reload(null, false);
-            }
-            if (typeof showToast === 'function') {
-                showToast(res.message || 'Reviews imported successfully', 'success');
-            }
-        }).fail(err => {
-            let msg = err.responseJSON?.message || 'Upload failed';
-            const errors = err.responseJSON?.errors;
-            if (errors) {
-                msg = Object.values(errors).flat().join(' ');
-            }
-            $('#csvUploadMsg').html('<div class="alert alert-danger small mb-0">' + msg + '</div>');
-        }).always(() => {
-            $btn.html(original).prop('disabled', false);
-        });
-    });
-
-    // ---- Generate Reply ----
-    $('#btnGenerateReply').on('click', function() {
-        if (!currentReviewId) return;
-        const $btn = $(this).html('<i class="ri-loader-4-line ri-spin"></i> Generating...').prop('disabled', true);
-
-        $.post(`/reviews/${currentReviewId}/generate-reply`, {_token: CSRF})
-            .done(res => {
-                const existing = $('#reviewExpandBody .ai-reply-section');
-                if (existing.length) {
-                    existing.find('.reply-text').text(res.reply);
-                } else {
-                    $('#reviewExpandBody').append(`
-                        <div class="ai-reply-section mt-3 p-3 bg-light rounded border">
-                            <strong><i class="ri-robot-2-line me-1 text-primary"></i>AI Suggested Reply:</strong>
-                            <p class="reply-text mt-2 mb-0">${res.reply}</p>
-                        </div>`);
-                }
-            })
-            .fail(() => showToast('Failed to generate reply', 'danger'))
-            .always(() => $btn.html('<i class="ri-robot-2-line me-1"></i>Generate AI Reply').prop('disabled', false));
-    });
-});
-
-// ============================================================
-// SKU Detail Modal
-// ============================================================
-function openSkuDetail(sku) {
-    $('#skuDetailTitle').text(sku);
-    $('#skuDetailBody').html('<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>');
-    $('#skuDetailModal').modal('show');
-
-    $.get(`/reviews/sku/${sku}/detail`)
-        .done(data => renderSkuDetail(data))
-        .fail(() => $('#skuDetailBody').html('<div class="alert alert-danger">Failed to load SKU data.</div>'));
-}
-
-function renderSkuDetail(data) {
-    const s = data.summary;
-    const negRate = s ? s.negative_rate : 0;
-    const negColor = negRate > 30 ? 'danger' : negRate > 15 ? 'warning' : 'success';
-
-    let summaryHtml = s ? `
-        <div class="row g-3 mb-4">
-            <div class="col-4"><div class="text-center"><div class="fs-4 fw-bold">${s.total_reviews}</div><small class="text-muted">Total Reviews</small></div></div>
-            <div class="col-4"><div class="text-center"><div class="fs-4 fw-bold text-${negColor}">${negRate}%</div><small class="text-muted">Negative</small></div></div>
-            <div class="col-4"><div class="text-center"><div class="fs-4 fw-bold text-warning">${s.avg_rating || '—'}</div><small class="text-muted">Avg Rating</small></div></div>
-        </div>` : '<div class="alert alert-info small">No summary data yet. Run analysis first.</div>';
-
-    // Issue distribution chart
-    const issueLabels = data.issue_distribution.map(x => x.issue_category.replace(/_/g,' '));
-    const issueCounts = data.issue_distribution.map(x => x.cnt);
-    const issueColors = ['#dc3545','#ffc107','#0dcaf0','#6c757d','#212529','#0d6efd','#adb5bd'];
-
-    // Rating trend chart
-    const trendLabels = data.trend.map(x => 'W'+String(x.week).slice(-2));
-    const trendData   = data.trend.map(x => parseFloat(x.avg_rating).toFixed(1));
-
-    // Top complaints
-    const complaintsHtml = data.top_complaints.length
-        ? data.top_complaints.map(c => `<li class="list-group-item list-group-item-action py-1 small">${c}</li>`).join('')
-        : '<li class="list-group-item small text-muted">No complaints yet.</li>';
-
-    $('#skuDetailBody').html(`
-        ${summaryHtml}
-        <div class="row g-3">
-            <div class="col-md-5">
-                <div class="card"><div class="card-header py-2 small fw-semibold">Issue Distribution</div>
-                <div class="card-body p-2"><div class="chart-container"><canvas id="issueChart"></canvas></div></div></div>
-            </div>
-            <div class="col-md-7">
-                <div class="card"><div class="card-header py-2 small fw-semibold">Rating Trend (Last 12 Weeks)</div>
-                <div class="card-body p-2"><div class="chart-container"><canvas id="trendChart"></canvas></div></div></div>
-            </div>
-            <div class="col-12">
-                <div class="card"><div class="card-header py-2 small fw-semibold">Top Complaints</div>
-                <div class="card-body p-0"><ul class="list-group list-group-flush">${complaintsHtml}</ul></div></div>
-            </div>
-        </div>
-    `);
-
-    if (issueCounts.length) {
-        new Chart(document.getElementById('issueChart'), {
-            type: 'doughnut',
-            data: { labels: issueLabels, datasets: [{ data: issueCounts, backgroundColor: issueColors }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 11 } } } } }
-        });
-    }
-
-    if (trendData.length) {
-        new Chart(document.getElementById('trendChart'), {
-            type: 'line',
-            data: {
-                labels: trendLabels,
-                datasets: [{ label: 'Avg Rating', data: trendData, borderColor: '#0d6efd', backgroundColor: 'rgba(13,110,253,.1)', tension: 0.3, fill: true }]
-            },
-            options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 1, max: 5 } } }
-        });
-    }
-}
-
-// ============================================================
-// Review Expand Modal
-// ============================================================
-function openReviewExpand(id) {
-    currentReviewId = id;
-    $('#reviewExpandBody').html('<div class="text-center py-3"><div class="spinner-border text-secondary"></div></div>');
-    $('#reviewExpandModal').modal('show');
-
-    // Find row data from DataTable
-    const allData = reviewTable.rows().data().toArray();
-    const row = allData.find(r => r.id == id);
-
-    if (row) {
-        renderReviewExpand(row);
-    } else {
-        $('#reviewExpandBody').html('<div class="alert alert-warning">Review data not found.</div>');
-    }
-}
-
-function renderReviewExpand(row) {
-    $('#reviewExpandBody').html(`
-        <div class="row g-3">
-            <div class="col-md-8">
-                <h6 class="fw-bold">${row.review_title || 'No Title'}</h6>
-                <p class="mb-2">${row.review_text || '—'}</p>
-                ${row.ai_summary ? `<div class="p-2 bg-light rounded border small"><i class="ri-brain-line me-1 text-primary"></i><strong>AI Summary:</strong> ${row.ai_summary}</div>` : ''}
-                ${row.ai_reply ? `<div class="ai-reply-section mt-2 p-2 bg-light rounded border small"><i class="ri-robot-2-line me-1 text-primary"></i><strong>AI Reply:</strong><p class="reply-text mb-0 mt-1">${row.ai_reply}</p></div>` : ''}
-            </div>
-            <div class="col-md-4">
-                <table class="table table-sm table-borderless small">
-                    <tr><td class="text-muted">Reviewer</td><td>${row.reviewer_name || '—'}</td></tr>
-                    <tr><td class="text-muted">Date</td><td>${row.review_date || '—'}</td></tr>
-                    <tr><td class="text-muted">Rating</td><td>${starRating(row.rating)}</td></tr>
-                    <tr><td class="text-muted">Sentiment</td><td>${sentimentBadge(row.sentiment)}</td></tr>
-                    <tr><td class="text-muted">Issue</td><td>${issueBadge(row.issue_category)}</td></tr>
-                    <tr><td class="text-muted">Department</td><td><small class="text-info">${row.department || '—'}</small></td></tr>
-                    <tr><td class="text-muted">Supplier</td><td>${row.supplier_name || '—'}</td></tr>
-                    <tr><td class="text-muted">Source</td><td><span class="badge bg-secondary">${row.source_type}</span></td></tr>
-                    <tr><td class="text-muted">Flagged</td><td>${row.is_flagged ? '<i class="ri-error-warning-fill text-danger"></i> Yes' : 'No'}</td></tr>
-                </table>
-            </div>
-        </div>
-    `);
-}
-
-// ============================================================
-// Alerts Modal
-// ============================================================
-function loadAlerts() {
-    $('#alertsBody').html('<div class="text-center py-4"><div class="spinner-border text-danger"></div></div>');
-    $.get('{{ route("reviews.alerts") }}').done(data => {
-        if (!data.length) {
-            $('#alertsBody').html('<div class="alert alert-success text-center"><i class="ri-checkbox-circle-line me-2"></i>No open alerts.</div>');
-            return;
-        }
-        const icons = { high_negative_rate:'ri-percent-line', top_issue:'ri-list-unordered', spike_detected:'ri-line-chart-line' };
-        const colors = { high_negative_rate:'danger', top_issue:'warning', spike_detected:'info' };
-        let html = '<div class="list-group list-group-flush">';
-        data.forEach(a => {
-            const ic = colors[a.alert_type] || 'secondary';
-            html += `
-                <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-start py-2">
-                    <div>
-                        <span class="badge bg-${ic} me-2">${a.alert_type_label || a.alert_type.replace(/_/g,' ')}</span>
-                        <strong class="me-1">${a.sku}</strong>
-                        <span class="text-muted small">${a.message}</span>
-                    </div>
-                    <button class="btn btn-xs btn-outline-success py-0 px-2 btn-resolve-alert" data-id="${a.id}">
-                        <i class="ri-check-line"></i> Resolve
+                    <button class="btn btn-xs btn-outline-secondary py-0 px-2 btn-view-review" title="View" data-id="${row.id}">
+                        <i class="fa fa-eye"></i>
+                    </button>
+                    <button class="btn btn-xs btn-outline-primary py-0 px-2 btn-sku-detail" title="SKU stats" data-sku="${escapeHtml(row.sku)}">
+                        <i class="fa fa-chart-line"></i>
                     </button>
                 </div>`;
-        });
-        html += '</div>';
-        $('#alertsBody').html(html);
-    }).fail(() => $('#alertsBody').html('<div class="alert alert-danger">Failed to load alerts.</div>'));
-}
-
-$(document).on('click', '.btn-resolve-alert', function() {
-    const id = $(this).data('id');
-    const $btn = $(this).html('<i class="ri-loader-4-line ri-spin"></i>').prop('disabled', true);
-    $.post(`/reviews/alerts/${id}/resolve`, {_token: CSRF})
-        .done(() => { $(this).closest('.list-group-item').fadeOut(300); showToast('Alert resolved', 'success'); })
-        .fail(() => $btn.html('<i class="ri-check-line"></i> Resolve').prop('disabled', false));
-});
-
-// ============================================================
-// AI Insights Modal
-// ============================================================
-function loadAiInsights() {
-    $('#aiInsightsBody').html('<div class="text-center py-4"><div class="spinner-border text-dark"></div></div>');
-    $.get('{{ route("reviews.ai-insights") }}').done(data => {
-        let topProblemsHtml = data.top_problems.length
-            ? data.top_problems.map((p,i) => `
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <div><span class="badge bg-secondary me-2">#${i+1}</span>${p.issue_category.replace(/_/g,' ').toUpperCase()}</div>
-                    <div><span class="badge bg-danger">${p.cnt}</span></div>
-                </div>
-                <div class="progress mb-3" style="height:6px"><div class="progress-bar bg-danger" style="width:${Math.min(100,p.cnt)}%"></div></div>`).join('')
-            : '<p class="text-muted small">No data this week.</p>';
-
-        $('#aiInsightsBody').html(`
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <div class="card insights-card danger h-100">
-                        <div class="card-header py-2 small fw-semibold"><i class="ri-list-unordered me-1"></i>Top 5 Problems This Week</div>
-                        <div class="card-body">${topProblemsHtml}</div>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card insights-card warning h-100">
-                        <div class="card-header py-2 small fw-semibold"><i class="ri-user-star-line me-1"></i>Most Complained Supplier</div>
-                        <div class="card-body">
-                            <div class="text-center py-3">
-                                <div class="fs-3 fw-bold text-warning">${data.most_complained_supplier?.name || 'N/A'}</div>
-                                <small class="text-muted">${data.most_complained_supplier?.cnt || 0} negative reviews this week</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card insights-card info h-100">
-                        <div class="card-header py-2 small fw-semibold"><i class="ri-barcode-box-line me-1"></i>Most Problematic SKU</div>
-                        <div class="card-body">
-                            <div class="text-center py-3">
-                                <div class="fs-3 fw-bold text-info">${data.most_problematic_sku?.sku || 'N/A'}</div>
-                                <small class="text-muted">${data.most_problematic_sku?.cnt || 0} negative reviews this week</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card insights-card info h-100">
-                        <div class="card-header py-2 small fw-semibold"><i class="ri-line-chart-line me-1"></i>Issue Trend (6 Weeks)</div>
-                        <div class="card-body p-2"><div class="chart-container"><canvas id="issueTrendChart"></canvas></div></div>
-                    </div>
-                </div>
-            </div>
-        `);
-
-        renderIssueTrendChart(data.issue_trend);
-    }).fail(() => $('#aiInsightsBody').html('<div class="alert alert-danger">Failed to load insights.</div>'));
-}
-
-function renderIssueTrendChart(trendObj) {
-    const weeks = Object.keys(trendObj);
-    if (!weeks.length) return;
-
-    const allIssues = [...new Set(weeks.flatMap(w => trendObj[w].map(x => x.issue_category)))];
-    const issueColorMap = {
-        quality:'#dc3545', packaging:'#ffc107', shipping:'#0dcaf0',
-        service:'#6c757d', wrong_item:'#212529', missing_parts:'#0d6efd', other:'#adb5bd'
-    };
-
-    const datasets = allIssues.map(issue => ({
-        label: issue.replace(/_/g, ' '),
-        data: weeks.map(w => {
-            const item = (trendObj[w] || []).find(x => x.issue_category === issue);
-            return item ? item.cnt : 0;
-        }),
-        borderColor: issueColorMap[issue] || '#adb5bd',
-        backgroundColor: (issueColorMap[issue] || '#adb5bd') + '22',
-        tension: 0.3, fill: false,
-    }));
-
-    new Chart(document.getElementById('issueTrendChart'), {
-        type: 'line',
-        data: { labels: weeks.map(w => 'W' + String(w).slice(-2)), datasets },
-        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } } }
-    });
-}
-
-// ============================================================
-// Supplier Panel Modal
-// ============================================================
-function loadSupplierPanel() {
-    $('#supplierBody').html('<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>');
-    $.get('{{ route("reviews.supplier-intelligence") }}').done(data => {
-        if (!data.length) {
-            $('#supplierBody').html('<div class="alert alert-info">No supplier data yet.</div>');
-            return;
         }
-        let rows = data.map(s => {
-            const neg = parseFloat(s.neg_rate || 0);
-            const color = neg > 30 ? 'danger' : neg > 15 ? 'warning' : 'success';
-            const topIssue = getTopIssue(s);
-            return `<tr class="supplier-row">
-                <td class="fw-semibold">${s.supplier_name || '—'}</td>
-                <td>${s.total || 0}</td>
-                <td><span class="fw-bold text-${color}">${neg}%</span></td>
-                <td>${topIssue}</td>
-                <td>${s.sku_count || 0}</td>
-                <td>
-                    <div class="progress" style="height:8px;width:80px">
-                        <div class="progress-bar bg-${color}" style="width:${Math.min(100,neg)}%"></div>
+
+        // -----------------------------------------------------------------
+        // Tabulator
+        // -----------------------------------------------------------------
+        let table = null;
+
+        const COLUMN_DEFS = [
+            { title: 'SKU',          field: 'sku',           width: 160, frozen: true,
+              headerFilter: 'input', headerFilterPlaceholder: 'SKU…',
+              cssClass: 'text-primary fw-bold' },
+            { title: 'Product',      field: 'product_name',  width: 220,
+              formatter: cell => {
+                  const v = cell.getValue();
+                  return v ? `<span title="${escapeHtml(v)}">${escapeHtml(v.length > 30 ? v.substring(0,30)+'…' : v)}</span>`
+                           : '<span class="text-muted">—</span>';
+              } },
+            { title: 'Marketplace',  field: 'marketplace',   width: 110, formatter: marketplaceFmt,
+              headerFilter: 'list', headerFilterParams: { valuesLookup: true, clearable: true } },
+            { title: 'Rating',       field: 'rating',        width: 110, hozAlign: 'center', sorter: 'number',
+              formatter: ratingFmt,
+              headerFilter: 'list', headerFilterParams: { values: { '': 'All', '1':'1', '2':'2', '3':'3', '4':'4', '5':'5' } } },
+            { title: 'Review',       field: 'review_title',  width: 300, formatter: reviewTextFmt,
+              headerFilter: 'input', headerFilterPlaceholder: 'Search…',
+              headerFilterFunc: (headerValue, rowValue, rowData) => {
+                  if (!headerValue) return true;
+                  const hay = ((rowData.review_title || '') + ' ' + (rowData.review_text || '')).toLowerCase();
+                  return hay.includes(headerValue.toLowerCase());
+              } },
+            { title: 'Reviewer',     field: 'reviewer_name', width: 130,
+              formatter: c => c.getValue() ? escapeHtml(c.getValue()) : '<span class="text-muted">—</span>' },
+            { title: 'Date',         field: 'review_date',   width: 110, sorter: 'datetime',
+              formatter: c => c.getValue() ? `<small>${escapeHtml(c.getValue())}</small>` : '<span class="text-muted">—</span>' },
+            { title: 'Sentiment',    field: 'sentiment',     width: 110, hozAlign: 'center', formatter: sentimentFmt,
+              headerFilter: 'list', headerFilterParams: { values: { '':'All', positive:'Positive', neutral:'Neutral', negative:'Negative' } } },
+            { title: 'Issue',        field: 'issue_category',width: 130, hozAlign: 'center', formatter: issueFmt,
+              headerFilter: 'list', headerFilterParams: { values: { '':'All', quality:'Quality', packaging:'Packaging', shipping:'Shipping', service:'Service', wrong_item:'Wrong Item', missing_parts:'Missing Parts', other:'Other' } } },
+            { title: 'Supplier',     field: 'supplier_name', width: 140,
+              formatter: c => c.getValue() ? escapeHtml(c.getValue()) : '<span class="text-muted">—</span>',
+              headerFilter: 'input' },
+            { title: 'Department',   field: 'department',    width: 130,
+              formatter: c => c.getValue() ? `<small class="text-info">${escapeHtml(c.getValue())}</small>` : '<span class="text-muted">—</span>' },
+            { title: 'Source',       field: 'source_type',   width: 80, hozAlign: 'center',
+              formatter: c => c.getValue() ? `<span class="badge bg-light text-dark border">${escapeHtml(c.getValue())}</span>` : '' },
+            { title: 'Flag',         field: 'is_flagged',    width: 60,  hozAlign: 'center', formatter: flagFmt },
+            { title: 'Actions',      field: 'actions',       width: 95,  hozAlign: 'center', headerSort: false, formatter: actionsFmt },
+        ];
+
+        // -----------------------------------------------------------------
+        // Summary updater
+        // -----------------------------------------------------------------
+        function updateSummary() {
+            if (!table) return;
+            const data = table.getData('active');
+            let total = 0, pos = 0, neu = 0, neg = 0, flagged = 0, ratingSum = 0, ratingCount = 0;
+            const skuSet = new Set();
+            data.forEach(r => {
+                total++;
+                if (r.sku) skuSet.add(r.sku);
+                if (r.sentiment === 'positive') pos++;
+                else if (r.sentiment === 'neutral') neu++;
+                else if (r.sentiment === 'negative') neg++;
+                if (r.is_flagged) flagged++;
+                const rating = parseInt(r.rating);
+                if (rating > 0) { ratingSum += rating; ratingCount++; }
+            });
+            const avg = ratingCount > 0 ? (ratingSum / ratingCount).toFixed(1) : '0.0';
+
+            document.getElementById('badge-total').textContent    = 'Total: ' + total.toLocaleString();
+            document.getElementById('badge-positive').textContent = 'Positive: ' + pos.toLocaleString();
+            document.getElementById('badge-neutral').textContent  = 'Neutral: '  + neu.toLocaleString();
+            document.getElementById('badge-negative').textContent = 'Negative: ' + neg.toLocaleString();
+            document.getElementById('badge-avg').textContent      = 'Avg Rating: ' + avg;
+            document.getElementById('badge-flagged').textContent  = 'Flagged: '  + flagged.toLocaleString();
+            document.getElementById('badge-skus').textContent     = 'Unique SKUs: ' + skuSet.size.toLocaleString();
+        }
+
+        // -----------------------------------------------------------------
+        // Column visibility (per-user, server-persisted)
+        // -----------------------------------------------------------------
+        function applyColumnVisibilityFromServer() {
+            fetch(REVIEWS_COLVIS_GET_URL, { headers: { 'X-CSRF-TOKEN': CSRF_TOKEN } })
+                .then(r => r.json())
+                .then(vis => {
+                    table.getColumns().forEach(col => {
+                        const def = col.getDefinition();
+                        if (def.field && vis[def.field] === false) col.hide();
+                    });
+                    buildColumnDropdown(vis);
+                })
+                .catch(() => buildColumnDropdown({}));
+        }
+        function buildColumnDropdown(savedVis) {
+            const menu = document.getElementById('column-dropdown-menu');
+            menu.innerHTML = '';
+            table.getColumns().forEach(col => {
+                const def = col.getDefinition();
+                if (!def.field) return;
+                const li = document.createElement('li');
+                const label = document.createElement('label');
+                label.style.cssText = 'display:block;padding:5px 10px;cursor:pointer';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.value = def.field;
+                cb.style.marginRight = '8px';
+                cb.checked = savedVis[def.field] !== false;
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(def.title));
+                li.appendChild(label);
+                menu.appendChild(li);
+            });
+        }
+        function saveColumnVisibilityToServer() {
+            const vis = {};
+            table.getColumns().forEach(col => {
+                const def = col.getDefinition();
+                if (def.field) vis[def.field] = col.isVisible();
+            });
+            fetch(REVIEWS_COLVIS_SET_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF_TOKEN },
+                body: JSON.stringify({ visibility: vis }),
+            });
+        }
+
+        // -----------------------------------------------------------------
+        // Init
+        // -----------------------------------------------------------------
+        $(document).ready(function () {
+            $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': CSRF_TOKEN } });
+
+            table = new Tabulator('#reviews-table', {
+                ajaxURL: REVIEWS_DATA_URL,
+                layout: 'fitDataStretch',
+                pagination: true,
+                paginationSize: 50,
+                paginationSizeSelector: [25, 50, 100, 200, 500],
+                paginationCounter: 'rows',
+                placeholder: 'No reviews yet. Click <strong>Import CSV</strong> above to load data.',
+                ajaxResponse: function (url, params, response) {
+                    // Populate marketplace dropdown from data
+                    const mps = [...new Set(response.map(r => r.marketplace).filter(Boolean))].sort();
+                    const sel = document.getElementById('filter_marketplace');
+                    if (sel) {
+                        const cur = sel.value;
+                        sel.innerHTML = '<option value="">All Marketplaces</option>' +
+                            mps.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+                        sel.value = cur;
+                    }
+                    return response;
+                },
+                ajaxError: function (err) {
+                    console.error('Reviews data load error:', err);
+                    showToast('Failed to load reviews: ' + (err.message || 'Unknown error'), 'error');
+                },
+                initialSort: [{ column: 'review_date', dir: 'desc' }],
+                columns: COLUMN_DEFS,
+            });
+
+            table.on('tableBuilt',     applyColumnVisibilityFromServer);
+            table.on('dataLoaded',     updateSummary);
+            table.on('dataFiltered',   updateSummary);
+            table.on('dataProcessed',  updateSummary);
+            table.on('renderComplete', updateSummary);
+
+            // --- SKU search ---
+            $('#sku-search').on('keyup', function () {
+                const v = $(this).val();
+                table.setFilter('sku', 'like', v);
+            });
+
+            // --- Quick filters ---
+            function applyQuickFilters() {
+                const filters = [];
+                const mp = $('#filter_marketplace').val();
+                const rt = $('#filter_rating').val();
+                const se = $('#filter_sentiment').val();
+                const is = $('#filter_issue').val();
+                if (mp) filters.push({ field: 'marketplace',    type: '=',    value: mp });
+                if (rt) filters.push({ field: 'rating',         type: '=',    value: parseInt(rt) });
+                if (se) filters.push({ field: 'sentiment',      type: '=',    value: se });
+                if (is) filters.push({ field: 'issue_category', type: '=',    value: is });
+                table.clearFilter(true);
+                if ($('#sku-search').val()) table.setFilter('sku', 'like', $('#sku-search').val());
+                filters.forEach(f => table.addFilter(f.field, f.type, f.value));
+            }
+            $('#filter_marketplace, #filter_rating, #filter_sentiment, #filter_issue').on('change', applyQuickFilters);
+
+            // --- Column visibility dropdown toggle ---
+            document.getElementById('column-dropdown-menu').addEventListener('change', function (e) {
+                if (e.target.type !== 'checkbox') return;
+                const col = table.getColumn(e.target.value);
+                if (e.target.checked) col.show(); else col.hide();
+                saveColumnVisibilityToServer();
+            });
+
+            // --- Show all columns ---
+            document.getElementById('show-all-columns-btn').addEventListener('click', function () {
+                table.getColumns().forEach(c => c.show());
+                buildColumnDropdown({});
+                saveColumnVisibilityToServer();
+            });
+
+            // --- Export ---
+            $('#export-btn').on('click', function () {
+                table.download('csv', 'reviews_export_' + new Date().toISOString().slice(0,10) + '.csv');
+            });
+
+            // --- Refresh ---
+            $('#refresh-btn').on('click', function () {
+                table.setData(REVIEWS_DATA_URL).then(() => showToast('Reviews reloaded', 'success'));
+            });
+
+            // --- Row actions ---
+            $(document).on('click', '.btn-view-review', function () {
+                const id = $(this).data('id');
+                const row = table.getRows('active').map(r => r.getData()).find(r => r.id == id);
+                if (row) openReviewDetail(row);
+            });
+            $(document).on('click', '.btn-sku-detail', function () {
+                const sku = $(this).data('sku');
+                window.location.href = REVIEWS_SKU_DETAIL_URL + '/' + encodeURIComponent(sku) + '/detail';
+            });
+        });
+
+        // -----------------------------------------------------------------
+        // Review detail modal
+        // -----------------------------------------------------------------
+        function openReviewDetail(r) {
+            const body = `
+                <div class="review-detail-section">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">${escapeHtml(r.review_title || 'No Title')}</h6>
+                        <div>${ratingHtmlInline(r.rating)}</div>
                     </div>
-                </td>
-            </tr>`;
-        }).join('');
+                    <p class="mb-0">${escapeHtml(r.review_text || '—')}</p>
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="review-detail-section">
+                            <table class="table table-sm table-borderless mb-0 small">
+                                <tr><td class="text-muted" style="width:120px">SKU</td><td><strong>${escapeHtml(r.sku || '—')}</strong></td></tr>
+                                <tr><td class="text-muted">Product</td><td>${escapeHtml(r.product_name || '—')}</td></tr>
+                                <tr><td class="text-muted">Marketplace</td><td>${escapeHtml(r.marketplace || '—')}</td></tr>
+                                <tr><td class="text-muted">Reviewer</td><td>${escapeHtml(r.reviewer_name || '—')}</td></tr>
+                                <tr><td class="text-muted">Date</td><td>${escapeHtml(r.review_date || '—')}</td></tr>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="review-detail-section">
+                            <table class="table table-sm table-borderless mb-0 small">
+                                <tr><td class="text-muted" style="width:120px">Sentiment</td><td>${r.sentiment ? pill(r.sentiment, 'pill-' + r.sentiment) : '—'}</td></tr>
+                                <tr><td class="text-muted">Issue</td><td>${r.issue_category ? pill(r.issue_category, 'pill-' + r.issue_category) : '—'}</td></tr>
+                                <tr><td class="text-muted">Supplier</td><td>${escapeHtml(r.supplier_name || '—')}</td></tr>
+                                <tr><td class="text-muted">Department</td><td>${escapeHtml(r.department || '—')}</td></tr>
+                                <tr><td class="text-muted">Source</td><td>${escapeHtml(r.source_type || '—')}</td></tr>
+                                <tr><td class="text-muted">Flagged</td><td>${r.is_flagged ? '<i class="fa fa-flag text-danger"></i> Yes' : 'No'}</td></tr>
+                            </table>
+                        </div>
+                    </div>
+                    ${r.ai_summary ? `<div class="col-12"><div class="review-detail-section"><strong><i class="fa fa-brain me-1 text-primary"></i>AI Summary:</strong><div class="mt-1">${escapeHtml(r.ai_summary)}</div></div></div>` : ''}
+                    ${r.ai_reply ? `<div class="col-12"><div class="review-detail-section"><strong><i class="fa fa-robot me-1 text-primary"></i>Suggested Reply:</strong><div class="mt-1">${escapeHtml(r.ai_reply)}</div></div></div>` : ''}
+                </div>`;
+            document.getElementById('reviewDetailBody').innerHTML = body;
+            new bootstrap.Modal(document.getElementById('reviewDetailModal')).show();
+        }
+        function ratingHtmlInline(n) {
+            n = parseInt(n || 0);
+            if (!n) return '<span class="text-muted">No rating</span>';
+            return `<span class="stars">${'★'.repeat(n)}<span class="text-muted">${'☆'.repeat(5-n)}</span></span>`;
+        }
 
-        $('#supplierBody').html(`
-            <div class="table-responsive">
-                <table class="table table-sm table-hover">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Supplier</th><th>Total Reviews</th><th>Negative %</th><th>Top Issue</th><th>SKUs Affected</th><th>Rate</th>
-                        </tr>
-                    </thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            </div>
-        `);
-    }).fail(() => $('#supplierBody').html('<div class="alert alert-danger">Failed to load data.</div>'));
-}
+        // -----------------------------------------------------------------
+        // CSV Upload (self-contained, vanilla fetch)
+        // -----------------------------------------------------------------
+        window.reviewsUploadCsv = function (e) {
+            if (e && e.preventDefault) e.preventDefault();
+            const fileInput = document.getElementById('csv_file');
+            const msgEl = document.getElementById('csvUploadMsg');
+            if (!fileInput || !fileInput.files.length) {
+                msgEl.innerHTML = '<div class="alert alert-warning small mb-0">Please choose a CSV/TSV file first.</div>';
+                return false;
+            }
+            const btn = document.getElementById('btnUploadCsv');
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i>Uploading…';
+            msgEl.innerHTML = '<div class="alert alert-info small mb-0">Uploading &amp; processing… please wait.</div>';
 
-function getTopIssue(s) {
-    const issues = {
-        quality: parseInt(s.quality||0), packaging: parseInt(s.packaging||0),
-        shipping: parseInt(s.shipping||0), service: parseInt(s.service||0)
-    };
-    const top = Object.keys(issues).reduce((a,b) => issues[a] > issues[b] ? a : b);
-    return issues[top] > 0 ? issueBadge(top) : '—';
-}
+            const fd = new FormData();
+            fd.append('csv_file', fileInput.files[0]);
+            fd.append('_token', CSRF_TOKEN);
 
-// ============================================================
-// Utility: Toast
-// ============================================================
-function showToast(msg, type = 'success') {
-    const id = 'toast_' + Date.now();
-    const color = { success:'bg-success', danger:'bg-danger', warning:'bg-warning', info:'bg-info' }[type] || 'bg-primary';
-    $('body').append(`
-        <div id="${id}" class="toast align-items-center text-white ${color} border-0 position-fixed bottom-0 end-0 m-3" role="alert" style="z-index:9999">
-            <div class="d-flex"><div class="toast-body">${msg}</div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>
-        </div>`);
-    const el = document.getElementById(id);
-    new bootstrap.Toast(el, { delay: 3500 }).show();
-    el.addEventListener('hidden.bs.toast', () => el.remove());
-}
-
-function starRating(n) {
-    if (!n) return '—';
-    n = parseInt(n);
-    return '<span class="star-rating">' + '★'.repeat(n) + '<span class="text-muted">' + '☆'.repeat(5-n) + `</span></span> <small class="text-muted">(${n})</small>`;
-}
-</script>
+            fetch(REVIEWS_UPLOAD_URL, {
+                method: 'POST',
+                body: fd,
+                credentials: 'same-origin',
+                headers: {
+                    'X-CSRF-TOKEN': CSRF_TOKEN,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                },
+            })
+            .then(async res => {
+                const text = await res.text();
+                let data = null;
+                try { data = text ? JSON.parse(text) : null; } catch (_) {}
+                if (!res.ok) {
+                    throw new Error((data && data.message) ? data.message : ('Upload failed (HTTP ' + res.status + ').'));
+                }
+                return data || { message: 'Upload complete.' };
+            })
+            .then(data => {
+                msgEl.innerHTML = '<div class="alert alert-success small mb-0">' + escapeHtml(data.message || 'Upload complete.') + '</div>';
+                fileInput.value = '';
+                showToast(data.message || 'Reviews imported.', 'success');
+                if (table) table.setData(REVIEWS_DATA_URL);
+            })
+            .catch(err => {
+                msgEl.innerHTML = '<div class="alert alert-danger small mb-0">' + escapeHtml(err.message || 'Upload failed.') + '</div>';
+                showToast(err.message || 'Upload failed.', 'error');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            });
+            return false;
+        };
+    </script>
 @endsection

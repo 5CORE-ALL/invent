@@ -177,7 +177,7 @@ class CustomerFollowupController extends Controller
     /** // TODO: Replace static data with API integration */
     public function data(Request $request)
     {
-        $q = CustomerFollowup::query()->with('channelMaster');
+        $q = CustomerFollowup::query()->with(['channelMaster', 'creator:id,name,email']);
 
         if ($request->filled('search')) {
             $s = '%' . addcslashes(trim($request->search), '%_\\') . '%';
@@ -246,12 +246,15 @@ class CustomerFollowupController extends Controller
             $notesStr = $notes !== null && $notes !== '' ? (string) $notes : '';
 
             // Display the original creator so the column doesn't flip when
-            // someone else edits. Fall back to assigned_executive for legacy
-            // rows that pre-date the original_executive column.
+            // someone else edits. Prefer the linked user's *current* name
+            // (so renames like "Hritiksha" → "Hritiksha Deb" collapse to one
+            // canonical label) and only fall back to the snapshot string
+            // when the row has no creator FK (legacy / unbacked rows).
+            $creatorName = trim((string) ($f->creator?->name ?? ''));
             $original = trim((string) ($f->original_executive ?? ''));
-            $executiveDisplay = $original !== ''
-                ? $original
-                : trim((string) ($f->assigned_executive ?? ''));
+            $executiveDisplay = $creatorName !== ''
+                ? $creatorName
+                : ($original !== '' ? $original : trim((string) ($f->assigned_executive ?? '')));
             if ($executiveDisplay === '') {
                 $executiveDisplay = '—';
             }
@@ -405,6 +408,9 @@ class CustomerFollowupController extends Controller
         // on later edits — the grid keeps showing this name; the tooltip on
         // hover shows the executive_history audit trail instead.
         $validated['original_executive'] = $executiveName !== '' ? $executiveName : null;
+        // Hard FK to the auth user so the display can use users.name as the
+        // canonical label (renames propagate; free-text drift is contained).
+        $validated['created_by_user_id'] = auth()->id();
 
         $validated['resolved_at'] = $validated['status'] === 'Resolved'
             ? Carbon::now(config('app.timezone'))
@@ -489,10 +495,11 @@ class CustomerFollowupController extends Controller
 
         $executiveName = $this->executiveNameFromAuth();
         $validated['assigned_executive'] = $executiveName;
-        // Don't touch original_executive on edit — that column intentionally
-        // sticks to whoever created the ticket so the grid keeps showing the
-        // first responsible person. Audit lives in executive_history.
-        unset($validated['original_executive']);
+        // Don't touch original_executive / created_by_user_id on edit — those
+        // columns intentionally stick to whoever created the ticket so the
+        // grid keeps showing the first responsible person. Audit lives in
+        // executive_history.
+        unset($validated['original_executive'], $validated['created_by_user_id']);
 
         if ($validated['status'] === 'Resolved') {
             if ($customer_followup->status !== 'Resolved') {
@@ -512,6 +519,11 @@ class CustomerFollowupController extends Controller
             // would have shown in the column before this change.
             if (trim((string) $customer_followup->original_executive) === '') {
                 $customer_followup->original_executive = $executiveName;
+            }
+            // Same fallback for the FK: only fill it when nothing is there,
+            // so we never overwrite the real creator with the editor.
+            if ($customer_followup->created_by_user_id === null && auth()->id()) {
+                $customer_followup->created_by_user_id = auth()->id();
             }
             $customer_followup->appendExecutiveHistoryEntry($executiveName, 'updated');
             $customer_followup->saveQuietly();
@@ -578,6 +590,9 @@ class CustomerFollowupController extends Controller
             // that were never stamped, so the grid still has a name to show.
             if (trim((string) $customer_followup->original_executive) === '') {
                 $customer_followup->original_executive = $executiveName;
+            }
+            if ($customer_followup->created_by_user_id === null && auth()->id()) {
+                $customer_followup->created_by_user_id = auth()->id();
             }
             $customer_followup->appendExecutiveHistoryEntry($executiveName, 'status_changed');
         }

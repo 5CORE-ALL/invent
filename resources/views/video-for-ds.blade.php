@@ -570,6 +570,10 @@
                                     <option value="Parents">Parents</option>
                                     <option value="Group">Group</option>
                                     <option value="SKU">SKU</option>
+                                    <option value="Exhibitions">Exhibitions</option>
+                                    <option value="Company profile">Company profile</option>
+                                    <option value="influencer">influencer</option>
+                                    <option value="Trending">Trending</option>
                                 </select>
                             </div>
                             <div class="col-md-6">

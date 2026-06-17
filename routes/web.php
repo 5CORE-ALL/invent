@@ -5521,6 +5521,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-shopping/rule', 'saveRule')->name('google.shopping.campaigns.rule.save');
         Route::post('/google/shopping/google-shopping/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.shopping.campaigns.push.sbgt');
         Route::post('/google/shopping/google-shopping/push-sbid', 'pushSbidShopping')->name('google.shopping.campaigns.push.sbid');
+        Route::post('/google/shopping/google-shopping/pull-data', 'pullData')->name('google.shopping.campaigns.pull.data');
         Route::get('/google/shopping/google-shopping/badge-history', 'badgeHistory')->name('google.shopping.campaigns.badge.history');
         Route::post('/google/shopping/google-shopping/u7-distribution', 'u7Distribution')->name('google.shopping.campaigns.u7.distribution');
         Route::post('/google/shopping/google-shopping/u7-distribution-history', 'u7DistributionHistory')->name('google.shopping.campaigns.u7.history');
@@ -6034,6 +6035,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/alerts', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'alerts'])->name('alerts');
         Route::post('/alerts/{id}/resolve', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'resolveAlert'])->name('alerts.resolve');
         Route::post('/upload-csv', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'uploadCsv'])->name('upload-csv');
+        Route::get('/column-visibility', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'getColumnVisibility'])->name('column-visibility.get');
+        Route::post('/column-visibility', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'saveColumnVisibility'])->name('column-visibility.save');
         Route::post('/{id}/generate-reply', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'generateReply'])->name('generate-reply');
         Route::post('/trigger-fetch', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'triggerFetch'])->name('trigger-fetch');
         Route::post('/refresh-summary', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'refreshSummary'])->name('refresh-summary');
