@@ -6,6 +6,39 @@
         <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 
     <style>
+        /* NRP cell — show just a colored dot by default; clicking opens a native
+           <select> that's positioned absolutely on top with opacity:0 so the dropdown
+           menu appears right where the dot is. Same UX/CSS as /forecast.analysis. */
+        .temu-nrp-cell {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 28px;
+            min-width: 44px;
+        }
+        .temu-nrp-cell .temu-nrp-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+        }
+        .temu-nrp-cell .temu-nrp-select {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+            margin: 0 !important;
+            border: 0 !important;
+            padding: 0 !important;
+            background: transparent !important;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
         /* Summary Statistics badges — bumped to 1.2x size for readability.
            Targets every .badge inside #summary-stats so new badges added later
            pick the size up automatically. fs-6 = 1rem default → 1.2rem here.
@@ -3376,6 +3409,40 @@
                     }
                 },
                 {
+                    // NRP — mirrors /forecast.analysis (forecast_analysis.nr). Editable here:
+                    // shows only a colored dot, but the whole cell is a transparent <select>
+                    // overlay so clicking the dot opens the native dropdown (REQ / 2BDC / LATER).
+                    // Saves go to the same /update-forecast-data endpoint forecast.analysis uses,
+                    // so both pages stay in sync. See change handler bound below.
+                    title: "NRP",
+                    field: "nrp",
+                    hozAlign: "center",
+                    width: 56,
+                    headerSort: true,
+                    sorter: "string",
+                    cssClass: "temu-nrp-col",
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        let raw = cell.getValue();
+                        let value = (raw == null) ? '' : String(raw).trim().toUpperCase();
+                        if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') value = 'REQ';
+                        let dot = '#22c55e', tip = 'REQ';
+                        if (value === 'NR')    { dot = '#dc3545'; tip = '2BDC'; }
+                        if (value === 'LATER') { dot = '#facc15'; tip = 'LATER'; }
+                        const sku = (row.sku || '').toString().replace(/'/g, '&#39;');
+                        const parent = (row.parent || '').toString().replace(/'/g, '&#39;');
+                        return `
+                            <div class="temu-nrp-cell" title="NRP: ${tip} (click to change)">
+                                <span class="temu-nrp-dot" style="background-color:${dot};" aria-hidden="true"></span>
+                                <select class="temu-nrp-select" data-sku='${sku}' data-parent='${parent}' aria-label="NRP: ${tip}">
+                                    <option value="REQ"   ${value === 'REQ'   ? 'selected' : ''}>REQ</option>
+                                    <option value="NR"    ${value === 'NR'    ? 'selected' : ''}>2BDC</option>
+                                    <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
+                                </select>
+                            </div>`;
+                    }
+                },
+                {
                     title: "NRL/REQ",
                     field: "nr_req",
                     hozAlign: "center",
@@ -5099,6 +5166,62 @@
                 });
             }
 
+        });
+
+        /*
+         * NRP dropdown change handler — saves to the SAME endpoint /forecast.analysis
+         * uses (POST /update-forecast-data with column='NR'), so both pages stay in
+         * sync and you can edit from either side. Optimistically updates the row's
+         * `nrp` field + reformats the cell so the dot color flips instantly; if the
+         * AJAX fails we revert and show an error toast.
+         */
+        $(document).on('change', '.temu-nrp-select', function() {
+            const $select = $(this);
+            const newValue = String($select.val() || '').trim().toUpperCase();
+            const sku = $select.data('sku');
+            const parent = $select.data('parent') || '';
+            if (!sku) return;
+            if (!['REQ', 'NR', 'LATER'].includes(newValue)) return;
+
+            // Find the Tabulator row and remember the old value so we can revert on failure.
+            const tabRow = table ? table.getRows().find(function(r) { return (r.getData().sku || '') === sku; }) : null;
+            const oldValue = tabRow ? ((tabRow.getData().nrp || '') || 'REQ') : 'REQ';
+
+            // Optimistic update so the dot flips immediately.
+            if (tabRow) {
+                tabRow.update({ nrp: newValue });
+                tabRow.reformat();
+            }
+
+            $.ajax({
+                url: '/update-forecast-data',
+                method: 'POST',
+                data: {
+                    sku: sku,
+                    parent: parent,
+                    column: 'NR',
+                    value: newValue,
+                    _token: $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function(res) {
+                    if (!res || res.success === false) {
+                        if (tabRow) {
+                            tabRow.update({ nrp: oldValue });
+                            tabRow.reformat();
+                        }
+                        showToast((res && res.message) || 'Failed to save NRP', 'error');
+                        return;
+                    }
+                    showToast(`NRP saved: ${newValue === 'NR' ? '2BDC' : newValue} for ${sku}`, 'success');
+                },
+                error: function() {
+                    if (tabRow) {
+                        tabRow.update({ nrp: oldValue });
+                        tabRow.reformat();
+                    }
+                    showToast('Failed to save NRP', 'error');
+                }
+            });
         });
 
         // NR/REQ dropdown change handler (Amazon style)

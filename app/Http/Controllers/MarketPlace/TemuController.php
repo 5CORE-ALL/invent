@@ -3195,8 +3195,32 @@ class TemuController extends Controller
                 }
             }
 
+            // NRP (forecast_analysis.nr) per SKU — same source the /forecast.analysis page
+            // shows in its NRP column. Values: REQ (default) / NR (= 2BDC on screen) / LATER.
+            // Keyed by normalized SKU so spacing variants ("DP 200 1 Pcs" vs "DP200 1PC") match.
+            // When multiple rows exist for the same SKU we prefer one with a non-empty `nr`,
+            // mirroring the precedence rule in ForecastAnalysisController::forecastAnalysis().
+            $nrByNormalizedSku = [];
+            DB::table('forecast_analysis')
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->select('sku', 'nr')
+                ->get()
+                ->each(function ($row) use (&$nrByNormalizedSku, $normalizeSku) {
+                    $nk = $normalizeSku($row->sku);
+                    if ($nk === '') return;
+                    $val = $row->nr !== null ? strtoupper(trim((string) $row->nr)) : '';
+                    if (!in_array($val, ['REQ', 'NR', 'LATER'], true)) {
+                        $val = '';
+                    }
+                    // Prefer a populated value over an empty one (matches ForecastAnalysisController)
+                    if (!isset($nrByNormalizedSku[$nk]) || ($nrByNormalizedSku[$nk] === '' && $val !== '')) {
+                        $nrByNormalizedSku[$nk] = $val;
+                    }
+                });
+
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $viewData, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL60, $temuLmpByNormalizedSku, $isTemu2Pricing) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $viewData, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL60, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -3470,6 +3494,11 @@ class TemuController extends Controller
                     // so the front-end SROI formatter can use the SAME margin the backend
                     // GROI calc uses. Prevents GROI / SROI from disagreeing on the rate.
                     'percentage' => (float) $percentage,
+                    // NRP — mirrors the same column on /forecast.analysis. Falls back to ''
+                    // (front-end formatter defaults to 'REQ' for display) when this SKU has
+                    // no row in forecast_analysis. Looked up by normalized SKU so spacing
+                    // variants match the same way the LMP join above does.
+                    'nrp' => $nrByNormalizedSku[$normalizeSku($sku)] ?? '',
                     'profit' => round($profit, 2),
                     'profit_percent' => round($profitPercent, 2),
                     'roi_percent' => round($roiPercent, 2),
