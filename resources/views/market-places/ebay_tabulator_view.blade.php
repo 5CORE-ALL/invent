@@ -1037,7 +1037,10 @@
                                 style="width: 100px; font-size: 13px;">
                                 <option value="all">All</option>
                                 <option value="parent">Parent</option>
-                                <option value="sku">SKU</option>
+                                {{-- Default selection: hide parent summary rows on initial load.
+                                     Filter logic (applyFilters) already drops parent rows
+                                     when this value is 'sku', so nothing else needs to change. --}}
+                                <option value="sku" selected>SKU</option>
                             </select>
                         </div>
                         <div class="d-flex align-items-center gap-1">

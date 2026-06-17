@@ -269,9 +269,12 @@
 
                     <select id="parent-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all" selected>All Rows</option>
+                        <option value="all">All Rows</option>
                         <option value="parents">Parents</option>
-                        <option value="skus">SKUs</option>
+                        {{-- Default selection: hide parent summary rows on initial load.
+                             Filter logic (applyFilters in script-bottom) already drops parent rows
+                             when this value is 'skus', so nothing else needs to change. --}}
+                        <option value="skus" selected>SKUs</option>
                     </select>
 
                     <select id="status-filter" class="form-select form-select-sm"
