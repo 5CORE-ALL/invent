@@ -115,6 +115,60 @@
             color: #1e2125;
             background-color: #e9ecef;
         }
+
+        /* ========== FULL-WIDTH PAGE LAYOUT ========== */
+        .content-page > .content > .container-fluid {
+            padding-left: 12px;
+            padding-right: 12px;
+            max-width: 100%;
+        }
+        .shopify-b2c-page .row {
+            margin-left: 0;
+            margin-right: 0;
+        }
+        .shopify-b2c-page .row > [class*="col-"],
+        .shopify-b2c-page > .row > .card {
+            padding-left: 0;
+            padding-right: 0;
+        }
+        .shopify-b2c-page .card { border-radius: 10px; }
+        .shopify-b2c-page .card-body { padding: 12px 14px; }
+        .shopify-b2c-page #summary-stats { padding: 10px 12px !important; }
+        .shopify-b2c-page #discount-input-container { padding: 8px 12px !important; }
+
+        /* ========== SKU SEARCH BAR ========== */
+        .shopify-b2c-search-wrap { padding: 10px 12px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+        .shopify-b2c-search-group {
+            max-width: 480px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            background: #fff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+            overflow: hidden;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .shopify-b2c-search-group:focus-within {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15);
+        }
+        .shopify-b2c-search-group .input-group-text {
+            background: transparent;
+            border: 0;
+            color: #94a3b8;
+            padding-left: 14px;
+            padding-right: 8px;
+        }
+        .shopify-b2c-search-group #sku-search {
+            border: 0;
+            background: transparent;
+            box-shadow: none !important;
+            height: 40px;
+            font-size: 0.95rem;
+            color: #1e293b;
+            padding-left: 4px;
+        }
+        .shopify-b2c-search-group #sku-search::placeholder { color: #94a3b8; }
+        .shopify-b2c-search-group #sku-search:focus { outline: none; border: 0; }
     </style>
 @endsection
 
@@ -129,7 +183,9 @@
         'sub_title' => '',
     ])
     <div class="toast-container"></div>
+    <div class="shopify-b2c-page">
     <div class="row">
+        <div class="col-12">
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
@@ -278,15 +334,18 @@
                     </div>
                 </div>
                 <div id="reverb-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <!-- SKU Search -->
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
+                    <div class="shopify-b2c-search-wrap">
+                        <div class="input-group shopify-b2c-search-group">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                            <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
+                        </div>
                     </div>
-                    <!-- Table body -->
                     <div id="reverb-table" style="flex: 1;"></div>
                 </div>
             </div>
         </div>
+        </div>
+    </div>
     </div>
 @endsection
 

@@ -41,6 +41,29 @@ class CategoryController extends Controller
             $category->supplier_count = DB::table('suppliers')
                 ->whereRaw('FIND_IN_SET(?, category_id)', [$category->id])
                 ->count();
+
+            // Build the deduped, sorted list of parents (products) across all suppliers
+            // that belong to this category. Mirrors the Product column shown on the
+            // supplier list page.
+            $parentStrings = DB::table('suppliers')
+                ->whereRaw('FIND_IN_SET(?, category_id)', [$category->id])
+                ->whereNotNull('parent')
+                ->where('parent', '!=', '')
+                ->pluck('parent')
+                ->all();
+
+            $parents = [];
+            foreach ($parentStrings as $row) {
+                foreach (explode(',', (string) $row) as $p) {
+                    $p = trim($p);
+                    if ($p !== '') {
+                        $parents[$p] = true;
+                    }
+                }
+            }
+            $parents = array_keys($parents);
+            sort($parents, SORT_NATURAL | SORT_FLAG_CASE);
+            $category->parents_list = $parents;
         }
 
         return view('purchase-master.category.category_list', compact('categories'));

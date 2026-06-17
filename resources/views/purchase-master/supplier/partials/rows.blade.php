@@ -301,7 +301,7 @@
 
     <!-- Edit Supplier Modal -->
     <div class="modal fade" id="editSupplierModal{{ $supplier->id }}" tabindex="-1" aria-labelledby="editSupplierModal{{ $supplier->id }}Label" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered shadow-none">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable shadow-none">
             <div class="modal-content border-0 shadow-lg">
                 <form method="POST" action="{{ route('supplier.create') }}" class="needs-validation" novalidate id="editSupplierForm{{ $supplier->id }}">
                     <input type="hidden" name="supplier_id" value="{{ $supplier->id }}">
@@ -355,12 +355,6 @@
                                 <div class="col-md-6">
                                     <label class="form-label fw-semibold">Company Name</label>
                                     <input type="text" name="company" class="form-control" placeholder="Company Name" value="{{ $supplier->company }}">
-                                </div>
-
-                                <div class="col-md-12">
-                                    <label class="form-label fw-semibold">Parents</label>
-                                    <input type="text" name="parent" class="form-control" placeholder="Use commas to separate multiple Parents (e.g., TV-BOX, CAMERA)" value="{{ $supplier->parent }}">
-                                    <small class="text-muted">Separate multiple parents with commas</small>
                                 </div>
 
                                 <div class="col-md-6">
@@ -468,7 +462,7 @@
 
     <!-- View Supplier Modal -->
     <div class="modal fade" id="viewSupplierModal{{ $supplier->id }}" tabindex="-1" aria-labelledby="viewSupplierModal{{ $supplier->id }}Label" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered shadow-none">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable shadow-none">
             <div class="modal-content border-0 shadow-lg">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title fw-bold d-flex align-items-center m-0" id="viewSupplierModal{{ $supplier->id }}Label">

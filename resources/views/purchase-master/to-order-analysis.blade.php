@@ -8,6 +8,85 @@
     <style>
         /* Column show/hide menu */
         .toa-columns-wrap { position: relative; }
+
+        /* Executive Select2 — keep it the same height as other form-select-sm controls */
+        #bulk-actions-bar .select2-container .select2-selection--single {
+            height: calc(1.5em + 0.5rem + 2px);
+            padding: 1px 6px;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+        }
+        #bulk-actions-bar .select2-container .select2-selection--single .select2-selection__rendered {
+            line-height: 1.5;
+            padding-left: 0;
+            padding-right: 18px;
+            color: #495057;
+        }
+        #bulk-actions-bar .select2-container .select2-selection--single .select2-selection__placeholder {
+            color: #6c757d;
+        }
+        #bulk-actions-bar .select2-container .select2-selection--single .select2-selection__arrow {
+            height: 100%;
+            top: 0;
+        }
+        #bulk-actions-bar .select2-container .select2-selection--single .select2-selection__clear {
+            margin-right: 6px;
+        }
+
+        /* Search input directly above the table header */
+        .toa-table-search-wrap {
+            padding: 10px 12px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-bottom: 0;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+        }
+        .toa-table-search-group {
+            width: 100%;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            background: #fff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+            overflow: hidden;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .toa-table-search-group:focus-within {
+            border-color: #4db6ac;
+            box-shadow: 0 0 0 3px rgba(77, 182, 172, 0.18);
+        }
+        .toa-table-search-group .toa-table-search-icon {
+            background: transparent;
+            border: 0;
+            color: #94a3b8;
+            padding-left: 14px;
+            padding-right: 8px;
+        }
+        .toa-table-search-group .toa-table-search {
+            border: 0;
+            background: transparent;
+            box-shadow: none !important;
+            height: 42px;
+            font-size: 0.95rem;
+            color: #1e293b;
+            padding-left: 4px;
+        }
+        .toa-table-search-group .toa-table-search::placeholder { color: #94a3b8; }
+        .toa-table-search-group .toa-table-search:focus { outline: none; border: 0; }
+        .toa-table-search-group .toa-table-search-clear {
+            background: transparent;
+            border: 0;
+            color: #cbd5e1;
+            padding: 0 14px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        .toa-table-search-group .toa-table-search-clear:hover { color: #64748b; }
+        .toa-table-search-group.has-value .toa-table-search-clear { display: inline-flex; }
         .toa-columns-menu {
             position: absolute; z-index: 4000; top: 100%; left: 0; margin-top: 4px;
             background: #fff; border: 1px solid #cbd5e1; border-radius: 8px;
@@ -413,10 +492,6 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div class="filter-item">
-                            <label for="search-input" class="form-label fw-semibold d-block">🔍 Search All</label>
-                            <input type="text" id="search-input" class="form-control" placeholder="Search..." style="width: 160px;">
-                        </div>
                         <div class="filter-item toa-columns-wrap">
                             <label class="form-label fw-semibold d-block">Columns</label>
                             <button type="button" class="btn btn-outline-secondary" id="toa-columns-btn">
@@ -424,17 +499,36 @@
                             </button>
                             <div id="toa-columns-menu" class="toa-columns-menu" style="display:none;"></div>
                         </div>
-                        <div class="filter-item" id="bulk-supplier-bar">
-                            <label class="form-label fw-semibold d-block">🏢 Bulk supplier</label>
+                        <div class="filter-item" id="bulk-actions-bar">
+                            <label class="form-label fw-semibold d-block">🛠️ Bulk Actions</label>
                             <div class="d-flex align-items-center gap-2 flex-wrap">
-                                <select id="bulk-supplier-select" class="form-select form-select-sm" style="width: 180px;">
-                                    <option value="">-- Select supplier --</option>
+                                <select id="bulk-supplier-select" class="form-select form-select-sm" style="width: 170px;">
+                                    <option value="">-- Supplier --</option>
                                     @foreach($allSuppliers ?? [] as $s)
                                         <option value="{{ $s }}">{{ $s }}</option>
                                     @endforeach
                                 </select>
-                                <button type="button" id="bulk-update-supplier-btn" class="btn btn-sm btn-primary">
-                                    <i class="fas fa-edit me-1"></i> Update selected
+                                <select id="bulk-executive-select" class="form-select form-select-sm toa-executive-select" style="width: 160px;">
+                                    <option></option>
+                                    <option value="__unassigned__">— Unassigned —</option>
+                                    <option value="Atin">Atin</option>
+                                    <option value="Jack">Jack</option>
+                                    <option value="Nitish">Nitish</option>
+                                    <option value="Ajay">Ajay</option>
+                                    <option value="Candy">Candy</option>
+                                    <option value="Sruti">Sruti</option>
+                                </select>
+                                <select id="bulk-stage-select" class="form-select form-select-sm" style="width: 160px;">
+                                    <option value="">— Stage —</option>
+                                    <option value="appr_req">Appr. Req</option>
+                                    <option value="mip">MIP</option>
+                                    <option value="r2s">R2S</option>
+                                    <option value="transit">Transit</option>
+                                    <option value="all_good">😊 All Good</option>
+                                    <option value="to_order_analysis">2 Order</option>
+                                </select>
+                                <button type="button" id="bulk-apply-all-btn" class="btn btn-sm btn-primary">
+                                    <i class="fas fa-check-double me-1"></i> Apply to selected
                                 </button>
                                 <div class="btn-group">
                                     <button type="button" id="import-supplier-btn" class="btn btn-sm btn-success" title="Import SKU → Supplier from Excel/CSV">
@@ -452,42 +546,10 @@
                                     </ul>
                                 </div>
                                 <input type="file" id="import-supplier-file" accept=".xlsx,.xls,.csv" class="d-none">
-                                <span class="text-muted small" id="bulk-selected-count"></span>
-                            </div>
-                        </div>
-                        <div class="filter-item" id="bulk-executive-bar">
-                            <label class="form-label fw-semibold d-block">👤 Bulk Executive</label>
-                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                <select id="bulk-executive-select" class="form-select form-select-sm" style="width: 172px;">
-                                    <option value="">— Choose executive —</option>
-                                    <option value="">— Unassigned —</option>
-                                    <option value="Atin">Atin</option>
-                                    <option value="Jack">Jack</option>
-                                    <option value="Nitish">Nitish</option>
-                                    <option value="Ajay">Ajay</option>
-                                    <option value="Candy">Candy</option>
-                                    <option value="Sruti">Sruti</option>
-                                </select>
-                                <button type="button" id="bulk-update-executive-btn" class="btn btn-sm" style="background:#4db6ac;color:#fff;border:none;">
-                                    <i class="fas fa-user-check me-1"></i> Apply to selected
-                                </button>
-                            </div>
-                        </div>
-                        <div class="filter-item" id="bulk-stage-bar">
-                            <label class="form-label fw-semibold d-block">🎯 Bulk stage</label>
-                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                <select id="bulk-stage-select" class="form-select form-select-sm" style="width: 172px;">
-                                    <option value="">— Choose stage —</option>
-                                    <option value="appr_req">Appr. Req</option>
-                                    <option value="mip">MIP</option>
-                                    <option value="r2s">R2S</option>
-                                    <option value="transit">Transit</option>
-                                    <option value="all_good">😊 All Good</option>
-                                    <option value="to_order_analysis">2 Order</option>
-                                </select>
-                                <button type="button" id="bulk-update-stage-btn" class="btn btn-sm btn-primary">
-                                    <i class="fas fa-layer-group me-1"></i> Apply to selected
-                                </button>
+                                <button type="button" id="bulk-update-supplier-btn" class="d-none"></button>
+                                <button type="button" id="bulk-update-executive-btn" class="d-none"></button>
+                                <button type="button" id="bulk-update-stage-btn" class="d-none"></button>
+                                <span class="text-muted small ms-2" id="bulk-selected-count"></span>
                             </div>
                         </div>
 
@@ -511,6 +573,17 @@
                             </div>
                             <button class="btn btn-sm btn-danger d-none align-self-end" id="delete-selected-btn">
                                 <i class="fas fa-trash-alt me-1"></i> Delete
+                            </button>
+                        </div>
+                    </div>
+                    <div class="toa-table-search-wrap mb-2">
+                        <div class="input-group toa-table-search-group">
+                            <span class="input-group-text toa-table-search-icon">
+                                <i class="fas fa-search"></i>
+                            </span>
+                            <input type="text" id="search-input" class="form-control toa-table-search" placeholder="Search SKU, parent, supplier, category...">
+                            <button type="button" class="btn toa-table-search-clear" id="search-input-clear" title="Clear search" tabindex="-1">
+                                <i class="fas fa-times"></i>
                             </button>
                         </div>
                     </div>
@@ -914,6 +987,20 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
+        // Searchable executive dropdown (placeholder only on initial load)
+        $(function () {
+            const $execSel = $('#bulk-executive-select');
+            if ($execSel.length && !$execSel.hasClass('select2-hidden-accessible')) {
+                $execSel.select2({
+                    theme: 'bootstrap-5',
+                    width: '160px',
+                    placeholder: '— Executive —',
+                    allowClear: true,
+                    minimumResultsForSearch: 0
+                });
+            }
+        });
+
         // Add Supplier modal (duplicated from supplier list page) — Select2 + AJAX save
         $(function () {
             const $modal = $('#addSupplierModal');
@@ -1750,6 +1837,8 @@
                     {
                         title: "Supplier",
                         field: "Supplier",
+                        width: 160,
+                        minWidth: 130,
                         formatter: function(cell){
                             let value = cell.getValue() || "";
                             const rowData = cell.getRow().getData();
@@ -1764,7 +1853,7 @@
                             let categoryAttr = escapeHtmlAttr(rowData.Category || "");
                             return `
                                 <div class="d-flex align-items-center justify-content-center gap-1">
-                                    <select class="form-select form-select-sm editable-select" data-sku="${sku}" data-parent="${parentAttr}" data-column="Supplier" style="width: 140px; max-width: 100%;">
+                                    <select class="form-select form-select-sm editable-select" data-sku="${sku}" data-parent="${parentAttr}" data-column="Supplier" style="width: 110px; max-width: 100%;">
                                         <option value=""${selectSelected}>-- Select --</option>
                                         ${options}
                                     </select>
@@ -2063,26 +2152,6 @@
                         }
                     },
                     {
-                        title: "Compare",
-                        field: "Rfq Report Link",
-                        headerTooltip: "Request for quote comparison report (linked from RFQ Form list)",
-                        formatter: rfqReportLinkFormatter,
-                        editor: "input",         
-                        hozAlign: "center",
-                        cellEdited: function(cell){
-                            saveLinkUpdate(cell, cell.getValue());
-                        }
-                    },
-                    {
-                        title: "Sheet",
-                        field: "sheet_link",
-                        formatter: "link",
-                        formatterParams: {
-                            target: "_blank"
-                        },
-                        visible: false
-                    },
-                    {
                         title: "Adv date",
                         field: "Adv date",
                         visible: false,
@@ -2285,6 +2354,38 @@
             importSupplierFromFile();
             bulkUpdateStageWithSelect();
             bulkUpdateExecutiveWithSelect();
+            bulkApplyAllWithSelect();
+
+            function bulkApplyAllWithSelect() {
+                const applyBtn = document.getElementById('bulk-apply-all-btn');
+                if (!applyBtn) return;
+
+                applyBtn.addEventListener('click', function() {
+                    const supplierVal = (document.getElementById('bulk-supplier-select') || {}).value || '';
+                    const executiveSel = document.getElementById('bulk-executive-select');
+                    const executiveVal = executiveSel ? executiveSel.value : '';
+                    const executiveChosen = executiveSel ? executiveSel.selectedIndex > 0 : false;
+                    const stageVal = (document.getElementById('bulk-stage-select') || {}).value || '';
+
+                    if (!supplierVal && !executiveChosen && !stageVal) {
+                        alert('Please choose a Supplier, Executive, or Stage to apply.');
+                        return;
+                    }
+
+                    if (supplierVal) {
+                        const b = document.getElementById('bulk-update-supplier-btn');
+                        if (b) b.click();
+                    }
+                    if (executiveChosen) {
+                        const b = document.getElementById('bulk-update-executive-btn');
+                        if (b) b.click();
+                    }
+                    if (stageVal) {
+                        const b = document.getElementById('bulk-update-stage-btn');
+                        if (b) b.click();
+                    }
+                });
+            }
 
             function deleteWithSelect() {
                 const deleteBtn = document.getElementById('delete-selected-btn');
@@ -2593,7 +2694,8 @@
                         alert('Please select an executive.');
                         return;
                     }
-                    const execName = execSel.value;
+                    let execName = execSel.value;
+                    if (execName === '__unassigned__') execName = '';
 
                     const origHtml = btn.innerHTML;
                     btn.disabled = true;
@@ -3129,6 +3231,26 @@
             document.getElementById("supplier-filter").addEventListener("change", () => applyFilters());
             document.getElementById("category-filter").addEventListener("change", () => applyFilters());
             document.getElementById("search-input").addEventListener("input", debounce(() => applyFilters(), 300));
+
+            (function setupSearchClear() {
+                const input = document.getElementById("search-input");
+                const clearBtn = document.getElementById("search-input-clear");
+                if (!input || !clearBtn) return;
+                const group = input.closest('.toa-table-search-group');
+                const sync = () => {
+                    if (!group) return;
+                    if ((input.value || '').length > 0) group.classList.add('has-value');
+                    else group.classList.remove('has-value');
+                };
+                input.addEventListener('input', sync);
+                clearBtn.addEventListener('click', () => {
+                    input.value = '';
+                    sync();
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.focus();
+                });
+                sync();
+            })();
 
             document.getElementById("stage-filter").value = "";
             document.getElementById("moq-filter").value = "";

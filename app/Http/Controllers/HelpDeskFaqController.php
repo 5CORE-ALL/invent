@@ -17,23 +17,20 @@ class HelpDeskFaqController extends Controller
         return strtolower(trim((string) ($request->user()->email ?? '')));
     }
 
-    /** Managers (president / software5) can manage gurus and delete FAQs. */
+    /**
+     * Permission checks are intentionally disabled: every authenticated user
+     * has full access to the Help Desk FAQ section (view, add, edit, delete,
+     * archive/restore, manage Gurus, bulk import/update). The helpers below
+     * always return true so existing call sites and view flags keep working.
+     */
     private function isGuruManager(Request $request): bool
     {
-        return in_array($this->userEmail($request), self::GURU_MANAGERS, true);
+        return true;
     }
 
-    /** Gurus + managers can add/edit FAQ data (no delete power for gurus). */
     private function canEditFaq(Request $request): bool
     {
-        if ($this->isGuruManager($request)) {
-            return true;
-        }
-        if (! \Illuminate\Support\Facades\Schema::hasTable('help_desk_gurus')) {
-            return false;
-        }
-        $email = $this->userEmail($request);
-        return $email !== '' && HelpDeskGuru::whereRaw('LOWER(email) = ?', [$email])->exists();
+        return true;
     }
 
     private function appendHistory(?array $history, string $email, string $action): array

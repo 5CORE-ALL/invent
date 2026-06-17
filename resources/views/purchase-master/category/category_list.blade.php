@@ -150,8 +150,9 @@
                             <thead class="table-light">
                                 <tr>
                                     <th class="text-center align-middle" style="width: 5%">#</th>
-                                    <th class="text-center align-middle" style="width: 30%">Category Name</th>
-                                    <th class="text-center align-middle" style="width: 30%">Suppliers</th>
+                                    <th class="text-center align-middle" style="width: 22%">Category Name</th>
+                                    <th class="text-center align-middle" style="width: 18%">Suppliers</th>
+                                    <th class="text-center align-middle" style="width: 15%">Product</th>
                                     <th class="text-center align-middle" style="width: 15%">Status</th>
                                     <th class="text-center align-middle" style="width: 20%">Action</th>
                                 </tr>
@@ -183,6 +184,23 @@
                                                     <span class="ms-1 text-muted medium fw-bold">Suppliers</span>
                                                 </div>
                                             </div>
+                                        </td>
+                                        <td class="text-center">
+                                            @php $parents = $category->parents_list ?? []; @endphp
+                                            @if(count($parents) > 0)
+                                                <div class="dropdown d-inline-block">
+                                                    <button class="btn btn-sm btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                                        P ({{ count($parents) }})
+                                                    </button>
+                                                    <ul class="dropdown-menu" style="max-height: 240px; overflow-y: auto;">
+                                                        @foreach ($parents as $parent)
+                                                            <li><span class="dropdown-item">{{ $parent }}</span></li>
+                                                        @endforeach
+                                                    </ul>
+                                                </div>
+                                            @else
+                                                <span class="text-muted">-</span>
+                                            @endif
                                         </td>
                                         <td class="text-center">
                                             <span
@@ -270,7 +288,7 @@
                                     </div>
                                 @empty
                                     <tr>
-                                        <td colspan="4" class="text-center">No categories found</td>
+                                        <td colspan="6" class="text-center">No categories found</td>
                                     </tr>
                                 @endforelse
                             </tbody>
