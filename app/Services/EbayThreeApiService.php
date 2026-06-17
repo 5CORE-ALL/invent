@@ -1182,7 +1182,7 @@ class EbayThreeApiService
     }
 
     /**
-     * Push bullet points to eBay listing Description as HTML list.
+     * Push bullet points to eBay Item Specifics (`Bullet Point 1`-`Bullet Point 5`) without changing Description HTML.
      *
      * @return array{success: bool, message: string}
      */
@@ -1204,9 +1204,12 @@ class EbayThreeApiService
             return ['success' => false, 'message' => $e->getMessage()];
         }
 
-        $html = EbayTradingReviseItem::bulletsToDescriptionHtml($bulletPoints);
+        $getItemResponse = $this->getItem((string) $itemId);
+        if (! is_array($getItemResponse)) {
+            return ['success' => false, 'message' => 'Could not fetch current eBay 3 item before bullet update.'];
+        }
 
-        return EbayTradingReviseItem::reviseItemDescription(
+        return EbayTradingReviseItem::reviseBulletPointsViaItemSpecifics(
             $this->endpoint,
             $this->compatLevel,
             $this->devId,
@@ -1214,8 +1217,8 @@ class EbayThreeApiService
             $this->certId,
             $this->siteId,
             $token,
-            (string) $itemId,
-            $html
+            $getItemResponse,
+            $bulletPoints
         );
     }
 

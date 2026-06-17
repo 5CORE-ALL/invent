@@ -80,7 +80,7 @@ use App\Http\Controllers\EbayDataUpdateController;
 use App\Http\Controllers\FacebookAdsController;
 use App\Http\Controllers\FBAAnalysticsController;
 use App\Http\Controllers\FbaDataController;
-use App\Http\Controllers\MapIssuesController;
+use App\Http\Controllers\GoogleMapsDataExtractorController;
 use App\Http\Controllers\InventoryManagement\AutoStockBalanceController;
 use App\Http\Controllers\InventoryManagement\IncomingController;
 use App\Http\Controllers\InventoryManagement\IssueController as SparePartsIssueController;
@@ -440,6 +440,21 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             return response()->json(['error' => $e->getMessage()], 403);
         }
     });
+
+    Route::prefix('google-maps-data-extractor')->name('google-maps-data-extractor.')->group(function () {
+        Route::get('/', [GoogleMapsDataExtractorController::class, 'index'])->name('index');
+        Route::post('/search', [GoogleMapsDataExtractorController::class, 'search'])->name('search');
+        Route::post('/search/start', [GoogleMapsDataExtractorController::class, 'start'])->name('start');
+        Route::post('/search/process', [GoogleMapsDataExtractorController::class, 'process'])->name('process');
+        Route::get('/progress/{token}', [GoogleMapsDataExtractorController::class, 'progress'])->name('progress');
+        Route::post('/control/{token}', [GoogleMapsDataExtractorController::class, 'control'])->name('control');
+        Route::delete('/{search}', [GoogleMapsDataExtractorController::class, 'destroy'])->name('destroy');
+        Route::get('/{search}', [GoogleMapsDataExtractorController::class, 'show'])->name('show');
+        Route::post('/{search}/enrich', [GoogleMapsDataExtractorController::class, 'enrich'])->name('enrich');
+        Route::post('/{search}/enrich-batch', [GoogleMapsDataExtractorController::class, 'enrichBatch'])->name('enrich-batch');
+        Route::get('/{search}/export', [GoogleMapsDataExtractorController::class, 'export'])->name('export');
+    });
+
     Route::get('/amazon-summary-data', [OverallAmazonController::class, 'getAmazonDataSummary']);
     Route::get('/ebay-data-view', [EbayController::class, 'getViewEbayData']);
     Route::get('/ebay2-data-view', [EbayTwoController::class, 'getViewEbayData']);
@@ -3291,6 +3306,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/bullet-point-master/update', [BulletPointMasterController::class, 'update'])->name('bullet.point.master.update');
     Route::post('/bullet-point-master/update-bulk', [BulletPointMasterController::class, 'updateBulk'])->name('bullet.point.master.update.bulk');
     Route::post('/bullet-point-master/generate', [BulletPointMasterController::class, 'generateBulletPoints'])->name('bullet.point.master.generate');
+    Route::get('/bullet-point-master/ai-prompt-rules', [BulletPointMasterController::class, 'aiPromptRules'])->name('bullet.point.master.ai.prompt.rules');
+    Route::post('/bullet-point-master/ai-prompt-rules', [BulletPointMasterController::class, 'saveAiPromptRules'])->name('bullet.point.master.ai.prompt.rules.save');
+    Route::post('/bullet-point-master/rewrite-bullet', [BulletPointMasterController::class, 'rewriteBulletPoint'])->name('bullet.point.master.rewrite.bullet');
+    Route::post('/bullet-point-master/shopify-pull-one', [BulletPointMasterController::class, 'pullShopifyBulletsToMaster'])->name('bullet.point.master.shopify.pull.one');
+    Route::post('/bullet-point-master/shopify-pull/start', [BulletPointMasterController::class, 'startShopifyPullJob'])->name('bullet.point.master.shopify.pull.start');
+    Route::get('/bullet-point-master/shopify-pull/status', [BulletPointMasterController::class, 'shopifyPullJobStatus'])->name('bullet.point.master.shopify.pull.status');
+    Route::post('/bullet-point-master/shopify-pull/pause', [BulletPointMasterController::class, 'pauseShopifyPullJob'])->name('bullet.point.master.shopify.pull.pause');
+    Route::post('/bullet-point-master/shopify-pull/resume', [BulletPointMasterController::class, 'resumeShopifyPullJob'])->name('bullet.point.master.shopify.pull.resume');
+    Route::post('/bullet-point-master/shopify-pull/stop', [BulletPointMasterController::class, 'stopShopifyPullJob'])->name('bullet.point.master.shopify.pull.stop');
     Route::get('/title-master-data', [ProductMasterController::class, 'getTitleMasterData'])->name('title.master.data');
     Route::get('/title-master/sku-options', [ProductMasterController::class, 'getTitleMasterSkuOptions'])->name('title.master.sku.options');
     Route::post('/title-master/save', [ProductMasterController::class, 'saveTitleData'])->name('title.master.save');

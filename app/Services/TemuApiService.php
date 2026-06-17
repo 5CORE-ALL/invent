@@ -15,6 +15,7 @@ use App\Models\ProductStockMapping;
 use App\Models\TemuPricing;
 use App\Models\TemuMetric;
 use App\Services\Support\DescriptionWithImagesFormatter;
+use App\Services\Support\ShopifyBulletPointsFormatter;
 use Carbon\Carbon;
 
 class TemuApiService
@@ -37,7 +38,7 @@ class TemuApiService
      * @param array $requestBody API-specific params only (e.g. type, outGoodsSn, goodsName)
      * @return array Full request with access_token, app_key, timestamp, data_type, sign, and requestBody keys
      */
-    private function generateSignValue($requestBody)
+    protected function generateSignValue($requestBody)
     {
         $appKey = trim((string) (config('services.temu.app_key') ?? ''));
         $appSecret = trim((string) (config('services.temu.secret_key') ?? ''));
@@ -554,7 +555,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
      * instead of paginating the goods/sku list API again. List-API pagination is the source of
      * the intermittent "goodsId not found" failures on title-master pushes.
      */
-    private function persistTemuMapping(string $sku, ?string $goodsId, ?string $skuId): void
+    protected function persistTemuMapping(string $sku, ?string $goodsId, ?string $skuId): void
     {
         $sku = trim($sku);
         if ($sku === '') {
@@ -954,7 +955,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
      *
      * @return array{sku: string, goods_id: ?string}
      */
-    private function resolveTemuGoodsAndSku(string $identifier): array
+    protected function resolveTemuGoodsAndSku(string $identifier): array
     {
         $id = trim($identifier);
         if ($id === '') {
@@ -992,7 +993,10 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return ['success' => false, 'message' => 'SKU (or goods_id) is required.'];
         }
 
-        $lines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) $bulletPoints))));
+        $lines = array_values(array_filter(array_map(
+            fn ($line) => ShopifyBulletPointsFormatter::cleanBulletLine((string) $line),
+            preg_split('/\r\n|\r|\n/', (string) $bulletPoints) ?: []
+        )));
         if ($lines === []) {
             return ['success' => false, 'message' => 'SKU (or goods_id) and bullet points are required.'];
         }
@@ -1003,11 +1007,6 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
         $includeSkuList = (bool) config('services.temu.bullet_update_include_sku_list', false);
 
-        $resolved = $this->resolveTemuGoodsAndSku($identifier);
-        $sku = trim((string) ($resolved['sku'] ?? $identifier));
-        $goodsId = (string) (($resolved['goods_id'] ?? '') ?: ($sku !== '' ? (string) ($this->getGoodsIdBySku($sku) ?? '') : ''));
-        $preservedGoodsDesc = $goodsId !== '' ? $this->fetchCurrentTemuGoodsDesc($goodsId, $sku) : '';
-
         $res = $this->pushTemuGoodsBasicField(
             $identifier,
             $value,
@@ -1016,17 +1015,16 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             'SKU (or goods_id) and bullet points are required.',
             'Temu updateBulletPoints',
             $includeSkuList,
-            $preservedGoodsDesc
+            null,
+            false
         );
         if (! ($res['success'] ?? false)) {
             return $res;
         }
 
-        $saved = $this->saveTemuBulletAndDescToMetrics(
-            $sku,
-            is_array($value) ? implode("\n", $value) : (string) $value,
-            $preservedGoodsDesc
-        );
+        $resolved = $this->resolveTemuGoodsAndSku($identifier);
+        $sku = trim((string) ($resolved['sku'] ?? $identifier));
+        $saved = $this->saveGoodsSummaryToTemuMetrics($sku, is_array($value) ? implode("\n", $value) : (string) $value);
         if (! $saved) {
             $res['message'] = ($res['message'] ?? 'Temu bullet points updated.').' Metrics save failed.';
         }
@@ -1040,7 +1038,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
      * @param  string|array<int, string>  $text  Scalar string or list of lines (e.g. goodsSummary as array)
      * @return array{success: bool, message: string}
      */
-    private function pushTemuGoodsBasicField(
+    protected function pushTemuGoodsBasicField(
         string $identifier,
         string|array $text,
         string $basicFieldKey,
@@ -1049,6 +1047,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         string $logContext,
         bool $includeSkuList = true,
         ?string $preservedGoodsDesc = null,
+        bool $preserveGoodsDesc = true,
     ): array {
         if (trim($identifier) === '') {
             return ['success' => false, 'message' => $emptyIdentifierMessage];
@@ -1085,7 +1084,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
         // Preserve current goodsDesc when updating goodsSummary to avoid accidental description loss.
         $goodsDescField = (string) config('services.temu.goods_desc_field', 'goodsDesc');
-        if ($basicFieldKey !== $goodsDescField) {
+        if ($preserveGoodsDesc && $basicFieldKey !== $goodsDescField) {
             $currentDesc = $preservedGoodsDesc !== null
                 ? trim($preservedGoodsDesc)
                 : $this->fetchCurrentTemuGoodsDesc((string) $goodsId, $sku);
@@ -1157,7 +1156,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
     }
 
-    private function fetchCurrentTemuGoodsDesc(string $goodsId, string $sku = ''): string
+    protected function fetchCurrentTemuGoodsDesc(string $goodsId, string $sku = ''): string
     {
         // 1) Database first (requested): prefer persisted copy to avoid API gaps.
         try {
@@ -1268,7 +1267,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         return '';
     }
 
-    private function saveGoodsSummaryToTemuMetrics(string $sku, string $goodsSummary): bool
+    protected function saveGoodsSummaryToTemuMetrics(string $sku, string $goodsSummary): bool
     {
         try {
             if ($sku === '' || ! Schema::hasTable('temu_metrics') || ! Schema::hasColumn('temu_metrics', 'sku')) {

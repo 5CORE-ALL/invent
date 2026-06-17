@@ -300,6 +300,12 @@
                                 <i class="ri-shopping-bag-3-line me-2"></i>Shopify orders
                             </a>
                         </li>
+                        <li>
+                            <a href="{{ route('google-maps-data-extractor.index') }}"
+                                class="{{ request()->routeIs('google-maps-data-extractor.*') ? 'active' : '' }}">
+                                <i class="ri-map-pin-line me-2"></i>Data Extractor
+                            </a>
+                        </li>
                     </ul>
                 </div>
             </li>

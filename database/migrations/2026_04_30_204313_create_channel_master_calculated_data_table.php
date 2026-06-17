@@ -13,7 +13,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('channel_master_calculated_data', function (Blueprint $table) {
+        if (! Schema::hasTable('channel_master_calculated_data')) {
+            Schema::create('channel_master_calculated_data', function (Blueprint $table) {
             $table->id();
             $table->string('channel')->unique()->index();
             $table->string('sheet_link')->nullable();
@@ -123,7 +124,8 @@ return new class extends Migration
             // Indexes for performance
             $table->index(['type', 'l30_sales']); // For filtering by type and sorting
             $table->index('calculated_at'); // For checking latest calculation
-        });
+            });
+        }
     }
 
     /**

@@ -91,7 +91,7 @@ class BestBuyApiService
     }
 
     /**
-     * Mirakl Connect product update for Best Buy channel (bullet / long description).
+     * Mirakl Connect product update for Best Buy channel bullet points only.
      *
      * @return array{success: bool, message: string, status_code?: int|null}
      */
@@ -112,8 +112,7 @@ class BestBuyApiService
         $productPayload = [
             'id' => $sku,
             'attributes' => [
-                'longDescription' => $bulletPoints,
-                'productDescription' => $bulletPoints,
+                'bulletPoints' => $bulletPoints,
             ],
         ];
 

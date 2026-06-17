@@ -678,46 +678,59 @@ class ReverbApiService
             return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.'];
         }
 
-        $current = $this->fetchCurrentReverbDescription($token, $listingId, $trim);
+        $current = $this->fetchCurrentReverbDescriptionFromApi($token, $listingId);
         if (($current['html'] ?? '') === '' && ($current['plain'] ?? '') === '') {
-            $dbDesc = trim((string) (ReverbProduct::query()
-                ->where(function ($q) use ($trim, $listingId) {
-                    $q->where('sku', $trim)
-                        ->orWhere('sku', strtoupper($trim))
-                        ->orWhere('sku', strtolower($trim))
-                        ->orWhere('reverb_listing_id', $listingId);
-                })
-                ->value('description') ?? ''));
-            if ($dbDesc !== '') {
-                $current['plain'] = $dbDesc;
-                $current['html'] = '<div class="product-description">'.nl2br(htmlspecialchars($dbDesc, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>';
-            }
+            $current = $this->fetchCurrentReverbDescription($token, $listingId, $trim);
         }
 
-        // Use top-level fields (same shape as other Reverb updates), and only include description
-        // keys when we have non-empty values to avoid accidental clearing.
+        $currentHtml = (string) ($current['html'] ?? '');
+        if ($currentHtml === '' && ($current['plain'] ?? '') !== '') {
+            $currentHtml = '<div class="product-description">'.nl2br(htmlspecialchars((string) $current['plain'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>';
+        }
+
+        $updatedDescription = $this->replaceReverbHighlightedFeaturesBlock($currentHtml, $features);
+        $plainDescription = trim(html_entity_decode(strip_tags(str_replace(['<br>', '<br/>', '<br />'], "\n", $updatedDescription)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
+
         $payload = [
-            'features' => $features,
+            'description' => $updatedDescription,
+            'plain_text_description' => $plainDescription,
         ];
-        if (($current['html'] ?? '') !== '') {
-            $payload['description'] = $current['html'];
-        }
-        if (($current['plain'] ?? '') !== '') {
-            $payload['plain_text_description'] = $current['plain'];
-        }
+
+        Log::info('Reverb updateBulletPoints request', [
+            'identifier' => $identifier,
+            'listing_id' => $listingId,
+            'feature_count' => count($features),
+            'fields' => array_keys($payload),
+        ]);
 
         try {
             $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
 
             if ($response->successful()) {
-                $this->saveFeaturesToReverbProducts($trim, $listingId, $features);
+                $localSaved = $this->saveFeaturesToReverbProducts($trim, $listingId, $features);
+
+                Log::info('Reverb updateBulletPoints API response', [
+                    'identifier' => $identifier,
+                    'listing_id' => $listingId,
+                    'status' => $response->status(),
+                    'feature_count' => count($features),
+                    'local_features_saved' => $localSaved,
+                    'body_preview' => mb_substr($response->body(), 0, 800),
+                ]);
 
                 return [
                     'success' => true,
-                    'message' => 'Reverb listing features updated.',
+                    'message' => 'Reverb listing highlighted features updated.',
                     'listing_id' => $listingId,
                 ];
             }
+
+            Log::warning('Reverb updateBulletPoints API failed', [
+                'identifier' => $identifier,
+                'listing_id' => $listingId,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
 
             return [
                 'success' => false,
@@ -725,6 +738,12 @@ class ReverbApiService
                 'listing_id' => $listingId,
             ];
         } catch (\Throwable $e) {
+            Log::error('Reverb updateBulletPoints exception', [
+                'identifier' => $identifier,
+                'listing_id' => $listingId,
+                'error' => $e->getMessage(),
+            ]);
+
             return ['success' => false, 'message' => $e->getMessage(), 'listing_id' => $listingId];
         }
     }
@@ -746,14 +765,72 @@ class ReverbApiService
             if ($line === '') {
                 continue;
             }
-            $line = preg_replace('/^[-*•\d.\)\s]+/u', '', $line);
-            $line = trim($line);
             if ($line !== '') {
                 $features[] = $line;
             }
         }
 
         return $features;
+    }
+
+    /**
+     * Replace only the visible Reverb highlighted-features block in listing description HTML.
+     *
+     * @param  list<string>  $features
+     */
+    private function replaceReverbHighlightedFeaturesBlock(string $currentDescriptionHtml, array $features): string
+    {
+        $replacement = $this->formatReverbHighlightedFeaturesBlock($features);
+        if ($replacement === '') {
+            return $currentDescriptionHtml;
+        }
+
+        $body = trim($currentDescriptionHtml);
+        if ($body === '') {
+            return $replacement;
+        }
+
+        $patterns = [
+            '/<p\b[^>]*>\s*(?:<strong\b[^>]*>\s*)?(?:Highlighted\s+Features|About\s+Item):?\s*(?:<\/strong>)?\s*(?:<b>\s*<\/b>)?\s*<\/p>\s*(?:<p\b[^>]*>\s*<strong\b[^>]*>.*?<\/p>\s*){1,5}/is',
+            '/<h[1-6]\b[^>]*>\s*(?:Highlighted\s+Features|About\s+Item):?\s*<\/h[1-6]>\s*(?:<p\b[^>]*>.*?<\/p>\s*){1,5}/is',
+            '/<(?:ul|ol)\b[^>]*>\s*(?:<li\b[^>]*>.*?<\/li>\s*){1,5}<\/(?:ul|ol)>/is',
+        ];
+
+        foreach ($patterns as $pattern) {
+            $updated = preg_replace($pattern, $replacement, $body, 1, $count);
+            if ($count > 0 && is_string($updated)) {
+                return trim($updated);
+            }
+        }
+
+        return $replacement."\n".$body;
+    }
+
+    /**
+     * @param  list<string>  $features
+     */
+    private function formatReverbHighlightedFeaturesBlock(array $features): string
+    {
+        $parts = ['<p><strong>Highlighted Features</strong></p>'];
+        foreach (array_slice($features, 0, 5) as $feature) {
+            $feature = trim((string) $feature);
+            if ($feature === '') {
+                continue;
+            }
+
+            $dashPos = mb_strpos($feature, ' - ');
+            if ($dashPos !== false && $dashPos > 0 && $dashPos < mb_strlen($feature) - 3) {
+                $label = trim(mb_substr($feature, 0, $dashPos));
+                $rest = trim(mb_substr($feature, $dashPos + 3));
+                $parts[] = '<p><strong>'.htmlspecialchars($label.' -', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</strong> '.htmlspecialchars($rest, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'<br></p>';
+
+                continue;
+            }
+
+            $parts[] = '<p>'.htmlspecialchars($feature, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'<br></p>';
+        }
+
+        return count($parts) > 1 ? implode("\n", $parts) : '';
     }
 
     /**
@@ -1635,6 +1712,56 @@ class ReverbApiService
             return ['plain' => $plain, 'html' => $html];
         } catch (\Throwable $e) {
             Log::warning('Reverb fetch current description failed', ['listing_id' => $listingId, 'error' => $e->getMessage()]);
+
+            return ['plain' => '', 'html' => ''];
+        }
+    }
+
+    /**
+     * @return array{plain: string, html: string}
+     */
+    private function fetchCurrentReverbDescriptionFromApi(string $token, string $listingId): array
+    {
+        try {
+            $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
+            $listingSegment = rawurlencode(trim((string) $listingId));
+            $response = Http::withoutVerifying()
+                ->timeout(30)
+                ->withHeaders([
+                    'Authorization' => 'Bearer '.$token,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                ])
+                ->get($apiBase.'/listings/'.$listingSegment);
+
+            if (! $response->successful()) {
+                Log::warning('Reverb API-first description fetch failed', [
+                    'listing_id' => $listingId,
+                    'status' => $response->status(),
+                    'body' => mb_substr($response->body(), 0, 800),
+                ]);
+
+                return ['plain' => '', 'html' => ''];
+            }
+
+            $json = $response->json();
+            $plain = trim((string) ($json['listing']['plain_text_description']
+                ?? $json['plain_text_description']
+                ?? $json['listing']['plain_text']
+                ?? $json['plain_text']
+                ?? ''));
+            $html = trim((string) ($json['listing']['description']
+                ?? $json['description']
+                ?? $json['listing']['body']
+                ?? $json['body']
+                ?? ''));
+
+            return ['plain' => $plain, 'html' => $html];
+        } catch (\Throwable $e) {
+            Log::warning('Reverb API-first description fetch exception', [
+                'listing_id' => $listingId,
+                'error' => $e->getMessage(),
+            ]);
 
             return ['plain' => '', 'html' => ''];
         }
