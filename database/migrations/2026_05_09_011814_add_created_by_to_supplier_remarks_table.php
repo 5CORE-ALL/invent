@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('supplier_remarks', function (Blueprint $table) {
-            $table->string('created_by')->nullable()->after('remark');
-        });
+        if (Schema::hasTable('supplier_remarks') && ! Schema::hasColumn('supplier_remarks', 'created_by')) {
+            Schema::table('supplier_remarks', function (Blueprint $table) {
+                $table->string('created_by')->nullable()->after('remark');
+            });
+        }
     }
 
     /**
@@ -21,8 +23,10 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('supplier_remarks', function (Blueprint $table) {
-            $table->dropColumn('created_by');
-        });
+        if (Schema::hasTable('supplier_remarks') && Schema::hasColumn('supplier_remarks', 'created_by')) {
+            Schema::table('supplier_remarks', function (Blueprint $table) {
+                $table->dropColumn('created_by');
+            });
+        }
     }
 };

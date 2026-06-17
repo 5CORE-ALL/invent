@@ -16,23 +16,25 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('facebook_campaign_metric_snapshots', function (Blueprint $table) {
-            $table->id();
-            $table->string('campaign_id', 64)->index();
-            $table->date('snapshot_date')->index();
-            // Same numeric metrics the badges sum.
-            $table->decimal('impr',  16, 2)->default(0);
-            $table->decimal('clk',   16, 2)->default(0);
-            $table->decimal('spend', 16, 2)->default(0);
-            $table->decimal('sales', 16, 2)->default(0);
-            $table->decimal('sold',  16, 2)->default(0);
-            $table->decimal('sbgt',  10, 2)->default(0);
-            $table->timestamps();
+        if (! Schema::hasTable('facebook_campaign_metric_snapshots')) {
+            Schema::create('facebook_campaign_metric_snapshots', function (Blueprint $table) {
+                $table->id();
+                $table->string('campaign_id', 64)->index();
+                $table->date('snapshot_date')->index();
+                // Same numeric metrics the badges sum.
+                $table->decimal('impr',  16, 2)->default(0);
+                $table->decimal('clk',   16, 2)->default(0);
+                $table->decimal('spend', 16, 2)->default(0);
+                $table->decimal('sales', 16, 2)->default(0);
+                $table->decimal('sold',  16, 2)->default(0);
+                $table->decimal('sbgt',  10, 2)->default(0);
+                $table->timestamps();
 
-            // One row per (campaign, day). Re-saves overwrite via
-            // updateOrInsert on this key.
-            $table->unique(['campaign_id', 'snapshot_date'], 'campaign_day_uq');
-        });
+                // One row per (campaign, day). Re-saves overwrite via
+                // updateOrInsert on this key.
+                $table->unique(['campaign_id', 'snapshot_date'], 'campaign_day_uq');
+            });
+        }
     }
 
     public function down(): void

@@ -22,6 +22,7 @@ use App\Services\MacysApiService;
 use App\Services\ReverbApiService;
 use App\Services\SheinApiService;
 use App\Services\ShopifyApiService;
+use App\Services\Support\ShopifyBulletPointsFormatter;
 use App\Services\TemuApiService;
 use App\Services\TitleMasterDataService;
 use App\Services\WalmartService;
@@ -6042,11 +6043,11 @@ GRAPHQL;
         try {
             $validated = $request->validate([
                 'sku' => 'required|string',
-                'bullet1' => 'nullable|string|max:200',
-                'bullet2' => 'nullable|string|max:200',
-                'bullet3' => 'nullable|string|max:200',
-                'bullet4' => 'nullable|string|max:200',
-                'bullet5' => 'nullable|string|max:200',
+                'bullet1' => 'nullable|string',
+                'bullet2' => 'nullable|string',
+                'bullet3' => 'nullable|string',
+                'bullet4' => 'nullable|string',
+                'bullet5' => 'nullable|string',
             ]);
 
             $product = ProductMaster::where('sku', $validated['sku'])->first();
@@ -6058,11 +6059,11 @@ GRAPHQL;
                 ], 404);
             }
 
-            $product->bullet1 = $validated['bullet1'];
-            $product->bullet2 = $validated['bullet2'];
-            $product->bullet3 = $validated['bullet3'];
-            $product->bullet4 = $validated['bullet4'];
-            $product->bullet5 = $validated['bullet5'];
+            $product->bullet1 = ShopifyBulletPointsFormatter::cleanBulletLine((string) ($validated['bullet1'] ?? ''));
+            $product->bullet2 = ShopifyBulletPointsFormatter::cleanBulletLine((string) ($validated['bullet2'] ?? ''));
+            $product->bullet3 = ShopifyBulletPointsFormatter::cleanBulletLine((string) ($validated['bullet3'] ?? ''));
+            $product->bullet4 = ShopifyBulletPointsFormatter::cleanBulletLine((string) ($validated['bullet4'] ?? ''));
+            $product->bullet5 = ShopifyBulletPointsFormatter::cleanBulletLine((string) ($validated['bullet5'] ?? ''));
             $product->save();
 
             return response()->json([

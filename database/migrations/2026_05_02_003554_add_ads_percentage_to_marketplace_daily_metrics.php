@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('marketplace_daily_metrics', function (Blueprint $table) {
-            $table->decimal('ads_percentage', 8, 2)->nullable()->after('tacos_percentage');
-        });
+        if (Schema::hasTable('marketplace_daily_metrics') && ! Schema::hasColumn('marketplace_daily_metrics', 'ads_percentage')) {
+            Schema::table('marketplace_daily_metrics', function (Blueprint $table) {
+                $table->decimal('ads_percentage', 8, 2)->nullable()->after('tacos_percentage');
+            });
+        }
     }
 
     /**
@@ -21,8 +23,10 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('marketplace_daily_metrics', function (Blueprint $table) {
-            $table->dropColumn('ads_percentage');
-        });
+        if (Schema::hasTable('marketplace_daily_metrics') && Schema::hasColumn('marketplace_daily_metrics', 'ads_percentage')) {
+            Schema::table('marketplace_daily_metrics', function (Blueprint $table) {
+                $table->dropColumn('ads_percentage');
+            });
+        }
     }
 };

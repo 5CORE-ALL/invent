@@ -321,7 +321,7 @@ class ShopifyPLSApiService
     }
 
     /**
-     * Bullet Points Master: replace `body_html` with unified layout (same as Main store).
+     * Bullet Points Master: update only the bullet/About Item block in the current PLS `body_html`.
      *
      * @return array{success: bool, message: string}
      */
@@ -404,50 +404,51 @@ class ShopifyPLSApiService
                 return ['success' => false, 'message' => 'PLS product not found for SKU, variant_id, or product_id.'];
             }
 
-            usleep(500000);
+            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+            $productRes = $this->retryOnRateLimit(function () use ($token, $productUrl) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->connectTimeout(25)->get($productUrl);
+            });
 
-            $title = $this->getProductTitle($domain, $token, $productId);
-            if ($title === '') {
-                return ['success' => false, 'message' => 'Could not load product title (Shopify PLS rate limit or API error).'];
+            if (! $productRes->successful()) {
+                $msg = $productRes->status() === 429
+                    ? 'PLS product fetch rate limited after retries.'
+                    : 'Could not load PLS product before bullet update: '.$productRes->body();
+
+                return ['success' => false, 'message' => $msg];
             }
 
-            $descriptionPlain = $this->resolveProductMasterLongDescription($trim);
-            $featureGrid = $this->loadShopifyFeatureGridForSku($trim);
-            $formattedHtml = DescriptionWithImagesFormatter::buildHtmlWithImages(
-                $descriptionPlain,
-                $trim,
-                $trim,
-                $title,
-                12,
-                [],
-                $bulletPoints,
-                $featureGrid,
-                true
-            )['html'];
+            $currentBody = (string) ($productRes->json('product.body_html') ?? '');
+            $formattedHtml = ShopifyBulletPointsFormatter::replaceAboutItemBlock($currentBody, $bulletPoints);
 
-            Log::info('Shopify PLS updateBulletPoints unified layout', [
+            $legacyBracketPattern = '/<p\b[^>]*>\s*<strong\b[^>]*>\s*【[^<]+】\s*<\/strong>/is';
+            Log::info('Shopify PLS updateBulletPoints preserving existing description body_html', [
                 'sku' => $trim,
                 'product_id' => $productId,
-                'description_from_pm_chars' => strlen($descriptionPlain),
-                'feature_box_count' => count($featureGrid),
+                'previous_body_html_chars' => strlen($currentBody),
+                'new_body_html_chars' => strlen($formattedHtml),
+                'previous_master_marker_count' => substr_count($currentBody, 'bullet-points-master-section'),
+                'new_master_marker_count' => substr_count($formattedHtml, 'bullet-points-master-section'),
+                'previous_legacy_bracket_bullets' => preg_match_all($legacyBracketPattern, $currentBody),
+                'new_legacy_bracket_bullets' => preg_match_all($legacyBracketPattern, $formattedHtml),
             ]);
 
-            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
-            $response = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $title, $formattedHtml) {
+            $response = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $formattedHtml) {
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
                 ])->timeout(60)->connectTimeout(25)->put($productUrl, [
                     'product' => [
                         'id' => $productId,
-                        'title' => $title,
                         'body_html' => $formattedHtml,
                     ],
                 ]);
             });
 
             if ($response->successful()) {
-                return ['success' => true, 'message' => 'Shopify PLS product description updated (unified layout).'];
+                return ['success' => true, 'message' => 'Shopify PLS product bullets updated; existing description preserved.'];
             }
 
             $errBody = $response->status() === 429
