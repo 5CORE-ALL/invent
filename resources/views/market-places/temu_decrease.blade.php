@@ -348,6 +348,18 @@
                         </select>
                     </div>
 
+                    {{-- NRP Filter — filters by the NRP column (mirrors forecast_analysis.nr).
+                         Defaults to ALL; toolbar reads option values that match what's stored
+                         on each row's `nrp` field (REQ / NR / LATER). --}}
+                    <div>
+                        <select id="nrp-filter" class="form-select form-select-sm" style="width: 110px;" title="Filter by NRP">
+                            <option value="all">NRP: ALL</option>
+                            <option value="REQ">REQ</option>
+                            <option value="NR">2BDC</option>
+                            <option value="LATER">LATER</option>
+                        </select>
+                    </div>
+
                     <!-- Play / Pause parent navigation (like pricing-master-cvr) -->
                     <div class="btn-group align-items-center ms-2" role="group">
                         <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
@@ -4782,6 +4794,18 @@
                 });
             }
 
+            // NRP filter — matches the same values stored on row.nrp (REQ/NR/LATER).
+            // Empty / unknown values are treated as REQ to mirror the NRP column formatter,
+            // so the filter and the dot color always agree.
+            const nrpFilter = $('#nrp-filter').val();
+            if (nrpFilter && nrpFilter !== 'all') {
+                table.addFilter(function(data) {
+                    let v = String(data['nrp'] || '').trim().toUpperCase();
+                    if (v !== 'REQ' && v !== 'NR' && v !== 'LATER') v = 'REQ';
+                    return v === nrpFilter;
+                });
+            }
+
             updateSummary();
             updateSelectAllCheckbox();
             
@@ -5016,7 +5040,7 @@
             });
         });
 
-        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter, #nr-req-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter, #nr-req-filter, #nrp-filter').on('change', function() {
             applyFilters();
         });
 
