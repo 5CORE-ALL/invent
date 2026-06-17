@@ -1902,31 +1902,37 @@
          * Target ROI% / Target GPFT% bulk apply for SPRICE  (Temu Decrease)
          * ----------------------------------------------------------------------------
          * Same UX as amazon-tabulator-view / ebay-tabulator-view: pick rows, type a
-         * target %, click Apply SPRICE → back-solve a sale price that makes the on-page
-         * SROI / SGPRFT column equal the target after Temu margin + temu_ship + the
-         * $2.99 ship bumper on low prices are paid out.
+         * target %, click Apply SPRICE → back-solve the suggested SELLING price (the
+         * value that ends up in the SPRICE column AND the S Temu Prc column) that
+         * hits the target after Temu margin + temu_ship are paid out.
          *
-         * Temu twist: the backend (TemuController@saveTemuSprice) computes
-         *   stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice
-         * and then runs all profit math on stemuPrice, NOT sprice. So we back-solve
-         * the desired stemuPrice from the target %, then derive what sprice to send:
-         *   - stemuPrice ≤ 29.98  →  sprice = stemuPrice − 2.99  (backend will add it back)
-         *   - stemuPrice >  29.98  →  sprice = stemuPrice          (backend leaves it alone)
+         * Same convention as Apply Discount on this page: `sprice` is the price
+         * itself — NOT a "sprice = stemuPrice − 2.99" inverse trick. The S Temu Prc
+         * column formatter already adds the $2.99 bumper on top of any sprice
+         * ≤ $26.99 when rendering, so the displayed S Temu Price stays in sync.
          *
-         * Backend math (mirrors saveTemuSprice):
-         *   SROI%   = ((stemuPrice * margin − lp − temu_ship) / lp)         * 100
-         *      -> stemuPrice = (lp * (1 + roi%/100) + temu_ship) / margin
-         *   SGPRFT% = ((stemuPrice * margin − lp − temu_ship) / stemuPrice) * 100
-         *      -> stemuPrice = (lp + temu_ship) / (margin − gpft%/100)
+         * Back-solve formulas (treat sprice as the price the customer sees):
+         *   ROI%   = ((sprice * margin − lp − temu_ship) / lp)     * 100
+         *      -> sprice = (lp * (1 + roi%/100) + temu_ship) / margin
+         *   GPFT%  = ((sprice * margin − lp − temu_ship) / sprice) * 100
+         *      -> sprice = (lp + temu_ship) / (margin − gpft%/100)
          *      Constraint: (margin − gpft%/100) must be > 0 (else infinite/neg price).
          *
-         * `margin` falls back to 0.96 (the same fallback the backend uses when
-         * MarketplacePercentage 'TemuTwo' isn't configured). All POSTs go through the
-         * existing /temu-pricing/save-sprice endpoint so SGPRFT/SROI get recomputed
-         * server-side exactly like an inline SPRICE edit.
+         * About the $2.99 ship bumper:
+         * The backend's saveTemuSprice still computes its SROI / SGPRFT on the
+         * bumped value (sprice + 2.99 for sprice ≤ 26.99), so for low-priced rows
+         * the post-save ROI / GPFT will land a few points ABOVE the target rather
+         * than exactly on it. Trade-off accepted on purpose: SPRICE now shows a
+         * sensible retail-looking number (e.g. $14.38 for a $14.38 target instead
+         * of $11.39 with the old inverse-bumper trick), and the bumper only makes
+         * the actual margin BETTER than the target.
          *
-         * Selection cleanup: after each batch we wipe selectedSkus + every visible
-         * checkbox so the next batch starts fresh (no carryover between runs).
+         * `margin` is per-row (rowData.percentage, same value the backend GROI calc
+         * uses). Falls back to TEMU_MARGIN_FALLBACK only when missing.
+         *
+         * All POSTs go through the existing /temu-pricing/save-sprice endpoint so
+         * SGPRFT / SROI get recomputed server-side exactly like an inline SPRICE
+         * edit. Selection is cleared after each batch so the next run starts fresh.
          * ============================================================================
          */
         // Temu margin fallback used both for back-solve and skip-decisions. 0.96 matches
@@ -1962,21 +1968,6 @@
             return underAmz || underE || underE2;
         }
 
-        // Inverse of the backend's `stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice`
-        // transformation: returns the sprice that would produce `desiredStemuPrice`
-        // after the backend applies its bumper.
-        function temuStemuPriceToSprice(desiredStemuPrice) {
-            if (!isFinite(desiredStemuPrice) || desiredStemuPrice <= 0) return null;
-            // For low stemuPrices (≤ 29.98) we have to send sprice = stemuPrice − 2.99
-            // so the backend adds the $2.99 bumper back and lands on the desired stemuPrice.
-            if (desiredStemuPrice <= 29.98) {
-                const sprice = +(desiredStemuPrice - 2.99).toFixed(2);
-                if (sprice <= 0) return null;
-                return sprice;
-            }
-            return +desiredStemuPrice.toFixed(2);
-        }
-
         // Reveal the row-select checkbox column on demand. It's `visible: false` in the
         // Tabulator config and the INC/DEC button is what normally shows it — but the
         // Target ROI% / Target GPFT% flow needs the same checkboxes, so we call this from
@@ -1996,7 +1987,10 @@
             .on('focus click', temuEnsureSelectColumnVisible);
 
         function temuApplyTargetSpriceBatch(opts) {
-            // opts: { label, $btn, btnHtml, computeStemuPrice(rd) -> {stemuPrice, skipReason?} }
+            // opts: { label, $btn, btnHtml, computeSprice(rd) -> {sprice, skipReason?} }
+            //   `sprice` is the back-solved SELLING price — stored as-is on the row
+            //   (same convention as Apply Discount; the S Temu Prc column adds the $2.99
+            //   bumper on top for display when sprice ≤ $26.99).
             const $btn = opts.$btn;
 
             // Safety net: ensure the select column is visible even if the focus listeners
@@ -2014,13 +2008,13 @@
                 const rd = r.getData();
                 const sku = rd['sku'];
                 if (!sku || !selectedSkus.has(sku)) return;
-                const res = opts.computeStemuPrice(rd);
+                const res = opts.computeSprice(rd);
                 if (!res || res.skipReason) {
                     if (res && res.skipReason) skipped.push({ sku: sku, reason: res.skipReason });
                     return;
                 }
-                const sprice = temuStemuPriceToSprice(res.stemuPrice);
-                if (sprice == null || !isFinite(sprice) || sprice <= 0) return;
+                const sprice = +Number(res.sprice).toFixed(2);
+                if (!isFinite(sprice) || sprice <= 0) return;
                 rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
             });
 
@@ -2098,12 +2092,15 @@
                 label: `Target ROI ${targetRoiPct}%`,
                 $btn: $btn,
                 btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
-                computeStemuPrice: function(rd) {
+                computeSprice: function(rd) {
                     const lp = parseFloat(rd.lp) || 0;
                     if (lp <= 0) return null;
                     const temuShip = parseFloat(rd.temu_ship) || 0;
-                    const margin = TEMU_MARGIN_FALLBACK;
-                    return { stemuPrice: (lp * roiMultiplier + temuShip) / margin };
+                    // Use per-row margin (same as backend GROI calc) so the post-save SROI
+                    // lines up. Falls back to the global default if the row didn't carry it.
+                    const marginRaw = parseFloat(rd.percentage);
+                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN_FALLBACK;
+                    return { sprice: (lp * roiMultiplier + temuShip) / margin };
                 }
             });
         });
@@ -2123,16 +2120,17 @@
                 label: `Target GPFT ${targetGpftPct}%`,
                 $btn: $btn,
                 btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
-                computeStemuPrice: function(rd) {
+                computeSprice: function(rd) {
                     const lp = parseFloat(rd.lp) || 0;
                     if (lp <= 0) return null;
                     const temuShip = parseFloat(rd.temu_ship) || 0;
-                    const margin = TEMU_MARGIN_FALLBACK;
+                    const marginRaw = parseFloat(rd.percentage);
+                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN_FALLBACK;
                     const denom = margin - targetFraction;
                     if (denom <= 0) {
                         return { skipReason: `Target GPFT% ${targetGpftPct}% \u2265 Temu take-home margin (~${Math.round(margin * 100)}%)` };
                     }
-                    return { stemuPrice: (lp + temuShip) / denom };
+                    return { sprice: (lp + temuShip) / denom };
                 }
             });
         });
