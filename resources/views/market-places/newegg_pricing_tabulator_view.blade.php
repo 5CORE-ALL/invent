@@ -501,12 +501,6 @@
                     { title: "OVL30", field: "ovl30", hozAlign: "center", sorter: "number" },
                     { title: "DIL %", field: "dil", hozAlign: "center", sorter: "number", formatter: dilFormatter },
                     moneyCol("Price", "price"),
-                    { title: "L30", field: "l30", hozAlign: "center", sorter: "number",
-                        formatter: function(cell) {
-                            const v = parseInt(cell.getValue()) || 0;
-                            return v > 0 ? `<span style="color:#28a745;font-weight:bold;">${v}</span>` : '0';
-                        }
-                    },
                     {
                         title: "A Prc", field: "a_price", hozAlign: "right", sorter: "number",
                         tooltip: "Amazon live selling price (from amazon_datasheet)",
@@ -523,6 +517,12 @@
                                 color = ne < n ? '#28a745' : '#dc3545';
                             }
                             return `<span style="color:${color};font-weight:600;">$${n.toFixed(2)}</span>`;
+                        }
+                    },
+                    { title: "L30", field: "l30", hozAlign: "center", sorter: "number",
+                        formatter: function(cell) {
+                            const v = parseInt(cell.getValue()) || 0;
+                            return v > 0 ? `<span style="color:#28a745;font-weight:bold;">${v}</span>` : '0';
                         }
                     },
                     {
