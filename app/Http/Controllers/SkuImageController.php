@@ -8,6 +8,17 @@ use App\Models\MarketplacePercentage;
 use App\Models\Product;
 use App\Models\ShopifySku;
 use App\Models\SkuImage;
+use App\Services\AmazonSpApiService;
+use App\Services\BestBuyApiService;
+use App\Services\Ebay2ApiService;
+use App\Services\EbayApiService;
+use App\Services\EbayThreeApiService;
+use App\Services\MacysApiService;
+use App\Services\ReverbApiService;
+use App\Services\ShopifyApiService;
+use App\Services\ShopifyPLSApiService;
+use App\Services\TemuApiService;
+use App\Services\WayfairApiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -15,7 +26,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
-use App\Services\SkuImageMarketplacePushProcessor;
 
 class SkuImageController extends Controller
 {
@@ -69,16 +79,18 @@ class SkuImageController extends Controller
             $statusFilter = null;
         }
 
+        $codes = array_keys($this->marketplacePushDefinitions());
+
         $summaryRows = ImageMarketplaceMap::query()
-            ->whereHas('marketplace', static function ($mq): void {
-                $mq->whereRaw('LOWER(TRIM(code)) = ?', ['reverb']);
+            ->whereHas('marketplace', static function ($mq) use ($codes): void {
+                $mq->whereIn(DB::raw('LOWER(TRIM(code))'), $codes);
             })
             ->select('marketplace_id', 'status', DB::raw('count(*) as c'))
             ->groupBy('marketplace_id', 'status')
             ->get();
 
         $marketplaces = Marketplace::query()
-            ->whereRaw('LOWER(TRIM(code)) = ?', ['reverb'])
+            ->whereIn(DB::raw('LOWER(TRIM(code))'), $codes)
             ->orderBy('name')
             ->get();
         $summary = [];
@@ -123,8 +135,8 @@ class SkuImageController extends Controller
 
         $maps = ImageMarketplaceMap::query()
             ->with(['marketplace', 'skuImage.product'])
-            ->whereHas('marketplace', static function ($mq): void {
-                $mq->whereRaw('LOWER(TRIM(code)) = ?', ['reverb']);
+            ->whereHas('marketplace', static function ($mq) use ($codes): void {
+                $mq->whereIn(DB::raw('LOWER(TRIM(code))'), $codes);
             })
             ->when($marketplaceId, static fn ($q) => $q->where('marketplace_id', $marketplaceId))
             ->when($statusFilter, static fn ($q) => $q->where('status', $statusFilter))
@@ -139,7 +151,7 @@ class SkuImageController extends Controller
             ->withQueryString();
 
         return view('sku_images.push_status', [
-            'title' => 'SKU image push status (Reverb)',
+            'title' => 'SKU image push status',
             'maps' => $maps,
             'summary' => $summary,
             'filterMarketplaceId' => $marketplaceId,
@@ -243,48 +255,62 @@ class SkuImageController extends Controller
             'product_id' => ['required', 'integer', 'exists:product_master,id'],
             'image_ids' => ['required', 'array', 'min:1'],
             'image_ids.*' => ['integer', 'exists:sku_images,id'],
-            'marketplace_ids' => ['required', 'array', 'min:1'],
-            'marketplace_ids.*' => ['integer', 'exists:marketplaces,id'],
+            'marketplace_codes' => ['required', 'array', 'min:1'],
+            'marketplace_codes.*' => ['string'],
         ]);
 
-        $imageIds = SkuImage::query()
+        $product = Product::query()->findOrFail($data['product_id']);
+        $requestedImageIds = array_values(array_map('intval', $data['image_ids']));
+        $images = SkuImage::query()
             ->where('product_id', $data['product_id'])
-            ->whereIn('id', $data['image_ids'])
-            ->pluck('id')
-            ->all();
+            ->whereIn('id', $requestedImageIds)
+            ->get()
+            ->sortBy(static fn (SkuImage $image) => array_search((int) $image->id, $requestedImageIds, true))
+            ->values();
 
-        if (count($imageIds) !== count($data['image_ids'])) {
+        if ($images->count() !== count($requestedImageIds)) {
             return response()->json(['ok' => false, 'message' => 'Invalid image selection for this product.'], 422);
         }
 
-        $reverbMarketplaceIds = Marketplace::query()
-            ->where('status', true)
-            ->whereRaw('LOWER(TRIM(code)) = ?', ['reverb'])
-            ->pluck('id')
-            ->map(static fn ($id) => (int) $id)
-            ->all();
-        if ($reverbMarketplaceIds === []) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'Reverb is not configured as an active marketplace (code "reverb").',
-            ], 422);
-        }
-        foreach ($data['marketplace_ids'] as $marketplaceId) {
-            if (! in_array((int) $marketplaceId, $reverbMarketplaceIds, true)) {
+        $definitions = $this->marketplacePushDefinitions();
+        $codes = collect($data['marketplace_codes'])
+            ->map(static fn ($code) => strtolower(trim((string) $code)))
+            ->filter()
+            ->unique()
+            ->values();
+
+        foreach ($codes as $code) {
+            if (! isset($definitions[$code]) || ! ($definitions[$code]['enabled'] ?? false)) {
                 return response()->json([
                     'ok' => false,
-                    'message' => 'Only Reverb image push is enabled.',
+                    'message' => 'Image push is not implemented for '.($definitions[$code]['label'] ?? $code).'.',
                 ], 422);
             }
         }
 
-        $mapIds = [];
-        DB::transaction(function () use ($imageIds, $data, &$mapIds) {
-            foreach ($imageIds as $imageId) {
-                foreach ($data['marketplace_ids'] as $marketplaceId) {
+        if ($codes->isEmpty()) {
+            return response()->json(['ok' => false, 'message' => 'Select at least one marketplace.'], 422);
+        }
+
+        $marketplacesByCode = $this->ensureMarketplaceRows($codes->all());
+        foreach ($codes as $code) {
+            $mp = $marketplacesByCode[$code] ?? null;
+            if (! $mp || ! $mp->status) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => ($definitions[$code]['label'] ?? $code).' is not configured as an active marketplace.',
+                ], 422);
+            }
+        }
+
+        $mapIdsByCode = [];
+        DB::transaction(function () use ($images, $codes, $marketplacesByCode, &$mapIdsByCode) {
+            foreach ($images as $image) {
+                foreach ($codes as $code) {
+                    $marketplaceId = (int) $marketplacesByCode[$code]->id;
                     $map = ImageMarketplaceMap::query()->updateOrCreate(
                         [
-                            'sku_image_id' => $imageId,
+                            'sku_image_id' => $image->id,
                             'marketplace_id' => $marketplaceId,
                         ],
                         [
@@ -293,27 +319,58 @@ class SkuImageController extends Controller
                             'sent_at' => null,
                         ]
                     );
-                    $mapIds[] = (int) $map->id;
+                    $mapIdsByCode[$code][] = (int) $map->id;
                 }
             }
         });
 
-        $processor = app(SkuImageMarketplacePushProcessor::class);
         $results = [];
-        foreach ($mapIds as $mapId) {
-            $processor->processMapById($mapId);
-            $row = ImageMarketplaceMap::query()->find($mapId);
-            $results[] = [
-                'map_id' => $mapId,
-                'status' => $row?->status,
-                'response' => $row?->response,
+        $marketplaceResults = [];
+        $imageUrls = $this->publicUrlsForSkuImages($images);
+        foreach ($codes as $code) {
+            $remote = $this->pushImagesToRemote($code, (string) $product->sku, $imageUrls);
+            $success = (bool) ($remote['success'] ?? false);
+            $status = $success ? ImageMarketplaceMap::STATUS_SENT : ImageMarketplaceMap::STATUS_FAILED;
+            $payload = [
+                'message' => (string) ($remote['message'] ?? ''),
+                'data' => [
+                    'sku' => $product->sku,
+                    'marketplace' => $code,
+                    'image_urls' => $remote['normalized_urls'] ?? $imageUrls,
+                ],
             ];
+            ImageMarketplaceMap::query()
+                ->whereIn('id', $mapIdsByCode[$code] ?? [])
+                ->get()
+                ->each(static function (ImageMarketplaceMap $map) use ($status, $payload, $success): void {
+                    $map->update([
+                        'status' => $status,
+                        'response' => $payload,
+                        'sent_at' => $success ? now() : null,
+                    ]);
+                });
+
+            $marketplaceResults[$code] = [
+                'status' => $status,
+                'success' => $success,
+                'message' => $payload['message'],
+            ];
+
+            foreach ($mapIdsByCode[$code] ?? [] as $mapId) {
+                $results[] = [
+                    'map_id' => $mapId,
+                    'marketplace' => $code,
+                    'status' => $status,
+                    'response' => $payload,
+                ];
+            }
         }
 
         return response()->json([
             'ok' => true,
-            'dispatched' => count($mapIds),
+            'dispatched' => count($results),
             'results' => $results,
+            'marketplace_results' => $marketplaceResults,
         ]);
     }
 
@@ -512,31 +569,138 @@ class SkuImageController extends Controller
     }
 
     /**
-     * Reverb only. Uses the same listing resolution as Title Master (see {@see \App\Services\ReverbApiService::getListingIdBySku}).
-     * Title Master calls {@see \App\Services\ReverbApiService::updateTitle}; image push uses {@see \App\Services\ReverbApiService::appendImageUrlToListingBySku}.
+     * Mirrors the image-capable marketplaces from Image Master. Wayfair/Best Buy are shown disabled
+     * until those services expose image update methods.
      *
-     * @return Collection<int, object{id: int, label: string}>
+     * @return Collection<int, object{code: string, label: string, short: string, class: string, enabled: bool}>
      */
     private function marketplacePushSelectOptions(): Collection
     {
-        $mp = Marketplace::query()
-            ->where('status', true)
-            ->whereRaw('LOWER(TRIM(code)) = ?', ['reverb'])
-            ->first();
+        $existing = Marketplace::query()
+            ->whereIn(DB::raw('LOWER(TRIM(code))'), array_keys($this->marketplacePushDefinitions()))
+            ->get()
+            ->keyBy(static fn (Marketplace $marketplace) => strtolower(trim((string) $marketplace->code)));
 
-        if (! $mp) {
-            return collect();
-        }
+        return collect($this->marketplacePushDefinitions())
+            ->map(function (array $definition, string $code) use ($existing) {
+                $mp = $existing[$code] ?? null;
+                $label = $definition['label'];
+                if ($mp && Schema::hasTable('marketplace_percentages')) {
+                    $fromPct = MarketplacePercentage::displayNameForMarketplace($mp);
+                    if ($fromPct !== null && $fromPct !== '') {
+                        $label = $fromPct;
+                    }
+                }
 
-        $label = $mp->name;
-        if (Schema::hasTable('marketplace_percentages')) {
-            $fromPct = MarketplacePercentage::displayNameForMarketplace($mp);
-            if ($fromPct !== null && $fromPct !== '') {
-                $label = $fromPct;
+                return (object) [
+                    'code' => $code,
+                    'label' => (string) $label,
+                    'short' => (string) $definition['short'],
+                    'class' => (string) $definition['class'],
+                    'enabled' => (bool) ($definition['enabled'] ?? false),
+                ];
+            })
+            ->values();
+    }
+
+    /**
+     * @return array<string, array{label: string, short: string, class: string, enabled: bool}>
+     */
+    private function marketplacePushDefinitions(): array
+    {
+        return [
+            'ebay' => ['label' => 'eBay 1', 'short' => 'E1', 'class' => 'btn-ebay1', 'enabled' => true],
+            'ebay2' => ['label' => 'eBay 2', 'short' => 'E2', 'class' => 'btn-ebay2', 'enabled' => true],
+            'ebay3' => ['label' => 'eBay 3', 'short' => 'E3', 'class' => 'btn-ebay3', 'enabled' => true],
+            'macy' => ['label' => "Macy's", 'short' => 'M', 'class' => 'btn-macy', 'enabled' => true],
+            'amazon' => ['label' => 'Amazon', 'short' => 'A', 'class' => 'btn-amazon', 'enabled' => true],
+            'temu' => ['label' => 'Temu', 'short' => 'T', 'class' => 'btn-temu', 'enabled' => true],
+            'reverb' => ['label' => 'Reverb', 'short' => 'R', 'class' => 'btn-reverb', 'enabled' => true],
+            'wayfair' => ['label' => 'Wayfair', 'short' => 'W', 'class' => 'btn-wayfair', 'enabled' => true],
+            'bestbuy' => ['label' => 'Best Buy', 'short' => 'B', 'class' => 'btn-bestbuy', 'enabled' => true],
+            'shopify_main' => ['label' => 'Shopify Main', 'short' => 'SM', 'class' => 'btn-shopify', 'enabled' => true],
+            'shopify_pls' => ['label' => 'Shopify PLS', 'short' => 'PLS', 'class' => 'btn-shopify-pls', 'enabled' => true],
+        ];
+    }
+
+    /**
+     * @param  list<string>  $codes
+     * @return array<string, Marketplace>
+     */
+    private function ensureMarketplaceRows(array $codes): array
+    {
+        $definitions = $this->marketplacePushDefinitions();
+        $out = [];
+        foreach ($codes as $code) {
+            if (! isset($definitions[$code])) {
+                continue;
             }
+            $out[$code] = Marketplace::query()->firstOrCreate(
+                ['code' => $code],
+                [
+                    'name' => $definitions[$code]['label'],
+                    'status' => true,
+                ]
+            );
         }
 
-        return collect([(object) ['id' => $mp->id, 'label' => (string) $label]]);
+        return $out;
+    }
+
+    /**
+     * @param  Collection<int, SkuImage>  $images
+     * @return list<string>
+     */
+    private function publicUrlsForSkuImages(Collection $images): array
+    {
+        return $images
+            ->map(fn (SkuImage $image) => $this->publicUrlForStoragePath((string) $image->file_path))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function publicUrlForStoragePath(string $path): string
+    {
+        $path = ltrim(str_replace('\\', '/', $path), '/');
+        $base = rtrim((string) (
+            config('services.reverb.sku_image_public_base_url')
+            ?: config('app.asset_url')
+            ?: config('app.url')
+        ), '/');
+        if ($base !== '' && ! preg_match('#^https?://#i', $base)) {
+            $base = 'https://'.$base;
+        }
+
+        $segments = array_values(array_filter(explode('/', $path), fn ($segment) => $segment !== ''));
+
+        return $base.'/storage/'.implode('/', array_map('rawurlencode', $segments));
+    }
+
+    /**
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    private function pushImagesToRemote(string $marketplace, string $sku, array $imageUrls): array
+    {
+        try {
+            return match ($marketplace) {
+                'ebay' => app(EbayApiService::class)->updateImages($sku, $imageUrls),
+                'ebay2' => app(Ebay2ApiService::class)->updateImages($sku, $imageUrls),
+                'ebay3' => app(EbayThreeApiService::class)->updateImages($sku, $imageUrls),
+                'amazon' => app(AmazonSpApiService::class)->updateImages($sku, $imageUrls),
+                'temu' => app(TemuApiService::class)->updateImages($sku, $imageUrls),
+                'macy' => app(MacysApiService::class)->updateImages($sku, $imageUrls),
+                'wayfair' => app(WayfairApiService::class)->updateImages($sku, $imageUrls),
+                'bestbuy' => app(BestBuyApiService::class)->updateImages($sku, $imageUrls),
+                'reverb' => app(ReverbApiService::class)->updateImages($sku, $imageUrls, 'add'),
+                'shopify_main' => app(ShopifyApiService::class)->updateImages($sku, $imageUrls, 'add'),
+                'shopify_pls' => app(ShopifyPLSApiService::class)->updateImages($sku, $imageUrls, 'add'),
+                default => ['success' => false, 'message' => 'Image push is not implemented for '.$marketplace.'.'],
+            };
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 
     private function sanitizePathSegment(string $sku): string

@@ -3298,7 +3298,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/image-master/ebay-images', [ImageMasterController::class, 'getEbayImages'])->name('image.master.ebay.images');
     Route::get('/image-master/sku-images', [ImageMasterController::class, 'getSkuImages'])->name('image.master.sku.images');
     Route::delete('/image-master/sku-image/{id}', [ImageMasterController::class, 'deleteSkuImage'])->name('image.master.sku.image.delete');
-    Route::get('/image-master/diagnose', [ImageMasterController::class, 'diagnosePush'])->name('image.master.diagnose');
+    Route::post('/image-master/shopify-pull-one', [ImageMasterController::class, 'pullShopifyImagesToMaster'])->name('image.master.shopify.pull.one');
+    Route::post('/image-master/shopify-pull/start', [ImageMasterController::class, 'startShopifyPullJob'])->name('image.master.shopify.pull.start');
+    Route::get('/image-master/shopify-pull/status', [ImageMasterController::class, 'shopifyPullJobStatus'])->name('image.master.shopify.pull.status');
+    Route::post('/image-master/shopify-pull/pause', [ImageMasterController::class, 'pauseShopifyPullJob'])->name('image.master.shopify.pull.pause');
+    Route::post('/image-master/shopify-pull/resume', [ImageMasterController::class, 'resumeShopifyPullJob'])->name('image.master.shopify.pull.resume');
+    Route::post('/image-master/shopify-pull/stop', [ImageMasterController::class, 'stopShopifyPullJob'])->name('image.master.shopify.pull.stop');
 
     Route::get('/bullet-point-master', [BulletPointMasterController::class, 'index'])->name('bullet.point.master');
     Route::get('/bullet-point-master-data', [BulletPointMasterController::class, 'getData'])->name('bullet.point.master.data');

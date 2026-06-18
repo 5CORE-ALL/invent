@@ -14,9 +14,17 @@ class SkuImageMarketplaceSeeder extends Seeder
         }
 
         foreach ([
-            ['name' => 'Reverb', 'code' => 'reverb'],
+            ['name' => 'eBay 1', 'code' => 'ebay'],
+            ['name' => 'eBay 2', 'code' => 'ebay2'],
+            ['name' => 'eBay 3', 'code' => 'ebay3'],
+            ['name' => "Macy's", 'code' => 'macy'],
             ['name' => 'Amazon', 'code' => 'amazon'],
-            ['name' => 'eBay', 'code' => 'ebay'],
+            ['name' => 'Temu', 'code' => 'temu'],
+            ['name' => 'Reverb', 'code' => 'reverb'],
+            ['name' => 'Wayfair', 'code' => 'wayfair'],
+            ['name' => 'Best Buy', 'code' => 'bestbuy'],
+            ['name' => 'Shopify Main', 'code' => 'shopify_main'],
+            ['name' => 'Shopify PLS', 'code' => 'shopify_pls'],
         ] as $row) {
             Marketplace::query()->updateOrCreate(
                 ['code' => $row['code']],

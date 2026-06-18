@@ -1027,6 +1027,14 @@ class ShopifyPLSApiService
                 );
                 if ($postRes->successful()) {
                     $uploadedCount++;
+                } else {
+                    Log::warning('Shopify PLS image upload failed', [
+                        'sku_or_identifier' => $identifier,
+                        'product_id'        => $productId,
+                        'status'            => $postRes->status(),
+                        'body'              => mb_substr($postRes->body(), 0, 500),
+                        'source_is_local'   => $this->isLocalStorageUrl($src),
+                    ]);
                 }
             }
 

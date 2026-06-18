@@ -6,8 +6,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'SKU image push status (Reverb)',
-        'sub_title' => 'Same listing lookup as Title Master → ReverbApiService',
+        'page_title' => 'SKU image push status',
+        'sub_title' => 'Marketplace image pushes from SKU Image Manager',
     ])
 
     <div class="row g-3 mb-3">

@@ -6,20 +6,27 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\ProductMaster\ProductMasterController as PMController;
 use App\Models\ProductImage;
 use App\Models\ProductMaster;
+use App\Models\ShopifySku;
+use App\Models\ShopifyVariant;
 use App\Services\AmazonSpApiService;
 use App\Services\Ebay2ApiService;
 use App\Services\EbayApiService;
 use App\Services\EbayThreeApiService;
+use App\Services\BestBuyApiService;
 use App\Services\MacysApiService;
 use App\Services\ReverbApiService;
 use App\Services\ShopifyApiService;
 use App\Services\ShopifyPLSApiService;
+use App\Services\ShopifyPlsTokenService;
+use App\Services\Support\ShopifyImagePullJobStore;
 use App\Services\Support\EbaySellInventoryListingResolver;
 use App\Services\Support\EbayTradingReviseItem;
+use App\Services\WayfairApiService;
 use Illuminate\Support\Facades\Storage;
 use App\Services\TemuApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -178,82 +185,6 @@ class ImageMasterController extends Controller
     }
 
     /**
-     * Diagnostic: check which marketplaces have a listing for the given SKU and whether
-     * image URLs are reachable. Does NOT push anything. Returns a JSON report.
-     */
-    public function diagnosePush(Request $request)
-    {
-        $sku = $this->normalizeSku($request->query('sku', ''));
-        if ($sku === '') {
-            return response()->json(['success' => false, 'message' => 'sku query param required.'], 422);
-        }
-
-        $appUrl    = rtrim((string) config('app.url'), '/');
-        $publicUrl = rtrim((string) (
-            config('services.reverb.sku_image_public_base_url') ?:
-            config('app.asset_url') ?:
-            $appUrl
-        ), '/');
-
-        $report = [
-            'sku'           => $sku,
-            'app_url'       => $appUrl,
-            'public_url'    => $publicUrl,
-            'url_rewrite'   => $publicUrl !== $appUrl ? "localhost → {$publicUrl}" : 'none (APP_URL is already public)',
-            'marketplaces'  => [],
-        ];
-
-        $tableMap = $this->marketplaceTableMap();
-        foreach ($tableMap as $mp => $table) {
-            $entry = ['marketplace' => $mp, 'table' => $table];
-
-            if (! Schema::hasTable($table)) {
-                $entry['listing_found'] = false;
-                $entry['note']          = 'Metrics table does not exist.';
-                $report['marketplaces'][] = $entry;
-                continue;
-            }
-
-            $row = DB::table($table)->where(function ($q) use ($sku) {
-                $q->where('sku', $sku)
-                    ->orWhere('sku', strtoupper($sku))
-                    ->orWhere('sku', strtolower($sku));
-            })->first();
-
-            $entry['listing_found'] = (bool) $row;
-            if ($row && isset($row->item_id) && $row->item_id) {
-                $entry['item_id'] = $row->item_id;
-            }
-            if ($row && isset($row->reverb_listing_id) && $row->reverb_listing_id) {
-                $entry['reverb_listing_id'] = $row->reverb_listing_id;
-            }
-            if ($row && isset($row->image_master_json) && $row->image_master_json) {
-                $entry['has_pushed_images'] = true;
-            }
-
-            $report['marketplaces'][] = $entry;
-        }
-
-        // Check a sample image URL from product master
-        $pm = DB::table('product_master')->where('sku', $sku)->first();
-        if ($pm) {
-            $sampleUrl = $pm->image1 ?? $pm->main_image ?? null;
-            if ($sampleUrl) {
-                $isLocal = (bool) preg_match('#^https?://(localhost|127\.0\.0\.1)(:\d+)?/storage/#i', $sampleUrl);
-                $rewritten = $isLocal ? ($publicUrl . preg_replace('#^https?://(localhost|127\.0\.0\.1)(:\d+)?#i', '', $sampleUrl)) : $sampleUrl;
-                $report['sample_image'] = [
-                    'original'   => $sampleUrl,
-                    'is_local'   => $isLocal,
-                    'rewritten'  => $rewritten,
-                    'status'     => $isLocal ? ($publicUrl !== $appUrl ? 'will_be_rewritten' : 'still_local_no_public_url') : 'ok_already_public',
-                ];
-            }
-        }
-
-        return response()->json($report);
-    }
-
-    /**
      * Push ordered image URLs to marketplace and persist image_master_json on success (or local-only for unsupported APIs).
      *
      * @return \Illuminate\Http\JsonResponse
@@ -297,9 +228,11 @@ class ImageMasterController extends Controller
                 continue;
             }
 
-            // Rewrite localhost/127.0.0.1 storage URLs → public URL so external APIs can download them.
-            // Shopify services handle local files via base64 anyway; for all others this is critical.
-            $imagesForPush = $this->rewriteLocalStorageUrlsToPublic($images);
+            // Rewrite localhost/127.0.0.1 storage URLs for marketplaces that fetch by URL.
+            // Shopify must keep local storage URLs so its service can upload the file as base64.
+            $imagesForPush = in_array($mp, ['shopify_main', 'shopify_pls'], true)
+                ? $images
+                : $this->rewriteLocalStorageUrlsToPublic($images);
 
             $remote   = $this->pushImagesToRemote($mp, $sku, $imagesForPush, $mode);
             $remoteOk = (bool) ($remote['success'] ?? false);
@@ -349,11 +282,13 @@ class ImageMasterController extends Controller
     {
         $validated = $request->validate([
             'sku' => 'required|string|max:255',
-            'images' => 'required|array|max:12',
+            'images' => 'present|array|max:12',
             'images.*' => 'nullable|string|max:2048',
         ]);
         $sku = $this->normalizeSku($validated['sku']);
-        $images = array_values(array_slice($validated['images'], 0, 12));
+        $images = $this->normalizeStorageUrlsForImageMasterMetrics(
+            array_values(array_slice($validated['images'], 0, 12))
+        );
 
         $product = ProductMaster::query()->where('sku', $sku)->first();
         if (! $product) {
@@ -364,7 +299,7 @@ class ImageMasterController extends Controller
             $col = 'image'.($i + 1);
             $product->{$col} = $images[$i] ?? null;
         }
-        $product->main_image = $images[0] ?? $product->main_image;
+        $product->main_image = $images[0] ?? null;
 
         try {
             $product->save();
@@ -415,7 +350,7 @@ class ImageMasterController extends Controller
                 'created_at'    => $now,
             ]);
 
-            $url     = asset('storage/'.$path);
+            $url     = $this->normalizeStorageUrlsForImageMasterMetrics([asset('storage/'.$path)])[0] ?? asset('storage/'.$path);
             $urls[]  = $url;
             $records[] = [
                 'id'    => $record->id,
@@ -446,7 +381,7 @@ class ImageMasterController extends Controller
             ->get()
             ->map(fn (ProductImage $img) => [
                 'id'   => $img->id,
-                'url'  => asset('storage/'.$img->image_path),
+                'url'  => $this->normalizeStorageUrlsForImageMasterMetrics([asset('storage/'.$img->image_path)])[0] ?? asset('storage/'.$img->image_path),
                 'name' => $img->original_name ?? basename($img->image_path),
                 'path' => $img->image_path,
             ])
@@ -488,6 +423,10 @@ class ImageMasterController extends Controller
                     return app(AmazonSpApiService::class)->updateImages($sku, $imageUrls);
                 case 'temu':
                     return app(TemuApiService::class)->updateImages($sku, $imageUrls);
+                case 'wayfair':
+                    return app(WayfairApiService::class)->updateImages($sku, $imageUrls);
+                case 'bestbuy':
+                    return app(BestBuyApiService::class)->updateImages($sku, $imageUrls);
                 case 'shopify_main':
                     return app(ShopifyApiService::class)->updateImages($sku, $imageUrls, $mode);
                 case 'shopify_pls':
@@ -569,6 +508,8 @@ class ImageMasterController extends Controller
             'ebay3' => 'ebay_3_metrics',
             'amazon' => 'amazon_metrics',
             'temu' => 'temu_metrics',
+            'wayfair' => 'wayfair_metrics',
+            'bestbuy' => 'bestbuy_metrics',
             'macy' => 'macy_metrics',
             'reverb' => 'reverb_products', // reverb_metrics may not exist; reverb_products has image_urls + unique sku
             'shopify_main' => 'shopify_metrics',
@@ -739,7 +680,7 @@ class ImageMasterController extends Controller
      */
     private function firstPreviewUrl(array $row): ?string
     {
-        foreach (['image_path', 'main_image', 'image1', 'image2', 'image3'] as $k) {
+        foreach (['main_image', 'image1', 'image2', 'image3', 'image4', 'image5', 'image6'] as $k) {
             $v = $row[$k] ?? null;
             if (is_string($v) && trim($v) !== '') {
                 $v = trim($v);
@@ -749,6 +690,17 @@ class ImageMasterController extends Controller
 
                 return '/'.ltrim($v, '/');
             }
+        }
+
+        // Fall back to legacy/Shopify preview when Product Master image slots are empty.
+        $fallback = $row['image_path'] ?? null;
+        if (is_string($fallback) && trim($fallback) !== '') {
+            $fallback = trim($fallback);
+            if (str_starts_with($fallback, 'http') || str_starts_with($fallback, '//')) {
+                return $fallback;
+            }
+
+            return '/'.ltrim($fallback, '/');
         }
 
         return null;
@@ -805,5 +757,602 @@ class ImageMasterController extends Controller
 
             return false;
         }
+    }
+
+    /**
+     * Pull current Shopify product images into Product Master image1–image12 and main_image.
+     */
+    public function pullShopifyImagesToMaster(Request $request)
+    {
+        $pullLog = $this->shopifyImagePullLogger();
+        $sku = '';
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+            ]);
+
+            $sku = $this->normalizeSku($validated['sku']);
+            $pullLog->info('Shopify image pull started', ['sku' => $sku]);
+            $product = $this->findProductMasterBySku($sku);
+            if (! $product) {
+                $pullLog->warning('Product Master row not found', ['sku' => $sku]);
+
+                return response()->json([
+                    'success' => false,
+                    'sku' => $sku,
+                    'status' => 'product_not_found',
+                    'message' => 'Product Master row not found.',
+                ], 404);
+            }
+
+            $currentImages = $this->productMasterImageArray($product);
+            $shopify = $this->fetchShopifyImagesForSku($sku);
+            if (! ($shopify['success'] ?? false)) {
+                $pullLog->warning('Shopify image fetch failed', [
+                    'sku' => $sku,
+                    'message' => $shopify['message'] ?? 'Unable to fetch Shopify product.',
+                    'variant_id' => $shopify['variant_id'] ?? null,
+                    'product_id' => $shopify['product_id'] ?? null,
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'sku' => $sku,
+                    'status' => 'shopify_fetch_failed',
+                    'message' => $shopify['message'] ?? 'Unable to fetch Shopify product.',
+                    'current_images' => $currentImages,
+                ], 422);
+            }
+
+            $shopifyImages = array_slice($shopify['images'] ?? [], 0, 12);
+            if ($shopifyImages === []) {
+                $pullLog->warning('No Shopify images detected', [
+                    'sku' => $sku,
+                    'shopify_product_id' => $shopify['product_id'] ?? null,
+                    'variant_id' => $shopify['variant_id'] ?? null,
+                    'source' => $shopify['source'] ?? null,
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'sku' => $sku,
+                    'status' => 'no_images_detected',
+                    'message' => 'No Shopify product images detected.',
+                    'current_images' => $currentImages,
+                    'shopify_product_id' => $shopify['product_id'] ?? null,
+                ], 422);
+            }
+
+            for ($i = 1; $i <= 12; $i++) {
+                $product->{'image'.$i} = $shopifyImages[$i - 1] ?? null;
+            }
+            $product->main_image = $shopifyImages[0] ?? null;
+            $product->save();
+
+            $newImages = $this->productMasterImageArray($product->fresh());
+            $matchedBefore = $this->normalizedImageArray($currentImages) === $this->normalizedImageArray($shopifyImages);
+            Log::info('ImageMaster: pulled Shopify images to Product Master', [
+                'sku' => $sku,
+                'shopify_product_id' => $shopify['product_id'] ?? null,
+                'variant_id' => $shopify['variant_id'] ?? null,
+                'source' => $shopify['source'] ?? null,
+                'matched_before' => $matchedBefore,
+                'image_count' => count($shopifyImages),
+            ]);
+            $pullLog->info('Shopify images saved to Product Master', [
+                'sku' => $sku,
+                'shopify_product_id' => $shopify['product_id'] ?? null,
+                'variant_id' => $shopify['variant_id'] ?? null,
+                'source' => $shopify['source'] ?? null,
+                'matched_before' => $matchedBefore,
+                'before_count' => count($currentImages),
+                'shopify_count' => count($shopifyImages),
+                'after_count' => count($newImages),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'sku' => $sku,
+                'status' => $matchedBefore ? 'already_matched' : 'imported_to_product_master',
+                'message' => $matchedBefore ? 'Already matched Shopify images.' : 'Imported Shopify images to Product Master.',
+                'source' => $shopify['source'] ?? 'shopify_admin',
+                'shopify_product_id' => $shopify['product_id'] ?? null,
+                'variant_id' => $shopify['variant_id'] ?? null,
+                'before_images' => $currentImages,
+                'shopify_images' => $shopifyImages,
+                'after_images' => $newImages,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('ImageMaster pullShopifyImagesToMaster failed', ['error' => $e->getMessage()]);
+            $pullLog->error('Shopify image pull exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function startShopifyPullJob(Request $request, ShopifyImagePullJobStore $store)
+    {
+        $validated = $request->validate([
+            'skus' => 'required|array|min:1',
+            'skus.*' => 'required|string',
+        ]);
+
+        $current = $store->load();
+        if ($store->isActive($current)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A Shopify image pull is already running or paused.',
+                'job' => $current,
+            ], 409);
+        }
+
+        $job = $store->create($validated['skus'], 6);
+        $this->launchShopifyImagePullProcess();
+        $this->shopifyImagePullLogger()->info('Background Shopify image pull queued', [
+            'total' => $job['total'] ?? 0,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Background Shopify image pull started.',
+            'job' => $job,
+        ]);
+    }
+
+    public function shopifyPullJobStatus(ShopifyImagePullJobStore $store)
+    {
+        return response()->json([
+            'success' => true,
+            'job' => $store->load(),
+        ]);
+    }
+
+    public function pauseShopifyPullJob(ShopifyImagePullJobStore $store)
+    {
+        $job = $store->update(function (array $state) {
+            if (($state['status'] ?? 'idle') === 'running') {
+                $state['status'] = 'paused';
+                $state['last_message'] = 'Pause requested. Current SKU will finish first.';
+            }
+
+            return $state;
+        });
+        $store->appendMessage('Pause requested. Current SKU will finish first.', false);
+
+        return response()->json(['success' => true, 'job' => $job]);
+    }
+
+    public function resumeShopifyPullJob(ShopifyImagePullJobStore $store)
+    {
+        $job = $store->update(function (array $state) {
+            if (($state['status'] ?? 'idle') === 'paused') {
+                $state['status'] = 'running';
+                $state['last_message'] = 'Resumed Shopify image pull.';
+            }
+
+            return $state;
+        });
+        $store->appendMessage('Resumed Shopify image pull.', true);
+        $this->launchShopifyImagePullProcess();
+
+        return response()->json(['success' => true, 'job' => $job]);
+    }
+
+    public function stopShopifyPullJob(ShopifyImagePullJobStore $store)
+    {
+        $job = $store->update(function (array $state) {
+            if (in_array($state['status'] ?? 'idle', ['running', 'paused'], true)) {
+                $state['status'] = 'stopping';
+                $state['last_message'] = 'Stop requested. Current SKU will finish first.';
+            }
+
+            return $state;
+        });
+        $store->appendMessage('Stop requested. Current SKU will finish first.', false);
+
+        return response()->json(['success' => true, 'job' => $job]);
+    }
+
+    private function shopifyImagePullLogger(): \Psr\Log\LoggerInterface
+    {
+        return Log::build([
+            'driver' => 'single',
+            'path' => storage_path('logs/shopify-image-pull.log'),
+            'level' => 'debug',
+        ]);
+    }
+
+    private function findProductMasterBySku(string $sku): ?ProductMaster
+    {
+        $normalizedSku = $this->normalizeSku($sku);
+        $skuWithNbsp = str_replace(' ', "\u{00a0}", $normalizedSku);
+
+        return ProductMaster::query()
+            ->where('sku', $normalizedSku)
+            ->orWhere('sku', strtoupper($normalizedSku))
+            ->orWhere('sku', strtolower($normalizedSku))
+            ->orWhere('sku', $skuWithNbsp)
+            ->first();
+    }
+
+    /**
+     * @return array{success: bool, message?: string, images?: list<string>, product_id?: string, variant_id?: string, source?: string}
+     */
+    private function fetchShopifyImagesForSku(string $sku): array
+    {
+        $mapping = $this->resolveShopifyMappingForSku($sku);
+        $store = (string) ($mapping['store'] ?? 'main');
+        if ($store === 'pls') {
+            $plsTokenService = app(ShopifyPlsTokenService::class);
+            $domain = $plsTokenService->getDomain();
+            $token = $plsTokenService->getAccessToken();
+        } else {
+            $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
+            $token = config('services.shopify.access_token') ?: config('services.shopify.password');
+        }
+
+        if (! $domain || ! $token) {
+            return ['success' => false, 'message' => strtoupper($store).' Shopify credentials not configured.'];
+        }
+
+        $domain = rtrim(preg_replace('#^https?://#', '', (string) $domain), '/');
+        $variantId = $mapping['variant_id'] ?? null;
+        $productId = $mapping['product_id'] ?? null;
+        if (! $variantId) {
+            return ['success' => false, 'message' => 'Shopify variant mapping not found.'];
+        }
+
+        if (! $productId) {
+            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$variantId}.json";
+            $variantRes = $this->shopifyPullAdminGet($variantUrl, (string) $token);
+            if (! $variantRes->successful()) {
+                return ['success' => false, 'message' => 'Variant lookup failed: '.$variantRes->body(), 'variant_id' => (string) $variantId];
+            }
+            $productId = $variantRes->json('variant.product_id');
+        }
+        if (! $productId) {
+            return ['success' => false, 'message' => 'Product ID missing from Shopify variant.', 'variant_id' => (string) $variantId];
+        }
+
+        $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+        $productRes = $this->shopifyPullAdminGet($productUrl, (string) $token);
+        if (! $productRes->successful()) {
+            return [
+                'success' => false,
+                'message' => 'Product fetch failed: '.$productRes->body(),
+                'variant_id' => (string) $variantId,
+                'product_id' => (string) $productId,
+            ];
+        }
+
+        $images = $this->extractShopifyImageUrls($productRes->json('product.images') ?? []);
+        $source = 'shopify_admin';
+
+        if ($images === []) {
+            $publicImages = $this->fetchPublicShopifyProductImagesForSku($sku);
+            if ($publicImages !== []) {
+                $images = $publicImages;
+                $source = 'shopify_storefront';
+            }
+        }
+
+        if ($images === []) {
+            $cachedImages = $this->fetchCachedShopifyImagesForSku($sku);
+            if ($cachedImages !== []) {
+                $images = $cachedImages;
+                $source = 'shopify_catalog_cache';
+            }
+        }
+
+        if ($images === []) {
+            return [
+                'success' => false,
+                'message' => 'No Shopify product images found.',
+                'variant_id' => (string) $variantId,
+                'product_id' => (string) $productId,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'images' => $images,
+            'variant_id' => (string) $variantId,
+            'product_id' => (string) $productId,
+            'store' => $store,
+            'source' => $source,
+        ];
+    }
+
+    /**
+     * @param  mixed  $images
+     * @return list<string>
+     */
+    private function extractShopifyImageUrls($images): array
+    {
+        if (! is_array($images)) {
+            return [];
+        }
+
+        usort($images, static function ($a, $b) {
+            return ((int) ($a['position'] ?? 0)) <=> ((int) ($b['position'] ?? 0));
+        });
+
+        $urls = [];
+        foreach ($images as $image) {
+            if (! is_array($image)) {
+                continue;
+            }
+            $src = trim((string) ($image['src'] ?? ''));
+            if ($src !== '') {
+                $urls[] = $src;
+            }
+        }
+
+        return $this->dedupeImageUrls($urls);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function fetchPublicShopifyProductImagesForSku(string $sku): array
+    {
+        if (! Schema::hasTable('shopify_catalog_variants') || ! Schema::hasTable('shopify_catalog_products')) {
+            return [];
+        }
+
+        $row = DB::table('shopify_catalog_variants as v')
+            ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
+            ->whereRaw('LOWER(TRIM(COALESCE(v.sku, \'\'))) = ?', [mb_strtolower(trim($sku))])
+            ->orderByDesc('v.synced_at')
+            ->orderByDesc('v.id')
+            ->select('p.handle')
+            ->first();
+
+        $handle = trim((string) ($row->handle ?? ''));
+        if ($handle === '') {
+            return [];
+        }
+
+        $domains = array_values(array_unique(array_filter([
+            config('services.shopify_5core.domain'),
+            'www.5core.com',
+        ])));
+
+        foreach ($domains as $domain) {
+            $domain = rtrim(preg_replace('#^https?://#', '', (string) $domain), '/');
+            if ($domain === '') {
+                continue;
+            }
+
+            $url = "https://{$domain}/products/{$handle}.js";
+            try {
+                $response = Http::timeout(30)->connectTimeout(15)->get($url);
+            } catch (\Throwable $e) {
+                Log::warning('ImageMaster: public Shopify product fetch exception', [
+                    'sku' => $sku,
+                    'url' => $url,
+                    'error' => $e->getMessage(),
+                ]);
+                continue;
+            }
+
+            if (! $response->successful()) {
+                continue;
+            }
+
+            $images = $this->extractShopifyImageUrls($response->json('images') ?? []);
+            if ($images !== []) {
+                return $images;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function fetchCachedShopifyImagesForSku(string $sku): array
+    {
+        if (! Schema::hasTable('shopify_catalog_variants') || ! Schema::hasTable('shopify_catalog_products')) {
+            return [];
+        }
+
+        $row = DB::table('shopify_catalog_variants as v')
+            ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
+            ->whereRaw('LOWER(TRIM(COALESCE(v.sku, \'\'))) = ?', [mb_strtolower(trim($sku))])
+            ->orderByDesc('v.synced_at')
+            ->orderByDesc('v.id')
+            ->select('p.image_src', 'p.images', 'p.image_urls')
+            ->first();
+
+        if (! $row) {
+            return [];
+        }
+
+        $urls = [];
+        if (Schema::hasColumn('shopify_catalog_products', 'image_urls')) {
+            $decoded = json_decode((string) ($row->image_urls ?? ''), true);
+            if (is_array($decoded)) {
+                foreach ($decoded as $item) {
+                    if (is_string($item) && trim($item) !== '') {
+                        $urls[] = trim($item);
+                    } elseif (is_array($item) && ! empty($item['src'])) {
+                        $urls[] = trim((string) $item['src']);
+                    }
+                }
+            }
+        }
+
+        if ($urls === [] && Schema::hasColumn('shopify_catalog_products', 'images')) {
+            $decoded = json_decode((string) ($row->images ?? ''), true);
+            if (is_array($decoded)) {
+                foreach ($decoded as $item) {
+                    if (is_string($item) && trim($item) !== '') {
+                        $urls[] = trim($item);
+                    } elseif (is_array($item) && ! empty($item['src'])) {
+                        $urls[] = trim((string) $item['src']);
+                    }
+                }
+            }
+        }
+
+        if ($urls === [] && ! empty($row->image_src)) {
+            $urls[] = trim((string) $row->image_src);
+        }
+
+        return $this->dedupeImageUrls($urls);
+    }
+
+    /**
+     * @param  list<string>  $urls
+     * @return list<string>
+     */
+    private function dedupeImageUrls(array $urls): array
+    {
+        $seen = [];
+        $out = [];
+        foreach ($urls as $url) {
+            $url = trim((string) $url);
+            if ($url === '' || isset($seen[$url])) {
+                continue;
+            }
+            $seen[$url] = true;
+            $out[] = $url;
+        }
+
+        return array_slice($out, 0, 12);
+    }
+
+    /**
+     * @return array{variant_id?: string, product_id?: string, store?: string}
+     */
+    private function resolveShopifyMappingForSku(string $sku): array
+    {
+        $trim = $this->normalizeSku($sku);
+        if ($trim === '') {
+            return [];
+        }
+
+        $lowerSku = mb_strtolower($trim);
+        if (Schema::hasTable('shopify_catalog_variants')) {
+            $catalogRow = DB::table('shopify_catalog_variants')
+                ->whereRaw('LOWER(TRIM(COALESCE(sku, \'\'))) = ?', [$lowerSku])
+                ->orderByDesc('synced_at')
+                ->orderByDesc('id')
+                ->first();
+            if ($catalogRow && $catalogRow->shopify_variant_id) {
+                return array_filter([
+                    'variant_id' => (string) $catalogRow->shopify_variant_id,
+                    'product_id' => $catalogRow->shopify_product_id ? (string) $catalogRow->shopify_product_id : null,
+                    'store' => (string) ($catalogRow->store ?? 'main'),
+                ]);
+            }
+
+            $cat = ShopifyVariant::query()
+                ->whereRaw('LOWER(TRIM(COALESCE(sku, \'\'))) = ?', [$lowerSku])
+                ->orderByDesc('synced_at')
+                ->orderByDesc('id')
+                ->first();
+            if ($cat && $cat->shopify_variant_id) {
+                return array_filter([
+                    'variant_id' => (string) $cat->shopify_variant_id,
+                    'product_id' => $cat->shopify_product_id ? (string) $cat->shopify_product_id : null,
+                    'store' => (string) ($cat->store ?? 'main'),
+                ]);
+            }
+        }
+
+        $row = ShopifySku::query()
+            ->where('sku', $trim)
+            ->orWhereRaw('LOWER(TRIM(COALESCE(sku, \'\'))) = ?', [$lowerSku])
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->first();
+
+        return $row && $row->variant_id ? ['variant_id' => (string) $row->variant_id, 'store' => 'main'] : [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function productMasterImageArray(?ProductMaster $product): array
+    {
+        if (! $product) {
+            return [];
+        }
+
+        $urls = [];
+        for ($i = 1; $i <= 12; $i++) {
+            $value = trim((string) ($product->{'image'.$i} ?? ''));
+            if ($value !== '') {
+                $urls[] = $value;
+            }
+        }
+
+        if ($urls === [] && ! empty($product->main_image)) {
+            $urls[] = trim((string) $product->main_image);
+        }
+
+        return $urls;
+    }
+
+    /**
+     * @param  list<string>  $images
+     * @return list<string>
+     */
+    private function normalizedImageArray(array $images): array
+    {
+        return array_values(array_map(function ($url) {
+            $url = trim((string) $url);
+            $path = parse_url($url, PHP_URL_PATH);
+            if (is_string($path) && $path !== '') {
+                $url = rawurldecode($path);
+            }
+
+            return mb_strtolower(preg_replace('/\s+/u', '', $url) ?? $url);
+        }, $images));
+    }
+
+    private function launchShopifyImagePullProcess(): void
+    {
+        $php = PHP_BINARY;
+        $artisan = base_path('artisan');
+
+        if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
+            $cmd = 'start /B "" "'.$php.'" "'.$artisan.'" image-master:shopify-pull-run > NUL 2>&1';
+            pclose(popen($cmd, 'r'));
+
+            return;
+        }
+
+        $cmd = escapeshellarg($php).' '.escapeshellarg($artisan).' image-master:shopify-pull-run > /dev/null 2>&1 &';
+        exec($cmd);
+    }
+
+    private function shopifyPullAdminGet(string $url, string $token): \Illuminate\Http\Client\Response
+    {
+        $last = null;
+        for ($attempt = 1; $attempt <= 6; $attempt++) {
+            $last = Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->connectTimeout(15)->get($url);
+
+            if ($last->status() !== 429 || $attempt >= 6) {
+                return $last;
+            }
+
+            $retryAfter = $last->header('Retry-After');
+            $waitMs = is_numeric($retryAfter)
+                ? (int) ((float) $retryAfter * 1000000)
+                : 2000000 * $attempt;
+            usleep(max(2000000, min(10000000, $waitMs)));
+        }
+
+        return $last;
     }
 }

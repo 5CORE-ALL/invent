@@ -8,6 +8,7 @@ use Aws\Signature\SignatureV4;
 use Aws\Credentials\Credentials;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use App\Models\ProductStockMapping;
 
 class BestBuyApiService
@@ -151,6 +152,76 @@ class BestBuyApiService
     }
 
     /**
+     * Push image URLs to Best Buy through Mirakl Connect product attributes.
+     *
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateListingImages(string $sku, array $imageUrls): array
+    {
+        $sku = trim($sku);
+        $urls = array_slice(array_values(array_unique(array_filter(array_map('trim', $imageUrls), fn ($url) => $url !== ''))), 0, 12);
+        if ($sku === '' || $urls === []) {
+            return ['success' => false, 'message' => 'SKU and at least one image URL are required.'];
+        }
+
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return ['success' => false, 'message' => 'Best Buy / Mirakl access token not available.'];
+        }
+
+        $baseUrl = 'https://miraklconnect.com/api/products';
+        $productPayload = [
+            'id' => $sku,
+            'attributes' => [
+                'imageUrls' => $urls,
+                'productImageUrls' => $urls,
+                'mainImageUrl' => $urls[0],
+            ],
+        ];
+
+        $headers = [
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+            'channel_id' => 'bestbuyusa',
+        ];
+
+        try {
+            $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(60);
+            $response = $request->post($baseUrl, ['products' => [$productPayload]]);
+            if (! $response->successful()) {
+                $response = $request->patch("{$baseUrl}/{$sku}", $productPayload);
+            }
+            if (! $response->successful()) {
+                $response = $request->put("{$baseUrl}/{$sku}", $productPayload);
+            }
+
+            if (! $response->successful()) {
+                return ['success' => false, 'message' => 'Best Buy image update failed: '.$response->body()];
+            }
+
+            $saved = $this->saveImageUrlsToBestBuyMetrics($sku, $urls);
+            $message = 'Best Buy product images updated.';
+            if (! $saved) {
+                $message .= ' Metrics save failed.';
+            }
+
+            return ['success' => true, 'message' => $message, 'normalized_urls' => $urls];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * @param  list<string>  $images
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateImages(string $sku, array $images): array
+    {
+        return $this->updateListingImages($sku, $images);
+    }
+
+    /**
      * Push price update to Best Buy (Mirakl Connect).
      *
      * @return array{success: bool, message: string}
@@ -234,6 +305,47 @@ class BestBuyApiService
             return ['success' => true, 'message' => 'Best Buy price updated.', 'status_code' => $response->status()];
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage(), 'status_code' => null];
+        }
+    }
+
+    /**
+     * @param  list<string>  $images
+     */
+    private function saveImageUrlsToBestBuyMetrics(string $sku, array $images): bool
+    {
+        try {
+            if ($sku === '' || ! Schema::hasTable('bestbuy_metrics') || ! Schema::hasColumn('bestbuy_metrics', 'sku')) {
+                return false;
+            }
+            $payload = json_encode(array_values($images), JSON_UNESCAPED_SLASHES);
+            if ($payload === false) {
+                return false;
+            }
+
+            $update = [];
+            if (Schema::hasColumn('bestbuy_metrics', 'image_urls')) {
+                $update['image_urls'] = $payload;
+            }
+            if (Schema::hasColumn('bestbuy_metrics', 'image_master_json')) {
+                $update['image_master_json'] = $payload;
+            }
+            if ($update === []) {
+                return false;
+            }
+            if (Schema::hasColumn('bestbuy_metrics', 'updated_at')) {
+                $update['updated_at'] = now();
+            }
+
+            \Illuminate\Support\Facades\DB::table('bestbuy_metrics')->updateOrInsert(['sku' => $sku], $update);
+            if (Schema::hasColumn('bestbuy_metrics', 'created_at')) {
+                \Illuminate\Support\Facades\DB::table('bestbuy_metrics')->where('sku', $sku)->whereNull('created_at')->update(['created_at' => now()]);
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Best Buy image_urls save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
         }
     }
 }

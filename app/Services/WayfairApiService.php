@@ -504,6 +504,70 @@ XML;
     }
 
     /**
+     * Push catalog image URLs for a Wayfair SKU through the Product Catalog mutation.
+     *
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateListingImages(string $identifier, array $imageUrls): array
+    {
+        $urls = array_slice(array_values(array_unique(array_filter(array_map('trim', $imageUrls), fn ($url) => $url !== ''))), 0, 12);
+        if (trim($identifier) === '' || $urls === []) {
+            return ['success' => false, 'message' => 'SKU and at least one image URL are required.'];
+        }
+
+        $sku = trim($identifier);
+        if (Schema::hasTable('wayfair_metrics')) {
+            $row = $this->findMetricRowBySkuOrAlternateIds('wayfair_metrics', $identifier, [
+                'supplier_part_number',
+                'supplier_sku',
+                'catalog_supplier_part_number',
+            ]);
+            if ($row && ! empty($row->sku)) {
+                $sku = trim((string) $row->sku);
+            }
+        }
+
+        try {
+            $token = $this->getTokenForCatalog();
+            if (! $token) {
+                return ['success' => false, 'message' => 'Wayfair authentication failed.'];
+            }
+
+            $requestId = $this->submitImageUrlsUpdate($token, $sku, $urls);
+            if ($requestId === null) {
+                return ['success' => false, 'message' => 'Wayfair: failed to submit image update.'];
+            }
+
+            $result = $this->pollUpdateStatus($token, $requestId, $sku);
+            if (! ($result['success'] ?? false)) {
+                return $result;
+            }
+
+            $saved = $this->saveImageUrlsToWayfairMetrics($sku, $urls);
+            if (! $saved) {
+                $result['message'] = ($result['message'] ?? 'Wayfair images updated.').' Metrics save failed.';
+            }
+            $result['normalized_urls'] = $urls;
+
+            return $result;
+        } catch (\Throwable $e) {
+            Log::error('Wayfair updateListingImages', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * @param  list<string>  $images
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateImages(string $identifier, array $images): array
+    {
+        return $this->updateListingImages($identifier, $images);
+    }
+
+    /**
      * @param  list<string>  $features
      */
     private function submitKeyFeaturesUpdate(string $token, string $sku, array $features): ?string
@@ -558,5 +622,103 @@ XML;
         }
 
         return $data['data']['updateCatalogEntitiesMutations']['updateMarketSpecificCatalogItems']['requestId'] ?? null;
+    }
+
+    /**
+     * @param  list<string>  $urls
+     */
+    private function submitImageUrlsUpdate(string $token, string $sku, array $urls): ?string
+    {
+        $url = config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
+        $supplierId = (string) config('services.wayfair.supplier_id', '2603');
+        $brand = config('services.wayfair.brand', 'WAYFAIR');
+        $country = config('services.wayfair.country', 'UNITED_STATES');
+        $locale = config('services.wayfair.locale', 'en-US');
+
+        $mutation = <<<'GRAPHQL'
+        mutation UpdateMarketSpecificCatalogItems($input: UpdateMarketSpecificCatalogItemsInput!) {
+          updateCatalogEntitiesMutations {
+            updateMarketSpecificCatalogItems(input: $input) {
+              requestId
+            }
+          }
+        }
+        GRAPHQL;
+
+        $variables = [
+            'input' => [
+                'marketContext' => [
+                    'locale' => $locale,
+                    'country' => $country,
+                    'brand' => $brand,
+                ],
+                'supplierId' => $supplierId,
+                'catalogItemsToUpdate' => [
+                    [
+                        'supplierPartNumber' => $sku,
+                        'images' => $urls,
+                    ],
+                ],
+                'validateOnly' => false,
+            ],
+        ];
+
+        $response = Http::withoutVerifying()
+            ->withToken($token)
+            ->withHeaders(['Content-Type' => 'application/json'])
+            ->post($url, [
+                'query' => $mutation,
+                'variables' => $variables,
+            ]);
+
+        $data = $response->json();
+        if (! empty($data['errors'])) {
+            Log::warning('Wayfair image GraphQL errors', ['sku' => $sku, 'errors' => $data['errors']]);
+
+            return null;
+        }
+
+        return $data['data']['updateCatalogEntitiesMutations']['updateMarketSpecificCatalogItems']['requestId'] ?? null;
+    }
+
+    /**
+     * @param  list<string>  $images
+     */
+    private function saveImageUrlsToWayfairMetrics(string $sku, array $images): bool
+    {
+        try {
+            if ($sku === '' || ! Schema::hasTable('wayfair_metrics') || ! Schema::hasColumn('wayfair_metrics', 'sku')) {
+                return false;
+            }
+            $payload = json_encode(array_values($images), JSON_UNESCAPED_SLASHES);
+            if ($payload === false) {
+                return false;
+            }
+
+            $update = [];
+            if (Schema::hasColumn('wayfair_metrics', 'image_urls')) {
+                $update['image_urls'] = $payload;
+            }
+            if (Schema::hasColumn('wayfair_metrics', 'image_master_json')) {
+                $update['image_master_json'] = $payload;
+            }
+            if ($update === []) {
+                return false;
+            }
+            if (Schema::hasColumn('wayfair_metrics', 'updated_at')) {
+                $update['updated_at'] = now();
+            }
+
+            \Illuminate\Support\Facades\DB::table('wayfair_metrics')->updateOrInsert(['sku' => $sku], $update);
+            if (Schema::hasColumn('wayfair_metrics', 'created_at')) {
+                \Illuminate\Support\Facades\DB::table('wayfair_metrics')->where('sku', $sku)->whereNull('created_at')->update(['created_at' => now()]);
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Wayfair image_urls save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
+        }
     }
 }
