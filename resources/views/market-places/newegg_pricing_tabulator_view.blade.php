@@ -199,6 +199,10 @@
                         title="Apply ONE price (entered in the box) to every selected SKU">
                         <i class="fas fa-equals"></i> Same Price Mode
                     </button>
+                    <button id="push-all-sprice-btn" class="btn btn-sm btn-dark"
+                        title="Push every currently-visible row that has a SPRICE live to Newegg (chunked)">
+                        <i class="fas fa-cloud-upload-alt"></i> Push All SPRICE
+                    </button>
                 </div>
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
@@ -897,6 +901,7 @@
             $('#decrease-btn').on('click',  () => enterMode('decrease'));
             $('#increase-btn').on('click',  () => enterMode('increase'));
             $('#same-price-btn').on('click', () => enterMode('same'));
+            $('#push-all-sprice-btn').on('click', pushAllSpriceVisible);
             $('#discount-type-select').on('change', syncDiscountInputUi);
 
             // Header "select all" — selects every currently-visible SKU.
@@ -1006,9 +1011,79 @@
                 showToast(`SPRICE cleared for ${updates.length} SKU(s)`, 'success');
             }
 
-            // Live-push each selected SKU's SPRICE (or current Newegg price as fallback)
-            // to the Newegg Marketplace API. Mirrors the reverb:push-price flow but
-            // batched: one HTTP request → one Newegg PUT covers every selected SKU.
+            // Newegg's price update endpoint accepts many items per PUT but very
+            // large bodies can be rejected by the edge — chunk client-side.
+            const PUSH_CHUNK_SIZE = 100;
+
+            // Shared push pipeline: chunks updates, calls /newegg-pricing-push for each
+            // chunk sequentially, reconciles per-row Price cells, and summarises in one toast.
+            function pushUpdatesInChunks(updates, $btn) {
+                if (!updates || updates.length === 0) {
+                    showToast('Nothing to push', 'error');
+                    return;
+                }
+
+                const origHtml = $btn ? $btn.html() : null;
+                if ($btn) $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing 0/' + updates.length + '...');
+
+                const chunks = [];
+                for (let i = 0; i < updates.length; i += PUSH_CHUNK_SIZE) {
+                    chunks.push(updates.slice(i, i + PUSH_CHUNK_SIZE));
+                }
+
+                let totalPushed = 0;
+                let totalFailed = 0;
+                const allFails  = [];
+                let done = 0;
+
+                function next(idx) {
+                    if (idx >= chunks.length) {
+                        if ($btn) $btn.prop('disabled', false).html(origHtml);
+                        const msgType = totalFailed > 0 ? (totalPushed > 0 ? 'warning' : 'error') : 'success';
+                        showToast(`Newegg push complete: ${totalPushed} ok, ${totalFailed} failed`, msgType);
+                        if (allFails.length) {
+                            console.warn('Newegg push failures:', allFails);
+                            const sample = allFails.slice(0, 3).map(f => `• ${f.sku}: ${f.error}`).join('\n');
+                            const more   = allFails.length > 3 ? `\n…and ${allFails.length - 3} more (see console)` : '';
+                            showToast(`Failed:\n${sample}${more}`, 'error');
+                        }
+                        return;
+                    }
+
+                    $.ajax({
+                        url: "{{ route('newegg.pricing.push') }}",
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                        data: { updates: chunks[idx] },
+                        success: function(res) {
+                            totalPushed += (res.pushed || 0);
+                            totalFailed += (res.failed || 0);
+                            (res.results || []).filter(r => r.success).forEach(r => {
+                                const rows = table.searchRows('sku', '=', r.sku);
+                                if (rows.length) rows[0].update({ price: r.price });
+                            });
+                            (res.results || []).filter(r => !r.success).forEach(r => allFails.push(r));
+                        },
+                        error: function(xhr) {
+                            const r = xhr.responseJSON || {};
+                            // Whole chunk failed (e.g. Cloudflare 502). Count each row as failed.
+                            chunks[idx].forEach(u => allFails.push({
+                                sku: u.sku, error: (r.error || `HTTP ${xhr.status}`)
+                            }));
+                            totalFailed += chunks[idx].length;
+                        },
+                        complete: function() {
+                            done++;
+                            if ($btn) $btn.html(`<i class="fas fa-spinner fa-spin"></i> Pushing ${done * PUSH_CHUNK_SIZE > updates.length ? updates.length : done * PUSH_CHUNK_SIZE}/${updates.length}...`);
+                            next(idx + 1);
+                        }
+                    });
+                }
+
+                next(0);
+            }
+
+            // Live-push each SELECTED SKU's SPRICE (or current Newegg price as fallback).
             function pushSelectedToNewegg() {
                 if (selectedSkus.size === 0) { showToast('Please select SKUs first', 'error'); return; }
 
@@ -1018,7 +1093,6 @@
                     const rows = table.searchRows('sku', '=', sku);
                     if (rows.length === 0) return;
                     const d = rows[0].getData();
-                    // Prefer SPRICE (user-entered); fall back to live Newegg price.
                     const price = parseFloat(d.sprice) > 0 ? parseFloat(d.sprice)
                                 : (parseFloat(d.price) > 0 ? parseFloat(d.price) : 0);
                     if (price <= 0) { skipped.push(sku); return; }
@@ -1033,50 +1107,27 @@
                 const summary = `Push ${updates.length} price${updates.length !== 1 ? 's' : ''} live to Newegg?`
                     + (skipped.length ? `\n(${skipped.length} skipped — no SPRICE/Price)` : '');
                 if (!confirm(summary)) return;
+                pushUpdatesInChunks(updates, $('#push-newegg-btn'));
+            }
 
-                const $btn = $('#push-newegg-btn');
-                const origHtml = $btn.html();
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
-
-                $.ajax({
-                    url: "{{ route('newegg.pricing.push') }}",
-                    method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-                    data: { updates: updates },
-                    success: function(res) {
-                        const pushed = res.pushed || 0;
-                        const failed = res.failed || 0;
-                        const fails  = (res.results || []).filter(r => !r.success);
-
-                        if (pushed > 0) {
-                            showToast(`Pushed ${pushed} price${pushed !== 1 ? 's' : ''} to Newegg` +
-                                (failed > 0 ? ` (${failed} failed)` : ''), failed > 0 ? 'warning' : 'success');
-                            // Reflect new live price in the Price column for pushed rows.
-                            (res.results || []).filter(r => r.success).forEach(r => {
-                                const rows = table.searchRows('sku', '=', r.sku);
-                                if (rows.length) rows[0].update({ price: r.price });
-                            });
-                        }
-                        if (fails.length) {
-                            console.warn('Newegg push failures:', fails);
-                            const first = fails.slice(0, 3).map(f => `• ${f.sku}: ${f.error}`).join('\n');
-                            const more  = fails.length > 3 ? `\n…and ${fails.length - 3} more (see console)` : '';
-                            showToast(`Failed:\n${first}${more}`, 'error');
-                        }
-                        if (!res.success && pushed === 0 && fails.length === 0) {
-                            showToast(res.error || 'Push failed', 'error');
-                        }
-                    },
-                    error: function(xhr) {
-                        const r = xhr.responseJSON || {};
-                        const msg = r.error || `Push failed (HTTP ${xhr.status})`;
-                        showToast(msg, 'error');
-                        if (r.results) console.warn('Newegg push results:', r.results);
-                    },
-                    complete: function() {
-                        $btn.prop('disabled', false).html(origHtml);
-                    }
+            // Live-push EVERY currently-visible row that has a SPRICE > 0.
+            // Honours all active filters (INV, PFT, ROI, DIL, NR, Status, badges, search).
+            function pushAllSpriceVisible() {
+                const visible = table.getData('active'); // active = post-filter, post-sort
+                const updates = [];
+                visible.forEach(d => {
+                    if (!d.sku) return;
+                    const sp = parseFloat(d.sprice);
+                    if (!(sp > 0)) return;
+                    updates.push({ sku: d.sku, price: +sp.toFixed(2) });
                 });
+
+                if (updates.length === 0) {
+                    showToast('No visible row has a SPRICE to push', 'error');
+                    return;
+                }
+                if (!confirm(`Push SPRICE for ${updates.length} visible SKU${updates.length !== 1 ? 's' : ''} live to Newegg?`)) return;
+                pushUpdatesInChunks(updates, $('#push-all-sprice-btn'));
             }
 
             // Bulk save through one HTTP request (mirrors reverb-save-sprice pattern).
