@@ -1265,6 +1265,30 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        /*
+        |--------------------------------------------------------------------------
+        | PRODUCT MASTER — LP / CBM / FRGHT FORMULA SYNC
+        |--------------------------------------------------------------------------
+        | Source-of-truth formula:
+        |   CBM   = (L * 2.54) * (W * 2.54) * (H * 2.54) / 1,000,000
+        |   FRGHT = CBM * 200
+        |   LP    = CP + FRGHT
+        |
+        | The same calculation also runs in App\Models\ProductMaster::booted()
+        | on every save, so this scheduled command is the safety net for rows
+        | that bypass the model (direct DB writes, historical/imported data,
+        | SKUs in CustomLpMappingService whose custom LP changes, etc.).
+        |
+        | Only re-saves a product when LP/CBM/FRGHT actually differ, so
+        | `updated_at` is not churned on every tick.
+        */
+        $ist($schedule->command('products:recalc-lp')
+            ->hourly()
+            ->name('products-recalc-lp')
+            ->withoutOverlapping(self::HF_MUTEX_HOURLY)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('app:process-jungle-scout-sheet-data')
             ->dailyAt('15:30')
             ->timezone('Asia/Kolkata')
