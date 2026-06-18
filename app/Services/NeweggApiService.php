@@ -289,10 +289,14 @@ class NeweggApiService
                 $priceRow['Active'] = $i['active'] ? '1' : '0';
             }
 
+            // Newegg's XSD: <PriceList><Price>…</Price></PriceList>.  In JSON the
+            // repeating <Price> element maps to a "Price" array inside "PriceList".
             $body = [
                 'Type'      => '1',
                 'Value'     => $spn,
-                'PriceList' => [$priceRow],
+                'PriceList' => [
+                    'Price' => [$priceRow],
+                ],
             ];
             if (!empty($i['condition'])) {
                 $body['Condition'] = (string) $i['condition'];
