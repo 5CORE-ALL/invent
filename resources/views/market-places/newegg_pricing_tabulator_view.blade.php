@@ -476,13 +476,8 @@
                         }
                     },
                     { title: "SKU", field: "sku", frozen: true, headerFilter: "input", headerFilterPlaceholder: "Search SKU...", cssClass: "text-primary fw-bold" },
-                    { title: "Title", field: "title", visible: false, tooltip: true },
-                    { title: "INV", field: "inv", hozAlign: "center", sorter: "number" },
-                    { title: "N INV", field: "available_quantity", hozAlign: "center", sorter: "number" },
-                    { title: "OVL30", field: "ovl30", hozAlign: "center", sorter: "number" },
-                    { title: "DIL %", field: "dil", hozAlign: "center", sorter: "number", formatter: dilFormatter },
                     {
-                        title: "B/S", field: "bs", hozAlign: "center", headerSort: false,
+                        title: "B/S", field: "bs", hozAlign: "center", headerSort: false, frozen: true,
                         cssClass: "editable-cell",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
@@ -500,11 +495,34 @@
                             openBsModal(cell.getRow().getData());
                         }
                     },
+                    { title: "Title", field: "title", visible: false, tooltip: true },
+                    { title: "INV", field: "inv", hozAlign: "center", sorter: "number" },
+                    { title: "N INV", field: "available_quantity", hozAlign: "center", sorter: "number" },
+                    { title: "OVL30", field: "ovl30", hozAlign: "center", sorter: "number" },
+                    { title: "DIL %", field: "dil", hozAlign: "center", sorter: "number", formatter: dilFormatter },
                     moneyCol("Price", "price"),
                     { title: "L30", field: "l30", hozAlign: "center", sorter: "number",
                         formatter: function(cell) {
                             const v = parseInt(cell.getValue()) || 0;
                             return v > 0 ? `<span style="color:#28a745;font-weight:bold;">${v}</span>` : '0';
+                        }
+                    },
+                    {
+                        title: "A Prc", field: "a_price", hozAlign: "right", sorter: "number",
+                        tooltip: "Amazon live selling price (from amazon_datasheet)",
+                        formatter: function(cell) {
+                            const v = cell.getValue();
+                            if (v === null || v === undefined || v === '') return '<span style="color:#bbb;">—</span>';
+                            const n = parseFloat(v) || 0;
+                            if (n <= 0) return '<span style="color:#bbb;">—</span>';
+                            const row = cell.getRow().getData();
+                            const ne  = parseFloat(row.price) || 0;
+                            // Color compared to Newegg price: green = Newegg is cheaper, red = Newegg is more expensive.
+                            let color = '#212529';
+                            if (ne > 0 && Math.abs(ne - n) > 0.01) {
+                                color = ne < n ? '#28a745' : '#dc3545';
+                            }
+                            return `<span style="color:${color};font-weight:600;">$${n.toFixed(2)}</span>`;
                         }
                     },
                     {
@@ -539,6 +557,23 @@
                             const v = cell.getValue();
                             if (v === null || v === undefined || v === '') return '<span style="color:#bbb;">—</span>';
                             return '$' + (parseFloat(v) || 0).toFixed(2);
+                        }
+                    },
+                    {
+                        title: "Missing L", field: "missing_l", hozAlign: "center", headerSort: false,
+                        formatter: function(cell) {
+                            return neRowMissingL(cell.getRow().getData())
+                                ? '<span style="color:#c0392b;font-weight:bold;">Missing L</span>'
+                                : '';
+                        }
+                    },
+                    {
+                        title: "Map", field: "map_status", hozAlign: "center", headerSort: false,
+                        formatter: function(cell) {
+                            const st = neMapStatus(cell.getRow().getData());
+                            if (st === 'map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
+                            if (st === 'nmap') return '<span style="color:#dc3545;font-weight:bold;">N Map</span>';
+                            return '';
                         }
                     },
                     {
@@ -597,23 +632,6 @@
                             const color = isActive ? '#28a745' : '#dc3545';
                             const letter = isActive ? 'A' : 'I';
                             return `<span title="${v}" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${color};color:#fff;font-weight:bold;font-size:12px;">${letter}</span>`;
-                        }
-                    },
-                    {
-                        title: "Missing L", field: "missing_l", hozAlign: "center", headerSort: false,
-                        formatter: function(cell) {
-                            return neRowMissingL(cell.getRow().getData())
-                                ? '<span style="color:#c0392b;font-weight:bold;">Missing L</span>'
-                                : '';
-                        }
-                    },
-                    {
-                        title: "Map", field: "map_status", hozAlign: "center", headerSort: false,
-                        formatter: function(cell) {
-                            const st = neMapStatus(cell.getRow().getData());
-                            if (st === 'map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
-                            if (st === 'nmap') return '<span style="color:#dc3545;font-weight:bold;">N Map</span>';
-                            return '';
                         }
                     },
                     moneyCol("LP", "lp", false),

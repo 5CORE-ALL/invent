@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Models\AmazonDatasheet;
 use App\Models\MarketplacePercentage;
 use App\Models\NeweggDataView;
 use App\Models\NeweggItem;
@@ -80,6 +81,12 @@ class NeweggPricingController extends Controller
         // 6) User-entered SPRICE / SPFT / SROI overlay (newegg_data_views), keyed by exact SKU.
         $dataViews = NeweggDataView::all()->keyBy('sku');
 
+        // 7) Amazon live selling price keyed by uppercased SKU (same source the
+        //    Purchasing-Power / Macys / etc. pages use for the "A Price" column).
+        $amazonBySku = AmazonDatasheet::whereIn('sku', $skus)
+            ->get()
+            ->keyBy(fn ($r) => strtoupper((string) $r->sku));
+
         $data = [];
         foreach ($productMasterRows as $pm) {
             $sku = $pm->sku;
@@ -122,6 +129,11 @@ class NeweggPricingController extends Controller
                 ?: ($pm->getAttribute('image_path') ?? null)
                 ?: ($shopify->image_src ?? null);
 
+            $amazon = $amazonBySku[strtoupper((string) $sku)] ?? null;
+            $aPrice = $amazon && (float) ($amazon->price ?? 0) > 0
+                ? round((float) $amazon->price, 2)
+                : null;
+
             $data[] = [
                 'sku'                => $sku,
                 'image'              => $image ?: null,
@@ -130,6 +142,7 @@ class NeweggPricingController extends Controller
                 'ovl30'              => (int) $ovl30,
                 'dil'                => $dil,
                 'price'              => $price !== null ? round($price, 2) : null,
+                'a_price'            => $aPrice,
                 'l30'                => $l30,
                 'lp'                 => round($lp, 2),
                 'ship'               => round($ship, 2),
@@ -529,7 +542,7 @@ class NeweggPricingController extends Controller
                 // hide it from the Columns dropdown so users don't toggle it manually.
                 '_select' => false,
                 'sku' => true, 'title' => false, 'inv' => true, 'ovl30' => true,
-                'dil' => true, 'price' => true, 'l30' => true,
+                'dil' => true, 'price' => true, 'a_price' => true, 'l30' => true,
                 'lp' => false, 'ship' => false, 'pft' => true, 'pft_pct' => true, 'roi' => true,
                 'sprice' => true, 'spft' => true, 'sroi' => true, 'nr' => true, 'bs' => true,
                 'map' => true, 'missing_l' => true, 'map_status' => true, 'available_quantity' => true, 'currency' => false, 'status' => true,
