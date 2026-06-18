@@ -4572,14 +4572,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_shein/import', [ListingSheinController::class, 'import'])->name('listing_shein.import');
     Route::get('/listing_shein/export', [ListingSheinController::class, 'export'])->name('listing_shein.export');
 
-    Route::get('sheinAnalysis', action: [SheinController::class, 'overallShein']);
-    Route::get('/shein/view-data', [SheinController::class, 'getViewSheinData']);
-    Route::post('/update-all-shein-skus', [SheinController::class, 'updateAllSheinSkus']);
     Route::post('/shein/save-nr', [SheinController::class, 'saveNrToDatabase']);
-    Route::post('/shein/update-listed-live', [SheinController::class, 'updateListedLive']);
-    Route::post('/shein-analytics/import', [SheinController::class, 'importSheinAnalytics'])->name('shein.analytics.import');
-    Route::get('/shein-analytics/export', [SheinController::class, 'exportSheinAnalytics'])->name('shein.analytics.export');
-    Route::get('/shein-analytics/sample', [SheinController::class, 'downloadSample'])->name('shein.analytics.sample');
 
     // Shein Daily Data routes
     Route::post('/shein/upload-daily-data', [SheinController::class, 'uploadDailyDataChunk'])->name('shein.upload.daily.data');
