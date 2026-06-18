@@ -118,6 +118,173 @@ class NeweggApiService
     }
 
     /**
+     * Update Item Price (international) for a SINGLE item.
+     *   PUT /marketplace/contentmgmt/item/international/price?sellerid=XXXX
+     *
+     * Wraps {@see updateItemPriceBulk()} for the common single-SKU push case.
+     * Returns a normalized result mirroring ReverbApiService::updatePrice():
+     *   ['success' => bool, 'message' => string, 'sku' => string, 'price' => float]
+     *
+     * @return array{success:bool,message:string,sku:string,price:float,raw:?string,blocked_by_cloudflare:bool}
+     */
+    public function updateItemPrice(string $sellerPartNumber, float $price, string $currency = 'USD', string $country = 'USA'): array
+    {
+        $sellerPartNumber = trim($sellerPartNumber);
+        if ($sellerPartNumber === '') {
+            return [
+                'success' => false,
+                'message' => 'SellerPartNumber is required.',
+                'sku' => $sellerPartNumber,
+                'price' => $price,
+                'raw' => null,
+                'blocked_by_cloudflare' => false,
+            ];
+        }
+
+        $price = round($price, 2);
+        if ($price <= 0) {
+            return [
+                'success' => false,
+                'message' => 'Price must be greater than 0.',
+                'sku' => $sellerPartNumber,
+                'price' => $price,
+                'raw' => null,
+                'blocked_by_cloudflare' => false,
+            ];
+        }
+
+        $bulk = $this->updateItemPriceBulk([
+            ['seller_part_number' => $sellerPartNumber, 'price' => $price, 'currency' => $currency],
+        ], $country);
+
+        if ($bulk['blocked_by_cloudflare']) {
+            return [
+                'success' => false,
+                'message' => 'Blocked by Cloudflare (managed challenge). Whitelist this server IP in the Newegg Seller Portal.',
+                'sku' => $sellerPartNumber,
+                'price' => $price,
+                'raw' => $bulk['raw'],
+                'blocked_by_cloudflare' => true,
+            ];
+        }
+
+        if (!$bulk['ok']) {
+            return [
+                'success' => false,
+                'message' => 'Newegg API rejected the update (HTTP '.$bulk['status'].'). '.($bulk['error_message'] ?? ''),
+                'sku' => $sellerPartNumber,
+                'price' => $price,
+                'raw' => $bulk['raw'],
+                'blocked_by_cloudflare' => false,
+            ];
+        }
+
+        Log::info('Newegg price updated', [
+            'seller_part_number' => $sellerPartNumber,
+            'price' => $price,
+            'currency' => $currency,
+            'country' => $country,
+        ]);
+
+        return [
+            'success' => true,
+            'message' => "Price \${$price} pushed to Newegg for SPN: {$sellerPartNumber}.",
+            'sku' => $sellerPartNumber,
+            'price' => $price,
+            'raw' => $bulk['raw'],
+            'blocked_by_cloudflare' => false,
+        ];
+    }
+
+    /**
+     * Update Item Price (international) for many items in ONE API call.
+     *   PUT /marketplace/contentmgmt/item/international/price?sellerid=XXXX
+     *
+     * @param  list<array{seller_part_number:string,price:float|int|string,currency?:string,msrp?:float|int|string,map?:float|int|string,checkout_map?:bool}>  $items
+     * @return array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error_message:?string}
+     */
+    public function updateItemPriceBulk(array $items, string $country = 'USA'): array
+    {
+        $itemList = [];
+        foreach ($items as $i) {
+            $spn = trim((string) ($i['seller_part_number'] ?? ''));
+            $price = isset($i['price']) ? round((float) $i['price'], 2) : 0.0;
+            if ($spn === '' || $price <= 0) {
+                continue;
+            }
+            $row = [
+                'SellerPartNumber' => $spn,
+                'Currency'         => (string) ($i['currency'] ?? 'USD'),
+                'Price'            => $price,
+            ];
+            if (isset($i['msrp']) && (float) $i['msrp'] > 0) {
+                $row['MSRP'] = round((float) $i['msrp'], 2);
+            }
+            if (isset($i['map']) && (float) $i['map'] >= 0) {
+                $row['MAP'] = round((float) $i['map'], 2);
+            }
+            if (isset($i['checkout_map'])) {
+                $row['Checkout_MAP'] = $i['checkout_map'] ? 'True' : 'False';
+            }
+            $itemList[] = $row;
+        }
+
+        if ($itemList === []) {
+            return [
+                'ok' => false,
+                'status' => 0,
+                'blocked_by_cloudflare' => false,
+                'json' => null,
+                'raw' => '',
+                'error_message' => 'No valid items to push (each needs seller_part_number + positive price).',
+            ];
+        }
+
+        $body = [
+            'OperationType' => 'UpdateInternationalItemPriceRequest',
+            'SellerID'      => $this->sellerId,
+            'RequestBody'   => [
+                'InternationalItemPrice' => [
+                    'Country' => strtoupper($country),
+                    'Item'    => $itemList,
+                ],
+            ],
+        ];
+
+        $res = $this->request('PUT', '/marketplace/contentmgmt/item/international/price', [], $body);
+
+        $errorMessage = null;
+        if (!$res['ok']) {
+            // Newegg returns either {NeweggAPIResponse:{Errors:[{Description}]}} or a flat
+            // [{"Code":"...","Message":"..."}] array depending on the failure stage.
+            $j = $res['json'];
+            if (is_array($j)) {
+                if (isset($j[0]['Message'])) {
+                    $errorMessage = (string) $j[0]['Message'];
+                } elseif (isset($j['NeweggAPIResponse']['Errors'])) {
+                    $errs = $j['NeweggAPIResponse']['Errors'];
+                    $first = is_array($errs) ? (is_array(reset($errs)) ? reset($errs) : $errs) : null;
+                    if (is_array($first)) {
+                        $errorMessage = (string) ($first['Description'] ?? ($first['Message'] ?? ''));
+                    }
+                }
+            }
+            if ($errorMessage === null && $res['blocked_by_cloudflare']) {
+                $errorMessage = 'Cloudflare managed challenge (IP not whitelisted for writes).';
+            }
+        }
+
+        return [
+            'ok'                    => $res['ok'],
+            'status'                => $res['status'],
+            'blocked_by_cloudflare' => $res['blocked_by_cloudflare'],
+            'json'                  => $res['json'],
+            'raw'                   => $res['raw'],
+            'error_message'         => $errorMessage,
+        ];
+    }
+
+    /**
      * Submit an Item Basic Information Report request (async). Returns a
      * RequestID you then poll with getReportResult().
      *   POST /marketplace/reportmgmt/report/submitrequest?sellerid=XXXX

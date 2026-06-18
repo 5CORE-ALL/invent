@@ -9,6 +9,7 @@ use App\Models\NeweggItem;
 use App\Models\NeweggPricing;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\NeweggApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -148,6 +149,9 @@ class NeweggPricingController extends Controller
                 'nr'                 => $nr,
                 'buyer_link'         => $buyerLink,
                 'seller_link'        => $sellerLink,
+                // Used by client-side bulk SPRICE tools (Increase / Decrease / Same Price)
+                // to compute SPFT/SROI optimistically before the server response lands.
+                'factor'             => round($factor, 4),
             ];
         }
 
@@ -201,6 +205,242 @@ class NeweggPricingController extends Controller
         } catch (\Exception $e) {
             Log::error('Error saving Newegg SPRICE: ' . $e->getMessage());
             return response()->json(['success' => false, 'error' => 'Failed to save'], 500);
+        }
+    }
+
+    /**
+     * Bulk-save SPRICE for many SKUs at once. Powers the "Increase / Decrease /
+     * Same Price" tools on the pricing page (one HTTP request per click instead
+     * of N). Re-uses saveSprice's per-SKU calc so SPFT/SROI stay authoritative.
+     *
+     * Request body: { updates: [ { sku: "...", sprice: 19.99 }, ... ] }
+     */
+    public function saveSpriceBulk(Request $request)
+    {
+        try {
+            $updates = $request->input('updates', []);
+            if (!is_array($updates) || count($updates) === 0) {
+                return response()->json(['success' => false, 'error' => 'No updates provided'], 422);
+            }
+
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'Neweggb2c')->first();
+            $margin = ($marketplaceData ? (float) $marketplaceData->percentage : 80)
+                    - ($marketplaceData ? (float) $marketplaceData->ad_updates : 0);
+            $factor = $margin > 0 ? $margin / 100 : 0.80;
+
+            $savedCount = 0;
+            $errors     = [];
+            $results    = [];
+
+            foreach ($updates as $u) {
+                $sku    = $u['sku']    ?? null;
+                $sprice = $u['sprice'] ?? null;
+                if (!$sku) {
+                    $errors[] = ['sku' => null, 'error' => 'Missing SKU'];
+                    continue;
+                }
+
+                try {
+                    $pm = ProductMaster::where('sku', $sku)->first();
+                    [$lp, $ship] = $this->extractCosts($pm);
+
+                    $dv     = NeweggDataView::firstOrNew(['sku' => $sku]);
+                    $values = is_array($dv->value) ? $dv->value : [];
+
+                    if ($sprice === null || $sprice === '' || (float) $sprice === 0.0) {
+                        unset($values['SPRICE'], $values['SPFT'], $values['SROI']);
+                        $values['SPRICE'] = $sprice === null || $sprice === '' ? null : 0;
+                        if ($values['SPRICE'] === null) {
+                            unset($values['SPRICE']);
+                        }
+                    } else {
+                        $spriceF = (float) $sprice;
+                        $profit  = ($spriceF * $factor) - $lp - $ship;
+                        $values['SPRICE'] = round($spriceF, 2);
+                        $values['SPFT']   = $spriceF > 0 ? round(($profit / $spriceF) * 100, 1) : 0;
+                        $values['SROI']   = $lp > 0 ? round(($profit / $lp) * 100, 0) : 0;
+                    }
+
+                    $dv->value = $values;
+                    $dv->save();
+
+                    $results[] = [
+                        'sku'    => $sku,
+                        'sprice' => $values['SPRICE'] ?? null,
+                        'spft'   => $values['SPFT']   ?? null,
+                        'sroi'   => $values['SROI']   ?? null,
+                    ];
+                    $savedCount++;
+                } catch (\Throwable $rowEx) {
+                    $errors[] = ['sku' => $sku, 'error' => $rowEx->getMessage()];
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'updated' => $savedCount,
+                'results' => $results,
+                'errors'  => $errors,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error bulk-saving Newegg SPRICE: ' . $e->getMessage());
+            return response()->json(['success' => false, 'error' => 'Failed to save'], 500);
+        }
+    }
+
+    /**
+     * Push selected SKU prices to the live Newegg Marketplace API. Mirrors the
+     * Reverb push pattern (uses a service helper; returns per-SKU results so
+     * the UI can show successes vs failures).
+     *
+     * Request body:
+     *   { updates: [ { sku: "<local SKU>", price: 19.99 }, ... ] }
+     *
+     * The local SKU is resolved to its Newegg SellerPartNumber via the same
+     * special-char-insensitive normalization used elsewhere on the page.
+     */
+    public function pushPriceToNewegg(Request $request, NeweggApiService $newegg)
+    {
+        try {
+            $updates = $request->input('updates', []);
+            if (!is_array($updates) || count($updates) === 0) {
+                return response()->json(['success' => false, 'error' => 'No updates provided'], 422);
+            }
+
+            // Build a SKU → SellerPartNumber index once (avoids N queries).
+            $spnByNorm = [];
+            foreach (NeweggPricing::query()->select('seller_part_number')->get() as $row) {
+                $norm = $this->normalizeSkuKey((string) $row->seller_part_number);
+                if ($norm !== '' && !isset($spnByNorm[$norm])) {
+                    $spnByNorm[$norm] = (string) $row->seller_part_number;
+                }
+            }
+
+            $items = [];   // Newegg payload rows (one PUT covers them all)
+            $skuBySpn = []; // SPN → local sku, for mapping results back
+            $errors = [];
+            foreach ($updates as $u) {
+                $sku   = trim((string) ($u['sku'] ?? ''));
+                $price = isset($u['price']) ? (float) $u['price'] : 0.0;
+                if ($sku === '') {
+                    $errors[] = ['sku' => $sku, 'success' => false, 'error' => 'Missing SKU'];
+                    continue;
+                }
+                if ($price <= 0) {
+                    $errors[] = ['sku' => $sku, 'success' => false, 'error' => 'Price must be > 0'];
+                    continue;
+                }
+                $norm = $this->normalizeSkuKey($sku);
+                $spn = $spnByNorm[$norm] ?? null;
+                if (!$spn) {
+                    $errors[] = ['sku' => $sku, 'success' => false, 'error' => 'No Newegg listing (SPN) found for SKU'];
+                    continue;
+                }
+                $items[] = ['seller_part_number' => $spn, 'price' => round($price, 2), 'currency' => 'USD'];
+                $skuBySpn[$spn] = $sku;
+            }
+
+            if ($items === []) {
+                return response()->json([
+                    'success' => false,
+                    'pushed'  => 0,
+                    'results' => array_values($errors),
+                    'error'   => 'No valid SKU/price pairs to push.',
+                ], 422);
+            }
+
+            $bulk = $newegg->updateItemPriceBulk($items, 'USA');
+
+            $results = $errors;
+            if ($bulk['blocked_by_cloudflare']) {
+                foreach ($items as $row) {
+                    $results[] = [
+                        'sku'     => $skuBySpn[$row['seller_part_number']] ?? $row['seller_part_number'],
+                        'spn'     => $row['seller_part_number'],
+                        'success' => false,
+                        'error'   => 'Blocked by Cloudflare (server IP not whitelisted in Newegg Seller Portal).',
+                    ];
+                }
+                return response()->json([
+                    'success' => false,
+                    'pushed'  => 0,
+                    'failed'  => count($items),
+                    'results' => array_values($results),
+                    'error'   => 'Blocked by Cloudflare. Whitelist this server IP in the Newegg Seller Portal.',
+                ], 502);
+            }
+
+            if (!$bulk['ok']) {
+                foreach ($items as $row) {
+                    $results[] = [
+                        'sku'     => $skuBySpn[$row['seller_part_number']] ?? $row['seller_part_number'],
+                        'spn'     => $row['seller_part_number'],
+                        'success' => false,
+                        'error'   => $bulk['error_message'] ?: ('Newegg API HTTP ' . $bulk['status']),
+                    ];
+                }
+                return response()->json([
+                    'success' => false,
+                    'pushed'  => 0,
+                    'failed'  => count($items),
+                    'results' => array_values($results),
+                    'error'   => $bulk['error_message'] ?: 'Newegg API rejected the update.',
+                ]);
+            }
+
+            // Bulk PUT succeeded as a whole. Newegg also returns per-item statuses
+            // in ResponseBody.ItemPriceList[].Item[] — surface those when present.
+            $perItem = data_get($bulk, 'json.NeweggAPIResponse.ResponseBody.InternationalItemPrice.Item', null);
+            if (!is_array($perItem)) {
+                $perItem = data_get($bulk, 'json.NeweggAPIResponse.ResponseBody.ItemPriceList.ItemPrice', []);
+            }
+
+            $perItemBySpn = [];
+            if (is_array($perItem)) {
+                foreach ($perItem as $r) {
+                    $spn = (string) ($r['SellerPartNumber'] ?? '');
+                    if ($spn !== '') {
+                        $perItemBySpn[$spn] = $r;
+                    }
+                }
+            }
+
+            $pushed = 0;
+            foreach ($items as $row) {
+                $spn = $row['seller_part_number'];
+                $rowResult = $perItemBySpn[$spn] ?? null;
+                $itemSuccess = $rowResult === null
+                    ? true
+                    : (($rowResult['IsSuccess'] ?? 'true') === 'true' || ($rowResult['IsSuccess'] ?? null) === true);
+                $errMsg = $itemSuccess ? null : (string) (data_get($rowResult, 'Errors.0.Description') ?? data_get($rowResult, 'Message') ?? 'Rejected');
+
+                if ($itemSuccess) {
+                    $pushed++;
+                    // Reflect the new live price in newegg_pricing so the page
+                    // shows what's actually on Newegg now without another sync.
+                    NeweggPricing::where('seller_part_number', $spn)->update([
+                        'selling_price' => $row['price'],
+                    ]);
+                }
+
+                $results[] = [
+                    'sku'     => $skuBySpn[$spn] ?? $spn,
+                    'spn'     => $spn,
+                    'success' => $itemSuccess,
+                    'price'   => $row['price'],
+                    'error'   => $errMsg,
+                ];
+            }
+
+            return response()->json([
+                'success' => $pushed > 0,
+                'pushed'  => $pushed,
+                'failed'  => count($items) - $pushed,
+                'results' => array_values($results),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Error pushing Newegg prices: ' . $e->getMessage());
+            return response()->json(['success' => false, 'error' => 'Push failed: ' . $e->getMessage()], 500);
         }
     }
 
@@ -325,6 +565,9 @@ class NeweggPricingController extends Controller
             $filePath = storage_path('app/newegg_pricing_column_visibility.json');
 
             $default = [
+                // _select is a toolbar-controlled column (Increase/Decrease/Same Price modes);
+                // hide it from the Columns dropdown so users don't toggle it manually.
+                '_select' => false,
                 'sku' => true, 'title' => false, 'inv' => true, 'ovl30' => true,
                 'dil' => true, 'price' => true, 'l30' => true,
                 'lp' => false, 'ship' => false, 'pft' => true, 'pft_pct' => true, 'roi' => true,

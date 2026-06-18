@@ -3007,6 +3007,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/newegg-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'getColumnVisibility']);
     Route::post('/newegg-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveColumnVisibility']);
     Route::post('/newegg-pricing-save-sprice', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveSprice'])->name('newegg.pricing.save.sprice');
+    Route::post('/newegg-pricing-save-sprice-bulk', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveSpriceBulk'])->name('newegg.pricing.save.sprice.bulk');
+    Route::post('/newegg-pricing-push', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'pushPriceToNewegg'])->name('newegg.pricing.push');
     Route::post('/newegg-pricing-save-nr', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveNr'])->name('newegg.pricing.save.nr');
     Route::post('/newegg-pricing-save-links', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveLinks'])->name('newegg.pricing.save.links');
 
