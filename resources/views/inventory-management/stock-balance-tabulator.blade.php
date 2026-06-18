@@ -310,6 +310,15 @@
     let restoringSavedFromSku = false; // True while restoreSavedFromSku() is firing synthetic change events
     let initialRestoreDone = false;    // True after the first restoreSavedFromSku() pass completes
 
+    // S Qty (Suggested Qty): half the FROM Qty, rounded to the nearest multiple of 4.
+    // Returns null when there's no FROM Qty to derive from.
+    function computeSQty(fromQty) {
+        if (fromQty === null || typeof fromQty === 'undefined') return null;
+        const n = parseFloat(fromQty);
+        if (!isFinite(n) || n <= 0) return 0;
+        return Math.round((n / 2) / 4) * 4;
+    }
+
     // Returns the effective FROM Qty for a row (user-edited override, else FROM SKU's INV).
     // Returns null when no FROM SKU has been chosen yet so callers can distinguish "unknown".
     function getFromQtyForRowData(data) {
@@ -782,6 +791,13 @@
                 $row.find('.from-inv-display').val(fromInv);
                 $row.find('.from-sold-display').val(fromSold);
                 $row.find('.from-qty-input').val(fromInv); // Set FROM Qty to FROM SKU's INV
+
+                // S Qty mirrors (FROM Qty / 2) rounded to a multiple of 4
+                const sQtyForRow = computeSQty(fromInv);
+                $row.find('.s-qty-display').text((sQtyForRow === null || sQtyForRow === 0) ? '' : sQtyForRow);
+                // Refresh TO Qty (now derived from S Qty * ratio) so the display matches
+                // what the Submit button will send.
+                calculateToQty($row);
                 
                 // Set FROM DIL% with color coding
                 const $dilSpan = $row.find('.from-dil-percent');
@@ -799,6 +815,7 @@
                 $row.find('.from-sold-display').val('');
                 $row.find('.from-qty-input').val('');
                 $row.find('.from-dil-percent').attr('class', 'from-dil-percent').text('-');
+                $row.find('.s-qty-display').text('');
                 // Also drop any user-edited FROM Qty memory for this row
                 delete customFromQty[toSku];
             }
@@ -850,18 +867,28 @@
                 }
             }
             calculateToQty($row);
+            // Keep S Qty (FROM Qty / 2, rounded to multiple of 4) in sync
+            const rawVal = $(this).val();
+            const sQtyForRow = (rawVal === '' || rawVal === null || typeof rawVal === 'undefined')
+                ? null : computeSQty(parseFloat(rawVal));
+            $row.find('.s-qty-display').text((sQtyForRow === null || sQtyForRow === 0) ? '' : sQtyForRow);
             // FROM Qty changed - re-evaluate Hide filter (a 0 may now hide this row).
             reapplyHideFilterDebounced();
         });
         
-        // Calculate TO Qty based on FROM Qty × Ratio
+        // Calculate TO Qty based on S Qty × Ratio. S Qty (the actual transferred amount)
+        // is half the FROM Qty rounded to the nearest multiple of 4, so the displayed
+        // TO Qty mirrors what the Submit button will send to the server.
         function calculateToQty($row) {
-            const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
+            const fromQtyRaw = parseFloat($row.find('.from-qty-input').val()) || 0;
+            const sQty = computeSQty(fromQtyRaw) || 0;
             const ratio = $row.find('.ratio-select').val() || '1:1';
-            
-            if (fromQty > 0) {
-                const ratioParts = ratio.split(':');
-                const toQty = Math.round(fromQty * (parseFloat(ratioParts[1]) / parseFloat(ratioParts[0])));
+            const ratioParts = ratio.split(':');
+            const fromPart = parseFloat(ratioParts[0]);
+            const toPart   = parseFloat(ratioParts[1]);
+
+            if (sQty > 0 && fromPart > 0 && toPart > 0) {
+                const toQty = Math.round(sQty * (toPart / fromPart));
                 $row.find('.to-qty-display').val(toQty);
             } else {
                 $row.find('.to-qty-display').val('');
@@ -888,50 +915,59 @@
             // User selects FROM SKU manually (from dropdown)
             const fromSku = $row.find('.to-sku-select').val();
             const fromParent = $row.find('.to-parent-display').val();
-            const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
+            // FROM Qty input is the *available* qty; the amount actually transferred
+            // (deducted from FROM SKU, multiplied by the ratio for TO SKU) is S Qty —
+            // half the FROM Qty rounded to the nearest multiple of 4.
+            const fromQtyInput = parseFloat($row.find('.from-qty-input').val()) || 0;
+            const sQty = computeSQty(fromQtyInput) || 0;
             const ratio = $row.find('.ratio-select').val();
-            
+
             // Validation
             if (!fromSku) {
                 showToast('Please select a FROM SKU', 'error');
                 return;
             }
-            
-            if (fromQty <= 0) {
+
+            if (fromQtyInput <= 0) {
                 showToast('FROM Qty must be greater than 0', 'error');
                 return;
             }
-            
+
+            if (sQty <= 0) {
+                showToast('S Qty must be greater than 0 (FROM Qty too small to round up to a multiple of 4)', 'error');
+                return;
+            }
+
             if (toQty <= 0) {
                 showToast('TO Qty must be greater than 0', 'error');
                 return;
             }
-            
+
             // Get FROM SKU data
             const fromItem = allTableData.find(function(i) { return i.SKU === fromSku; });
             const fromInv = fromItem ? (parseInt(fromItem.INV) || 0) : 0;
             const fromDil = fromItem ? (parseFloat(fromItem.DIL) || 0) : 0;
-            
-            if (fromQty > fromInv) {
-                showToast('Insufficient inventory for ' + fromSku + '. Available: ' + fromInv, 'error');
+
+            if (sQty > fromInv) {
+                showToast('Insufficient inventory for ' + fromSku + '. S Qty: ' + sQty + ', Available: ' + fromInv, 'error');
                 return;
             }
-            
+
             // Prepare transfer data
             // Backend: to_sku = destination, from_sku = source (SWAPPING SKUs!)
             // UI: FROM SKU (source), TO SKU (destination)
-            // Transfer: Deduct FROM Qty from FROM SKU, Add TO Qty to TO SKU
+            // Transfer: Deduct S Qty from FROM SKU, Add TO Qty (= S Qty * ratio) to TO SKU
             const transferData = {
                 to_sku: toSku,             // TO SKU (destination - add TO here)
                 to_parent_name: toParent,
                 to_available_qty: toInv,
                 to_dil_percent: toDil * 100,
-                to_adjust_qty: toQty,      // Add TO Qty
+                to_adjust_qty: toQty,      // Add TO Qty (already derived from S Qty)
                 from_sku: fromSku,         // FROM SKU (source - deduct FROM here)
                 from_parent_name: fromParent,
                 from_available_qty: fromInv,
                 from_dil_percent: fromDil * 100,
-                from_adjust_qty: fromQty,  // Deduct FROM Qty
+                from_adjust_qty: sQty,     // Deduct S Qty (not raw FROM Qty)
                 ratio: ratio,
                 _token: $('meta[name="csrf-token"]').attr('content')
             };
@@ -1034,7 +1070,7 @@
                     headerFilter: "input",
                     width: 150,
                     frozen: true,
-                    visible: true
+                    visible: false
                 },
                 {
                     title: "SKU",
@@ -1119,7 +1155,7 @@
                     title: "ACTION",
                     field: "ACTION",
                     hozAlign: "center",
-                    width: 90,
+                    width: 45,
                     headerSort: false,
                     formatter: function(cell) {
                         const value = cell.getValue() || '';
@@ -1133,7 +1169,7 @@
                         }
                         
                         // Use colored dots instead of text
-                        return '<select class="form-select form-select-sm action-select" data-sku="' + cell.getRow().getData().SKU + '" style="width:80px; font-size:14px; font-weight:bold; text-align:center; background-color:' + selectBg + '; color:' + selectColor + '; border:none;">' +
+                        return '<select class="form-select form-select-sm action-select" data-sku="' + cell.getRow().getData().SKU + '" style="width:40px; font-size:14px; font-weight:bold; text-align:center; background-color:' + selectBg + '; color:' + selectColor + '; border:none; padding-left:4px; padding-right:0;">' +
                             '<option value="" ' + (value === '' ? 'selected' : '') + ' style="background-color:#6c757d;color:white;">--</option>' +
                             '<option value="RB" ' + (value === 'RB' ? 'selected' : '') + ' style="background-color:#28a745;color:white;">🟢</option>' +
                             '<option value="NRB" ' + (value === 'NRB' ? 'selected' : '') + ' style="background-color:#dc3545;color:white;">🔴</option>' +
@@ -1247,6 +1283,35 @@
                     }
                 },
                 {
+                    title: "S Qty",
+                    field: "s_qty",
+                    hozAlign: "center",
+                    width: 70,
+                    visible: true,
+                    headerSort: true,
+                    // Sort by the row's current S Qty (derived from FROM Qty). Rows without
+                    // a FROM SKU yet (qty null) sink to the bottom regardless of direction.
+                    sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                        const aQty = getFromQtyForRowData(aRow.getData());
+                        const bQty = getFromQtyForRowData(bRow.getData());
+                        const aS = computeSQty(aQty);
+                        const bS = computeSQty(bQty);
+                        const aNull = aS === null;
+                        const bNull = bS === null;
+                        if (aNull && bNull) return 0;
+                        if (aNull) return dir === 'desc' ? -1 : 1;
+                        if (bNull) return dir === 'desc' ? 1 : -1;
+                        return aS - bS;
+                    },
+                    formatter: function(cell) {
+                        const data = cell.getRow().getData();
+                        const fromQty = getFromQtyForRowData(data);
+                        const sQty = computeSQty(fromQty);
+                        const display = (sQty === null || sQty === 0) ? '' : sQty;
+                        return '<span class="s-qty-display" style="font-weight:600;">' + display + '</span>';
+                    }
+                },
+                {
                     title: "TO Qty",
                     field: "to_qty_calc",
                     hozAlign: "center",
@@ -1260,10 +1325,10 @@
                     title: "Ratio",
                     field: "ratio",
                     hozAlign: "center",
-                    width: 100,
+                    width: 60,
                     visible: true,
                     formatter: function(cell) {
-                        return '<select class="form-select form-select-sm ratio-select" style="width:90px; font-size:14px;"><option value="1:4">1:4</option><option value="1:3">1:3</option><option value="1:2">1:2</option><option value="1:1" selected>1:1</option><option value="2:1">2:1</option><option value="3:1">3:1</option><option value="4:1">4:1</option></select>';
+                        return '<select class="form-select form-select-sm ratio-select" style="width:54px; font-size:12px; padding-left:4px; padding-right:14px;"><option value="1:4">1:4</option><option value="1:3">1:3</option><option value="1:2">1:2</option><option value="1:1" selected>1:1</option><option value="2:1">2:1</option><option value="3:1">3:1</option><option value="4:1">4:1</option></select>';
                     }
                 },
                 {
