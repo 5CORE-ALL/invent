@@ -349,18 +349,39 @@ class NeweggPricingController extends Controller
                 ], 422);
             }
 
+            // Service loops the per-SKU Newegg endpoint internally and returns
+            // a per-item results list — map it back to local SKUs for the UI.
             $bulk = $newegg->updateItemPriceBulk($items, 'USA');
 
-            $results = $errors;
-            if ($bulk['blocked_by_cloudflare']) {
-                foreach ($items as $row) {
-                    $results[] = [
-                        'sku'     => $skuBySpn[$row['seller_part_number']] ?? $row['seller_part_number'],
-                        'spn'     => $row['seller_part_number'],
-                        'success' => false,
-                        'error'   => 'Blocked by Cloudflare (server IP not whitelisted in Newegg Seller Portal).',
-                    ];
+            $priceBySpn = [];
+            foreach ($items as $row) {
+                $priceBySpn[$row['seller_part_number']] = $row['price'];
+            }
+
+            $results = $errors; // pre-flight failures first
+            $pushed = 0;
+            foreach ($bulk['results'] as $r) {
+                $spn = (string) ($r['seller_part_number'] ?? '');
+                $localSku = $skuBySpn[$spn] ?? $spn;
+                $success = (bool) ($r['success'] ?? false);
+                if ($success) {
+                    $pushed++;
+                    NeweggPricing::where('seller_part_number', $spn)->update([
+                        'selling_price' => $priceBySpn[$spn] ?? null,
+                    ]);
                 }
+                $results[] = [
+                    'sku'     => $localSku,
+                    'spn'     => $spn,
+                    'success' => $success,
+                    'price'   => $priceBySpn[$spn] ?? null,
+                    'error'   => $success ? null : ($r['error'] ?? 'Rejected'),
+                ];
+            }
+
+            // Whole-batch blocked-by-cloudflare gets a clearer HTTP status so
+            // the UI can fail-fast instead of treating it as a normal error.
+            if ($bulk['blocked_by_cloudflare'] && $pushed === 0) {
                 return response()->json([
                     'success' => false,
                     'pushed'  => 0,
@@ -370,77 +391,12 @@ class NeweggPricingController extends Controller
                 ], 502);
             }
 
-            if (!$bulk['ok']) {
-                foreach ($items as $row) {
-                    $results[] = [
-                        'sku'     => $skuBySpn[$row['seller_part_number']] ?? $row['seller_part_number'],
-                        'spn'     => $row['seller_part_number'],
-                        'success' => false,
-                        'error'   => $bulk['error_message'] ?: ('Newegg API HTTP ' . $bulk['status']),
-                    ];
-                }
-                return response()->json([
-                    'success' => false,
-                    'pushed'  => 0,
-                    'failed'  => count($items),
-                    'results' => array_values($results),
-                    'error'   => $bulk['error_message'] ?: 'Newegg API rejected the update.',
-                ]);
-            }
-
-            // Bulk POST succeeded as a whole. Newegg also returns per-item statuses
-            // in ResponseBody.ItemPriceList.Item[] (each item is identified by Value
-            // since the request used Type=1 + Value=<SellerPartNumber>).
-            $perItem = data_get($bulk, 'json.NeweggAPIResponse.ResponseBody.ItemPriceList.Item', null);
-            if (!is_array($perItem)) {
-                $perItem = data_get($bulk, 'json.NeweggAPIResponse.ResponseBody.ItemPriceList.ItemPrice', []);
-            }
-            if (!is_array($perItem)) {
-                $perItem = data_get($bulk, 'json.NeweggAPIResponse.ResponseBody.InternationalItemPrice.Item', []);
-            }
-
-            $perItemBySpn = [];
-            if (is_array($perItem)) {
-                foreach ($perItem as $r) {
-                    $spn = (string) ($r['Value'] ?? ($r['SellerPartNumber'] ?? ''));
-                    if ($spn !== '') {
-                        $perItemBySpn[$spn] = $r;
-                    }
-                }
-            }
-
-            $pushed = 0;
-            foreach ($items as $row) {
-                $spn = $row['seller_part_number'];
-                $rowResult = $perItemBySpn[$spn] ?? null;
-                $itemSuccess = $rowResult === null
-                    ? true
-                    : (($rowResult['IsSuccess'] ?? 'true') === 'true' || ($rowResult['IsSuccess'] ?? null) === true);
-                $errMsg = $itemSuccess ? null : (string) (data_get($rowResult, 'Errors.0.Description') ?? data_get($rowResult, 'Message') ?? 'Rejected');
-
-                if ($itemSuccess) {
-                    $pushed++;
-                    // Reflect the new live price in newegg_pricing so the page
-                    // shows what's actually on Newegg now without another sync.
-                    NeweggPricing::where('seller_part_number', $spn)->update([
-                        'selling_price' => $row['price'],
-                    ]);
-                }
-
-                $results[] = [
-                    'sku'     => $skuBySpn[$spn] ?? $spn,
-                    'spn'     => $spn,
-                    'success' => $itemSuccess,
-                    'price'   => $row['price'],
-                    'error'   => $errMsg,
-                ];
-            }
-
             return response()->json([
                 'success' => $pushed > 0,
                 'pushed'  => $pushed,
-                'failed'  => count($items) - $pushed,
+                'failed'  => (count($items) - $pushed) + count($errors),
                 'results' => array_values($results),
+                'error'   => ($pushed === 0 ? ($bulk['error_message'] ?? 'No prices pushed') : null),
             ]);
         } catch (\Throwable $e) {
             Log::error('Error pushing Newegg prices: ' . $e->getMessage());
