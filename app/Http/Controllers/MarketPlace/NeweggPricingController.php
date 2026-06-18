@@ -388,17 +388,21 @@ class NeweggPricingController extends Controller
                 ]);
             }
 
-            // Bulk PUT succeeded as a whole. Newegg also returns per-item statuses
-            // in ResponseBody.ItemPriceList[].Item[] — surface those when present.
-            $perItem = data_get($bulk, 'json.NeweggAPIResponse.ResponseBody.InternationalItemPrice.Item', null);
+            // Bulk POST succeeded as a whole. Newegg also returns per-item statuses
+            // in ResponseBody.ItemPriceList.Item[] (each item is identified by Value
+            // since the request used Type=1 + Value=<SellerPartNumber>).
+            $perItem = data_get($bulk, 'json.NeweggAPIResponse.ResponseBody.ItemPriceList.Item', null);
             if (!is_array($perItem)) {
                 $perItem = data_get($bulk, 'json.NeweggAPIResponse.ResponseBody.ItemPriceList.ItemPrice', []);
+            }
+            if (!is_array($perItem)) {
+                $perItem = data_get($bulk, 'json.NeweggAPIResponse.ResponseBody.InternationalItemPrice.Item', []);
             }
 
             $perItemBySpn = [];
             if (is_array($perItem)) {
                 foreach ($perItem as $r) {
-                    $spn = (string) ($r['SellerPartNumber'] ?? '');
+                    $spn = (string) ($r['Value'] ?? ($r['SellerPartNumber'] ?? ''));
                     if ($spn !== '') {
                         $perItemBySpn[$spn] = $r;
                     }

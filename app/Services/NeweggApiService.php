@@ -197,34 +197,70 @@ class NeweggApiService
     }
 
     /**
-     * Update Item Price (international) for many items in ONE API call.
-     *   PUT /marketplace/contentmgmt/item/international/price?sellerid=XXXX
+     * Update Item Price for many items in ONE API call.
      *
-     * @param  list<array{seller_part_number:string,price:float|int|string,currency?:string,msrp?:float|int|string,map?:float|int|string,checkout_map?:bool}>  $items
+     *   POST /marketplace/contentmgmt/item/international/price?sellerid=XXXX
+     *
+     * Per Newegg docs (https://developer.newegg.com/newegg_marketplace_api/item_management/update_item_price/):
+     *   - HTTP method MUST be POST.  PUT to the same URL is the Get endpoint
+     *     and validates the body against `ContentQueryCriteria`, producing the
+     *     "invalid child element 'OperationType'" error we used to see.
+     *   - Each item uses Type+Value (Type=1 → SellerPartNumber, 2 → NeweggItemNumber,
+     *     3 → UPC). CountryCode + Currency must match (USA↔USD).
+     *   - The price field is `SellingPrice` (decimal string), NOT `Price`.
+     *   - Currency code MUST match the destination CountryCode (USD↔USA, CAD↔CAN, …).
+     *
+     * @param  list<array{seller_part_number:string,price:float|int|string,currency?:string,country?:string,msrp?:float|int|string,map?:float|int|string,checkout_map?:bool,active?:bool}>  $items
      * @return array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error_message:?string}
      */
-    public function updateItemPriceBulk(array $items, string $country = 'USA'): array
+    public function updateItemPriceBulk(array $items, string $defaultCountry = 'USA'): array
     {
+        $defaultCountry = strtoupper(trim($defaultCountry) ?: 'USA');
+        $defaultCurrency = $this->defaultCurrencyForCountry($defaultCountry);
+
         $itemList = [];
         foreach ($items as $i) {
-            $spn = trim((string) ($i['seller_part_number'] ?? ''));
+            $spn   = trim((string) ($i['seller_part_number'] ?? ''));
             $price = isset($i['price']) ? round((float) $i['price'], 2) : 0.0;
             if ($spn === '' || $price <= 0) {
                 continue;
             }
+
+            $country  = strtoupper((string) ($i['country']  ?? $defaultCountry));
+            $currency = strtoupper((string) ($i['currency'] ?? $this->defaultCurrencyForCountry($country)));
+
+            // Newegg requires currency↔country alignment; bail with a clean error
+            // before sending the whole batch if any row is mismatched.
+            $expectedCurrency = $this->defaultCurrencyForCountry($country);
+            if ($expectedCurrency !== null && $currency !== $expectedCurrency) {
+                return [
+                    'ok' => false,
+                    'status' => 0,
+                    'blocked_by_cloudflare' => false,
+                    'json' => null,
+                    'raw' => '',
+                    'error_message' => "Currency {$currency} does not match CountryCode {$country} (expected {$expectedCurrency}).",
+                ];
+            }
+
             $row = [
-                'SellerPartNumber' => $spn,
-                'Currency'         => (string) ($i['currency'] ?? 'USD'),
-                'Price'            => $price,
+                'Type'         => '1',  // 1 = SellerPartNumber, 2 = NeweggItemNumber, 3 = UPC
+                'Value'        => $spn,
+                'CountryCode'  => $country,
+                'Currency'     => $currency,
+                'SellingPrice' => number_format($price, 2, '.', ''),
             ];
             if (isset($i['msrp']) && (float) $i['msrp'] > 0) {
-                $row['MSRP'] = round((float) $i['msrp'], 2);
+                $row['MSRP'] = number_format((float) $i['msrp'], 2, '.', '');
             }
             if (isset($i['map']) && (float) $i['map'] >= 0) {
-                $row['MAP'] = round((float) $i['map'], 2);
+                $row['MAP'] = number_format((float) $i['map'], 2, '.', '');
             }
             if (isset($i['checkout_map'])) {
-                $row['Checkout_MAP'] = $i['checkout_map'] ? 'True' : 'False';
+                $row['CheckoutMAP'] = $i['checkout_map'] ? '1' : '0';
+            }
+            if (isset($i['active'])) {
+                $row['Active'] = $i['active'] ? '1' : '0';
             }
             $itemList[] = $row;
         }
@@ -244,14 +280,13 @@ class NeweggApiService
             'OperationType' => 'UpdateInternationalItemPriceRequest',
             'SellerID'      => $this->sellerId,
             'RequestBody'   => [
-                'InternationalItemPrice' => [
-                    'Country' => strtoupper($country),
-                    'Item'    => $itemList,
+                'ItemPriceList' => [
+                    'Item' => $itemList,
                 ],
             ],
         ];
 
-        $res = $this->request('PUT', '/marketplace/contentmgmt/item/international/price', [], $body);
+        $res = $this->request('POST', '/marketplace/contentmgmt/item/international/price', [], $body);
 
         $errorMessage = null;
         if (!$res['ok']) {
@@ -282,6 +317,23 @@ class NeweggApiService
             'raw'                   => $res['raw'],
             'error_message'         => $errorMessage,
         ];
+    }
+
+    /**
+     * Newegg requires CountryCode ↔ Currency alignment. Returns the canonical
+     * currency for a Newegg-supported destination country (null for unknown so
+     * callers can pass through whatever they were given).
+     */
+    private function defaultCurrencyForCountry(string $country): ?string
+    {
+        return [
+            'USA' => 'USD',
+            'CAN' => 'CAD',
+            'CHN' => 'CNY',
+            'JPN' => 'JPY',
+            'GBR' => 'GBP',
+            'AUS' => 'AUD',
+        ][strtoupper($country)] ?? null;
     }
 
     /**
