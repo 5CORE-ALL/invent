@@ -670,14 +670,16 @@
             /**
              * Executive cell.
              *
-             * Shows the original creator (`row.executive`) and, when the
-             * ticket has been touched by anyone, attaches a Bootstrap
-             * tooltip listing every saved entry: who, what action, and
-             * when. The tooltip is HTML so we can format the rows; we
-             * therefore have to escape every untrusted string ourselves.
+             * Shows the *original* executive — the name snapshot taken when
+             * the ticket was created (`row.executive`, sourced from
+             * `original_executive` on the server). This name is stable: it
+             * does not flip to whoever edited the ticket later. The full
+             * edit history is exposed via the hover tooltip.
              *
-             * Action labels are friendly copy ("Created", "Edited",
-             * "Status changed"); unknown actions fall through unchanged.
+             * The tooltip is HTML so we can format the rows; we therefore
+             * have to escape every untrusted string ourselves. Action
+             * labels are friendly copy ("Created", "Edited", "Status
+             * changed"); unknown actions fall through unchanged.
              */
             function executiveActionLabel(action) {
                 switch (String(action || '').toLowerCase()) {

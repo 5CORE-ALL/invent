@@ -49,6 +49,7 @@ class ScopeOfImprovementController extends Controller
                     'issue' => $row->issue,
                     'root_cause' => $row->root_cause,
                     'fixing_root_cause' => $row->fixing_root_cause,
+                    's_by' => $row->s_by,
                     'history' => $row->history ?? [],
                     'updated_by' => $row->updated_by,
                     'updated_at' => optional($row->updated_at)->format('Y-m-d H:i'),
@@ -60,12 +61,6 @@ class ScopeOfImprovementController extends Controller
 
     public function store(Request $request)
     {
-        if (!$this->canAddIssue()) {
-            return response()->json([
-                'message' => 'Only ' . self::ADD_ISSUE_EMAIL . ' can add an issue.',
-            ], 403);
-        }
-
         $validated = $request->validate([
             'user_id' => 'required|exists:users,id',
             'issue' => 'nullable|string',
@@ -75,6 +70,7 @@ class ScopeOfImprovementController extends Controller
 
         $email = Auth::user()->email ?? 'system';
 
+        $validated['s_by'] = Auth::user()->name ?? $email;
         $validated['created_by'] = $email;
         $validated['updated_by'] = $email;
         $validated['history'] = [

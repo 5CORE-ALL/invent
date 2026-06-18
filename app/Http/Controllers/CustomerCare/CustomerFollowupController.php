@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ChannelMaster;
 use App\Models\CustomerFollowup;
 use App\Models\ProductMaster;
+use App\Models\User;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
@@ -245,16 +246,19 @@ class CustomerFollowupController extends Controller
             $notes = $f->comments;
             $notesStr = $notes !== null && $notes !== '' ? (string) $notes : '';
 
-            // Display the original creator so the column doesn't flip when
-            // someone else edits. Prefer the linked user's *current* name
-            // (so renames like "Hritiksha" → "Hritiksha Deb" collapse to one
-            // canonical label) and only fall back to the snapshot string
-            // when the row has no creator FK (legacy / unbacked rows).
-            $creatorName = trim((string) ($f->creator?->name ?? ''));
+            // Display the *original* executive — the user who created the
+            // ticket — so the column never flips to whoever last edited it.
+            // We prefer the snapshot stored on the row itself
+            // (`original_executive`) because the `created_by_user_id` FK has
+            // historically been backfilled with the editor's id on legacy
+            // rows, which made the column render the editor instead of the
+            // creator. The FK is only used as a fallback for the rare case
+            // where the snapshot is missing but the FK is valid.
             $original = trim((string) ($f->original_executive ?? ''));
-            $executiveDisplay = $creatorName !== ''
-                ? $creatorName
-                : ($original !== '' ? $original : trim((string) ($f->assigned_executive ?? '')));
+            $creatorName = trim((string) ($f->creator?->name ?? ''));
+            $executiveDisplay = $original !== ''
+                ? $original
+                : ($creatorName !== '' ? $creatorName : trim((string) ($f->assigned_executive ?? '')));
             if ($executiveDisplay === '') {
                 $executiveDisplay = '—';
             }
@@ -360,6 +364,48 @@ class CustomerFollowupController extends Controller
         }
 
         return trim((string) ($user->email ?? ''));
+    }
+
+    /**
+     * Look up a `users.id` for a snapshotted `original_executive` string so
+     * legacy rows (missing `created_by_user_id`) can be backfilled safely
+     * without stamping the *editor's* id where the *creator's* id belongs.
+     *
+     * Mirrors the migration logic: exact case-insensitive name match, then
+     * a single unambiguous prefix match. Returns null when nothing matches
+     * or the match is ambiguous, so the FK stays null and the display
+     * keeps falling back to the snapshot.
+     */
+    private static function lookupUserIdByExecutiveName(string $name): ?int
+    {
+        $needle = mb_strtolower(trim($name));
+        if ($needle === '') {
+            return null;
+        }
+
+        $users = User::query()->get(['id', 'name']);
+        if ($users->isEmpty()) {
+            return null;
+        }
+
+        foreach ($users as $u) {
+            if (mb_strtolower(trim((string) $u->name)) === $needle) {
+                return (int) $u->id;
+            }
+        }
+
+        $candidates = [];
+        foreach ($users as $u) {
+            $uname = mb_strtolower(trim((string) $u->name));
+            if ($uname === '') {
+                continue;
+            }
+            if (str_starts_with($needle, $uname . ' ') || str_starts_with($uname, $needle . ' ')) {
+                $candidates[] = (int) $u->id;
+            }
+        }
+
+        return count($candidates) === 1 ? $candidates[0] : null;
     }
 
     public function store(Request $request)
@@ -513,17 +559,26 @@ class CustomerFollowupController extends Controller
 
         $customer_followup->update($validated);
         if ($executiveName !== '') {
-            // Backfill original_executive for tickets that pre-date this
-            // column (they have no creator stamped). Picking the first
-            // editor we see is the safest fallback — the same person who
-            // would have shown in the column before this change.
+            // Backfill original_executive only for tickets that pre-date this
+            // column (no creator stamped). Picking the first editor we see is
+            // the safest fallback — the same person who would have shown in
+            // the column before this change.
             if (trim((string) $customer_followup->original_executive) === '') {
                 $customer_followup->original_executive = $executiveName;
             }
-            // Same fallback for the FK: only fill it when nothing is there,
-            // so we never overwrite the real creator with the editor.
-            if ($customer_followup->created_by_user_id === null && auth()->id()) {
-                $customer_followup->created_by_user_id = auth()->id();
+            // FK backfill is name-based, never `auth()->id()`. Stamping the
+            // editor's id here historically corrupted legacy rows so the grid
+            // started showing the editor instead of the original executive.
+            // We only fill the FK when we can match `original_executive` to a
+            // real user; otherwise it stays null and the display uses the
+            // snapshot string.
+            if ($customer_followup->created_by_user_id === null) {
+                $candidateId = self::lookupUserIdByExecutiveName(
+                    (string) $customer_followup->original_executive
+                );
+                if ($candidateId !== null) {
+                    $customer_followup->created_by_user_id = $candidateId;
+                }
             }
             $customer_followup->appendExecutiveHistoryEntry($executiveName, 'updated');
             $customer_followup->saveQuietly();
@@ -591,8 +646,16 @@ class CustomerFollowupController extends Controller
             if (trim((string) $customer_followup->original_executive) === '') {
                 $customer_followup->original_executive = $executiveName;
             }
-            if ($customer_followup->created_by_user_id === null && auth()->id()) {
-                $customer_followup->created_by_user_id = auth()->id();
+            // Never stamp the FK with `auth()->id()`: the editor isn't the
+            // creator. Look up the user by the snapshot name instead so the
+            // FK only points at someone we can prove is the original.
+            if ($customer_followup->created_by_user_id === null) {
+                $candidateId = self::lookupUserIdByExecutiveName(
+                    (string) $customer_followup->original_executive
+                );
+                if ($candidateId !== null) {
+                    $customer_followup->created_by_user_id = $candidateId;
+                }
             }
             $customer_followup->appendExecutiveHistoryEntry($executiveName, 'status_changed');
         }
