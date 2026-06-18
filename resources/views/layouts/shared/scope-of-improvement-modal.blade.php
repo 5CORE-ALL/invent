@@ -112,8 +112,61 @@
             line-height: 1;
         }
 
-        /* Quick search / create combobox for the Issue field */
+        /* Multi-select combobox for the Issue field */
         .soi-issue-combo { position: relative; }
+        .soi-issue-control {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 8px;
+            min-height: 38px;
+            background: #fff;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            cursor: text;
+        }
+        .soi-issue-control:focus-within {
+            border-color: #86b7fe;
+            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+        }
+        .soi-issue-input {
+            flex: 1;
+            min-width: 140px;
+            border: 0;
+            padding: 4px 2px;
+            background: transparent;
+            outline: none;
+            font-size: 0.875rem;
+            color: #212529;
+        }
+        .soi-issue-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 4px 3px 8px;
+            background: #e7f1ff;
+            color: #0d6efd;
+            border-radius: 12px;
+            font-size: 12.5px;
+            font-weight: 600;
+            line-height: 1.2;
+            max-width: 100%;
+        }
+        .soi-issue-chip__emoji { font-size: 0.95rem; line-height: 1; }
+        .soi-issue-chip.is-critical { background: #fee2e2; color: #991b1b; }
+        .soi-issue-chip__remove {
+            background: transparent;
+            border: 0;
+            color: inherit;
+            cursor: pointer;
+            padding: 0 4px;
+            font-size: 14px;
+            line-height: 1;
+            border-radius: 50%;
+        }
+        .soi-issue-chip__remove:hover { background: rgba(0, 0, 0, 0.08); }
+
         .soi-issue-panel {
             position: absolute;
             top: calc(100% + 4px);
@@ -148,9 +201,7 @@
             user-select: none;
         }
         .soi-issue-item:hover,
-        .soi-issue-item.is-active {
-            background: #f1f5f9;
-        }
+        .soi-issue-item.is-active { background: #f1f5f9; }
         .soi-issue-item.soi-issue-create {
             background: #f0fdf4;
             color: #166534;
@@ -158,6 +209,25 @@
             font-weight: 600;
         }
         .soi-issue-item.soi-issue-create:hover { background: #dcfce7; }
+        .soi-issue-item__check {
+            width: 18px;
+            height: 18px;
+            border: 1.5px solid #adb5bd;
+            border-radius: 4px;
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            background: #fff;
+            color: transparent;
+            line-height: 1;
+        }
+        .soi-issue-item.is-selected .soi-issue-item__check {
+            background: #16a34a;
+            border-color: #16a34a;
+            color: #fff;
+        }
         .soi-issue-emoji {
             font-size: 1.15rem;
             flex-shrink: 0;
@@ -171,10 +241,7 @@
             font-style: italic;
         }
         .soi-issue-label { flex: 1; min-width: 0; }
-        .soi-issue-item--critical {
-            background: #fef2f2;
-            color: #991b1b;
-        }
+        .soi-issue-item--critical { background: #fef2f2; color: #991b1b; }
         .soi-issue-item--critical:hover { background: #fee2e2; }
         .soi-issue-critical-badge {
             display: inline-flex;
@@ -248,31 +315,34 @@
                                 value="{{ $__soiTopbarCurrentUserName }}" readonly>
                         </div>
                         <div class="col-12">
-                            <label for="soi_topbar_issue" class="form-label">
-                                Issue
-                                <span class="text-muted fw-normal">(Suggestor Only)</span>
+                            <label for="soi_topbar_issue_input" class="form-label">
+                                Issues
+                                <span class="text-muted fw-normal">(Suggestor Only — select one or more)</span>
                             </label>
-                            <div class="soi-issue-combo">
-                                <input type="text" name="issue" id="soi_topbar_issue"
-                                    class="form-control soi-issue-input"
-                                    placeholder="Search a common issue or type your own…"
-                                    autocomplete="off">
+                            <div class="soi-issue-combo" id="soi_topbar_issue_combo">
+                                <div class="soi-issue-control" id="soi_topbar_issue_control">
+                                    <span class="soi-issue-chips" id="soi_topbar_issue_chips"></span>
+                                    <input type="text" id="soi_topbar_issue_input"
+                                        class="soi-issue-input"
+                                        placeholder="Search a common issue or type your own…"
+                                        autocomplete="off">
+                                </div>
                                 <div class="soi-issue-panel" id="soi_topbar_issue_panel">
                                     <ul class="soi-issue-list" id="soi_topbar_issue_list"></ul>
                                 </div>
+                                <div id="soi_topbar_issues_hidden" style="display:none;"></div>
                             </div>
                         </div>
                         <div class="col-12">
                             <label for="soi_topbar_root_cause" class="form-label">
                                 Root Cause
-                                <span class="text-muted fw-normal">(entered by {{ $__soiTopbarCurrentUserName }})</span>
+                                <span class="text-muted fw-normal">(entered by <span class="soi-topbar-for-user-label">User</span>)</span>
                             </label>
                             <textarea name="root_cause" id="soi_topbar_root_cause" class="form-control" rows="2" placeholder="What is the root cause?"></textarea>
                         </div>
                         <div class="col-12">
                             <label for="soi_topbar_fixing_root_cause" class="form-label">
-                                Fixing Root Cause
-                                <span class="text-muted fw-normal">(entered by {{ $__soiTopbarCurrentUserName }})</span>
+                                Root Cause Fixed by <span class="soi-topbar-for-user-label">User</span>
                             </label>
                             <textarea name="fixing_root_cause" id="soi_topbar_fixing_root_cause" class="form-control" rows="2" placeholder="How will the root cause be fixed?"></textarea>
                         </div>
@@ -299,7 +369,7 @@
     </div>
 
     <script>
-        // ---- Shared Issue combobox (quick search + create) -----------------
+        // ---- Shared Issue combobox (multi-select + create + remaining filter)
         // Exposed on window so the inline modal on the Scope of Improvement
         // index page can reuse the same predefined list + behavior.
         (function () {
@@ -329,81 +399,183 @@
                 return d.innerHTML;
             }
 
-            function render(listEl, query) {
-                const q = (query || '').trim();
-                const lowered = q.toLowerCase();
-                const matches = ISSUES.filter(function (i) {
-                    return !lowered || i.label.toLowerCase().indexOf(lowered) !== -1;
-                });
-                const exactMatch = ISSUES.some(function (i) {
-                    return i.label.toLowerCase() === lowered;
-                });
+            function setup(opts) {
+                const combo  = opts.combo;
+                const input  = opts.input;     // typing input
+                const panel  = opts.panel;
+                const list   = opts.list;
+                const chips  = opts.chips;     // chips container
+                const hidden = opts.hidden;    // hidden inputs container (for issues[])
+                const hiddenName = opts.hiddenName || 'issues[]';
+                const onChange = typeof opts.onChange === 'function' ? opts.onChange : null;
+                if (!combo || !input || !panel || !list) return null;
 
-                let html = '';
-                if (q && !exactMatch) {
-                    html += '<li class="soi-issue-item soi-issue-create" data-value="' + escapeHtml(q) + '">'
-                        + '<span class="soi-issue-emoji">➕</span>'
-                        + '<span>Create: <strong>' + escapeHtml(q) + '</strong></span>'
-                        + '</li>';
+                const selected = new Set();   // current selections
+                const excludes = new Set();   // labels filtered out (already submitted etc.)
+
+                function emit() { if (onChange) onChange(Array.from(selected)); }
+
+                function renderChips() {
+                    if (!chips) return;
+                    if (selected.size === 0) {
+                        chips.innerHTML = '';
+                        return;
+                    }
+                    let html = '';
+                    selected.forEach(function (label) {
+                        const meta = ISSUES.find(function (i) { return i.label === label; });
+                        const isCritical = meta && meta.critical;
+                        const emoji = meta ? meta.emoji : '✏️';
+                        html += '<span class="soi-issue-chip' + (isCritical ? ' is-critical' : '') + '" data-value="' + escapeHtml(label) + '">'
+                            + '<span class="soi-issue-chip__emoji">' + emoji + '</span>'
+                            + '<span>' + escapeHtml(label) + '</span>'
+                            + '<button type="button" class="soi-issue-chip__remove" aria-label="Remove">×</button>'
+                            + '</span>';
+                    });
+                    chips.innerHTML = html;
                 }
-                if (matches.length === 0 && !q) {
-                    html += '<li class="soi-issue-empty">No issues defined.</li>';
-                } else if (matches.length === 0 && q) {
-                    // The "Create" row is already shown above.
-                } else {
+
+                function renderHidden() {
+                    if (!hidden) return;
+                    let html = '';
+                    selected.forEach(function (label) {
+                        html += '<input type="hidden" name="' + escapeHtml(hiddenName) + '" value="' + escapeHtml(label) + '">';
+                    });
+                    hidden.innerHTML = html;
+                }
+
+                function syncOut() { renderChips(); renderHidden(); emit(); }
+
+                function renderList() {
+                    const q = (input.value || '').trim();
+                    const lowered = q.toLowerCase();
+                    const matches = ISSUES.filter(function (i) {
+                        if (excludes.has(i.label)) return false;
+                        return !lowered || i.label.toLowerCase().indexOf(lowered) !== -1;
+                    });
+                    const exactMatch = ISSUES.some(function (i) {
+                        return i.label.toLowerCase() === lowered;
+                    }) || selected.has(q);
+
+                    let html = '';
+                    if (q && !exactMatch) {
+                        html += '<li class="soi-issue-item soi-issue-create" data-value="' + escapeHtml(q) + '">'
+                            + '<span class="soi-issue-item__check">✓</span>'
+                            + '<span class="soi-issue-emoji">➕</span>'
+                            + '<span class="soi-issue-label">Create: <strong>' + escapeHtml(q) + '</strong></span>'
+                            + '</li>';
+                    }
+                    if (matches.length === 0 && !q) {
+                        html += '<li class="soi-issue-empty">No remaining issues.</li>';
+                    }
                     matches.forEach(function (i) {
-                        const itemClass = i.critical ? 'soi-issue-item soi-issue-item--critical' : 'soi-issue-item';
+                        const isSel = selected.has(i.label);
+                        let cls = 'soi-issue-item';
+                        if (i.critical) cls += ' soi-issue-item--critical';
+                        if (isSel) cls += ' is-selected';
                         const badge = i.critical ? '<span class="soi-issue-critical-badge">Critical</span>' : '';
-                        html += '<li class="' + itemClass + '" data-value="' + escapeHtml(i.label) + '">'
+                        html += '<li class="' + cls + '" data-value="' + escapeHtml(i.label) + '">'
+                            + '<span class="soi-issue-item__check">✓</span>'
                             + '<span class="soi-issue-emoji">' + i.emoji + '</span>'
                             + '<span class="soi-issue-label">' + escapeHtml(i.label) + '</span>'
                             + badge
                             + '</li>';
                     });
+                    list.innerHTML = html;
                 }
-                listEl.innerHTML = html;
-            }
-
-            function setup(opts) {
-                const combo = opts.combo;
-                const input = opts.input;
-                const panel = opts.panel;
-                const list  = opts.list;
-                if (!combo || !input || !panel || !list) return;
 
                 function open()  {
                     if (input.readOnly || input.disabled) return;
                     panel.classList.add('is-open');
-                    render(list, input.value);
+                    renderList();
                 }
                 function close() { panel.classList.remove('is-open'); }
+
+                function toggle(label) {
+                    if (!label) return;
+                    if (selected.has(label)) selected.delete(label);
+                    else selected.add(label);
+                    syncOut();
+                    renderList();
+                }
 
                 input.addEventListener('focus', open);
                 input.addEventListener('click', open);
                 input.addEventListener('input', function () {
                     panel.classList.add('is-open');
-                    render(list, input.value);
+                    renderList();
                 });
                 input.addEventListener('keydown', function (e) {
-                    if (e.key === 'Escape') close();
+                    if (e.key === 'Escape') { close(); return; }
+                    if (e.key === 'Enter') {
+                        const q = (input.value || '').trim();
+                        if (q) {
+                            e.preventDefault();
+                            toggle(q);
+                            input.value = '';
+                            renderList();
+                        }
+                    }
+                    if (e.key === 'Backspace' && !input.value && selected.size) {
+                        const last = Array.from(selected).pop();
+                        toggle(last);
+                    }
                 });
 
                 list.addEventListener('mousedown', function (e) {
-                    // Use mousedown so we don't lose focus before handling click.
                     const li = e.target.closest('.soi-issue-item');
                     if (!li) return;
                     e.preventDefault();
-                    input.value = li.getAttribute('data-value') || '';
-                    close();
-                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    const label = li.getAttribute('data-value') || '';
+                    toggle(label);
+                    input.value = '';
+                });
+
+                if (chips) {
+                    chips.addEventListener('click', function (e) {
+                        const btn = e.target.closest('.soi-issue-chip__remove');
+                        if (!btn) return;
+                        const chip = btn.closest('.soi-issue-chip');
+                        if (!chip) return;
+                        toggle(chip.getAttribute('data-value'));
+                    });
+                }
+
+                // Click on the control wrapper focuses the typing input.
+                combo.addEventListener('mousedown', function (e) {
+                    if (e.target.closest('.soi-issue-panel')) return;
+                    if (e.target.closest('.soi-issue-chip__remove')) return;
+                    if (e.target === input) return;
+                    if (e.target.closest('.soi-issue-chip')) return;
+                    setTimeout(function () { input.focus(); }, 0);
                 });
 
                 document.addEventListener('mousedown', function (e) {
                     if (!combo.contains(e.target)) close();
                 });
+
+                // Public API for the modal to call.
+                return {
+                    setSelections: function (arr) {
+                        selected.clear();
+                        (arr || []).filter(Boolean).forEach(function (l) { selected.add(String(l)); });
+                        input.value = '';
+                        syncOut();
+                        renderList();
+                    },
+                    getSelections: function () { return Array.from(selected); },
+                    setExcludes: function (arr) {
+                        excludes.clear();
+                        (arr || []).filter(Boolean).forEach(function (l) { excludes.add(String(l)); });
+                        renderList();
+                    },
+                    clearExcludes: function () { excludes.clear(); renderList(); },
+                    close: close,
+                    open:  open,
+                };
             }
 
-            window.SoiIssueCombo = { setup: setup, render: render, ISSUES: ISSUES };
+            window.SoiIssueCombo = { setup: setup, ISSUES: ISSUES };
         })();
 
         $(function () {
@@ -414,13 +586,48 @@
             const storeUrl   = @json(route('scope-of-improvement.store'));
             const updateBase = @json(url('scope-of-improvement/update'));
 
-            // Wire the Issue combobox for this modal.
-            window.SoiIssueCombo.setup({
-                combo: modalEl.querySelector('.soi-issue-combo'),
-                input: document.getElementById('soi_topbar_issue'),
-                panel: document.getElementById('soi_topbar_issue_panel'),
-                list:  document.getElementById('soi_topbar_issue_list'),
+            // Wire the multi-select Issue combobox for this modal.
+            const issueCombo = window.SoiIssueCombo.setup({
+                combo:  document.getElementById('soi_topbar_issue_combo'),
+                input:  document.getElementById('soi_topbar_issue_input'),
+                panel:  document.getElementById('soi_topbar_issue_panel'),
+                list:   document.getElementById('soi_topbar_issue_list'),
+                chips:  document.getElementById('soi_topbar_issue_chips'),
+                hidden: document.getElementById('soi_topbar_issues_hidden'),
+                hiddenName: 'issues[]',
             });
+
+            const userIssuesUrlBase = @json(url('scope-of-improvement/user-issues'));
+            const userSelect = document.getElementById('soi_topbar_user_id');
+
+            function updateTopbarForUserLabel() {
+                const opt = userSelect && userSelect.options[userSelect.selectedIndex];
+                const name = (userSelect && userSelect.value && opt) ? (opt.text || '').trim() : '';
+                const text = name || 'User';
+                modalEl.querySelectorAll('.soi-topbar-for-user-label').forEach(function (el) {
+                    el.textContent = text;
+                });
+            }
+
+            if (userSelect) {
+                userSelect.addEventListener('change', function () {
+                    updateTopbarForUserLabel();
+
+                    if (!issueCombo) return;
+                    const uid = userSelect.value;
+                    if (!uid) { issueCombo.clearExcludes(); return; }
+                    $.getJSON(userIssuesUrlBase + '/' + encodeURIComponent(uid), function (res) {
+                        const existing = (res && Array.isArray(res.issues)) ? res.issues : [];
+                        const editingId = document.getElementById('soi_topbar_id').value;
+                        // When editing an existing row, keep that row's issue
+                        // available so the user can re-pick or change it.
+                        const editingIssue = editingId ? (modalEl.__editingIssue || '') : '';
+                        issueCombo.setExcludes(existing.filter(function (l) { return l !== editingIssue; }));
+                    }).fail(function () {
+                        issueCombo.clearExcludes();
+                    });
+                });
+            }
 
             const modal = new bootstrap.Modal(modalEl);
             const form  = document.getElementById('soiTopbarForm');
@@ -449,11 +656,13 @@
 
             function applyProgressLock(on) {
                 const userSel = document.getElementById('soi_topbar_user_id');
-                const issue   = document.getElementById('soi_topbar_issue');
-                userSel.disabled = on;
-                issue.readOnly = on;
-                if (on) issue.classList.add('bg-light');
-                else issue.classList.remove('bg-light');
+                const issue   = document.getElementById('soi_topbar_issue_input');
+                if (userSel) userSel.disabled = on;
+                if (issue) {
+                    issue.readOnly = on;
+                    if (on) issue.classList.add('bg-light');
+                    else issue.classList.remove('bg-light');
+                }
             }
 
             const currentUserName = @json($__soiTopbarCurrentUserName);
@@ -468,10 +677,11 @@
                         progressMode ? 'My Progress — Update' : 'Edit Scope of Improvement';
                     document.getElementById('soi_topbar_id').value = row.id;
                     document.getElementById('soi_topbar_user_id').value = row.user_id || '';
-                    document.getElementById('soi_topbar_issue').value = row.issue || '';
                     document.getElementById('soi_topbar_root_cause').value = row.root_cause || '';
                     document.getElementById('soi_topbar_fixing_root_cause').value = row.fixing_root_cause || '';
                     document.getElementById('soi_topbar_s_by').value = row.s_by || currentUserName;
+                    modalEl.__editingIssue = row.issue || '';
+                    if (issueCombo) issueCombo.setSelections(row.issue ? [row.issue] : []);
                     renderHistory(row.history);
                 } else {
                     document.getElementById('soiTopbarModalTitle').textContent =
@@ -479,9 +689,15 @@
                     document.getElementById('soi_topbar_id').value = '';
                     document.getElementById('soi_topbar_user_id').value = '';
                     document.getElementById('soi_topbar_s_by').value = currentUserName;
+                    modalEl.__editingIssue = '';
+                    if (issueCombo) {
+                        issueCombo.setSelections([]);
+                        issueCombo.clearExcludes();
+                    }
                     renderHistory([]);
                 }
 
+                updateTopbarForUserLabel();
                 applyProgressLock(progressMode);
                 modal.show();
             }
@@ -491,26 +707,45 @@
                 const id  = document.getElementById('soi_topbar_id').value;
                 const url = id ? (updateBase + '/' + id) : storeUrl;
                 const btn = document.getElementById('soiTopbarSaveBtn');
+                const rootCause = document.getElementById('soi_topbar_root_cause').value;
+                const fixingRootCause = document.getElementById('soi_topbar_fixing_root_cause').value;
 
                 let payload;
                 if (progressMode) {
                     payload = {
                         _token: csrf,
-                        root_cause: document.getElementById('soi_topbar_root_cause').value,
-                        fixing_root_cause: document.getElementById('soi_topbar_fixing_root_cause').value,
+                        root_cause: rootCause,
+                        fixing_root_cause: fixingRootCause,
+                    };
+                } else if (id) {
+                    // Edit mode — single row, keep the first selected issue.
+                    const userId = document.getElementById('soi_topbar_user_id').value;
+                    if (!userId) { alert('Please select a user.'); return; }
+                    const selections = issueCombo ? issueCombo.getSelections() : [];
+                    payload = {
+                        _token: csrf,
+                        user_id: userId,
+                        issue: selections[0] || '',
+                        root_cause: rootCause,
+                        fixing_root_cause: fixingRootCause,
                     };
                 } else {
+                    // Add mode — may create multiple rows (one per selected issue).
                     const userId = document.getElementById('soi_topbar_user_id').value;
-                    if (!userId) {
-                        alert('Please select a user.');
+                    if (!userId) { alert('Please select a user.'); return; }
+                    const typed = (document.getElementById('soi_topbar_issue_input').value || '').trim();
+                    let selections = issueCombo ? issueCombo.getSelections() : [];
+                    if (typed && selections.indexOf(typed) === -1) selections.push(typed);
+                    if (selections.length === 0) {
+                        alert('Please select or type at least one issue.');
                         return;
                     }
                     payload = {
                         _token: csrf,
                         user_id: userId,
-                        issue: document.getElementById('soi_topbar_issue').value,
-                        root_cause: document.getElementById('soi_topbar_root_cause').value,
-                        fixing_root_cause: document.getElementById('soi_topbar_fixing_root_cause').value,
+                        issues: selections,
+                        root_cause: rootCause,
+                        fixing_root_cause: fixingRootCause,
                     };
                 }
 

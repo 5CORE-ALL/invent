@@ -6,11 +6,123 @@ use App\Models\RrPortfolio;
 use App\Models\RrPortfolioUser;
 use App\Models\User;
 use App\Services\UserRRPortfolioConverter;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class UserRRPortfolioController extends Controller
 {
+    /**
+     * Team-wide R&R checklist (tabulator page).
+     *
+     * Shows every active user with an at-a-glance view of:
+     *  - whether they have any R&R portfolio assigned,
+     *  - whether they have been marked as "fits" for it,
+     *  - the latest portfolio document linked to them.
+     */
+    public function checklist()
+    {
+        $users = User::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'designation', 'role', 'avatar', 'updated_at']);
+
+        $stats = [
+            'total' => $users->count(),
+            'assigned' => 0,
+            'missing' => 0,
+            'fits' => 0,
+            'not_fits' => 0,
+        ];
+
+        $userIds = $users->pluck('id')->all();
+        if (! empty($userIds)) {
+            $assignedIds = RrPortfolioUser::query()
+                ->whereIn('user_id', $userIds)
+                ->pluck('user_id')
+                ->unique();
+
+            $fitsIds = RrPortfolioUser::query()
+                ->whereIn('user_id', $userIds)
+                ->where('fits', true)
+                ->pluck('user_id')
+                ->unique();
+
+            $stats['assigned'] = $assignedIds->count();
+            $stats['missing'] = $stats['total'] - $stats['assigned'];
+            $stats['fits'] = $fitsIds->count();
+            $stats['not_fits'] = $stats['assigned'] - $stats['fits'];
+        } else {
+            $stats['missing'] = $stats['total'];
+        }
+
+        $designations = $users
+            ->pluck('designation')
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values();
+
+        return view('user.r-and-r-checklist', compact('stats', 'designations'));
+    }
+
+    /**
+     * JSON feed for the R&R checklist tabulator.
+     *
+     * One row per active user, hydrated with the latest portfolio assignment
+     * (if any). "fits" reflects the most recent assignment's flag.
+     */
+    public function checklistData(): JsonResponse
+    {
+        $users = User::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'designation', 'role', 'avatar', 'updated_at']);
+
+        $assignments = RrPortfolioUser::query()
+            ->whereIn('user_id', $users->pluck('id'))
+            ->with('portfolio:id,original_filename,source_format')
+            ->orderByDesc('updated_at')
+            ->get()
+            ->groupBy('user_id');
+
+        $placeholder = asset('images/users/add-image-placeholder.svg');
+
+        $payload = $users->map(function (User $u) use ($assignments, $placeholder) {
+            $latest = optional($assignments->get($u->id))->first();
+            $portfolio = optional($latest)->portfolio;
+            $hasPortfolio = (bool) $latest;
+
+            return [
+                'id' => $u->id,
+                'name' => $u->name,
+                'email' => $u->email,
+                'designation' => $u->designation ?? '',
+                'role' => $u->role,
+                'avatar_url' => ! empty($u->avatar)
+                    ? asset('storage/'.$u->avatar)
+                    : $placeholder,
+                'has_portfolio' => $hasPortfolio,
+                'fits' => $hasPortfolio ? (bool) $latest->fits : null,
+                'assignment_id' => optional($latest)->id,
+                'portfolio_id' => optional($portfolio)->id,
+                'original_filename' => optional($portfolio)->original_filename,
+                'source_format' => optional($portfolio)->source_format,
+                'assigned_at' => optional(optional($latest)->updated_at)->toDateTimeString(),
+                'assigned_at_human' => optional(optional($latest)->updated_at)->diffForHumans(),
+                'user_updated_at' => optional($u->updated_at)->toDateTimeString(),
+                'user_updated_at_human' => optional($u->updated_at)->diffForHumans(),
+                'portfolio_url' => route('users.rr-portfolio.show', $u),
+                // Designation-wise R&R checklist feed used by the magnifier modal.
+                'checklist_url' => ! empty($u->designation)
+                    ? route('performance.checklist.get', ['designationId' => $u->designation])
+                    : null,
+            ];
+        });
+
+        return response()->json($payload);
+    }
+
     /**
      * R&R portfolio page(s) for this user — may include multiple shared documents.
      */

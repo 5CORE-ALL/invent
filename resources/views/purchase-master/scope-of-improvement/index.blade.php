@@ -227,8 +227,61 @@
             line-height: 1;
         }
 
-        /* Quick search / create combobox for the Issue field */
+        /* Multi-select combobox for the Issue field */
         .soi-issue-combo { position: relative; }
+        .soi-issue-control {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 8px;
+            min-height: 38px;
+            background: #fff;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            cursor: text;
+        }
+        .soi-issue-control:focus-within {
+            border-color: #86b7fe;
+            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+        }
+        .soi-issue-input {
+            flex: 1;
+            min-width: 140px;
+            border: 0;
+            padding: 4px 2px;
+            background: transparent;
+            outline: none;
+            font-size: 0.875rem;
+            color: #212529;
+        }
+        .soi-issue-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 4px 3px 8px;
+            background: #e7f1ff;
+            color: #0d6efd;
+            border-radius: 12px;
+            font-size: 12.5px;
+            font-weight: 600;
+            line-height: 1.2;
+            max-width: 100%;
+        }
+        .soi-issue-chip__emoji { font-size: 0.95rem; line-height: 1; }
+        .soi-issue-chip.is-critical { background: #fee2e2; color: #991b1b; }
+        .soi-issue-chip__remove {
+            background: transparent;
+            border: 0;
+            color: inherit;
+            cursor: pointer;
+            padding: 0 4px;
+            font-size: 14px;
+            line-height: 1;
+            border-radius: 50%;
+        }
+        .soi-issue-chip__remove:hover { background: rgba(0, 0, 0, 0.08); }
+
         .soi-issue-panel {
             position: absolute;
             top: calc(100% + 4px);
@@ -263,9 +316,7 @@
             user-select: none;
         }
         .soi-issue-item:hover,
-        .soi-issue-item.is-active {
-            background: #f1f5f9;
-        }
+        .soi-issue-item.is-active { background: #f1f5f9; }
         .soi-issue-item.soi-issue-create {
             background: #f0fdf4;
             color: #166534;
@@ -273,6 +324,25 @@
             font-weight: 600;
         }
         .soi-issue-item.soi-issue-create:hover { background: #dcfce7; }
+        .soi-issue-item__check {
+            width: 18px;
+            height: 18px;
+            border: 1.5px solid #adb5bd;
+            border-radius: 4px;
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            background: #fff;
+            color: transparent;
+            line-height: 1;
+        }
+        .soi-issue-item.is-selected .soi-issue-item__check {
+            background: #16a34a;
+            border-color: #16a34a;
+            color: #fff;
+        }
         .soi-issue-emoji {
             font-size: 1.15rem;
             flex-shrink: 0;
@@ -286,10 +356,7 @@
             font-style: italic;
         }
         .soi-issue-label { flex: 1; min-width: 0; }
-        .soi-issue-item--critical {
-            background: #fef2f2;
-            color: #991b1b;
-        }
+        .soi-issue-item--critical { background: #fef2f2; color: #991b1b; }
         .soi-issue-item--critical:hover { background: #fee2e2; }
         .soi-issue-critical-badge {
             display: inline-flex;
@@ -408,31 +475,34 @@
                                 value="{{ auth()->user()->name ?? '' }}" readonly>
                         </div>
                         <div class="col-12">
-                            <label for="soi_issue" class="form-label">
-                                Issue
-                                <span class="text-muted fw-normal">(Suggestor Only)</span>
+                            <label for="soi_issue_input" class="form-label">
+                                Issues
+                                <span class="text-muted fw-normal">(Suggestor Only — select one or more)</span>
                             </label>
-                            <div class="soi-issue-combo">
-                                <input type="text" name="issue" id="soi_issue"
-                                    class="form-control soi-issue-input"
-                                    placeholder="Search a common issue or type your own…"
-                                    autocomplete="off">
+                            <div class="soi-issue-combo" id="soi_issue_combo">
+                                <div class="soi-issue-control" id="soi_issue_control">
+                                    <span class="soi-issue-chips" id="soi_issue_chips"></span>
+                                    <input type="text" id="soi_issue_input"
+                                        class="soi-issue-input"
+                                        placeholder="Search a common issue or type your own…"
+                                        autocomplete="off">
+                                </div>
                                 <div class="soi-issue-panel" id="soi_issue_panel">
                                     <ul class="soi-issue-list" id="soi_issue_list"></ul>
                                 </div>
+                                <div id="soi_issues_hidden" style="display:none;"></div>
                             </div>
                         </div>
                         <div class="col-12">
                             <label for="soi_root_cause" class="form-label">
                                 Root Cause
-                                <span class="text-muted fw-normal">(entered by {{ auth()->user()->name ?? '' }})</span>
+                                <span class="text-muted fw-normal">(entered by <span class="soi-for-user-label">User</span>)</span>
                             </label>
                             <textarea name="root_cause" id="soi_root_cause" class="form-control" rows="2" placeholder="What is the root cause?"></textarea>
                         </div>
                         <div class="col-12">
                             <label for="soi_fixing_root_cause" class="form-label">
-                                Fixing Root Cause
-                                <span class="text-muted fw-normal">(entered by {{ auth()->user()->name ?? '' }})</span>
+                                Root Cause Fixed by <span class="soi-for-user-label">User</span>
                             </label>
                             <textarea name="fixing_root_cause" id="soi_fixing_root_cause" class="form-control" rows="2" placeholder="How will the root cause be fixed?"></textarea>
                         </div>
@@ -493,13 +563,47 @@
             const form    = document.getElementById('soiForm');
             let progressMode = false; // "My Progress" edit: only root cause + fixing root cause
 
-            // Wire the Issue combobox (defined by the shared topbar modal partial).
+            // Wire the multi-select Issue combobox (defined in the shared partial).
+            let issueCombo = null;
             if (window.SoiIssueCombo && typeof window.SoiIssueCombo.setup === 'function') {
-                window.SoiIssueCombo.setup({
-                    combo: modalEl.querySelector('.soi-issue-combo'),
-                    input: document.getElementById('soi_issue'),
-                    panel: document.getElementById('soi_issue_panel'),
-                    list:  document.getElementById('soi_issue_list'),
+                issueCombo = window.SoiIssueCombo.setup({
+                    combo:  document.getElementById('soi_issue_combo'),
+                    input:  document.getElementById('soi_issue_input'),
+                    panel:  document.getElementById('soi_issue_panel'),
+                    list:   document.getElementById('soi_issue_list'),
+                    chips:  document.getElementById('soi_issue_chips'),
+                    hidden: document.getElementById('soi_issues_hidden'),
+                    hiddenName: 'issues[]',
+                });
+            }
+
+            const userIssuesUrlBase = @json(url('scope-of-improvement/user-issues'));
+            const userSelectEl = document.getElementById('soi_user_id');
+
+            function updateForUserLabel() {
+                const opt = userSelectEl && userSelectEl.options[userSelectEl.selectedIndex];
+                const name = (userSelectEl && userSelectEl.value && opt) ? (opt.text || '').trim() : '';
+                const text = name || 'User';
+                modalEl.querySelectorAll('.soi-for-user-label').forEach(function (el) {
+                    el.textContent = text;
+                });
+            }
+
+            if (userSelectEl) {
+                userSelectEl.addEventListener('change', function () {
+                    updateForUserLabel();
+
+                    if (!issueCombo) return;
+                    const uid = userSelectEl.value;
+                    if (!uid) { issueCombo.clearExcludes(); return; }
+                    $.getJSON(userIssuesUrlBase + '/' + encodeURIComponent(uid), function (res) {
+                        const existing = (res && Array.isArray(res.issues)) ? res.issues : [];
+                        const editingId = document.getElementById('soi_id').value;
+                        const editingIssue = editingId ? (modalEl.__editingIssue || '') : '';
+                        issueCombo.setExcludes(existing.filter(function (l) { return l !== editingIssue; }));
+                    }).fail(function () {
+                        issueCombo.clearExcludes();
+                    });
                 });
             }
 
@@ -656,13 +760,15 @@
             // root-cause fields stay editable.
             function applyProgressLock(on) {
                 const userSel = document.getElementById('soi_user_id');
-                const issue   = document.getElementById('soi_issue');
-                userSel.disabled = on;
-                issue.readOnly = on;
-                if (on) {
-                    issue.classList.add('bg-light');
-                } else {
-                    issue.classList.remove('bg-light');
+                const issue   = document.getElementById('soi_issue_input');
+                if (userSel) userSel.disabled = on;
+                if (issue) {
+                    issue.readOnly = on;
+                    if (on) {
+                        issue.classList.add('bg-light');
+                    } else {
+                        issue.classList.remove('bg-light');
+                    }
                 }
             }
 
@@ -680,10 +786,11 @@
                         progressMode ? 'My Progress — Update' : 'Edit Scope of Improvement';
                     document.getElementById('soi_id').value = row.id;
                     document.getElementById('soi_user_id').value = row.user_id || '';
-                    document.getElementById('soi_issue').value = row.issue || '';
                     document.getElementById('soi_root_cause').value = row.root_cause || '';
                     document.getElementById('soi_fixing_root_cause').value = row.fixing_root_cause || '';
                     document.getElementById('soi_s_by').value = row.s_by || currentUserName;
+                    modalEl.__editingIssue = row.issue || '';
+                    if (issueCombo) issueCombo.setSelections(row.issue ? [row.issue] : []);
                     renderHistory(row.history);
                 } else {
                     document.getElementById('soiModalTitle').textContent =
@@ -691,9 +798,12 @@
                     document.getElementById('soi_id').value = '';
                     document.getElementById('soi_user_id').value = '';
                     document.getElementById('soi_s_by').value = currentUserName;
+                    modalEl.__editingIssue = '';
+                    if (issueCombo) { issueCombo.setSelections([]); issueCombo.clearExcludes(); }
                     renderHistory([]);
                 }
 
+                updateForUserLabel();
                 applyProgressLock(progressMode);
                 modal.show();
             }
@@ -716,27 +826,45 @@
                 const id  = document.getElementById('soi_id').value;
                 const url = id ? (updateBase + '/' + id) : storeUrl;
                 const btn = document.getElementById('soiSaveBtn');
+                const rootCause = document.getElementById('soi_root_cause').value;
+                const fixingRootCause = document.getElementById('soi_fixing_root_cause').value;
 
                 let payload;
                 if (progressMode) {
-                    // Only the two root-cause fields are sent; server keeps the rest.
                     payload = {
                         _token: csrf,
-                        root_cause: document.getElementById('soi_root_cause').value,
-                        fixing_root_cause: document.getElementById('soi_fixing_root_cause').value,
+                        root_cause: rootCause,
+                        fixing_root_cause: fixingRootCause,
+                    };
+                } else if (id) {
+                    // Edit mode — keep the first selected issue.
+                    const userId = document.getElementById('soi_user_id').value;
+                    if (!userId) { alert('Please select a user.'); return; }
+                    const selections = issueCombo ? issueCombo.getSelections() : [];
+                    payload = {
+                        _token: csrf,
+                        user_id: userId,
+                        issue: selections[0] || '',
+                        root_cause: rootCause,
+                        fixing_root_cause: fixingRootCause,
                     };
                 } else {
+                    // Add mode — may create multiple rows (one per selected issue).
                     const userId = document.getElementById('soi_user_id').value;
-                    if (!userId) {
-                        alert('Please select a user.');
+                    if (!userId) { alert('Please select a user.'); return; }
+                    const typed = (document.getElementById('soi_issue_input').value || '').trim();
+                    let selections = issueCombo ? issueCombo.getSelections() : [];
+                    if (typed && selections.indexOf(typed) === -1) selections.push(typed);
+                    if (selections.length === 0) {
+                        alert('Please select or type at least one issue.');
                         return;
                     }
                     payload = {
                         _token: csrf,
                         user_id: userId,
-                        issue: document.getElementById('soi_issue').value,
-                        root_cause: document.getElementById('soi_root_cause').value,
-                        fixing_root_cause: document.getElementById('soi_fixing_root_cause').value,
+                        issues: selections,
+                        root_cause: rootCause,
+                        fixing_root_cause: fixingRootCause,
                     };
                 }
 

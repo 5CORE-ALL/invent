@@ -2854,6 +2854,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(ScopeOfImprovementController::class)->group(function () {
         Route::get('/scope-of-improvement', 'index')->name('scope-of-improvement.index');
         Route::get('/scope-of-improvement/data', 'data')->name('scope-of-improvement.data');
+        Route::get('/scope-of-improvement/user-issues/{userId}', 'userIssues')->name('scope-of-improvement.user-issues');
         Route::post('/scope-of-improvement/store', 'store')->name('scope-of-improvement.store');
         Route::post('/scope-of-improvement/update/{id}', 'update')->name('scope-of-improvement.update');
         Route::post('/scope-of-improvement/delete/{id}', 'destroy')->name('scope-of-improvement.delete');
@@ -5964,6 +5965,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/api/users/active', [UserController::class, 'getActiveUsers'])
         ->middleware('auth')
         ->name('api.users.active');
+
+    // R&R checklist — team-wide tabulator view (must be declared before /users/{user}/... )
+    Route::get('/users/rr-checklist', [UserRRPortfolioController::class, 'checklist'])
+        ->middleware('auth')
+        ->name('users.rr-checklist.index');
+
+    Route::get('/users/rr-checklist/data', [UserRRPortfolioController::class, 'checklistData'])
+        ->middleware('auth')
+        ->name('users.rr-checklist.data');
 
     Route::get('/users/{user}/rr-portfolio', [UserRRPortfolioController::class, 'show'])
         ->middleware('auth')

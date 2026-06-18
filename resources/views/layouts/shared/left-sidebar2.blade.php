@@ -57,6 +57,9 @@
                                 <li>
                                     <a href="{{ route('permissions') }}">Permission</a>
                                 </li>
+                                <li>
+                                    <a href="{{ route('users.rr-checklist.index') }}" class="{{ request()->routeIs('users.rr-checklist.*') ? 'active' : '' }}">R&amp;R Checklist</a>
+                                </li>
                         </ul>
                     </div>
                 </li>
