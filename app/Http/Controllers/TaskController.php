@@ -1281,14 +1281,12 @@ class TaskController extends Controller
             \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify done failed: ' . $e->getMessage());
         }
 
-        // Auto-archive: completed automated tasks shouldn't stay in the active list (user request).
-        $archived = $this->archiveCompletedAutomatedTask($task);
+        // Auto-archive of completed automated tasks disabled (user request) — completed tasks now stay in the active list.
+        $archived = false;
 
         return response()->json([
             'success' => true,
-            'message' => $archived
-                ? 'Task completed & auto-archived (visible in Today Deleted for 24h).'
-                : 'Task completed successfully!',
+            'message' => 'Task completed successfully!',
             'archived' => $archived,
             'task' => $task->fresh(),
         ]);
@@ -1342,8 +1340,7 @@ class TaskController extends Controller
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify done failed: ' . $e->getMessage());
             }
-            // Auto-archive: completed automated tasks shouldn't stay in the active list (user request).
-            $archived = $this->archiveCompletedAutomatedTask($task);
+            // Auto-archive of completed automated tasks disabled (user request) — completed tasks now stay in the active list.
         } elseif ($validated['status'] === 'Rework') {
             try {
                 $this->taskWhatsApp->notifyRework($task->fresh());
