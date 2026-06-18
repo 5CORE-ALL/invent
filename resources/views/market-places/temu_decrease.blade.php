@@ -487,9 +487,12 @@
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items (INV>0)">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; background-color: #dc3545; cursor: pointer;" title="Click to filter missing SKUs (INV>0)">Missing L: 0</span>
                         <span class="badge fs-6 p-2" id="not-mapped-count-badge" style="color: white; font-weight: bold; background-color: #dc3545; cursor: pointer;" title="Click to filter not mapped SKUs (INV>0)">Missing M: 0</span>
-                        {{-- Red Alert badge: rows where Temu Price < Amazon × 0.85 OR Temu Price < eBay × 0.90.
-                             Click to toggle filtering to just those rows. Computed via temuIsRedAlert(rd). --}}
-                        <span class="badge fs-6 p-2" id="temu-red-alert-badge" style="color: white; font-weight: bold; background-color: #a00211; cursor: pointer;" title="Click to filter Red Alert rows: Temu Price &lt; Amazon × 0.85 OR &lt; eBay 1 × 0.90 OR &lt; eBay 2 × 0.90">Red Alert: 0</span>
+                        {{-- Green Alert badge: rows where Temu Price < Amazon × 0.85 OR < eBay 1 × 0.90 OR < eBay 2 × 0.90.
+                             Click to toggle filtering to just those rows. Computed via temuIsGreenAlert(rd). --}}
+                        <span class="badge fs-6 p-2" id="temu-green-alert-badge" style="color: white; font-weight: bold; background-color: #28a745; cursor: pointer;" title="Click to filter Green Alert rows: Temu Price &lt; Amazon × 0.85 OR &lt; eBay 1 × 0.90 OR &lt; eBay 2 × 0.90">Green Alert: 0</span>
+                        {{-- Red Alert badge: opposite of Green — Temu is uncompetitive (at/above every competitor threshold).
+                             Click to toggle filtering. Computed via temuIsRedAlert(rd). --}}
+                        <span class="badge fs-6 p-2" id="temu-red-alert-badge" style="color: white; font-weight: bold; background-color: #a00211; cursor: pointer;" title="Click to filter Red Alert rows: Temu Price &ge; Amazon × 0.85 AND &ge; eBay 1 × 0.90 AND &ge; eBay 2 × 0.90 (uncompetitive)">Red Alert: 0</span>
                         
                         <!-- Pricing & Performance -->
                         <span class="badge bg-warning fs-6 p-2 temu-badge-history" id="avg-cvr-badge" data-badge-metric="avg_cvr_pct" data-badge-label="CVR %" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">CVR: 0.0%</span>
@@ -1992,21 +1995,21 @@
         }
 
         /**
-         * Red Alert rule — flag rows where the live Temu price is unprofitably below
-         * the comparison prices on Amazon / eBay 1 / eBay 2. Used both by the Temu
-         * Price column formatter (to color the cell red) and the Red Alert toolbar
-         * badge filter so the two surfaces never disagree.
+         * Green Alert rule — flag rows where the live Temu price sits below the
+         * comparison prices on Amazon / eBay 1 / eBay 2 (Temu is the cheaper offer).
+         * Used both by the Temu Price column formatter (to color the cell green) and
+         * the Green Alert toolbar badge filter so the two surfaces never disagree.
          *
-         *   Red when:  temuPrice  <  Amazon × 0.85
-         *         OR   temuPrice  <  eBay 1 × 0.90
-         *         OR   temuPrice  <  eBay 2 × 0.90
+         *   Green when:  temuPrice  <  Amazon × 0.85
+         *           OR   temuPrice  <  eBay 1 × 0.90
+         *           OR   temuPrice  <  eBay 2 × 0.90
          *
          * `temuPrice` mirrors the same $2.99-bumper rule used elsewhere in this view
          * (basePrice ≤ 26.99 ? basePrice + 2.99 : basePrice). Rows without a base
          * price, or without any Amazon / eBay reference price to compare against,
-         * are never red.
+         * are never green.
          */
-        function temuIsRedAlert(rd) {
+        function temuIsGreenAlert(rd) {
             if (!rd) return false;
             const base = parseFloat(rd['base_price']) || 0;
             if (base <= 0) return false;
@@ -2018,6 +2021,37 @@
             const underE   = e   > 0 && temuPrice < e   * 0.90;
             const underE2  = e2  > 0 && temuPrice < e2  * 0.90;
             return underAmz || underE || underE2;
+        }
+
+        /**
+         * Red Alert rule — opposite of Green: Temu is uncompetitive vs every reference
+         * channel that has a price (no competitor is cheaper than threshold). Flags
+         * rows where Temu is sitting at or above all of:
+         *
+         *   Red when:  (amz=0  OR  temuPrice >= amz × 0.85)
+         *         AND  (e =0  OR  temuPrice >= e   × 0.90)
+         *         AND  (e2=0  OR  temuPrice >= e2  × 0.90)
+         *         AND  at least one of {amz, e, e2} > 0
+         *
+         * The "at least one reference price" guard prevents rows with no comparison
+         * data from being flagged (we just don't know in that case). Mutually
+         * exclusive with the Green Alert by construction, so the cell color and the
+         * two badges can never both fire on the same row.
+         */
+        function temuIsRedAlert(rd) {
+            if (!rd) return false;
+            const base = parseFloat(rd['base_price']) || 0;
+            if (base <= 0) return false;
+            const temuPrice = base <= 26.99 ? base + 2.99 : base;
+            const amz = parseFloat(rd['a_price']) || 0;
+            const e   = parseFloat(rd['e_price']) || 0;
+            const e2  = parseFloat(rd['e2_price']) || 0;
+            const anyRef = amz > 0 || e > 0 || e2 > 0;
+            if (!anyRef) return false;
+            const okAmz = amz === 0 || temuPrice >= amz * 0.85;
+            const okE   = e   === 0 || temuPrice >= e   * 0.90;
+            const okE2  = e2  === 0 || temuPrice >= e2  * 0.90;
+            return okAmz && okE && okE2;
         }
 
         // Reveal the row-select checkbox column on demand. It's `visible: false` in the
@@ -2199,6 +2233,7 @@
         let missingBadgeFilterActive = false;
         let mapBadgeFilterActive = false;
         let notMapBadgeFilterActive = false;
+        let greenAlertFilterActive = false;
         let redAlertFilterActive = false;
 
         $('#zero-sold-count-badge').on('click', function() {
@@ -2206,9 +2241,20 @@
             applyFilters();
         });
 
-        // Red Alert badge toggle — filters to only rows where temuIsRedAlert(rd) is true.
+        // Green Alert badge toggle — filters to only rows where temuIsGreenAlert(rd) is true.
         // Highlights the badge with a yellow outline while active so users see at a glance
         // that a filter is on (matches the visual cue used elsewhere on this page).
+        $('#temu-green-alert-badge').on('click', function() {
+            greenAlertFilterActive = !greenAlertFilterActive;
+            $(this).css('outline', greenAlertFilterActive ? '3px solid #ffc107' : '');
+            $(this).css('outline-offset', greenAlertFilterActive ? '2px' : '');
+            applyFilters();
+        });
+
+        // Red Alert badge toggle — filters to only rows where temuIsRedAlert(rd) is true
+        // (Temu uncompetitive). Mutually exclusive with Green Alert by construction, but
+        // users can toggle either filter independently; if both are on, the intersection
+        // is empty so the table shows no rows — that's a feature, not a bug.
         $('#temu-red-alert-badge').on('click', function() {
             redAlertFilterActive = !redAlertFilterActive;
             $(this).css('outline', redAlertFilterActive ? '3px solid #ffc107' : '');
@@ -2787,6 +2833,7 @@
             let notMappedCount = 0;
             let lessAmzCount = 0;
             let moreAmzCount = 0;
+            let greenAlertCount = 0;
             let redAlertCount = 0;
             
             data.forEach(row => {
@@ -2860,8 +2907,12 @@
                     missingCount++;
                 }
 
-                // Red Alert: same rule the formatter uses (Temu Price < Amazon × 0.85
-                // or < eBay × 0.90). Count drives the toolbar badge.
+                // Green Alert: same rule the formatter uses (Temu Price < Amazon × 0.85
+                // or < eBay × 0.90 or < eBay 2 × 0.90). Count drives the toolbar badge.
+                if (temuIsGreenAlert(row)) {
+                    greenAlertCount++;
+                }
+                // Red Alert: opposite — Temu uncompetitive (at/above every reference threshold).
                 if (temuIsRedAlert(row)) {
                     redAlertCount++;
                 }
@@ -2960,6 +3011,7 @@
             $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
             $('#missing-count-badge').text('Missing L: ' + missingCount.toLocaleString());
             $('#not-mapped-count-badge').text('Missing M: ' + notMappedCount.toLocaleString());
+            $('#temu-green-alert-badge').text('Green Alert: ' + greenAlertCount.toLocaleString());
             $('#temu-red-alert-badge').text('Red Alert: ' + redAlertCount.toLocaleString());
             $('#avg-cvr-badge').text('CVR: ' + qtyPerViews.toFixed(1) + '%');
             $('#avg-dil-badge').text('Avg DIL: ' + Math.round(avgDil) + '%');
@@ -3547,11 +3599,15 @@
                         }
                         const temuPrice = basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
 
-                        // Red Alert: Temu Price < Amazon × 0.85 OR < eBay × 0.90.
-                        // Driven by temuIsRedAlert(rd) so the toolbar filter + summary
+                        // Green Alert: Temu Price < Amazon × 0.85 OR < eBay 1 × 0.90 OR < eBay 2 × 0.90.
+                        // Driven by temuIsGreenAlert(rd) so the toolbar filter + summary
                         // count + cell color always agree on which rows count.
+                        if (temuIsGreenAlert(rowData)) {
+                            return `<span style="color: #28a745; font-weight: 600;" title="Green Alert: Temu price is below 85% of Amazon or 90% of eBay 1 / eBay 2">$${temuPrice.toFixed(2)}</span>`;
+                        }
+                        // Red Alert: opposite — Temu uncompetitive (at/above every reference threshold).
                         if (temuIsRedAlert(rowData)) {
-                            return `<span style="color: #a00211; font-weight: 600;" title="Red Alert: Temu price is below 85% of Amazon or 90% of eBay 1 / eBay 2">$${temuPrice.toFixed(2)}</span>`;
+                            return `<span style="color: #a00211; font-weight: 600;" title="Red Alert: Temu price is at/above 85% of Amazon AND 90% of eBay 1 / eBay 2 (uncompetitive)">$${temuPrice.toFixed(2)}</span>`;
                         }
                         return '$' + temuPrice.toFixed(2);
                     }
@@ -4661,9 +4717,15 @@
                 });
             }
 
-            // Red Alert badge filter — rows where Temu Price falls below Amazon × 0.85
-            // or eBay × 0.90 (driven by temuIsRedAlert so cell color, filter, and badge
-            // count never get out of sync).
+            // Green Alert badge filter — rows where Temu Price falls below Amazon × 0.85
+            // or eBay 1 × 0.90 or eBay 2 × 0.90 (driven by temuIsGreenAlert so cell color,
+            // filter, and badge count never get out of sync).
+            if (greenAlertFilterActive) {
+                table.addFilter(function(data) {
+                    return temuIsGreenAlert(data);
+                });
+            }
+            // Red Alert badge filter — opposite (Temu uncompetitive).
             if (redAlertFilterActive) {
                 table.addFilter(function(data) {
                     return temuIsRedAlert(data);
