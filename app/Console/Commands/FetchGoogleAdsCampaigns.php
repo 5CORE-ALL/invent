@@ -307,7 +307,16 @@ class FetchGoogleAdsCampaigns extends Command
     }
 
     /**
-     * Build GAQL query for fetching campaign data
+     * Build GAQL query for fetching campaign data.
+     *
+     * NOTE: Do NOT add `metrics.video_views`, `metrics.video_view_rate`, or
+     * `metrics.average_cpv` here. Google Ads API v22 rejects them with
+     * QueryError.UNRECOGNIZED_FIELD when the query is not scoped to a video
+     * campaign (`campaign.advertising_channel_type = 'VIDEO'`). The DB columns
+     * `metrics_video_views`, `metrics_video_view_rate`, `metrics_average_cpv`
+     * still exist on `google_ads_campaigns` and are written as 0 by
+     * {@see prepareData()} via the `?? 0` fallback — no schema change required
+     * if you ever need to re-introduce these for a video-only sub-fetch.
      */
     private function buildQuery($startDate, $endDate)
     {
@@ -350,7 +359,6 @@ class FetchGoogleAdsCampaigns extends Command
                 metrics.average_cpc,
                 metrics.average_cpm,
                 metrics.average_cpe,
-                metrics.average_cpv,
                 metrics.cost_micros,
                 metrics.interactions,
                 metrics.interaction_rate,
@@ -366,12 +374,10 @@ class FetchGoogleAdsCampaigns extends Command
                 metrics.search_impression_share,
                 metrics.search_rank_lost_impression_share,
                 metrics.search_budget_lost_impression_share,
-                metrics.video_views,
                 metrics.video_quartile_p25_rate,
                 metrics.video_quartile_p50_rate,
                 metrics.video_quartile_p75_rate,
                 metrics.video_quartile_p100_rate,
-                metrics.video_view_rate,
                 segments.date
             FROM campaign
             WHERE segments.date BETWEEN '{$startDate}' AND '{$endDate}'
