@@ -3013,7 +3013,17 @@
             $('#not-mapped-count-badge').text('Missing M: ' + notMappedCount.toLocaleString());
             $('#temu-green-alert-badge').text('Green Alert: ' + greenAlertCount.toLocaleString());
             $('#temu-red-alert-badge').text('Red Alert: ' + redAlertCount.toLocaleString());
-            $('#avg-cvr-badge').text('CVR: ' + qtyPerViews.toFixed(1) + '%');
+            // CVR badge prefers the daily snapshot value (same row the chart's "today"
+            // point reads from temu_badge_daily_data via the badge-history endpoint),
+            // so the badge and chart always agree. Falls back to the locally-computed
+            // qtyPerViews when no snapshot exists yet (first load before today's cron).
+            // Renders with 2 decimals to match the chart tooltip exactly — without this
+            // the badge would round 7.06 -> 7.1 and not visually match the 7.06 hover.
+            const snapshotCvr = todayBadgeSnapshotFromBackend != null
+                ? parseFloat(todayBadgeSnapshotFromBackend.avg_cvr_pct)
+                : NaN;
+            const displayCvr = isFinite(snapshotCvr) ? snapshotCvr : qtyPerViews;
+            $('#avg-cvr-badge').text('CVR: ' + displayCvr.toFixed(2) + '%');
             $('#avg-dil-badge').text('Avg DIL: ' + Math.round(avgDil) + '%');
             // Total Revenue badge set above from sales_summary or table
             $('#total-profit-badge').text('PFT: $' + Math.round(totalProfit).toLocaleString());
@@ -3136,6 +3146,10 @@
 
         let totalCampaignCountFromBackend = 0;
         let salesSummaryFromBackend = null;
+        // today_badge_snapshot from the backend — same row the chart's "today" point reads.
+        // When present, the summary badges (esp. CVR) display this snapshot's values
+        // instead of the locally-computed aggregates so badge and chart can never diverge.
+        let todayBadgeSnapshotFromBackend = null;
         let badgeAvgAds = null; // Ads % from badge — shown in ADS% column for all rows
         let currentCampaignPeriod = 'L30';
 
@@ -3163,6 +3177,7 @@
                     $('#campaign-period-select').val(currentCampaignPeriod);
                     totalCampaignCountFromBackend = parseInt(response.total_campaign_count || 0, 10);
                     salesSummaryFromBackend = response.sales_summary || null;
+                    todayBadgeSnapshotFromBackend = response.today_badge_snapshot || null;
                     // Use exact aggregate_ads_percent from backend (matches all-marketplace-master)
                     // This is the authoritative value - always use it for NPFT calculation
                     if (response.aggregate_ads_percent != null && response.aggregate_ads_percent !== undefined) {

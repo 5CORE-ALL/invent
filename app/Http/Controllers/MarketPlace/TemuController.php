@@ -3602,12 +3602,39 @@ class TemuController extends Controller
                 return $row;
             });
 
+            // Attach today's badge snapshot (if present in temu_badge_daily_data) so the
+            // page can render summary badges from the SAME row the chart's "today" point
+            // reads — keeps badge and chart byte-for-byte identical. JS falls back to its
+            // locally-computed value when no snapshot exists yet (e.g. before today's cron).
+            $todayBadge = null;
+            try {
+                $todayBadgeRow = TemuBadgeDailyData::where('record_date', Carbon::today('America/Los_Angeles')->toDateString())->first();
+                if ($todayBadgeRow) {
+                    $todayBadge = [
+                        'record_date'    => (string) $todayBadgeRow->record_date,
+                        'total_sales'    => round((float) $todayBadgeRow->total_sales, 2),
+                        'total_orders'   => (int) $todayBadgeRow->total_orders,
+                        'total_quantity' => (int) $todayBadgeRow->total_quantity,
+                        'sku_count'      => (int) $todayBadgeRow->sku_count,
+                        'total_views'    => (int) $todayBadgeRow->total_views,
+                        'avg_views'      => round((float) $todayBadgeRow->avg_views, 2),
+                        'total_spend'    => round((float) $todayBadgeRow->total_spend, 2),
+                        'avg_cvr_pct'    => round((float) $todayBadgeRow->avg_cvr_pct, 2),
+                    ];
+                }
+            } catch (\Throwable $e) {
+                // Don't fail the whole response if the snapshot lookup throws — badge
+                // simply falls back to live-computed values like before.
+                Log::warning('Temu decrease: today badge snapshot lookup failed: ' . $e->getMessage());
+            }
+
             return response()->json([
                 'data' => $processedData,
                 'period' => $selectedPeriod,
                 'total_campaign_count' => $totalCampaignCount,
                 'sales_summary' => $salesSummary,
                 'aggregate_ads_percent' => $aggregateAdsPercent, // Exact Ads% from marketplace_daily_metrics (matches all-marketplace-master)
+                'today_badge_snapshot' => $todayBadge,
             ]);
         } catch (\Exception $e) {
             Log::error('Temu decrease data error: ' . $e->getMessage(), [
