@@ -74,6 +74,8 @@
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..."
                         style="width: 150px; display: inline-block;">
+                    <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..."
+                        style="width: 150px; display: inline-block;">
 
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: 120px; display: inline-block;">
@@ -929,9 +931,11 @@
             });
 
             // SKU Search functionality
-            $('#sku-search').on('keyup', function() {
-                const value = $(this).val();
-                table.setFilter("(Child) sku", "like", value);
+            $('#sku-search, #parent-search').on('keyup', function() {
+                table.setFilter([
+                    { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' },
+                    { field: 'Parent', type: 'like', value: $('#parent-search').val() || '' }
+                ]);
             });
 
             // Cell edited handler

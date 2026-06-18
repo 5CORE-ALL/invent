@@ -2760,6 +2760,7 @@
                     hozAlign: "center",
                     width: 50,
                     sorter: "number",
+                    visible: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         return Math.round(parseFloat(value) || 0);

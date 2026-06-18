@@ -190,6 +190,7 @@
                 
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 180px; display: inline-block;">
+                    <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 180px; display: inline-block;">
 
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -4811,6 +4812,11 @@
                 applyFilters();
             });
 
+            // Parent Search: use applyFilters() so it stacks with all other filters
+            $('#parent-search').on('keyup', function() {
+                applyFilters();
+            });
+
             table.on('cellEdited', function(cell) {
                 var row = cell.getRow();
                 var data = row.getData();
@@ -5209,6 +5215,15 @@
                         var sku = (data.is_parent_summary ? (data.Parent || data['(Child) sku'] || data.sku || '') : (data['(Child) sku'] || data.sku || ''));
                         sku = (sku + '').replace(/\s+/g, '').toLowerCase();
                         return sku.indexOf(searchVal) !== -1;
+                    });
+                }
+
+                // Parent search: filter by Parent column
+                var parentSearchVal = ($('#parent-search').val() || '').replace(/\s+/g, '').toLowerCase();
+                if (parentSearchVal) {
+                    table.addFilter(function(data) {
+                        var parent = (data.Parent || '').toString().replace(/\s+/g, '').toLowerCase();
+                        return parent.indexOf(parentSearchVal) !== -1;
                     });
                 }
 

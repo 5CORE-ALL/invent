@@ -99,6 +99,22 @@
                     <a href="{{ url('/ebay-export') }}" class="btn btn-sm btn-success me-2">
                         <i class="fa fa-file-excel"></i> Export
                     </a>
+
+                    <!-- Play / Pause parent navigation -->
+                    <div class="btn-group align-items-center ms-2" role="group" aria-label="Parent navigation">
+                        <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
+                            <i class="fas fa-step-backward"></i>
+                        </button>
+                        <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm" title="Start parent navigation">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button type="button" id="play-pause" class="btn btn-sm btn-warning rounded-circle shadow-sm" style="display: none;" title="Stop navigation and show all">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
+                            <i class="fas fa-step-forward"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Summary Stats -->
@@ -133,9 +149,10 @@
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="ebay-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <!-- SKU Search -->
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
+                    <!-- SKU & Parent Search -->
+                    <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
+                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
+                        <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
                     </div>
                     <!-- Table body (scrollable section) -->
                     <div id="ebay-table" style="flex: 1;"></div>
@@ -872,9 +889,11 @@
             });
 
             // SKU Search functionality
-            $('#sku-search').on('keyup', function() {
-                const value = $(this).val();
-                table.setFilter("(Child) sku", "like", value);
+            $('#sku-search, #parent-search').on('keyup', function() {
+                table.setFilter([
+                    { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' },
+                    { field: 'Parent', type: 'like', value: $('#parent-search').val() || '' }
+                ]);
             });
 
             // NR/REQ dropdown change handler
@@ -976,6 +995,69 @@
                 }
             });
 
+            // Play / Pause parent navigation state
+            let epUniqueParents = [];
+            let isEpPlayActive = false;
+            let currentEpParentIndex = -1;
+
+            function normalizeEpParentKey(val) {
+                if (val == null || val === '') return '';
+                return String(val).trim().replace(/\s+/g, ' ').replace(/^PARENT\s+/i, '');
+            }
+            function buildEpUniqueParents() {
+                if (!table) return [];
+                const allRows = table.getData('all') || [];
+                const seen = {};
+                const list = [];
+                allRows.forEach(function(r) {
+                    const p = normalizeEpParentKey(r.Parent);
+                    if (p && !seen[p]) { seen[p] = true; list.push(p); }
+                });
+                list.sort(function(a, b) { return String(a).localeCompare(String(b)); });
+                return list;
+            }
+            function updateEpPlayButtonStates() {
+                $('#play-backward').prop('disabled', !isEpPlayActive || currentEpParentIndex <= 0);
+                $('#play-forward').prop('disabled', !isEpPlayActive || currentEpParentIndex >= epUniqueParents.length - 1);
+            }
+            function startEpPlay() {
+                epUniqueParents = buildEpUniqueParents();
+                if (epUniqueParents.length === 0) return;
+                isEpPlayActive = true;
+                currentEpParentIndex = 0;
+                $('#play-auto').hide();
+                $('#play-pause').show();
+                applyFilters();
+                try { table.setPage(1); } catch (e) {}
+                updateEpPlayButtonStates();
+            }
+            function stopEpPlay() {
+                isEpPlayActive = false;
+                currentEpParentIndex = -1;
+                $('#play-pause').hide();
+                $('#play-auto').show();
+                applyFilters();
+                updateEpPlayButtonStates();
+            }
+            function nextEpParent() {
+                if (!isEpPlayActive || currentEpParentIndex >= epUniqueParents.length - 1) return;
+                currentEpParentIndex++;
+                applyFilters();
+                try { table.setPage(1); } catch (e) {}
+                updateEpPlayButtonStates();
+            }
+            function previousEpParent() {
+                if (!isEpPlayActive || currentEpParentIndex <= 0) return;
+                currentEpParentIndex--;
+                applyFilters();
+                try { table.setPage(1); } catch (e) {}
+                updateEpPlayButtonStates();
+            }
+            $('#play-auto').on('click', startEpPlay);
+            $('#play-pause').on('click', stopEpPlay);
+            $('#play-forward').on('click', nextEpParent);
+            $('#play-backward').on('click', previousEpParent);
+
             // Apply filters
             function applyFilters() {
                 const inventoryFilter = $('#inventory-filter').val();
@@ -983,6 +1065,18 @@
                 const pftFilter = $('#pft-filter').val();
 
                 table.clearFilter(true);
+
+                // Play navigation: only show current parent's group
+                if (isEpPlayActive && epUniqueParents.length > 0 && currentEpParentIndex >= 0) {
+                    const currentKey = epUniqueParents[currentEpParentIndex];
+                    if (currentKey) {
+                        table.addFilter(function(d) {
+                            const p = normalizeEpParentKey(d.Parent);
+                            return p === currentKey || p === ('PARENT ' + currentKey);
+                        });
+                    }
+                    return;
+                }
 
                 if (inventoryFilter === 'zero') {
                     table.addFilter('INV', '=', 0);

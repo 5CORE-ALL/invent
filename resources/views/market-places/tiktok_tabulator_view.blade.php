@@ -455,9 +455,10 @@
                 </div>
                 <div id="tiktok-table-wrapper"
                     style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <!-- SKU Search -->
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
+                    <!-- SKU & Parent Search -->
+                    <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
+                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
+                        <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
                     </div>
                     <!-- Table body -->
                     <div id="tiktok-table" style="flex: 1;"></div>
@@ -2629,7 +2630,7 @@
             });
 
             // SKU Search: run applyFilters() so Ad Click and other filters stay applied (missing campaign stays hidden when Ad Click filter is on)
-            $('#sku-search').on('keyup', function() {
+            $('#sku-search, #parent-search').on('keyup', function() {
                 applyFilters();
             });
 
@@ -3208,6 +3209,14 @@
                         const matchParent = parent.indexOf(term) !== -1;
                         if (isParentRow(data)) return matchSku || matchParent;
                         return matchSku;
+                    });
+                }
+
+                const parentSearchVal = $('#parent-search').val();
+                if (parentSearchVal && parentSearchVal.trim() !== '') {
+                    const pTerm = parentSearchVal.trim().toLowerCase();
+                    table.addFilter(function(data) {
+                        return (data.Parent || '').toString().toLowerCase().indexOf(pTerm) !== -1;
                     });
                 }
 

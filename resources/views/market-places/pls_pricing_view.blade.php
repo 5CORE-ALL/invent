@@ -114,6 +114,22 @@
                     <button id="pls-clear-sprice-btn" class="btn btn-sm btn-danger" style="display: none;">
                         <i class="fas fa-eraser"></i> Clear SPRICE
                     </button>
+
+                    <!-- Play / Pause parent navigation -->
+                    <div class="btn-group align-items-center ms-2" role="group" aria-label="Parent navigation">
+                        <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
+                            <i class="fas fa-step-backward"></i>
+                        </button>
+                        <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm" title="Start parent navigation">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button type="button" id="play-pause" class="btn btn-sm btn-warning rounded-circle shadow-sm" style="display: none;" title="Stop navigation and show all">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
+                            <i class="fas fa-step-forward"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
@@ -150,8 +166,9 @@
                     </div>
                 </div>
                 <div id="pls-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU...">
+                    <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
+                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
+                        <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
                     </div>
                     <div id="pls-table" style="flex: 1;"></div>
                 </div>
@@ -194,6 +211,11 @@
     const COLUMN_VIS_KEY = "pls_tabulator_column_visibility";
     const PLS_PERCENTAGE = {{ $plsPercentage ?? 100 }} / 100; // Dynamic from database
     let table = null;
+
+    // Play / Pause parent navigation state
+    let plsUniqueParents = [];
+    let isPlsPlayActive = false;
+    let currentPlsParentIndex = -1;
 
     function showToast(message, type = 'info') {
         const toastContainer = document.querySelector('.toast-container');
@@ -273,26 +295,38 @@
         $('#roi-filter').on('change', function () { applyFilters(); });
         $('#dil-filter').on('change', function () { applyFilters(); });
 
-        $('#sku-search').on('keyup', function () {
-            const val = $(this).val();
-            if (val) {
-                table.setFilter('sku', 'like', val);
-            } else {
-                table.clearFilter();
-                applyFilters();
-            }
-        });
+        $('#sku-search').on('keyup', function () { applyFilters(); });
+        $('#parent-search').on('keyup', function () { applyFilters(); });
 
         function applyFilters() {
             table.clearFilter();
+
+            // When Play navigation is active, only show rows matching the current parent
+            if (isPlsPlayActive && plsUniqueParents.length > 0 && currentPlsParentIndex >= 0) {
+                const currentKey = plsUniqueParents[currentPlsParentIndex];
+                if (currentKey) {
+                    table.addFilter(function(data) {
+                        const p = normalizePlsParentKey(data.parent);
+                        return p === currentKey || p === ('PARENT ' + currentKey);
+                    });
+                }
+                updateSummary();
+                return;
+            }
             
             const invFilter = $('#inventory-filter').val();
             const gpftFilter = $('#gpft-filter').val();
             const roiFilter = $('#roi-filter').val();
             const dilFilter = $('#dil-filter').val();
+            const skuSearch = ($('#sku-search').val() || '').toString().trim().toLowerCase();
+            const parentSearch = ($('#parent-search').val() || '').toString().trim().toLowerCase();
             
             // Use a single combined filter function
             table.addFilter(function(data) {
+                // SKU search
+                if (skuSearch && !((data.sku || '').toString().toLowerCase().includes(skuSearch))) return false;
+                // Parent search
+                if (parentSearch && !((data.parent || '').toString().toLowerCase().includes(parentSearch))) return false;
                 // Inventory filter
                 if (invFilter === 'zero' && parseInt(data.inventory) !== 0) return false;
                 if (invFilter === 'more' && parseInt(data.inventory) <= 0) return false;
@@ -332,6 +366,73 @@
             
             updateSummary();
         }
+
+        // ========== Play / Pause parent navigation ==========
+        function normalizePlsParentKey(val) {
+            if (val == null || val === '') return '';
+            return String(val).trim().replace(/\s+/g, ' ').replace(/^PARENT\s+/i, '');
+        }
+        function buildPlsUniqueParents() {
+            if (!table) return [];
+            const allRows = table.getData('all') || [];
+            const seen = {};
+            const list = [];
+            allRows.forEach(function(r) {
+                const p = normalizePlsParentKey(r.parent);
+                if (p && !seen[p]) {
+                    seen[p] = true;
+                    list.push(p);
+                }
+            });
+            list.sort(function(a, b) { return String(a).localeCompare(String(b)); });
+            return list;
+        }
+        function updatePlsPlayButtonStates() {
+            $('#play-backward').prop('disabled', !isPlsPlayActive || currentPlsParentIndex <= 0);
+            $('#play-forward').prop('disabled', !isPlsPlayActive || currentPlsParentIndex >= plsUniqueParents.length - 1);
+        }
+        function startPlsPlay() {
+            plsUniqueParents = buildPlsUniqueParents();
+            if (plsUniqueParents.length === 0) {
+                showToast('No parent groups found in data', 'info');
+                return;
+            }
+            isPlsPlayActive = true;
+            currentPlsParentIndex = 0;
+            $('#play-auto').hide();
+            $('#play-pause').show();
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updatePlsPlayButtonStates();
+        }
+        function stopPlsPlay() {
+            isPlsPlayActive = false;
+            currentPlsParentIndex = -1;
+            $('#play-pause').hide();
+            $('#play-auto').show();
+            applyFilters();
+            updatePlsPlayButtonStates();
+        }
+        function nextPlsParent() {
+            if (!isPlsPlayActive) return;
+            if (currentPlsParentIndex >= plsUniqueParents.length - 1) return;
+            currentPlsParentIndex++;
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updatePlsPlayButtonStates();
+        }
+        function previousPlsParent() {
+            if (!isPlsPlayActive) return;
+            if (currentPlsParentIndex <= 0) return;
+            currentPlsParentIndex--;
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updatePlsPlayButtonStates();
+        }
+        $('#play-auto').on('click', startPlsPlay);
+        $('#play-pause').on('click', stopPlsPlay);
+        $('#play-forward').on('click', nextPlsParent);
+        $('#play-backward').on('click', previousPlsParent);
 
         // Initialize Tabulator
         table = new Tabulator('#pls-table', {
@@ -505,6 +606,18 @@
                     }
                 },
                 {
+                    title: "PLS L30",
+                    field: "pls_l30",
+                    hozAlign: "center",
+                    width: 80,
+                    sorter: "number",
+                    visible: true,
+                    formatter: function(cell) {
+                        const v = parseInt(cell.getValue() || 0);
+                        return `<span style="font-weight:600; color: #17a2b8;">${v}</span>`;
+                    }
+                },
+                {
                     title: "Prc",
                     field: "price",
                     hozAlign: "center",
@@ -534,18 +647,6 @@
                         return `<span style="font-weight: 600; color: #ff9900;">$${value.toFixed(2)}</span>`;
                     },
                     width: 70
-                },
-                {
-                    title: "PLS L30",
-                    field: "pls_l30",
-                    hozAlign: "center",
-                    width: 80,
-                    sorter: "number",
-                    visible: true,
-                    formatter: function(cell) {
-                        const v = parseInt(cell.getValue() || 0);
-                        return `<span style="font-weight:600; color: #17a2b8;">${v}</span>`;
-                    }
                 },
                 {
                     title: "MC L30",
@@ -658,7 +759,7 @@
                         else if (percent >= 20 && percent < 30) color = '#28a745';
                         else color = '#20c997';
                         
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(1)}%</span>`;
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 60
                 },
@@ -679,7 +780,7 @@
                         else if (percent >= 20 && percent < 30) color = '#28a745';
                         else color = '#20c997';
                         
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(1)}%</span>`;
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 60
                 },
@@ -749,7 +850,7 @@
                         else if (percent >= 20 && percent < 30) color = '#28a745';
                         else color = '#20c997';
                         
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(1)}%</span>`;
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 60
                 },
@@ -1013,7 +1114,7 @@
 
             $('#total-l30-badge').text(`PLS L30: ${totalPlsL30.toLocaleString()}`);
             $('#avg-price-badge').text(`Price: $${avgPrice.toFixed(2)}`);
-            $('#avg-gpft-badge').text(`GPFT%: ${avgGpft.toFixed(1)}%`);
+            $('#avg-gpft-badge').text(`GPFT%: ${avgGpft.toFixed(0)}%`);
             $('#avg-roi-badge').text(`ROI%: ${avgRoi.toFixed(0)}%`);
             $('#missing-price-badge').text(`Missing: ${missingPrice}`);
             $('#not-mapped-badge').text(`N MP: ${notMappedCount}`);

@@ -824,9 +824,10 @@
                     </div>
                 </div>
                 <div id="ebay3-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <!-- SKU Search -->
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
+                    <!-- SKU & Parent Search -->
+                    <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
+                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
+                        <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
                     </div>
                     <!-- Table body (scrollable section) -->
                     <div id="ebay3-table" style="flex: 1;"></div>
@@ -3086,6 +3087,7 @@
                     hozAlign: "center",
                     width: 50,
                     sorter: "number",
+                    visible: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         return Math.round(parseFloat(value) || 0);
@@ -4361,9 +4363,11 @@
         }
 
         // SKU Search functionality
-        $('#sku-search').on('keyup', function() {
-            const value = $(this).val();
-            table.setFilter("(Child) sku", "like", value);
+        $('#sku-search, #parent-search').on('keyup', function() {
+            table.setFilter([
+                { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' },
+                { field: 'Parent', type: 'like', value: $('#parent-search').val() || '' }
+            ]);
         });
 
         /** Parent + all child SKUs in the same eBay3 tree group (for NR cascade). */

@@ -326,7 +326,7 @@
                                         <select class="form-select form-select-sm @error('priority') is-invalid @enderror" 
                                                 id="priority" name="priority" required>
                                             <option value="normal" {{ old('priority', 'normal') == 'normal' ? 'selected' : '' }}>Normal</option>
-                                            <option value="high" {{ old('priority') == 'high' ? 'selected' : '' }}>High</option>
+                                            <option value="high" {{ old('priority') == 'high' ? 'selected' : '' }}>Urgent</option>
                                             <option value="low" {{ old('priority') == 'low' ? 'selected' : '' }}>Low</option>
                                         </select>
                                     </div>

@@ -870,6 +870,12 @@
                             <a href="{{ route('customer.care.refunds') }}">Refunds</a>
                         </li>
                         <li>
+                            <a href="{{ route('customer.care.faq.customers.index') }}"
+                               class="{{ request()->routeIs('customer.care.faq.customers.*') ? 'active' : '' }}">
+                                FAQ / FFP Customers
+                            </a>
+                        </li>
+                        <li>
                             <a href="{{ route('customer.care.orders.on.hold') }}">Orders On Hold</a>
                         </li>
                         <li>

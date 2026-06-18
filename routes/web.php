@@ -73,6 +73,7 @@ use App\Http\Controllers\Channels\TrafficMasterController;
 use App\Http\Controllers\ChannelTabulatorColumnController;
 use App\Http\Controllers\AuditMasterController;
 use App\Http\Controllers\ComplianceCertificateController;
+use App\Http\Controllers\CustomerCare\CustomerFaqController;
 use App\Http\Controllers\CustomerCare\CustomerFollowupController;
 use App\Http\Controllers\CustomerCare\DARController;
 use App\Http\Controllers\CustomerCare\ShippingController;
@@ -776,6 +777,24 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/customer-care/shipping/followups', [ShippingController::class, 'followupsStore'])->name('customer.care.shipping.followups.store');
     Route::post('/customer-care/shipping/followups/{shipping_followup}/resolve', [ShippingController::class, 'followupsResolve'])->name('customer.care.shipping.followups.resolve');
     Route::get('/customer-care/refunds', [RefundController::class, 'index'])->name('customer.care.refunds');
+
+    // FAQ / FFP Customers Page (with escalations)
+    Route::get('/customer-care/faq-customers', [CustomerFaqController::class, 'index'])
+        ->name('customer.care.faq.customers.index');
+    Route::get('/customer-care/faq-customers/data', [CustomerFaqController::class, 'data'])
+        ->name('customer.care.faq.customers.data');
+    Route::post('/customer-care/faq-customers', [CustomerFaqController::class, 'store'])
+        ->name('customer.care.faq.customers.store');
+    Route::put('/customer-care/faq-customers/{customer_faq}', [CustomerFaqController::class, 'update'])
+        ->name('customer.care.faq.customers.update');
+    Route::delete('/customer-care/faq-customers/{customer_faq}', [CustomerFaqController::class, 'destroy'])
+        ->name('customer.care.faq.customers.destroy');
+    Route::post('/customer-care/faq-customers/{customer_faq}/escalate', [CustomerFaqController::class, 'escalate'])
+        ->name('customer.care.faq.customers.escalate');
+    Route::post('/customer-care/faq-customers/{customer_faq}/resolve', [CustomerFaqController::class, 'resolve'])
+        ->name('customer.care.faq.customers.resolve');
+    Route::post('/customer-care/faq-customers/{customer_faq}/status', [CustomerFaqController::class, 'updateStatus'])
+        ->name('customer.care.faq.customers.status');
     Route::get('/customer-care/orders-on-hold', function () {
         $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
             ->whereNotNull('marketplace')

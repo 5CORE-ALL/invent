@@ -78,8 +78,24 @@
                     </div>
                 </div>
 
-                <div class="p-2 bg-light border-bottom">
-                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search by Parent or SKU...">
+                <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
+                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search by Parent or SKU..." style="max-width: 280px;">
+
+                    <!-- Play / Pause parent navigation -->
+                    <div class="btn-group align-items-center" role="group" aria-label="Parent navigation">
+                        <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
+                            <i class="fas fa-step-backward"></i>
+                        </button>
+                        <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm" title="Start parent navigation">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button type="button" id="play-pause" class="btn btn-sm btn-warning rounded-circle shadow-sm" style="display: none;" title="Stop navigation and show all">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
+                            <i class="fas fa-step-forward"></i>
+                        </button>
+                    </div>
                 </div>
                 <div id="depop-pricing-table" style="height: calc(100vh - 320px);"></div>
             </div>
@@ -430,16 +446,95 @@
 
         // ─── Search (parent + sku) ────────────────────────────────────────
         $('#sku-search').on('input', function() {
-            const q = $(this).val().trim().toLowerCase();
-            if (!q) {
-                table.clearFilter(true);
+            applyDepopFilters();
+        });
+
+        // Play / Pause parent navigation state
+        let dpUniqueParents = [];
+        let isDpPlayActive = false;
+        let currentDpParentIndex = -1;
+
+        function normalizeDpParentKey(val) {
+            if (val == null || val === '') return '';
+            return String(val).trim().replace(/\s+/g, ' ').replace(/^PARENT\s+/i, '');
+        }
+        function buildDpUniqueParents() {
+            if (!table) return [];
+            const allRows = table.getData('all') || [];
+            const seen = {};
+            const list = [];
+            allRows.forEach(function(r) {
+                const p = normalizeDpParentKey(r.parent);
+                if (p && !seen[p]) { seen[p] = true; list.push(p); }
+            });
+            list.sort(function(a, b) { return String(a).localeCompare(String(b)); });
+            return list;
+        }
+        function updateDpPlayButtonStates() {
+            $('#play-backward').prop('disabled', !isDpPlayActive || currentDpParentIndex <= 0);
+            $('#play-forward').prop('disabled', !isDpPlayActive || currentDpParentIndex >= dpUniqueParents.length - 1);
+        }
+        function applyDepopFilters() {
+            if (!table) return;
+            table.clearFilter(true);
+
+            // Play navigation: only show current parent's group
+            if (isDpPlayActive && dpUniqueParents.length > 0 && currentDpParentIndex >= 0) {
+                const currentKey = dpUniqueParents[currentDpParentIndex];
+                if (currentKey) {
+                    table.addFilter(function(d) {
+                        const p = normalizeDpParentKey(d.parent);
+                        return p === currentKey || p === ('PARENT ' + currentKey);
+                    });
+                }
                 return;
             }
-            table.setFilter(function(row) {
-                return (String(row.parent || '').toLowerCase().includes(q))
-                    || (String(row.sku    || '').toLowerCase().includes(q));
-            });
-        });
+
+            const q = ($('#sku-search').val() || '').trim().toLowerCase();
+            if (q) {
+                table.addFilter(function(row) {
+                    return (String(row.parent || '').toLowerCase().includes(q))
+                        || (String(row.sku    || '').toLowerCase().includes(q));
+                });
+            }
+        }
+        function startDpPlay() {
+            dpUniqueParents = buildDpUniqueParents();
+            if (dpUniqueParents.length === 0) return;
+            isDpPlayActive = true;
+            currentDpParentIndex = 0;
+            $('#play-auto').hide();
+            $('#play-pause').show();
+            applyDepopFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateDpPlayButtonStates();
+        }
+        function stopDpPlay() {
+            isDpPlayActive = false;
+            currentDpParentIndex = -1;
+            $('#play-pause').hide();
+            $('#play-auto').show();
+            applyDepopFilters();
+            updateDpPlayButtonStates();
+        }
+        function nextDpParent() {
+            if (!isDpPlayActive || currentDpParentIndex >= dpUniqueParents.length - 1) return;
+            currentDpParentIndex++;
+            applyDepopFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateDpPlayButtonStates();
+        }
+        function previousDpParent() {
+            if (!isDpPlayActive || currentDpParentIndex <= 0) return;
+            currentDpParentIndex--;
+            applyDepopFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateDpPlayButtonStates();
+        }
+        $('#play-auto').on('click', startDpPlay);
+        $('#play-pause').on('click', stopDpPlay);
+        $('#play-forward').on('click', nextDpParent);
+        $('#play-backward').on('click', previousDpParent);
 
         // ─── Import CSV ───────────────────────────────────────────────────
         $('#import-form').on('submit', function(e) {

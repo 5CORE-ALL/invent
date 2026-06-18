@@ -449,8 +449,9 @@
                         <span id="selected-skus-count" class="text-muted ms-2"></span>
                     </div>
                 </div>
-                <div class="p-2 bg-light border-bottom">
-                    <input type="text" id="sku-search" class="form-control" placeholder="Search SKU..." autocomplete="off">
+                <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
+                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." autocomplete="off" style="max-width: 220px;">
+                    <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." autocomplete="off" style="max-width: 220px;">
                 </div>
                 <div id="doba-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <div id="doba-table" style="flex: 1;"></div>
@@ -2190,6 +2191,14 @@
                     });
                 }
 
+                const parentSearch = ($('#parent-search').val() || '').trim().toLowerCase();
+                if (parentSearch !== '') {
+                    table.addFilter(function(data) {
+                        const parent = String(data.Parent || '').toLowerCase();
+                        return parent.indexOf(parentSearch) !== -1;
+                    });
+                }
+
                 const gpftFilter = $('#gpft-filter').val();
                 if (gpftFilter !== 'all') {
                     table.addFilter(function(data) {
@@ -2411,7 +2420,7 @@
                 applyFilters();
             });
 
-            $('#sku-search').on('keyup input', function() {
+            $('#sku-search, #parent-search').on('keyup input', function() {
                 applyFilters();
             });
 

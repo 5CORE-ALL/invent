@@ -195,6 +195,22 @@
                         <button id="ae-price-mode-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase">
                             <i class="fas fa-exchange-alt"></i> Price Mode
                         </button>
+
+                        <!-- Play / Pause parent navigation -->
+                        <div class="btn-group align-items-center ms-2" role="group" aria-label="Parent navigation">
+                            <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
+                                <i class="fas fa-step-backward"></i>
+                            </button>
+                            <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm" title="Start parent navigation">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <button type="button" id="play-pause" class="btn btn-sm btn-warning rounded-circle shadow-sm" style="display: none;" title="Stop navigation and show all">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                            <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
+                                <i class="fas fa-step-forward"></i>
+                            </button>
+                        </div>
                     </div>
 
                     {{-- Discount input (shown when Price Mode is active) – identical to TikTok --}}
@@ -528,9 +544,84 @@
         }
 
         // ── applyFilters (mirrors TikTok applyFilters) ────────────────
+        // Play / Pause parent navigation state
+        let shPlayUniqueParents = [];
+        let isShPlayActive = false;
+        let currentShPlayParentIndex = -1;
+
+        function normalizeShParentKey(val) {
+            if (val == null || val === '') return '';
+            return String(val).trim().replace(/\s+/g, ' ').replace(/^PARENT\s+/i, '');
+        }
+        function buildShUniqueParents() {
+            if (!table) return [];
+            const allRows = table.getData('all') || [];
+            const seen = {};
+            const list = [];
+            allRows.forEach(function(r) {
+                const p = normalizeShParentKey(r.parent);
+                if (p && !seen[p]) { seen[p] = true; list.push(p); }
+            });
+            list.sort(function(a, b) { return String(a).localeCompare(String(b)); });
+            return list;
+        }
+        function updateShPlayButtonStates() {
+            $('#play-backward').prop('disabled', !isShPlayActive || currentShPlayParentIndex <= 0);
+            $('#play-forward').prop('disabled', !isShPlayActive || currentShPlayParentIndex >= shPlayUniqueParents.length - 1);
+        }
+        function startShPlay() {
+            shPlayUniqueParents = buildShUniqueParents();
+            if (shPlayUniqueParents.length === 0) return;
+            isShPlayActive = true;
+            currentShPlayParentIndex = 0;
+            $('#play-auto').hide();
+            $('#play-pause').show();
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateShPlayButtonStates();
+        }
+        function stopShPlay() {
+            isShPlayActive = false;
+            currentShPlayParentIndex = -1;
+            $('#play-pause').hide();
+            $('#play-auto').show();
+            applyFilters();
+            updateShPlayButtonStates();
+        }
+        function nextShParent() {
+            if (!isShPlayActive || currentShPlayParentIndex >= shPlayUniqueParents.length - 1) return;
+            currentShPlayParentIndex++;
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateShPlayButtonStates();
+        }
+        function previousShParent() {
+            if (!isShPlayActive || currentShPlayParentIndex <= 0) return;
+            currentShPlayParentIndex--;
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateShPlayButtonStates();
+        }
+        $('#play-auto').on('click', startShPlay);
+        $('#play-pause').on('click', stopShPlay);
+        $('#play-forward').on('click', nextShParent);
+        $('#play-backward').on('click', previousShParent);
+
         function applyFilters() {
             if (!table) return;
             table.clearFilter();
+
+            // Play navigation: only show current parent's group
+            if (isShPlayActive && shPlayUniqueParents.length > 0 && currentShPlayParentIndex >= 0) {
+                const currentKey = shPlayUniqueParents[currentShPlayParentIndex];
+                if (currentKey) {
+                    table.addFilter(function(d) {
+                        const p = normalizeShParentKey(d.parent);
+                        return p === currentKey || p === ('PARENT ' + currentKey);
+                    });
+                }
+                return;
+            }
 
             const skuSearch  = ($('#pricing-sku-search').val() || '').toLowerCase().trim();
             const rowType    = $('#ae-row-type-filter').val();

@@ -1076,6 +1076,13 @@
                                 style="padding-left: 32px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px;"
                                 placeholder="Search by campaign name or SKU...">
                         </div>
+                        <div style="min-width: 200px; position: relative;">
+                            <i class="fa fa-sitemap"
+                                style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 13px;"></i>
+                            <input type="text" id="parent-search" class="form-control form-control-sm"
+                                style="padding-left: 32px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px;"
+                                placeholder="Search Parent...">
+                        </div>
                         <span id="custom-pagination-counter"
                             style="font-size: 13px; color: #555; white-space: nowrap; margin-left: 16px;"></span>
                     </div>
@@ -5081,10 +5088,12 @@
                 ]
             });
 
-            // SKU Search functionality
-            $('#sku-search').on('keyup', function() {
-                const value = $(this).val();
-                table.setFilter("(Child) sku", "like", value);
+            // SKU & Parent Search functionality
+            $('#sku-search, #parent-search').on('keyup', function() {
+                table.setFilter([
+                    { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' },
+                    { field: 'Parent', type: 'like', value: $('#parent-search').val() || '' }
+                ]);
                 setTimeout(function() {
                     if (typeof updateSelectAllCheckbox === 'function') updateSelectAllCheckbox();
                 }, 50);

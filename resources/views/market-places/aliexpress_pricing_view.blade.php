@@ -260,6 +260,22 @@
                         <button id="ae-price-mode-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same Price → Off">
                             <i class="fas fa-exchange-alt"></i> Price Mode
                         </button>
+
+                        <!-- Play / Pause parent navigation -->
+                        <div class="btn-group align-items-center ms-2" role="group" aria-label="Parent navigation">
+                            <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
+                                <i class="fas fa-step-backward"></i>
+                            </button>
+                            <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm" title="Start parent navigation">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <button type="button" id="play-pause" class="btn btn-sm btn-warning rounded-circle shadow-sm" style="display: none;" title="Stop navigation and show all">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                            <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
+                                <i class="fas fa-step-forward"></i>
+                            </button>
+                        </div>
                     </div>
 
                     {{-- Discount input (shown when Price Mode is active) --}}
@@ -709,9 +725,84 @@
         }
 
         // ── applyFilters (mirrors TikTok applyFilters) ────────────────
+        // Play / Pause parent navigation state
+        let aePlayUniqueParents = [];
+        let isAePlayActive = false;
+        let currentAePlayParentIndex = -1;
+
+        function normalizeAeParentKey(val) {
+            if (val == null || val === '') return '';
+            return String(val).trim().replace(/\s+/g, ' ').replace(/^PARENT\s+/i, '');
+        }
+        function buildAeUniqueParents() {
+            if (!table) return [];
+            const allRows = table.getData('all') || [];
+            const seen = {};
+            const list = [];
+            allRows.forEach(function(r) {
+                const p = normalizeAeParentKey(r.parent);
+                if (p && !seen[p]) { seen[p] = true; list.push(p); }
+            });
+            list.sort(function(a, b) { return String(a).localeCompare(String(b)); });
+            return list;
+        }
+        function updateAePlayButtonStates() {
+            $('#play-backward').prop('disabled', !isAePlayActive || currentAePlayParentIndex <= 0);
+            $('#play-forward').prop('disabled', !isAePlayActive || currentAePlayParentIndex >= aePlayUniqueParents.length - 1);
+        }
+        function startAePlay() {
+            aePlayUniqueParents = buildAeUniqueParents();
+            if (aePlayUniqueParents.length === 0) return;
+            isAePlayActive = true;
+            currentAePlayParentIndex = 0;
+            $('#play-auto').hide();
+            $('#play-pause').show();
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateAePlayButtonStates();
+        }
+        function stopAePlay() {
+            isAePlayActive = false;
+            currentAePlayParentIndex = -1;
+            $('#play-pause').hide();
+            $('#play-auto').show();
+            applyFilters();
+            updateAePlayButtonStates();
+        }
+        function nextAeParent() {
+            if (!isAePlayActive || currentAePlayParentIndex >= aePlayUniqueParents.length - 1) return;
+            currentAePlayParentIndex++;
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateAePlayButtonStates();
+        }
+        function previousAeParent() {
+            if (!isAePlayActive || currentAePlayParentIndex <= 0) return;
+            currentAePlayParentIndex--;
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateAePlayButtonStates();
+        }
+        $('#play-auto').on('click', startAePlay);
+        $('#play-pause').on('click', stopAePlay);
+        $('#play-forward').on('click', nextAeParent);
+        $('#play-backward').on('click', previousAeParent);
+
         function applyFilters() {
             if (!table) return;
             table.clearFilter();
+
+            // Play navigation: only show current parent's group
+            if (isAePlayActive && aePlayUniqueParents.length > 0 && currentAePlayParentIndex >= 0) {
+                const currentKey = aePlayUniqueParents[currentAePlayParentIndex];
+                if (currentKey) {
+                    table.addFilter(function(d) {
+                        const p = normalizeAeParentKey(d.parent);
+                        return p === currentKey || p === ('PARENT ' + currentKey);
+                    });
+                }
+                return;
+            }
 
             const skuSearch  = ($('#pricing-sku-search').val() || '').toLowerCase().trim();
             const rowType    = $('#ae-row-type-filter').val();

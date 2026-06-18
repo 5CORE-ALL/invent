@@ -727,7 +727,7 @@ class FaireController extends Controller
                     return response()->json(['success' => false, 'message' => 'Cannot open uploaded file.'], 422);
                 }
 
-                $bom = fread($handle, 3);
+                $bom = fread($handle, 3);       
                 if ($bom !== "\xEF\xBB\xBF") {
                     rewind($handle);
                 }

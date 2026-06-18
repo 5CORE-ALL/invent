@@ -693,14 +693,18 @@ class TaskController extends Controller
             }
         }
 
-        // Order: by date (asc). Within the same day:
-        //   - Default (no user filter): automated tasks on top (us din ka automated task top par)
-        //   - When a user is filtered: manual/normal tasks first, then automated (per user request)
-        // start_date is the tiebreaker either way.
+        // Order:
+        //   1. Urgent (priority = 'high') ALWAYS at the top, regardless of TID — these
+        //      need eyeballs first and must not get buried by older dated tasks.
+        //   2. Then by TID date (asc). Within the same day:
+        //      - Default (no user filter): automated tasks on top (us din ka automated task top par)
+        //      - When a user is filtered: manual/normal tasks first, then automated (per user request)
+        //      start_date is the tiebreaker either way.
         $hasUserFilter = $userNameFilter !== '';
         $automateSortDirection = $hasUserFilter ? 'asc' : 'desc';
 
         $tasks = $tasksQuery
+            ->orderByRaw("(LOWER(COALESCE(priority, '')) = 'high') DESC")
             ->orderByRaw('(start_date IS NULL) ASC, DATE(start_date) ASC')
             ->orderBy('is_automate_task', $automateSortDirection)
             ->orderBy('start_date', 'asc')
