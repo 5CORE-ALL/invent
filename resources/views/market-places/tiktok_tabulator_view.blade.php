@@ -1054,33 +1054,30 @@
             $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
 
             // Single Price Mode cycle: Off → Decrease → Increase → Same Price → Off
+            // Select column stays visible at all times (ebay-tabulator-view pattern);
+            // Price Mode only swaps the button label / discount panel state.
             function syncPriceModeUi() {
                 const $btn = $('#price-mode-btn');
-                const selectColumn = table.getColumn('_select');
                 if (decreaseModeActive) {
                     $btn.removeClass('btn-secondary btn-primary btn-info').addClass('btn-danger')
                         .html('<i class="fas fa-arrow-down"></i> Decrease ON');
-                    selectColumn.show();
                     syncDiscountInputUi();
                     return;
                 }
                 if (increaseModeActive) {
                     $btn.removeClass('btn-secondary btn-danger btn-info').addClass('btn-primary')
                         .html('<i class="fas fa-arrow-up"></i> Increase ON');
-                    selectColumn.show();
                     syncDiscountInputUi();
                     return;
                 }
                 if (samePriceModeActive) {
                     $btn.removeClass('btn-secondary btn-danger btn-primary').addClass('btn-info')
                         .html('<i class="fas fa-equals"></i> Same Price ON');
-                    selectColumn.show();
                     syncDiscountInputUi();
                     return;
                 }
                 $btn.removeClass('btn-danger btn-primary btn-info').addClass('btn-secondary')
                     .html('<i class="fas fa-exchange-alt"></i> Price Mode');
-                selectColumn.hide();
                 selectedSkus.clear();
                 updateSelectedCount();
                 syncDiscountInputUi();
@@ -1232,7 +1229,7 @@
             function ttApplyTargetSpriceBatch(opts) {
                 const $btn = opts.$btn;
                 if (selectedSkus.size === 0) {
-                    showToast('Please select at least one SKU first (use Price Mode to enable checkboxes).', 'error');
+                    showToast('Please select at least one SKU first.', 'error');
                     return;
                 }
 
@@ -2575,7 +2572,8 @@
                         hozAlign: "center",
                         headerSort: false,
                         width: 40,
-                        visible: false,
+                        frozen: true,
+                        visible: true,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const sku = rowData['(Child) sku'];

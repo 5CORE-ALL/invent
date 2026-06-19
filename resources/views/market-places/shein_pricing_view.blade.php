@@ -453,22 +453,20 @@
 
         function syncPriceModeUi() {
             const $btn = $('#ae-price-mode-btn');
-            const selectCol = table ? table.getColumn('_ae_select') : null;
+            // Select column stays visible at all times (ebay-tabulator-view pattern);
+            // we only toggle the Price Mode button label / selection state here.
             if (decreaseModeActive) {
                 $btn.removeClass('btn-secondary btn-primary').addClass('btn-danger')
                     .html('<i class="fas fa-arrow-down"></i> Decrease ON');
-                if (selectCol) selectCol.show();
                 return;
             }
             if (increaseModeActive) {
                 $btn.removeClass('btn-secondary btn-danger').addClass('btn-primary')
                     .html('<i class="fas fa-arrow-up"></i> Increase ON');
-                if (selectCol) selectCol.show();
                 return;
             }
             $btn.removeClass('btn-danger btn-primary').addClass('btn-secondary')
                 .html('<i class="fas fa-exchange-alt"></i> Price Mode');
-            if (selectCol) selectCol.hide();
             selectedSkus.clear();
             updateSelectedCount();
         }
@@ -934,14 +932,15 @@
                     }
                 },
                 columns: [
-                    // ── Select checkbox (Price Mode) ──────────────────────
+                    // ── Select checkbox (always visible; same UX as ebay-tabulator-view) ──
                     {
                         title: "<input type='checkbox' id='ae-select-all'>",
                         field: "_ae_select",
                         hozAlign: "center",
                         headerSort: false,
+                        frozen: true,
                         width: 38,
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
@@ -1433,7 +1432,7 @@
             function aeApplyTargetSpriceBatch(opts) {
                 const $btn = opts.$btn;
                 if (selectedSkus.size === 0) {
-                    sheinLinksNotify('Please select at least one SKU first (use Price Mode to enable checkboxes).', 'error');
+                    sheinLinksNotify('Please select at least one SKU first.', 'error');
                     return;
                 }
 
