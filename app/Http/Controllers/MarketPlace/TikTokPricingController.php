@@ -93,8 +93,10 @@ class TikTokPricingController extends Controller
                 'saveSprice' => '/tiktok-2-save-sprice',
                 'saveNrp' => route('tiktok2.save.nrp'),
                 'saveLinks' => '/tiktok-2-save-links',
-                'columnGet' => '/tiktok-pricing-column-visibility',
-                'columnSet' => '/tiktok-pricing-column-visibility',
+                // Shared DB-backed column visibility (same endpoint ebay-tabulator-view uses).
+                'columnGet' => '/tabulator-column-visibility',
+                'columnSet' => '/tabulator-column-visibility',
+                'columnChannel' => 'tiktok2_pricing',
                 'distinctCampaign' => '/tiktok-distinct-campaign-count',
                 'summaryChannel' => 'tiktok2',
             ],

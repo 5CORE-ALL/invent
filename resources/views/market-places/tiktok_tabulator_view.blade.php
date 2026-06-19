@@ -590,8 +590,10 @@
             'saveSprice' => '/tiktok-save-sprice',
             'saveNrp' => route('tiktok.save.nrp'),
             'saveLinks' => '/tiktok-save-links',
-            'columnGet' => '/tiktok-pricing-column-visibility',
-            'columnSet' => '/tiktok-pricing-column-visibility',
+            // Shared DB-backed column visibility (same endpoint ebay-tabulator-view uses).
+            'columnGet' => '/tabulator-column-visibility',
+            'columnSet' => '/tabulator-column-visibility',
+            'columnChannel' => 'tiktok_pricing',
             'distinctCampaign' => '/tiktok-distinct-campaign-count',
             'summaryChannel' => 'tiktok',
         ],
@@ -3610,6 +3612,13 @@
                 $('#column-dropdown-menu').html(html);
             }
 
+            /*
+             * Column visibility is persisted through the shared DB-backed
+             * /tabulator-column-visibility endpoint (same one ebay-tabulator-view uses),
+             * so booleans round-trip cleanly. Channel is unique per shop:
+             *   - tiktok_pricing  (TikTok 1)
+             *   - tiktok2_pricing (TikTok 2)
+             */
             function saveColumnVisibilityToServer() {
                 const visibility = {};
                 table.getColumns().forEach(col => {
@@ -3621,37 +3630,42 @@
                     }
                 });
 
-                $.ajax({
-                    url: TTP_CFG.columnSet,
+                fetch(TTP_CFG.columnSet, {
                     method: 'POST',
-                    data: {
-                        visibility: visibility,
-                        channel: TTP_CFG.summaryChannel,
-                        _token: '{{ csrf_token() }}'
-                    }
-                });
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({
+                        channel: TTP_CFG.columnChannel || ('tiktok_pricing'),
+                        visibility: visibility
+                    })
+                }).catch(err => console.error('Error saving TikTok column visibility:', err));
             }
 
             function applyColumnVisibilityFromServer() {
-                $.ajax({
-                    url: TTP_CFG.columnGet,
-                    method: 'GET',
-                    data: {
-                        channel: TTP_CFG.summaryChannel
-                    },
-                    success: function(visibility) {
-                        if (visibility && Object.keys(visibility).length > 0) {
+                const channel = TTP_CFG.columnChannel || 'tiktok_pricing';
+                fetch(TTP_CFG.columnGet + '?channel=' + encodeURIComponent(channel), {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        }
+                    })
+                    .then(r => r.json())
+                    .then(visibility => {
+                        if (visibility && typeof visibility === 'object' && Object.keys(visibility).length > 0) {
                             Object.keys(visibility).forEach(field => {
                                 if (ADS_ONLY_COLUMN_FIELDS.includes(field) ||
                                     ALWAYS_HIDDEN_COLUMNS.includes(field))
                             return; // never show ads or Parent from server
                                 const col = table.getColumn(field);
                                 if (col) {
-                                    if (visibility[field]) {
-                                        col.show();
-                                    } else {
-                                        col.hide();
-                                    }
+                                    // Server stores real booleans via boolean validation,
+                                    // but coerce defensively in case of legacy string values.
+                                    const v = visibility[field];
+                                    const visible = v === true || v === 1 || v === '1' || v === 'true';
+                                    if (visible) col.show(); else col.hide();
                                 }
                             });
                         }
@@ -3663,8 +3677,8 @@
                             } catch (e) {}
                         });
                         buildColumnDropdown();
-                    }
-                });
+                    })
+                    .catch(err => console.error('Error loading TikTok column visibility:', err));
             }
 
             // Wait for table to be built
