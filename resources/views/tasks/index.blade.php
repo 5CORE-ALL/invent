@@ -3198,8 +3198,12 @@
                                 })()}
                                 ${(() => {
                                     var aidEdit = task.assignor_id != null ? parseInt(task.assignor_id, 10) : NaN;
-                                    var canEditMobile = canDeleteAnyTask || (!isNaN(aidEdit) && aidEdit === currentUserId);
-                                    if (!canEditMobile) return '';
+                                    var isOwnerEdit = canDeleteAnyTask || (!isNaN(aidEdit) && aidEdit === currentUserId);
+                                    var isAssigneeOnlyEdit = !isOwnerEdit && currentUserIsAssigneeOnTask(task);
+                                    if (!isOwnerEdit && !isAssigneeOnlyEdit) return '';
+                                    if (isAssigneeOnlyEdit) {
+                                        return '<button class="btn btn-sm btn-outline-secondary" title="Add reference / proof links" onclick="editTask(' + task.id + ')"><i class="mdi mdi-link-variant-plus"></i> Links</button>';
+                                    }
                                     return '<button class="btn btn-sm btn-outline-secondary" onclick="editTask(' + task.id + ')"><i class="mdi mdi-pencil"></i></button>';
                                 })()}
                             </div>
@@ -3905,9 +3909,11 @@
                             var st = rowData.status || '';
                             
                             // Determine permissions (special: Jasmine, Ritu mam, Joy sir can delete/edit any task)
-                            // Both the assignor (creator) and the assignee can edit an assigned task.
-                            // Only the assignor (creator) and the president override can edit/delete.
-                            var canEdit = canDeleteAnyTask || assignorId === currentUserId;
+                            // Full edit (title, group, date, assignee, etc): assignor + president override.
+                            // Assignees get an "Add Links" mode of the same edit page so they can attach
+                            // proof / SOP / reference links to make review easier.
+                            var isAssigneeOnly = !(canDeleteAnyTask || assignorId === currentUserId) && currentUserIsAssigneeOnTask(rowData);
+                            var canEdit = canDeleteAnyTask || assignorId === currentUserId || isAssigneeOnly;
                             var canDelete = canDeleteAnyTask || assignorId === currentUserId;
                             var canView = isAdmin || assignorId === currentUserId || currentUserIsAssigneeOnTask(rowData);
                             var canReworkQuick = (isAdmin || canDeleteAnyTask || assignorId === currentUserId) && st !== 'Rework' && st !== 'Archived';
@@ -3915,11 +3921,19 @@
                             var buttons = '';
                             
                             if (canEdit) {
-                                buttons += `
-                                    <button class="action-btn-icon action-btn-edit edit-task" data-id="${id}" title="Edit">
-                                        <i class="mdi mdi-pencil"></i>
-                                    </button>
-                                `;
+                                if (isAssigneeOnly) {
+                                    buttons += `
+                                        <button class="action-btn-icon action-btn-edit edit-task" data-id="${id}" title="Add reference / proof links">
+                                            <i class="mdi mdi-link-variant-plus"></i>
+                                        </button>
+                                    `;
+                                } else {
+                                    buttons += `
+                                        <button class="action-btn-icon action-btn-edit edit-task" data-id="${id}" title="Edit">
+                                            <i class="mdi mdi-pencil"></i>
+                                        </button>
+                                    `;
+                                }
                             }
                             
                             // Always show delete button for symmetry, but disable when no permission
@@ -5985,7 +5999,16 @@
                         '<tr><th style="color: #6c757d; font-weight: 600;">Form Report Link:</th><td>' + linkCell(formReport) + '</td></tr>' +
                         '<tr><th style="color: #6c757d; font-weight: 600;">Checklist Link:</th><td>' + linkCell(checklist) + '</td></tr>' +
                         '<tr><th style="color: #6c757d; font-weight: 600;">PL:</th><td>' + (plVal ? linkCell(plVal) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
-                        (data.image ? '<tr><th style="color: #6c757d; font-weight: 600;">Image:</th><td><img src="/uploads/tasks/' + escapeHtml(data.image) + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px;"></td></tr>' : '') +
+                        (data.image
+                            ? '<tr><th style="color: #6c757d; font-weight: 600; vertical-align: top;">Image:</th><td>' +
+                              '<a href="/uploads/tasks/' + escapeHtml(data.image) + '" target="_blank" rel="noopener" title="Open full-size image in a new tab">' +
+                              '<img src="/uploads/tasks/' + escapeHtml(data.image) + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px; cursor: zoom-in;">' +
+                              '</a>' +
+                              '<div class="mt-1">' +
+                              '<a href="/uploads/tasks/' + escapeHtml(data.image) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary"><i class="mdi mdi-open-in-new"></i> View full image</a>' +
+                              '</div>' +
+                              '</td></tr>'
+                            : '') +
                         '</table></div>';
                     syncViewTaskReworkButton(taskId, data);
                     $('#task-details').html(html);
@@ -6037,7 +6060,16 @@
                                 '<tr><th style="color: #6c757d; font-weight: 600;">Form Report Link:</th><td>' + linkCell(formReport) + '</td></tr>' +
                                 '<tr><th style="color: #6c757d; font-weight: 600;">Checklist Link:</th><td>' + linkCell(checklist) + '</td></tr>' +
                                 '<tr><th style="color: #6c757d; font-weight: 600;">PL:</th><td>' + (plVal ? linkCell(plVal) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
-                                (response.image ? '<tr><th style="color: #6c757d; font-weight: 600;">Image:</th><td><img src="/uploads/tasks/' + escapeHtml(response.image) + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px;"></td></tr>' : '') +
+                                (response.image
+                                    ? '<tr><th style="color: #6c757d; font-weight: 600; vertical-align: top;">Image:</th><td>' +
+                                      '<a href="/uploads/tasks/' + escapeHtml(response.image) + '" target="_blank" rel="noopener" title="Open full-size image in a new tab">' +
+                                      '<img src="/uploads/tasks/' + escapeHtml(response.image) + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px; cursor: zoom-in;">' +
+                                      '</a>' +
+                                      '<div class="mt-1">' +
+                                      '<a href="/uploads/tasks/' + escapeHtml(response.image) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary"><i class="mdi mdi-open-in-new"></i> View full image</a>' +
+                                      '</div>' +
+                                      '</td></tr>'
+                                    : '') +
                                 '</table></div>';
                             syncViewTaskReworkButton(taskId, response);
                             $('#task-details').html(html);

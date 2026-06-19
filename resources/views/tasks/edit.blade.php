@@ -5,6 +5,14 @@
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
 @endsection
 
+@php
+    // True for assignor / admin / president override; false when an assignee
+    // opens this page only to attach links.
+    $canEditAll = $canEditAll ?? false;
+    $lockedAttr = $canEditAll ? '' : 'readonly disabled';
+    $lockedTitle = $canEditAll ? '' : 'Only the task creator can change this. You can still add reference links below.';
+@endphp
+
 @section('content')
     <!-- Start Content-->
     <div class="container-fluid">
@@ -17,10 +25,10 @@
                         <ol class="breadcrumb m-0">
                             <li class="breadcrumb-item"><a href="{{ url('/') }}">Home</a></li>
                             <li class="breadcrumb-item"><a href="{{ route('tasks.index') }}">Task Manager</a></li>
-                            <li class="breadcrumb-item active">Edit Task</li>
+                            <li class="breadcrumb-item active">{{ $canEditAll ? 'Edit Task' : 'Add Links' }}</li>
                         </ol>
                     </div>
-                    <h4 class="page-title">Edit Task</h4>
+                    <h4 class="page-title">{{ $canEditAll ? 'Edit Task' : 'Add Reference Links' }}</h4>
                 </div>
             </div>
         </div>     
@@ -31,7 +39,7 @@
                 <div class="card" style="border: 2px solid #28a745; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.15); position: sticky; top: 20px;">
                     <div class="card-header position-relative" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 10px 15px;">
                         <h6 class="mb-0">
-                            <i class="mdi mdi-pencil me-1"></i>Edit Task
+                            <i class="mdi {{ $canEditAll ? 'mdi-pencil' : 'mdi-link-variant-plus' }} me-1"></i>{{ $canEditAll ? 'Edit Task' : 'Add Links' }}
                         </h6>
                         <button type="button" 
                                 onclick="window.location.href='{{ route('tasks.index') }}'" 
@@ -40,6 +48,14 @@
                                 aria-label="Close"></button>
                     </div>
                     <div class="card-body" style="padding: 15px;">
+                        @unless($canEditAll)
+                            <div class="alert alert-info py-2 px-2 mb-2" style="font-size: 11px;">
+                                <i class="mdi mdi-information-outline me-1"></i>
+                                You're an assignee on this task. Group, task title, date and assignee
+                                stay locked — but you can attach reference / SOP / proof links below
+                                to make review easier.
+                            </div>
+                        @endunless
                         <form action="{{ route('tasks.update', $task->id) }}" method="POST" enctype="multipart/form-data">
                             @csrf
                             @method('PUT')
@@ -47,21 +63,23 @@
                             <div class="row">
                                 <div class="col-12 mb-2">
                                     <label for="group" class="form-label fw-bold" style="font-size: 12px;">Group</label>
-                                    <input type="text" class="form-control form-control-sm @error('group') is-invalid @enderror" 
-                                           id="group" name="group" placeholder="Group" value="{{ old('group', $task->group) }}">
+                                    <input type="text" class="form-control form-control-sm @error('group') is-invalid @enderror"
+                                           id="group" name="group" placeholder="Group" value="{{ old('group', $task->group) }}"
+                                           {!! $lockedAttr !!} title="{{ $lockedTitle }}">
                                 </div>
                                 <div class="col-12 mb-2">
                                     <label for="title" class="form-label fw-bold" style="font-size: 12px;">Task <span class="text-danger">*</span></label>
-                                    <input type="text" class="form-control form-control-sm @error('title') is-invalid @enderror" 
-                                           id="title" name="title" placeholder="Enter Task" value="{{ old('title', $task->title) }}" required>
+                                    <input type="text" class="form-control form-control-sm @error('title') is-invalid @enderror"
+                                           id="title" name="title" placeholder="Enter Task" value="{{ old('title', $task->title) }}"
+                                           {{ $canEditAll ? 'required' : '' }} {!! $lockedAttr !!} title="{{ $lockedTitle }}">
                                 </div>
                             </div>
 
                             <div class="row">
                                 <div class="col-12 mb-2">
                                     <label for="assignee_id" class="form-label fw-bold" style="font-size: 12px;">Assignee</label>
-                                    <select class="form-select form-select-sm select2 @error('assignee_id') is-invalid @enderror" 
-                                            id="assignee_id" name="assignee_id">
+                                    <select class="form-select form-select-sm select2 @error('assignee_id') is-invalid @enderror"
+                                            id="assignee_id" name="assignee_id" {!! $lockedAttr !!} title="{{ $lockedTitle }}">
                                         <option value="">Please Select</option>
                                         @foreach($users as $user)
                                             <option value="{{ $user->id }}" {{ old('assignee_id', $task->assignee_id) == $user->id ? 'selected' : '' }}>
@@ -75,8 +93,9 @@
                             <div class="row">
                                 <div class="col-12 mb-2">
                                     <label for="etc_minutes" class="form-label fw-bold" style="font-size: 12px;">ETC (Min) <span class="text-danger">*</span></label>
-                                    <input type="number" class="form-control form-control-sm @error('etc_minutes') is-invalid @enderror" 
-                                           id="etc_minutes" name="etc_minutes" placeholder="10" value="{{ old('etc_minutes', $task->etc_minutes) }}">
+                                    <input type="number" class="form-control form-control-sm @error('etc_minutes') is-invalid @enderror"
+                                           id="etc_minutes" name="etc_minutes" placeholder="10" value="{{ old('etc_minutes', $task->etc_minutes) }}"
+                                           {!! $lockedAttr !!} title="{{ $lockedTitle }}">
                                 </div>
                             </div>
 
@@ -89,13 +108,13 @@
                                 </div>
                             </div>
 
-                            <!-- Additional Fields (Hidden by Default) -->
-                            <div id="additional-fields" style="display: none;">
+                            <!-- Additional Fields (Hidden by Default; auto-opens for assignees so links are visible) -->
+                            <div id="additional-fields" style="display: {{ $canEditAll ? 'none' : 'block' }};">
                                 <div class="row">
                                     <div class="col-12 mb-2">
                                         <label for="priority" class="form-label fw-bold" style="font-size: 12px;">Priority <span class="text-danger">*</span></label>
-                                        <select class="form-select form-select-sm @error('priority') is-invalid @enderror" 
-                                                id="priority" name="priority" required>
+                                        <select class="form-select form-select-sm @error('priority') is-invalid @enderror"
+                                                id="priority" name="priority" {{ $canEditAll ? 'required' : '' }} {!! $lockedAttr !!} title="{{ $lockedTitle }}">
                                             <option value="normal" {{ old('priority', $task->priority ?? 'normal') == 'normal' ? 'selected' : '' }}>Normal</option>
                                             <option value="high" {{ old('priority', $task->priority) == 'high' ? 'selected' : '' }}>Urgent</option>
                                             <option value="low" {{ old('priority', $task->priority) == 'low' ? 'selected' : '' }}>Low</option>
@@ -103,7 +122,7 @@
                                     </div>
                                     <div class="col-12 mb-2">
                                         <label for="assignor_id" class="form-label fw-bold" style="font-size: 12px;">Assignor <span class="text-danger">*</span></label>
-                                        @if(strtolower(Auth::user()->role ?? '') === 'admin')
+                                        @if($canEditAll && strtolower(Auth::user()->role ?? '') === 'admin')
                                             <select class="form-select form-select-sm select2 @error('assignor_id') is-invalid @enderror" 
                                                     id="assignor_id" name="assignor_id">
                                                 @foreach($users as $user)
@@ -114,13 +133,16 @@
                                             </select>
                                         @else
                                             <input type="text" class="form-control form-control-sm" value="{{ $task->assignor->name ?? Auth::user()->name }}" readonly>
-                                            <input type="hidden" name="assignor_id" value="{{ $task->assignor_id }}">
+                                            @if($canEditAll)
+                                                <input type="hidden" name="assignor_id" value="{{ $task->assignor_id }}">
+                                            @endif
                                         @endif
                                     </div>
                                     <div class="col-12 mb-2">
                                         <label for="tid" class="form-label fw-bold" style="font-size: 12px;">TID <span class="text-danger">*</span></label>
-                                        <input type="datetime-local" class="form-control form-control-sm @error('tid') is-invalid @enderror" 
-                                               id="tid" name="tid" value="{{ old('tid', $task->tid ? $task->tid->format('Y-m-d\TH:i') : '') }}">
+                                        <input type="datetime-local" class="form-control form-control-sm @error('tid') is-invalid @enderror"
+                                               id="tid" name="tid" value="{{ old('tid', $task->tid ? $task->tid->format('Y-m-d\TH:i') : '') }}"
+                                               {!! $lockedAttr !!} title="{{ $lockedTitle }}">
                                     </div>
                                     <div class="col-6 mb-2">
                                         <label for="l1" class="form-label fw-bold" style="font-size: 12px;">L1</label>
@@ -163,12 +185,32 @@
                                                id="pl" name="pl" placeholder="PL" value="{{ old('pl', $task->pl) }}">
                                     </div>
                                     <div class="col-12 mb-2">
-                                        <label for="image" class="form-label fw-bold" style="font-size: 12px;">Image</label>
+                                        <label class="form-label fw-bold" style="font-size: 12px;">Image</label>
                                         @if($task->image)
-                                            <img src="{{ asset('uploads/tasks/' . $task->image) }}" class="img-thumbnail mb-1" style="max-width: 80px;">
+                                            <div class="mb-2 d-flex align-items-start gap-2">
+                                                <a href="{{ asset('uploads/tasks/' . $task->image) }}" target="_blank"
+                                                   rel="noopener" title="Open full-size image in a new tab">
+                                                    <img src="{{ asset('uploads/tasks/' . $task->image) }}"
+                                                         alt="Task attachment"
+                                                         class="img-thumbnail"
+                                                         style="max-width: 220px; cursor: zoom-in;">
+                                                </a>
+                                                <a href="{{ asset('uploads/tasks/' . $task->image) }}" target="_blank"
+                                                   rel="noopener"
+                                                   class="btn btn-sm btn-outline-primary"
+                                                   style="font-size: 11px; white-space: nowrap;">
+                                                    <i class="mdi mdi-open-in-new"></i> View full
+                                                </a>
+                                            </div>
+                                        @else
+                                            <div class="text-muted small mb-1" style="font-size: 11px;">
+                                                <i class="mdi mdi-image-off-outline"></i> No image attached.
+                                            </div>
                                         @endif
-                                        <input type="file" class="form-control form-control-sm @error('image') is-invalid @enderror" 
-                                               id="image" name="image" accept="image/*">
+                                        @if($canEditAll)
+                                            <input type="file" class="form-control form-control-sm @error('image') is-invalid @enderror"
+                                                   id="image" name="image" accept="image/*">
+                                        @endif
                                     </div>
                                 </div>
                             </div>
@@ -176,7 +218,7 @@
                             <div class="row mt-3">
                                 <div class="col-12">
                                     <button type="submit" class="btn btn-sm btn-success w-100">
-                                        <i class="mdi mdi-check-circle me-1"></i> Update Task
+                                        <i class="mdi mdi-check-circle me-1"></i> {{ $canEditAll ? 'Update Task' : 'Save Links' }}
                                     </button>
                                 </div>
                             </div>
@@ -196,6 +238,12 @@
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         $(document).ready(function() {
+            // For assignees the additional-fields panel is open on load (so links are visible),
+            // so the toggle button must start in the "Hide" state to match.
+            @unless($canEditAll)
+                $('#toggle-additional-fields').html('<i class="mdi mdi-chevron-up" id="toggle-icon"></i> Hide Fields');
+            @endunless
+
             // Toggle Additional Fields
             $('#toggle-additional-fields').on('click', function() {
                 $('#additional-fields').slideToggle(200);
