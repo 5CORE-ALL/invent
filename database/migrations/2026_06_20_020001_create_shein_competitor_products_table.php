@@ -7,10 +7,13 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Mirrors `amazon_competitor_asins` for the Shein repricer search
  * (/repricer/shein-search). Each row is one product surfaced for a
- * keyword via SerpApi's google_shopping engine, filtered to Shein
- * merchants only. `product_id` is Google Shopping's catalog id —
- * Shein itself does not expose its SKU through Google Shopping, so
- * that catalog id is the stable de-dup key for a search.
+ * keyword via an Apify Shein Actor (default
+ * `scraper-engine/shein-search-products-scraper`). `product_id` is the
+ * Shein-native `goods_id` returned by the actor — that's the stable
+ * de-dup key for a search (Shein's own SKU is not exposed at search
+ * time, only on the product detail page). `delivery` and `extensions`
+ * are kept as nullable JSON so other Shein actors that surface those
+ * fields can populate them later without a schema change.
  */
 return new class extends Migration
 {

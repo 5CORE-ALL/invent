@@ -5,10 +5,13 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Mirrors `amazon_search_raw_responses`. One row per SerpApi
- * google_shopping page so we can replay the parser later without
- * burning more SerpApi credits and so debugging keeps the full body
- * out of MySQL's `max_allowed_packet` ceiling.
+ * Mirrors `amazon_search_raw_responses`. One row per Apify Shein actor
+ * run (full dataset body in `raw_response`, longText so we don't bump
+ * into MySQL's `max_allowed_packet` ceiling). Lets us replay the
+ * parser without spending more Apify credits, and gives the UI's
+ * "View Raw Response" modal something to render. `page` / `pages_count`
+ * are kept for parity with the Amazon table but the Shein flow only
+ * persists one row per search today.
  */
 return new class extends Migration
 {
