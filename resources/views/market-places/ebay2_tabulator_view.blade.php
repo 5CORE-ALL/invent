@@ -3321,7 +3321,10 @@
                             const currentPrice = parseFloat(rowData['eBay Price'] || 0);
 
                             if (!lmpPrice && totalCompetitors === 0) {
-                                return '<span style="color: #999;">N/A</span>';
+                                return `<a href="#" class="view-lmp-competitors" data-sku="${sku}"
+                                    style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 12px;">
+                                    <i class="fa fa-eye"></i> View
+                                </a>`;
                             }
 
                             let html = '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">';

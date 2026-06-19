@@ -98,6 +98,7 @@ use App\Http\Controllers\InventoryWarehouseController;
 use App\Http\Controllers\InventoryHistoryController;
 use App\Http\Controllers\ShopifyOrdersController;
 use App\Http\Controllers\ListingMaster\AmzListingController;
+use App\Http\Controllers\MapIssuesController;
 use App\Http\Controllers\MarketingMaster\EbayCvrLqsController;
 use App\Http\Controllers\MarketingMaster\FacebookAddsManagerController;
 use App\Http\Controllers\MarketingMaster\InstagramAdsManagerController;
