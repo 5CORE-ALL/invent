@@ -8,15 +8,22 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (Schema::hasTable('tiktok_sku_competitors')) {
-            return;
-        }
+        // Drop a previous half-created table from a failed migration run (the
+        // composite unique index can fail on utf8mb4 when columns are too
+        // wide, leaving the table without its unique). This is only ever
+        // destructive in the partial-create case — once the migration is
+        // recorded as `Ran`, Laravel never invokes this method again.
+        Schema::dropIfExists('tiktok_sku_competitors');
 
         Schema::create('tiktok_sku_competitors', function (Blueprint $table) {
             $table->id();
-            $table->string('sku')->index();
-            $table->string('product_id')->index();
-            $table->string('marketplace')->default('tiktok');
+            // Shortened for utf8mb4 composite unique index (4 bytes/char).
+            // Sum of indexed widths must stay under MySQL's 3072-byte limit.
+            //   sku(191) + product_id(64) + marketplace(50) + region(8) = 313 chars
+            //   × 4 bytes (utf8mb4) = 1252 bytes  -> well under 3072
+            $table->string('sku', 191)->index();
+            $table->string('product_id', 64)->index();
+            $table->string('marketplace', 50)->default('tiktok');
             $table->string('region', 8)->default('US');
             $table->text('product_title')->nullable();
             $table->text('product_link')->nullable();
