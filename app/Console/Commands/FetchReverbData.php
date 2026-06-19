@@ -22,7 +22,9 @@ class FetchReverbData extends Command
      *
      * @var string
      */
-    protected $signature = 'reverb:fetch {--force : Force full orders fetch (ignore last_sync)}';
+    protected $signature = 'reverb:fetch
+        {--force : Force full orders fetch (ignore last_sync)}
+        {--skip-bump : Skip the slow bump-bid API loop (preserves existing bump_bid values in reverb_products)}';
 
     /**
      * The console command description.
@@ -82,11 +84,13 @@ class FetchReverbData extends Command
         $rL30 = $this->calculateQuantitiesFromMetrics($l30Start, $l30End);
         $rL60 = $this->calculateQuantitiesFromMetrics($l60Start, $l60End);
 
-        // Fetch bump bid % for each listing (only bump bid from Reverb API)
-        $this->info('Fetching bump bid % for each listing...');
-        $bumpBidBySku = $this->fetchBumpBidForListings($listingMap);
+        // Snapshot existing bump_bid values BEFORE we replace the table so we can carry them over.
+        // This way, if the new bump-bid API loop is killed (or --skip-bump is used),
+        // the table still keeps the most recent bump_bid we knew about per SKU.
+        $existingBumpBids = $this->snapshotExistingBumpBids();
 
-        // Prepare bulk update data - Process ALL listed SKUs (not just those with orders)
+        // Prepare bulk update data - Process ALL listed SKUs (not just those with orders).
+        // bump_bid carries forward from the previous snapshot; the bump-bid loop below refreshes it per row.
         $bulkData = [];
         foreach ($listingMap as $sku => $listing) {
             $r30 = $rL30[$sku] ?? 0;
@@ -95,7 +99,6 @@ class FetchReverbData extends Command
             $price = $listing['price']['amount'] ?? null;
             $views = $listing['stats']['views'] ?? null;
             $rawInventory = (int) ($listing['inventory'] ?? 0);
-            $bumpBid = $bumpBidBySku[$sku] ?? null;
             $listingId = $listing['id'] ?? null;
             $listingState = $this->resolveListingStateFromApi($listing) ?? 'live';
             $remainingInventory = ReverbApiService::effectiveInventoryQuantity($rawInventory, $listingState);
@@ -109,18 +112,64 @@ class FetchReverbData extends Command
                 'price' => $price,
                 'views' => $views,
                 'remaining_inventory' => $remainingInventory,
-                'bump_bid' => $bumpBid,
+                'bump_bid' => $existingBumpBids[$sku] ?? null,
                 'updated_at' => now(),
                 'created_at' => now(),
             ];
         }
 
+        // STEP 1 of 2 — Persist all listings to reverb_products NOW (before the slow bump-bid loop).
+        // This guarantees the table has every SKU even if the bump-bid loop is killed or times out.
         $this->info('Replacing reverb_products (' . count($bulkData) . ' listings from API)...');
         $this->bulkReplaceProducts($bulkData);
+
+        // STEP 2 of 2 — Refresh bump_bid % per listing, writing back to reverb_products incrementally.
+        // Each row UPDATE is committed immediately, so a kill mid-loop only loses the still-pending rows.
+        if ($this->option('skip-bump')) {
+            $this->warn('Skipping bump-bid refresh (--skip-bump). Existing bump_bid values were preserved.');
+        } else {
+            $this->info('Refreshing bump bid % for each listing (writes incrementally; safe to interrupt)...');
+            $this->refreshBumpBidsInPlace($listingMap);
+        }
 
         $endTime = microtime(true);
         $duration = round($endTime - $startTime, 2);
         $this->info("Reverb data stored successfully in {$duration} seconds.");
+    }
+
+    /**
+     * Read current bump_bid values from reverb_products keyed by normalized SKU.
+     * Used to carry values forward across the table replace so we don't blank them
+     * if the post-replace bump-bid refresh gets interrupted.
+     *
+     * @return array<string, string|null>
+     */
+    protected function snapshotExistingBumpBids(): array
+    {
+        if (! Schema::hasTable('reverb_products')) {
+            return [];
+        }
+
+        $snapshot = [];
+        DB::table('reverb_products')
+            ->select(['sku', 'bump_bid'])
+            ->whereNotNull('sku')
+            ->orderBy('id')
+            ->chunkById(1000, function ($rows) use (&$snapshot) {
+                foreach ($rows as $row) {
+                    $key = $this->normalizeSku($row->sku);
+                    if ($key === '') {
+                        continue;
+                    }
+                    if ($row->bump_bid === null || $row->bump_bid === '') {
+                        continue;
+                    }
+                    // Last write wins per normalized key (table should already be deduped).
+                    $snapshot[$key] = $row->bump_bid;
+                }
+            });
+
+        return $snapshot;
     }
 
     protected function fetchAllListings(): array
@@ -157,19 +206,23 @@ class FetchReverbData extends Command
     }
 
     /**
-     * Fetch bump bid % only from Reverb API for each listing.
-     * GET https://api.reverb.com/api/listings/{id}/bump returns current_bid (display e.g. "2%").
+     * Refresh bump_bid % per listing by writing each value back to reverb_products immediately.
+     *
+     * Why per-row UPDATE instead of building an array: the bump-bid endpoint is one HTTP call
+     * per listing (~0.15s sleep + API latency), so the loop takes 15-30+ minutes for 2000+ listings.
+     * If the process is killed (cron timeout, deploy, Ctrl+C), in-memory results are lost.
+     * Writing per row means whatever finished is already persisted.
      */
-    protected function fetchBumpBidForListings(array $listingMap): array
+    protected function refreshBumpBidsInPlace(array $listingMap): void
     {
-        $result = [];
         $total = count($listingMap);
         $index = 0;
+        $updated = 0;
         $token = ReverbApiService::getReverbBearerToken();
         if (! $token) {
             $this->error('Reverb API token not configured (REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).');
 
-            return [];
+            return;
         }
         $headers = [
             'Authorization' => 'Bearer '.$token,
@@ -184,7 +237,7 @@ class FetchReverbData extends Command
             }
             $index++;
             if ($index % 50 === 0) {
-                $this->info("  Bump bid: {$index}/{$total}...");
+                $this->info("  Bump bid: {$index}/{$total} ({$updated} updated)...");
             }
 
             try {
@@ -217,13 +270,25 @@ class FetchReverbData extends Command
                         $display = substr($display, 0, 10);
                     }
                 }
-                $result[$sku] = $display;
+
+                try {
+                    $affected = DB::table('reverb_products')
+                        ->where('sku', $sku)
+                        ->update([
+                            'bump_bid' => $display,
+                            'updated_at' => now(),
+                        ]);
+                    if ($affected > 0) {
+                        $updated++;
+                    }
+                } catch (\Throwable $e) {
+                    $this->warn("  Failed to persist bump_bid for SKU {$sku}: " . $e->getMessage());
+                }
             }
             usleep(150000); // 0.15s between calls to avoid rate limit
         }
 
-        $this->info('Fetched bump bid for ' . count($result) . ' listings.');
-        return $result;
+        $this->info("Refreshed bump bid for {$updated} listing(s) (out of {$total} processed).");
     }
 
     protected function fetchAllOrders(): void

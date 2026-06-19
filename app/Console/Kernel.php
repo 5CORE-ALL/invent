@@ -1106,6 +1106,9 @@ class Kernel extends ConsoleKernel
         */
         // Reverb: same daily-morning pattern as eBay (09:35–09:45) so all marketplaces
         // refresh once in the IST morning. Heavy commands — no need to run every 5 min.
+        // Full run (includes the slow bump-bid loop, ~25–30 min). With the per-row
+        // persistence fix in FetchReverbData, even an interrupted run leaves the
+        // listings table fully populated.
         $ist($schedule->command('reverb:fetch')
             ->dailyAt('09:50')
             ->timezone('Asia/Kolkata')
@@ -1113,6 +1116,20 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));
+
+        // Second daily refresh aligned with California morning (Reverb is a US-Pacific
+        // marketplace — prices/inventory move once US sellers come online). Uses
+        // --skip-bump so it finishes in <1 min and never collides with the slow
+        // IST run; bump-bid % is still refreshed once a day by the IST run above.
+        // NOTE: not wrapped in $ist() — that helper forces the IST 09:00–20:00 window,
+        // and 09:00 PT (≈21:30 IST during PDT) falls outside it.
+        $schedule->command('reverb:fetch --skip-bump')
+            ->dailyAt('09:00')
+            ->timezone('America/Los_Angeles')
+            ->name('reverb-fetch-pt')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
         $ist($schedule->command('reverb:daily --days=60')
             ->dailyAt('09:55')
