@@ -77,9 +77,30 @@ class TiktokSearchController extends Controller
 
             $endpoint = $baseUrl . '/acts/' . rawurlencode($actor) . '/run-sync-get-dataset-items';
 
+            // TikTok Shop search pages return ~12–18 items each; budget extra
+            // pages so the query-token relevance filter inside the actor still
+            // hits maxResultsPerQuery. Cap at 80 pages so a typo doesn't burn
+            // a huge bill.
+            $maxPages = max(3, (int) ceil($maxProducts / 12) + 2);
+            $maxPages = min($maxPages, 80);
+
+            // Canonical input shape for sentry/tiktok-shop-search-pro
+            // (queries / searchRegion / maxPagesPerQuery / maxResultsPerQuery /
+            // forceMaxPages). Aliases below kept for forward-compat if the
+            // operator swaps APIFY_TIKTOK_ACTOR_ID to another TikTok actor
+            // that uses snake_case / camelCase variants.
             $input = [
-                'keywords' => [$searchQuery],
                 'queries' => [$searchQuery],
+                'searchRegion' => $region,
+                'maxPagesPerQuery' => $maxPages,
+                'maxResultsPerQuery' => $maxProducts,
+                'forceMaxPages' => true,
+                'includeRawProduct' => false,
+                'compactNullFields' => true,
+
+                // Aliases recognized by other TikTok Shop actors. Harmless to
+                // sentry/tiktok-shop-search-pro (it ignores unknown fields).
+                'keywords' => [$searchQuery],
                 'search' => $searchQuery,
                 'region' => $region,
                 'country' => $region,
@@ -88,10 +109,13 @@ class TiktokSearchController extends Controller
                 'limit' => $maxProducts,
             ];
 
-            $response = Http::timeout($timeout + 10)
+            // run-sync caps at 300s on Apify; clamp anything bigger.
+            $apifyTimeout = min(max(60, $timeout), 300);
+
+            $response = Http::timeout($apifyTimeout + 30)
                 ->withToken($token)
                 ->withHeaders(['Accept' => 'application/json'])
-                ->post($endpoint . '?token=' . urlencode($token) . '&timeout=' . $timeout . '&clean=true&format=json', $input);
+                ->post($endpoint . '?token=' . urlencode($token) . '&timeout=' . $apifyTimeout . '&clean=true&format=json', $input);
 
             $rawBody = $response->body();
             $items = [];

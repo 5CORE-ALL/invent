@@ -633,6 +633,27 @@ return [
             'max_products' => (int) env('APIFY_TIKTOK_MAX_PRODUCTS', 100),
             'timeout_secs' => (int) env('APIFY_TIKTOK_TIMEOUT_SECS', 180),
         ],
+        // Shein has no SerpApi engine either, so /repricer/shein-search hits
+        // an Apify Actor. Default is `scraper-engine/shein-search-products-scraper`
+        // whose output maps cleanly onto shein_competitor_products
+        // (goods_id, goods_name, salePrice, retailPrice, rankInfo).
+        // Override APIFY_SHEIN_ACTOR_ID to swap providers.
+        'shein' => [
+            'actor_id' => env('APIFY_SHEIN_ACTOR_ID', 'scraper-engine~shein-search-products-scraper'),
+            'country' => env('APIFY_SHEIN_COUNTRY', 'us'),
+            'max_products' => (int) env('APIFY_SHEIN_MAX_PRODUCTS', 100),
+            // Shein actor spends ~60–120s loading the Shein SPA before it can
+            // scrape rows. Default to the run-sync max (300s) so a normal
+            // 100-item search has headroom.
+            'timeout_secs' => (int) env('APIFY_SHEIN_TIMEOUT_SECS', 300),
+            // scraper-engine/shein-search-products-scraper is PAY_PER_EVENT:
+            // ~$0.00499 per result row + a small actor-start fee. Apify will
+            // auto-abort the run if maxTotalChargeUsd is too low (it defaults
+            // to ~$0.00125 on free / pay-as-you-go accounts, which won't even
+            // pay for a single row). Set APIFY_SHEIN_MAX_USD to the
+            // per-search budget you're willing to spend.
+            'max_usd' => (float) env('APIFY_SHEIN_MAX_USD', 1.0),
+        ],
     ],
 
     /*

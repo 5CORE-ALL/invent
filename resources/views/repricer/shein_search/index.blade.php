@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'TikTok Competitor Search', 'mode' => 'light'])
+@extends('layouts.vertical', ['title' => 'Shein Competitor Search', 'mode' => 'light'])
 
 @section('css')
 <link href="{{ URL::asset('build/assets/app-C9T8gcC6.css') }}" rel="stylesheet" type="text/type" />
@@ -10,6 +10,15 @@
         border-radius: 8px;
         padding: 30px;
         box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .shein-banner {
+        background: linear-gradient(135deg, #000 0%, #222 100%);
+        color: #fff;
+        padding: 10px 16px;
+        border-radius: 6px;
+        font-size: 13px;
+        margin-bottom: 16px;
     }
 
     .product-card {
@@ -27,7 +36,7 @@
     .product-card:hover {
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         transform: translateY(-2px);
-        border-color: #ff0050;
+        border-color: #000;
     }
 
     .product-checkbox {
@@ -72,7 +81,7 @@
 
     .product-title {
         font-weight: 500;
-        color: #ff0050;
+        color: #000;
         margin-bottom: 8px;
         font-size: 13px;
         line-height: 1.3;
@@ -87,7 +96,7 @@
 
     .product-title:hover {
         text-decoration: underline;
-        color: #cc003f;
+        color: #c2185b;
     }
 
     .product-meta {
@@ -106,11 +115,18 @@
     }
 
     .price-badge {
-        background: #FFE7EF;
-        color: #ff0050;
+        background: #fce4ec;
+        color: #ad1457;
         font-size: 14px;
         font-weight: 700;
         padding: 4px 10px;
+    }
+
+    .old-price-badge {
+        background: #f5f5f5;
+        color: #757575;
+        text-decoration: line-through;
+        font-size: 11px;
     }
 
     .rating-badge {
@@ -120,18 +136,21 @@
         font-weight: 600;
     }
 
-    .sold-badge {
-        background: #E0F2F1;
-        color: #00796B;
-        font-size: 11px;
-        font-weight: 600;
-    }
-
     .pid-badge {
-        background: #E3F2FD;
-        color: #1565C0;
+        background: #E8F5E9;
+        color: #2E7D32;
         font-family: monospace;
         font-size: 10px;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .source-badge {
+        background: #f3e5f5;
+        color: #6a1b9a;
+        font-size: 11px;
     }
 
     .search-history {
@@ -142,8 +161,8 @@
     }
 
     .history-badge {
-        background: #FFE7EF;
-        color: #ff0050;
+        background: #fce4ec;
+        color: #ad1457;
         padding: 6px 14px;
         border-radius: 20px;
         font-size: 13px;
@@ -152,7 +171,7 @@
     }
 
     .history-badge:hover {
-        background: #ff0050;
+        background: #ad1457;
         color: white;
     }
 
@@ -171,16 +190,14 @@
         display: flex;
         gap: 20px;
         margin-bottom: 20px;
-        flex-wrap: wrap;
     }
 
     .stat-card {
-        background: linear-gradient(135deg, #ff0050 0%, #00f2ea 100%);
+        background: linear-gradient(135deg, #f857a6 0%, #ff5858 100%);
         color: white;
         padding: 20px;
         border-radius: 8px;
         flex: 1;
-        min-width: 180px;
         text-align: center;
     }
 
@@ -205,10 +222,10 @@
                 <div class="page-title-right">
                     <ol class="breadcrumb m-0">
                         <li class="breadcrumb-item"><a href="javascript: void(0);">Repricer</a></li>
-                        <li class="breadcrumb-item active">TikTok Competitor Search</li>
+                        <li class="breadcrumb-item active">Shein Competitor Search</li>
                     </ol>
                 </div>
-                <h4 class="page-title">TikTok Shop Competitor Discovery</h4>
+                <h4 class="page-title">Shein Competitor Discovery</h4>
             </div>
         </div>
     </div>
@@ -216,57 +233,76 @@
     <div class="row">
         <div class="col-12">
             <div class="search-container">
-                <h5 class="mb-3">Search TikTok Shop Products</h5>
-                <p class="text-muted mb-4">
-                    Enter a keyword to discover TikTok Shop competitor listings and analyze their pricing, ratings,
-                    sold counts, and ranking position.
-                </p>
+                <div class="shein-banner">
+                    <i class="mdi mdi-information-outline me-1"></i>
+                    SerpApi has no Shein engine, so this page hits an
+                    <strong>Apify Actor</strong> (default <code class="text-light">scraper-engine/shein-search-products-scraper</code>)
+                    that scrapes Shein directly &mdash; every row is a real Shein product with
+                    <code class="text-light">goods_id</code>, sale price, retail price, rating and review count.
+                    Override <code class="text-light">APIFY_SHEIN_ACTOR_ID</code> in .env to swap actors.
+                </div>
+                <h5 class="mb-3">Search Shein Products</h5>
+                <p class="text-muted mb-4">Enter a search query to discover competitor Shein products and analyze their pricing, ratings, and positions.</p>
 
                 <form id="searchForm">
                     <div class="row">
-                        <div class="col-md-6">
+                        <div class="col-md-5">
                             <div class="mb-3">
                                 <label for="searchQuery" class="form-label">Search Query</label>
                                 <input type="text" class="form-control" id="searchQuery" name="query"
-                                    placeholder="e.g., wireless headphones, yoga mat, kitchen knife set" required>
+                                       placeholder="e.g., crop top, summer dress, denim jacket" required>
                             </div>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <div class="mb-3">
-                                <label for="region" class="form-label">Region</label>
-                                <select class="form-select" id="region" name="region">
-                                    <option value="US" selected>United States</option>
-                                    <option value="GB">United Kingdom</option>
-                                    <option value="MY">Malaysia</option>
-                                    <option value="PH">Philippines</option>
-                                    <option value="TH">Thailand</option>
-                                    <option value="VN">Vietnam</option>
-                                    <option value="ID">Indonesia</option>
-                                    <option value="SG">Singapore</option>
+                                <label for="country" class="form-label">Country</label>
+                                <select class="form-select" id="country" name="country">
+                                    <option value="us" selected>US</option>
+                                    <option value="gb">UK</option>
+                                    <option value="ca">CA</option>
+                                    <option value="de">DE</option>
+                                    <option value="fr">FR</option>
+                                    <option value="au">AU</option>
+                                    <option value="es">ES</option>
+                                    <option value="it">IT</option>
                                 </select>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="mb-3">
+                                <label for="orderBy" class="form-label">Sort By</label>
+                                <select class="form-select" id="orderBy" name="order_by">
+                                    <option value="recommend" selected>Recommended</option>
+                                    <option value="MostPopular">Most Popular</option>
+                                    <option value="TopRated">Top Rated</option>
+                                    <option value="NewArrivals">New Arrivals</option>
+                                    <option value="PriceLowtoHigh">Price: Low to High</option>
+                                    <option value="PriceHightoLow">Price: High to Low</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="mb-3">
                                 <label for="maxProducts" class="form-label">Max Products</label>
                                 <select class="form-select" id="maxProducts" name="max_products">
-                                    <option value="50">50</option>
-                                    <option value="100" selected>100</option>
-                                    <option value="200">200</option>
-                                    <option value="500">500</option>
+                                    <option value="20">20</option>
+                                    <option value="40">40</option>
+                                    <option value="60" selected>60</option>
+                                    <option value="80">80</option>
+                                    <option value="100">100</option>
+                                    <option value="120">120</option>
                                 </select>
                             </div>
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-primary btn-lg" style="background:#ff0050;border-color:#ff0050;">
-                        <i class="mdi mdi-magnify me-2"></i>Search TikTok Shop
+                    <button type="submit" class="btn btn-dark btn-lg">
+                        <i class="mdi mdi-magnify me-2"></i>Search Shein
                     </button>
                     <button type="button" class="btn btn-secondary btn-lg" id="loadHistoryBtn">
                         <i class="mdi mdi-history me-2"></i>Load History
                     </button>
-                    <button type="button" class="btn btn-outline-info btn-lg" id="viewRawResponseBtn"
-                        title="Run a search first, then inspect the raw provider response.">
+                    <button type="button" class="btn btn-outline-info btn-lg" id="viewRawResponseBtn" title="Pehle search karein, phir response structure dekhen">
                         <i class="mdi mdi-code-json me-2"></i>View Raw Response
                     </button>
                 </form>
@@ -280,10 +316,10 @@
     </div>
 
     <div class="loading-spinner" id="loadingSpinner">
-        <div class="spinner-border text-primary" role="status" style="color:#ff0050 !important;">
+        <div class="spinner-border text-dark" role="status">
             <span class="visually-hidden">Loading...</span>
         </div>
-        <p class="mt-3 text-muted">Searching TikTok Shop... larger result counts can take 1–5 minutes.</p>
+        <p class="mt-3 text-muted">Searching Shein via Apify... actor runs can take 30&ndash;120 seconds.</p>
     </div>
 
     <div class="row mt-4" id="resultsContainer" style="display: none;">
@@ -300,12 +336,11 @@
                                 <div class="col-md-3">
                                     <label class="form-label fw-bold">Sort By</label>
                                     <select class="form-select" id="sortBy">
-                                        <option value="position">TikTok Position (Default)</option>
+                                        <option value="position">Google Shopping Position (Default)</option>
                                         <option value="price_low_high">Price: Low to High</option>
                                         <option value="price_high_low">Price: High to Low</option>
                                         <option value="rating_high_low">Rating: High to Low</option>
                                         <option value="reviews_high_low">Reviews: Most First</option>
-                                        <option value="sold_high_low">Sold Count: High to Low</option>
                                     </select>
                                 </div>
                                 <div class="col-md-2">
@@ -320,14 +355,13 @@
                                     <label class="form-label fw-bold">Min Rating</label>
                                     <select class="form-select" id="minRating">
                                         <option value="">All Ratings</option>
-                                        <option value="4">4★ &amp; Up</option>
-                                        <option value="3">3★ &amp; Up</option>
-                                        <option value="2">2★ &amp; Up</option>
+                                        <option value="4">4★ & Up</option>
+                                        <option value="3">3★ & Up</option>
+                                        <option value="2">2★ & Up</option>
                                     </select>
                                 </div>
                                 <div class="col-md-3 d-flex align-items-end">
-                                    <button type="button" class="btn btn-primary me-2" id="applyFiltersBtn"
-                                        style="background:#ff0050;border-color:#ff0050;">
+                                    <button type="button" class="btn btn-dark me-2" id="applyFiltersBtn">
                                         <i class="mdi mdi-filter me-2"></i>Apply
                                     </button>
                                     <button type="button" class="btn btn-secondary" id="resetFiltersBtn">
@@ -344,8 +378,7 @@
                                 <div class="row g-3">
                                     <div class="col-12">
                                         <div class="form-check">
-                                            <input type="checkbox" class="form-check-input" id="selectAllCheckbox"
-                                                style="width: 22px; height: 22px; cursor: pointer;">
+                                            <input type="checkbox" class="form-check-input" id="selectAllCheckbox" style="width: 22px; height: 22px; cursor: pointer;">
                                             <label class="form-check-label ms-2 fw-bold" for="selectAllCheckbox">
                                                 <i class="mdi mdi-checkbox-multiple-marked"></i> Select All Products
                                             </label>
@@ -422,13 +455,12 @@
     </div>
 </div>
 
-<!-- Modal: View Raw Response -->
 <div class="modal fade" id="rawResponseModal" tabindex="-1" aria-labelledby="rawResponseModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="rawResponseModalLabel">
-                    <i class="mdi mdi-code-json me-2"></i>Raw Provider Response
+                    <i class="mdi mdi-code-json me-2"></i>Raw Apify Shein Actor Response
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -436,8 +468,7 @@
                 <div class="p-3 bg-light border-bottom small">
                     <span id="rawResponseMeta"></span>
                 </div>
-                <pre id="rawResponsePre" class="p-4 mb-0 bg-dark text-light"
-                    style="max-height: 70vh; overflow: auto; font-size: 12px;"></pre>
+                <pre id="rawResponsePre" class="p-4 mb-0 bg-dark text-light" style="max-height: 70vh; overflow: auto; font-size: 12px;"></pre>
             </div>
         </div>
     </div>
@@ -447,10 +478,10 @@
 @section('script')
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
-$(document).ready(function () {
+$(document).ready(function() {
     let availableSkus = [];
     let currentSearchQuery = '';
-    let currentRegion = 'US';
+    let currentMarketplace = 'shein';
 
     function escapeHtml(value) {
         if (value == null) return '';
@@ -474,51 +505,41 @@ $(document).ready(function () {
 
     loadSkus();
 
-    $('#searchForm').on('submit', function (e) {
+    $('#searchForm').on('submit', function(e) {
         e.preventDefault();
         const query = $('#searchQuery').val().trim();
-        const region = $('#region').val();
-        const maxProducts = parseInt($('#maxProducts').val(), 10) || 100;
         if (!query) { alert('Please enter a search query'); return; }
-        performSearch(query, region, maxProducts);
+        performSearch(query);
     });
 
     $('#loadHistoryBtn').on('click', loadSearchHistory);
 
-    $('#viewRawResponseBtn').on('click', function () {
+    $('#viewRawResponseBtn').on('click', function() {
         const query = $('#searchQuery').val().trim() || currentSearchQuery;
-        if (!query) { alert('Run a search first, then click View Raw Response.'); return; }
-        $.get('/repricer/tiktok-search/raw-response', { query: query })
-            .done(function (data) {
+        if (!query) { alert('Pehle koi search query daalein aur Search karein, phir View Raw Response dabayein.'); return; }
+        $.get('/repricer/shein-search/raw-response', { query: query })
+            .done(function(data) {
                 if (data.success && data.response) {
-                    $('#rawResponseMeta').text(
-                        'Query: ' + (data.meta.search_query || '') +
-                        ' | Region: ' + (data.meta.region || '') +
-                        ' | Provider: ' + (data.meta.provider || '') +
-                        ' | Items: ' + (data.meta.items_count ?? 'n/a') +
-                        ' | Saved at: ' + (data.meta.created_at || '')
-                    );
+                    $('#rawResponseMeta').text('Query: ' + (data.meta.search_query || '') + ' | Saved at: ' + (data.meta.created_at || ''));
                     $('#rawResponsePre').text(JSON.stringify(data.response, null, 2));
                     new bootstrap.Modal(document.getElementById('rawResponseModal')).show();
                 } else {
                     alert(data.message || 'No raw response found.');
                 }
             })
-            .fail(function (xhr) {
-                const msg = xhr.responseJSON && xhr.responseJSON.message
-                    ? xhr.responseJSON.message
-                    : 'Could not load raw response. Run a search first.';
+            .fail(function(xhr) {
+                const msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Raw response load nahi hua. Pehle search karein.';
                 alert(msg);
             });
     });
 
     $('#saveCompetitorsBtn').on('click', saveSelectedCompetitors);
 
-    $('#selectAllCheckbox').on('change', function () {
+    $('#selectAllCheckbox').on('change', function() {
         $('.competitor-checkbox').prop('checked', $(this).prop('checked'));
     });
 
-    $('#toggleSkuList').on('click', function () {
+    $('#toggleSkuList').on('click', function() {
         const $container = $('#skuCheckboxContainer');
         if ($container.is(':visible')) {
             $container.slideUp();
@@ -529,27 +550,30 @@ $(document).ready(function () {
         }
     });
 
-    $('#selectAllSkus').on('click', function () {
+    $('#selectAllSkus').on('click', function() {
         $('.sku-checkbox:visible').prop('checked', true);
         updateSelectedSkuCount();
     });
-    $('#deselectAllSkus').on('click', function () {
+
+    $('#deselectAllSkus').on('click', function() {
         $('.sku-checkbox').prop('checked', false);
         updateSelectedSkuCount();
     });
-    $('#skuSearchInput').on('input', function () {
-        const term = $(this).val().toLowerCase();
-        $('.sku-checkbox').each(function () {
-            const $cb = $(this);
-            const sku = $cb.val().toLowerCase();
-            const $parent = $cb.closest('.form-check');
-            sku.includes(term) ? $parent.show() : $parent.hide();
+
+    $('#skuSearchInput').on('input', function() {
+        const searchTerm = $(this).val().toLowerCase();
+        $('.sku-checkbox').each(function() {
+            const $checkbox = $(this);
+            const sku = $checkbox.val().toLowerCase();
+            const $parent = $checkbox.closest('.form-check');
+            sku.includes(searchTerm) ? $parent.show() : $parent.hide();
         });
     });
+
     $(document).on('change', '.sku-checkbox', updateSelectedSkuCount);
 
     $('#applyFiltersBtn').on('click', applyFiltersAndSort);
-    $('#resetFiltersBtn').on('click', function () {
+    $('#resetFiltersBtn').on('click', function() {
         $('#sortBy').val('position');
         $('#minPrice').val('');
         $('#maxPrice').val('');
@@ -557,44 +581,48 @@ $(document).ready(function () {
         applyFiltersAndSort();
     });
 
-    function performSearch(query, region, maxProducts) {
+    function performSearch(query) {
         currentSearchQuery = query;
-        currentRegion = region;
+        const country = $('#country').val();
+        const orderBy = $('#orderBy').val();
+        const maxProducts = $('#maxProducts').val();
 
         $('#loadingSpinner').show();
         $('#resultsContainer').hide();
 
         $.ajax({
-            url: '/repricer/tiktok-search/search',
+            url: '/repricer/shein-search/search',
             method: 'POST',
+            timeout: 240000,
             data: {
                 query: query,
-                region: region,
+                country: country,
+                order_by: orderBy,
                 max_products: maxProducts,
                 _token: '{{ csrf_token() }}'
             },
-            success: function (response) {
+            success: function(response) {
                 $('#loadingSpinner').hide();
                 if (response.success) {
                     displayResults(response);
                     loadFilterOptions(query);
                 } else {
-                    let msg = response.message || 'Unknown error';
-                    if (response.error) msg += '\n\nDetails: ' + response.error;
-                    if (response.details) msg += '\n\nAPI Response: ' + JSON.stringify(response.details, null, 2);
-                    alert('Error: ' + msg);
-                    console.error('Apify TikTok Error:', response);
+                    let errorDetails = response.message || 'Unknown error';
+                    if (response.error) { errorDetails += '\n\nDetails: ' + response.error; }
+                    if (response.details) { errorDetails += '\n\nAPI Response: ' + JSON.stringify(response.details, null, 2); }
+                    alert('Error: ' + errorDetails);
+                    console.error('SerpApi Error:', response);
                 }
             },
-            error: function (xhr) {
+            error: function(xhr) {
                 $('#loadingSpinner').hide();
-                let msg = 'Failed to fetch search results';
+                let errorMsg = 'Failed to fetch search results';
                 if (xhr.responseJSON) {
-                    msg = xhr.responseJSON.message || msg;
-                    if (xhr.responseJSON.error) msg += '\n\nError: ' + xhr.responseJSON.error;
-                    if (xhr.responseJSON.details) msg += '\n\nDetails: ' + JSON.stringify(xhr.responseJSON.details, null, 2);
+                    errorMsg = xhr.responseJSON.message || errorMsg;
+                    if (xhr.responseJSON.error) { errorMsg += '\n\nError: ' + xhr.responseJSON.error; }
+                    if (xhr.responseJSON.details) { errorMsg += '\n\nDetails: ' + JSON.stringify(xhr.responseJSON.details, null, 2); }
                 }
-                alert('Error: ' + msg);
+                alert('Error: ' + errorMsg);
                 console.error('AJAX Error:', xhr.responseJSON || xhr.responseText);
             }
         });
@@ -604,45 +632,45 @@ $(document).ready(function () {
         const results = response.data || [];
         const totalResults = response.total_results || 0;
 
-        const validPrices = results.filter(r => r.price && parseFloat(r.price) > 0);
-        const totalPrice = validPrices.reduce((s, r) => s + parseFloat(r.price), 0).toFixed(2);
-        const avgPrice = validPrices.length ? (validPrices.reduce((s, r) => s + parseFloat(r.price), 0) / validPrices.length).toFixed(2) : 0;
-        const validRatings = results.filter(r => r.rating && parseFloat(r.rating) > 0);
-        const avgRating = validRatings.length ? (validRatings.reduce((s, r) => s + parseFloat(r.rating), 0) / validRatings.length).toFixed(2) : 0;
-        const totalSold = results.reduce((s, r) => s + (parseInt(r.sold_count, 10) || 0), 0);
+        const pricedResults = results.filter(r => r.price);
+        const avgPrice = pricedResults.length > 0
+            ? (pricedResults.reduce((s, r) => s + parseFloat(r.price), 0) / pricedResults.length).toFixed(2)
+            : 0;
+        const totalPrice = pricedResults.reduce((s, r) => s + parseFloat(r.price || 0), 0).toFixed(2);
+        const ratedResults = results.filter(r => r.rating);
+        const avgRating = ratedResults.length > 0
+            ? (ratedResults.reduce((s, r) => s + parseFloat(r.rating), 0) / ratedResults.length).toFixed(2)
+            : 0;
 
         $('#statsContainer').html(`
             <div class="stat-card">
                 <div class="stat-value">${totalResults}</div>
-                <div class="stat-label">Total Products Found</div>
+                <div class="stat-label">Shein Products Found</div>
             </div>
-            <div class="stat-card" style="background: linear-gradient(135deg, #ff0050 0%, #ff4081 100%);">
+            <div class="stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
                 <div class="stat-value">$${totalPrice}</div>
                 <div class="stat-label">Total Price Sum</div>
             </div>
-            <div class="stat-card" style="background: linear-gradient(135deg, #00f2ea 0%, #007aff 100%);">
+            <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
                 <div class="stat-value">$${avgPrice}</div>
                 <div class="stat-label">Average Price</div>
             </div>
-            <div class="stat-card" style="background: linear-gradient(135deg, #f5a623 0%, #ff6f00 100%);">
+            <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
                 <div class="stat-value">${avgRating} ★</div>
                 <div class="stat-label">Average Rating</div>
-            </div>
-            <div class="stat-card" style="background: linear-gradient(135deg, #2e7d32 0%, #00bfa5 100%);">
-                <div class="stat-value">${totalSold.toLocaleString()}</div>
-                <div class="stat-label">Total Sold (sum)</div>
             </div>
         `);
 
         let html = '';
+
         if (results.length === 0) {
-            html = '<p class="text-muted">No results found for this query.</p>';
+            html = '<div class="alert alert-warning">No Shein products found for this query. Try a broader keyword, or check the Raw Response — Google Shopping may not have indexed Shein for this term in the selected country.</div>';
             $('#bulkActionsContainer').hide();
         } else {
             $('#bulkActionsContainer').show();
 
             let bulkSkuOptions = '<option value="">Select SKU for all checked rows</option>';
-            availableSkus.forEach(function (sku) {
+            availableSkus.forEach(function(sku) {
                 if (!sku.toUpperCase().startsWith('PARENT')) {
                     bulkSkuOptions += `<option value="${escapeHtml(sku)}">${escapeHtml(sku)}</option>`;
                 }
@@ -650,54 +678,57 @@ $(document).ready(function () {
             $('#bulkSkuSelect').html(bulkSkuOptions);
             $('#selectAllCheckbox').prop('checked', false);
 
-            results.forEach(function (item) {
+            results.forEach(function(item) {
                 const price = item.price ? `$${parseFloat(item.price).toFixed(2)}` : 'N/A';
+                const oldPrice = item.extracted_old_price && parseFloat(item.extracted_old_price) > 0
+                    ? `$${parseFloat(item.extracted_old_price).toFixed(2)}` : '';
                 const rating = item.rating ? `${parseFloat(item.rating).toFixed(1)} ★` : '';
-                const reviews = item.reviews ? `(${Number(item.reviews).toLocaleString()})` : '';
-                const sold = item.sold_count ? `${Number(item.sold_count).toLocaleString()} sold` : '';
+                const reviews = item.reviews ? `(${parseInt(item.reviews, 10).toLocaleString()})` : '';
                 const image = item.image || 'https://via.placeholder.com/100';
+                const delivery = Array.isArray(item.delivery) ? item.delivery : [];
+                const deliveryJson = delivery.length ? JSON.stringify(delivery).replace(/"/g, '&quot;') : '';
+
                 const productLink = item.product_link || '#';
                 const priceValue = item.price || 0;
+                const sourceLabel = item.source || 'Shein';
 
                 html += `
                     <div class="col-xl-3 col-lg-4 col-md-6 col-sm-12 mb-3">
                         <div class="product-card">
                             <input type="checkbox" class="competitor-checkbox product-checkbox form-check-input"
-                                data-product-id="${escapeHtml(item.product_id || '')}"
-                                data-marketplace="${escapeHtml(item.marketplace || 'tiktok')}"
-                                data-region="${escapeHtml(item.region || 'US')}"
-                                data-title="${escapeHtml(item.title || '')}"
-                                data-brand="${escapeHtml(item.brand_name || '')}"
-                                data-seller="${escapeHtml(item.seller_name || '')}"
-                                data-price="${priceValue}"
-                                data-min-price="${item.min_price ?? ''}"
-                                data-max-price="${item.max_price ?? ''}"
-                                data-link="${escapeHtml(productLink)}"
-                                data-image="${escapeHtml(item.image || '')}"
-                                data-rating="${item.rating != null ? item.rating : ''}"
-                                data-reviews="${item.reviews != null ? item.reviews : ''}"
-                                data-sold-count="${item.sold_count != null ? item.sold_count : ''}">
+                                   data-product-id="${escapeHtml(item.product_id)}"
+                                   data-marketplace="${escapeHtml(item.marketplace || 'shein')}"
+                                   data-title="${escapeHtml(item.title || '')}"
+                                   data-source="${escapeHtml(sourceLabel)}"
+                                   data-price="${priceValue}"
+                                   data-link="${escapeHtml(productLink)}"
+                                   data-image="${escapeHtml(item.image || '')}"
+                                   data-rating="${item.rating != null ? item.rating : ''}"
+                                   data-reviews="${item.reviews != null ? item.reviews : ''}"
+                                   data-extracted-old-price="${item.extracted_old_price != null ? item.extracted_old_price : ''}"
+                                   data-delivery="${deliveryJson}">
 
                             <div class="product-image-container">
-                                <img src="${image}" alt="${escapeHtml(item.title || 'Product')}"
-                                    class="product-image"
-                                    onclick="window.open('${escapeHtml(productLink)}', '_blank')">
+                                <img src="${image}"
+                                     alt="${escapeHtml(item.title || 'Product')}"
+                                     class="product-image"
+                                     onclick="window.open('${productLink}', '_blank')">
                             </div>
 
                             <div class="product-body">
-                                <a href="${escapeHtml(productLink)}" target="_blank" class="product-title text-decoration-none">
+                                <a href="${productLink}" target="_blank" rel="noopener" class="product-title text-decoration-none">
                                     ${escapeHtml(item.title || 'No title')}
                                 </a>
 
                                 <div class="product-meta">
                                     <span class="meta-badge price-badge">${price}</span>
+                                    ${oldPrice ? `<span class="meta-badge old-price-badge">${oldPrice}</span>` : ''}
                                     ${rating ? `<span class="meta-badge rating-badge">${rating} ${reviews}</span>` : ''}
-                                    ${sold ? `<span class="meta-badge sold-badge">${sold}</span>` : ''}
                                 </div>
 
                                 <div class="product-meta">
-                                    <span class="meta-badge pid-badge">${escapeHtml(item.product_id || '')}</span>
-                                    ${item.seller_name ? `<span class="meta-badge" style="background:#F3E5F5;color:#6A1B9A;">${escapeHtml(item.seller_name)}</span>` : ''}
+                                    <span class="meta-badge source-badge">${escapeHtml(sourceLabel)}</span>
+                                    <span class="meta-badge pid-badge" title="${escapeHtml(item.product_id)}">${escapeHtml(item.product_id)}</span>
                                 </div>
                             </div>
                         </div>
@@ -714,13 +745,13 @@ $(document).ready(function () {
 
     function loadSearchHistory() {
         $.ajax({
-            url: '/repricer/tiktok-search/history',
+            url: '/repricer/shein-search/history',
             method: 'GET',
-            success: function (response) {
+            success: function(response) {
                 if (response.success && response.data.length > 0) {
                     let html = '';
-                    response.data.forEach(function (q) {
-                        html += `<span class="history-badge" onclick="loadHistoryQuery('${q.replace(/'/g, "\\'")}')">${escapeHtml(q)}</span>`;
+                    response.data.forEach(function(query) {
+                        html += `<span class="history-badge" onclick="loadHistoryQuery('${query}')">${escapeHtml(query)}</span>`;
                     });
                     $('#historyContainer').html(html);
                     $('#searchHistory').show();
@@ -728,32 +759,31 @@ $(document).ready(function () {
                     alert('No search history found');
                 }
             },
-            error: function () { alert('Failed to load search history'); }
+            error: function() { alert('Failed to load search history'); }
         });
     }
 
     function loadSkus() {
         $.ajax({
-            url: '/repricer/tiktok-search/skus',
+            url: '/repricer/shein-search/skus',
             method: 'GET',
-            success: function (response) {
+            success: function(response) {
                 if (response.success) {
                     availableSkus = response.data || [];
                     populateSkuCheckboxes();
                 }
             },
-            error: function () { console.error('Failed to load SKUs'); }
+            error: function() { console.error('Failed to load SKUs'); }
         });
     }
 
     function populateSkuCheckboxes() {
         let html = '';
-        const filteredSkus = availableSkus.filter(s => !s.toUpperCase().startsWith('PARENT'));
-
+        const filteredSkus = availableSkus.filter(sku => !sku.toUpperCase().startsWith('PARENT'));
         if (filteredSkus.length === 0) {
             html = '<p class="text-muted">No SKUs available</p>';
         } else {
-            filteredSkus.forEach(function (sku) {
+            filteredSkus.forEach(function(sku) {
                 const safeSku = escapeHtml(sku);
                 const skuId = 'sku-' + sku.replace(/[^a-zA-Z0-9]/g, '_');
                 html += `
@@ -774,44 +804,59 @@ $(document).ready(function () {
 
     function saveSelectedCompetitors() {
         const bulkSku = $('#bulkSkuSelect').val();
-        const checkedSkus = $('.sku-checkbox:checked').map(function () { return $(this).val(); }).get();
+        const checkedSkus = $('.sku-checkbox:checked').map(function() { return $(this).val(); }).get();
 
         let selectedSkus = [];
         if (bulkSku) selectedSkus.push(bulkSku);
-        checkedSkus.forEach(s => { if (!selectedSkus.includes(s)) selectedSkus.push(s); });
+        checkedSkus.forEach(function(sku) { if (!selectedSkus.includes(sku)) selectedSkus.push(sku); });
 
         if (selectedSkus.length === 0) {
-            alert('Please select at least one SKU (dropdown or checkboxes).');
+            alert('Please select at least one SKU:\n- Use the dropdown for quick single SKU assignment, OR\n- Check SKUs in the Multiple SKU Assignment section');
             return;
         }
 
         const checkedCompetitors = $('.competitor-checkbox:checked');
         if (checkedCompetitors.length === 0) {
-            alert('Please select at least one competitor product.');
+            alert('Please select at least one competitor (check the product boxes)');
             return;
         }
 
         const competitors = [];
-        checkedCompetitors.each(function () {
+
+        checkedCompetitors.each(function() {
             const cb = $(this);
-            const payload = {
-                product_id: String(cb.data('product-id') || ''),
-                marketplace: cb.data('marketplace') || 'tiktok',
-                region: cb.data('region') || 'US',
-                product_title: cb.data('title') || null,
-                brand_name: cb.data('brand') || null,
-                seller_name: cb.data('seller') || null,
-                product_link: cb.data('link') || null,
-                image: cb.data('image') || null,
-                price: parseFloat(cb.data('price')) || 0,
-                min_price: cb.attr('data-min-price') !== '' && cb.attr('data-min-price') != null ? parseFloat(cb.attr('data-min-price')) : null,
-                max_price: cb.attr('data-max-price') !== '' && cb.attr('data-max-price') != null ? parseFloat(cb.attr('data-max-price')) : null,
-                rating: cb.attr('data-rating') !== '' && cb.attr('data-rating') != null ? parseFloat(cb.attr('data-rating')) : null,
-                reviews: cb.attr('data-reviews') !== '' && cb.attr('data-reviews') != null ? parseInt(cb.attr('data-reviews'), 10) : null,
-                sold_count: cb.attr('data-sold-count') !== '' && cb.attr('data-sold-count') != null ? parseInt(cb.attr('data-sold-count'), 10) : null
-            };
-            selectedSkus.forEach(function (sku) {
-                competitors.push(Object.assign({}, payload, { sku: String(sku).trim() }));
+            const productId = cb.data('product-id');
+            const marketplace = cb.data('marketplace');
+            const productTitle = cb.data('title');
+            const productLink = cb.data('link');
+            const image = cb.data('image');
+            const price = cb.data('price');
+            const rating = cb.data('rating');
+            const reviews = cb.data('reviews');
+            const sellerName = cb.data('source');
+            const extractedOldPrice = cb.attr('data-extracted-old-price');
+            let delivery = null;
+            const deliveryRaw = cb.attr('data-delivery');
+            if (deliveryRaw) {
+                try { delivery = JSON.parse(deliveryRaw.replace(/&quot;/g, '"')); } catch (e) { delivery = null; }
+            }
+            if (!Array.isArray(delivery)) delivery = null;
+
+            selectedSkus.forEach(function(sku) {
+                competitors.push({
+                    product_id: String(productId || ''),
+                    sku: String(sku || '').trim(),
+                    marketplace: marketplace || 'shein',
+                    product_title: productTitle || null,
+                    product_link: productLink || null,
+                    image: image || null,
+                    seller_name: sellerName || null,
+                    price: parseFloat(price) || 0,
+                    rating: rating !== '' && rating != null ? parseFloat(rating) : null,
+                    reviews: reviews !== '' && reviews != null ? parseInt(reviews, 10) : null,
+                    extracted_old_price: extractedOldPrice !== '' && extractedOldPrice != null ? parseFloat(extractedOldPrice) : null,
+                    delivery: Array.isArray(delivery) ? delivery : null
+                });
             });
         });
 
@@ -819,26 +864,32 @@ $(document).ready(function () {
         const competitorCount = checkedCompetitors.length;
         const skuCount = selectedSkus.length;
 
-        if (!confirm(
-            `You are about to create ${totalMappings} competitor mapping(s):\n\n` +
+        const confirmMsg = `You are about to create ${totalMappings} competitor mapping(s):\n\n` +
             `• ${competitorCount} competitor(s)\n` +
             `• ${skuCount} SKU(s)\n` +
-            `• Total mappings: ${competitorCount} × ${skuCount} = ${totalMappings}\n\nContinue?`
-        )) return;
+            `• Total mappings: ${competitorCount} × ${skuCount} = ${totalMappings}\n\n` +
+            `Selected SKUs:\n${selectedSkus.slice(0, 10).join('\n')}` +
+            (selectedSkus.length > 10 ? `\n...and ${selectedSkus.length - 10} more` : '') +
+            `\n\nContinue?`;
+
+        if (!confirm(confirmMsg)) return;
 
         const $btn = $('#saveCompetitorsBtn');
         const originalHtml = $btn.html();
         $btn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-2"></i>Saving...');
 
         $.ajax({
-            url: '/repricer/tiktok-search/store-competitors',
+            url: '/repricer/shein-search/store-competitors',
             method: 'POST',
             contentType: 'application/json',
-            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json'
+            },
             data: JSON.stringify({ competitors: competitors, _token: '{{ csrf_token() }}' }),
-            success: function (response) {
+            success: function(response) {
                 if (response.success) {
-                    alert(`✅ Success!\n\n${response.message}\n\nMappings created: ${totalMappings}`);
+                    alert(`Success!\n\n${response.message}\n\nMappings created: ${totalMappings}`);
                     $('.competitor-checkbox:checked').prop('checked', false);
                     $('#selectAllCheckbox').prop('checked', false);
                     $('#bulkSkuSelect').val('').trigger('change');
@@ -848,26 +899,25 @@ $(document).ready(function () {
                     alert('Error: ' + (response.message || 'Failed to save competitors'));
                 }
             },
-            error: function (xhr) {
-                let msg = 'Failed to save competitors';
+            error: function(xhr) {
+                let errorMsg = 'Failed to save competitors';
                 if (xhr.responseJSON) {
                     if (xhr.responseJSON.errors) {
-                        msg = 'Validation failed:\n' + Object.values(xhr.responseJSON.errors).flat().join('\n');
+                        errorMsg = 'Validation failed:\n' + Object.values(xhr.responseJSON.errors).flat().join('\n');
                     } else if (xhr.responseJSON.message) {
-                        msg = xhr.responseJSON.message;
+                        errorMsg = xhr.responseJSON.message;
                     }
-                    if (xhr.responseJSON.error) msg += '\n\n' + xhr.responseJSON.error;
+                    if (xhr.responseJSON.error) errorMsg += '\n\n' + xhr.responseJSON.error;
                 }
-                alert('Error: ' + msg);
+                alert('Error: ' + errorMsg);
                 console.error('Save Error:', xhr.responseJSON || xhr.responseText);
             },
-            complete: function () { $btn.prop('disabled', false).html(originalHtml); }
+            complete: function() { $btn.prop('disabled', false).html(originalHtml); }
         });
     }
 
     function applyFiltersAndSort() {
         if (!currentSearchQuery) { alert('Please perform a search first'); return; }
-
         const sortBy = $('#sortBy').val();
         const minPrice = $('#minPrice').val();
         const maxPrice = $('#maxPrice').val();
@@ -876,22 +926,15 @@ $(document).ready(function () {
         $('#loadingSpinner').show();
 
         $.ajax({
-            url: '/repricer/tiktok-search/results',
+            url: '/repricer/shein-search/results',
             method: 'GET',
-            data: {
-                query: currentSearchQuery,
-                region: currentRegion,
-                sort_by: sortBy,
-                min_price: minPrice,
-                max_price: maxPrice,
-                min_rating: minRating
-            },
-            success: function (response) {
+            data: { query: currentSearchQuery, sort_by: sortBy, min_price: minPrice, max_price: maxPrice, min_rating: minRating },
+            success: function(response) {
                 $('#loadingSpinner').hide();
                 if (response.success) displayResults(response);
                 else alert('Error: ' + (response.message || 'Failed to apply filters'));
             },
-            error: function (xhr) {
+            error: function(xhr) {
                 $('#loadingSpinner').hide();
                 alert('Error: Failed to apply filters');
                 console.error('Filter Error:', xhr.responseJSON || xhr.responseText);
@@ -901,19 +944,19 @@ $(document).ready(function () {
 
     function loadFilterOptions(query) {
         $.ajax({
-            url: '/repricer/tiktok-search/filter-options',
+            url: '/repricer/shein-search/filter-options',
             method: 'GET',
             data: { query: query },
-            success: function (response) {
-                if (response.success && response.data) $('#sortFilterContainer').show();
+            success: function(response) {
+                if (response.success && response.data) { $('#sortFilterContainer').show(); }
             },
-            error: function () { console.error('Failed to load filter options'); }
+            error: function() { console.error('Failed to load filter options'); }
         });
     }
 
-    window.loadHistoryQuery = function (query) {
+    window.loadHistoryQuery = function(query) {
         $('#searchQuery').val(query);
-        performSearch(query, $('#region').val(), parseInt($('#maxProducts').val(), 10) || 100);
+        performSearch(query);
     };
 });
 </script>

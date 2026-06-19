@@ -655,6 +655,12 @@
                                         </a>
                                     </li>
                                     <li>
+                                        <a href="{{ url('/repricer/shein-search') }}"
+                                            class="{{ request()->is('repricer/shein-search*') ? 'active' : '' }}">
+                                            Shein Competitors
+                                        </a>
+                                    </li>
+                                    <li>
                                         <a href="{{ url('/repricer/amz-comp-jungle') }}"
                                             class="{{ request()->is('repricer/amz-comp-jungle*') ? 'active' : '' }}">
                                             Amz Comp Jungle

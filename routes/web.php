@@ -3173,6 +3173,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tiktok-2-save-sprice', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveSpriceTiktokTwoUpdates'])->name('tiktok2.save.sprice');
     Route::post('/tiktok-save-nrp', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveTiktokShopNrp'])->name('tiktok.save.nrp');
     Route::post('/tiktok-save-links', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveLinks'])->name('tiktok.save.links');
+    // LMP modal endpoints for /tiktok-pricing — talks to tiktok_sku_competitors
+    Route::get('/tiktok/competitors', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'getTiktokCompetitors'])->name('tiktok.competitors.get');
+    Route::post('/tiktok/competitors', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'addTiktokCompetitor'])->name('tiktok.competitors.add');
+    Route::post('/tiktok/competitors/delete', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'deleteTiktokCompetitor'])->name('tiktok.competitors.delete');
     Route::post('/tiktok-2-save-links', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveTiktokTwoLinks'])->name('tiktok2.save.links');
     Route::post('/tiktok-2-save-nrp', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveTiktokTwoNrp'])->name('tiktok2.save.nrp');
     Route::get('/tiktok-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'getColumnVisibility'])->name('tiktok.pricing.column.get');
@@ -5674,6 +5678,19 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/raw-response', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'getRawResponse'])->name('raw-response');
         Route::get('/skus', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'getSkus'])->name('skus');
         Route::post('/store-competitors', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'storeCompetitors'])->name('store-competitors');
+    });
+
+    // Shein competitor search — SerpApi has no Shein engine, so this hits
+    // `engine=google_shopping` and filters merchants where source ~ "Shein".
+    Route::prefix('repricer/shein-search')->name('repricer.shein-search.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\RePricer\SheinSearchController::class, 'index'])->name('index');
+        Route::post('/search', [\App\Http\Controllers\RePricer\SheinSearchController::class, 'search'])->name('search');
+        Route::get('/history', [\App\Http\Controllers\RePricer\SheinSearchController::class, 'getSearchHistory'])->name('history');
+        Route::get('/results', [\App\Http\Controllers\RePricer\SheinSearchController::class, 'getResults'])->name('results');
+        Route::get('/filter-options', [\App\Http\Controllers\RePricer\SheinSearchController::class, 'getFilterOptions'])->name('filter-options');
+        Route::get('/raw-response', [\App\Http\Controllers\RePricer\SheinSearchController::class, 'getRawResponse'])->name('raw-response');
+        Route::get('/skus', [\App\Http\Controllers\RePricer\SheinSearchController::class, 'getSkus'])->name('skus');
+        Route::post('/store-competitors', [\App\Http\Controllers\RePricer\SheinSearchController::class, 'storeCompetitors'])->name('store-competitors');
     });
     
     // =========================================================================

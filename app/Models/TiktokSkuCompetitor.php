@@ -52,6 +52,36 @@ class TiktokSkuCompetitor extends Model
         return $query->orderByRaw('CAST(price AS DECIMAL(10,2)) ' . $dir);
     }
 
+    public static function sortCollectionByNumericPrice($items)
+    {
+        return collect($items)->sortBy(fn ($item) => (float) ($item->price ?? 0))->values();
+    }
+
+    public static function lowestFromCollection($items)
+    {
+        return collect($items)->sortBy(fn ($item) => (float) ($item->price ?? 0))->first();
+    }
+
+    /**
+     * Group competitors by normalized SKU. Used by /tiktok-pricing to attach
+     * `lmp_price` / `lmp_entries` / `lmp_entries_total` to each row in one
+     * pass. Mirrors AmazonSkuCompetitor::buildGroupedLookup().
+     *
+     * @return array{details: \Illuminate\Support\Collection, lowest: \Illuminate\Support\Collection}
+     */
+    public static function buildGroupedLookup(string $marketplace = 'tiktok'): array
+    {
+        $records = self::where('marketplace', $marketplace)
+            ->wherePositivePrice()
+            ->get()
+            ->groupBy(fn ($item) => self::normalizeSkuKey($item->sku));
+
+        return [
+            'details' => $records->map(fn ($items) => self::sortCollectionByNumericPrice($items)),
+            'lowest' => $records->map(fn ($items) => self::lowestFromCollection($items)),
+        ];
+    }
+
     public static function getLowestPriceForSku($sku, string $marketplace = 'tiktok')
     {
         $normalizedSku = self::normalizeSkuKey($sku);

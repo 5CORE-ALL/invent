@@ -580,6 +580,81 @@
             </div>
         </div>
     </div>
+
+    {{-- LMP Competitors Modal (parallel to Amazon Tabulator's lmpModal) --}}
+    <div class="modal fade" id="ttLmpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background:#ff0050;color:#fff;">
+                    <h5 class="modal-title">
+                        <i class="fa fa-shopping-cart"></i> TikTok Competitors for SKU: <span id="ttLmpSku"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="card mb-3 border-success">
+                        <div class="card-header bg-success text-white">
+                            <strong><i class="fa fa-plus-circle"></i> Add New Competitor</strong>
+                        </div>
+                        <div class="card-body">
+                            <form id="ttAddCompetitorForm" class="row g-3">
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>SKU</strong></label>
+                                    <input type="text" class="form-control" id="ttAddCompSku" readonly>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>Product ID</strong> <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="ttAddCompProductId" placeholder="1731826094240797243" required>
+                                </div>
+                                <div class="col-md-1">
+                                    <label class="form-label"><strong>Price</strong> <span class="text-danger">*</span></label>
+                                    <input type="number" class="form-control" id="ttAddCompPrice" placeholder="29.99" step="0.01" min="0.01" required>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>Product Title</strong></label>
+                                    <input type="text" class="form-control" id="ttAddCompTitle" placeholder="Optional">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>Product Link</strong></label>
+                                    <input type="url" class="form-control" id="ttAddCompLink" placeholder="https://www.tiktok.com/shop/pdp/...">
+                                </div>
+                                <div class="col-md-1">
+                                    <label class="form-label"><strong>Region</strong></label>
+                                    <select class="form-select" id="ttAddCompRegion">
+                                        <option value="US" selected>US</option>
+                                        <option value="GB">GB</option>
+                                        <option value="MY">MY</option>
+                                        <option value="PH">PH</option>
+                                        <option value="TH">TH</option>
+                                        <option value="VN">VN</option>
+                                        <option value="ID">ID</option>
+                                        <option value="SG">SG</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2 d-flex align-items-end">
+                                    <button type="submit" class="btn btn-success me-2" style="background:#ff0050;border-color:#ff0050;">
+                                        <i class="fa fa-plus"></i> Add
+                                    </button>
+                                    <button type="reset" class="btn btn-secondary">
+                                        <i class="fa fa-undo"></i> Clear
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div id="ttLmpDataList">
+                        <div class="text-center py-5">
+                            <div class="spinner-border" role="status" style="color:#ff0050;">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading competitors...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @php
@@ -2381,6 +2456,75 @@
                         width: 70
                     },
                     {
+                        title: "LMP",
+                        field: "lmp_price",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                            if (isParent) return '';
+
+                            const lmpPrice = parseFloat(cell.getValue() || 0);
+                            const totalCompetitors = parseInt(rowData.lmp_entries_total, 10) || 0;
+                            const sku = rowData['(Child) sku'] || '';
+                            const skuAttr = String(sku).replace(/"/g, '&quot;');
+
+                            // No competitors mapped yet — show a "+ Add" entry to seed the modal.
+                            if (!lmpPrice && totalCompetitors === 0) {
+                                return `<a href="#" class="view-tt-lmp-competitors" data-sku="${skuAttr}"
+                                    style="color:#6c757d;text-decoration:none;font-size:11px;cursor:pointer;"
+                                    title="No competitors — click to add one">
+                                    <i class="fa fa-plus-circle"></i> Add
+                                </a>`;
+                            }
+
+                            const currentPrice = parseFloat(rowData['TT Price'] || 0);
+                            const priceColor = (lmpPrice > 0 && lmpPrice < currentPrice) ? '#dc3545' : '#28a745';
+
+                            let html = '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.1;">';
+                            if (lmpPrice) {
+                                html += `<span style="color:${priceColor};font-weight:700;font-size:14px;">$${lmpPrice.toFixed(2)}</span>`;
+                            }
+                            if (totalCompetitors > 0) {
+                                html += `<a href="#" class="view-tt-lmp-competitors" data-sku="${skuAttr}"
+                                    style="color:#ff0050;text-decoration:none;font-size:11px;cursor:pointer;">
+                                    <i class="fa fa-eye"></i> View ${totalCompetitors}
+                                </a>`;
+                            }
+                            html += '</div>';
+                            return html;
+                        }
+                    },
+                    {
+                        title: "Diff",
+                        field: "lmp_diff_pct",
+                        hozAlign: "center",
+                        width: 70,
+                        headerSortStartingDir: "desc",
+                        sorter: function(a, b, aRow, bRow) {
+                            const calc = function(rd) {
+                                const lmp = parseFloat(rd.lmp_price || 0);
+                                const price = parseFloat(rd['TT Price'] || 0);
+                                if (!lmp || lmp <= 0) return -Infinity;
+                                return ((lmp - price) / lmp) * 100;
+                            };
+                            return calc(aRow.getData()) - calc(bRow.getData());
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                            if (isParent) return '';
+                            const lmp = parseFloat(rowData.lmp_price || 0);
+                            const price = parseFloat(rowData['TT Price'] || 0);
+                            if (!lmp || lmp <= 0) return '<span style="color:#999;">N/A</span>';
+                            const diff = ((lmp - price) / lmp) * 100;
+                            const color = diff < 0 ? '#dc3545' : '#28a745';
+                            return `<span style="color:${color};font-weight:600;">${diff.toFixed(1)}%</span>`;
+                        }
+                    },
+                    {
                         title: "GPFT%",
                         field: "GPFT%",
                         hozAlign: "center",
@@ -3808,6 +3952,231 @@
                 document.body.removeChild(link);
 
                 showToast('Export downloaded successfully!', 'success');
+            });
+
+            // ─────────────────────────────────────────────────────────────
+            //  LMP Modal: open / fetch / render / add / delete
+            // ─────────────────────────────────────────────────────────────
+            let ttCurrentLmpSku = null;
+
+            function ttEscAttr(value) {
+                if (value == null) return '';
+                return String(value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+            }
+
+            function ttLoadCompetitorsModal(sku) {
+                ttCurrentLmpSku = sku;
+                $('#ttLmpSku').text(sku);
+                $('#ttAddCompSku').val(sku);
+                $('#ttAddCompProductId').val('');
+                $('#ttAddCompPrice').val('');
+                $('#ttAddCompTitle').val('');
+                $('#ttAddCompLink').val('');
+                $('#ttAddCompRegion').val('US');
+
+                const modalEl = document.getElementById('ttLmpModal');
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+
+                $('#ttLmpDataList').html(`
+                    <div class="text-center py-5">
+                        <div class="spinner-border" role="status" style="color:#ff0050;">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading competitors...</p>
+                    </div>
+                `);
+
+                $.ajax({
+                    url: '/tiktok/competitors',
+                    method: 'GET',
+                    data: { sku: sku },
+                    success: function(response) {
+                        if (response.success) {
+                            ttRenderCompetitorsList(response.competitors, response.lowest_price);
+                        } else {
+                            ttRenderCompetitorsList([], null);
+                        }
+                    },
+                    error: function() {
+                        ttRenderCompetitorsList([], null);
+                    }
+                });
+            }
+
+            function ttRenderCompetitorsList(competitors, lowestPrice) {
+                if (!competitors || competitors.length === 0) {
+                    $('#ttLmpDataList').html(`
+                        <div class="alert alert-info mb-0">
+                            <i class="fa fa-info-circle"></i> No competitors found for this SKU. Add your first one above, or use
+                            <a href="/repricer/tiktok-search" target="_blank" class="alert-link">/repricer/tiktok-search</a> to discover and bulk-assign.
+                        </div>
+                    `);
+                    return;
+                }
+
+                let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm align-middle">';
+                html += `
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:30px;">#</th>
+                            <th style="width:60px;">Image</th>
+                            <th style="width:140px;">Product ID</th>
+                            <th style="width:260px;">Title</th>
+                            <th>Seller</th>
+                            <th style="width:80px;">Price</th>
+                            <th style="width:80px;">Range</th>
+                            <th style="width:70px;">Rating</th>
+                            <th style="width:80px;">Reviews</th>
+                            <th style="width:80px;">Sold</th>
+                            <th style="width:60px;">Region</th>
+                            <th style="width:60px;">Link</th>
+                            <th style="width:60px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                `;
+
+                competitors.forEach(function(item, index) {
+                    const basePrice = parseFloat(item.price) || 0;
+                    const isLowest = lowestPrice && Math.abs(basePrice - parseFloat(lowestPrice)) < 0.01;
+                    const rowClass = isLowest ? 'table-success' : '';
+                    const priceFormatted = '$' + basePrice.toFixed(2);
+                    const priceBadge = isLowest
+                        ? `<span class="badge bg-success">${priceFormatted} <i class="fa fa-trophy"></i></span>`
+                        : `<strong>${priceFormatted}</strong>`;
+
+                    const productLink = item.link || item.product_link || '#';
+                    const title = item.title || item.product_title || 'N/A';
+                    const seller = item.seller_name || (item.brand_name || '—');
+                    const imageUrl = item.image || '';
+                    const imageHtml = imageUrl
+                        ? `<img src="${ttEscAttr(imageUrl)}" style="width:50px;height:50px;object-fit:contain;" />`
+                        : '<span style="color:#999;">—</span>';
+
+                    let rangeHtml = '<span style="color:#999;">—</span>';
+                    if (item.min_price && item.max_price && item.min_price !== item.max_price) {
+                        rangeHtml = `<small style="color:#666;">$${parseFloat(item.min_price).toFixed(2)}<br>– $${parseFloat(item.max_price).toFixed(2)}</small>`;
+                    }
+                    const rating = item.rating
+                        ? `<span style="color:#ffc107;">${parseFloat(item.rating).toFixed(1)} <i class="fa fa-star"></i></span>`
+                        : '<span style="color:#999;">—</span>';
+                    const reviews = item.reviews
+                        ? `<span>${parseInt(item.reviews).toLocaleString()}</span>`
+                        : '<span style="color:#999;">—</span>';
+                    const sold = item.sold_count
+                        ? `<span style="color:#00796B;font-weight:600;">${parseInt(item.sold_count).toLocaleString()}</span>`
+                        : '<span style="color:#999;">—</span>';
+
+                    html += `
+                        <tr class="${rowClass}">
+                            <td class="text-center"><strong>${index + 1}</strong></td>
+                            <td class="text-center">${imageHtml}</td>
+                            <td><span class="text-primary" style="font-weight:600;font-size:11px;font-family:monospace;">${ttEscAttr(item.product_id || 'N/A')}</span></td>
+                            <td style="font-size:11px;" title="${ttEscAttr(title)}">${ttEscAttr(String(title).substring(0, 80))}${String(title).length > 80 ? '…' : ''}</td>
+                            <td style="font-size:11px;">${ttEscAttr(seller)}</td>
+                            <td>${priceBadge}</td>
+                            <td class="text-center">${rangeHtml}</td>
+                            <td class="text-center">${rating}</td>
+                            <td class="text-center">${reviews}</td>
+                            <td class="text-center">${sold}</td>
+                            <td class="text-center"><span class="badge bg-secondary">${ttEscAttr(item.region || 'US')}</span></td>
+                            <td class="text-center">
+                                <a href="${ttEscAttr(productLink)}" target="_blank" class="btn btn-sm btn-info" title="Open on TikTok Shop">
+                                    <i class="fa fa-external-link-alt"></i>
+                                </a>
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-danger tt-delete-lmp-btn"
+                                    data-id="${item.id}"
+                                    data-product-id="${ttEscAttr(item.product_id)}"
+                                    title="Delete this competitor">
+                                    <i class="fa fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                html += '</tbody></table></div>';
+                $('#ttLmpDataList').html(html);
+            }
+
+            // "View N" / "+ Add" trigger inside the LMP column
+            $(document).on('click', '.view-tt-lmp-competitors', function(e) {
+                e.preventDefault();
+                const sku = $(this).data('sku');
+                if (!sku) return;
+                ttLoadCompetitorsModal(sku);
+            });
+
+            // Add Competitor form
+            $('#ttAddCompetitorForm').on('submit', function(e) {
+                e.preventDefault();
+                const payload = {
+                    sku: $('#ttAddCompSku').val(),
+                    product_id: $('#ttAddCompProductId').val().trim(),
+                    price: parseFloat($('#ttAddCompPrice').val()) || 0,
+                    product_title: $('#ttAddCompTitle').val().trim() || null,
+                    product_link: $('#ttAddCompLink').val().trim() || null,
+                    region: $('#ttAddCompRegion').val() || 'US',
+                    marketplace: 'tiktok',
+                    _token: '{{ csrf_token() }}',
+                };
+                if (!payload.product_id || !payload.price) {
+                    alert('Product ID and Price are required.');
+                    return;
+                }
+                $.ajax({
+                    url: '/tiktok/competitors',
+                    method: 'POST',
+                    data: payload,
+                    success: function(resp) {
+                        if (resp.success) {
+                            $('#ttAddCompProductId').val('');
+                            $('#ttAddCompPrice').val('');
+                            $('#ttAddCompTitle').val('');
+                            $('#ttAddCompLink').val('');
+                            ttLoadCompetitorsModal(ttCurrentLmpSku);
+                            // Refresh underlying table to update lmp_price/Diff cells
+                            if (typeof table !== 'undefined' && table) table.replaceData();
+                        } else {
+                            alert(resp.error || 'Failed to add competitor');
+                        }
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to add competitor';
+                        alert(msg);
+                    }
+                });
+            });
+
+            // Delete competitor
+            $(document).on('click', '.tt-delete-lmp-btn', function() {
+                const id = $(this).data('id');
+                if (!id) return;
+                if (!confirm('Delete this competitor mapping?')) return;
+                $.ajax({
+                    url: '/tiktok/competitors/delete',
+                    method: 'POST',
+                    data: { id: id, _token: '{{ csrf_token() }}' },
+                    success: function(resp) {
+                        if (resp.success) {
+                            ttLoadCompetitorsModal(ttCurrentLmpSku);
+                            if (typeof table !== 'undefined' && table) table.replaceData();
+                        } else {
+                            alert(resp.error || 'Failed to delete');
+                        }
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to delete';
+                        alert(msg);
+                    }
+                });
             });
         });
     </script>
