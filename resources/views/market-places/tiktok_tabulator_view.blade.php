@@ -222,8 +222,7 @@
                             <option value="10-20">10-20%</option>
                             <option value="20-30">20-30%</option>
                             <option value="30-40">30-40%</option>
-                            <option value="40-50">40-50%</option>
-                            <option value="50plus">Above 50%</option>
+                            <option value="40plus">Above 40%</option>
                         </select>
                         <select id="cvr-filter" class="form-select form-select-sm" style="width: 130px;">
                             <option value="all">All CVR%</option>
@@ -303,6 +302,36 @@
                         title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         <i class="fas fa-exchange-alt"></i> Price Mode
                     </button>
+
+                    {{-- Target ROI% bulk control — back-solves SPRICE so SROI = Target ROI%. --}}
+                    {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin (TikTok take-home) --}}
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
+                        id="tt-target-roi-controls"
+                        title="Target ROI% — sets SPRICE = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (back-solves so SROI column equals the target)">
+                        <label for="tt-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">Target ROI%:</label>
+                        <input type="number" id="tt-target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply SPRICE'">
+                        <button id="tt-apply-target-roi-btn" class="btn btn-sm btn-primary" type="button"
+                            title="Compute & save SPRICE = (LP × (1 + Target ROI%/100) + Ship) / margin for every selected row">
+                            <i class="fas fa-calculator"></i> Apply SPRICE
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves SPRICE so SGPFT = Target GPFT%. --}}
+                    {{-- Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
+                        id="tt-target-gpft-controls"
+                        title="Target GPFT% — sets SPRICE = (LP + Ship) / (margin − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
+                        <label for="tt-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">Target GPFT%:</label>
+                        <input type="number" id="tt-target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply SPRICE'. Must be less than the TikTok take-home margin.">
+                        <button id="tt-apply-target-gpft-btn" class="btn btn-sm btn-primary" type="button"
+                            title="Compute & save SPRICE = (LP + Ship) / (margin − Target GPFT%/100) for every selected row">
+                            <i class="fas fa-calculator"></i> Apply SPRICE
+                        </button>
+                    </div>
 
                     <button type="button" id="toggle-utilized-columns-btn" class="btn btn-sm btn-secondary">
                         <i class="fa fa-filter"></i> Show Ads Columns
@@ -1178,6 +1207,170 @@
             // Clear SPRICE button
             $('#clear-sprice-btn').on('click', function() {
                 clearSpriceForSelected();
+            });
+
+            /*
+             * ============================================================================
+             * Target ROI% / Target GPFT% bulk apply for SPRICE (mirrors ebay-tabulator-view)
+             * ----------------------------------------------------------------------------
+             * Pick rows (via Price Mode), type the target %, click Apply SPRICE → back-solve
+             * a sale price that makes the on-page SROI / SGPFT column match the target after
+             * TikTok margin + shipping are paid out.
+             *
+             * Math (mirrors the backend's SGPFT / SROI formulas):
+             *   SROI%  = ((sprice * margin - lp - ship) / lp) * 100
+             *      -> sprice = (lp * (1 + roi%/100) + ship) / margin
+             *
+             *   SGPFT% = ((sprice * margin - ship - lp) / sprice) * 100
+             *      -> sprice = (lp + ship) / (margin - gpft%/100)
+             *      Constraint: (margin - gpft%/100) must be > 0.
+             *
+             * `margin` comes from rowData.percentage with a DEFAULT_TIKTOK_MARGIN_FACTOR fallback.
+             * Saving goes through TTP_CFG.saveSprice exactly like an inline SPRICE edit.
+             * ============================================================================
+             */
+            function ttApplyTargetSpriceBatch(opts) {
+                const $btn = opts.$btn;
+                if (selectedSkus.size === 0) {
+                    showToast('Please select at least one SKU first (use Price Mode to enable checkboxes).', 'error');
+                    return;
+                }
+
+                const rowsToProcess = [];
+                const skipped = [];
+                table.getRows().forEach(function(r) {
+                    const rd = r.getData();
+                    const sku = rd['(Child) sku'];
+                    if (!sku || !selectedSkus.has(sku)) return;
+                    if (rd.Parent && String(rd.Parent).startsWith('PARENT ')) return;
+                    const res = opts.computeSprice(rd);
+                    if (!res || res.skipReason) {
+                        if (res && res.skipReason) skipped.push({ sku: sku, reason: res.skipReason });
+                        return;
+                    }
+                    let sprice = +Number(res.sprice).toFixed(2);
+                    if (!isFinite(sprice) || sprice <= 0) return;
+                    sprice = Math.max(0.99, roundToRetailPrice(sprice));
+                    rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
+                });
+
+                if (rowsToProcess.length === 0) {
+                    if (skipped.length > 0) {
+                        showToast('Cannot apply: ' + skipped[0].reason, 'error');
+                    } else {
+                        showToast('No selected rows have a usable LP > 0', 'error');
+                    }
+                    return;
+                }
+
+                let confirmMsg = `Compute & save SPRICE for ${rowsToProcess.length} selected SKU(s) using ${opts.label}?`;
+                if (skipped.length > 0) {
+                    confirmMsg += `\n\nNote: ${skipped.length} row(s) will be skipped (${skipped[0].reason}).`;
+                }
+                if (!confirm(confirmMsg)) return;
+
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+
+                // Update rows client-side immediately (mirrors applyDiscount handler)
+                const updates = [];
+                rowsToProcess.forEach(function(item) {
+                    const rd = item.row.getData();
+                    const percentage = getRowMarginFactor(rd);
+                    const lp = parseFloat(rd['LP_productmaster']) || 0;
+                    const ship = parseFloat(rd['Ship_productmaster']) || 0;
+                    const sprice = item.sprice;
+                    const sgpft = sprice > 0 ? Math.round(((sprice * percentage - ship - lp) / sprice) * 100 * 100) / 100 : 0;
+                    const sroi = lp > 0 ? Math.round(((sprice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
+                    item.row.update({
+                        SPRICE: sprice,
+                        SGPFT: sgpft,
+                        SPFT: sgpft,
+                        SROI: sroi,
+                        has_custom_sprice: true
+                    });
+                    updates.push({ sku: item.sku, sprice: sprice });
+                });
+
+                $.ajax({
+                    url: TTP_CFG.saveSprice,
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: { updates: updates },
+                    success: function(res) {
+                        if (res && res.success) {
+                            showToast(`SPRICE saved for ${updates.length} SKU(s) @ ${opts.label}`, 'success');
+                        } else {
+                            showToast('Failed to save SPRICE updates', 'error');
+                        }
+                    },
+                    error: function() {
+                        showToast('Error saving SPRICE updates', 'error');
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).html(opts.btnHtml);
+                        // Wipe selection so the next batch starts clean.
+                        selectedSkus.clear();
+                        $('.sku-select-checkbox').prop('checked', false);
+                        $('#select-all-checkbox').prop('checked', false);
+                        updateSelectedCount();
+                    }
+                });
+            }
+
+            // Target ROI%
+            $('#tt-apply-target-roi-btn').on('click', function() {
+                const $btn = $(this);
+                const raw = $('#tt-target-roi-input').val();
+                const targetRoiPct = parseFloat(String(raw).replace(',', '.'));
+                if (raw === '' || raw == null) { showToast('Please enter a Target ROI%', 'error'); return; }
+                if (!isFinite(targetRoiPct)) { showToast('Target ROI% must be a number', 'error'); return; }
+                const roiMultiplier = 1 + (targetRoiPct / 100);
+                ttApplyTargetSpriceBatch({
+                    targetPct: targetRoiPct,
+                    label: `Target ROI ${targetRoiPct}%`,
+                    $btn: $btn,
+                    btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
+                    computeSprice: function(rd) {
+                        const lp = parseFloat(rd['LP_productmaster']) || 0;
+                        if (lp <= 0) return null;
+                        const ship = parseFloat(rd['Ship_productmaster']) || 0;
+                        const margin = getRowMarginFactor(rd);
+                        return { sprice: (lp * roiMultiplier + ship) / margin };
+                    }
+                });
+            });
+            $('#tt-target-roi-input').on('keypress', function(e) {
+                if (e.which === 13) $('#tt-apply-target-roi-btn').click();
+            });
+
+            // Target GPFT%
+            $('#tt-apply-target-gpft-btn').on('click', function() {
+                const $btn = $(this);
+                const raw = $('#tt-target-gpft-input').val();
+                const targetGpftPct = parseFloat(String(raw).replace(',', '.'));
+                if (raw === '' || raw == null) { showToast('Please enter a Target GPFT%', 'error'); return; }
+                if (!isFinite(targetGpftPct)) { showToast('Target GPFT% must be a number', 'error'); return; }
+                const targetFraction = targetGpftPct / 100;
+                ttApplyTargetSpriceBatch({
+                    targetPct: targetGpftPct,
+                    label: `Target GPFT ${targetGpftPct}%`,
+                    $btn: $btn,
+                    btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
+                    computeSprice: function(rd) {
+                        const lp = parseFloat(rd['LP_productmaster']) || 0;
+                        if (lp <= 0) return null;
+                        const ship = parseFloat(rd['Ship_productmaster']) || 0;
+                        const margin = getRowMarginFactor(rd);
+                        const denom = margin - targetFraction;
+                        if (denom <= 0) {
+                            return { skipReason: `Target GPFT% ${targetGpftPct}% ≥ TikTok take-home margin (~${Math.round(margin * 100)}%)` };
+                        }
+                        return { sprice: (lp + ship) / denom };
+                    }
+                });
+            });
+            $('#tt-target-gpft-input').on('keypress', function(e) {
+                if (e.which === 13) $('#tt-apply-target-gpft-btn').click();
             });
 
             let zeroSoldFilterActive = false;
@@ -2548,7 +2741,7 @@
                         }
                     },
                     {
-                        title: "NRP",
+                        title: "NR/Req",
                         field: "nrp",
                         hozAlign: "center",
                         width: 56,
@@ -2641,7 +2834,9 @@
                     const row = cell.getRow();
                     const rowData = row.getData();
                     const sku = rowData['(Child) sku'];
-                    const newSprice = parseFloat(cell.getValue()) || 0;
+                    // Always store SPRICE to exactly 2 decimals (UI input may allow more digits).
+                    const rawSprice = parseFloat(cell.getValue()) || 0;
+                    const newSprice = Math.round(rawSprice * 100) / 100;
 
                     const percentage = getRowMarginFactor(rowData);
                     const lp = rowData['LP_productmaster'] || 0;
@@ -2654,6 +2849,7 @@
                         100) / 100 : 0;
 
                     row.update({
+                        SPRICE: newSprice,
                         SGPFT: sgpft,
                         SPFT: spft,
                         SROI: sroi,
@@ -2963,15 +3159,18 @@
                     });
                 }
 
-                // GPFT filter (parent rows always visible)
+                // GPFT filter (parent rows always visible) — slabs match ebay-tabulator-view
                 if (gpftFilter !== 'all') {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return true;
                         const gpft = parseFloat(data['GPFT%']) || 0;
                         if (gpftFilter === 'negative') return gpft < 0;
-                        if (gpftFilter === '50plus') return gpft >= 50;
-                        const [min, max] = gpftFilter.split('-').map(Number);
-                        return gpft >= min && gpft < max;
+                        if (gpftFilter === '0-10')     return gpft >= 0 && gpft < 10;
+                        if (gpftFilter === '10-20')    return gpft >= 10 && gpft < 20;
+                        if (gpftFilter === '20-30')    return gpft >= 20 && gpft < 30;
+                        if (gpftFilter === '30-40')    return gpft >= 30 && gpft < 40;
+                        if (gpftFilter === '40plus')   return gpft >= 40;
+                        return true;
                     });
                 }
 

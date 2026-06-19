@@ -519,7 +519,10 @@ class TikTokPricingController extends Controller
             // Add values from product_master
             $values = $productMaster->Values ?: [];
             $processedItem["LP_productmaster"] = $values["lp"] ?? 0;
-            $ttShip = $values["tt_ship"] ?? ($values["ship"] ?? 0);
+            // TikTok 1 → tt_ship only (no fallback). TikTok 2 → normal ship only.
+            $ttShip = $isTiktokTwo
+                ? ($values["ship"] ?? 0)
+                : ($values["tt_ship"] ?? 0);
             $processedItem["Ship_productmaster"] = $ttShip;
             $processedItem["TT Ship"] = $ttShip;
             $processedItem["COGS"] = $values["cogs"] ?? 0;
@@ -1223,7 +1226,7 @@ class TikTokPricingController extends Controller
      */
     public function saveSpriceUpdates(Request $request)
     {
-        return $this->saveSpriceUpdatesToModel($request, TiktokShopDataView::class, 'TikTok');
+        return $this->saveSpriceUpdatesToModel($request, TiktokShopDataView::class, 'TikTok', false);
     }
 
     /**
@@ -1231,7 +1234,7 @@ class TikTokPricingController extends Controller
      */
     public function saveSpriceTiktokTwoUpdates(Request $request)
     {
-        return $this->saveSpriceUpdatesToModel($request, TiktokTwoShopDataView::class, 'TikTok 2');
+        return $this->saveSpriceUpdatesToModel($request, TiktokTwoShopDataView::class, 'TikTok 2', true);
     }
 
     /**
@@ -1410,7 +1413,7 @@ class TikTokPricingController extends Controller
         return '';
     }
 
-    private function saveSpriceUpdatesToModel(Request $request, string $viewModel, string $logLabel)
+    private function saveSpriceUpdatesToModel(Request $request, string $viewModel, string $logLabel, bool $isTiktokTwo = false)
     {
         try {
             $updates = [];
@@ -1453,7 +1456,10 @@ class TikTokPricingController extends Controller
                 if ($productMaster) {
                     $pmValues = $productMaster->Values ?: [];
                     $lp = $pmValues['lp'] ?? 0;
-                    $ttShip = $pmValues['tt_ship'] ?? ($pmValues['ship'] ?? 0);
+                    // TikTok 1 → tt_ship only (no fallback). TikTok 2 → normal ship only.
+                    $ttShip = $isTiktokTwo
+                        ? ($pmValues['ship'] ?? 0)
+                        : ($pmValues['tt_ship'] ?? 0);
                     $ship = $ttShip;
                     if ($sprice > 0) {
                         $sgpft = (($sprice * $marginFactor - $lp - $ship) / $sprice) * 100;

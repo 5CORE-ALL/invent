@@ -355,39 +355,46 @@ class Kernel extends ConsoleKernel
         // $schedule->command('app:amazon-campaign-reports')
         //     ->dailyAt('04:00')
         //     ->timezone('America/Los_Angeles');
-        // Amazon Advertising API — 5 morning runs each. Final slots (09:00 / 09:05 / 09:10
-        // IST) match the previous single-run schedule so the downstream Amazon bid /
-        // budget auto-update jobs at 12:15+ IST still see fresh report data; earlier slots
-        // back-fill any missed run before then.
-        $retryFiveTimesUntil('app:amazon-sp-campaign-reports', 'amazon-sp-campaign-reports', '09:00');
-        $retryFiveTimesUntil('app:amazon-sb-campaign-reports', 'amazon-sb-campaign-reports', '09:05');
-        $retryFiveTimesUntil('app:amazon-sd-campaign-reports', 'amazon-sd-campaign-reports', '09:10');
+        // Amazon Advertising API — 5 AFTERNOON runs each (final slots 18:00 / 18:05 / 18:10
+        // IST). Aligned with PT (Amazon US accounts run in Pacific Time): a PT day ends at
+        // ~12:30 PM IST, so afternoon retries see fully-finalised PT reports. Earlier morning
+        // runs were querying mid-PT-day and getting only PARTIAL spend / clicks. Downstream
+        // Amazon FBA bid auto-updates also moved to 19:00–19:45 IST so they consume the
+        // freshly-fetched complete reports.
+        $retryFiveTimesUntil('app:amazon-sp-campaign-reports', 'amazon-sp-campaign-reports', '18:00');
+        $retryFiveTimesUntil('app:amazon-sb-campaign-reports', 'amazon-sb-campaign-reports', '18:05');
+        $retryFiveTimesUntil('app:amazon-sd-campaign-reports', 'amazon-sd-campaign-reports', '18:10');
 
         /*
         |--------------------------------------------------------------------------
-        | AMAZON BIDS / BUDGET AUTO-UPDATE (Staggered IST for reliability)
-        | Standard PT bids + PT budget: 12:15–13:00 IST (see AMAZON FBA block for FBA PT)
+        | AMAZON BIDS / BUDGET AUTO-UPDATE — EVENING IST (PT-aligned)
+        | Bids:    18:30–18:55 IST  (after Amazon SP/SB/SD reports final at 18:10)
+        | Budget:  20:00–20:10 IST  (after Amazon FBA bid push cluster at 19:00–19:45)
+        |
+        | Previously 12:15–12:55 IST — that ran BEFORE the new afternoon report
+        | retries (14:00–18:10 IST) so the pushes were using yesterday's stale or
+        | partial PT-day report data. Shifting to evening means each push consumes
+        | the freshest fully-finalised PT-day report.
         |--------------------------------------------------------------------------
         */
-        // Over-utilized KW bids: 2:00 AM IST
+        // KW (keyword) bid pushes
         $ist($schedule->command('amazon:auto-update-over-kw-bids')
-            ->dailyAt('12:15')
+            ->dailyAt('18:30')
             ->timezone('Asia/Kolkata')
             ->name('amazon-over-kw-bids')
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Under-utilized KW bids: 2:30 AM IST
         $ist($schedule->command('amazon:auto-update-under-kw-bids')
-            ->dailyAt('12:20')
+            ->dailyAt('18:35')
             ->timezone('Asia/Kolkata')
             ->name('amazon-under-kw-bids')
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Pink dilution KW: 3:00 AM IST
+        // Pink dilution KW (disabled; left as reference)
         // $schedule->command('amazon:auto-update-pink-dil-kw-ads')
         //     ->dailyAt('03:00')
         //     ->timezone('Asia/Kolkata')
@@ -396,25 +403,24 @@ class Kernel extends ConsoleKernel
         //     ->runInBackground()
         //     ->appendOutputTo($log);
 
-        // Over-utilized PT bids: 12:15 PM IST
+        // PT (product-targeting) bid pushes
         $ist($schedule->command('amazon:auto-update-over-pt-bids')
-            ->dailyAt('12:25')
+            ->dailyAt('18:40')
             ->timezone('Asia/Kolkata')
             ->name('amazon-over-pt-bids')
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Under-utilized PT bids: 12:45 PM IST
         $ist($schedule->command('amazon:auto-update-under-pt-bids')
-            ->dailyAt('12:30')
+            ->dailyAt('18:45')
             ->timezone('Asia/Kolkata')
             ->name('amazon-under-pt-bids')
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Pink dilution PT: 5:00 AM IST
+        // Pink dilution PT (disabled; left as reference)
         // $schedule->command('amazon:auto-update-pink-dil-pt-ads')
         //     ->dailyAt('05:00')
         //     ->timezone('Asia/Kolkata')
@@ -423,25 +429,24 @@ class Kernel extends ConsoleKernel
         //     ->runInBackground()
         //     ->appendOutputTo($log);
 
-        // Over-utilized HL bids: 6:00 AM IST
+        // HL (headline) bid pushes
         $ist($schedule->command('amazon:auto-update-over-hl-bids')
-            ->dailyAt('12:35')
+            ->dailyAt('18:50')
             ->timezone('Asia/Kolkata')
             ->name('amazon-over-hl-bids')
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Under-utilized HL bids: 6:30 AM IST
         $ist($schedule->command('amazon:auto-update-under-hl-bids')
-            ->dailyAt('12:40')
+            ->dailyAt('18:55')
             ->timezone('Asia/Kolkata')
             ->name('amazon-under-hl-bids')
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Pink dilution HL: 7:00 AM IST
+        // Pink dilution HL (disabled; left as reference)
         // $schedule->command('amazon:auto-update-pink-dil-hl-ads')
         //     ->dailyAt('07:00')
         //     ->timezone('Asia/Kolkata')
@@ -450,27 +455,26 @@ class Kernel extends ConsoleKernel
         //     ->runInBackground()
         //     ->appendOutputTo($log);
 
-        // Amazon budget KW: 8:00 AM IST
+        // Budget pushes — 20:00–20:10 IST, AFTER the Amazon FBA bid push cluster
+        // at 19:00–19:45 IST so budget changes don't race with bid changes.
         $ist($schedule->command('amazon:auto-update-amz-bgt-kw')
-            ->dailyAt('12:45')
+            ->dailyAt('20:00')
             ->timezone('Asia/Kolkata')
             ->name('amazon-bgt-kw')
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Amazon budget PT: 1:00 PM IST (after PT bid updates)
         $ist($schedule->command('amazon:auto-update-amz-bgt-pt')
-            ->dailyAt('12:50')
+            ->dailyAt('20:05')
             ->timezone('Asia/Kolkata')
             ->name('amazon-bgt-pt')
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Amazon budget HL: 9:00 AM IST
         $ist($schedule->command('amazon:auto-update-amz-bgt-hl')
-            ->dailyAt('12:55')
+            ->dailyAt('20:10')
             ->timezone('Asia/Kolkata')
             ->name('amazon-bgt-hl')
             ->withoutOverlapping(60)
@@ -483,8 +487,11 @@ class Kernel extends ConsoleKernel
         |--------------------------------------------------------------------------
         */
         // FBA PT bids: 12:00 & 12:30 PM IST (with standard Amazon PT jobs 12:15–13:00 IST)
+        // Amazon FBA bid pushes — moved to 19:00–19:45 IST so they run AFTER the
+        // Amazon report fetches (final retry 18:10 IST) using fully-finalised PT-day data.
+        // Previously at 13:05/13:10/15:00/15:30 IST with reports still partial.
         $ist($schedule->command('amazon-fba:auto-update-under-pt-bids')
-            ->dailyAt('13:05')
+            ->dailyAt('19:00')
             ->timezone('Asia/Kolkata')
             ->name('fba-under-pt-bids')
             ->withoutOverlapping()
@@ -492,16 +499,15 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         $ist($schedule->command('amazon-fba:auto-update-over-pt-bids')
-            ->dailyAt('13:10')
+            ->dailyAt('19:15')
             ->timezone('Asia/Kolkata')
             ->name('fba-over-pt-bids')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // FBA KW bids: 3:00 PM–3:30 PM IST (moved from 12:15/12:35 to avoid overlap with PT afternoon window)
         $ist($schedule->command('amazon-fba:auto-update-over-kw-bids')
-            ->dailyAt('15:00')
+            ->dailyAt('19:30')
             ->timezone('Asia/Kolkata')
             ->name('fba-over-kw-bids')
             ->withoutOverlapping()
@@ -509,15 +515,18 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         $ist($schedule->command('amazon-fba:auto-update-under-kw-bids')
-            ->dailyAt('15:30')
+            ->dailyAt('19:45')
             ->timezone('Asia/Kolkata')
             ->name('fba-under-kw-bids')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // FBA reports — shifted from 13:30 IST to 18:15 IST so it pulls data
+        // AFTER the Amazon SP/SB/SD report retries finalise at 18:10 IST. Previously
+        // it ran while PT day was still mid-afternoon → partial spend / clicks.
         $ist($schedule->command('app:fetch-fba-reports')
-            ->dailyAt('13:30')
+            ->dailyAt('18:15')
             ->timezone('Asia/Kolkata')
             ->name('fetch-fba-reports')
             ->withoutOverlapping()
@@ -593,32 +602,42 @@ class Kernel extends ConsoleKernel
         | AMAZON UTILIZATION & METRICS
         |--------------------------------------------------------------------------
         */
+        // Amazon internal aggregators — all shifted to evening IST so they read from
+        // the freshly-finalised PT-day Amazon report data (reports complete at 18:10 IST,
+        // FBA bid pushes 19:00–19:45 IST). Previously 09:12–13:00 IST when reports were
+        // still partial, so utilization counts and metrics were under-counted.
         $ist($schedule->command('amazon:store-utilization-counts')
-            ->dailyAt('09:12')
+            ->dailyAt('18:20')
             ->timezone('Asia/Kolkata')
             ->name('amazon-utilization-counts')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('amazon-fba:store-utilization-counts')
-            ->dailyAt('09:14')
-            ->timezone('Asia/Kolkata')
-            ->name('fba-utilization-counts')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
         $ist($schedule->command('amazon:store-listing-daily-metrics')
-            ->dailyAt('09:16')
+            ->dailyAt('18:22')
             ->timezone('Asia/Kolkata')
             ->name('amazon-listing-daily-metrics')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // FBA utilization counts — runs after the FBA bid push cluster (19:00–19:45 IST)
+        // and before the Amazon budget pushes at 20:00 IST so any util-driven budget
+        // decisions see freshly-pushed FBA bid state.
+        $ist($schedule->command('amazon-fba:store-utilization-counts')
+            ->dailyAt('19:50')
+            ->timezone('Asia/Kolkata')
+            ->name('fba-utilization-counts')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // amazon:collect-metrics — aggregates Amazon spend / clicks / conversions from
+        // the freshly-completed report rows. Final retry of Amazon SP reports is 18:00,
+        // so 18:25 leaves 25 min buffer for any slow tail.
         $ist($schedule->command('amazon:collect-metrics')
-            ->dailyAt('13:00')
+            ->dailyAt('18:25')
             ->timezone('Asia/Kolkata')
             ->name('amazon-collect-metrics')
             ->withoutOverlapping()
@@ -646,8 +665,12 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // eBay 3 daily 60-day backfill — shifted to 19:40 IST so it follows the eBay
+        // campaign-reports retries (final 19:20 IST) and lands its data before the
+        // ebay3:auto-update / suggested-bid / budget pushes at 21:06+ IST.
+        // Previously 09:45 IST when reports were still partial PT-day.
         $ist($schedule->command('ebay3:daily --days=60')
-            ->dailyAt('09:45')
+            ->dailyAt('19:40')
             ->timezone('Asia/Kolkata')
             ->name('ebay3-daily')
             ->withoutOverlapping()
@@ -662,40 +685,54 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // eBay metrics + table-data fetches — shifted to 19:25–19:35 IST so they run
+        // AFTER the eBay campaign-reports retries (final 19:10–19:20) and BEFORE the
+        // eBay sync-listings cluster (16:30–20:34) and bid-update push at 21:00+.
+        // Previously 09:50 / 10:00 / 10:05 IST when reports were still partial PT-day.
         $ist($schedule->command('app:fetch-ebay-table-data')
-            ->dailyAt('09:50')
+            ->dailyAt('19:25')
             ->timezone('Asia/Kolkata')
             ->name('fetch-ebay-table-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('app:fetch-ebay-three-metrics')
-            ->dailyAt('10:05')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-ebay-three-metrics')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
         $ist($schedule->command('app:fetch-ebay-two-metrics')
-            ->dailyAt('10:00')
+            ->dailyAt('19:30')
             ->timezone('Asia/Kolkata')
             ->name('fetch-ebay-two-metrics')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // eBay Marketing API campaign reports — 5 morning runs each (final slots 10:10 /
-        // 10:15 / 10:20 IST). Reports must be fresh before the eBay bid auto-update jobs
-        // at 13:15–13:21 IST.
-        $retryFiveTimesUntil('app:ebay-campaign-reports', 'ebay-campaign-reports', '10:10');
-        $retryFiveTimesUntil('app:ebay2-campaign-reports', 'ebay2-campaign-reports', '10:15');
-        $retryFiveTimesUntil('app:ebay3-campaign-reports', 'ebay3-campaign-reports', '10:20');
+        $ist($schedule->command('app:fetch-ebay-three-metrics')
+            ->dailyAt('19:35')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-ebay-three-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
 
-        // eBay bids update
+        // eBay Marketing API campaign reports — 5 AFTERNOON runs each (final slots 19:10 /
+        // 19:15 / 19:20 IST). Aligned with PT (US eBay reporting day ends ~12:30 PM IST);
+        // pre-shift, morning runs were querying mid-PT-day with partial click/spend data.
+        // Downstream eBay bid auto-updates pushed accordingly to 21:00–21:18 IST.
+        $retryFiveTimesUntil('app:ebay-campaign-reports', 'ebay-campaign-reports', '19:10');
+        $retryFiveTimesUntil('app:ebay2-campaign-reports', 'ebay2-campaign-reports', '19:15');
+        $retryFiveTimesUntil('app:ebay3-campaign-reports', 'ebay3-campaign-reports', '19:20');
+
+        // eBay promoted-listings sync into ebay{,2,3}_campaign_ads — 5 afternoon runs each
+        // (final slots 20:30 / 20:32 / 20:34 IST). The downstream suggested-bid + budget jobs
+        // consume these tables; runs are timed so the freshest listings land in time for the
+        // 21:00–21:18 IST bid push and the 21:20–21:33 IST suggested-bid + budget cluster.
+        $retryFiveTimesUntil('ebay:sync-campaign-listings', 'ebay-sync-campaign-listings', '20:30');
+        $retryFiveTimesUntil('ebay2:sync-campaign-listings', 'ebay2-sync-campaign-listings', '20:32');
+        $retryFiveTimesUntil('ebay3:sync-campaign-listings', 'ebay3-sync-campaign-listings', '20:34');
+
+        // eBay bid pushes — 21:00–21:08 IST, after sync-listings (20:34 IST).
+        // (Previously 13:15–13:21 IST when reports were still partial.)
         $ist($schedule->command('ebay:auto-update-over-bids')
-            ->dailyAt('13:15')
+            ->dailyAt('21:00')
             ->timezone('Asia/Kolkata')
             ->name('ebay-over-bids')
             ->withoutOverlapping()
@@ -703,7 +740,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         $ist($schedule->command('ebay:auto-update-under-bids')
-            ->dailyAt('13:17')
+            ->dailyAt('21:02')
             ->timezone('Asia/Kolkata')
             ->name('ebay-under-bids')
             ->withoutOverlapping()
@@ -711,7 +748,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         $ist($schedule->command('ebay2:auto-update-utilized-bids')
-            ->dailyAt('13:19')
+            ->dailyAt('21:04')
             ->timezone('Asia/Kolkata')
             ->name('ebay2-utilized-bids')
             ->withoutOverlapping()
@@ -719,23 +756,17 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         $ist($schedule->command('ebay3:auto-update-utilized-bids')
-            ->dailyAt('13:21')
+            ->dailyAt('21:06')
             ->timezone('Asia/Kolkata')
             ->name('ebay3-utilized-bids')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // eBay promoted-listings sync into ebay{,2,3}_campaign_ads — 5 morning runs each
-        // (final slots 11:30 / 11:32 / 11:34 IST). The downstream suggested-bid jobs at
-        // 13:23 / 13:25 / 13:27 IST consume these tables; earlier retry slots cover any
-        // failure before that consumer runs.
-        $retryFiveTimesUntil('ebay:sync-campaign-listings', 'ebay-sync-campaign-listings', '11:30');
-        $retryFiveTimesUntil('ebay2:sync-campaign-listings', 'ebay2-sync-campaign-listings', '11:32');
-        $retryFiveTimesUntil('ebay3:sync-campaign-listings', 'ebay3-sync-campaign-listings', '11:34');
-
+        // eBay suggested-bid + budget update cluster — 21:20–21:33 IST, after the bid
+        // push above. (Previously 13:23–13:33 IST when reports were still partial.)
         $ist($schedule->command('ebay:update-suggestedbid')
-            ->dailyAt('13:23')
+            ->dailyAt('21:20')
             ->timezone('Asia/Kolkata')
             ->name('ebay-suggestedbid')
             ->withoutOverlapping()
@@ -743,7 +774,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         $ist($schedule->command('ebay2:update-suggestedbid')
-            ->dailyAt('13:25')
+            ->dailyAt('21:23')
             ->timezone('Asia/Kolkata')
             ->name('ebay2-suggestedbid')
             ->withoutOverlapping()
@@ -751,7 +782,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         $ist($schedule->command('ebay3:update-suggestedbid')
-            ->dailyAt('13:27')
+            ->dailyAt('21:26')
             ->timezone('Asia/Kolkata')
             ->name('ebay3-suggestedbid')
             ->withoutOverlapping()
@@ -759,7 +790,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         $ist($schedule->command('ebay1:update-budget')
-            ->dailyAt('13:29')
+            ->dailyAt('21:29')
             ->timezone('Asia/Kolkata')
             ->name('ebay1-budget')
             ->withoutOverlapping()
@@ -767,7 +798,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         $ist($schedule->command('ebay2:update-budget')
-            ->dailyAt('13:31')
+            ->dailyAt('21:31')
             ->timezone('Asia/Kolkata')
             ->name('ebay2-budget')
             ->withoutOverlapping()
@@ -775,7 +806,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         $ist($schedule->command('ebay3:update-budget')
-            ->dailyAt('13:33')
+            ->dailyAt('21:33')
             ->timezone('Asia/Kolkata')
             ->name('ebay3-budget')
             ->withoutOverlapping()
@@ -790,8 +821,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // eBay utilization counts aggregator — shifted to 21:40 IST so it runs after
+        // the entire eBay push chain completes at 21:33 IST (last budget push). This
+        // aggregator reads from eBay report tables freshly populated 19:10–19:20 IST
+        // and the post-push state from 21:00–21:33 IST. Previously 09:24 IST when
+        // both the reports AND the push state were stale.
         $ist($schedule->command('ebay:store-utilization-counts')
-            ->dailyAt('09:24')
+            ->dailyAt('21:40')
             ->timezone('Asia/Kolkata')
             ->name('ebay-utilization-counts')
             ->withoutOverlapping()
@@ -860,25 +896,38 @@ class Kernel extends ConsoleKernel
 
         /*
         |--------------------------------------------------------------------------
-        | GOOGLE ADS & SHOPPING
+        | GOOGLE ADS & SHOPPING — AFTERNOON IST WINDOW (CA-aligned)
         |--------------------------------------------------------------------------
+        | The Google Ads account runs in California (PT). A CA day ends at
+        | ~12:30 PM IST the next calendar date, after which Google Ads finalizes
+        | the prior day's report data. Earlier morning IST runs were querying
+        | while CA was still mid-day, so we received only PARTIAL spend / clicks
+        | for "yesterday CA". Shifting the entire fetch + push chain to 13:00
+        | onwards IST means every run sees a fully-finalised CA day, which is
+        | what the SBID / BGT pushes need to compute accurate suggestions.
+        |
+        | Schedule (all IST):
+        |   13:00–17:00  app:fetch-google-ads-campaigns retries (5x)
+        |   13:30–17:30  ga4:fetch-campaign-data retries (5x, offset 30m)
+        |   17:47        reset SBID status flag
+        |   17:48–17:52  sbid + budget pushes + utilization counts (sequential, 1m apart)
         */
-        // 5 morning runs (05:00, 06:00, 07:00, 08:00, 09:00 IST). Each retry covers any
-        // earlier slot that failed (rate limit, transient OAuth, network flake) so that by
-        // 09:18 IST — when sbid:update / budget:update-shopping start pushing — the
-        // google_ads_campaigns table has the freshest possible upstream data. The 09:00
-        // slot keeps parity with the previous single-run schedule for downstream timing.
-        $retryFiveTimesUntil('app:fetch-google-ads-campaigns', 'fetch-google-ads-campaigns', '09:00');
+        // 5 afternoon runs (13:00, 14:00, 15:00, 16:00, 17:00 IST). At 13:00 IST
+        // CA is at 00:30 PDT — yesterday CA is fully finalised; subsequent retries
+        // also see a complete day. The 17:00 final-slot leaves 48 minutes of buffer
+        // before the SBID push at 17:48 IST.
+        $retryFiveTimesUntil('app:fetch-google-ads-campaigns', 'fetch-google-ads-campaigns', '17:00');
 
-        // GA4 actual purchases / revenue back-fill — 5 retries at 05:30, 06:30, 07:30,
-        // 08:30, 09:30 IST (offset 30m from app:fetch-google-ads-campaigns so the GA4 API
-        // call happens after each Google-Ads run has populated/refreshed the matching
-        // campaign rows it joins by name). --days=30 keeps the L30 Sales window backfilled
-        // even when a prior morning run was missed; ga4:fetch-campaign-data is upsert-safe.
-        $retryFiveTimesUntil('ga4:fetch-campaign-data --days=30', 'ga4-fetch-campaign-data', '09:30');
+        // GA4 actual purchases / revenue back-fill — 5 retries at 13:30, 14:30,
+        // 15:30, 16:30, 17:30 IST (offset 30m from app:fetch-google-ads-campaigns
+        // so the GA4 API call happens after each Google-Ads run has populated/
+        // refreshed the matching campaign rows it joins by name). --days=30 keeps
+        // the L30 Sales window backfilled even when a prior afternoon run was
+        // missed; ga4:fetch-campaign-data is upsert-safe.
+        $retryFiveTimesUntil('ga4:fetch-campaign-data --days=30', 'ga4-fetch-campaign-data', '17:30');
 
         $ist($schedule->command('sbid:update')
-            ->dailyAt('09:18')
+            ->dailyAt('17:48')
             ->timezone('Asia/Kolkata')
             ->name('sbid-update')
             ->withoutOverlapping()
@@ -886,7 +935,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         $ist($schedule->command('sbid:update-serp')
-            ->dailyAt('09:19')
+            ->dailyAt('17:49')
             ->timezone('Asia/Kolkata')
             ->name('sbid-update-serp')
             ->withoutOverlapping()
@@ -894,7 +943,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         $ist($schedule->command('budget:update-shopping')
-            ->dailyAt('09:20')
+            ->dailyAt('17:50')
             ->timezone('Asia/Kolkata')
             ->name('budget-shopping')
             ->withoutOverlapping()
@@ -902,7 +951,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         $ist($schedule->command('budget:update-serp')
-            ->dailyAt('09:21')
+            ->dailyAt('17:51')
             ->timezone('Asia/Kolkata')
             ->name('budget-serp')
             ->withoutOverlapping()
@@ -910,14 +959,14 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         $ist($schedule->command('google:store-shopping-utilization-counts')
-            ->dailyAt('09:22')
+            ->dailyAt('17:52')
             ->timezone('Asia/Kolkata')
             ->name('google-shopping-utilization')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Reset SBID status daily — must complete before sbid:update at 09:18 IST.
+        // Reset SBID status daily — must complete before sbid:update at 17:48 IST.
         // withoutOverlapping(2) keeps the daily reset single-fire even if a tick is delayed.
         $schedule->call(function () {
             try {
@@ -929,43 +978,52 @@ class Kernel extends ConsoleKernel
                 Log::error('Scheduler: Failed to reset sbid_status - ' . $e->getMessage());
             }
         })
-            ->dailyAt('09:17')
+            ->dailyAt('17:47')
             ->timezone('Asia/Kolkata')
             ->name('reset-sbid-status')
             ->withoutOverlapping(2);
 
         /*
         |--------------------------------------------------------------------------
-        | META / FACEBOOK ADS
+        | META / FACEBOOK ADS — AFTERNOON IST WINDOW (US-PT-aligned)
         |--------------------------------------------------------------------------
+        | Most US Facebook ad accounts use Pacific Time. Shifted from morning IST
+        | to afternoon so each retry sees a fully-finalised PT day for "yesterday"
+        | instead of partial mid-PT-day data. Meta automation rules pushed
+        | accordingly to 20:30 IST so they fire AFTER the freshest sync completes.
         */
-        // 5 morning runs (06:00–10:00 IST). meta:sync-all-ads is the daily Meta
+        // 5 afternoon runs (14:30–18:30 IST). meta:sync-all-ads is the daily Meta
         // campaigns/ads/insights pull — multiple retries cover Facebook Graph rate-limit
-        // hiccups so the pipeline finishes ahead of meta-ads:run-automation at 11:15 IST.
-        $retryFiveTimesUntil('meta:sync-all-ads', 'meta-ads-sync-daily', '10:00');
+        // hiccups so the pipeline finishes ahead of meta-ads:run-automation at 20:30 IST.
+        $retryFiveTimesUntil('meta:sync-all-ads', 'meta-ads-sync-daily', '18:30');
 
-        // 5 morning runs (07:00–11:00 IST). meta-ads:sync is the full Ads-Manager-style
+        // 5 afternoon runs (15:00–19:00 IST). meta-ads:sync is the full Ads-Manager-style
         // refresh; it shares an API quota with the --insights-only variant below, so the
         // mutex names diverge by hour to avoid stacking but the two commands intentionally
         // run on the same hourly cadence.
-        $retryFiveTimesUntil('meta-ads:sync', 'meta-ads-manager-full-sync', '11:00');
-        $retryFiveTimesUntil('meta-ads:sync --insights-only', 'meta-ads-manager-insights-sync', '11:00');
+        $retryFiveTimesUntil('meta-ads:sync', 'meta-ads-manager-full-sync', '19:00');
+        $retryFiveTimesUntil('meta-ads:sync --insights-only', 'meta-ads-manager-insights-sync', '19:00');
 
+        // Shopify Meta Campaigns — 5 afternoon runs (15:30, 16:30, 17:30, 18:30, 19:30 IST).
+        // Pulls 7/30/60-day Facebook campaign metrics for Shopify; idempotent upsert by
+        // (channel, campaign_id, window) means a recovered late slot completes prior days.
+        $retryFiveTimesUntil('shopify:fetch-meta-campaigns --channel=both', 'fetch-shopify-fb-campaigns-7-30-60-days', '19:30');
+
+        // Meta automation rules push — 20:30 IST, AFTER the 19:30 IST shopify-fb-campaigns
+        // final retry and the 19:00 IST meta-ads:sync final retry, so the rules engine sees
+        // the freshest insights data.
         $ist($schedule->command('meta-ads:run-automation')
-            ->dailyAt('11:15')
+            ->dailyAt('20:30')
             ->timezone('Asia/Kolkata')
             ->name('meta-ads-automation-rules')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Shopify Meta Campaigns — 5 morning runs (07:30, 08:30, 09:30, 10:30, 11:30 IST).
-        // Pulls 7/30/60-day Facebook campaign metrics for Shopify; idempotent upsert by
-        // (channel, campaign_id, window) means a recovered late slot completes prior days.
-        $retryFiveTimesUntil('shopify:fetch-meta-campaigns --channel=both', 'fetch-shopify-fb-campaigns-7-30-60-days', '11:30');
-
+        // Google-Sheets-driven sync of meta:sync-all-ads — different mutex name from the
+        // API retries above, runs once daily at 21:45 IST after the last API retry chain.
         $ist($schedule->command('meta:sync-all-ads')
-            ->dailyAt('11:45')
+            ->dailyAt('21:45')
             ->timezone('Asia/Kolkata')
             ->name('sync-meta-all-ads-from-google-sheets')
             ->withoutOverlapping()
