@@ -649,6 +649,12 @@
                                         </a>
                                     </li>
                                     <li>
+                                        <a href="{{ url('/repricer/tiktok-search') }}"
+                                            class="{{ request()->is('repricer/tiktok-search*') ? 'active' : '' }}">
+                                            TikTok Competitors
+                                        </a>
+                                    </li>
+                                    <li>
                                         <a href="{{ url('/repricer/amz-comp-jungle') }}"
                                             class="{{ request()->is('repricer/amz-comp-jungle*') ? 'active' : '' }}">
                                             Amz Comp Jungle

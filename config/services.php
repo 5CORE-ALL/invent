@@ -610,6 +610,33 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Apify (used for TikTok Shop competitor search — SerpApi has no TikTok
+    | engine, so the /repricer/tiktok-search module hits an Apify Actor.
+    |--------------------------------------------------------------------------
+    | APIFY_TOKEN                  Apify API token (https://console.apify.com/account/integrations)
+    | APIFY_TIKTOK_ACTOR_ID        Actor slug (owner~name). Default is the
+    |                              "sentry/tiktok-shop-search-pro" actor whose
+    |                              output fields (product_id, brand, seller,
+    |                              min/avg/max_price, rating, review_count,
+    |                              rank_on_page) map cleanly onto our
+    |                              tiktok_competitor_products schema.
+    | APIFY_TIKTOK_REGION          Default ISO country code (US, GB, MY, ...).
+    | APIFY_TIKTOK_MAX_PRODUCTS    Upper bound passed to the actor per run.
+    | APIFY_TIKTOK_TIMEOUT_SECS    Synchronous actor run timeout (seconds).
+    */
+    'apify' => [
+        'token' => env('APIFY_TOKEN'),
+        'base_url' => env('APIFY_BASE_URL', 'https://api.apify.com/v2'),
+        'tiktok' => [
+            'actor_id' => env('APIFY_TIKTOK_ACTOR_ID', 'sentry~tiktok-shop-search-pro'),
+            'region' => env('APIFY_TIKTOK_REGION', 'US'),
+            'max_products' => (int) env('APIFY_TIKTOK_MAX_PRODUCTS', 100),
+            'timeout_secs' => (int) env('APIFY_TIKTOK_TIMEOUT_SECS', 180),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | AI Services
     |--------------------------------------------------------------------------
     */

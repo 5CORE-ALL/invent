@@ -5663,6 +5663,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/skus', [\App\Http\Controllers\RePricer\GoogleSearchController::class, 'getSkus'])->name('skus');
         Route::post('/store-competitors', [\App\Http\Controllers\RePricer\GoogleSearchController::class, 'storeCompetitors'])->name('store-competitors');
     });
+
+    // TikTok Shop competitor search — backed by Apify (SerpApi has no TikTok engine).
+    Route::prefix('repricer/tiktok-search')->name('repricer.tiktok-search.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'index'])->name('index');
+        Route::post('/search', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'search'])->name('search');
+        Route::get('/history', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'getSearchHistory'])->name('history');
+        Route::get('/results', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'getResults'])->name('results');
+        Route::get('/filter-options', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'getFilterOptions'])->name('filter-options');
+        Route::get('/raw-response', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'getRawResponse'])->name('raw-response');
+        Route::get('/skus', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'getSkus'])->name('skus');
+        Route::post('/store-competitors', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'storeCompetitors'])->name('store-competitors');
+    });
     
     // =========================================================================
     // JUNGLESCOUT COMPETITOR SALES ANALYSIS
