@@ -53,6 +53,11 @@
         .im-main-mp-row select { flex:1; min-width:0; font-size:11px; padding:2px 6px; }
         /* stored-image badge tint */
         .im-card.is-stored .im-card-img-wrap { border-bottom:2px solid #6366f1; }
+        /* pending upload preview */
+        .im-pending-card { width:90px; position:relative; }
+        .im-pending-img-wrap { position:relative; display:inline-block; }
+        .im-pending-del { position:absolute; top:2px; right:2px; background:rgba(220,38,38,.88); border:none; color:#fff; border-radius:50%; width:20px; height:20px; font-size:10px; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; line-height:1; z-index:2; }
+        .im-pending-del:hover { background:#b91c1c; }
         /* selection bar */
         .im-select-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
         .im-select-info { font-size:11px; font-weight:600; color:#6366f1; background:#eef2ff; border-radius:5px; padding:2px 8px; }
@@ -158,7 +163,7 @@
                             </button>
                             <div class="spinner-border spinner-border-sm text-success" id="uploadSpinner" role="status" style="display:none;"></div>
                             <span class="small text-success fw-semibold" id="uploadSuccessMsg" style="display:none;"></span>
-                            <span class="small text-muted">Max 12 images. Drag cards to reorder before saving.</span>
+                            <span class="small text-muted">Max 20 images. Drag cards to reorder before saving.</span>
                         </div>
                     </div>
                     {{-- ── END ADD IMAGES ──────────────────────────────────────── --}}
@@ -169,9 +174,14 @@
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchEbay2Btn">eBay2</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchEbay3Btn">eBay3</button>
                     </div> -->
-                    <div class="fw-semibold small mb-1 d-flex align-items-center gap-2 flex-wrap">
-                        Order (drag to reorder)
-                        <span class="text-muted small ms-auto">Drag cards to reorder</span>
+                    <div class="fw-semibold small mb-1 d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                        <span>Order (drag to reorder)</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-outline-danger btn-sm" id="removeAllImagesBtn" style="display:none;">
+                                <i class="fas fa-trash-alt me-1"></i>Remove all
+                            </button>
+                            <span class="text-muted small">Drag cards to reorder</span>
+                        </div>
                     </div>
                     <div id="imSlots"></div>
                     <div id="imMainByMpSection" class="im-main-mp-section mt-3" style="display:none;">
@@ -309,6 +319,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     const ADD_MODE_MARKETPLACES = ['shopify_main', 'shopify_pls', 'reverb'];
     const SHOPIFY_MARKETPLACES = ['shopify_main', 'shopify_pls'];
+    const PM_MAX_IMAGES = 20;
     const MP_IMAGE_LIMITS = {
         ebay: 12, ebay2: 12, ebay3: 12, amazon: 9, temu: 12, wayfair: 12, bestbuy: 12, macy: 12, reverb: 25,
         shopify_main: 20, shopify_pls: 20,
@@ -556,7 +567,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function pmImageUrls(row) {
         const u = [];
-        for (let i=1;i<=12;i++) {
+        for (let i=1;i<=PM_MAX_IMAGES;i++) {
             const v = row['image'+i];
             if (v && String(v).trim()) u.push(String(v).trim());
         }
@@ -565,7 +576,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const v = row[k];
             if (v && String(v).trim()) u.push(String(v).trim());
         });
-        return u.slice(0,12);
+        return u.slice(0, PM_MAX_IMAGES);
     }
 
     // storedImageIds: url → DB id (so we can delete from server)
@@ -583,11 +594,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderSlots();
         // Reset the upload section
         pendingFiles = [];
-        document.getElementById('modalFileInput').value = '';
-        document.getElementById('fileChosenLabel').textContent = 'No file chosen';
-        document.getElementById('uploadPreviewList').style.display = 'none';
-        document.getElementById('uploadPreviewItems').innerHTML = '';
-        document.getElementById('uploadImagesBtn').style.display = 'none';
+        updatePendingFileUi();
         document.getElementById('uploadSuccessMsg').style.display = 'none';
         if (editModal) editModal.show();
         // Load stored-image metadata for saved URLs in the background.
@@ -612,6 +619,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderSlots() {
         const el = document.getElementById('imSlots');
+        const removeAllBtn = document.getElementById('removeAllImagesBtn');
+        if (removeAllBtn) removeAllBtn.style.display = modalUrls.length ? 'inline-flex' : 'none';
         if (!modalUrls.length) {
             el.innerHTML = '<div class="text-muted small py-2">No images yet. Upload or fetch from a marketplace above.</div>';
             return;
@@ -725,54 +734,110 @@ document.addEventListener('DOMContentLoaded', () => {
         renderSlots();
     });
 
-    // ── ADD IMAGES: two-step flow (preview → explicit upload) ───────────────────
+    document.getElementById('removeAllImagesBtn')?.addEventListener('click', () => {
+        if (!modalUrls.length) return;
+        if (!confirm('Remove all images from this list? Click Save Images afterward to apply the change to Product Master.')) return;
+        modalUrls = [];
+        storedImageMeta.clear();
+        modalMainByMp = defaultMainByMarketplace();
+        pendingFiles = [];
+        updatePendingFileUi();
+        document.getElementById('uploadSuccessMsg').style.display = 'none';
+        renderSlots();
+    });
 
-    document.getElementById('modalFileInput')?.addEventListener('change', function () {
-        pendingFiles = Array.from(this.files || []);
-        const label  = document.getElementById('fileChosenLabel');
-        const list   = document.getElementById('uploadPreviewList');
-        const items  = document.getElementById('uploadPreviewItems');
-        const btn    = document.getElementById('uploadImagesBtn');
-        const msg    = document.getElementById('uploadSuccessMsg');
-
-        msg.style.display = 'none';
+    function syncPendingFileChrome() {
+        const label = document.getElementById('fileChosenLabel');
+        const list = document.getElementById('uploadPreviewList');
+        const items = document.getElementById('uploadPreviewItems');
+        const btn = document.getElementById('uploadImagesBtn');
+        const input = document.getElementById('modalFileInput');
 
         if (!pendingFiles.length) {
-            label.textContent = 'No file chosen';
-            list.style.display = 'none';
-            btn.style.display = 'none';
-            items.innerHTML = '';
+            if (label) label.textContent = 'No file chosen';
+            if (list) list.style.display = 'none';
+            if (btn) btn.style.display = 'none';
+            if (items) items.innerHTML = '';
+            if (input) input.value = '';
             return;
         }
 
-        label.textContent = pendingFiles.length === 1
-            ? pendingFiles[0].name
-            : `${pendingFiles.length} files selected`;
+        if (label) {
+            label.textContent = pendingFiles.length === 1
+                ? pendingFiles[0].name
+                : `${pendingFiles.length} files selected`;
+        }
+        if (list) list.style.display = 'block';
+        if (btn) btn.style.display = 'inline-flex';
+    }
+
+    function reindexPendingPreviewCards() {
+        document.querySelectorAll('#uploadPreviewItems .im-pending-card').forEach((card, idx) => {
+            const delBtn = card.querySelector('.im-pending-del');
+            if (delBtn) delBtn.dataset.idx = String(idx);
+        });
+    }
+
+    function updatePendingFileUi() {
+        const items = document.getElementById('uploadPreviewItems');
+        if (!items) {
+            syncPendingFileChrome();
+            return;
+        }
 
         items.innerHTML = '';
+        if (!pendingFiles.length) {
+            syncPendingFileChrome();
+            return;
+        }
+
         pendingFiles.forEach((f, idx) => {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const card = document.createElement('div');
-                card.className = 'text-center';
-                card.style.cssText = 'width:90px;';
+                card.className = 'im-pending-card text-center';
                 card.innerHTML = `
-                    <img src="${esc(e.target.result)}" alt="" style="width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;">
+                    <div class="im-pending-img-wrap">
+                        <img src="${esc(e.target.result)}" alt="" style="width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;">
+                        <button type="button" class="im-pending-del" data-idx="${idx}" title="Remove"><i class="fas fa-times"></i></button>
+                    </div>
                     <div class="small text-truncate mt-1" style="max-width:88px;" title="${esc(f.name)}">${esc(f.name)}</div>`;
                 items.appendChild(card);
             };
             reader.readAsDataURL(f);
         });
 
-        list.style.display = 'block';
-        btn.style.display  = 'inline-flex';
+        syncPendingFileChrome();
+    }
+
+    document.getElementById('uploadPreviewItems')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.im-pending-del');
+        if (!btn) return;
+        const idx = +btn.dataset.idx;
+        if (Number.isNaN(idx) || idx < 0 || idx >= pendingFiles.length) return;
+        pendingFiles.splice(idx, 1);
+        btn.closest('.im-pending-card')?.remove();
+        if (!pendingFiles.length) {
+            syncPendingFileChrome();
+            return;
+        }
+        reindexPendingPreviewCards();
+        syncPendingFileChrome();
+    });
+
+    // ── ADD IMAGES: two-step flow (preview → explicit upload) ───────────────────
+
+    document.getElementById('modalFileInput')?.addEventListener('change', function () {
+        pendingFiles = Array.from(this.files || []);
+        document.getElementById('uploadSuccessMsg').style.display = 'none';
+        updatePendingFileUi();
     });
 
     async function uploadPendingFiles() {
         const sku = document.getElementById('modalSku').value;
         if (!pendingFiles.length) return true;
-        if (modalUrls.length >= 12) {
-            toast('Maximum 12 images already added', false);
+        if (modalUrls.length >= PM_MAX_IMAGES) {
+            toast(`Maximum ${PM_MAX_IMAGES} images already added`, false);
             return false;
         }
 
@@ -787,7 +852,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const fd = new FormData();
             fd.append('sku', sku);
-            const allowed = 12 - modalUrls.length;
+            const allowed = PM_MAX_IMAGES - modalUrls.length;
             pendingFiles.slice(0, allowed).forEach(f => fd.append('files[]', f));
 
             const r = await fetch('/image-master/upload', {
@@ -802,19 +867,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 (j.images || []).forEach(img => {
                     storedImageMeta.set(img.url, { id: img.id, name: img.name });
                 });
-                modalUrls = modalUrls.concat(j.urls).slice(0, 12);
+                modalUrls = modalUrls.concat(j.urls).slice(0, PM_MAX_IMAGES);
                 renderSlots();
                 const count = j.urls.length;
                 msg.textContent   = `${count} image${count > 1 ? 's' : ''} uploaded successfully!`;
                 msg.style.display = 'inline';
                 toast(`${count} image${count > 1 ? 's' : ''} uploaded`);
-                // Reset file input & preview
-                document.getElementById('modalFileInput').value = '';
-                document.getElementById('fileChosenLabel').textContent = 'No file chosen';
-                document.getElementById('uploadPreviewList').style.display = 'none';
-                document.getElementById('uploadPreviewItems').innerHTML = '';
-                btn.style.display = 'none';
                 pendingFiles = [];
+                updatePendingFileUi();
             } else {
                 toast(j.message || 'Upload failed', false);
                 return false;
@@ -840,7 +900,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const j = await r.json();
         if (j.success && j.images?.length) {
             const add = j.images.map(x => typeof x==='string'?x:(x.url||x.locator||'')).filter(Boolean);
-            modalUrls = modalUrls.concat(add).slice(0,12);
+            modalUrls = modalUrls.concat(add).slice(0, PM_MAX_IMAGES);
             renderSlots();
             toast('Amazon images loaded');
         } else toast(j.message || 'No Amazon images', false);
@@ -851,7 +911,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const r = await fetch('/image-master/ebay-images?sku='+encodeURIComponent(sku)+'&account='+encodeURIComponent(account));
         const j = await r.json();
         if (j.success && j.images?.length) {
-            modalUrls = modalUrls.concat(j.images).slice(0,12);
+            modalUrls = modalUrls.concat(j.images).slice(0, PM_MAX_IMAGES);
             renderSlots();
             toast('eBay images loaded');
         } else toast(j.message || 'No eBay images', false);
