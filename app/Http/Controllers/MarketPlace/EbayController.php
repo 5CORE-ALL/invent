@@ -63,9 +63,41 @@ class EbayController extends Controller
     {
         $channelAdsPercent = app(ChannelMasterController::class)->getEbayMasterAdsPercent();
 
+        // L30 units sold — same source /ebay/daily-sales uses for its Total
+        // Quantity badge (Σ ebay_order_items.quantity for orders with period='l30').
+        // Static value rendered straight into the Qty Sold badge so this page
+        // always agrees with /ebay/daily-sales and the eBay row on
+        // /all-marketplace-master without any per-SKU plumbing.
+        $ordersL30TotalQty = $this->fetchEbayL30OrderQty();
+
         return view("market-places.ebay_tabulator_view", [
-            'channelAdsPercent' => $channelAdsPercent,
+            'channelAdsPercent'   => $channelAdsPercent,
+            'ordersL30TotalQty'   => $ordersL30TotalQty,
         ]);
+    }
+
+    /**
+     * Σ ebay_order_items.quantity for orders with period='l30' — same query path
+     * EbaySalesController::getData walks for /ebay/daily-sales.
+     */
+    private function fetchEbayL30OrderQty(): int
+    {
+        try {
+            $total = 0;
+            \App\Models\EbayOrder::with('items')
+                ->where('period', 'l30')
+                ->get()
+                ->each(function ($order) use (&$total) {
+                    foreach ($order->items as $item) {
+                        $qty = (int) ($item->quantity ?? 0);
+                        if ($qty > 0) $total += $qty;
+                    }
+                });
+            return $total;
+        } catch (\Throwable $e) {
+            Log::warning('fetchEbayL30OrderQty failed: ' . $e->getMessage());
+            return 0;
+        }
     }
 
        public function ebayViewData(Request $request)

@@ -6033,10 +6033,18 @@ class ChannelMasterController extends Controller
         $nPft = $metrics?->n_pft ?? 0;
         $nRoi = $metrics?->n_roi ?? 0;
 
-        $tabL30Units = $this->getEbayTabulatorL30UnitsForCvr('ebay');
-        if ($tabL30Units !== null) {
-            $l30Orders = $tabL30Units;
-        }
+        // NOTE: a previous version of this method overwrote $l30Orders with
+        //   $this->getEbayTabulatorL30UnitsForCvr('ebay')
+        // so that the legacy CVR formula (L30 Orders / Total Views) on
+        // /all-marketplace-master would secretly compute units/views and match
+        // the ebay-tabulator-view CVR. /all-marketplace-master's CVR is now
+        // Qty / Total Views directly (see updateSummaryStats on the blade), so
+        // that hack is unnecessary and actively wrong — it caused the L30
+        // Orders column to display unit counts (e.g. 2,579) instead of real
+        // order counts (1,327), making "Orders > Qty" appear in the table even
+        // though one order can never have fewer units than itself. $l30Orders
+        // is left at marketplace_daily_metrics.total_orders, which is the
+        // ground-truth eBay order count.
 
         // KW/PMT Spend: fetch directly from tables (same logic as Ebay KW Ads & PMT Ads pages)
         $ebayBreakdown = $this->fetchEbayAdSpendBreakdownFromTables('ebay');
@@ -6125,10 +6133,9 @@ class ChannelMasterController extends Controller
         $nPft = $metrics?->n_pft ?? 0;
         $nRoi = $metrics?->n_roi ?? 0;
 
-        $tabL30Units2 = $this->getEbayTabulatorL30UnitsForCvr('ebay2');
-        if ($tabL30Units2 !== null) {
-            $l30Orders = $tabL30Units2;
-        }
+        // Same removal as eBay 1 — see getEbayChannelData() comment. Keeping
+        // $l30Orders as marketplace_daily_metrics.total_orders so the master
+        // page's "L30 Orders" column shows real order counts, not units.
 
         // KW/PMT Spend: fetch directly from tables (same logic as Ebay 2 KW Ads & PMT Ads pages)
         $ebay2Breakdown = $this->fetchEbayAdSpendBreakdownFromTables('ebaytwo');
@@ -6259,10 +6266,9 @@ class ChannelMasterController extends Controller
         $nPft = $metrics?->n_pft ?? 0;
         $nRoi = $metrics?->n_roi ?? 0;
 
-        $tabL30Units3 = $this->getEbayTabulatorL30UnitsForCvr('ebay3');
-        if ($tabL30Units3 !== null) {
-            $l30Orders = $tabL30Units3;
-        }
+        // Same removal as eBay 1 — see getEbayChannelData() comment. Keeping
+        // $l30Orders as marketplace_daily_metrics.total_orders so the master
+        // page's "L30 Orders" column shows real order counts, not units.
 
         // KW/PMT Spend: fetch directly from tables (same logic as Ebay 3 KW Ads & PMT Ads pages)
         $ebay3Breakdown = $this->fetchEbayAdSpendBreakdownFromTables('ebaythree');
