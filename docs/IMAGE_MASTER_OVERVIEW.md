@@ -36,6 +36,7 @@ php artisan queue:work --queue=shopify-image-pull --sleep=3 --tries=1 --timeout=
 ```
 
 - Supervisor template: `config/supervisor/shopify-image-pull-worker.conf`
+- Crontab watchdog (starts worker if not running, every 5 min): `scripts/cron-shopify-image-pull-worker.sh`
 - Progress state: `storage/app/shopify-image-pull/job.json`; log: `storage/logs/shopify-image-pull.log`.
 - Manual re-dispatch: `php artisan image-master:shopify-pull-run` (or `--sync` to run in the current shell).
 
