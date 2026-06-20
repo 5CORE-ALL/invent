@@ -103,6 +103,21 @@ class ShopifyBulletPullJobStore
         return in_array($state['status'] ?? 'idle', ['running', 'paused', 'stopping'], true);
     }
 
+    public function markFailed(string $message): array
+    {
+        return $this->update(function (array $state) use ($message) {
+            if (! in_array($state['status'] ?? 'idle', ['running', 'paused', 'stopping'], true)) {
+                return $state;
+            }
+
+            $state['status'] = 'stopped';
+            $state['finished_at'] = now()->toDateTimeString();
+            $state['last_message'] = 'Job failed: '.$message;
+
+            return $state;
+        });
+    }
+
     private function defaultState(): array
     {
         return [

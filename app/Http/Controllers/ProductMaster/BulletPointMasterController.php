@@ -4,6 +4,7 @@ namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\ProductMaster\Concerns\RetriesMarketplacePush;
+use App\Jobs\RunShopifyBulletPullJob;
 use App\Http\Controllers\ProductMaster\ProductMasterController as PMController;
 use App\Models\BulletPointAiPromptRule;
 use App\Models\ProductMaster;
@@ -399,8 +400,21 @@ class BulletPointMasterController extends Controller
         }
 
         $job = $store->create($validated['skus'], 6);
-        $this->launchShopifyPullProcess();
-        $this->shopifyBulletPullLogger()->info('Background Shopify bullet pull queued', [
+        try {
+            $this->dispatchShopifyBulletPullJob();
+        } catch (\Throwable $e) {
+            $store->markFailed('Could not queue worker: '.$e->getMessage());
+            $this->shopifyBulletPullLogger()->error('Failed to queue Shopify bullet pull', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not queue Shopify bullet pull worker. Is the queue worker running?',
+                'job' => $store->load(),
+            ], 500);
+        }
+        $this->shopifyBulletPullLogger()->info('Shopify bullet pull queued', [
             'total' => $job['total'] ?? 0,
         ]);
 
@@ -446,6 +460,13 @@ class BulletPointMasterController extends Controller
             return $state;
         });
         $store->appendMessage('Resumed Shopify pull.', true);
+        try {
+            $this->dispatchShopifyBulletPullJob();
+        } catch (\Throwable $e) {
+            $this->shopifyBulletPullLogger()->warning('Resume could not re-queue Shopify bullet pull', [
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return response()->json(['success' => true, 'job' => $job]);
     }
@@ -1228,20 +1249,9 @@ class BulletPointMasterController extends Controller
         return [];
     }
 
-    private function launchShopifyPullProcess(): void
+    private function dispatchShopifyBulletPullJob(): void
     {
-        $php = PHP_BINARY;
-        $artisan = base_path('artisan');
-
-        if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
-            $cmd = 'start /B "" "'.$php.'" "'.$artisan.'" bullet-points:shopify-pull-run > NUL 2>&1';
-            pclose(popen($cmd, 'r'));
-
-            return;
-        }
-
-        $cmd = escapeshellarg($php).' '.escapeshellarg($artisan).' bullet-points:shopify-pull-run > /dev/null 2>&1 &';
-        exec($cmd);
+        RunShopifyBulletPullJob::dispatch();
     }
 
     private function shopifyPullAdminGet(string $url, string $token): \Illuminate\Http\Client\Response
