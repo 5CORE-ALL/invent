@@ -4,6 +4,7 @@ namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\ProductMaster\ProductMasterController as PMController;
+use App\Jobs\RunShopifyImagePullJob;
 use App\Models\ProductImage;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -32,6 +33,8 @@ use Illuminate\Support\Facades\Schema;
 
 class ImageMasterController extends Controller
 {
+    private const PM_MAX_IMAGES = 20;
+
     public function index(Request $request)
     {
         $mode = $request->query('mode', '');
@@ -210,7 +213,7 @@ class ImageMasterController extends Controller
             'updates.*.images.*'     => 'nullable|string|max:2048',
             'mode'                   => 'nullable|string|in:replace,add',
             'main_by_marketplace'    => 'nullable|array',
-            'main_by_marketplace.*'  => 'integer|min:0|max:11',
+            'main_by_marketplace.*'  => 'integer|min:0|max:'.(self::PM_MAX_IMAGES - 1),
             'dry_run'                => 'nullable|boolean',
         ]);
 
@@ -450,20 +453,20 @@ class ImageMasterController extends Controller
     }
 
     /**
-     * Save ordered URLs to Product Master image1–image12 and main_image.
+     * Save ordered URLs to Product Master image1–image20 and main_image.
      */
     public function saveProductMasterImages(Request $request)
     {
         $validated = $request->validate([
             'sku' => 'required|string|max:255',
-            'images' => 'present|array|max:12',
+            'images' => 'present|array|max:'.self::PM_MAX_IMAGES,
             'images.*' => 'nullable|string|max:2048',
             'main_by_marketplace' => 'nullable|array',
-            'main_by_marketplace.*' => 'integer|min:0|max:11',
+            'main_by_marketplace.*' => 'integer|min:0|max:'.(self::PM_MAX_IMAGES - 1),
         ]);
         $sku = $this->normalizeSku($validated['sku']);
         $images = $this->normalizeStorageUrlsForImageMasterMetrics(
-            array_values(array_slice($validated['images'], 0, 12))
+            array_values(array_slice($validated['images'], 0, self::PM_MAX_IMAGES))
         );
         $mainByMarketplace = $this->sanitizeMainByMarketplace(
             $validated['main_by_marketplace'] ?? [],
@@ -475,7 +478,7 @@ class ImageMasterController extends Controller
             return response()->json(['success' => false, 'message' => 'Product not found'], 404);
         }
 
-        for ($i = 0; $i < 12; $i++) {
+        for ($i = 0; $i < self::PM_MAX_IMAGES; $i++) {
             $col = 'image'.($i + 1);
             $product->{$col} = $images[$i] ?? null;
         }
@@ -506,7 +509,7 @@ class ImageMasterController extends Controller
     {
         $validated = $request->validate([
             'sku'    => 'required|string|max:255',
-            'files'  => 'required|array|min:1|max:12',
+            'files'  => 'required|array|min:1|max:'.self::PM_MAX_IMAGES,
             'files.*' => 'file|mimes:jpg,jpeg,png,webp|max:10240',
         ]);
 
@@ -798,7 +801,7 @@ class ImageMasterController extends Controller
             if (! in_array($mp, $allowed, true)) {
                 continue;
             }
-            $out[$mp] = max(0, min(11, (int) $idx));
+            $out[$mp] = max(0, min(self::PM_MAX_IMAGES - 1, (int) $idx));
         }
 
         return $out;
@@ -815,7 +818,7 @@ class ImageMasterController extends Controller
         }
 
         $allowed = array_keys($this->marketplaceTableMap());
-        $maxIdx = min(11, $imageCount - 1);
+        $maxIdx = min(self::PM_MAX_IMAGES - 1, $imageCount - 1);
         $out = [];
         foreach ($input as $mp => $idx) {
             $mp = strtolower(trim((string) $mp));
@@ -1212,7 +1215,7 @@ class ImageMasterController extends Controller
                 ], 422);
             }
 
-            $shopifyImages = array_slice($shopify['images'] ?? [], 0, 12);
+            $shopifyImages = array_slice($shopify['images'] ?? [], 0, self::PM_MAX_IMAGES);
             if ($shopifyImages === []) {
                 $pullLog->warning('No Shopify images detected', [
                     'sku' => $sku,
@@ -1261,7 +1264,7 @@ class ImageMasterController extends Controller
                 ]);
             }
 
-            for ($i = 1; $i <= 12; $i++) {
+            for ($i = 1; $i <= self::PM_MAX_IMAGES; $i++) {
                 $product->{'image'.$i} = $shopifyImages[$i - 1] ?? null;
             }
             $product->main_image = $shopifyImages[0] ?? null;
@@ -1328,8 +1331,21 @@ class ImageMasterController extends Controller
         }
 
         $job = $store->create($validated['skus'], 6);
-        $this->launchShopifyImagePullProcess();
-        $this->shopifyImagePullLogger()->info('Background Shopify image pull queued', [
+        try {
+            $this->dispatchShopifyImagePullJob();
+        } catch (\Throwable $e) {
+            $store->markFailed('Could not queue worker: '.$e->getMessage());
+            $this->shopifyImagePullLogger()->error('Failed to queue Shopify image pull', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not queue Shopify image pull worker. Is the queue worker running?',
+                'job' => $store->load(),
+            ], 500);
+        }
+        $this->shopifyImagePullLogger()->info('Shopify image pull queued', [
             'total' => $job['total'] ?? 0,
         ]);
 
@@ -1374,7 +1390,13 @@ class ImageMasterController extends Controller
             return $state;
         });
         $store->appendMessage('Resumed Shopify image pull.', true);
-        $this->launchShopifyImagePullProcess();
+        try {
+            $this->dispatchShopifyImagePullJob();
+        } catch (\Throwable $e) {
+            $this->shopifyImagePullLogger()->warning('Resume could not re-queue Shopify image pull', [
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return response()->json(['success' => true, 'job' => $job]);
     }
@@ -1662,7 +1684,7 @@ class ImageMasterController extends Controller
             $out[] = $url;
         }
 
-        return array_slice($out, 0, 12);
+        return array_slice($out, 0, self::PM_MAX_IMAGES);
     }
 
     /**
@@ -1724,7 +1746,7 @@ class ImageMasterController extends Controller
         }
 
         $urls = [];
-        for ($i = 1; $i <= 12; $i++) {
+        for ($i = 1; $i <= self::PM_MAX_IMAGES; $i++) {
             $value = trim((string) ($product->{'image'.$i} ?? ''));
             if ($value !== '') {
                 $urls[] = $value;
@@ -1755,20 +1777,9 @@ class ImageMasterController extends Controller
         }, $images));
     }
 
-    private function launchShopifyImagePullProcess(): void
+    private function dispatchShopifyImagePullJob(): void
     {
-        $php = PHP_BINARY;
-        $artisan = base_path('artisan');
-
-        if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
-            $cmd = 'start /B "" "'.$php.'" "'.$artisan.'" image-master:shopify-pull-run > NUL 2>&1';
-            pclose(popen($cmd, 'r'));
-
-            return;
-        }
-
-        $cmd = escapeshellarg($php).' '.escapeshellarg($artisan).' image-master:shopify-pull-run > /dev/null 2>&1 &';
-        exec($cmd);
+        RunShopifyImagePullJob::dispatch();
     }
 
     private function shopifyPullAdminGet(string $url, string $token): \Illuminate\Http\Client\Response

@@ -28,6 +28,16 @@ No dry-run buttons in the UI. Backend APIs still accept `dry_run: true` for deve
 
 - **Run in BG** writes to `main_image`, `image1`–`image12`.
 - Does not push to marketplaces.
+- Background worker: `App\Jobs\RunShopifyImagePullJob` on queue **`shopify-image-pull`** (dedicated — not the default queue).
+- Requires a dedicated queue worker on the server:
+
+```bash
+php artisan queue:work --queue=shopify-image-pull --sleep=3 --tries=1 --timeout=14400
+```
+
+- Supervisor template: `config/supervisor/shopify-image-pull-worker.conf`
+- Progress state: `storage/app/shopify-image-pull/job.json`; log: `storage/logs/shopify-image-pull.log`.
+- Manual re-dispatch: `php artisan image-master:shopify-pull-run` (or `--sync` to run in the current shell).
 
 ## Push paths
 
@@ -40,4 +50,4 @@ No dry-run buttons in the UI. Backend APIs still accept `dry_run: true` for deve
 ## Debugging
 
 - Push failures → `storage/logs/laravel.log`, progress box under table
-- Pull job stuck → `storage/app/shopify-image-pull/job.json`, `storage/logs/shopify-image-pull.log`
+- Pull job stuck → check queue worker is running, then `storage/app/shopify-image-pull/job.json`, `storage/logs/shopify-image-pull.log`
