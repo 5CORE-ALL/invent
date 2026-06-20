@@ -205,6 +205,22 @@
                         <button id="wf-price-mode-btn" type="button" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same SPRICE (enter one price, applies to all selected rows)">
                             <i class="fas fa-exchange-alt"></i> Pricing mode
                         </button>
+
+                        <!-- Play / Pause parent navigation -->
+                        <div class="btn-group align-items-center ms-2" role="group" aria-label="Parent navigation">
+                            <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
+                                <i class="fas fa-step-backward"></i>
+                            </button>
+                            <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm" title="Start parent navigation">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <button type="button" id="play-pause" class="btn btn-sm btn-warning rounded-circle shadow-sm" style="display: none;" title="Stop navigation and show all">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                            <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
+                                <i class="fas fa-step-forward"></i>
+                            </button>
+                        </div>
                     </div>
 
                     <div id="wf-discount-container" class="p-2 bg-light border rounded mb-2" style="display:none;">
@@ -826,9 +842,84 @@
             $('#wf-test-badge').text('Test: ' + missingCount.toLocaleString());
         }
 
+        // Play / Pause parent navigation state
+        let wfUniqueParents = [];
+        let isWfPlayActive = false;
+        let currentWfParentIndex = -1;
+
+        function normalizeWfParentKey(val) {
+            if (val == null || val === '') return '';
+            return String(val).trim().replace(/\s+/g, ' ').replace(/^PARENT\s+/i, '');
+        }
+        function buildWfUniqueParents() {
+            if (!table) return [];
+            const allRows = table.getData('all') || [];
+            const seen = {};
+            const list = [];
+            allRows.forEach(function(r) {
+                const p = normalizeWfParentKey(r.parent);
+                if (p && !seen[p]) { seen[p] = true; list.push(p); }
+            });
+            list.sort(function(a, b) { return String(a).localeCompare(String(b)); });
+            return list;
+        }
+        function updateWfPlayButtonStates() {
+            $('#play-backward').prop('disabled', !isWfPlayActive || currentWfParentIndex <= 0);
+            $('#play-forward').prop('disabled', !isWfPlayActive || currentWfParentIndex >= wfUniqueParents.length - 1);
+        }
+        function startWfPlay() {
+            wfUniqueParents = buildWfUniqueParents();
+            if (wfUniqueParents.length === 0) return;
+            isWfPlayActive = true;
+            currentWfParentIndex = 0;
+            $('#play-auto').hide();
+            $('#play-pause').show();
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateWfPlayButtonStates();
+        }
+        function stopWfPlay() {
+            isWfPlayActive = false;
+            currentWfParentIndex = -1;
+            $('#play-pause').hide();
+            $('#play-auto').show();
+            applyFilters();
+            updateWfPlayButtonStates();
+        }
+        function nextWfParent() {
+            if (!isWfPlayActive || currentWfParentIndex >= wfUniqueParents.length - 1) return;
+            currentWfParentIndex++;
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateWfPlayButtonStates();
+        }
+        function previousWfParent() {
+            if (!isWfPlayActive || currentWfParentIndex <= 0) return;
+            currentWfParentIndex--;
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateWfPlayButtonStates();
+        }
+        $('#play-auto').on('click', startWfPlay);
+        $('#play-pause').on('click', stopWfPlay);
+        $('#play-forward').on('click', nextWfParent);
+        $('#play-backward').on('click', previousWfParent);
+
         function applyFilters() {
             if (!table) return;
             table.clearFilter();
+
+            // Play navigation: only show current parent's group
+            if (isWfPlayActive && wfUniqueParents.length > 0 && currentWfParentIndex >= 0) {
+                const currentKey = wfUniqueParents[currentWfParentIndex];
+                if (currentKey) {
+                    table.addFilter(function(d) {
+                        const p = normalizeWfParentKey(d.parent);
+                        return p === currentKey || p === ('PARENT ' + currentKey);
+                    });
+                }
+                return;
+            }
 
             const skuSearch = ($('#wf-pricing-sku-search').val() || '').toLowerCase().trim();
             const parentSearch = ($('#wf-pricing-parent-search').val() || '').toLowerCase().trim();

@@ -62,6 +62,23 @@
                 
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 150px; display: inline-block;">
+                    <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 150px; display: inline-block;">
+
+                    <!-- Play / Pause parent navigation -->
+                    <div class="btn-group align-items-center ms-1" role="group" aria-label="Parent navigation">
+                        <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
+                            <i class="fas fa-step-backward"></i>
+                        </button>
+                        <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm" title="Start parent navigation">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button type="button" id="play-pause" class="btn btn-sm btn-warning rounded-circle shadow-sm" style="display: none;" title="Stop navigation and show all">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
+                            <i class="fas fa-step-forward"></i>
+                        </button>
+                    </div>
 
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -2993,9 +3010,11 @@
             });
 
             // SKU Search functionality
-            $('#sku-search').on('keyup', function() {
-                const value = $(this).val();
-                table.setFilter("(Child) sku", "like", value);
+            $('#sku-search, #parent-search').on('keyup', function() {
+                table.setFilter([
+                    { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' },
+                    { field: 'Parent', type: 'like', value: $('#parent-search').val() || '' }
+                ]);
             });
 
             table.on('cellEdited', function(cell) {
@@ -3091,6 +3110,69 @@
             });
 
             // Apply filters
+            // Play / Pause parent navigation state
+            let apcUniqueParents = [];
+            let isApcPlayActive = false;
+            let currentApcParentIndex = -1;
+
+            function normalizeApcParentKey(val) {
+                if (val == null || val === '') return '';
+                return String(val).trim().replace(/\s+/g, ' ').replace(/^PARENT\s+/i, '');
+            }
+            function buildApcUniqueParents() {
+                if (!table) return [];
+                const allRows = table.getData('all') || [];
+                const seen = {};
+                const list = [];
+                allRows.forEach(function(r) {
+                    const p = normalizeApcParentKey(r.Parent);
+                    if (p && !r.is_parent_summary && !seen[p]) { seen[p] = true; list.push(p); }
+                });
+                list.sort(function(a, b) { return String(a).localeCompare(String(b)); });
+                return list;
+            }
+            function updateApcPlayButtonStates() {
+                $('#play-backward').prop('disabled', !isApcPlayActive || currentApcParentIndex <= 0);
+                $('#play-forward').prop('disabled', !isApcPlayActive || currentApcParentIndex >= apcUniqueParents.length - 1);
+            }
+            function startApcPlay() {
+                apcUniqueParents = buildApcUniqueParents();
+                if (apcUniqueParents.length === 0) return;
+                isApcPlayActive = true;
+                currentApcParentIndex = 0;
+                $('#play-auto').hide();
+                $('#play-pause').show();
+                applyFilters();
+                try { table.setPage(1); } catch (e) {}
+                updateApcPlayButtonStates();
+            }
+            function stopApcPlay() {
+                isApcPlayActive = false;
+                currentApcParentIndex = -1;
+                $('#play-pause').hide();
+                $('#play-auto').show();
+                applyFilters();
+                updateApcPlayButtonStates();
+            }
+            function nextApcParent() {
+                if (!isApcPlayActive || currentApcParentIndex >= apcUniqueParents.length - 1) return;
+                currentApcParentIndex++;
+                applyFilters();
+                try { table.setPage(1); } catch (e) {}
+                updateApcPlayButtonStates();
+            }
+            function previousApcParent() {
+                if (!isApcPlayActive || currentApcParentIndex <= 0) return;
+                currentApcParentIndex--;
+                applyFilters();
+                try { table.setPage(1); } catch (e) {}
+                updateApcPlayButtonStates();
+            }
+            $('#play-auto').on('click', startApcPlay);
+            $('#play-pause').on('click', stopApcPlay);
+            $('#play-forward').on('click', nextApcParent);
+            $('#play-backward').on('click', previousApcParent);
+
             function applyFilters() {
                 const inventoryFilter = $('#inventory-filter').val();
                 const nrlFilter = $('#nrl-filter').val();
@@ -3105,6 +3187,18 @@
                 const spriceFilter = $('#sprice-filter').val();
 
                 table.clearFilter(true);
+
+                // Play navigation: only show current parent's group
+                if (isApcPlayActive && apcUniqueParents.length > 0 && currentApcParentIndex >= 0) {
+                    const currentKey = apcUniqueParents[currentApcParentIndex];
+                    if (currentKey) {
+                        table.addFilter(function(d) {
+                            const p = normalizeApcParentKey(d.Parent);
+                            return p === currentKey || p === ('PARENT ' + currentKey);
+                        });
+                    }
+                    return;
+                }
 
                 // SEO Mode filters
                 if (seoModeActive) {

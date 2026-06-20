@@ -1178,7 +1178,6 @@
                                     'doba': '/doba',
                                     'walmart': '/walmartAnalysis',
                                     ' usa': '/usa-analytics',
-                                    'shein': '/sheinAnalysis',
                                     'tiktokshop': '/tiktok-pricing',
                                 };
 

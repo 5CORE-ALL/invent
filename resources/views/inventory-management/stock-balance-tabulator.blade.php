@@ -205,6 +205,10 @@
                     <button id="toggle-history-btn" class="btn btn-sm btn-secondary">
                         <i class="fas fa-history"></i> Show History
                     </button>
+
+                    <button id="hide-pink-btn" class="btn btn-sm btn-danger" title="Hide rules currently ACTIVE. Click to toggle off and show every row.">
+                        <i class="fas fa-eye-slash"></i> Hide: ON
+                    </button>
                 </div>
             
             <!-- History Table Container (Hidden by default) -->
@@ -293,6 +297,28 @@
     let selectedSkus = new Set();
     let allTableData = [];
     let serverSavedPreferences = {}; // FROM SKU & ratio per to_sku (synced across devices)
+    let hidePinkActive = true; // Default ON: all "Hide" rules apply strictly on page load
+    let customFromQty = {}; // Per TO SKU: user-edited FROM Qty (overrides default FROM SKU INV)
+    let hideFilterReapplyTimer = null; // Debounce handle for re-running filters when FROM SKU/Qty change
+    let reapplyHideFilterDebounced = function() {}; // Set inside $(document).ready once applyAllFilters exists
+    let restoringSavedFromSku = false; // True while restoreSavedFromSku() is firing synthetic change events
+    let initialRestoreDone = false;    // True after the first restoreSavedFromSku() pass completes
+
+    // Returns the effective FROM Qty for a row (user-edited override, else FROM SKU's INV).
+    // Returns null when no FROM SKU has been chosen yet so callers can distinguish "unknown".
+    function getFromQtyForRowData(data) {
+        if (!data || !data.SKU) return null;
+        if (typeof customFromQty[data.SKU] !== 'undefined') {
+            const v = parseFloat(customFromQty[data.SKU]);
+            return isNaN(v) ? null : v;
+        }
+        const pref = serverSavedPreferences[data.SKU] || {};
+        const fromSku = pref.fromSku || null;
+        if (!fromSku) return null;
+        const fromItem = allTableData.find(function(i) { return i.SKU === fromSku; });
+        if (!fromItem) return null;
+        return parseFloat(fromItem.INV) || 0;
+    }
     
     // Toast notification (optional delay in ms; default 5000)
     function showToast(message, type = 'info', delayMs = 5000) {
@@ -767,8 +793,17 @@
                 $row.find('.from-sold-display').val('');
                 $row.find('.from-qty-input').val('');
                 $row.find('.from-dil-percent').attr('class', 'from-dil-percent').text('-');
+                // Also drop any user-edited FROM Qty memory for this row
+                delete customFromQty[toSku];
             }
             syncDisplayFromSkuSingle($row);
+
+            // FROM SKU just changed - re-evaluate the Hide filter and the priority sort.
+            // Skip while restoreSavedFromSku() is firing bulk synthetic change events; the
+            // renderComplete handler invokes a single reapply once per render instead.
+            if (!restoringSavedFromSku) {
+                reapplyHideFilterDebounced();
+            }
         });
         
         // Ratio change handler (inline in table)
@@ -798,7 +833,19 @@
         // FROM Qty input change handler
         $(document).on('input', '.from-qty-input', function() {
             const $row = $(this).closest('.tabulator-row');
+            const row = table.getRow($row[0]);
+            if (row) {
+                const toSku = row.getData().SKU;
+                const raw = $(this).val();
+                if (raw === '' || raw === null || typeof raw === 'undefined') {
+                    delete customFromQty[toSku];
+                } else {
+                    customFromQty[toSku] = parseFloat(raw);
+                }
+            }
             calculateToQty($row);
+            // FROM Qty changed - re-evaluate Hide filter (a 0 may now hide this row).
+            reapplyHideFilterDebounced();
         });
         
         // Calculate TO Qty based on FROM Qty × Ratio
@@ -929,11 +976,15 @@
                 return response.data || [];
             },
             dataLoaded: function() {
-                // Fetch server-saved preferences so FROM SKU & ratio sync across devices
+                // Fetch server-saved preferences so FROM SKU & ratio sync across devices.
+                // The initial filter/sort pass runs BEFORE this async response arrives,
+                // so we explicitly re-apply once the preferences are in to make sure the
+                // Hide rules see the restored FROM SKU selections.
                 $.get('/stock-balance-transfer-preferences').done(function(res) {
                     if (res.preferences && typeof res.preferences === 'object') {
                         serverSavedPreferences = res.preferences;
                         restoreSavedFromSku();
+                        reapplyHideFilterDebounced();
                     }
                 });
             },
@@ -1013,20 +1064,48 @@
                     title: "DIL%",
                     field: "DIL",
                     hozAlign: "center",
-                    sorter: "number",
+                    // Priority-aware sorter: rows with row.INV == 0 AND a viable FROM Qty (>0)
+                    // bubble to the top of whichever DIL direction is active, then ties fall
+                    // back to the normal numeric DIL comparison.
+                    sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                        const aData = aRow.getData();
+                        const bData = bRow.getData();
+                        const aInv = parseFloat(aData.INV) || 0;
+                        const bInv = parseFloat(bData.INV) || 0;
+                        const aFromQty = getFromQtyForRowData(aData);
+                        const bFromQty = getFromQtyForRowData(bData);
+                        const aPriority = (aInv === 0 && aFromQty !== null && aFromQty > 0) ? 0 : 1;
+                        const bPriority = (bInv === 0 && bFromQty !== null && bFromQty > 0) ? 0 : 1;
+                        if (aPriority !== bPriority) {
+                            // Always keep priority-0 on top regardless of sort dir
+                            return dir === 'desc' ? (bPriority - aPriority) : (aPriority - bPriority);
+                        }
+                        return (parseFloat(a) || 0) - (parseFloat(b) || 0);
+                    },
                     width: 70,
                     formatter: function(cell) {
+                        const data = cell.getRow().getData();
                         const value = parseFloat(cell.getValue()) || 0;
-                        if (value <= 0) return '<span>-</span>';
-                        
+                        const inv = parseFloat(data.INV) || 0;
+                        const sold = parseFloat(data.SOLD) || 0;
+
+                        if (value <= 0) {
+                            // Stock on hand but nothing sold -> explicit 0% (red).
+                            // Truly unknown / no data -> dash.
+                            if (inv > 0 && sold === 0) {
+                                return '<span class="dil-red">0%</span>';
+                            }
+                            return '<span>-</span>';
+                        }
+
                         const percent = Math.round(value * 100);
                         let className = '';
-                        
+
                         if (percent < 16.66) className = 'dil-red';
                         else if (percent >= 16.66 && percent < 25) className = 'dil-yellow';
                         else if (percent >= 25 && percent < 50) className = 'dil-green';
                         else className = 'dil-pink';
-                        
+
                         return '<span class="' + className + '">' + percent + '%</span>';
                     }
                 },
@@ -1272,7 +1351,103 @@
                     table.addFilter("ACTION", "=", actionVal);
                 }
             }
+
+            // ALWAYS-ON rule: hide a row whose INV is 0 and whose FROM Qty is *known* to
+            // be 0 (either a FROM SKU is selected and has INV 0, or the user typed 0).
+            // Rows with INV=0 but no FROM SKU yet are kept visible so the user can pick
+            // a donor. This rule applies regardless of the Hide button state.
+            table.addFilter(function(data) {
+                const rowInvZero = (parseFloat(data.INV) || 0) === 0;
+                if (!rowInvZero) return true;
+                const fromQtyVal = getFromQtyForRowData(data); // null when unknown
+                if (fromQtyVal === null) return true;
+                return fromQtyVal !== 0;
+            });
+
+            // Hide button rules (only when Hide is active):
+            //   (a) FROM DIL% is pink (>=50%), regardless of DIL%, OR
+            //   (b) DIL% is pink   AND FROM Qty == 0, OR
+            //   (c) DIL% is yellow AND FROM DIL% is green, OR
+            //   (d) DIL% is red    AND FROM DIL% is green or yellow, OR
+            //   (e) DIL% is green  AND FROM DIL% is green, OR
+            //   (f) DIL% is yellow AND FROM DIL% is yellow, OR
+            //   (g) DIL% is red    AND FROM DIL% is red
+            // Color thresholds (match the dil-* CSS classes):
+            //   red    : < 16.66
+            //   yellow : >= 16.66 and < 25
+            //   green  : >= 25    and < 50
+            //   pink   : >= 50
+            if (hidePinkActive) {
+                table.addFilter(function(data) {
+                    const pref = serverSavedPreferences[data.SKU] || {};
+                    const fromSku = pref.fromSku || null;
+                    if (!fromSku) return true; // no FROM SKU selected -> nothing to compare
+
+                    const fromItem = allTableData.find(function(i) { return i.SKU === fromSku; });
+                    if (!fromItem) return true;
+
+                    const dilPercent = (parseFloat(data.DIL) || 0) * 100;
+                    const dilRed    = dilPercent > 0     && dilPercent < 16.66;
+                    const dilYellow = dilPercent >= 16.66 && dilPercent < 25;
+                    const dilGreen  = dilPercent >= 25    && dilPercent < 50;
+                    const dilPink   = dilPercent >= 50;
+
+                    const fromDilPercent = (parseFloat(fromItem.DIL) || 0) * 100;
+                    const fromDilRed    = fromDilPercent > 0     && fromDilPercent < 16.66;
+                    const fromDilYellow = fromDilPercent >= 16.66 && fromDilPercent < 25;
+                    const fromDilGreen  = fromDilPercent >= 25    && fromDilPercent < 50;
+                    const fromDilPink   = fromDilPercent >= 50;
+
+                    const fromQtyVal = getFromQtyForRowData(data);
+                    const fromQty = (fromQtyVal === null) ? 0 : fromQtyVal;
+                    const fromQtyZero = fromQty === 0;
+
+                    if (fromDilPink) return false;
+                    if (dilPink && fromQtyZero) return false;
+                    if (dilYellow && fromDilGreen) return false;
+                    if (dilRed && (fromDilGreen || fromDilYellow)) return false;
+                    if (dilGreen && fromDilGreen) return false;
+                    if (dilYellow && fromDilYellow) return false;
+                    if (dilRed && fromDilRed) return false;
+                    return true;
+                });
+            }
         }
+
+        // Debounced re-application of filters AND sort. FROM SKU / FROM Qty changes
+        // mutate state outside Tabulator's awareness, so both the always-on INV/FROM Qty
+        // rule, the Hide button rules, and the INV=0+fromQty>0 priority sort need to be
+        // re-evaluated when they change.
+        reapplyHideFilterDebounced = function() {
+            if (hideFilterReapplyTimer) clearTimeout(hideFilterReapplyTimer);
+            hideFilterReapplyTimer = setTimeout(function() {
+                hideFilterReapplyTimer = null;
+                applyAllFilters();
+                const sorters = table.getSorters();
+                if (sorters && sorters.length) {
+                    table.setSort(sorters.map(function(s) {
+                        return { column: s.field, dir: s.dir };
+                    }));
+                }
+            }, 150);
+        };
+
+        // Hide button toggle - label describes the CURRENT state (not the next action),
+        // so users can tell at a glance whether the hide rules are active.
+        $('#hide-pink-btn').on('click', function() {
+            hidePinkActive = !hidePinkActive;
+            const $btn = $(this);
+            if (hidePinkActive) {
+                $btn.removeClass('btn-outline-secondary').addClass('btn-danger')
+                    .attr('title', 'Hide rules currently ACTIVE. Click to toggle off and show every row.')
+                    .html('<i class="fas fa-eye-slash"></i> Hide: ON');
+            } else {
+                $btn.removeClass('btn-danger').addClass('btn-outline-secondary')
+                    .attr('title', 'Hide rules currently OFF. Click to re-enable hiding.')
+                    .html('<i class="fas fa-eye"></i> Hide: OFF');
+            }
+            applyAllFilters();
+        });
         
         // Export CSV
         $('#export-btn').on('click', function() {
@@ -1306,6 +1481,8 @@
         
         // Restore saved FROM SKU and ratio: server (cross-device) first, then localStorage, then LAST_UPDATE
         function restoreSavedFromSku() {
+            restoringSavedFromSku = true;
+            try {
             $('.to-sku-select').each(function() {
                 const $select = $(this);
                 const $row = $select.closest('.tabulator-row');
@@ -1331,11 +1508,22 @@
                 }
                 syncDisplayFromSkuSingle($row);
             });
+            } finally {
+                restoringSavedFromSku = false;
+            }
         }
         
         // Update table on render complete
         table.on('renderComplete', function() {
             restoreSavedFromSku();
+            // After the very first restore pass (which is where server-saved FROM SKUs
+            // get populated), force one reapply so the Hide filter and the priority sort
+            // reflect the freshly-restored state. Subsequent renders skip this to avoid
+            // a renderComplete -> setSort -> renderComplete feedback loop.
+            if (!initialRestoreDone) {
+                initialRestoreDone = true;
+                reapplyHideFilterDebounced();
+            }
         });
         
     });

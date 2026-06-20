@@ -57,6 +57,9 @@
                                 <li>
                                     <a href="{{ route('permissions') }}">Permission</a>
                                 </li>
+                                <li>
+                                    <a href="{{ route('users.rr-checklist.index') }}" class="{{ request()->routeIs('users.rr-checklist.*') ? 'active' : '' }}">R&amp;R Checklist</a>
+                                </li>
                         </ul>
                     </div>
                 </li>
@@ -868,6 +871,12 @@
                         </li>
                         <li>
                             <a href="{{ route('customer.care.refunds') }}">Refunds</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.faq.customers.index') }}"
+                               class="{{ request()->routeIs('customer.care.faq.customers.*') ? 'active' : '' }}">
+                                FAQ / FFP Customers
+                            </a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.orders.on.hold') }}">Orders On Hold</a>
@@ -2150,10 +2159,6 @@
                                 </a>
                                 <div class="collapse" id="sidebarShein">
                                     <ul class="side-nav-third-level">
-                                        <li>
-                                            <a href="{{ url('sheinAnalysis') }}">Shein
-                                                Analytics</a>
-                                        </li>
                                             <li><a href="{{ route('zero.shein') }}">Shein 0 view</a></li>
                                             <li><a href="{{ route('listing.shein') }}">Listing Shein</a></li>
                                     </ul>

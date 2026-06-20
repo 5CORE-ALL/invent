@@ -693,14 +693,18 @@ class TaskController extends Controller
             }
         }
 
-        // Order: by date (asc). Within the same day:
-        //   - Default (no user filter): automated tasks on top (us din ka automated task top par)
-        //   - When a user is filtered: manual/normal tasks first, then automated (per user request)
-        // start_date is the tiebreaker either way.
+        // Order:
+        //   1. Urgent (priority = 'high') ALWAYS at the top, regardless of TID — these
+        //      need eyeballs first and must not get buried by older dated tasks.
+        //   2. Then by TID date (asc). Within the same day:
+        //      - Default (no user filter): automated tasks on top (us din ka automated task top par)
+        //      - When a user is filtered: manual/normal tasks first, then automated (per user request)
+        //      start_date is the tiebreaker either way.
         $hasUserFilter = $userNameFilter !== '';
         $automateSortDirection = $hasUserFilter ? 'asc' : 'desc';
 
         $tasks = $tasksQuery
+            ->orderByRaw("(LOWER(COALESCE(priority, '')) = 'high') DESC")
             ->orderByRaw('(start_date IS NULL) ASC, DATE(start_date) ASC')
             ->orderBy('is_automate_task', $automateSortDirection)
             ->orderBy('start_date', 'asc')
@@ -1063,10 +1067,12 @@ class TaskController extends Controller
     public function edit($id)
     {
         $taskModel = Task::findOrFail($id);
-        
-        // Check if user can update this task
-        $this->authorize('update', $taskModel);
-        
+
+        // Assignees may also open the edit page, but only to attach
+        // links — non-link fields are locked in the view + on update().
+        $this->authorize('updateLinks', $taskModel);
+        $canEditAll = Auth::user()->can('update', $taskModel);
+
         $users = User::all();
         
         // Create a data object with all mapped fields for the form
@@ -1117,103 +1123,138 @@ class TaskController extends Controller
             $task->assignee_id = $assigneeUser ? $assigneeUser->id : null;
         }
         
-        return view('tasks.edit', compact('task', 'users'));
+        return view('tasks.edit', compact('task', 'users', 'canEditAll'));
     }
 
     public function update(Request $request, $id)
     {
         $task = Task::findOrFail($id);
-        
-        // Check if user can update this task
-        $this->authorize('update', $task);
 
-        $validated = $request->validate([
-            'title' => 'required|string|max:1000',
-            'description' => 'nullable|string',
-            'group' => 'nullable|string|max:255',
-            'priority' => 'required|in:low,normal,high',
-            'assignor_id' => 'nullable|exists:users,id',
-            'assignee_id' => 'nullable|exists:users,id',
-            'split_tasks' => 'nullable|boolean',
-            'flag_raise' => 'nullable|boolean',
-            'etc_minutes' => 'nullable|integer',
-            'tid' => 'nullable|date',
-            'l1' => 'nullable|string',
-            'l2' => 'nullable|string',
-            'training_link' => 'nullable|string',
-            'video_link' => 'nullable|string',
-            'form_link' => 'nullable|string',
-            'form_report_link' => 'nullable|string',
-            'checklist_link' => 'nullable|string',
-            'pl' => 'nullable|string',
-            'process' => 'nullable|string',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:10240', // 10MB max
-        ]);
-
-        // Map to old table field names
+        // Assignor / admin / president override gets full edit access.
+        // Assignees may only attach links, and we silently drop any other
+        // fields they try to submit so a tampered form can't reassign or
+        // change the date / title / group.
+        $this->authorize('updateLinks', $task);
         $user = Auth::user();
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
-        
-        // Get assignor email
-        if ($isAdmin && $request->has('assignor_id')) {
-            $assignorUser = User::find($validated['assignor_id']);
-            $assignorEmail = $assignorUser ? $assignorUser->email : $task->assignor;
+        $canEditAll = $user->can('update', $task);
+
+        if ($canEditAll) {
+            $validated = $request->validate([
+                'title' => 'required|string|max:1000',
+                'description' => 'nullable|string',
+                'group' => 'nullable|string|max:255',
+                'priority' => 'required|in:low,normal,high',
+                'assignor_id' => 'nullable|exists:users,id',
+                'assignee_id' => 'nullable|exists:users,id',
+                'split_tasks' => 'nullable|boolean',
+                'flag_raise' => 'nullable|boolean',
+                'etc_minutes' => 'nullable|integer',
+                'tid' => 'nullable|date',
+                'l1' => 'nullable|string',
+                'l2' => 'nullable|string',
+                'training_link' => 'nullable|string',
+                'video_link' => 'nullable|string',
+                'form_link' => 'nullable|string',
+                'form_report_link' => 'nullable|string',
+                'checklist_link' => 'nullable|string',
+                'pl' => 'nullable|string',
+                'process' => 'nullable|string',
+                'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:10240', // 10MB max
+            ]);
         } else {
-            $assignorEmail = $task->assignor;
+            // Assignee-only: links are the only thing they can change.
+            $validated = $request->validate([
+                'l1' => 'nullable|string',
+                'l2' => 'nullable|string',
+                'training_link' => 'nullable|string',
+                'video_link' => 'nullable|string',
+                'form_link' => 'nullable|string',
+                'form_report_link' => 'nullable|string',
+                'checklist_link' => 'nullable|string',
+                'pl' => 'nullable|string',
+                'process' => 'nullable|string',
+            ]);
         }
-        
-        // Get assignee email
-        $assigneeEmail = $task->assign_to;
-        if ($request->has('assignee_id')) {
-            if ($validated['assignee_id']) {
-                $assigneeUser = User::find($validated['assignee_id']);
-                $assigneeEmail = $assigneeUser ? $assigneeUser->email : null;
+
+        $isAdmin = strtolower($user->role ?? '') === 'admin';
+
+        if ($canEditAll) {
+            // Get assignor email
+            if ($isAdmin && $request->has('assignor_id')) {
+                $assignorUser = User::find($validated['assignor_id']);
+                $assignorEmail = $assignorUser ? $assignorUser->email : $task->assignor;
             } else {
-                $assigneeEmail = null;
+                $assignorEmail = $task->assignor;
             }
-        }
-        
-        // Handle image upload
-        $imageName = $task->image;
-        if ($request->hasFile('image')) {
-            // Delete old image
-            if ($task->image && file_exists(public_path('uploads/tasks/' . $task->image))) {
-                unlink(public_path('uploads/tasks/' . $task->image));
+
+            // Get assignee email
+            $assigneeEmail = $task->assign_to;
+            if ($request->has('assignee_id')) {
+                if ($validated['assignee_id']) {
+                    $assigneeUser = User::find($validated['assignee_id']);
+                    $assigneeEmail = $assigneeUser ? $assigneeUser->email : null;
+                } else {
+                    $assigneeEmail = null;
+                }
             }
-            
-            $image = $request->file('image');
-            $imageName = time() . '_' . $image->getClientOriginalName();
-            $image->move(public_path('uploads/tasks'), $imageName);
+
+            // Handle image upload (only the assignor / admin can replace it).
+            $imageName = $task->image;
+            if ($request->hasFile('image')) {
+                if ($task->image && file_exists(public_path('uploads/tasks/' . $task->image))) {
+                    unlink(public_path('uploads/tasks/' . $task->image));
+                }
+
+                $image = $request->file('image');
+                $imageName = time() . '_' . $image->getClientOriginalName();
+                $image->move(public_path('uploads/tasks'), $imageName);
+            }
+
+            $updateData = [
+                'title' => $validated['title'],
+                'description' => $validated['description'] ?? null,
+                'group' => $validated['group'] ?? null,
+                'priority' => $validated['priority'],
+                'assignor' => $assignorEmail,
+                'assign_to' => $assigneeEmail,
+                'split_tasks' => $request->has('split_tasks') ? 1 : 0,
+                'eta_time' => $validated['etc_minutes'] ?? $task->eta_time,
+                'start_date' => $validated['tid'] ?? $task->start_date,
+                'link1' => $validated['l1'] ?? '',
+                'link2' => $validated['l2'] ?? '',
+                'link3' => $validated['training_link'] ?? '',
+                'link4' => $validated['video_link'] ?? '',
+                'link5' => $validated['form_link'] ?? '',
+                'link6' => $validated['form_report_link'] ?? '',
+                'link7' => $validated['checklist_link'] ?? '',
+                'link8' => $validated['pl'] ?? '',
+                'link9' => $validated['process'] ?? '',
+                'image' => $imageName,
+            ];
+
+            $assigneeEmailForNotify = $assigneeEmail;
+        } else {
+            // Assignee can only change link fields. Everything else stays as-is.
+            $updateData = [
+                'link1' => $validated['l1'] ?? '',
+                'link2' => $validated['l2'] ?? '',
+                'link3' => $validated['training_link'] ?? '',
+                'link4' => $validated['video_link'] ?? '',
+                'link5' => $validated['form_link'] ?? '',
+                'link6' => $validated['form_report_link'] ?? '',
+                'link7' => $validated['checklist_link'] ?? '',
+                'link8' => $validated['pl'] ?? '',
+                'link9' => $validated['process'] ?? '',
+            ];
+
+            $assigneeEmailForNotify = $task->assign_to;
         }
-        
-        // Map new fields to old table columns
-        $updateData = [
-            'title' => $validated['title'],
-            'description' => $validated['description'] ?? null,
-            'group' => $validated['group'] ?? null,
-            'priority' => $validated['priority'],
-            'assignor' => $assignorEmail,
-            'assign_to' => $assigneeEmail,
-            'split_tasks' => $request->has('split_tasks') ? 1 : 0,
-            'eta_time' => $validated['etc_minutes'] ?? $task->eta_time,
-            'start_date' => $validated['tid'] ?? $task->start_date,
-            'link1' => $validated['l1'] ?? '',
-            'link2' => $validated['l2'] ?? '',
-            'link3' => $validated['training_link'] ?? '',
-            'link4' => $validated['video_link'] ?? '',
-            'link5' => $validated['form_link'] ?? '',
-            'link6' => $validated['form_report_link'] ?? '',
-            'link7' => $validated['checklist_link'] ?? '',
-            'link8' => $validated['pl'] ?? '',
-            'link9' => $validated['process'] ?? '',
-            'image' => $imageName,
-        ];
 
         $relevantChanged = $this->taskDetailsChanged($task, $updateData);
 
         $task->update($updateData);
 
-        if ($relevantChanged && $assigneeEmail) {
+        if ($relevantChanged && $assigneeEmailForNotify) {
             try {
                 $this->taskWhatsApp->notifyTaskUpdated($task->fresh());
             } catch (\Throwable $e) {
@@ -1281,14 +1322,12 @@ class TaskController extends Controller
             \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify done failed: ' . $e->getMessage());
         }
 
-        // Auto-archive: completed automated tasks shouldn't stay in the active list (user request).
-        $archived = $this->archiveCompletedAutomatedTask($task);
+        // Auto-archive of completed automated tasks disabled (user request) — completed tasks now stay in the active list.
+        $archived = false;
 
         return response()->json([
             'success' => true,
-            'message' => $archived
-                ? 'Task completed & auto-archived (visible in Today Deleted for 24h).'
-                : 'Task completed successfully!',
+            'message' => 'Task completed successfully!',
             'archived' => $archived,
             'task' => $task->fresh(),
         ]);
@@ -1342,8 +1381,7 @@ class TaskController extends Controller
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify done failed: ' . $e->getMessage());
             }
-            // Auto-archive: completed automated tasks shouldn't stay in the active list (user request).
-            $archived = $this->archiveCompletedAutomatedTask($task);
+            // Auto-archive of completed automated tasks disabled (user request) — completed tasks now stay in the active list.
         } elseif ($validated['status'] === 'Rework') {
             try {
                 $this->taskWhatsApp->notifyRework($task->fresh());

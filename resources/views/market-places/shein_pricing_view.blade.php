@@ -117,17 +117,15 @@
                             <option value="more">More than 0</option>
                         </select>
 
-                        {{-- GPFT% filter --}}
+                        {{-- GPFT% filter (slabs match ebay-tabulator-view) --}}
                         <select id="ae-gpft-filter" class="form-select form-select-sm" style="width:130px;">
                             <option value="all">GPFT%</option>
                             <option value="negative">Negative</option>
-                            <option value="0-10">0–10%</option>
-                            <option value="10-20">10–20%</option>
-                            <option value="20-30">20–30%</option>
-                            <option value="30-40">30–40%</option>
-                            <option value="40-50">40–50%</option>
-                            <option value="50-60">50–60%</option>
-                            <option value="50plus">50%+</option>
+                            <option value="0-10">0-10%</option>
+                            <option value="10-20">10-20%</option>
+                            <option value="20-30">20-30%</option>
+                            <option value="30-40">30-40%</option>
+                            <option value="40plus">Above 40%</option>
                         </select>
 
                         {{-- ROI% filter --}}
@@ -195,6 +193,67 @@
                         <button id="ae-price-mode-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase">
                             <i class="fas fa-exchange-alt"></i> Price Mode
                         </button>
+
+                        {{-- Target ROI% bulk control — back-solves SPRICE so SROI = Target ROI%. --}}
+                        {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin --}}
+                        <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                            id="ae-target-roi-controls"
+                            title="Target ROI% — sets SPRICE = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (back-solves so SROI column equals the target)">
+                            <label for="ae-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">Target ROI%:</label>
+                            <input type="number" id="ae-target-roi-input" class="form-control form-control-sm text-end"
+                                placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                                title="Target ROI% applied to all selected rows when you click 'Apply SPRICE'">
+                            <button id="ae-apply-target-roi-btn" class="btn btn-sm btn-primary" type="button"
+                                title="Compute & save SPRICE = (LP × (1 + Target ROI%/100) + Ship) / margin for every selected row">
+                                <i class="fas fa-calculator"></i> Apply SPRICE
+                            </button>
+                        </div>
+
+                        {{-- Target GPFT% bulk control — back-solves SPRICE so SGPFT = Target GPFT%. --}}
+                        {{-- Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
+                        <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                            id="ae-target-gpft-controls"
+                            title="Target GPFT% — sets SPRICE = (LP + Ship) / (margin − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
+                            <label for="ae-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">Target GPFT%:</label>
+                            <input type="number" id="ae-target-gpft-input" class="form-control form-control-sm text-end"
+                                placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                                title="Target GPFT% applied to all selected rows when you click 'Apply SPRICE'. Must be less than the Shein take-home margin.">
+                            <button id="ae-apply-target-gpft-btn" class="btn btn-sm btn-primary" type="button"
+                                title="Compute & save SPRICE = (LP + Ship) / (margin − Target GPFT%/100) for every selected row">
+                                <i class="fas fa-calculator"></i> Apply SPRICE
+                            </button>
+                        </div>
+
+                        {{-- Column Visibility Dropdown (same UX as ebay-tabulator-view) --}}
+                        <div class="dropdown d-inline-block ms-2">
+                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                                id="ae-column-visibility-dropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fa fa-eye"></i> Columns
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="ae-column-visibility-dropdown"
+                                id="ae-column-dropdown-menu" style="max-height: 400px; overflow-y: auto;">
+                                {{-- Populated by JS --}}
+                            </ul>
+                        </div>
+                        <button id="ae-show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
+                            <i class="fa fa-eye"></i> Show All
+                        </button>
+
+                        <!-- Play / Pause parent navigation -->
+                        <div class="btn-group align-items-center ms-2" role="group" aria-label="Parent navigation">
+                            <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
+                                <i class="fas fa-step-backward"></i>
+                            </button>
+                            <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm" title="Start parent navigation">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <button type="button" id="play-pause" class="btn btn-sm btn-warning rounded-circle shadow-sm" style="display: none;" title="Stop navigation and show all">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                            <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
+                                <i class="fas fa-step-forward"></i>
+                            </button>
+                        </div>
                     </div>
 
                     {{-- Discount input (shown when Price Mode is active) – identical to TikTok --}}
@@ -394,22 +453,20 @@
 
         function syncPriceModeUi() {
             const $btn = $('#ae-price-mode-btn');
-            const selectCol = table ? table.getColumn('_ae_select') : null;
+            // Select column stays visible at all times (ebay-tabulator-view pattern);
+            // we only toggle the Price Mode button label / selection state here.
             if (decreaseModeActive) {
                 $btn.removeClass('btn-secondary btn-primary').addClass('btn-danger')
                     .html('<i class="fas fa-arrow-down"></i> Decrease ON');
-                if (selectCol) selectCol.show();
                 return;
             }
             if (increaseModeActive) {
                 $btn.removeClass('btn-secondary btn-danger').addClass('btn-primary')
                     .html('<i class="fas fa-arrow-up"></i> Increase ON');
-                if (selectCol) selectCol.show();
                 return;
             }
             $btn.removeClass('btn-danger btn-primary').addClass('btn-secondary')
                 .html('<i class="fas fa-exchange-alt"></i> Price Mode');
-            if (selectCol) selectCol.hide();
             selectedSkus.clear();
             updateSelectedCount();
         }
@@ -528,9 +585,84 @@
         }
 
         // ── applyFilters (mirrors TikTok applyFilters) ────────────────
+        // Play / Pause parent navigation state
+        let shPlayUniqueParents = [];
+        let isShPlayActive = false;
+        let currentShPlayParentIndex = -1;
+
+        function normalizeShParentKey(val) {
+            if (val == null || val === '') return '';
+            return String(val).trim().replace(/\s+/g, ' ').replace(/^PARENT\s+/i, '');
+        }
+        function buildShUniqueParents() {
+            if (!table) return [];
+            const allRows = table.getData('all') || [];
+            const seen = {};
+            const list = [];
+            allRows.forEach(function(r) {
+                const p = normalizeShParentKey(r.parent);
+                if (p && !seen[p]) { seen[p] = true; list.push(p); }
+            });
+            list.sort(function(a, b) { return String(a).localeCompare(String(b)); });
+            return list;
+        }
+        function updateShPlayButtonStates() {
+            $('#play-backward').prop('disabled', !isShPlayActive || currentShPlayParentIndex <= 0);
+            $('#play-forward').prop('disabled', !isShPlayActive || currentShPlayParentIndex >= shPlayUniqueParents.length - 1);
+        }
+        function startShPlay() {
+            shPlayUniqueParents = buildShUniqueParents();
+            if (shPlayUniqueParents.length === 0) return;
+            isShPlayActive = true;
+            currentShPlayParentIndex = 0;
+            $('#play-auto').hide();
+            $('#play-pause').show();
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateShPlayButtonStates();
+        }
+        function stopShPlay() {
+            isShPlayActive = false;
+            currentShPlayParentIndex = -1;
+            $('#play-pause').hide();
+            $('#play-auto').show();
+            applyFilters();
+            updateShPlayButtonStates();
+        }
+        function nextShParent() {
+            if (!isShPlayActive || currentShPlayParentIndex >= shPlayUniqueParents.length - 1) return;
+            currentShPlayParentIndex++;
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateShPlayButtonStates();
+        }
+        function previousShParent() {
+            if (!isShPlayActive || currentShPlayParentIndex <= 0) return;
+            currentShPlayParentIndex--;
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateShPlayButtonStates();
+        }
+        $('#play-auto').on('click', startShPlay);
+        $('#play-pause').on('click', stopShPlay);
+        $('#play-forward').on('click', nextShParent);
+        $('#play-backward').on('click', previousShParent);
+
         function applyFilters() {
             if (!table) return;
             table.clearFilter();
+
+            // Play navigation: only show current parent's group
+            if (isShPlayActive && shPlayUniqueParents.length > 0 && currentShPlayParentIndex >= 0) {
+                const currentKey = shPlayUniqueParents[currentShPlayParentIndex];
+                if (currentKey) {
+                    table.addFilter(function(d) {
+                        const p = normalizeShParentKey(d.parent);
+                        return p === currentKey || p === ('PARENT ' + currentKey);
+                    });
+                }
+                return;
+            }
 
             const skuSearch  = ($('#pricing-sku-search').val() || '').toLowerCase().trim();
             const rowType    = $('#ae-row-type-filter').val();
@@ -567,14 +699,17 @@
                 table.addFilter(d => (parseInt(d.shein_stock, 10) || 0) > 0);
             }
 
-            // GPFT filter
+            // GPFT filter — slabs match ebay-tabulator-view
             if (gpftFilter !== 'all') {
                 table.addFilter(function(d) {
                     const gpft = parseFloat(d.gpft) || 0;
                     if (gpftFilter === 'negative') return gpft < 0;
-                    if (gpftFilter === '50plus')   return gpft >= 50;
-                    const [min, max] = gpftFilter.split('-').map(Number);
-                    return gpft >= min && gpft < max;
+                    if (gpftFilter === '0-10')     return gpft >= 0 && gpft < 10;
+                    if (gpftFilter === '10-20')    return gpft >= 10 && gpft < 20;
+                    if (gpftFilter === '20-30')    return gpft >= 20 && gpft < 30;
+                    if (gpftFilter === '30-40')    return gpft >= 30 && gpft < 40;
+                    if (gpftFilter === '40plus')   return gpft >= 40;
+                    return true;
                 });
             }
 
@@ -694,9 +829,8 @@
             }
             if (!rows.length) rows = normalizeRows(summaryDataCache);
 
-            let totalSales = 0, totalPft = 0, totalAl30 = 0;
-            let gpftSum = 0, gpftCount = 0;
-            let roiSum  = 0, roiCount  = 0;
+            let totalSales = 0, totalPft = 0, totalAl30 = 0, totalCogs = 0;
+            let hasGpftData = false, hasRoiData = false;
             let missingCount = 0, mapCount = 0, nmapCount = 0;
             let zeroSold = 0, moreSold = 0;
             let dilSum = 0, dilCount = 0;
@@ -714,14 +848,20 @@
                 const isMissingL = sheinRowIsMissingL(row);
 
                 if (!isMissingL) {
-                    totalSales += parseFloat(row.sales) || 0;
-                    totalPft += al30 * (parseFloat(row.profit) || 0);
+                    // Dollar-weighted aggregates — totals share the same profit numerator,
+                    // so GPFT (PFT / Sales) and ROI (PFT / COGS) always agree in sign.
+                    const rowSales  = parseFloat(row.sales) || 0;
+                    const rowProfit = al30 * (parseFloat(row.profit) || 0);
+                    const lp        = parseFloat(row.lp) || 0;
+                    const ship      = parseFloat(row.ship) || 0;
+                    const rowCogs   = al30 * (lp + ship);
 
-                    const gpft = parseFloat(row.gpft);
-                    if (Number.isFinite(gpft)) { gpftSum += gpft; gpftCount++; }
+                    totalSales += rowSales;
+                    totalPft   += rowProfit;
+                    totalCogs  += rowCogs;
 
-                    const groi = parseFloat(row.groi);
-                    if (Number.isFinite(groi)) { roiSum += groi; roiCount++; }
+                    if (rowSales !== 0) hasGpftData = true;
+                    if (rowCogs  !== 0) hasRoiData  = true;
                 }
 
                 totalAl30 += al30;
@@ -739,9 +879,11 @@
                 }
             });
 
-            const avgGpft = gpftCount > 0 ? gpftSum / gpftCount : 0;
-            const avgDil  = dilCount  > 0 ? dilSum  / dilCount  : 0;
-            const avgRoi  = roiCount  > 0 ? roiSum  / roiCount  : 0;
+            const avgGpft = totalSales !== 0 ? (totalPft / totalSales) * 100 : 0;
+            const avgRoi  = totalCogs  !== 0 ? (totalPft / totalCogs)  * 100 : 0;
+            const avgDil  = dilCount   > 0   ? dilSum / dilCount             : 0;
+            const gpftCount = hasGpftData ? 1 : 0; // preserves existing "–" placeholder when no data
+            const roiCount  = hasRoiData  ? 1 : 0;
 
             $('#ae-total-sku-badge').text(`SKU: ${childCount.toLocaleString()}`);
             $('#ae-total-sales-badge').text(totalSales > 0 ? `Sales: $${Math.round(totalSales).toLocaleString()}` : 'Sales: –');
@@ -790,14 +932,15 @@
                     }
                 },
                 columns: [
-                    // ── Select checkbox (Price Mode) ──────────────────────
+                    // ── Select checkbox (always visible; same UX as ebay-tabulator-view) ──
                     {
                         title: "<input type='checkbox' id='ae-select-all'>",
                         field: "_ae_select",
                         hozAlign: "center",
                         headerSort: false,
+                        frozen: true,
                         width: 38,
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
@@ -905,6 +1048,40 @@
                         }
                     },
                     {
+                        title: "Missing L",
+                        field: "missing",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            if (sheinRowIsMissingL(d)) {
+                                return '<span class="badge bg-danger">L</span>';
+                            }
+                            return '';
+                        }
+                    },
+                    {
+                        title: "Map",
+                        field: "map",
+                        hozAlign: "center",
+                        width: 90,
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const inv = parseFloat(d.inv) || 0;
+                            const nr = sheinNrReq(d);
+                            if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return '';
+                            const rowPrice = parseFloat(d.special_offer) || 0;
+                            if (rowPrice <= 0) return '';
+                            const sheinStock = parseFloat(d.shein_stock) || 0;
+                            if (sheinInvWithinMapTolerance(inv, sheinStock)) {
+                                return '<span style="color:#198754;font-weight:bold;">Map</span>';
+                            }
+                            const diff = Math.round(Math.abs(inv - sheinStock));
+                            return `<span style="color:#dc3545;font-weight:bold;">N Map (${diff})</span>`;
+                        }
+                    },
+                    {
                         title: "INV",
                         field: "inv",
                         sorter: "number",
@@ -981,40 +1158,6 @@
                             const v = parseFloat(cell.getValue()) || 0;
                             if (v === 0) return '<span style="color:#adb5bd;">–</span>';
                             return `<span style="color:#e83e8c;font-weight:600;">${money(v)}</span>`;
-                        }
-                    },
-                    {
-                        title: "Missing L",
-                        field: "missing",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            if (d.is_parent) return '';
-                            if (sheinRowIsMissingL(d)) {
-                                return '<span class="badge bg-danger">L</span>';
-                            }
-                            return '';
-                        }
-                    },
-                    {
-                        title: "Map",
-                        field: "map",
-                        hozAlign: "center",
-                        width: 90,
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            if (d.is_parent) return '';
-                            const inv = parseFloat(d.inv) || 0;
-                            const nr = sheinNrReq(d);
-                            if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return '';
-                            const rowPrice = parseFloat(d.special_offer) || 0;
-                            if (rowPrice <= 0) return '';
-                            const sheinStock = parseFloat(d.shein_stock) || 0;
-                            if (sheinInvWithinMapTolerance(inv, sheinStock)) {
-                                return '<span style="color:#198754;font-weight:bold;">Map</span>';
-                            }
-                            const diff = Math.round(Math.abs(inv - sheinStock));
-                            return `<span style="color:#dc3545;font-weight:bold;">N Map (${diff})</span>`;
                         }
                     },
                     {
@@ -1148,7 +1291,7 @@
                         }
                     },
                     {
-                        title: "SROI",
+                        title: "SGroi",
                         field: "sroi",
                         sorter: "number",
                         hozAlign: "right",
@@ -1170,6 +1313,9 @@
                 ],
                 dataLoaded: function(data) {
                     updateSummary(data);
+                    // Honor the dropdown defaults on first load (e.g. INV "More than 0")
+                    // so the table doesn't render every row before the user touches a filter.
+                    applyFilters();
                 },
                 dataFiltered: function(filters, rows) {
                     updateSummary(rows);
@@ -1250,15 +1396,307 @@
                 const d = cell.getRow().getData();
                 if (d.is_parent) return;
                 const sku    = d.sku;
-                const sprice = parseFloat(cell.getValue()) || 0;
+                // Always store SPRICE to exactly 2 decimals (UI input may allow more digits).
+                const rawSprice = parseFloat(cell.getValue()) || 0;
+                const sprice = Math.round(rawSprice * 100) / 100;
                 const margin = parseFloat(d._margin) || 1;
                 const lp     = parseFloat(d.lp)   || 0;
                 const ship   = parseFloat(d.ship)  || 0;
                 // Same formulas as GPFT / GROI
                 const sgpft = sprice > 0 ? Math.round(((sprice * margin - ship - lp) / sprice) * 100 * 100) / 100 : 0;
                 const sroi  = lp     > 0 ? Math.round(((sprice * margin - lp - ship)  / lp)    * 100 * 100) / 100 : 0;
-                cell.getRow().update({ sgpft: sgpft, sroi: sroi });
+                cell.getRow().update({ sprice: sprice, sgpft: sgpft, sroi: sroi });
                 saveSpriceUpdates([{ sku: sku, sprice: sprice }]);
+            });
+
+            /*
+             * ============================================================================
+             * Target ROI% / Target GPFT% bulk apply for SPRICE (mirrors ebay-tabulator-view)
+             * ----------------------------------------------------------------------------
+             * Pick rows (via Price Mode), type the target %, click Apply SPRICE → back-solve
+             * a sale price that makes the on-page SROI / SGPFT column match the target after
+             * Shein margin + shipping are paid out.
+             *
+             * Math (mirrors the backend's SGPFT / SROI formulas):
+             *   SROI%  = ((sprice * margin - lp - ship) / lp) * 100
+             *      -> sprice = (lp * (1 + roi%/100) + ship) / margin
+             *
+             *   SGPFT% = ((sprice * margin - ship - lp) / sprice) * 100
+             *      -> sprice = (lp + ship) / (margin - gpft%/100)
+             *      Constraint: (margin - gpft%/100) must be > 0.
+             *
+             * `margin` is the per-row take-home rate (row._margin) with a 1 fallback.
+             * Saving goes through /shein/save-sprice exactly like an inline SPRICE edit.
+             * ============================================================================
+             */
+            function aeApplyTargetSpriceBatch(opts) {
+                const $btn = opts.$btn;
+                if (selectedSkus.size === 0) {
+                    sheinLinksNotify('Please select at least one SKU first.', 'error');
+                    return;
+                }
+
+                const rowsToProcess = [];
+                const skipped = [];
+                table.getRows().forEach(function(r) {
+                    const rd = r.getData();
+                    const sku = rd.sku;
+                    if (!sku || !selectedSkus.has(sku)) return;
+                    if (rd.is_parent) return;
+                    const res = opts.computeSprice(rd);
+                    if (!res || res.skipReason) {
+                        if (res && res.skipReason) skipped.push({ sku: sku, reason: res.skipReason });
+                        return;
+                    }
+                    let sprice = +Number(res.sprice).toFixed(2);
+                    if (!isFinite(sprice) || sprice <= 0) return;
+                    sprice = finalizeSprice(sprice);
+                    rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
+                });
+
+                if (rowsToProcess.length === 0) {
+                    if (skipped.length > 0) {
+                        sheinLinksNotify('Cannot apply: ' + skipped[0].reason, 'error');
+                    } else {
+                        sheinLinksNotify('No selected rows have a usable LP > 0', 'error');
+                    }
+                    return;
+                }
+
+                let confirmMsg = `Compute & save SPRICE for ${rowsToProcess.length} selected SKU(s) using ${opts.label}?`;
+                if (skipped.length > 0) {
+                    confirmMsg += `\n\nNote: ${skipped.length} row(s) will be skipped (${skipped[0].reason}).`;
+                }
+                if (!confirm(confirmMsg)) return;
+
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+
+                // Update rows client-side immediately (matches inline cellEdited handler)
+                const updates = [];
+                rowsToProcess.forEach(function(item) {
+                    const rd = item.row.getData();
+                    const margin = parseFloat(rd._margin) || 1;
+                    const lp = parseFloat(rd.lp) || 0;
+                    const ship = parseFloat(rd.ship) || 0;
+                    const sprice = item.sprice;
+                    const sgpft = sprice > 0 ? Math.round(((sprice * margin - ship - lp) / sprice) * 100 * 100) / 100 : 0;
+                    const sroi = lp > 0 ? Math.round(((sprice * margin - lp - ship) / lp) * 100 * 100) / 100 : 0;
+                    item.row.update({ sprice: sprice, sgpft: sgpft, sroi: sroi });
+                    updates.push({ sku: item.sku, sprice: sprice });
+                });
+
+                $.ajax({
+                    url: '{{ route("shein.pricing.save.sprice") }}',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: { updates: updates },
+                    success: function(res) {
+                        if (res && res.success) {
+                            sheinLinksNotify(`SPRICE saved for ${updates.length} SKU(s) @ ${opts.label}`, 'success');
+                        } else {
+                            sheinLinksNotify('Failed to save SPRICE updates', 'error');
+                        }
+                    },
+                    error: function() {
+                        sheinLinksNotify('Error saving SPRICE updates', 'error');
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).html(opts.btnHtml);
+                        // Wipe selection so the next batch starts clean.
+                        selectedSkus.clear();
+                        $('.ae-sku-chk').prop('checked', false);
+                        $('#ae-select-all').prop('checked', false);
+                        updateSelectedCount();
+                    }
+                });
+            }
+
+            // Target ROI%
+            $('#ae-apply-target-roi-btn').on('click', function() {
+                const $btn = $(this);
+                const raw = $('#ae-target-roi-input').val();
+                const targetRoiPct = parseFloat(String(raw).replace(',', '.'));
+                if (raw === '' || raw == null) { sheinLinksNotify('Please enter a Target ROI%', 'error'); return; }
+                if (!isFinite(targetRoiPct)) { sheinLinksNotify('Target ROI% must be a number', 'error'); return; }
+                const roiMultiplier = 1 + (targetRoiPct / 100);
+                aeApplyTargetSpriceBatch({
+                    targetPct: targetRoiPct,
+                    label: `Target ROI ${targetRoiPct}%`,
+                    $btn: $btn,
+                    btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
+                    computeSprice: function(rd) {
+                        const lp = parseFloat(rd.lp) || 0;
+                        if (lp <= 0) return null;
+                        const ship = parseFloat(rd.ship) || 0;
+                        const marginRaw = parseFloat(rd._margin);
+                        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 1;
+                        return { sprice: (lp * roiMultiplier + ship) / margin };
+                    }
+                });
+            });
+            $('#ae-target-roi-input').on('keypress', function(e) {
+                if (e.which === 13) $('#ae-apply-target-roi-btn').click();
+            });
+
+            // Target GPFT%
+            $('#ae-apply-target-gpft-btn').on('click', function() {
+                const $btn = $(this);
+                const raw = $('#ae-target-gpft-input').val();
+                const targetGpftPct = parseFloat(String(raw).replace(',', '.'));
+                if (raw === '' || raw == null) { sheinLinksNotify('Please enter a Target GPFT%', 'error'); return; }
+                if (!isFinite(targetGpftPct)) { sheinLinksNotify('Target GPFT% must be a number', 'error'); return; }
+                const targetFraction = targetGpftPct / 100;
+                aeApplyTargetSpriceBatch({
+                    targetPct: targetGpftPct,
+                    label: `Target GPFT ${targetGpftPct}%`,
+                    $btn: $btn,
+                    btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
+                    computeSprice: function(rd) {
+                        const lp = parseFloat(rd.lp) || 0;
+                        if (lp <= 0) return null;
+                        const ship = parseFloat(rd.ship) || 0;
+                        const marginRaw = parseFloat(rd._margin);
+                        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 1;
+                        const denom = margin - targetFraction;
+                        if (denom <= 0) {
+                            return { skipReason: `Target GPFT% ${targetGpftPct}% ≥ Shein take-home margin (~${Math.round(margin * 100)}%)` };
+                        }
+                        return { sprice: (lp + ship) / denom };
+                    }
+                });
+            });
+            $('#ae-target-gpft-input').on('keypress', function(e) {
+                if (e.which === 13) $('#ae-apply-target-gpft-btn').click();
+            });
+
+            /*
+             * ============================================================================
+             * Column visibility (mirrors ebay-tabulator-view)
+             * Persists in the shared DB table `channel_tabulator_column_settings` via the
+             * /tabulator-column-visibility endpoint, channel = 'shein_pricing'.
+             * ============================================================================
+             */
+            const AE_COLUMN_VIS_URL = '/tabulator-column-visibility';
+            const AE_COLUMN_VIS_CHANNEL = 'shein_pricing';
+
+            function aeBuildColumnDropdown() {
+                const menu = document.getElementById('ae-column-dropdown-menu');
+                if (!menu) return;
+                menu.innerHTML = '';
+
+                fetch(AE_COLUMN_VIS_URL + '?channel=' + encodeURIComponent(AE_COLUMN_VIS_CHANNEL), {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        }
+                    })
+                    .then(r => r.json())
+                    .then(savedVisibility => {
+                        const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+                        table.getColumns().forEach(col => {
+                            const def = col.getDefinition();
+                            if (!def.field || def.field === '_ae_select') return;
+                            const title = (def.title || '').replace(/<[^>]*>/g, '').trim() || def.field;
+
+                            const li = document.createElement('li');
+                            const label = document.createElement('label');
+                            label.style.display = 'block';
+                            label.style.padding = '5px 10px';
+                            label.style.cursor = 'pointer';
+
+                            const checkbox = document.createElement('input');
+                            checkbox.type = 'checkbox';
+                            checkbox.value = def.field;
+                            checkbox.checked = map.hasOwnProperty(def.field) ? (map[def.field] !== false) : col.isVisible();
+                            checkbox.style.marginRight = '8px';
+                            checkbox.className = 'ae-column-toggle';
+
+                            label.appendChild(checkbox);
+                            label.appendChild(document.createTextNode(title));
+                            li.appendChild(label);
+                            menu.appendChild(li);
+                        });
+                    })
+                    .catch(err => console.error('Error loading Shein column visibility:', err));
+            }
+
+            function aeSaveColumnVisibilityToServer() {
+                const visibility = {};
+                table.getColumns().forEach(col => {
+                    const def = col.getDefinition();
+                    if (def.field && def.field !== '_ae_select') {
+                        visibility[def.field] = col.isVisible();
+                    }
+                });
+
+                fetch(AE_COLUMN_VIS_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({
+                        channel: AE_COLUMN_VIS_CHANNEL,
+                        visibility: visibility
+                    })
+                }).catch(err => console.error('Error saving Shein column visibility:', err));
+            }
+
+            function aeApplyColumnVisibilityFromServer() {
+                fetch(AE_COLUMN_VIS_URL + '?channel=' + encodeURIComponent(AE_COLUMN_VIS_CHANNEL), {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        }
+                    })
+                    .then(r => r.json())
+                    .then(savedVisibility => {
+                        if (savedVisibility && typeof savedVisibility === 'object') {
+                            Object.keys(savedVisibility).forEach(field => {
+                                if (field === '_ae_select') return;
+                                const col = table.getColumn(field);
+                                if (col) {
+                                    if (savedVisibility[field]) {
+                                        col.show();
+                                    } else {
+                                        col.hide();
+                                    }
+                                }
+                            });
+                        }
+                    })
+                    .catch(err => console.error('Error applying Shein column visibility:', err));
+            }
+
+            // Toggle column from dropdown
+            document.getElementById('ae-column-dropdown-menu').addEventListener('change', function(e) {
+                if (e.target.classList && e.target.classList.contains('ae-column-toggle')) {
+                    const field = e.target.value;
+                    const col = table.getColumn(field);
+                    if (col) {
+                        if (e.target.checked) col.show();
+                        else col.hide();
+                        aeSaveColumnVisibilityToServer();
+                    }
+                }
+            });
+
+            // Show All Columns button — make every non-select column visible
+            document.getElementById('ae-show-all-columns-btn').addEventListener('click', function() {
+                table.getColumns().forEach(col => {
+                    const def = col.getDefinition();
+                    if (def.field && def.field !== '_ae_select') col.show();
+                });
+                aeBuildColumnDropdown();
+                aeSaveColumnVisibilityToServer();
+            });
+
+            // Build dropdown and apply server visibility once the table is built
+            table.on('tableBuilt', function() {
+                aeApplyColumnVisibilityFromServer();
+                aeBuildColumnDropdown();
             });
 
             // Badge click → table filter (hover opens chart via ae-hover-chart)

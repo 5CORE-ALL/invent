@@ -36,6 +36,61 @@
             max-height: 320px;
             object-fit: contain;
         }
+
+        /* Colored status circles + Walmart-style manual dropdown (used by the DIL% filter). */
+        .status-circle {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            border: 1px solid #ddd;
+            vertical-align: middle;
+        }
+        .status-circle.default { background-color: #6c757d; }
+        .status-circle.red     { background-color: #a00211; }
+        .status-circle.yellow  { background-color: #ffc107; }
+        .status-circle.green   { background-color: #28a745; }
+        .status-circle.pink    { background-color: #e83e8c; }
+
+        .manual-dropdown-container {
+            position: relative;
+            display: inline-block;
+        }
+        .manual-dropdown-container .dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 1000;
+            display: none;
+            min-width: 200px;
+            padding: 0.5rem 0;
+            margin: 0;
+            background-color: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            list-style: none;
+        }
+        .manual-dropdown-container.show .dropdown-menu { display: block; }
+        .manual-dropdown-container .dropdown-item {
+            display: block;
+            width: 100%;
+            padding: 0.5rem 1rem;
+            clear: both;
+            font-weight: 400;
+            color: #212529;
+            text-align: inherit;
+            text-decoration: none;
+            white-space: nowrap;
+            background-color: transparent;
+            border: 0;
+            cursor: pointer;
+        }
+        .manual-dropdown-container .dropdown-item:hover {
+            color: #1e2125;
+            background-color: #e9ecef;
+        }
     </style>
 @endsection
 
@@ -55,6 +110,69 @@
             <div class="card-body py-3">
                 <h4>Newegg Pricing & Inventory</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+                    <select id="inventory-filter" class="form-select form-select-sm" style="width: 130px;">
+                        <option value="all">All Inventory</option>
+                        <option value="zero">0 Inventory</option>
+                        <option value="more" selected>More than 0</option>
+                    </select>
+
+                    <select id="n-stock-filter" class="form-select form-select-sm" style="width: 130px;"
+                        title="Newegg listing stock (N INV)">
+                        <option value="all">N Stock</option>
+                        <option value="zero">0 N Stock</option>
+                        <option value="more">More than 0</option>
+                    </select>
+
+                    <select id="nr-filter" class="form-select form-select-sm" style="width: 130px;">
+                        <option value="all">All Status</option>
+                        <option value="REQ">REQ Only</option>
+                        <option value="NR">NR Only</option>
+                    </select>
+
+                    <select id="status-filter" class="form-select form-select-sm" style="width: 130px;"
+                        title="Newegg listing status">
+                        <option value="all">All Listings</option>
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                    </select>
+
+                    <select id="pft-filter" class="form-select form-select-sm" style="width: 130px;">
+                        <option value="all">PFT%</option>
+                        <option value="negative">Negative</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40-50">40-50%</option>
+                        <option value="50plus">Above 50%</option>
+                    </select>
+
+                    <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
+                        <option value="all">ROI%</option>
+                        <option value="lt50">&lt; 50%</option>
+                        <option value="50-75">50–75%</option>
+                        <option value="75-125">75–125%</option>
+                        <option value="gt125">125%+</option>
+                    </select>
+
+                    <div class="dropdown manual-dropdown-container" id="dilFilterContainer">
+                        <button class="btn btn-sm btn-light dropdown-toggle" type="button" id="dilFilterDropdown">
+                            <span class="status-circle default"></span> DIL%
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
+                            <li><a class="dropdown-item dil-filter-item active" href="#" data-color="all">
+                                <span class="status-circle default"></span> All DIL</a></li>
+                            <li><a class="dropdown-item dil-filter-item" href="#" data-color="red">
+                                <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
+                            <li><a class="dropdown-item dil-filter-item" href="#" data-color="yellow">
+                                <span class="status-circle yellow"></span> Yellow (16.7–25%)</a></li>
+                            <li><a class="dropdown-item dil-filter-item" href="#" data-color="green">
+                                <span class="status-circle green"></span> Green (25–50%)</a></li>
+                            <li><a class="dropdown-item dil-filter-item" href="#" data-color="pink">
+                                <span class="status-circle pink"></span> Pink (50%+)</a></li>
+                        </ul>
+                    </div>
+
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -69,6 +187,21 @@
                     </button>
                     <button type="button" class="btn btn-sm btn-success" id="export-btn">
                         <i class="fa fa-file-excel"></i> Export
+                    </button>
+
+                    <button id="decrease-btn" class="btn btn-sm btn-warning">
+                        <i class="fas fa-arrow-down"></i> Decrease Mode
+                    </button>
+                    <button id="increase-btn" class="btn btn-sm btn-success">
+                        <i class="fas fa-arrow-up"></i> Increase Mode
+                    </button>
+                    <button id="same-price-btn" class="btn btn-sm btn-info"
+                        title="Apply ONE price (entered in the box) to every selected SKU">
+                        <i class="fas fa-equals"></i> Same Price Mode
+                    </button>
+                    <button id="push-all-sprice-btn" class="btn btn-sm btn-dark"
+                        title="Push every currently-visible row that has a SPRICE live to Newegg (chunked)">
+                        <i class="fas fa-cloud-upload-alt"></i> Push All SPRICE
                     </button>
                 </div>
 
@@ -86,6 +219,30 @@
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
+                <!-- Discount / Same Price input (shown when at least one SKU is selected) -->
+                <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span id="selected-skus-count" class="fw-bold"></span>
+                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
+                        <span id="discount-type-select-wrap">
+                            <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
+                                <option value="percentage">Percentage</option>
+                                <option value="value">Value ($)</option>
+                            </select>
+                        </span>
+                        <input type="number" id="discount-percentage-input"
+                            class="form-control form-control-sm" placeholder="Enter %" step="0.01"
+                            style="width: 140px;">
+                        <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
+                        <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
+                            <i class="fas fa-eraser"></i> Clear SPRICE
+                        </button>
+                        <button id="push-newegg-btn" class="btn btn-dark btn-sm"
+                            title="Push each selected SKU's SPRICE (or Price if no SPRICE) live to Newegg">
+                            <i class="fas fa-cloud-upload-alt"></i> Push to Newegg
+                        </button>
+                    </div>
+                </div>
                 <div id="newegg-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <div class="p-2 bg-light border-bottom">
                         <input type="text" id="sku-search" class="form-control form-control-sm"
@@ -132,6 +289,95 @@
 @section('script-bottom')
     <script>
         let table = null;
+        let decreaseModeActive  = false;
+        let increaseModeActive  = false;
+        let samePriceModeActive = false;
+        let selectedSkus        = new Set();
+
+        // Inventory filter (matches reverb-pricing): 'all' | 'zero' | 'more'. Default 'more'.
+        let inventoryFilter = 'more';
+
+        // Additional reverb-style filters.
+        let nStockFilter = 'all';   // 'all' | 'zero' | 'more'  (Newegg listing stock)
+        let nrFilter     = 'all';   // 'all' | 'REQ' | 'NR'
+        let statusFilter = 'all';   // 'all' | 'Active' | 'Inactive'
+        let pftFilter    = 'all';   // 'all' | 'negative' | '0-10' | '10-20' | '20-30' | '30-40' | '40-50' | '50plus'
+        let roiFilter    = 'all';   // 'all' | 'lt50' | '50-75' | '75-125' | 'gt125'
+        let dilFilter    = 'all';   // 'all' | 'red' | 'yellow' | 'green' | 'pink'
+
+        // Range helper for numeric bucket filters.
+        function inRange(n, lo, hi) { return n >= lo && n < hi; }
+
+        // PFT% bucket match — mirrors reverb's GPFT% filter.
+        function pftMatches(pct, bucket) {
+            if (bucket === 'all') return true;
+            const n = parseFloat(pct);
+            if (isNaN(n)) return false;
+            switch (bucket) {
+                case 'negative': return n < 0;
+                case '0-10':     return inRange(n, 0, 10);
+                case '10-20':    return inRange(n, 10, 20);
+                case '20-30':    return inRange(n, 20, 30);
+                case '30-40':    return inRange(n, 30, 40);
+                case '40-50':    return inRange(n, 40, 50);
+                case '50plus':   return n >= 50;
+                default:         return true;
+            }
+        }
+
+        // ROI% buckets follow the same color thresholds used by the ROI cell formatter.
+        function roiMatches(pct, bucket) {
+            if (bucket === 'all') return true;
+            const n = parseFloat(pct);
+            if (isNaN(n)) return false;
+            switch (bucket) {
+                case 'lt50':    return n < 50;
+                case '50-75':   return inRange(n, 50, 75);
+                case '75-125':  return n >= 75 && n <= 125;
+                case 'gt125':   return n > 125;
+                default:        return true;
+            }
+        }
+
+        // DIL% color buckets — same thresholds as dilFormatter().
+        function dilMatches(pct, color) {
+            if (color === 'all') return true;
+            const n = parseFloat(pct) || 0;
+            switch (color) {
+                case 'red':    return n < 16.7;
+                case 'yellow': return n >= 16.7 && n < 25;
+                case 'green':  return n >= 25  && n < 50;
+                case 'pink':   return n >= 50;
+                default:       return true;
+            }
+        }
+
+        // Bootstrap-toast helper — same UX as reverb-pricing.
+        function showToast(message, type = 'info') {
+            const toastContainer = document.querySelector('.toast-container');
+            if (!toastContainer) {
+                console[type === 'error' ? 'error' : 'log'](message);
+                return;
+            }
+            const toast = document.createElement('div');
+            const bg = type === 'error' ? 'danger' : (type === 'success' ? 'success' : (type === 'warning' ? 'warning' : 'info'));
+            toast.className = `toast align-items-center text-white bg-${bg} border-0`;
+            toast.setAttribute('role', 'alert');
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>`;
+            toastContainer.appendChild(toast);
+            new bootstrap.Toast(toast).show();
+            toast.addEventListener('hidden.bs.toast', () => toast.remove());
+        }
+
+        // Round to retail .99 endings (Reverb's rule: only above $20.99).
+        function roundToRetailPrice(price) {
+            if (price < 20.99) return +price.toFixed(2);
+            return Math.ceil(price) - 0.01;
+        }
 
         function moneyCol(title, field, visible = true) {
             return {
@@ -207,6 +453,21 @@
                 initialSort: [{ column: "l30", dir: "desc" }],
                 columns: [
                     {
+                        title: `<input type="checkbox" id="select-all-checkbox">`,
+                        field: "_select",
+                        hozAlign: "center",
+                        headerSort: false,
+                        frozen: true,
+                        visible: false,
+                        width: 50,
+                        formatter: function(cell) {
+                            const sku = cell.getRow().getData().sku;
+                            if (!sku) return '';
+                            const isChecked = selectedSkus.has(sku);
+                            return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isChecked ? 'checked' : ''}>`;
+                        }
+                    },
+                    {
                         title: "Image", field: "image", hozAlign: "center", headerSort: false, frozen: true,
                         formatter: function(cell) {
                             const v = cell.getValue();
@@ -215,13 +476,8 @@
                         }
                     },
                     { title: "SKU", field: "sku", frozen: true, headerFilter: "input", headerFilterPlaceholder: "Search SKU...", cssClass: "text-primary fw-bold" },
-                    { title: "Title", field: "title", visible: false, tooltip: true },
-                    { title: "INV", field: "inv", hozAlign: "center", sorter: "number" },
-                    { title: "N INV", field: "available_quantity", hozAlign: "center", sorter: "number" },
-                    { title: "OVL30", field: "ovl30", hozAlign: "center", sorter: "number" },
-                    { title: "DIL %", field: "dil", hozAlign: "center", sorter: "number", formatter: dilFormatter },
                     {
-                        title: "B/S", field: "bs", hozAlign: "center", headerSort: false,
+                        title: "B/S", field: "bs", hozAlign: "center", headerSort: false, frozen: true,
                         cssClass: "editable-cell",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
@@ -239,7 +495,30 @@
                             openBsModal(cell.getRow().getData());
                         }
                     },
+                    { title: "Title", field: "title", visible: false, tooltip: true },
+                    { title: "INV", field: "inv", hozAlign: "center", sorter: "number" },
+                    { title: "N INV", field: "available_quantity", hozAlign: "center", sorter: "number" },
+                    { title: "OVL30", field: "ovl30", hozAlign: "center", sorter: "number" },
+                    { title: "DIL %", field: "dil", hozAlign: "center", sorter: "number", formatter: dilFormatter },
                     moneyCol("Price", "price"),
+                    {
+                        title: "A Prc", field: "a_price", hozAlign: "right", sorter: "number",
+                        tooltip: "Amazon live selling price (from amazon_datasheet)",
+                        formatter: function(cell) {
+                            const v = cell.getValue();
+                            if (v === null || v === undefined || v === '') return '<span style="color:#bbb;">—</span>';
+                            const n = parseFloat(v) || 0;
+                            if (n <= 0) return '<span style="color:#bbb;">—</span>';
+                            const row = cell.getRow().getData();
+                            const ne  = parseFloat(row.price) || 0;
+                            // Color compared to Newegg price: green = Newegg is cheaper, red = Newegg is more expensive.
+                            let color = '#212529';
+                            if (ne > 0 && Math.abs(ne - n) > 0.01) {
+                                color = ne < n ? '#28a745' : '#dc3545';
+                            }
+                            return `<span style="color:${color};font-weight:600;">$${n.toFixed(2)}</span>`;
+                        }
+                    },
                     { title: "L30", field: "l30", hozAlign: "center", sorter: "number",
                         formatter: function(cell) {
                             const v = parseInt(cell.getValue()) || 0;
@@ -278,6 +557,23 @@
                             const v = cell.getValue();
                             if (v === null || v === undefined || v === '') return '<span style="color:#bbb;">—</span>';
                             return '$' + (parseFloat(v) || 0).toFixed(2);
+                        }
+                    },
+                    {
+                        title: "Missing L", field: "missing_l", hozAlign: "center", headerSort: false,
+                        formatter: function(cell) {
+                            return neRowMissingL(cell.getRow().getData())
+                                ? '<span style="color:#c0392b;font-weight:bold;">Missing L</span>'
+                                : '';
+                        }
+                    },
+                    {
+                        title: "Map", field: "map_status", hozAlign: "center", headerSort: false,
+                        formatter: function(cell) {
+                            const st = neMapStatus(cell.getRow().getData());
+                            if (st === 'map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
+                            if (st === 'nmap') return '<span style="color:#dc3545;font-weight:bold;">N Map</span>';
+                            return '';
                         }
                     },
                     {
@@ -336,23 +632,6 @@
                             const color = isActive ? '#28a745' : '#dc3545';
                             const letter = isActive ? 'A' : 'I';
                             return `<span title="${v}" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${color};color:#fff;font-weight:bold;font-size:12px;">${letter}</span>`;
-                        }
-                    },
-                    {
-                        title: "Missing L", field: "missing_l", hozAlign: "center", headerSort: false,
-                        formatter: function(cell) {
-                            return neRowMissingL(cell.getRow().getData())
-                                ? '<span style="color:#c0392b;font-weight:bold;">Missing L</span>'
-                                : '';
-                        }
-                    },
-                    {
-                        title: "Map", field: "map_status", hozAlign: "center", headerSort: false,
-                        formatter: function(cell) {
-                            const st = neMapStatus(cell.getRow().getData());
-                            if (st === 'map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
-                            if (st === 'nmap') return '<span style="color:#dc3545;font-weight:bold;">N Map</span>';
-                            return '';
                         }
                     },
                     moneyCol("LP", "lp", false),
@@ -456,7 +735,8 @@
                 .catch(() => alert("Failed to save links"));
             });
 
-            // Combined filter: SKU/Title search + active Missing L / Map / N Map badge.
+            // Combined filter: SKU/Title search + INV / N Stock / NR / Status / PFT / ROI / DIL
+            // dropdowns + active Missing L / Map / N Map badge.
             function applyNeFilters() {
                 const search = ($('#sku-search').val() || '').trim().toLowerCase();
                 table.setFilter(function(row) {
@@ -465,9 +745,40 @@
                         const title = String(row.title || '').toLowerCase();
                         if (sku.indexOf(search) === -1 && title.indexOf(search) === -1) return false;
                     }
+
+                    // INV (Shopify inventory)
+                    const invVal = parseInt(row.inv) || 0;
+                    if (inventoryFilter === 'zero' && invVal !== 0) return false;
+                    if (inventoryFilter === 'more' && invVal <= 0) return false;
+
+                    // N Stock (Newegg listing stock)
+                    const nStock = parseInt(row.available_quantity) || 0;
+                    if (nStockFilter === 'zero' && nStock !== 0) return false;
+                    if (nStockFilter === 'more' && nStock <= 0) return false;
+
+                    // NR / REQ flag
+                    if (nrFilter !== 'all') {
+                        const nr = String(row.nr || 'REQ').toUpperCase();
+                        if (nrFilter === 'REQ' && nr !== 'REQ') return false;
+                        if (nrFilter === 'NR'  && nr !== 'NR')  return false;
+                    }
+
+                    // Listing status
+                    if (statusFilter !== 'all') {
+                        const st = String(row.status || '');
+                        if (st !== statusFilter) return false;
+                    }
+
+                    // PFT / ROI / DIL bucket filters
+                    if (!pftMatches(row.pft_pct, pftFilter)) return false;
+                    if (!roiMatches(row.roi,     roiFilter)) return false;
+                    if (!dilMatches(row.dil,     dilFilter)) return false;
+
+                    // Missing / Map / N Map badge filters
                     if (neMissingActive && !neRowMissingL(row)) return false;
                     if (neMapActive && neMapStatus(row) !== 'map') return false;
                     if (neNMapActive && neMapStatus(row) !== 'nmap') return false;
+
                     return true;
                 });
                 updateBadgeStyles();
@@ -497,6 +808,379 @@
                 neMissingActive = neMapActive = false;
                 applyNeFilters();
             });
+
+            // ── Toolbar filter wiring ──────────────────────────────────────────
+            $('#inventory-filter').on('change', function() { inventoryFilter = $(this).val(); applyNeFilters(); });
+            $('#n-stock-filter')  .on('change', function() { nStockFilter    = $(this).val(); applyNeFilters(); });
+            $('#nr-filter')       .on('change', function() { nrFilter        = $(this).val(); applyNeFilters(); });
+            $('#status-filter')   .on('change', function() { statusFilter    = $(this).val(); applyNeFilters(); });
+            $('#pft-filter')      .on('change', function() { pftFilter       = $(this).val(); applyNeFilters(); });
+            $('#roi-filter')      .on('change', function() { roiFilter       = $(this).val(); applyNeFilters(); });
+
+            // DIL% manual dropdown (colored pill button + 5 color options).
+            $(document).on('click', '#dilFilterContainer .btn', function(e) {
+                e.stopPropagation();
+                $('.manual-dropdown-container').not('#dilFilterContainer').removeClass('show');
+                $('#dilFilterContainer').toggleClass('show');
+            });
+            $(document).on('click', '.dil-filter-item', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const $item = $(this);
+                const color = $item.data('color');
+                $('#dilFilterContainer .dil-filter-item').removeClass('active');
+                $item.addClass('active');
+                const circle = $item.find('.status-circle').clone();
+                $('#dilFilterDropdown').html('').append(circle).append(' DIL%');
+                $('#dilFilterContainer').removeClass('show');
+                dilFilter = color;
+                applyNeFilters();
+            });
+            $(document).on('click', function() { $('.manual-dropdown-container').removeClass('show'); });
+
+            // ── SPRICE bulk tools (Increase / Decrease / Same Price) ──────────
+            function resetDecreaseBtn() {
+                $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning')
+                    .html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+            }
+            function resetIncreaseBtn() {
+                $('#increase-btn').removeClass('btn-danger').addClass('btn-success')
+                    .html('<i class="fas fa-arrow-up"></i> Increase Mode');
+            }
+            function resetSamePriceBtn() {
+                $('#same-price-btn').removeClass('btn-danger').addClass('btn-info')
+                    .html('<i class="fas fa-equals"></i> Same Price Mode');
+            }
+
+            // Swap the input panel between %/$ entry (Increase/Decrease) and a flat $ price (Same Price).
+            function syncDiscountInputUi() {
+                const $input = $('#discount-percentage-input');
+                if (samePriceModeActive) {
+                    $('#discount-type-select-wrap').hide();
+                    $('#discount-input-label').removeClass('d-none');
+                    $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
+                    $('#apply-discount-btn').text('Apply Same Price');
+                } else {
+                    $('#discount-type-select-wrap').show();
+                    $('#discount-input-label').addClass('d-none');
+                    const t = $('#discount-type-select').val();
+                    $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
+                    $('#apply-discount-btn').text('Apply');
+                }
+            }
+
+            function updateSelectedCount() {
+                const count = selectedSkus.size;
+                $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
+                $('#discount-input-container').toggle(count > 0);
+            }
+
+            function updateSelectAllCheckbox() {
+                if (!table) return;
+                const visible = table.getData('active').filter(r => r.sku);
+                if (visible.length === 0) { $('#select-all-checkbox').prop('checked', false); return; }
+                const allSelected = visible.every(r => selectedSkus.has(r.sku));
+                $('#select-all-checkbox').prop('checked', allSelected);
+            }
+
+            function enterMode(which) {
+                decreaseModeActive  = (which === 'decrease') ? !decreaseModeActive  : false;
+                increaseModeActive  = (which === 'increase') ? !increaseModeActive  : false;
+                samePriceModeActive = (which === 'same')     ? !samePriceModeActive : false;
+
+                resetDecreaseBtn(); resetIncreaseBtn(); resetSamePriceBtn();
+                const anyOn = decreaseModeActive || increaseModeActive || samePriceModeActive;
+
+                if (decreaseModeActive) {
+                    $('#decrease-btn').removeClass('btn-warning').addClass('btn-danger')
+                        .html('<i class="fas fa-arrow-down"></i> Decrease ON');
+                } else if (increaseModeActive) {
+                    $('#increase-btn').removeClass('btn-success').addClass('btn-danger')
+                        .html('<i class="fas fa-arrow-up"></i> Increase ON');
+                } else if (samePriceModeActive) {
+                    $('#same-price-btn').removeClass('btn-info').addClass('btn-danger')
+                        .html('<i class="fas fa-equals"></i> Same Price ON');
+                }
+
+                const selCol = table.getColumn('_select');
+                if (selCol) {
+                    if (anyOn) {
+                        selCol.show();
+                    } else {
+                        selCol.hide();
+                        selectedSkus.clear();
+                        updateSelectedCount();
+                    }
+                }
+                syncDiscountInputUi();
+                table.redraw(true);
+            }
+
+            $('#decrease-btn').on('click',  () => enterMode('decrease'));
+            $('#increase-btn').on('click',  () => enterMode('increase'));
+            $('#same-price-btn').on('click', () => enterMode('same'));
+            $('#push-all-sprice-btn').on('click', pushAllSpriceVisible);
+            $('#discount-type-select').on('change', syncDiscountInputUi);
+
+            // Header "select all" — selects every currently-visible SKU.
+            $(document).on('change', '#select-all-checkbox', function() {
+                const checked = $(this).prop('checked');
+                table.getData('active').forEach(r => {
+                    if (!r.sku) return;
+                    if (checked) selectedSkus.add(r.sku); else selectedSkus.delete(r.sku);
+                });
+                table.redraw(true);
+                updateSelectedCount();
+            });
+
+            // Per-row checkbox.
+            $(document).on('change', '.sku-select-checkbox', function() {
+                const sku = $(this).data('sku');
+                if ($(this).prop('checked')) selectedSkus.add(sku); else selectedSkus.delete(sku);
+                updateSelectedCount();
+                updateSelectAllCheckbox();
+            });
+
+            // Apply on click / Enter.
+            $('#apply-discount-btn').on('click', applyDiscount);
+            $('#discount-percentage-input').on('keypress', function(e) { if (e.which === 13) applyDiscount(); });
+            $('#clear-sprice-btn').on('click', clearSpriceForSelected);
+            $('#push-newegg-btn').on('click', pushSelectedToNewegg);
+
+            // Compute and apply Increase / Decrease / Same Price to the selected SKUs.
+            function applyDiscount() {
+                if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                    showToast('Turn on Decrease, Increase, or Same Price mode first', 'error');
+                    return;
+                }
+                const discountType  = $('#discount-type-select').val();
+                const discountValue = parseFloat($('#discount-percentage-input').val());
+                if (isNaN(discountValue) || discountValue <= 0) {
+                    showToast(samePriceModeActive ? 'Please enter a price (e.g. 19.99)' : 'Please enter a valid value', 'error');
+                    return;
+                }
+                if (selectedSkus.size === 0) {
+                    showToast('Please select at least one SKU', 'error');
+                    return;
+                }
+
+                let updatedCount = 0;
+                const updates = [];
+
+                selectedSkus.forEach(sku => {
+                    const rows = table.searchRows('sku', '=', sku);
+                    if (rows.length === 0) return;
+                    const row = rows[0];
+                    const d   = row.getData();
+                    const currentPrice = parseFloat(d.price) || 0;
+
+                    // %/$ modes need a positive Newegg price to compute against;
+                    // Same Price mode works regardless of current Newegg price.
+                    if (!samePriceModeActive && !(currentPrice > 0)) return;
+
+                    let newSprice;
+                    if (samePriceModeActive) {
+                        newSprice = discountValue;
+                    } else if (discountType === 'percentage') {
+                        newSprice = increaseModeActive
+                            ? currentPrice * (1 + discountValue / 100)
+                            : currentPrice * (1 - discountValue / 100);
+                    } else {
+                        newSprice = increaseModeActive
+                            ? currentPrice + discountValue
+                            : currentPrice - discountValue;
+                    }
+                    newSprice = Math.max(0.99, roundToRetailPrice(newSprice));
+
+                    // Optimistic SPFT / SROI using the row's server-provided factor (~0.80 by default).
+                    const factor = parseFloat(d.factor) || 0.80;
+                    const lp     = parseFloat(d.lp)     || 0;
+                    const ship   = parseFloat(d.ship)   || 0;
+                    const profit = (newSprice * factor) - lp - ship;
+                    const spft   = newSprice > 0 ? Math.round((profit / newSprice) * 100 * 10) / 10 : 0;
+                    const sroi   = lp > 0 ? Math.round((profit / lp) * 100) : 0;
+
+                    row.update({ sprice: newSprice, spft: spft, sroi: sroi });
+                    updates.push({ sku: sku, sprice: newSprice });
+                    updatedCount++;
+                });
+
+                if (updates.length > 0) saveSpriceUpdates(updates);
+
+                const action = samePriceModeActive ? 'Same Price'
+                    : (increaseModeActive ? 'Increase' : 'Decrease');
+                const suffix = samePriceModeActive ? '' : ' based on Newegg Price';
+                showToast(`${action} applied to ${updatedCount} SKU(s)${suffix}`, 'success');
+                $('#discount-percentage-input').val('');
+            }
+
+            function clearSpriceForSelected() {
+                if (selectedSkus.size === 0) { showToast('Please select SKUs first', 'error'); return; }
+                if (!confirm(`Clear SPRICE for ${selectedSkus.size} selected SKU(s)?`)) return;
+
+                const updates = [];
+                selectedSkus.forEach(sku => {
+                    const rows = table.searchRows('sku', '=', sku);
+                    if (rows.length === 0) return;
+                    rows[0].update({ sprice: null, spft: null, sroi: null });
+                    updates.push({ sku: sku, sprice: null });
+                });
+                if (updates.length > 0) saveSpriceUpdates(updates);
+                showToast(`SPRICE cleared for ${updates.length} SKU(s)`, 'success');
+            }
+
+            // Newegg's price update endpoint accepts many items per PUT but very
+            // large bodies can be rejected by the edge — chunk client-side.
+            const PUSH_CHUNK_SIZE = 100;
+
+            // Shared push pipeline: chunks updates, calls /newegg-pricing-push for each
+            // chunk sequentially, reconciles per-row Price cells, and summarises in one toast.
+            function pushUpdatesInChunks(updates, $btn) {
+                if (!updates || updates.length === 0) {
+                    showToast('Nothing to push', 'error');
+                    return;
+                }
+
+                const origHtml = $btn ? $btn.html() : null;
+                if ($btn) $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing 0/' + updates.length + '...');
+
+                const chunks = [];
+                for (let i = 0; i < updates.length; i += PUSH_CHUNK_SIZE) {
+                    chunks.push(updates.slice(i, i + PUSH_CHUNK_SIZE));
+                }
+
+                let totalPushed = 0;
+                let totalFailed = 0;
+                const allFails  = [];
+                let done = 0;
+
+                function next(idx) {
+                    if (idx >= chunks.length) {
+                        if ($btn) $btn.prop('disabled', false).html(origHtml);
+                        const msgType = totalFailed > 0 ? (totalPushed > 0 ? 'warning' : 'error') : 'success';
+                        showToast(`Newegg push complete: ${totalPushed} ok, ${totalFailed} failed`, msgType);
+                        if (allFails.length) {
+                            console.warn('Newegg push failures:', allFails);
+                            const sample = allFails.slice(0, 3).map(f => `• ${f.sku}: ${f.error}`).join('\n');
+                            const more   = allFails.length > 3 ? `\n…and ${allFails.length - 3} more (see console)` : '';
+                            showToast(`Failed:\n${sample}${more}`, 'error');
+                        }
+                        return;
+                    }
+
+                    $.ajax({
+                        url: "{{ route('newegg.pricing.push') }}",
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                        data: { updates: chunks[idx] },
+                        success: function(res) {
+                            totalPushed += (res.pushed || 0);
+                            totalFailed += (res.failed || 0);
+                            (res.results || []).filter(r => r.success).forEach(r => {
+                                const rows = table.searchRows('sku', '=', r.sku);
+                                if (rows.length) rows[0].update({ price: r.price });
+                            });
+                            (res.results || []).filter(r => !r.success).forEach(r => allFails.push(r));
+                        },
+                        error: function(xhr) {
+                            const r = xhr.responseJSON || {};
+                            // Whole chunk failed (e.g. Cloudflare 502). Count each row as failed.
+                            chunks[idx].forEach(u => allFails.push({
+                                sku: u.sku, error: (r.error || `HTTP ${xhr.status}`)
+                            }));
+                            totalFailed += chunks[idx].length;
+                        },
+                        complete: function() {
+                            done++;
+                            if ($btn) $btn.html(`<i class="fas fa-spinner fa-spin"></i> Pushing ${done * PUSH_CHUNK_SIZE > updates.length ? updates.length : done * PUSH_CHUNK_SIZE}/${updates.length}...`);
+                            next(idx + 1);
+                        }
+                    });
+                }
+
+                next(0);
+            }
+
+            // Live-push each SELECTED SKU's SPRICE (or current Newegg price as fallback).
+            function pushSelectedToNewegg() {
+                if (selectedSkus.size === 0) { showToast('Please select SKUs first', 'error'); return; }
+
+                const updates = [];
+                const skipped = [];
+                selectedSkus.forEach(sku => {
+                    const rows = table.searchRows('sku', '=', sku);
+                    if (rows.length === 0) return;
+                    const d = rows[0].getData();
+                    const price = parseFloat(d.sprice) > 0 ? parseFloat(d.sprice)
+                                : (parseFloat(d.price) > 0 ? parseFloat(d.price) : 0);
+                    if (price <= 0) { skipped.push(sku); return; }
+                    updates.push({ sku: sku, price: +price.toFixed(2) });
+                });
+
+                if (updates.length === 0) {
+                    showToast('No selected SKU has a positive SPRICE or Price to push', 'error');
+                    return;
+                }
+
+                const summary = `Push ${updates.length} price${updates.length !== 1 ? 's' : ''} live to Newegg?`
+                    + (skipped.length ? `\n(${skipped.length} skipped — no SPRICE/Price)` : '');
+                if (!confirm(summary)) return;
+                pushUpdatesInChunks(updates, $('#push-newegg-btn'));
+            }
+
+            // Live-push EVERY currently-visible row that has a SPRICE > 0.
+            // Honours all active filters (INV, PFT, ROI, DIL, NR, Status, badges, search).
+            function pushAllSpriceVisible() {
+                const visible = table.getData('active'); // active = post-filter, post-sort
+                const updates = [];
+                visible.forEach(d => {
+                    if (!d.sku) return;
+                    const sp = parseFloat(d.sprice);
+                    if (!(sp > 0)) return;
+                    updates.push({ sku: d.sku, price: +sp.toFixed(2) });
+                });
+
+                if (updates.length === 0) {
+                    showToast('No visible row has a SPRICE to push', 'error');
+                    return;
+                }
+                if (!confirm(`Push SPRICE for ${updates.length} visible SKU${updates.length !== 1 ? 's' : ''} live to Newegg?`)) return;
+                pushUpdatesInChunks(updates, $('#push-all-sprice-btn'));
+            }
+
+            // Bulk save through one HTTP request (mirrors reverb-save-sprice pattern).
+            function saveSpriceUpdates(updates) {
+                $.ajax({
+                    url: "{{ route('newegg.pricing.save.sprice.bulk') }}",
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    data: { updates: updates },
+                    success: function(res) {
+                        if (!res.success) {
+                            showToast(res.error || 'Failed to save SPRICE updates', 'error');
+                            return;
+                        }
+                        // Reconcile each row with the server's authoritative SPFT/SROI/SPRICE.
+                        (res.results || []).forEach(r => {
+                            const rows = table.searchRows('sku', '=', r.sku);
+                            if (rows.length) {
+                                rows[0].update({
+                                    sprice: r.sprice,
+                                    spft:   r.spft,
+                                    sroi:   r.sroi,
+                                });
+                            }
+                        });
+                        if (res.errors && res.errors.length) {
+                            console.warn('Newegg SPRICE bulk save partial errors:', res.errors);
+                        }
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Error saving SPRICE updates';
+                        showToast(msg, 'error');
+                    }
+                });
+            }
 
             function updateSummary() {
                 const data = table.getData("active");
@@ -565,6 +1249,8 @@
                         table.getColumns().forEach(col => {
                             const def = col.getDefinition();
                             if (!def.field) return;
+                            // Internal toolbar columns (selection checkbox) are not user-toggleable.
+                            if (def.field === '_select') return;
                             const li = document.createElement("li");
                             const label = document.createElement("label");
                             label.style.cssText = "display:block;padding:5px 10px;cursor:pointer;";
@@ -585,7 +1271,9 @@
                 const visibility = {};
                 table.getColumns().forEach(col => {
                     const def = col.getDefinition();
-                    if (def.field) visibility[def.field] = col.isVisible();
+                    // _select is controlled by the toolbar mode buttons, not user preference.
+                    if (!def.field || def.field === '_select') return;
+                    visibility[def.field] = col.isVisible();
                 });
                 fetch(COL_URL, {
                     method: 'POST',
@@ -600,7 +1288,9 @@
                     .then(savedVisibility => {
                         table.getColumns().forEach(col => {
                             const def = col.getDefinition();
-                            if (def.field && savedVisibility[def.field] === false) col.hide();
+                            if (!def.field) return;
+                            if (def.field === '_select') return; // toolbar-controlled
+                            if (savedVisibility[def.field] === false) col.hide();
                         });
                     });
             }
@@ -608,10 +1298,13 @@
             table.on('tableBuilt', function() {
                 applyColumnVisibilityFromServer();
                 buildColumnDropdown();
+                // Make sure the initial INV filter ("More than 0") is applied.
+                applyNeFilters();
             });
             table.on('dataLoaded', updateSummary);
             table.on('dataProcessed', updateSummary);
-            table.on('dataFiltered', updateSummary);
+            table.on('dataFiltered', function() { updateSummary(); updateSelectAllCheckbox(); });
+            table.on('renderComplete', updateSelectAllCheckbox);
 
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
                 if (e.target.type === 'checkbox') {
@@ -622,7 +1315,11 @@
             });
 
             document.getElementById("show-all-columns-btn").addEventListener("click", function() {
-                table.getColumns().forEach(col => col.show());
+                table.getColumns().forEach(col => {
+                    const def = col.getDefinition();
+                    if (def.field === '_select') return; // toolbar-controlled, leave hidden
+                    col.show();
+                });
                 buildColumnDropdown();
                 saveColumnVisibilityToServer();
             });

@@ -220,6 +220,22 @@
                         <button id="fr-price-mode-btn" type="button" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same SPRICE (all rows)">
                             <i class="fas fa-exchange-alt"></i> Pricing mode
                         </button>
+
+                        <!-- Play / Pause parent navigation -->
+                        <div class="btn-group align-items-center ms-2" role="group" aria-label="Parent navigation">
+                            <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
+                                <i class="fas fa-step-backward"></i>
+                            </button>
+                            <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm" title="Start parent navigation">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <button type="button" id="play-pause" class="btn btn-sm btn-warning rounded-circle shadow-sm" style="display: none;" title="Stop navigation and show all">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                            <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
+                                <i class="fas fa-step-forward"></i>
+                            </button>
+                        </div>
                     </div>
 
                     <div id="fr-discount-container" class="p-2 bg-light border rounded mb-2" style="display:none;">
@@ -970,9 +986,84 @@
             $('#fr-more-sold-badge').text('>0 Sold: ' + moreSold.toLocaleString());
         }
 
+        // Play / Pause parent navigation state
+        let frUniqueParents = [];
+        let isFrPlayActive = false;
+        let currentFrParentIndex = -1;
+
+        function normalizeFrParentKey(val) {
+            if (val == null || val === '') return '';
+            return String(val).trim().replace(/\s+/g, ' ').replace(/^PARENT\s+/i, '');
+        }
+        function buildFrUniqueParents() {
+            if (!table) return [];
+            const allRows = table.getData('all') || [];
+            const seen = {};
+            const list = [];
+            allRows.forEach(function(r) {
+                const p = normalizeFrParentKey(r.parent);
+                if (p && !seen[p]) { seen[p] = true; list.push(p); }
+            });
+            list.sort(function(a, b) { return String(a).localeCompare(String(b)); });
+            return list;
+        }
+        function updateFrPlayButtonStates() {
+            $('#play-backward').prop('disabled', !isFrPlayActive || currentFrParentIndex <= 0);
+            $('#play-forward').prop('disabled', !isFrPlayActive || currentFrParentIndex >= frUniqueParents.length - 1);
+        }
+        function startFrPlay() {
+            frUniqueParents = buildFrUniqueParents();
+            if (frUniqueParents.length === 0) return;
+            isFrPlayActive = true;
+            currentFrParentIndex = 0;
+            $('#play-auto').hide();
+            $('#play-pause').show();
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateFrPlayButtonStates();
+        }
+        function stopFrPlay() {
+            isFrPlayActive = false;
+            currentFrParentIndex = -1;
+            $('#play-pause').hide();
+            $('#play-auto').show();
+            applyFilters();
+            updateFrPlayButtonStates();
+        }
+        function nextFrParent() {
+            if (!isFrPlayActive || currentFrParentIndex >= frUniqueParents.length - 1) return;
+            currentFrParentIndex++;
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateFrPlayButtonStates();
+        }
+        function previousFrParent() {
+            if (!isFrPlayActive || currentFrParentIndex <= 0) return;
+            currentFrParentIndex--;
+            applyFilters();
+            try { table.setPage(1); } catch (e) {}
+            updateFrPlayButtonStates();
+        }
+        $('#play-auto').on('click', startFrPlay);
+        $('#play-pause').on('click', stopFrPlay);
+        $('#play-forward').on('click', nextFrParent);
+        $('#play-backward').on('click', previousFrParent);
+
         function applyFilters() {
             if (!table) return;
             table.clearFilter();
+
+            // Play navigation: only show current parent's group
+            if (isFrPlayActive && frUniqueParents.length > 0 && currentFrParentIndex >= 0) {
+                const currentKey = frUniqueParents[currentFrParentIndex];
+                if (currentKey) {
+                    table.addFilter(function(d) {
+                        const p = normalizeFrParentKey(d.parent);
+                        return p === currentKey || p === ('PARENT ' + currentKey);
+                    });
+                }
+                return;
+            }
 
             const skuSearch = ($('#fr-pricing-sku-search').val() || '').toLowerCase().trim();
             const parentSearch = ($('#fr-pricing-parent-search').val() || '').toLowerCase().trim();

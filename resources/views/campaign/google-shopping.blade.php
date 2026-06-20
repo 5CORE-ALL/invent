@@ -203,19 +203,44 @@
         }
 
         .faas-stat-badge {
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
             flex-shrink: 0;
             color: #fff;
-            font-size: 12px;
+            font-size: 15px;
             font-weight: 700;
-            padding: 6px 12px;
-            border-radius: 6px;
+            padding: 9px 16px;
+            border-radius: 8px;
             white-space: nowrap;
-            line-height: 1.2;
+            line-height: 1.25;
+            letter-spacing: 0.2px;
             cursor: pointer;            /* clicks open the trend chart */
-            transition: transform 0.1s ease;
+            transition: transform 0.1s ease, filter 0.1s ease;
+        }
+        /* Inner value span is bumped slightly larger than the label for visual hierarchy */
+        .faas-stat-badge > span {
+            margin-left: 4px;
+            font-size: 16px;
+            font-weight: 800;
         }
         .faas-stat-badge:hover { transform: translateY(-1px); filter: brightness(1.1); }
+        /* Static (non-chart-link) count badges keep a default cursor and skip the hover lift
+           so users don't expect a trend chart on click. */
+        .faas-stat-badge.is-static { cursor: default; }
+        .faas-stat-badge.is-static:hover { transform: none; filter: none; }
+
+        /* Compact square icon-only buttons (Refresh / Export) — keep BS btn-sm height
+           but drop the text so the toolbar reads as a row of equal-size icon controls. */
+        .gac-raw-icon-btn {
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+        .gac-raw-icon-btn > i { font-size: 14px; }
         /* Compact title so the badge strip has more horizontal room. */
         .faas-toolbar-title { font-size: 1rem; flex-shrink: 0; }
         .faas-stat-badge--count { background: #475569; }   /* slate   */
@@ -243,18 +268,31 @@
                 <div class="card-body">
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
 
-                        <div class="d-flex align-items-center flex-nowrap gap-2 flex-grow-1 overflow-x-auto py-1"
-                            style="min-width:0;">
+                        {{--
+                            Badge strip — kept on one line via flex-nowrap. flex-grow-1 and
+                            overflow-x-auto are intentionally NOT set so the strip sizes to its
+                            content; if the total width plus the right-side action buttons
+                            exceeds the row width, the OUTER `d-flex flex-wrap` (parent of this
+                            div) moves the action buttons to a second row instead of clipping
+                            or horizontally scrolling the badges.
+                        --}}
+                        <div class="d-flex align-items-center flex-nowrap gap-2 py-1">
                             {{-- Live sums of key Tabulator columns
                                 across whatever rows are currently visible
                                 (after search / header filters). Updated by
                                 updateMetricBadges() in the script below. --}}
-                            {{-- Count badge — number of rows currently
-                                visible (after search + Sbgt filter). Not
-                                a chart link; clicking does nothing. --}}
-                            <span id="faasL30SpendBadge" data-metric="spend" data-label="L30 Spend"
+                            {{-- CAMPAIGNS badge — total campaign count matching the current
+                                 filter set (server-side `summary.filtered_row_count`, NOT just
+                                 the rows on this page). Not a chart link; intentionally lacks
+                                 .badge-chart-link so clicking does nothing. Updated by
+                                 gacRawSummaryFromResponse() in the script below. --}}
+                            <span id="faasCampaignsBadge" data-metric="campaigns" data-label="Campaigns"
+                                class="faas-stat-badge faas-stat-badge--count is-static"
+                                title="Total campaigns matching current filters">CAMPAIGNS:<span id="faasCampaignsValue">0</span></span>
+
+                            <span id="faasL30SpendBadge" data-metric="spend" data-label="Spend"
                                 class="faas-stat-badge faas-stat-badge--spend badge-chart-link"
-                                title="Click for trend">L30 SPEND:<span id="faasL30SpendValue">0</span></span>
+                                title="Click for trend">SPEND:<span id="faasL30SpendValue">0</span></span>
 
                             <span id="faasClicksBadge" data-metric="clicks" data-label="Clicks"
                                 class="faas-stat-badge faas-stat-badge--impr badge-chart-link"
@@ -262,11 +300,11 @@
 
                             <span id="faasL30SoldBadge" data-metric="sold" data-label="Sold"
                                 class="faas-stat-badge faas-stat-badge--clk badge-chart-link"
-                                title="Click for trend">L30 SOLD :<span id="faasL30SoldValue">0</span></span>
+                                title="Click for trend">SOLD :<span id="faasL30SoldValue">0</span></span>
 
-                            <span id="faasL30SalesBadge" data-metric="sales" data-label="L30 Sales"
+                            <span id="faasL30SalesBadge" data-metric="sales" data-label="Sales"
                                 class="faas-stat-badge faas-stat-badge--spend badge-chart-link"
-                                title="Click for trend">L30 SALES:<span id="faasL30SalesValue">$0</span></span>
+                                title="Click for trend">SALES:<span id="faasL30SalesValue">$0</span></span>
 
                             <span id="faasAcosBadge" data-metric="acos" data-label="ACOS"
                                 class="faas-stat-badge faas-stat-badge--sales badge-chart-link"
@@ -284,11 +322,15 @@
                         
                         <span id="gac-raw-total" class="badge bg-secondary">Total: —</span>
                         <span id="gac-raw-page-info" class="badge bg-light text-dark border">Page: —</span>
-                        <button type="button" id="gac-raw-refresh" class="btn btn-sm btn-outline-primary">
-                            <i class="fa fa-refresh"></i> Refresh
+                        <button type="button" id="gac-raw-refresh" class="btn btn-sm btn-outline-primary gac-raw-icon-btn" title="Refresh grid" aria-label="Refresh grid">
+                            <i class="fa fa-refresh"></i>
                         </button>
-                        <button type="button" id="gac-raw-export" class="btn btn-sm btn-success" title="Export current page as CSV">
-                            <i class="fas fa-file-csv"></i> Export
+                        <button type="button" id="gac-raw-pull-data" class="btn btn-sm btn-primary" title="Runs Artisan app:fetch-google-ads-campaigns — pulls fresh campaign metrics from the Google Ads + GA4 APIs (use when the daily cron missed data). Runs in the background; refresh the grid in a few minutes.">
+                            <i class="fa fa-cloud-download-alt"></i> Pull Data
+                            <input type="number" id="gac-raw-pull-days" min="1" max="30" value="1" class="form-control form-control-sm d-inline-block ms-1" style="width: 56px; padding: 1px 4px; height: 22px; font-size: 11px;" title="Days to fetch (1-30)" onclick="event.stopPropagation();">
+                        </button>
+                        <button type="button" id="gac-raw-export" class="btn btn-sm btn-success gac-raw-icon-btn" title="Export current page as CSV" aria-label="Export current page as CSV">
+                            <i class="fas fa-file-csv"></i>
                         </button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbgt-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">SBGT RULE</button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbid-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbidRuleModal" title="Edit 7UB/1UB% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
@@ -312,15 +354,6 @@
                                 </select>
                             </div>
                             <div class="gac-raw-filter-field">
-                                <label class="gac-raw-filter-label mb-0" for="gac-filter-ub2">U2%</label>
-                                <select id="gac-filter-ub2" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by 2 UB% band">
-                                    <option value="all" selected>All</option>
-                                    <option value="green">66% – 99%</option>
-                                    <option value="pink">&gt; 99%</option>
-                                    <option value="red">&lt; 66%</option>
-                                </select>
-                            </div>
-                            <div class="gac-raw-filter-field">
                                 <label class="gac-raw-filter-label mb-0" for="gac-filter-ub1">U1%</label>
                                 <select id="gac-filter-ub1" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by 1 UB% band">
                                     <option value="all" selected>All</option>
@@ -331,7 +364,7 @@
                             </div>
                             <div class="gac-raw-filter-field">
                                 <label class="gac-raw-filter-label mb-0" for="gac-filter-acos">ACOS</label>
-                                <select id="gac-filter-acos" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by ACOS L30 band">
+                                <select id="gac-filter-acos" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by ACOS band">
                                     <option value="all" selected>All</option>
                                     <option value="pink">0 – 10%</option>
                                     <option value="green">10 – 20%</option>
@@ -409,7 +442,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
-                    <p class="small text-muted mb-2" id="gacRawU7HistoryModalSub">Last 30 calendar days. Same U2/U1/Sts filters as the grid; U7 filter ignored. Each day uses the 30-day window ending on that date.</p>
+                    <p class="small text-muted mb-2" id="gacRawU7HistoryModalSub">Last 30 calendar days. Same U1/Sts filters as the grid; U7 filter ignored. Each day uses the 30-day window ending on that date.</p>
                     <div id="gacRawU7HistoryModalLoading" class="small text-muted">Loading…</div>
                     <p class="small text-danger mb-0 d-none" id="gacRawU7HistoryModalError" role="alert"></p>
                     <div class="table-responsive" style="max-height: 60vh;">
@@ -439,7 +472,7 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h5 class="modal-title" id="gacRawSbgtRuleModalLabel">SBGT rule — L30 ACOS % → tier</h5>
+                    <h5 class="modal-title" id="gacRawSbgtRuleModalLabel">SBGT rule — ACOS % → tier</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -583,6 +616,7 @@
             const gacRawRuleSaveUrl = @json(route('google.shopping.campaigns.rule.save'));
             const gacRawPushSbgtUrl = @json(route('google.shopping.campaigns.push.sbgt'));
             const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
+            const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
             const gacRawBadgeHistoryUrl = @json(route('google.shopping.campaigns.badge.history'));
             const gacRawU7PieDistribUrl = @json(route('google.shopping.campaigns.u7.distribution'));
             const gacRawU7PieHistoryUrl = @json(route('google.shopping.campaigns.u7.history'));
@@ -648,9 +682,11 @@
             function gacRawSummaryFromResponse(response) {
                 var spiEl = document.getElementById('gac-raw-summary-spi30-val');
                 var acosEl = document.getElementById('gac-raw-summary-acos-val');
+                var campaignsEl = document.getElementById('faasCampaignsValue');
                 if (!response || typeof response !== 'object' || !response.summary) {
                     if (spiEl) spiEl.textContent = '—';
                     if (acosEl) acosEl.textContent = '—';
+                    if (campaignsEl) campaignsEl.textContent = '0';
                     return;
                 }
                 var s = response.summary;
@@ -668,12 +704,15 @@
                         acosEl.textContent = '—';
                     }
                 }
+                if (campaignsEl) {
+                    var n = Number(s.filtered_row_count);
+                    campaignsEl.textContent = Number.isFinite(n) ? Math.round(n).toLocaleString() : '0';
+                }
             }
 
             function gacRawCurrentFilterParams() {
                 return {
                     filter_ub7: gacRawFilterParamVal('gac-filter-ub7'),
-                    filter_ub2: gacRawFilterParamVal('gac-filter-ub2'),
                     filter_ub1: gacRawFilterParamVal('gac-filter-ub1'),
                     filter_acos: gacRawFilterParamVal('gac-filter-acos'),
                     filter_stat: gacRawFilterParamVal('gac-filter-stat'),
@@ -693,7 +732,6 @@
             function gacRawPieFilterPayload() {
                 var p = gacRawCurrentFilterParams();
                 return {
-                    filter_ub2: p.filter_ub2,
                     filter_ub1: p.filter_ub1,
                     filter_acos: p.filter_acos,
                     filter_stat: p.filter_stat,
@@ -721,7 +759,7 @@
                     titleEl.textContent = 'U7% — ' + (sliceLabel || bucketKey) + ' — last 30 days';
                 }
                 if (subEl) {
-                    subEl.textContent = 'Daily row counts for the selected band. Same U2/U1/Sts filters as the grid; U7 filter ignored. Each day uses the 30-day window ending on that date.';
+                    subEl.textContent = 'Daily row counts for the selected band. Same U1/Sts filters as the grid; U7 filter ignored. Each day uses the 30-day window ending on that date.';
                 }
                 errEl.classList.add('d-none');
                 errEl.textContent = '';
@@ -747,7 +785,6 @@
                         _token: tok,
                         days: 30,
                         bucket: bucketKey,
-                        filter_ub2: p.filter_ub2,
                         filter_ub1: p.filter_ub1,
                         filter_acos: p.filter_acos,
                         filter_stat: p.filter_stat,
@@ -823,7 +860,6 @@
                     type: 'POST',
                     data: {
                         _token: tok,
-                        filter_ub2: p.filter_ub2,
                         filter_ub1: p.filter_ub1,
                         filter_acos: p.filter_acos,
                         filter_stat: p.filter_stat,
@@ -1055,8 +1091,9 @@
                         cpc_L2: 'L2 CPC',
                         cpc_L1: 'L1 CPC',
                         ad_sold_L30: 'Sold',
-                        ad_sales_L30: 'L30 Sales',
-                        acos_l30: 'ACOS L30',
+                        ad_sales_L30: 'Sales',
+                        acos_l30: 'ACOS',
+                        cvr_l30: 'CVR',
                         ub7: '7 UB%',
                         ub2: '2 UB%',
                         ub1: '1 UB%',
@@ -1182,6 +1219,7 @@
                         ad_sold_L30: true,
                         ad_sales_L30: true,
                         acos_l30: true,
+                        cvr_l30: true,
                         ub7: true,
                         ub2: true,
                         ub1: true,
@@ -1214,6 +1252,14 @@
                         if (col.field === 'id' || col.field === 'campaign_id' || col.field === 'date') {
                             col.visible = false;
                         }
+                        // L7 / L2 Spend are still computed server-side (the SQL joins them so
+                        // utilized-style enrichments — UB%, CPC, suggested SBID — still work)
+                        // but the columns are hidden from the grid per product request.
+                        // Sorting by these fields is still allowed (server whitelist unchanged)
+                        // in case future UI surfaces them.
+                        if (col.field === 'l7_spend' || col.field === 'l2_spend') {
+                            col.visible = false;
+                        }
                         if (Object.prototype.hasOwnProperty.call(moneySpendTitles, col.field)) {
                             col.title = moneySpendTitles[col.field];
                             col.formatter = moneyRoundedFormatter;
@@ -1230,6 +1276,15 @@
                             } else if (col.field === 'acos_l30') {
                                 col.formatter = acosFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 64);
+                            } else if (col.field === 'cvr_l30') {
+                                // CVR = (Sold / Clicks) * 100 — formatted with 1 decimal,
+                                // matches the toolbar CVR badge value to the percent.
+                                col.formatter = function(c) {
+                                    var v = parseFloat(c.getValue());
+                                    if (!isFinite(v)) return '0%';
+                                    return v.toFixed(1) + '%';
+                                };
+                                col.minWidth = Math.max(col.minWidth || 0, 60);
                             } else if (col.field === 'ub7' || col.field === 'ub2' || col.field === 'ub1') {
                                 col.formatter = ubUtilColorFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 57);
@@ -1283,7 +1338,7 @@
                 },
             });
 
-            ['gac-filter-ub7', 'gac-filter-ub2', 'gac-filter-ub1', 'gac-filter-acos', 'gac-filter-stat'].forEach(function(fid) {
+            ['gac-filter-ub7', 'gac-filter-ub1', 'gac-filter-acos', 'gac-filter-stat'].forEach(function(fid) {
                 var fel = document.getElementById(fid);
                 if (fel) {
                     fel.addEventListener('change', gacRawReloadGridForFilters);
@@ -1446,6 +1501,65 @@
                         if (sbgtB) sbgtB.disabled = false;
                         if (sbidB) sbidB.disabled = false;
                     });
+            }
+
+            var pullDataBtn = document.getElementById('gac-raw-pull-data');
+            if (pullDataBtn) {
+                pullDataBtn.addEventListener('click', function(ev) {
+                    if (ev && ev.target && ev.target.id === 'gac-raw-pull-days') {
+                        return;
+                    }
+                    var daysEl = document.getElementById('gac-raw-pull-days');
+                    var days = daysEl ? parseInt(daysEl.value, 10) : 1;
+                    if (!Number.isFinite(days) || days < 1) days = 1;
+                    if (days > 30) days = 30;
+                    if (daysEl) daysEl.value = String(days);
+
+                    if (!window.confirm('Run app:fetch-google-ads-campaigns for the last ' + days + ' day(s)? This pulls campaigns + metrics from the Google Ads / GA4 APIs and runs in the background (a few minutes).')) {
+                        return;
+                    }
+
+                    var origHtml = pullDataBtn.innerHTML;
+                    pullDataBtn.disabled = true;
+                    pullDataBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Starting…';
+                    gacShowPushLoading('Starting data pull (app:fetch-google-ads-campaigns)…',
+                        'Triggering background fetch for the last ' + days + ' day(s). The grid will keep working — come back and click Refresh in a few minutes.');
+
+                    var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+                    fetch(gacRawPullDataUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                            'X-CSRF-TOKEN': token,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ days: days }),
+                    })
+                        .then(function(res) {
+                            return res.json().then(function(body) {
+                                return { ok: res.ok, status: res.status, body: body };
+                            });
+                        })
+                        .then(function(out) {
+                            var b = out.body || {};
+                            var cmd = b.command || 'app:fetch-google-ads-campaigns';
+                            var title = cmd + ' — ' + (b.ok ? 'started' : 'failed');
+                            if (b.exit_code != null && !b.ok) {
+                                title += ' (exit ' + b.exit_code + ')';
+                            }
+                            var text = (b.message ? b.message + '\n\n' : '') + (b.output || '');
+                            gacShowPushResult(title, text, b.ok ? 'success' : 'error');
+                        })
+                        .catch(function(err) {
+                            gacShowPushResult('Request failed', String(err && err.message ? err.message : err), 'error');
+                        })
+                        .finally(function() {
+                            pullDataBtn.innerHTML = origHtml;
+                            pullDataBtn.disabled = false;
+                        });
+                });
             }
 
             var pushSbgtBtn = document.getElementById('gac-raw-push-sbgt');

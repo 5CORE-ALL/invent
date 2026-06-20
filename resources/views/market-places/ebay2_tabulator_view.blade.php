@@ -793,11 +793,15 @@
                 </div>
 
                 <div id="ebay2-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <!-- SKU Search -->
-                    <div style="display: flex; align-items: center; padding: 8px 12px; background: #fff; border-bottom: 1px solid #e5e7eb;">
+                    <!-- SKU & Parent Search -->
+                    <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #e5e7eb;">
                         <div style="flex: 1; position: relative;">
                             <i class="fa fa-search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 13px;"></i>
                             <input type="text" id="sku-search" class="form-control form-control-sm" style="padding-left: 32px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px;" placeholder="Search by SKU...">
+                        </div>
+                        <div style="min-width: 200px; position: relative;">
+                            <i class="fa fa-sitemap" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 13px;"></i>
+                            <input type="text" id="parent-search" class="form-control form-control-sm" style="padding-left: 32px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px;" placeholder="Search Parent...">
                         </div>
                         <span id="custom-pagination-counter" style="font-size: 13px; color: #555; white-space: nowrap; margin-left: 16px;"></span>
                     </div>
@@ -3317,7 +3321,10 @@
                             const currentPrice = parseFloat(rowData['eBay Price'] || 0);
 
                             if (!lmpPrice && totalCompetitors === 0) {
-                                return '<span style="color: #999;">N/A</span>';
+                                return `<a href="#" class="view-lmp-competitors" data-sku="${sku}"
+                                    style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 12px;">
+                                    <i class="fa fa-eye"></i> View
+                                </a>`;
                             }
 
                             let html = '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">';
@@ -4520,9 +4527,11 @@
             });
 
             // SKU Search functionality
-            $('#sku-search').on('keyup', function() {
-                const value = $(this).val();
-                table.setFilter("(Child) sku", "like", value);
+            $('#sku-search, #parent-search').on('keyup', function() {
+                table.setFilter([
+                    { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' },
+                    { field: 'Parent', type: 'like', value: $('#parent-search').val() || '' }
+                ]);
             });
 
             // NR/REQ dropdown change handler

@@ -332,6 +332,12 @@
                             <a href="{{ route('customer.care.refunds') }}">Refunds</a>
                         </li>
                         <li>
+                            <a href="{{ route('customer.care.faq.customers.index') }}"
+                               class="{{ request()->routeIs('customer.care.faq.customers.*') ? 'active' : '' }}">
+                                FAQ / FFP Customers
+                            </a>
+                        </li>
+                        <li>
                             <a href="{{ route('customer.care.orders.on.hold') }}">Orders On Hold</a>
                         </li>
                         <li>
@@ -640,6 +646,18 @@
                                         <a href="{{ url('/repricer/google-search') }}"
                                             class="{{ request()->is('repricer/google-search*') ? 'active' : '' }}">
                                             Google Competitors
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ url('/repricer/tiktok-search') }}"
+                                            class="{{ request()->is('repricer/tiktok-search*') ? 'active' : '' }}">
+                                            TikTok Competitors
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ url('/repricer/shein-search') }}"
+                                            class="{{ request()->is('repricer/shein-search*') ? 'active' : '' }}">
+                                            Shein Competitors
                                         </a>
                                     </li>
                                     <li>
@@ -2317,10 +2335,6 @@
                 </a>
                 <div class="collapse" id="sidebarShein">
                     <ul class="side-nav-third-level">
-                        <li>
-                            <a href="{{ url('sheinAnalysis') }}">Shein
-                                Analytics</a>
-                        </li>
                         <li><a href="{{ url('shein-tabulator') }}">Shein Daily Data</a></li>
                         <li><a href="{{ route('zero.shein') }}">Shein 0 view</a></li>
                         <li><a href="{{ route('listing.shein') }}">Listing Shein</a></li>

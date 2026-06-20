@@ -49,6 +49,7 @@ class ScopeOfImprovementController extends Controller
                     'issue' => $row->issue,
                     'root_cause' => $row->root_cause,
                     'fixing_root_cause' => $row->fixing_root_cause,
+                    's_by' => $row->s_by,
                     'history' => $row->history ?? [],
                     'updated_by' => $row->updated_by,
                     'updated_at' => optional($row->updated_at)->format('Y-m-d H:i'),
@@ -60,30 +61,86 @@ class ScopeOfImprovementController extends Controller
 
     public function store(Request $request)
     {
-        if (!$this->canAddIssue()) {
-            return response()->json([
-                'message' => 'Only ' . self::ADD_ISSUE_EMAIL . ' can add an issue.',
-            ], 403);
-        }
-
         $validated = $request->validate([
             'user_id' => 'required|exists:users,id',
             'issue' => 'nullable|string',
+            'issues' => 'nullable|array',
+            'issues.*' => 'nullable|string',
             'root_cause' => 'nullable|string',
             'fixing_root_cause' => 'nullable|string',
         ]);
 
         $email = Auth::user()->email ?? 'system';
+        $sBy = Auth::user()->name ?? $email;
 
-        $validated['created_by'] = $email;
-        $validated['updated_by'] = $email;
-        $validated['history'] = [
-            $this->historyEntry($email, 'created'),
-        ];
+        // Multi-select submission: one row per selected/typed issue.
+        $issues = collect($validated['issues'] ?? [])
+            ->map(fn ($v) => trim((string) $v))
+            ->filter(fn ($v) => $v !== '')
+            ->unique()
+            ->values();
 
-        $row = ScopeOfImprovement::create($validated);
+        // Fallback to the legacy single "issue" field if no issues[] was sent.
+        if ($issues->isEmpty() && !empty($validated['issue'])) {
+            $issues = collect([trim($validated['issue'])]);
+        }
 
-        return response()->json(['success' => true, 'id' => $row->id]);
+        if ($issues->isEmpty()) {
+            return response()->json([
+                'message' => 'Please select or type at least one issue.',
+            ], 422);
+        }
+
+        // Skip any issues already filed for this user so the "remaining only"
+        // contract holds even if the client is out of sync.
+        $existing = ScopeOfImprovement::where('user_id', $validated['user_id'])
+            ->pluck('issue')
+            ->filter()
+            ->map(fn ($v) => (string) $v)
+            ->all();
+
+        $createdIds = [];
+        foreach ($issues as $issueText) {
+            if (in_array($issueText, $existing, true)) {
+                continue;
+            }
+            $row = ScopeOfImprovement::create([
+                'user_id'           => $validated['user_id'],
+                'issue'             => $issueText,
+                'root_cause'        => $validated['root_cause'] ?? null,
+                'fixing_root_cause' => $validated['fixing_root_cause'] ?? null,
+                's_by'              => $sBy,
+                'created_by'        => $email,
+                'updated_by'        => $email,
+                'history'           => [$this->historyEntry($email, 'created')],
+            ]);
+            $createdIds[] = $row->id;
+            $existing[] = $issueText;
+        }
+
+        return response()->json([
+            'success'     => true,
+            'created'     => count($createdIds),
+            'created_ids' => $createdIds,
+        ]);
+    }
+
+    /**
+     * Return the distinct list of issue labels already filed for a given user.
+     * Used by the modal to filter the predefined dropdown down to "remaining"
+     * issues only.
+     */
+    public function userIssues($userId)
+    {
+        $issues = ScopeOfImprovement::where('user_id', $userId)
+            ->whereNotNull('issue')
+            ->where('issue', '!=', '')
+            ->orderBy('issue')
+            ->pluck('issue')
+            ->unique()
+            ->values();
+
+        return response()->json(['issues' => $issues]);
     }
 
     public function update(Request $request, $id)

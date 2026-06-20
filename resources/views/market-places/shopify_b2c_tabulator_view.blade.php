@@ -334,10 +334,14 @@
                     </div>
                 </div>
                 <div id="reverb-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <div class="shopify-b2c-search-wrap">
-                        <div class="input-group shopify-b2c-search-group">
+                    <div class="shopify-b2c-search-wrap d-flex flex-wrap gap-2 align-items-center">
+                        <div class="input-group shopify-b2c-search-group" style="max-width: 260px;">
                             <span class="input-group-text"><i class="fas fa-search"></i></span>
                             <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
+                        </div>
+                        <div class="input-group shopify-b2c-search-group" style="max-width: 260px;">
+                            <span class="input-group-text"><i class="fas fa-sitemap"></i></span>
+                            <input type="text" id="parent-search" class="form-control" placeholder="Search Parent...">
                         </div>
                     </div>
                     <div id="reverb-table" style="flex: 1;"></div>
@@ -1532,9 +1536,11 @@
         });
 
         // SKU Search functionality
-        $('#sku-search').on('keyup', function() {
-            const value = $(this).val();
-            table.setFilter("(Child) sku", "like", value);
+        $('#sku-search, #parent-search').on('keyup', function() {
+            table.setFilter([
+                { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' },
+                { field: 'Parent', type: 'like', value: $('#parent-search').val() || '' }
+            ]);
         });
 
         // NR/REQ dropdown change handler

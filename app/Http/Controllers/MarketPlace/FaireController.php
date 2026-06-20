@@ -707,7 +707,9 @@ class FaireController extends Controller
 
                 $updated = 0;
                 foreach ($sheetRows as $row) {
-                    $sku = trim((string) ($row[$skuIndex] ?? ''));
+                    // Normalize at upload time so faire_pricing_prices.sku matches product_masters.sku
+                    // even when the Faire export contains NBSP / stray inner whitespace.
+                    $sku = $this->normalizeFaireSkuExact((string) ($row[$skuIndex] ?? ''));
                     if ($sku === '') {
                         continue;
                     }
@@ -725,7 +727,7 @@ class FaireController extends Controller
                     return response()->json(['success' => false, 'message' => 'Cannot open uploaded file.'], 422);
                 }
 
-                $bom = fread($handle, 3);
+                $bom = fread($handle, 3);       
                 if ($bom !== "\xEF\xBB\xBF") {
                     rewind($handle);
                 }
@@ -769,7 +771,9 @@ class FaireController extends Controller
                     if (!$row || count(array_filter($row, fn ($v) => $v !== '' && $v !== null)) === 0) {
                         continue;
                     }
-                    $sku = trim((string) ($row[$skuIndex] ?? ''));
+                    // Normalize at upload time so faire_pricing_prices.sku matches product_masters.sku
+                    // even when the Faire export contains NBSP / stray inner whitespace.
+                    $sku = $this->normalizeFaireSkuExact((string) ($row[$skuIndex] ?? ''));
                     if ($sku === '') {
                         continue;
                     }
@@ -813,8 +817,11 @@ class FaireController extends Controller
                 ->groupBy('sku')
                 ->get();
 
-            // Match ProductMaster getViewProductData: NBSP → space, then trim + uppercase (ShopifySku::all() keying).
-            $normalizeSku = static fn ($value) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
+            // Robust SKU normalizer (mirrors AliexpressController::normalizeAeSkuExact).
+            // The previous `strtoupper(trim(str_replace(NBSP, ' ', $v)))` missed narrow NBSP
+            // (\xE2\x80\xAF), raw \xA0, and inner multi-space runs — common in Faire/Excel
+            // exports — which silently broke the product_master join and made LP show as 0.
+            $normalizeSku = fn ($value) => $this->normalizeFaireSkuExact((string) $value);
 
             $salesBySku = $salesAgg->keyBy(fn ($row) => $normalizeSku($row->sku));
 
@@ -828,71 +835,45 @@ class FaireController extends Controller
             $uploadedPriceBySku = FairePricingPrice::all()
                 ->keyBy(fn ($row) => $normalizeSku($row->sku));
 
-            $listingSkuKeys = FaireListingStatus::query()
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->pluck('sku')
-                ->map($normalizeSku)
-                ->unique()
-                ->values()
-                ->all();
+            // Load full tables and key in PHP — SQL UPPER(TRIM(sku)) cannot fold NBSP / inner whitespace,
+            // and the previous `pluck()->whereIn(UPPER(TRIM(sku)))` two-step had the same blind spot.
+            $listingStatusBySku = FaireListingStatus::all()
+                ->keyBy(fn ($row) => $normalizeSku($row->sku));
 
-            $dataViewSkuKeys = FaireDataView::query()
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->pluck('sku')
-                ->map($normalizeSku)
-                ->unique()
-                ->values()
-                ->all();
+            $viewMetaBySku = FaireDataView::all()
+                ->keyBy(fn ($row) => $normalizeSku($row->sku));
 
             $allNormalizedSkus = collect(array_merge(
                 $salesBySku->keys()->all(),
                 $productMastersBySku->keys()->all(),
                 $uploadedPriceBySku->keys()->all(),
-                $listingSkuKeys,
-                $dataViewSkuKeys
+                $listingStatusBySku->keys()->all(),
+                $viewMetaBySku->keys()->all()
             ))->unique()->values();
-
-            $viewMetaBySku = collect();
-            if ($allNormalizedSkus->isNotEmpty()) {
-                $viewMetaBySku = FaireDataView::query()
-                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
-                    ->get()
-                    ->keyBy(fn ($row) => $normalizeSku($row->sku));
-            }
 
             // Load full Shopify map like Product Master — whereIn(UPPER(TRIM(sku))) misses UTF-8 NBSP / variant spacing.
             $shopifyBySku = ShopifySku::all()->keyBy(fn ($row) => $normalizeSku($row->sku));
 
-            $listingStatusBySku = collect();
-            if ($allNormalizedSkus->isNotEmpty()) {
-                $listingStatusBySku = FaireListingStatus::query()
-                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
-                    ->get()
-                    ->keyBy(fn ($row) => $normalizeSku($row->sku));
-            }
-
             // Same source as Forecast Analysis: forecast_analysis.nr (NRP), keyed by normalized SKU.
+            // Load full table; SQL UPPER(TRIM(sku)) won't fold NBSP/multi-space the way PHP does.
             $forecastNrBySku = [];
-            if ($allNormalizedSkus->isNotEmpty()) {
-                $faRows = DB::table('forecast_analysis')
-                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus->values()->all())
-                    ->get(['sku', 'parent', 'nr', 'stage']);
-                foreach ($faRows->groupBy(fn ($r) => $normalizeSku($r->sku)) as $k => $group) {
-                    $withStage = $group->first(function ($r) {
-                        return $r->stage !== null && trim((string) $r->stage) !== '';
-                    });
-                    if ($withStage) {
-                        $forecastNrBySku[$k] = $withStage;
+            $faRows = DB::table('forecast_analysis')
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get(['sku', 'parent', 'nr', 'stage']);
+            foreach ($faRows->groupBy(fn ($r) => $normalizeSku($r->sku)) as $k => $group) {
+                $withStage = $group->first(function ($r) {
+                    return $r->stage !== null && trim((string) $r->stage) !== '';
+                });
+                if ($withStage) {
+                    $forecastNrBySku[$k] = $withStage;
 
-                        continue;
-                    }
-                    $withNr = $group->first(function ($r) {
-                        return $r->nr !== null && trim((string) $r->nr) !== '';
-                    });
-                    $forecastNrBySku[$k] = $withNr ?? $group->first();
+                    continue;
                 }
+                $withNr = $group->first(function ($r) {
+                    return $r->nr !== null && trim((string) $r->nr) !== '';
+                });
+                $forecastNrBySku[$k] = $withNr ?? $group->first();
             }
 
             $marketplaceData = MarketplacePercentage::where('marketplace', 'Faire')->first();
@@ -1061,7 +1042,13 @@ class FaireController extends Controller
 
                 $sprice = (float) $sprice;
 
-                $productMaster = ProductMaster::where('sku', $sku)->first();
+                // Robust SKU match — exact `WHERE sku = ?` misses NBSP / multi-space variants
+                // that frequently exist between faire_data_views and product_masters.
+                $normalizedSku = $this->normalizeFaireSkuExact((string) $sku);
+                $productMaster = ProductMaster::query()
+                    ->whereNotNull('sku')->where('sku', '!=', '')
+                    ->get()
+                    ->first(fn ($r) => $this->normalizeFaireSkuExact((string) $r->sku) === $normalizedSku);
                 $lp = 0;
                 if ($productMaster) {
                     $values = is_array($productMaster->Values)
@@ -1474,6 +1461,24 @@ class FaireController extends Controller
         $s = strtolower(trim(preg_replace('/[^a-zA-Z0-9_ ]/', ' ', (string) $value)));
 
         return trim(preg_replace('/\s+/', ' ', $s));
+    }
+
+    /**
+     * Robust SKU normalization for cross-table joins.
+     *
+     * Folds non-breaking spaces (NBSP / narrow NBSP / \xA0) to regular spaces,
+     * strips invalid UTF-8, collapses internal whitespace runs, then uppercases.
+     * Without this, `faire_pricing_prices.sku` / `forecast_analysis.sku` rarely
+     * match `product_masters.sku` because Faire and Excel exports leak NBSP and
+     * double-spaces, and LP silently falls back to 0. Mirrors
+     * AliexpressController::normalizeAeSkuExact.
+     */
+    private function normalizeFaireSkuExact(string $sku): string
+    {
+        $sku = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', trim($sku));
+        $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $sku);
+
+        return strtoupper(preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $sku));
     }
 
     /**

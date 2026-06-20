@@ -161,8 +161,9 @@
                     </div>
                 </div>
                 <div id="pp-table-wrapper" style="height:calc(100vh - 200px);display:flex;flex-direction:column;">
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
+                    <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
+                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
+                        <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
                     </div>
                     <div id="pp-table" style="flex:1;"></div>
                 </div>
@@ -728,7 +729,12 @@
             ]
         });
 
-        $('#sku-search').on('keyup', function() { table.setFilter('(Child) sku', 'like', $(this).val()); });
+        $('#sku-search, #parent-search').on('keyup', function() {
+            table.setFilter([
+                { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' },
+                { field: 'Parent', type: 'like', value: $('#parent-search').val() || '' }
+            ]);
+        });
 
         $(document).on('change', '.nr-req-dropdown', function() {
             const $cell = $(this).closest('.tabulator-cell');

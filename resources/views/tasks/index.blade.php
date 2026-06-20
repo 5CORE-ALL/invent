@@ -506,11 +506,12 @@
         }
         
         /* Priority badges with STRONG contrast */
+        /* Urgent (stored as `high`) uses orange so it pops above normal/low and signals action. */
         .mobile-priority-high {
-            background: #7c3aed !important;
+            background: #fd7e14 !important;
             color: #ffffff !important;
             font-weight: 700 !important;
-            box-shadow: 0 2px 4px rgba(124, 58, 237, 0.35);
+            box-shadow: 0 2px 4px rgba(253, 126, 20, 0.4);
         }
         
         .mobile-priority-medium {
@@ -1066,11 +1067,12 @@
             box-shadow: 0 2px 4px rgba(253, 126, 20, 0.3);
         }
 
+        /* Urgent (stored as `high`) — orange background so urgent tasks stand out. */
         .priority-high {
-            background-color: #7c3aed;
+            background-color: #fd7e14;
             color: #ffffff;
-            border: 1px solid #5b21b6;
-            box-shadow: 0 2px 4px rgba(124, 58, 237, 0.35);
+            border: 1px solid #ca6510;
+            box-shadow: 0 2px 4px rgba(253, 126, 20, 0.4);
         }
 
         /* Action Icon Buttons (view / edit / delete — 25% smaller than previous 16px/36px) */
@@ -1878,8 +1880,8 @@
                             <div class="quick-filter-chip" data-filter="Need Help">
                                 <i class="mdi mdi-help-circle"></i> Need Help
                             </div>
-                            <div class="quick-filter-chip" data-filter="high">
-                                <i class="mdi mdi-alert"></i> High
+                            <div class="quick-filter-chip" data-filter="high" style="background: #fff3e6; border-color: #fd7e14; color: #b35400;">
+                                <i class="mdi mdi-alert"></i> Urgent
                             </div>
                         </div>
 
@@ -1963,7 +1965,7 @@
                                     <option value="">All Priority</option>
                                     <option value="low">Low</option>
                                     <option value="normal">Normal</option>
-                                    <option value="high">High</option>
+                                    <option value="high">Urgent</option>
                                 </select>
                             </div>
                         </div>
@@ -2435,7 +2437,7 @@
                         <h6 class="alert-heading"><i class="mdi mdi-information me-2"></i>CSV Format Required:</h6>
                         <p class="mb-1"><strong>Columns:</strong> Group, Task, Assignor, Assignee, Status, Priority, Image, L1, L2, SOP (hover: Training), Video, Form, Report (hover: Form report), CL (hover: Checklist), PL</p>
                         <p class="mb-1"><strong>Status Options:</strong> Todo, Working, Archived, Done, Need Help, Need Approval, Dependent, Approved, Hold, Cancelled</p>
-                        <p class="mb-0"><strong>Priority Options:</strong> Low, Normal, High, Urgent</p>
+                        <p class="mb-0"><strong>Priority Options:</strong> Low, Normal, Urgent</p>
                         <p class="mb-0"><small class="text-muted">Note: Assignor and Assignee should match exact user names in the system</small></p>
                     </div>
 
@@ -2497,7 +2499,7 @@
                             <select class="form-select" id="bulk-task-priority" name="priority" required>
                                 <option value="low">Low</option>
                                 <option value="normal" selected>Normal</option>
-                                <option value="high">High</option>
+                                <option value="high">Urgent</option>
                             </select>
                         </div>
                         <div class="col-md-6 mb-3">
@@ -3096,6 +3098,11 @@
                     
                     const statusClass = isOverdue ? 'status-overdue' : `status-${task.status.toLowerCase().replace(' ', '')}`;
                     const priorityClass = `mobile-priority-${task.priority.toLowerCase()}`;
+                    // Stored value is still `high` (no DB migration), but the UI label was renamed
+                    // to "Urgent". Show that consistently on the mobile card badge.
+                    const priorityLabel = String(task.priority || '').toLowerCase() === 'high'
+                        ? 'Urgent'
+                        : task.priority;
                     
                     // Status badge color - RED if overdue!
                     let statusBadge = isOverdue ? 'bg-danger text-white' : '';
@@ -3141,7 +3148,7 @@
                                     <div class="mobile-task-title">${task.title || 'No Title'}</div>
                                     <div class="mobile-task-meta">
                                         <span class="badge ${statusBadge} mobile-task-badge">${statusText}</span>
-                                        <span class="badge ${priorityClass} mobile-task-badge">${task.priority}</span>
+                                        <span class="badge ${priorityClass} mobile-task-badge">${priorityLabel}</span>
                                     </div>
                                 </div>
                             </div>
@@ -3191,8 +3198,12 @@
                                 })()}
                                 ${(() => {
                                     var aidEdit = task.assignor_id != null ? parseInt(task.assignor_id, 10) : NaN;
-                                    var canEditMobile = canDeleteAnyTask || (!isNaN(aidEdit) && aidEdit === currentUserId);
-                                    if (!canEditMobile) return '';
+                                    var isOwnerEdit = canDeleteAnyTask || (!isNaN(aidEdit) && aidEdit === currentUserId);
+                                    var isAssigneeOnlyEdit = !isOwnerEdit && currentUserIsAssigneeOnTask(task);
+                                    if (!isOwnerEdit && !isAssigneeOnlyEdit) return '';
+                                    if (isAssigneeOnlyEdit) {
+                                        return '<button class="btn btn-sm btn-outline-secondary" title="Add reference / proof links" onclick="editTask(' + task.id + ')"><i class="mdi mdi-link-variant-plus"></i> Links</button>';
+                                    }
                                     return '<button class="btn btn-sm btn-outline-secondary" onclick="editTask(' + task.id + ')"><i class="mdi mdi-pencil"></i></button>';
                                 })()}
                             </div>
@@ -3459,6 +3470,9 @@
                 layoutColumnsOnNewData: true,
                 autoResize: true,
                 initialSort: [
+                    // Urgent (priority = 'high') always on top, regardless of TID — must come
+                    // first so the priority bucket is established before date / automation order.
+                    {column: "priority", dir: "desc"},
                     {column: "start_date", dir: "asc"},
                     {column: "is_automate_task", dir: "desc"}
                 ],
@@ -3836,16 +3850,31 @@
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue() || 'normal';
+                            var key = String(value).toLowerCase();
                             var dotColors = {
                                 'low': '#9ca3af',        // Gray
                                 'normal': '#fbbf24',     // Yellow
-                                'high': '#7c3aed',       // Purple
-                                'urgent': '#ef4444'      // Red
+                                'high': '#fd7e14',       // Orange (Urgent — renamed from High)
+                                'urgent': '#fd7e14'      // Orange (alias)
                             };
-                            var color = dotColors[value.toLowerCase()] || dotColors['normal'];
+                            // "high" is the stored value; surface it as "URGENT" in the tooltip
+                            // so it matches the renamed UI label everywhere else.
+                            var labelMap = { 'high': 'URGENT' };
+                            var color = dotColors[key] || dotColors['normal'];
+                            var label = labelMap[key] || String(value).toUpperCase();
                             return '<div style="display: flex; align-items: center; justify-content: center;">' +
-                                   '<span style="display: inline-block; width: 16px; height: 16px; border-radius: 50%; background: ' + color + '; box-shadow: 0 2px 4px rgba(0,0,0,0.2);" title="' + value.toUpperCase() + '"></span>' +
+                                   '<span style="display: inline-block; width: 16px; height: 16px; border-radius: 50%; background: ' + color + '; box-shadow: 0 2px 4px rgba(0,0,0,0.2);" title="' + label + '"></span>' +
                                    '</div>';
+                        },
+                        // Custom sorter so Urgent (stored as `high`) ranks above Normal/Low when this
+                        // column is sorted desc — needed by the "Urgent on top" ordering below.
+                        sorter: function (a, b) {
+                            var rank = { high: 2, urgent: 2, normal: 1, low: 0 };
+                            var ra = rank[String(a || '').toLowerCase()];
+                            var rb = rank[String(b || '').toLowerCase()];
+                            if (ra === undefined) ra = 1;
+                            if (rb === undefined) rb = 1;
+                            return ra - rb;
                         }
                     });
                     
@@ -3880,9 +3909,11 @@
                             var st = rowData.status || '';
                             
                             // Determine permissions (special: Jasmine, Ritu mam, Joy sir can delete/edit any task)
-                            // Both the assignor (creator) and the assignee can edit an assigned task.
-                            // Only the assignor (creator) and the president override can edit/delete.
-                            var canEdit = canDeleteAnyTask || assignorId === currentUserId;
+                            // Full edit (title, group, date, assignee, etc): assignor + president override.
+                            // Assignees get an "Add Links" mode of the same edit page so they can attach
+                            // proof / SOP / reference links to make review easier.
+                            var isAssigneeOnly = !(canDeleteAnyTask || assignorId === currentUserId) && currentUserIsAssigneeOnTask(rowData);
+                            var canEdit = canDeleteAnyTask || assignorId === currentUserId || isAssigneeOnly;
                             var canDelete = canDeleteAnyTask || assignorId === currentUserId;
                             var canView = isAdmin || assignorId === currentUserId || currentUserIsAssigneeOnTask(rowData);
                             var canReworkQuick = (isAdmin || canDeleteAnyTask || assignorId === currentUserId) && st !== 'Rework' && st !== 'Archived';
@@ -3890,11 +3921,19 @@
                             var buttons = '';
                             
                             if (canEdit) {
-                                buttons += `
-                                    <button class="action-btn-icon action-btn-edit edit-task" data-id="${id}" title="Edit">
-                                        <i class="mdi mdi-pencil"></i>
-                                    </button>
-                                `;
+                                if (isAssigneeOnly) {
+                                    buttons += `
+                                        <button class="action-btn-icon action-btn-edit edit-task" data-id="${id}" title="Add reference / proof links">
+                                            <i class="mdi mdi-link-variant-plus"></i>
+                                        </button>
+                                    `;
+                                } else {
+                                    buttons += `
+                                        <button class="action-btn-icon action-btn-edit edit-task" data-id="${id}" title="Edit">
+                                            <i class="mdi mdi-pencil"></i>
+                                        </button>
+                                    `;
+                                }
                             }
                             
                             // Always show delete button for symmetry, but disable when no permission
@@ -4143,7 +4182,12 @@
                     || ($('#filter-assignee').val() || '').trim()
                     || (typeof taskManagerSessionUserFocus !== 'undefined' && String(taskManagerSessionUserFocus || '').trim())
                 );
+                // Urgent (stored as `high`) ALWAYS floats to the top regardless of TID.
+                // The custom sorter on the `priority` column ranks high=urgent > normal > low,
+                // so dir:"desc" pins Urgent rows above everything; TID/automation ordering only
+                // tie-breaks within each priority bucket.
                 return [
+                    {column: "priority", dir: "desc"},
                     {column: "start_date", dir: "asc"},
                     {column: "is_automate_task", dir: hasUserFilter ? "asc" : "desc"}
                 ];
@@ -4182,10 +4226,21 @@
                     console.log('Filter - Task:', taskValue);
                 }
 
-                // Date filter (start_date contains YYYY-MM-DD)
+                // Date filter — match the date the TID column actually shows.
+                // The TID cell renders rowData.tid_business_date (start_date's calendar day in
+                // the office TZ); raw start_date can land on a different calendar day after an
+                // edit (e.g. evening PT stored as next-day UTC / app-TZ), so a `like` on
+                // start_date silently misses the row right after TID is changed. Use a function
+                // filter so we compare against the same Y-m-d that the TID column displays,
+                // falling back to the start_date prefix only when tid_business_date is missing.
                 var dateValue = $('#filter-date').val();
                 if (dateValue) {
-                    filters.push({field:"start_date", type:"like", value:dateValue});
+                    filters.push(function (rowData) {
+                        var bd = rowData && rowData.tid_business_date
+                            ? String(rowData.tid_business_date)
+                            : (rowData && rowData.start_date ? String(rowData.start_date) : '');
+                        return bd.slice(0, 10) === dateValue;
+                    });
                     console.log('Filter - Date:', dateValue);
                 }
                 
@@ -5019,7 +5074,7 @@
                         $('#filter-priority').val('high');
                         $('#filter-assignor').val('');
                         $('#filter-assignee').val('');
-                        console.log('✓ Filtering: High Priority');
+                        console.log('✓ Filtering: Urgent Priority');
                         break;
                 }
                 $('#filter-assignor, #filter-assignee').trigger('change');
@@ -5617,7 +5672,7 @@
                         <select class="form-select" id="bulk-priority-select">
                             <option value="low">Low</option>
                             <option value="normal" selected>Normal</option>
-                            <option value="high">High</option>
+                            <option value="high">Urgent</option>
                         </select>
                     </div>
                 `;
@@ -5944,7 +5999,16 @@
                         '<tr><th style="color: #6c757d; font-weight: 600;">Form Report Link:</th><td>' + linkCell(formReport) + '</td></tr>' +
                         '<tr><th style="color: #6c757d; font-weight: 600;">Checklist Link:</th><td>' + linkCell(checklist) + '</td></tr>' +
                         '<tr><th style="color: #6c757d; font-weight: 600;">PL:</th><td>' + (plVal ? linkCell(plVal) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
-                        (data.image ? '<tr><th style="color: #6c757d; font-weight: 600;">Image:</th><td><img src="/uploads/tasks/' + escapeHtml(data.image) + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px;"></td></tr>' : '') +
+                        (data.image
+                            ? '<tr><th style="color: #6c757d; font-weight: 600; vertical-align: top;">Image:</th><td>' +
+                              '<a href="/uploads/tasks/' + escapeHtml(data.image) + '" target="_blank" rel="noopener" title="Open full-size image in a new tab">' +
+                              '<img src="/uploads/tasks/' + escapeHtml(data.image) + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px; cursor: zoom-in;">' +
+                              '</a>' +
+                              '<div class="mt-1">' +
+                              '<a href="/uploads/tasks/' + escapeHtml(data.image) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary"><i class="mdi mdi-open-in-new"></i> View full image</a>' +
+                              '</div>' +
+                              '</td></tr>'
+                            : '') +
                         '</table></div>';
                     syncViewTaskReworkButton(taskId, data);
                     $('#task-details').html(html);
@@ -5996,7 +6060,16 @@
                                 '<tr><th style="color: #6c757d; font-weight: 600;">Form Report Link:</th><td>' + linkCell(formReport) + '</td></tr>' +
                                 '<tr><th style="color: #6c757d; font-weight: 600;">Checklist Link:</th><td>' + linkCell(checklist) + '</td></tr>' +
                                 '<tr><th style="color: #6c757d; font-weight: 600;">PL:</th><td>' + (plVal ? linkCell(plVal) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
-                                (response.image ? '<tr><th style="color: #6c757d; font-weight: 600;">Image:</th><td><img src="/uploads/tasks/' + escapeHtml(response.image) + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px;"></td></tr>' : '') +
+                                (response.image
+                                    ? '<tr><th style="color: #6c757d; font-weight: 600; vertical-align: top;">Image:</th><td>' +
+                                      '<a href="/uploads/tasks/' + escapeHtml(response.image) + '" target="_blank" rel="noopener" title="Open full-size image in a new tab">' +
+                                      '<img src="/uploads/tasks/' + escapeHtml(response.image) + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px; cursor: zoom-in;">' +
+                                      '</a>' +
+                                      '<div class="mt-1">' +
+                                      '<a href="/uploads/tasks/' + escapeHtml(response.image) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary"><i class="mdi mdi-open-in-new"></i> View full image</a>' +
+                                      '</div>' +
+                                      '</td></tr>'
+                                    : '') +
                                 '</table></div>';
                             syncViewTaskReworkButton(taskId, response);
                             $('#task-details').html(html);

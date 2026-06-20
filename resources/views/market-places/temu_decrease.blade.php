@@ -487,9 +487,12 @@
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items (INV>0)">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; background-color: #dc3545; cursor: pointer;" title="Click to filter missing SKUs (INV>0)">Missing L: 0</span>
                         <span class="badge fs-6 p-2" id="not-mapped-count-badge" style="color: white; font-weight: bold; background-color: #dc3545; cursor: pointer;" title="Click to filter not mapped SKUs (INV>0)">Missing M: 0</span>
-                        {{-- Red Alert badge: rows where Temu Price < Amazon × 0.85 OR Temu Price < eBay × 0.90.
-                             Click to toggle filtering to just those rows. Computed via temuIsRedAlert(rd). --}}
-                        <span class="badge fs-6 p-2" id="temu-red-alert-badge" style="color: white; font-weight: bold; background-color: #a00211; cursor: pointer;" title="Click to filter Red Alert rows: Temu Price &lt; Amazon × 0.85 OR &lt; eBay 1 × 0.90 OR &lt; eBay 2 × 0.90">Red Alert: 0</span>
+                        {{-- Green Alert badge: rows where Temu Price < Amazon × 0.85 OR < eBay 1 × 0.90 OR < eBay 2 × 0.90.
+                             Click to toggle filtering to just those rows. Computed via temuIsGreenAlert(rd). --}}
+                        <span class="badge fs-6 p-2" id="temu-green-alert-badge" style="color: white; font-weight: bold; background-color: #28a745; cursor: pointer;" title="Click to filter Green Alert rows: Temu Price &lt; Amazon × 0.85 OR &lt; eBay 1 × 0.90 OR &lt; eBay 2 × 0.90">Green Alert: 0</span>
+                        {{-- Red Alert badge: opposite of Green — Temu is uncompetitive (at/above every competitor threshold).
+                             Click to toggle filtering. Computed via temuIsRedAlert(rd). --}}
+                        <span class="badge fs-6 p-2" id="temu-red-alert-badge" style="color: white; font-weight: bold; background-color: #a00211; cursor: pointer;" title="Click to filter Red Alert rows: Temu Price &ge; Amazon × 0.85 AND &ge; eBay 1 × 0.90 AND &ge; eBay 2 × 0.90 (uncompetitive)">Red Alert: 0</span>
                         
                         <!-- Pricing & Performance -->
                         <span class="badge bg-warning fs-6 p-2 temu-badge-history" id="avg-cvr-badge" data-badge-metric="avg_cvr_pct" data-badge-label="CVR %" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">CVR: 0.0%</span>
@@ -730,9 +733,27 @@
                                 Accepts .xlsx, .xls, or .csv files (Max: 10MB)
                             </div>
                         </div>
+                        {{-- Report range drives temu_campaign_reports.report_range so the
+                             Spend / ACOS / ROAS badges (which sum that table by range)
+                             refresh after this upload. Defaults to L30 to match the
+                             default "Campaign Data" filter at the top of the page. --}}
+                        <div class="mb-3">
+                            <label for="adDataReportRange" class="form-label fw-bold">
+                                <i class="fa fa-calendar-alt text-primary me-1"></i>Report Range
+                            </label>
+                            <select class="form-select" id="adDataReportRange" name="report_range" required>
+                                <option value="L30" selected>L30 (last 30 days)</option>
+                                <option value="L7">L7 (last 7 days)</option>
+                                <option value="L60">L60 (last 60 days)</option>
+                            </select>
+                            <div class="form-text">
+                                <i class="fa fa-info-circle text-info me-1"></i>
+                                Match this to the period the Temu export covers — it's used by the Spend/ACOS/ROAS badges.
+                            </div>
+                        </div>
                         <div class="alert alert-warning">
                             <i class="fa fa-exclamation-triangle me-2"></i>
-                            <strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading new data!
+                            <strong>Warning:</strong> This will clear existing ad data and replace the selected report range before uploading new data.
                             <br>
                             <i class="fa fa-info-circle me-1"></i>
                             Upload the Temu Ads report Excel directly (as exported from Temu).
@@ -1992,21 +2013,21 @@
         }
 
         /**
-         * Red Alert rule — flag rows where the live Temu price is unprofitably below
-         * the comparison prices on Amazon / eBay 1 / eBay 2. Used both by the Temu
-         * Price column formatter (to color the cell red) and the Red Alert toolbar
-         * badge filter so the two surfaces never disagree.
+         * Green Alert rule — flag rows where the live Temu price sits below the
+         * comparison prices on Amazon / eBay 1 / eBay 2 (Temu is the cheaper offer).
+         * Used both by the Temu Price column formatter (to color the cell green) and
+         * the Green Alert toolbar badge filter so the two surfaces never disagree.
          *
-         *   Red when:  temuPrice  <  Amazon × 0.85
-         *         OR   temuPrice  <  eBay 1 × 0.90
-         *         OR   temuPrice  <  eBay 2 × 0.90
+         *   Green when:  temuPrice  <  Amazon × 0.85
+         *           OR   temuPrice  <  eBay 1 × 0.90
+         *           OR   temuPrice  <  eBay 2 × 0.90
          *
          * `temuPrice` mirrors the same $2.99-bumper rule used elsewhere in this view
          * (basePrice ≤ 26.99 ? basePrice + 2.99 : basePrice). Rows without a base
          * price, or without any Amazon / eBay reference price to compare against,
-         * are never red.
+         * are never green.
          */
-        function temuIsRedAlert(rd) {
+        function temuIsGreenAlert(rd) {
             if (!rd) return false;
             const base = parseFloat(rd['base_price']) || 0;
             if (base <= 0) return false;
@@ -2018,6 +2039,37 @@
             const underE   = e   > 0 && temuPrice < e   * 0.90;
             const underE2  = e2  > 0 && temuPrice < e2  * 0.90;
             return underAmz || underE || underE2;
+        }
+
+        /**
+         * Red Alert rule — opposite of Green: Temu is uncompetitive vs every reference
+         * channel that has a price (no competitor is cheaper than threshold). Flags
+         * rows where Temu is sitting at or above all of:
+         *
+         *   Red when:  (amz=0  OR  temuPrice >= amz × 0.85)
+         *         AND  (e =0  OR  temuPrice >= e   × 0.90)
+         *         AND  (e2=0  OR  temuPrice >= e2  × 0.90)
+         *         AND  at least one of {amz, e, e2} > 0
+         *
+         * The "at least one reference price" guard prevents rows with no comparison
+         * data from being flagged (we just don't know in that case). Mutually
+         * exclusive with the Green Alert by construction, so the cell color and the
+         * two badges can never both fire on the same row.
+         */
+        function temuIsRedAlert(rd) {
+            if (!rd) return false;
+            const base = parseFloat(rd['base_price']) || 0;
+            if (base <= 0) return false;
+            const temuPrice = base <= 26.99 ? base + 2.99 : base;
+            const amz = parseFloat(rd['a_price']) || 0;
+            const e   = parseFloat(rd['e_price']) || 0;
+            const e2  = parseFloat(rd['e2_price']) || 0;
+            const anyRef = amz > 0 || e > 0 || e2 > 0;
+            if (!anyRef) return false;
+            const okAmz = amz === 0 || temuPrice >= amz * 0.85;
+            const okE   = e   === 0 || temuPrice >= e   * 0.90;
+            const okE2  = e2  === 0 || temuPrice >= e2  * 0.90;
+            return okAmz && okE && okE2;
         }
 
         // Reveal the row-select checkbox column on demand. It's `visible: false` in the
@@ -2199,6 +2251,7 @@
         let missingBadgeFilterActive = false;
         let mapBadgeFilterActive = false;
         let notMapBadgeFilterActive = false;
+        let greenAlertFilterActive = false;
         let redAlertFilterActive = false;
 
         $('#zero-sold-count-badge').on('click', function() {
@@ -2206,9 +2259,20 @@
             applyFilters();
         });
 
-        // Red Alert badge toggle — filters to only rows where temuIsRedAlert(rd) is true.
+        // Green Alert badge toggle — filters to only rows where temuIsGreenAlert(rd) is true.
         // Highlights the badge with a yellow outline while active so users see at a glance
         // that a filter is on (matches the visual cue used elsewhere on this page).
+        $('#temu-green-alert-badge').on('click', function() {
+            greenAlertFilterActive = !greenAlertFilterActive;
+            $(this).css('outline', greenAlertFilterActive ? '3px solid #ffc107' : '');
+            $(this).css('outline-offset', greenAlertFilterActive ? '2px' : '');
+            applyFilters();
+        });
+
+        // Red Alert badge toggle — filters to only rows where temuIsRedAlert(rd) is true
+        // (Temu uncompetitive). Mutually exclusive with Green Alert by construction, but
+        // users can toggle either filter independently; if both are on, the intersection
+        // is empty so the table shows no rows — that's a feature, not a bug.
         $('#temu-red-alert-badge').on('click', function() {
             redAlertFilterActive = !redAlertFilterActive;
             $(this).css('outline', redAlertFilterActive ? '3px solid #ffc107' : '');
@@ -2787,6 +2851,7 @@
             let notMappedCount = 0;
             let lessAmzCount = 0;
             let moreAmzCount = 0;
+            let greenAlertCount = 0;
             let redAlertCount = 0;
             
             data.forEach(row => {
@@ -2860,8 +2925,12 @@
                     missingCount++;
                 }
 
-                // Red Alert: same rule the formatter uses (Temu Price < Amazon × 0.85
-                // or < eBay × 0.90). Count drives the toolbar badge.
+                // Green Alert: same rule the formatter uses (Temu Price < Amazon × 0.85
+                // or < eBay × 0.90 or < eBay 2 × 0.90). Count drives the toolbar badge.
+                if (temuIsGreenAlert(row)) {
+                    greenAlertCount++;
+                }
+                // Red Alert: opposite — Temu uncompetitive (at/above every reference threshold).
                 if (temuIsRedAlert(row)) {
                     redAlertCount++;
                 }
@@ -2960,15 +3029,32 @@
             $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
             $('#missing-count-badge').text('Missing L: ' + missingCount.toLocaleString());
             $('#not-mapped-count-badge').text('Missing M: ' + notMappedCount.toLocaleString());
+            $('#temu-green-alert-badge').text('Green Alert: ' + greenAlertCount.toLocaleString());
             $('#temu-red-alert-badge').text('Red Alert: ' + redAlertCount.toLocaleString());
-            $('#avg-cvr-badge').text('CVR: ' + qtyPerViews.toFixed(1) + '%');
+            // CVR badge prefers the daily snapshot value (same row the chart's "today"
+            // point reads from temu_badge_daily_data via the badge-history endpoint),
+            // so the badge and chart always agree. Falls back to the locally-computed
+            // qtyPerViews when no snapshot exists yet (first load before today's cron).
+            // Renders with 2 decimals to match the chart tooltip exactly — without this
+            // the badge would round 7.06 -> 7.1 and not visually match the 7.06 hover.
+            const snapshotCvr = todayBadgeSnapshotFromBackend != null
+                ? parseFloat(todayBadgeSnapshotFromBackend.avg_cvr_pct)
+                : NaN;
+            const displayCvr = isFinite(snapshotCvr) ? snapshotCvr : qtyPerViews;
+            $('#avg-cvr-badge').text('CVR: ' + displayCvr.toFixed(2) + '%');
             $('#avg-dil-badge').text('Avg DIL: ' + Math.round(avgDil) + '%');
             // Total Revenue badge set above from sales_summary or table
             $('#total-profit-badge').text('PFT: $' + Math.round(totalProfit).toLocaleString());
             $('#total-lp-badge').text('Total LP: $' + Math.round(totalLp).toLocaleString());
             $('#avg-gprft-badge').text('GPFT: ' + Math.round(avgGprft) + '%');
             $('#avg-groi-badge').text('GROI: ' + Math.round(avgGroi) + '%');
-            $('#total-spend-badge').text('Spend: $' + Math.round(totalSpend).toLocaleString());
+            // Prefer the file total from temu_campaign_reports (computed in PHP) so
+            // the badge always matches what the user uploaded — even rows whose
+            // goods_id isn't yet in temu_pricing AND have no SKU column would
+            // otherwise be dropped by the per-row sum above.
+            const spendForSummaryBadge = (adTotalsFromBackend && adTotalsFromBackend.spend != null)
+                ? Number(adTotalsFromBackend.spend) : totalSpend;
+            $('#total-spend-badge').text('Spend: $' + Math.round(spendForSummaryBadge).toLocaleString());
             // Use badgeAvgAds (aggregate Ads% from backend) for badge display (matches all-marketplace-master)
             const displayAdsPercent = (badgeAvgAds != null) ? badgeAvgAds : adsPercentForNpft;
             $('#avg-ads-badge').text('Ads: ' + displayAdsPercent.toFixed(1) + '%');
@@ -3037,9 +3123,24 @@
                 const st = (r.campaign_status || '').trim();
                 if (st === 'Active' || s > 0 || c > 0) uniqueCampaignSkus.add(r.sku);
             });
-            const avgAcos = totalAdSales > 0 ? (totalSpend / totalAdSales) * 100 : 0;
-            const roas = totalSpend > 0 ? totalAdSales / totalSpend : 0;
-            const avgClicks = adSkuSet.size > 0 ? totalAdClicks / adSkuSet.size : 0;
+            // Prefer file totals from temu_campaign_reports (returned in
+            // response.ad_totals). The per-row sums above silently miss any
+            // uploaded row whose goods_id isn't in temu_pricing AND whose SKU
+            // column is empty, so the badges would otherwise be lower than the
+            // upload. ROAS / ACOS / Avg Clicks are derived from these totals so
+            // they stay self-consistent with Spend and Ad Sales.
+            const adB = adTotalsFromBackend || {};
+            const spendForBadges    = (adB.spend != null) ? Number(adB.spend)    : totalSpend;
+            const clicksForBadges   = (adB.clicks != null) ? Number(adB.clicks)   : totalAdClicks;
+            const adSoldForBadges   = (adB.sub_orders != null) ? Number(adB.sub_orders) : totalAdSold;
+            const adSalesForBadges  = (adB.base_price_sales != null) ? Number(adB.base_price_sales) : totalAdSales;
+
+            const avgAcos = adSalesForBadges > 0 ? (spendForBadges / adSalesForBadges) * 100 : 0;
+            const roas = spendForBadges > 0 ? adSalesForBadges / spendForBadges : 0;
+            // Avg Clicks denominator stays the matched-Ad-SKU count: we don't
+            // know how many distinct unmatched goods_ids should be counted as
+            // SKUs, so dividing by a backend row count would be misleading.
+            const avgClicks = adSkuSet.size > 0 ? clicksForBadges / adSkuSet.size : 0;
 
             const campaignCount = totalCampaignCountFromBackend > 0 ? totalCampaignCountFromBackend : uniqueCampaignSkus.size;
 
@@ -3051,13 +3152,13 @@
             $('#temu-zero-inv-count').text('Zero INV: ' + zeroInvCount);
             $('#temu-nra-count').text('NRA: ' + nraCount);
             $('#temu-ra-count').text('RA: ' + raCount);
-            $('#temu-total-spend-badge').text('Total Ads Spend: $' + Math.round(totalSpend).toLocaleString());
+            $('#temu-total-spend-badge').text('Total Ads Spend: $' + Math.round(spendForBadges).toLocaleString());
             $('#temu-total-budget-badge').text('Budget: $' + totalBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-            $('#temu-total-ad-sales-badge').text('Ad Sales: $' + Math.round(totalAdSales).toLocaleString());
+            $('#temu-total-ad-sales-badge').text('Ad Sales: $' + Math.round(adSalesForBadges).toLocaleString());
             const adSoldLabel = (typeof currentCampaignPeriod !== 'undefined' && currentCampaignPeriod === 'L7') ? 'Total L7 Ad Sold' : 'Total L30 Ad Sold';
-            $('#temu-total-ad-sold-badge').text(adSoldLabel + ': ' + totalAdSold.toLocaleString());
-            $('#temu-total-ad-clicks-badge').text('Ad Clicks: ' + totalAdClicks.toLocaleString());
-            $('#temu-total-clicks-badge').text('Total Clicks: ' + totalAdClicks.toLocaleString());
+            $('#temu-total-ad-sold-badge').text(adSoldLabel + ': ' + adSoldForBadges.toLocaleString());
+            $('#temu-total-ad-clicks-badge').text('Ad Clicks: ' + clicksForBadges.toLocaleString());
+            $('#temu-total-clicks-badge').text('Total Clicks: ' + clicksForBadges.toLocaleString());
             $('#temu-avg-clicks-badge').text('Avg Clicks: ' + (avgClicks % 1 === 0 ? Math.round(avgClicks).toLocaleString() : avgClicks.toFixed(1)));
             $('#temu-avg-acos-badge').text('Avg ACOS: ' + Math.round(avgAcos) + '%');
             $('#temu-roas-badge').text('ROAS: ' + roas.toFixed(2));
@@ -3084,7 +3185,16 @@
 
         let totalCampaignCountFromBackend = 0;
         let salesSummaryFromBackend = null;
+        // today_badge_snapshot from the backend — same row the chart's "today" point reads.
+        // When present, the summary badges (esp. CVR) display this snapshot's values
+        // instead of the locally-computed aggregates so badge and chart can never diverge.
+        let todayBadgeSnapshotFromBackend = null;
         let badgeAvgAds = null; // Ads % from badge — shown in ADS% column for all rows
+        // File totals straight from temu_campaign_reports for the current range.
+        // Used by the Spend / Total Ads Spend / Ad Sales / Ad Sold / Ad Clicks
+        // badges so they always equal the upload — including rows whose goods_id
+        // isn't yet in temu_pricing (which the per-row sum would drop).
+        let adTotalsFromBackend = null;
         let currentCampaignPeriod = 'L30';
 
         // Play/Pause parent navigation (like pricing-master-cvr)
@@ -3111,6 +3221,8 @@
                     $('#campaign-period-select').val(currentCampaignPeriod);
                     totalCampaignCountFromBackend = parseInt(response.total_campaign_count || 0, 10);
                     salesSummaryFromBackend = response.sales_summary || null;
+                    todayBadgeSnapshotFromBackend = response.today_badge_snapshot || null;
+                    adTotalsFromBackend = response.ad_totals || null;
                     // Use exact aggregate_ads_percent from backend (matches all-marketplace-master)
                     // This is the authoritative value - always use it for NPFT calculation
                     if (response.aggregate_ads_percent != null && response.aggregate_ads_percent !== undefined) {
@@ -3547,11 +3659,15 @@
                         }
                         const temuPrice = basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
 
-                        // Red Alert: Temu Price < Amazon × 0.85 OR < eBay × 0.90.
-                        // Driven by temuIsRedAlert(rd) so the toolbar filter + summary
+                        // Green Alert: Temu Price < Amazon × 0.85 OR < eBay 1 × 0.90 OR < eBay 2 × 0.90.
+                        // Driven by temuIsGreenAlert(rd) so the toolbar filter + summary
                         // count + cell color always agree on which rows count.
+                        if (temuIsGreenAlert(rowData)) {
+                            return `<span style="color: #28a745; font-weight: 600;" title="Green Alert: Temu price is below 85% of Amazon or 90% of eBay 1 / eBay 2">$${temuPrice.toFixed(2)}</span>`;
+                        }
+                        // Red Alert: opposite — Temu uncompetitive (at/above every reference threshold).
                         if (temuIsRedAlert(rowData)) {
-                            return `<span style="color: #a00211; font-weight: 600;" title="Red Alert: Temu price is below 85% of Amazon or 90% of eBay 1 / eBay 2">$${temuPrice.toFixed(2)}</span>`;
+                            return `<span style="color: #a00211; font-weight: 600;" title="Red Alert: Temu price is at/above 85% of Amazon AND 90% of eBay 1 / eBay 2 (uncompetitive)">$${temuPrice.toFixed(2)}</span>`;
                         }
                         return '$' + temuPrice.toFixed(2);
                     }
@@ -4661,9 +4777,15 @@
                 });
             }
 
-            // Red Alert badge filter — rows where Temu Price falls below Amazon × 0.85
-            // or eBay × 0.90 (driven by temuIsRedAlert so cell color, filter, and badge
-            // count never get out of sync).
+            // Green Alert badge filter — rows where Temu Price falls below Amazon × 0.85
+            // or eBay 1 × 0.90 or eBay 2 × 0.90 (driven by temuIsGreenAlert so cell color,
+            // filter, and badge count never get out of sync).
+            if (greenAlertFilterActive) {
+                table.addFilter(function(data) {
+                    return temuIsGreenAlert(data);
+                });
+            }
+            // Red Alert badge filter — opposite (Temu uncompetitive).
             if (redAlertFilterActive) {
                 table.addFilter(function(data) {
                     return temuIsRedAlert(data);

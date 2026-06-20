@@ -106,8 +106,9 @@
                     </div>
                 </div>
                 <div id="topdawg-table-wrapper" style="height:calc(100vh - 240px);display:flex;flex-direction:column;">
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
+                    <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
+                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
+                        <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
                     </div>
                     <div id="topdawg-pricing-table" style="flex:1;"></div>
                 </div>
@@ -504,7 +505,7 @@
                         return `<span style="color:${color};font-weight:600;">${Math.round(dil)}%</span>`;
                     }},
                 { title: 'TD L30', field: 'TD L30', hozAlign: 'center', width: 50, sorter: 'number' },
-                { title: 'TD L60', field: 'TD L60', hozAlign: 'center', width: 50, sorter: 'number' },
+                { title: 'TD L60', field: 'TD L60', hozAlign: 'center', width: 50, sorter: 'number', visible: false },
                 { title: 'TD Stock', field: 'TD Stock', hozAlign: 'center', width: 60, sorter: 'number',
                     formatter: c => {
                         const inv = parseFloat(c.getRow().getData().INV) || 0;
@@ -619,8 +620,11 @@
         table.on('dataFiltered', updateSummary);
 
         $('#inventory-filter, #td-stock-filter, #nrl-filter, #gpft-filter').on('change', applyFilters);
-        $('#sku-search').on('keyup', function() {
-            table.setFilter('(Child) sku', 'like', this.value);
+        $('#sku-search, #parent-search').on('keyup', function() {
+            table.setFilter([
+                { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' },
+                { field: 'Parent', type: 'like', value: $('#parent-search').val() || '' }
+            ]);
             updateSummary();
         });
 

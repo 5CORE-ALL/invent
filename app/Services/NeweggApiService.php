@@ -118,6 +118,299 @@ class NeweggApiService
     }
 
     /**
+     * Update Item Price (international) for a SINGLE item.
+     *   PUT /marketplace/contentmgmt/item/international/price?sellerid=XXXX
+     *
+     * Wraps {@see updateItemPriceBulk()} for the common single-SKU push case.
+     * Returns a normalized result mirroring ReverbApiService::updatePrice():
+     *   ['success' => bool, 'message' => string, 'sku' => string, 'price' => float]
+     *
+     * @return array{success:bool,message:string,sku:string,price:float,raw:?string,blocked_by_cloudflare:bool}
+     */
+    public function updateItemPrice(string $sellerPartNumber, float $price, string $currency = 'USD', string $country = 'USA'): array
+    {
+        $sellerPartNumber = trim($sellerPartNumber);
+        if ($sellerPartNumber === '') {
+            return [
+                'success' => false,
+                'message' => 'SellerPartNumber is required.',
+                'sku' => $sellerPartNumber,
+                'price' => $price,
+                'raw' => null,
+                'blocked_by_cloudflare' => false,
+            ];
+        }
+
+        $price = round($price, 2);
+        if ($price <= 0) {
+            return [
+                'success' => false,
+                'message' => 'Price must be greater than 0.',
+                'sku' => $sellerPartNumber,
+                'price' => $price,
+                'raw' => null,
+                'blocked_by_cloudflare' => false,
+            ];
+        }
+
+        $bulk = $this->updateItemPriceBulk([
+            ['seller_part_number' => $sellerPartNumber, 'price' => $price, 'currency' => $currency],
+        ], $country);
+
+        $first = $bulk['results'][0] ?? null;
+        $raw = $first['raw'] ?? null;
+
+        if ($bulk['blocked_by_cloudflare']) {
+            return [
+                'success' => false,
+                'message' => 'Blocked by Cloudflare (managed challenge). Whitelist this server IP in the Newegg Seller Portal.',
+                'sku' => $sellerPartNumber,
+                'price' => $price,
+                'raw' => $raw,
+                'blocked_by_cloudflare' => true,
+            ];
+        }
+
+        if (!$bulk['ok']) {
+            $err = $first['error'] ?? ($bulk['error_message'] ?? 'Unknown error');
+            return [
+                'success' => false,
+                'message' => "Newegg API rejected the update: {$err}",
+                'sku' => $sellerPartNumber,
+                'price' => $price,
+                'raw' => $raw,
+                'blocked_by_cloudflare' => false,
+            ];
+        }
+
+        Log::info('Newegg price updated', [
+            'seller_part_number' => $sellerPartNumber,
+            'price' => $price,
+            'currency' => $currency,
+            'country' => $country,
+        ]);
+
+        return [
+            'success' => true,
+            'message' => "Price \${$price} pushed to Newegg for SPN: {$sellerPartNumber}.",
+            'sku' => $sellerPartNumber,
+            'price' => $price,
+            'raw' => $raw,
+            'blocked_by_cloudflare' => false,
+        ];
+    }
+
+    /**
+     * Update Item Price for many items by looping the per-SKU endpoint:
+     *
+     *   POST /marketplace/contentmgmt/item/international/price?sellerid=XXXX
+     *
+     * Newegg's Update Item Price endpoint is **per-item** (one POST per SKU),
+     * with a FLAT body — no OperationType/SellerID/RequestBody wrapper.
+     *
+     * Body shape Newegg actually validates (from the schema-error self-report):
+     *   {
+     *     "Type":      "1",            // 1 = SellerPartNumber, 2 = NeweggItemNumber, 3 = UPC
+     *     "Value":     "<seller part>",
+     *     "Condition": "New" | "Refurbished" | ... (optional)
+     *     "PriceList": [
+     *       {
+     *         "CountryCode":  "USA",
+     *         "Currency":     "USD",       // must match CountryCode (USD↔USA, CAD↔CAN, …)
+     *         "SellingPrice": "19.99",     // decimal as string
+     *         "MAP":          "0.00",      // optional
+     *         "CheckoutMAP":  "0",         // optional
+     *         "MSRP":         "25.99",     // optional
+     *         "Active":       "1"          // optional ("1" active, "0" inactive)
+     *       }
+     *     ]
+     *   }
+     *
+     * For thousands of SKUs in one shot consider the async Price Update Feed
+     * (POST /marketplace/datafeedmgmt/feeds/submitfeed?requesttype=PRICE_DATA).
+     *
+     * @param  list<array{seller_part_number:string,price:float|int|string,currency?:string,country?:string,msrp?:float|int|string,map?:float|int|string,checkout_map?:bool,active?:bool,condition?:string}>  $items
+     * @return array{ok:bool,pushed:int,failed:int,blocked_by_cloudflare:bool,error_message:?string,results:list<array{seller_part_number:string,success:bool,status:int,error:?string,raw:?string}>}
+     */
+    public function updateItemPriceBulk(array $items, string $defaultCountry = 'USA'): array
+    {
+        $defaultCountry = strtoupper(trim($defaultCountry) ?: 'USA');
+
+        $results = [];
+        $pushed = 0;
+        $failed = 0;
+        $blockedAny = false;
+
+        foreach ($items as $i) {
+            $spn   = trim((string) ($i['seller_part_number'] ?? ''));
+            $price = isset($i['price']) ? round((float) $i['price'], 2) : 0.0;
+            if ($spn === '' || $price <= 0) {
+                $results[] = [
+                    'seller_part_number' => $spn,
+                    'success' => false,
+                    'status'  => 0,
+                    'error'   => 'Missing SellerPartNumber or non-positive price',
+                    'raw'     => null,
+                ];
+                $failed++;
+                continue;
+            }
+
+            $country  = strtoupper((string) ($i['country']  ?? $defaultCountry));
+            $currency = strtoupper((string) ($i['currency'] ?? ($this->defaultCurrencyForCountry($country) ?? 'USD')));
+            $expectedCurrency = $this->defaultCurrencyForCountry($country);
+            if ($expectedCurrency !== null && $currency !== $expectedCurrency) {
+                $results[] = [
+                    'seller_part_number' => $spn,
+                    'success' => false,
+                    'status'  => 0,
+                    'error'   => "Currency {$currency} does not match CountryCode {$country} (expected {$expectedCurrency})",
+                    'raw'     => null,
+                ];
+                $failed++;
+                continue;
+            }
+
+            $priceRow = [
+                'CountryCode'  => $country,
+                'Currency'     => $currency,
+                'SellingPrice' => number_format($price, 2, '.', ''),
+            ];
+            if (isset($i['msrp']) && (float) $i['msrp'] > 0) {
+                $priceRow['MSRP'] = number_format((float) $i['msrp'], 2, '.', '');
+            }
+            if (isset($i['map']) && (float) $i['map'] >= 0) {
+                $priceRow['MAP'] = number_format((float) $i['map'], 2, '.', '');
+            }
+            if (isset($i['checkout_map'])) {
+                $priceRow['CheckoutMAP'] = $i['checkout_map'] ? '1' : '0';
+            }
+            if (isset($i['active'])) {
+                $priceRow['Active'] = $i['active'] ? '1' : '0';
+            }
+
+            // Newegg's XSD: <PriceList><Price>…</Price></PriceList>.  In JSON the
+            // repeating <Price> element maps to a "Price" array inside "PriceList".
+            $body = [
+                'Type'      => '1',
+                'Value'     => $spn,
+                'PriceList' => [
+                    'Price' => [$priceRow],
+                ],
+            ];
+            if (!empty($i['condition'])) {
+                $body['Condition'] = (string) $i['condition'];
+            }
+
+            $res = $this->request('POST', '/marketplace/contentmgmt/item/international/price', [], $body);
+
+            $ok = $this->extractItemSuccess($res);
+            $err = $ok ? null : $this->extractItemError($res);
+            if ($res['blocked_by_cloudflare']) {
+                $blockedAny = true;
+                $err = 'Cloudflare managed challenge (IP not whitelisted for writes).';
+            }
+
+            $results[] = [
+                'seller_part_number' => $spn,
+                'success' => $ok,
+                'status'  => $res['status'],
+                'error'   => $err,
+                'raw'     => $res['raw'],
+            ];
+            if ($ok) {
+                $pushed++;
+            } else {
+                $failed++;
+            }
+        }
+
+        return [
+            'ok'                    => $pushed > 0,
+            'pushed'                => $pushed,
+            'failed'                => $failed,
+            'blocked_by_cloudflare' => $blockedAny,
+            'error_message'         => $pushed === 0 ? ($results[0]['error'] ?? 'No items pushed') : null,
+            'results'               => $results,
+        ];
+    }
+
+    /**
+     * Did Newegg's per-item response indicate success? Tolerates both the
+     * legacy {NeweggAPIResponse:{IsSuccess:"true",...}} envelope and the
+     * plainer {IsSuccess:true,...} flat response.
+     *
+     * @param  array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error:?string}  $res
+     */
+    private function extractItemSuccess(array $res): bool
+    {
+        if ($res['blocked_by_cloudflare']) {
+            return false;
+        }
+        if (!$res['ok']) {
+            // 'ok' here only means HTTP success + JSON; we'll fall through to inspect IsSuccess.
+        }
+        $j = $res['json'];
+        if (!is_array($j)) {
+            return false;
+        }
+        $flag = $j['NeweggAPIResponse']['IsSuccess'] ?? ($j['IsSuccess'] ?? null);
+        if ($flag === null) {
+            // No IsSuccess field but HTTP 200 + JSON → treat as success.
+            return $res['status'] >= 200 && $res['status'] < 300;
+        }
+        return $flag === true || strtolower((string) $flag) === 'true';
+    }
+
+    /**
+     * Pull a human-readable error out of whichever shape Newegg returned.
+     *
+     * @param  array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error:?string}  $res
+     */
+    private function extractItemError(array $res): string
+    {
+        $j = $res['json'];
+        if (is_array($j)) {
+            // Flat array form: [{"Code":"CE003","Message":"..."}]
+            if (isset($j[0]['Message'])) {
+                return (string) $j[0]['Message'];
+            }
+            // Envelope form: {NeweggAPIResponse:{Errors:[{Description}]}}
+            $errs = data_get($j, 'NeweggAPIResponse.Errors', null);
+            if (is_array($errs)) {
+                $first = isset($errs['Description']) ? $errs : (is_array(reset($errs)) ? reset($errs) : null);
+                if (is_array($first)) {
+                    $msg = (string) ($first['Description'] ?? ($first['Message'] ?? ''));
+                    if ($msg !== '') {
+                        return $msg;
+                    }
+                }
+            }
+        }
+        if (!empty($res['error'])) {
+            return (string) $res['error'];
+        }
+        return 'HTTP ' . $res['status'];
+    }
+
+    /**
+     * Newegg requires CountryCode ↔ Currency alignment. Returns the canonical
+     * currency for a Newegg-supported destination country (null for unknown so
+     * callers can pass through whatever they were given).
+     */
+    private function defaultCurrencyForCountry(string $country): ?string
+    {
+        return [
+            'USA' => 'USD',
+            'CAN' => 'CAD',
+            'CHN' => 'CNY',
+            'JPN' => 'JPY',
+            'GBR' => 'GBP',
+            'AUS' => 'AUD',
+        ][strtoupper($country)] ?? null;
+    }
+
+    /**
      * Submit an Item Basic Information Report request (async). Returns a
      * RequestID you then poll with getReportResult().
      *   POST /marketplace/reportmgmt/report/submitrequest?sellerid=XXXX

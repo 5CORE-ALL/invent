@@ -13,6 +13,7 @@ class ScopeOfImprovement extends Model
         'issue',
         'root_cause',
         'fixing_root_cause',
+        's_by',
         'history',
         'created_by',
         'updated_by',

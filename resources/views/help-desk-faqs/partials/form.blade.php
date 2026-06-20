@@ -76,7 +76,7 @@
         <textarea name="plus_action" class="form-control" rows="2" placeholder="Enter the additional action"></textarea>
     </div>
     <div class="col-12">
-        <label class="form-label">Messages <span class="text-muted">(max 200 characters)</span></label>
-        <textarea name="messages" class="form-control" rows="2" placeholder="Enter a message"></textarea>
+        <label class="form-label">Messages</label>
+        <textarea name="messages" class="form-control" rows="4" placeholder="Enter a message (no character limit)"></textarea>
     </div>
 </div>

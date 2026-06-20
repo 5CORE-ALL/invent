@@ -14,6 +14,7 @@ use App\Models\ReverbViewData;
 use App\Models\TiktokShopDataView;
 use App\Models\TiktokTwoShopDataView;
 use App\Models\TiktokShopListingStatus;
+use App\Models\TiktokSkuCompetitor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -93,8 +94,10 @@ class TikTokPricingController extends Controller
                 'saveSprice' => '/tiktok-2-save-sprice',
                 'saveNrp' => route('tiktok2.save.nrp'),
                 'saveLinks' => '/tiktok-2-save-links',
-                'columnGet' => '/tiktok-pricing-column-visibility',
-                'columnSet' => '/tiktok-pricing-column-visibility',
+                // Shared DB-backed column visibility (same endpoint ebay-tabulator-view uses).
+                'columnGet' => '/tabulator-column-visibility',
+                'columnSet' => '/tabulator-column-visibility',
+                'columnChannel' => 'tiktok2_pricing',
                 'distinctCampaign' => '/tiktok-distinct-campaign-count',
                 'summaryChannel' => 'tiktok2',
             ],
@@ -500,6 +503,20 @@ class TikTokPricingController extends Controller
             Log::warning('TikTok pricing: campaign/ads data fetch failed: ' . $e->getMessage());
         }
 
+        // LMP (Lowest Marketplace Price) competitor lookup from tiktok_sku_competitors.
+        // Mirrors the Amazon flow in OverallAmazonController: keep one bulk query
+        // and attach lmp_price / lmp_entries / lmp_entries_total to each SKU row
+        // so the front-end can render the LMP column and modal without N+1.
+        $lmpDetailsLookup = collect();
+        $lmpLowestLookup = collect();
+        try {
+            $lmpLookups = TiktokSkuCompetitor::buildGroupedLookup('tiktok');
+            $lmpDetailsLookup = $lmpLookups['details'];
+            $lmpLowestLookup = $lmpLookups['lowest'];
+        } catch (\Throwable $e) {
+            Log::warning('Could not fetch LMP data from tiktok_sku_competitors: ' . $e->getMessage());
+        }
+
         // Process data
         $processedData = [];
         $slNo = 1;
@@ -519,7 +536,10 @@ class TikTokPricingController extends Controller
             // Add values from product_master
             $values = $productMaster->Values ?: [];
             $processedItem["LP_productmaster"] = $values["lp"] ?? 0;
-            $ttShip = $values["tt_ship"] ?? ($values["ship"] ?? 0);
+            // TikTok 1 → tt_ship only (no fallback). TikTok 2 → normal ship only.
+            $ttShip = $isTiktokTwo
+                ? ($values["ship"] ?? 0)
+                : ($values["tt_ship"] ?? 0);
             $processedItem["Ship_productmaster"] = $ttShip;
             $processedItem["TT Ship"] = $ttShip;
             $processedItem["COGS"] = $values["cogs"] ?? 0;
@@ -736,6 +756,48 @@ class TikTokPricingController extends Controller
             $processedItem["out_roas"] = round($outRoas, 2);
             $processedItem["in_roas"] = round($inRoas, 2);
             $processedItem["status"] = $customStatus;
+
+            // Attach LMP (lowest competitor on TikTok Shop) to the row.
+            // The front-end renders the LMP column + modal using these keys.
+            $skuLookupKey = TiktokSkuCompetitor::normalizeSkuKey($sku);
+            $lmpEntries = $lmpDetailsLookup->get($skuLookupKey);
+            if (!$lmpEntries instanceof \Illuminate\Support\Collection) {
+                $lmpEntries = collect();
+            }
+            $lowestLmp = $lmpLowestLookup->get($skuLookupKey);
+            $processedItem['lmp_price'] = ($lowestLmp && isset($lowestLmp->price))
+                ? (is_numeric($lowestLmp->price) ? floatval($lowestLmp->price) : null)
+                : null;
+            $processedItem['lmp_link'] = $lowestLmp->product_link ?? null;
+            $processedItem['lmp_product_id'] = $lowestLmp->product_id ?? null;
+            $processedItem['lmp_title'] = $lowestLmp->product_title ?? null;
+            $processedItem['lmp_seller'] = $lowestLmp->seller_name ?? null;
+            $processedItem['lmp_region'] = $lowestLmp->region ?? null;
+            $processedItem['lmp_entries'] = $lmpEntries
+                ->map(function ($entry) {
+                    return [
+                        'id' => $entry->id,
+                        'product_id' => $entry->product_id ?? null,
+                        'price' => is_numeric($entry->price) ? floatval($entry->price) : null,
+                        'min_price' => $entry->min_price !== null && is_numeric($entry->min_price) ? floatval($entry->min_price) : null,
+                        'max_price' => $entry->max_price !== null && is_numeric($entry->max_price) ? floatval($entry->max_price) : null,
+                        'link' => $entry->product_link ?? null,
+                        'product_link' => $entry->product_link ?? null,
+                        'title' => $entry->product_title ?? null,
+                        'product_title' => $entry->product_title ?? null,
+                        'image' => $entry->image ?? null,
+                        'seller_name' => $entry->seller_name ?? null,
+                        'brand_name' => $entry->brand_name ?? null,
+                        'marketplace' => $entry->marketplace ?? 'tiktok',
+                        'region' => $entry->region ?? 'US',
+                        'rating' => $entry->rating ?? null,
+                        'reviews' => $entry->reviews ?? null,
+                        'sold_count' => $entry->sold_count ?? null,
+                    ];
+                })
+                ->toArray();
+            $processedItem['lmp_entries_total'] = $lmpEntries->count();
+
             $processedData[] = $processedItem;
         }
 
@@ -1223,7 +1285,7 @@ class TikTokPricingController extends Controller
      */
     public function saveSpriceUpdates(Request $request)
     {
-        return $this->saveSpriceUpdatesToModel($request, TiktokShopDataView::class, 'TikTok');
+        return $this->saveSpriceUpdatesToModel($request, TiktokShopDataView::class, 'TikTok', false);
     }
 
     /**
@@ -1231,7 +1293,7 @@ class TikTokPricingController extends Controller
      */
     public function saveSpriceTiktokTwoUpdates(Request $request)
     {
-        return $this->saveSpriceUpdatesToModel($request, TiktokTwoShopDataView::class, 'TikTok 2');
+        return $this->saveSpriceUpdatesToModel($request, TiktokTwoShopDataView::class, 'TikTok 2', true);
     }
 
     /**
@@ -1410,7 +1472,7 @@ class TikTokPricingController extends Controller
         return '';
     }
 
-    private function saveSpriceUpdatesToModel(Request $request, string $viewModel, string $logLabel)
+    private function saveSpriceUpdatesToModel(Request $request, string $viewModel, string $logLabel, bool $isTiktokTwo = false)
     {
         try {
             $updates = [];
@@ -1453,7 +1515,10 @@ class TikTokPricingController extends Controller
                 if ($productMaster) {
                     $pmValues = $productMaster->Values ?: [];
                     $lp = $pmValues['lp'] ?? 0;
-                    $ttShip = $pmValues['tt_ship'] ?? ($pmValues['ship'] ?? 0);
+                    // TikTok 1 → tt_ship only (no fallback). TikTok 2 → normal ship only.
+                    $ttShip = $isTiktokTwo
+                        ? ($pmValues['ship'] ?? 0)
+                        : ($pmValues['tt_ship'] ?? 0);
                     $ship = $ttShip;
                     if ($sprice > 0) {
                         $sgpft = (($sprice * $marginFactor - $lp - $ship) / $sprice) * 100;
@@ -1724,6 +1789,180 @@ class TikTokPricingController extends Controller
         } catch (\Exception $e) {
             // Don't break the main response if summary save fails
             Log::error('Error saving daily TikTok summary: ' . $e->getMessage());
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    //  LMP (Lowest Marketplace Price) — modal endpoints for /tiktok-pricing
+    //  Mirror of OverallAmazonController::getAmazonCompetitors / addAmazonLmp
+    //  / deleteAmazonLmp, but talking to tiktok_sku_competitors instead.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * GET /tiktok/competitors?sku=XXX
+     * Returns every competitor mapped to this SKU, sorted by ascending price.
+     * Consumed by the LMP modal on the /tiktok-pricing page.
+     */
+    public function getTiktokCompetitors(Request $request)
+    {
+        try {
+            $sku = trim((string) $request->input('sku'));
+            if ($sku === '') {
+                return response()->json(['error' => 'SKU is required'], 400);
+            }
+
+            $competitors = TiktokSkuCompetitor::getCompetitorsForSku($sku, 'tiktok');
+            $lowest = $competitors->first();
+
+            return response()->json([
+                'success' => true,
+                'competitors' => $competitors->map(function ($comp) {
+                    return [
+                        'id' => $comp->id,
+                        'sku' => $comp->sku,
+                        'product_id' => $comp->product_id,
+                        'marketplace' => $comp->marketplace,
+                        'region' => $comp->region,
+                        'image' => $comp->image,
+                        'product_link' => $comp->product_link,
+                        'link' => $comp->product_link,
+                        'product_title' => $comp->product_title,
+                        'title' => $comp->product_title,
+                        'seller_name' => $comp->seller_name,
+                        'brand_name' => $comp->brand_name,
+                        'price' => floatval($comp->price),
+                        'min_price' => $comp->min_price !== null ? floatval($comp->min_price) : null,
+                        'max_price' => $comp->max_price !== null ? floatval($comp->max_price) : null,
+                        'rating' => $comp->rating !== null ? floatval($comp->rating) : null,
+                        'reviews' => $comp->reviews !== null ? (int) $comp->reviews : null,
+                        'sold_count' => $comp->sold_count !== null ? (int) $comp->sold_count : null,
+                        'created_at' => $comp->created_at ? $comp->created_at->format('Y-m-d H:i:s') : null,
+                        'updated_at' => $comp->updated_at ? $comp->updated_at->format('Y-m-d H:i:s') : null,
+                    ];
+                }),
+                'lowest_price' => $lowest ? floatval($lowest->price) : null,
+                'total_count' => $competitors->count(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Error fetching TikTok competitors', [
+                'sku' => $sku ?? 'unknown',
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json([
+                'error' => 'Failed to fetch competitors: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /tiktok/competitors
+     * Add one manually-entered competitor for the given SKU. Used by the
+     * "Add New Competitor" form inside the LMP modal.
+     */
+    public function addTiktokCompetitor(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku'           => 'required|string',
+                'product_id'    => 'required|string',
+                'price'         => 'required|numeric|min:0.01',
+                'product_link'  => 'nullable|string',
+                'product_title' => 'nullable|string',
+                'image'         => 'nullable|string',
+                'seller_name'   => 'nullable|string',
+                'brand_name'    => 'nullable|string',
+                'region'        => 'nullable|string|max:8',
+                'marketplace'   => 'nullable|string',
+            ]);
+
+            $sku = trim($validated['sku']);
+            $productId = trim($validated['product_id']);
+            $marketplace = strtolower($validated['marketplace'] ?? 'tiktok');
+            $region = strtoupper($validated['region'] ?? 'US');
+
+            $existing = TiktokSkuCompetitor::where('sku', $sku)
+                ->where('product_id', $productId)
+                ->where('marketplace', $marketplace)
+                ->where('region', $region)
+                ->first();
+
+            if ($existing) {
+                return response()->json([
+                    'error' => 'This competitor is already saved for this SKU/region',
+                ], 409);
+            }
+
+            DB::beginTransaction();
+            $lmp = TiktokSkuCompetitor::create([
+                'sku'           => $sku,
+                'product_id'    => $productId,
+                'marketplace'   => $marketplace,
+                'region'        => $region,
+                'price'         => $validated['price'],
+                'product_link'  => $validated['product_link'] ?? null,
+                'product_title' => $validated['product_title'] ?? null,
+                'image'         => $validated['image'] ?? null,
+                'seller_name'   => $validated['seller_name'] ?? null,
+                'brand_name'    => $validated['brand_name'] ?? null,
+            ]);
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'TikTok competitor added',
+                'data'    => [
+                    'id'           => $lmp->id,
+                    'sku'          => $lmp->sku,
+                    'product_id'   => $lmp->product_id,
+                    'price'        => floatval($lmp->price),
+                    'product_link' => $lmp->product_link,
+                ],
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'messages' => $e->errors(),
+            ], 422);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('Error adding TikTok competitor', [
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json([
+                'error' => 'Failed to add competitor: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /tiktok/competitors/delete  (id in body)
+     * Remove a single mapping.
+     */
+    public function deleteTiktokCompetitor(Request $request)
+    {
+        try {
+            $id = $request->input('id');
+            if (!$id || !is_numeric($id)) {
+                return response()->json(['error' => 'Valid ID is required'], 400);
+            }
+            $lmp = TiktokSkuCompetitor::find($id);
+            if (!$lmp) {
+                return response()->json(['error' => 'Competitor not found'], 404);
+            }
+            $lmp->delete();
+            return response()->json([
+                'success' => true,
+                'message' => 'Competitor deleted',
+                'deleted_id' => $id,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Error deleting TikTok competitor', [
+                'id' => $id ?? 'unknown',
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json([
+                'error' => 'Failed to delete competitor: ' . $e->getMessage(),
+            ], 500);
         }
     }
 }

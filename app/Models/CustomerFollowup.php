@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
+use App\Models\User;
 
 class CustomerFollowup extends Model
 {
@@ -13,6 +14,7 @@ class CustomerFollowup extends Model
         'ticket_id', 'order_id', 'sku', 'channel_master_id', 'customer_name', 'email', 'phone',
         'issue_type', 'status', 'priority', 'followup_date', 'followup_time',
         'next_followup_at', 'assigned_executive', 'original_executive', 'executive_history',
+        'created_by_user_id',
         'comments', 'internal_remarks', 'reference_link',
         'resolved_at',
     ];
@@ -68,6 +70,19 @@ class CustomerFollowup extends Model
     public function channelMaster(): BelongsTo
     {
         return $this->belongsTo(ChannelMaster::class, 'channel_master_id');
+    }
+
+    /**
+     * The auth user who created the ticket. Stamped once at create time and
+     * never overwritten on edit, so the Executive column can render the
+     * creator's *current* `users.name` (collapsing rename drift such as
+     * "Hritiksha" / "Hritiksha Deb" or "Sounak" / "Sounak B"). Nullable
+     * because legacy rows pre-date this column and best-effort backfill
+     * leaves unknown rows unlinked.
+     */
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
     }
 
     public function isOverdue(): bool

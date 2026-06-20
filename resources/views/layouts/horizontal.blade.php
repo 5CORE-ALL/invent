@@ -48,6 +48,10 @@
     {{-- Shared DAR quick-entry modal (opened from the topbar DAR button). --}}
     @include('layouts.shared.dar-modal')
 
+    {{-- Shared "Add Scope of Improvement" modal (opened from the topbar
+         Ideas / Activity buttons on every page). --}}
+    @include('layouts.shared.scope-of-improvement-modal')
+
     @yield('script-after-vite')
 
     @include('components.ai-chat-widget')

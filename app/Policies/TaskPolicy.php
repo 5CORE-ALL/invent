@@ -135,6 +135,10 @@ class TaskPolicy
 
     /**
      * Determine whether the user can update the model.
+     *
+     * Full edit (title, group, date, assignee, priority, etc): assignor +
+     * president override only. Assignees use {@see updateLinks()} to add
+     * reference/SOP links so they can deliver and review their own work.
      */
     public function update(User $user, Task $task): bool
     {
@@ -145,6 +149,24 @@ class TaskPolicy
 
         // Otherwise only the assignor (task creator) can edit their own task.
         return $task->assignor === $user->email;
+    }
+
+    /**
+     * Determine whether the user can update only the link/reference fields
+     * (l1/l2/training/video/form/report/checklist/pl/process) on a task.
+     *
+     * Granted to anyone who can do a full update plus the task's assignee(s),
+     * so assignees can attach proof links to make review/done verification
+     * easier. Title, group, dates, assignee and priority remain locked for
+     * assignees and must go through {@see update()}.
+     */
+    public function updateLinks(User $user, Task $task): bool
+    {
+        if ($this->update($user, $task)) {
+            return true;
+        }
+
+        return $this->userIsAssignee($user, $task);
     }
 
     /**

@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Http\Controllers\ApiController;
 use App\Models\MarketplacePercentage;
-use App\Models\WalmartDataView;
 use App\Models\ProductMaster;
 use App\Models\SheinDataView;
 use App\Models\SheinDailyData;
@@ -15,8 +14,6 @@ use App\Models\ShopifySku;
 use App\Services\SheinShopifySalesService;
 use App\Models\AmazonChannelSummary;
 use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -96,6 +93,23 @@ class SheinController extends Controller
     }
 
     /**
+     * Robust SKU normalization for cross-table joins.
+     *
+     * Folds non-breaking spaces (NBSP / narrow NBSP / \xA0) to regular spaces,
+     * strips invalid UTF-8, collapses any internal whitespace runs, then uppercases.
+     * Without this, `shein_pricing_prices.sku` rarely matches `product_masters.sku`
+     * because Excel/Shein CSV exports leak NBSP and double-spaces, and LP/Ship
+     * silently fall back to 0. Mirrors AliexpressController::normalizeAeSkuExact.
+     */
+    private function normalizeSheinSkuExact(string $sku): string
+    {
+        $sku = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', trim($sku));
+        $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $sku);
+
+        return strtoupper(preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $sku));
+    }
+
+    /**
      * Key product_master rows by normalized SKU using a base Collection (not Eloquent\Collection) for safe key lookups.
      */
     private function productMasterByNormalizedSku(): SupportCollection
@@ -111,146 +125,7 @@ class SheinController extends Controller
                 ->where('sku', '!=', '')
                 ->get()
                 ->all()
-        )->keyBy(static fn(ProductMaster $r) => strtoupper(trim((string) $r->sku)));
-    }
-
-    public function overallShein(Request $request)
-    {
-        $mode = $request->query('mode');
-        $demo = $request->query('demo');
-
-        $percentage = $this->sheinMarketplaceMarginPercent();
-
-        return view('market-places.sheinAnalysis', [
-            'mode' => $mode,
-            'demo' => $demo,
-            'percentage' => $percentage
-        ]);
-    }
-
-    public function getViewSheinData(Request $request)
-    {
-        $percentage = $this->sheinMarketplaceMarginPercent();
-        $percentageValue = $percentage / 100;
-
-        // Fetch all product master records
-        $productMasterRows = ProductMaster::all()->keyBy('sku');
-
-        // Get all unique SKUs from product master
-        $skus = $productMasterRows->pluck('sku')->toArray();
-
-        // Fetch shopify data for these SKUs
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-
-        // Fetch NR values for these SKUs from walmartDataView
-        $walmartDataViews = SheinDataView::whereIn('sku', $skus)->get()->keyBy('sku');
-        $nrValues = [];
-        $listedValues = [];
-        $liveValues = [];
-
-        foreach ($walmartDataViews as $sku => $dataView) {
-            $value = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?: []);
-            $nrValues[$sku] = $value['NR'] ?? false;
-            $listedValues[$sku] = isset($value['Listed']) ? (int) $value['Listed'] : false;
-            $liveValues[$sku] = isset($value['Live']) ? (int) $value['Live'] : false;
-        }
-
-        // Process data from product master and shopify tables
-        $processedData = [];
-        $slNo = 1;
-
-        foreach ($productMasterRows as $productMaster) {
-            $sku = $productMaster->sku;
-            $isParent = stripos($sku, 'PARENT') !== false;
-
-            // Initialize the data structure
-            $processedItem = [
-                'SL No.' => $slNo++,
-                'Parent' => $productMaster->parent ?? null,
-                'Sku' => $sku,
-                'R&A' => false, // Default value, can be updated as needed
-                'is_parent' => $isParent,
-                'raw_data' => [
-                    'parent' => $productMaster->parent,
-                    'sku' => $sku,
-                    'Values' => $productMaster->Values
-                ]
-            ];
-
-            // Add values from product_master
-            $values = $productMaster->Values ?: [];
-            $processedItem['LP'] = $values['lp'] ?? 0;
-            $processedItem['Ship'] = $values['ship'] ?? 0;
-            $processedItem['COGS'] = $values['cogs'] ?? 0;
-
-            // Add data from shopify_skus if available
-            if (isset($shopifyData[$sku])) {
-                $shopifyItem = $shopifyData[$sku];
-                $processedItem['INV'] = $shopifyItem->inv ?? 0;
-                $processedItem['L30'] = $shopifyItem->quantity ?? 0;
-            } else {
-                $processedItem['INV'] = 0;
-                $processedItem['L30'] = 0;
-            }
-
-            // Fetch NR value if available
-            $processedItem['NR'] = $nrValues[$sku] ?? false;
-            $processedItem['Listed'] = $listedValues[$sku] ?? false;
-            $processedItem['Live'] = $liveValues[$sku] ?? false;
-
-            // Default values for other fields
-            $processedItem['A L30'] = 0;
-            $processedItem['Sess30'] = 0;
-            $processedItem['price'] = 0;
-            $processedItem['TOTAL PFT'] = 0;
-            $processedItem['T Sales L30'] = 0;
-            $processedItem['PFT %'] = 0;
-            $processedItem['Roi'] = 0;
-            $processedItem['percentage'] = $percentageValue;
-
-            $processedData[] = $processedItem;
-        }
-
-        return response()->json([
-            'message' => 'Data fetched successfully',
-            'data' => $processedData,
-            'status' => 200
-        ]);
-    }
-
-    public function updateAllSheinSkus(Request $request)
-    {
-        try {
-            $percent = $request->input('percent');
-
-            if (!is_numeric($percent) || $percent < 0 || $percent > 100) {
-                return response()->json([
-                    'status' => 400,
-                    'message' => 'Invalid percentage value. Must be between 0 and 100.'
-                ], 400);
-            }
-
-            // Update database
-            MarketplacePercentage::updateOrCreate(
-                ['marketplace' => 'Shein'],
-                ['percentage' => $percent]
-            );
-
-            return response()->json([
-                'status' => 200,
-                'message' => 'Percentage updated successfully',
-                'data' => [
-                    'marketplace' => 'Shein',
-                    'percentage' => $percent
-                ]
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 500,
-                'message' => 'Error updating percentage',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+        )->keyBy(fn(ProductMaster $r) => $this->normalizeSheinSkuExact((string) $r->sku));
     }
 
     // Save NR value for a SKU
@@ -281,192 +156,6 @@ class SheinController extends Controller
             'success' => true,
             'data' => $dataView
         ]);
-    }
-
-    public function updateListedLive(Request $request)
-    {
-        $request->validate([
-            'sku'   => 'required|string',
-            'field' => 'required|in:Listed,Live',
-            'value' => 'required|boolean' // validate as boolean
-        ]);
-
-        // Find or create the product without overwriting existing value
-        $product = SheinDataView::firstOrCreate(
-            ['sku' => $request->sku],
-            ['value' => []]
-        );
-
-        // Decode current value (ensure it's an array)
-        $currentValue = is_array($product->value)
-            ? $product->value
-            : (json_decode($product->value, true) ?? []);
-
-        // Store as actual boolean
-        $currentValue[$request->field] = filter_var($request->value, FILTER_VALIDATE_BOOLEAN);
-
-        // Save back to DB
-        $product->value = $currentValue;
-        $product->save();
-
-        return response()->json(['success' => true]);
-    }
-
-    public function importSheinAnalytics(Request $request)
-    {
-        $request->validate([
-            'excel_file' => 'required|file|mimes:xlsx,xls,csv'
-        ]);
-
-        try {
-            $file = $request->file('excel_file');
-            $spreadsheet = IOFactory::load($file->getPathName());
-            $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray();
-
-            // Clean headers
-            $headers = array_map(function ($header) {
-                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $header)));
-            }, $rows[0]);
-
-            unset($rows[0]);
-
-            $allSkus = [];
-            foreach ($rows as $row) {
-                if (!empty($row[0])) {
-                    $allSkus[] = $row[0];
-                }
-            }
-
-            $existingSkus = ProductMaster::whereIn('sku', $allSkus)
-                ->pluck('sku')
-                ->toArray();
-
-            $existingSkus = array_flip($existingSkus);
-
-            $importCount = 0;
-            foreach ($rows as $index => $row) {
-                if (empty($row[0])) { // Check if SKU is empty
-                    continue;
-                }
-
-                // Ensure row has same number of elements as headers
-                $rowData = array_pad(array_slice($row, 0, count($headers)), count($headers), null);
-                $data = array_combine($headers, $rowData);
-
-                if (!isset($data['sku']) || empty($data['sku'])) {
-                    continue;
-                }
-
-                // Only import SKUs that exist in product_masters (in-memory check)
-                if (!isset($existingSkus[$data['sku']])) {
-                    continue;
-                }
-
-                // Prepare values array
-                $values = [];
-
-                // Handle boolean fields
-                if (isset($data['listed'])) {
-                    $values['Listed'] = filter_var($data['listed'], FILTER_VALIDATE_BOOLEAN);
-                }
-
-                if (isset($data['live'])) {
-                    $values['Live'] = filter_var($data['live'], FILTER_VALIDATE_BOOLEAN);
-                }
-
-                // Update or create record
-                SheinDataView::updateOrCreate(
-                    ['sku' => $data['sku']],
-                    ['value' => $values]
-                );
-
-                $importCount++;
-            }
-
-            return back()->with('success', "Successfully imported $importCount records!");
-        } catch (\Exception $e) {
-            return back()->with('error', 'Error importing file: ' . $e->getMessage());
-        }
-    }
-
-    public function exportSheinAnalytics()
-    {
-        $sheinData = SheinDataView::all();
-
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-
-        // Header Row
-        $headers = ['SKU', 'Listed', 'Live'];
-        $sheet->fromArray($headers, NULL, 'A1');
-
-        // Data Rows
-        $rowIndex = 2;
-        foreach ($sheinData as $data) {
-            $values = is_array($data->value)
-                ? $data->value
-                : (json_decode($data->value, true) ?? []);
-
-            $sheet->fromArray([
-                $data->sku,
-                isset($values['Listed']) ? ($values['Listed'] ? 'TRUE' : 'FALSE') : 'FALSE',
-                isset($values['Live']) ? ($values['Live'] ? 'TRUE' : 'FALSE') : 'FALSE',
-            ], NULL, 'A' . $rowIndex);
-
-            $rowIndex++;
-        }
-
-        // Set column widths
-        $sheet->getColumnDimension('A')->setWidth(20);
-        $sheet->getColumnDimension('B')->setWidth(10);
-        $sheet->getColumnDimension('C')->setWidth(10);
-
-        // Output Download
-        $fileName = 'Shein_Analytics_Export_' . date('Y-m-d') . '.xlsx';
-
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment;filename="' . $fileName . '"');
-        header('Cache-Control: max-age=0');
-
-        $writer = new Xlsx($spreadsheet);
-        $writer->save('php://output');
-        exit;
-    }
-
-    public function downloadSample()
-    {
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-
-        // Header Row
-        $headers = ['SKU', 'Listed', 'Live'];
-        $sheet->fromArray($headers, NULL, 'A1');
-
-        // Sample Data
-        $sampleData = [
-            ['SKU001', 'TRUE', 'FALSE'],
-            ['SKU002', 'FALSE', 'TRUE'],
-            ['SKU003', 'TRUE', 'TRUE'],
-        ];
-
-        $sheet->fromArray($sampleData, NULL, 'A2');
-
-        // Set column widths
-        $sheet->getColumnDimension('A')->setWidth(20);
-        $sheet->getColumnDimension('B')->setWidth(10);
-        $sheet->getColumnDimension('C')->setWidth(10);
-
-        // Output Download
-        $fileName = 'Shein_Analytics_Sample.xlsx';
-
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment;filename="' . $fileName . '"');
-        header('Cache-Control: max-age=0');
-
-        $writer = new Xlsx($spreadsheet);
-        $writer->save('php://output');
-        exit;
     }
 
     /**
@@ -1139,7 +828,9 @@ class SheinController extends Controller
 
         $rows = [];
         foreach ($dataRows as $row) {
-            $sku = trim((string) ($row[$skuIdx] ?? ''));
+            // Normalize at upload time so shein_pricing_prices.sku matches product_masters.sku
+            // even when the sheet contains NBSP or stray whitespace (a frequent Shein export issue).
+            $sku = $this->normalizeSheinSkuExact((string) ($row[$skuIdx] ?? ''));
             // Skip blank rows and repeated header rows
             if ($sku === '' || in_array(strtolower($sku), ['sellersku', 'seller sku', 'offer sku', 'sku'], true)) continue;
 
@@ -1212,7 +903,7 @@ class SheinController extends Controller
     public function getSheinPricingData(Request $request)
     {
         try {
-            $normalizeSku = static fn($v) => strtoupper(trim((string) $v));
+            $normalizeSku = fn($v) => $this->normalizeSheinSkuExact((string) $v);
 
             // ── 1. All uploaded prices (base SKU list)
             $pricingRows  = \App\Models\SheinPricingPrice::all();
@@ -1246,36 +937,19 @@ class SheinController extends Controller
                 ->keyBy(fn($r) => $normalizeSku($r->seller_sku));
 
             // ── 4. Shopify → INV / OV L30
+            // Load full tables and key in PHP — SQL UPPER(TRIM(sku)) does not fold NBSP / multi-space variants.
+            $shopifyBySku = ShopifySku::all()->keyBy(fn($r) => $normalizeSku($r->sku));
+
+            // ── 5. SPRICE from shein_data_views
+            $viewMetaBySku = SheinDataView::all()->keyBy(fn($r) => $normalizeSku($r->sku));
+
+            // ── 5b. Buyer / Seller links from shein_listing_statuses
+            $linksBySku = \App\Models\SheinListingStatus::all()->keyBy(fn($r) => $normalizeSku($r->sku));
+
             $allNormalizedSkus = collect(array_merge(
                 $pricingBySku->keys()->all(),
                 $productMasterBySku->keys()->all()
             ))->unique()->values();
-
-            $shopifyBySku = collect();
-            if ($allNormalizedSkus->isNotEmpty()) {
-                $shopifyBySku = ShopifySku::query()
-                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
-                    ->get()
-                    ->keyBy(fn($r) => $normalizeSku($r->sku));
-            }
-
-            // ── 5. SPRICE from shein_data_views
-            $viewMetaBySku = collect();
-            if ($allNormalizedSkus->isNotEmpty()) {
-                $viewMetaBySku = SheinDataView::query()
-                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
-                    ->get()
-                    ->keyBy(fn($r) => $normalizeSku($r->sku));
-            }
-
-            // ── 5b. Buyer / Seller links from shein_listing_statuses
-            $linksBySku = collect();
-            if ($allNormalizedSkus->isNotEmpty()) {
-                $linksBySku = \App\Models\SheinListingStatus::query()
-                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
-                    ->get()
-                    ->keyBy(fn($r) => $normalizeSku($r->sku));
-            }
 
             // ── 6. Margin from marketplace_percentages
             $percentage = $this->sheinMarketplaceMarginPercent();
@@ -1678,10 +1352,15 @@ class SheinController extends Controller
                 if (!$sku || $sprice === null) continue;
                 $sprice = (float) $sprice;
 
-                $n  = strtoupper(trim((string) $sku));
-                $pm = Schema::hasTable((new ProductMaster)->getTable())
-                    ? ProductMaster::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$n])->first()
-                    : null;
+                $n = $this->normalizeSheinSkuExact((string) $sku);
+                $pm = null;
+                if (Schema::hasTable((new ProductMaster)->getTable())) {
+                    // SQL UPPER(TRIM) won't fold NBSP / multi-space variants — match in PHP.
+                    $pm = ProductMaster::query()
+                        ->whereNotNull('sku')->where('sku', '!=', '')
+                        ->get()
+                        ->first(fn ($r) => $this->normalizeSheinSkuExact((string) $r->sku) === $n);
+                }
                 $resolved = $this->lpAndShipFromProductMaster($pm instanceof ProductMaster ? $pm : null);
                 $lp   = $resolved['lp'];
                 $ship = $resolved['ship'];

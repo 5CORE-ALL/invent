@@ -813,6 +813,10 @@
          own script-after-vite so window.DarModal is defined first. --}}
     @include('layouts.shared.dar-modal')
 
+    {{-- Shared "Add Scope of Improvement" modal (opened from the topbar
+         Ideas / Activity buttons on every page). --}}
+    @include('layouts.shared.scope-of-improvement-modal')
+
     {{-- Runs after Vite so jQuery matches head.js; DataTables and similar plugins attach here --}}
     @yield('script-after-vite')
 

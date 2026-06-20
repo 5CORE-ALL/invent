@@ -149,60 +149,59 @@ class CollectTemuMetrics extends Command
 
     /**
      * Build one row of badge summary for the given date and upsert into temu_badge_daily_data.
+     *
+     * Reads from the live decrease-page endpoint (TemuController::getTemuDecreaseData)
+     * so the saved snapshot is BYTE-FOR-BYTE the same dataset the live badge sums
+     * over — same SKU set, same sales source (Temu Orders API for Temu 1 / temu2 daily
+     * for Temu 2), same view-data joins, same $2.99 ship-bumper applied to revenue,
+     * etc. That keeps the badge value on the page and the chart point for "today"
+     * perfectly in sync.
      */
     protected function snapshotBadgeDailyData(Carbon $recordDate, $productData): void
     {
-        $normalizeSku = function ($sku) {
-            $sku = strtoupper(trim((string) $sku));
-            $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
-            $sku = preg_replace('/\s+/', ' ', $sku);
-            return $sku;
-        };
-        $normalizedPmSet = $productData->keys()->flip()->all();
-        $noSpaceToNormalized = [];
-        foreach (array_keys($normalizedPmSet) as $nk) {
-            $noSpace = str_replace(' ', '', $nk);
-            if ($noSpace !== '') {
-                $noSpaceToNormalized[$noSpace] = $nk;
-            }
+        try {
+            // Hit the same endpoint the page hits. Default Request = Temu 1 / L30,
+            // which is what /temu-decrease shows.
+            $controller = app(\App\Http\Controllers\MarketPlace\TemuController::class);
+            $response = $controller->getTemuDecreaseData(new \Illuminate\Http\Request());
+            $payload = json_decode($response->getContent(), true);
+        } catch (\Throwable $e) {
+            Log::error('Temu badge snapshot: getTemuDecreaseData call failed: ' . $e->getMessage());
+            return;
         }
 
-        // Same sales logic as Temu decrease page badge (getTemuDecreaseData): all orders matching PM, no date filter – so chart and badge match
-        $allowedRawSkus = TemuDailyData::select('contribution_sku')->distinct()->get()
-            ->filter(function ($r) use ($normalizeSku, $normalizedPmSet, $noSpaceToNormalized) {
-                $n = $normalizeSku($r->contribution_sku ?? '');
-                return isset($normalizedPmSet[$n]) || isset($noSpaceToNormalized[str_replace(' ', '', $n)]);
-            })
-            ->pluck('contribution_sku')
-            ->unique()
-            ->values()
-            ->all();
-        $salesOrderRows = TemuDailyData::whereIn('contribution_sku', $allowedRawSkus)
-            ->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
-        $totalOrders = 0;
-        $totalQuantity = 0;
-        $totalSales = 0.0;
-        foreach ($salesOrderRows as $row) {
-            if (trim((string) ($row->contribution_sku ?? '')) === '' || trim((string) ($row->order_id ?? '')) === '') {
-                continue;
-            }
-            $totalOrders++;
-            $qty = (int) ($row->quantity_purchased ?? 0);
-            $base = (float) ($row->base_price_total ?? 0);
-            $totalQuantity += $qty;
-            $totalSales += $base * $qty;
-        }
+        $rows = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+        $salesSummary = is_array($payload['sales_summary'] ?? null) ? $payload['sales_summary'] : [];
 
-        // Aggregates from temu_sku_daily_data for this date
-        $skuDaily = DB::table('temu_sku_daily_data')
-            ->where('record_date', $recordDate->toDateString())
-            ->selectRaw('COUNT(*) as sku_count, COALESCE(SUM(product_clicks), 0) as total_views, COALESCE(AVG(product_clicks), 0) as avg_views, COALESCE(SUM(spend), 0) as total_spend, COALESCE(AVG(cvr_percent), 0) as avg_cvr_pct')
-            ->first();
-        $skuCount = (int) ($skuDaily->sku_count ?? 0);
-        $totalViews = (int) ($skuDaily->total_views ?? 0);
-        $avgViews = round((float) ($skuDaily->avg_views ?? 0), 2);
-        $totalSpend = round((float) ($skuDaily->total_spend ?? 0), 2);
-        $avgCvrPct = round((float) ($skuDaily->avg_cvr_pct ?? 0), 2);
+        // Order/quantity/revenue come from the controller's own sales_summary block
+        // (already correct — it uses TemuShopifySalesService for Temu 1 / temu2_daily_data
+        // for Temu 2, exactly like the badge on the live page).
+        $totalOrders   = (int) ($salesSummary['total_orders'] ?? 0);
+        $totalQuantity = (int) ($salesSummary['total_quantity'] ?? 0);
+        $totalSales    = round((float) ($salesSummary['total_revenue'] ?? 0), 2);
+
+        // Views + spend + sku count are aggregated from the same row payload the
+        // live updateSummary loop iterates, so they match what the user sees.
+        $totalViews = 0;
+        $totalSpend = 0.0;
+        $skuCount = 0;
+        $skusWithViews = 0;
+        foreach ($rows as $row) {
+            $sku = (string) ($row['sku'] ?? '');
+            if ($sku === '' || stripos($sku, 'PARENT') !== false) continue;
+            $skuCount++;
+            $clicks = (int) ($row['product_clicks'] ?? 0);
+            if ($clicks > 0) {
+                $totalViews += $clicks;
+                $skusWithViews++;
+            }
+            $totalSpend += (float) ($row['spend'] ?? 0);
+        }
+        $totalSpend = round($totalSpend, 2);
+        $avgViews   = $skusWithViews > 0 ? round($totalViews / $skusWithViews, 2) : 0.0;
+
+        // Weighted CVR — exact formula the live badge uses (qtyPerViews = totalQuantity / totalViews × 100).
+        $avgCvrPct = $totalViews > 0 ? round(($totalQuantity / $totalViews) * 100, 2) : 0.0;
 
         TemuBadgeDailyData::updateOrCreate(
             ['record_date' => $recordDate->toDateString()],

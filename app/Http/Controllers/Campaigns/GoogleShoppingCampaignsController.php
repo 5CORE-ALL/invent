@@ -43,6 +43,41 @@ class GoogleShoppingCampaignsController extends Controller
         $query->whereRaw("UPPER({$columnExpression}) NOT LIKE ?", ['% SEARCH%']);
     }
 
+    /**
+     * SQL expression used to compute "L30 Sales" inside aggregate queries (sort, summary,
+     * ACOS color filter, sales_l30_agg). Returns the L30 sum of `ga4_actual_revenue` —
+     * the actual GA4 Analytics Data API revenue that matches the GA4 dashboard "Total
+     * revenue".
+     *
+     * The grid intentionally does NOT fall back to Google Ads `metrics.conversionsValue`
+     * (column `ga4_ad_sales`) when GA4 reports $0. Earlier behaviour silently swapped
+     * to that fallback, producing rows like `RETRO MICS SEARCH` (SERP) showing 102 and
+     * `PARENT GSTOOL RND REST` (Shopping) showing 56 even though GA4 had $0.00 — Google
+     * Ads conversionsValue was being labelled as GA4 sales. After this change, `0` on
+     * the grid means GA4 sees zero, which is what the column header promises.
+     *
+     * Subclasses can still override this if a future page legitimately needs the old
+     * fallback semantics.
+     */
+    protected static function salesL30SqlExpression(): string
+    {
+        return 'COALESCE(cGa30.sum_ga4_actual, 0)';
+    }
+
+    /**
+     * PHP-side counterpart of {@see salesL30SqlExpression()} used while enriching each row
+     * for the Tabulator grid. Kept in sync with the SQL so column value, sort, and ACOS
+     * agree to the dollar.
+     *
+     * The `$sumGoogleAdsConversionsValue` argument is intentionally unused here — it is
+     * kept in the signature so the hook can be overridden by a subclass that wants the
+     * old fallback semantics without having to widen the signature later.
+     */
+    protected static function resolveSalesL30Value(float $sumGa4ActualRevenue, float $sumGoogleAdsConversionsValue): float
+    {
+        return $sumGa4ActualRevenue;
+    }
+
     public function getRule(): JsonResponse
     {
         return response()->json([
@@ -109,6 +144,56 @@ class GoogleShoppingCampaignsController extends Controller
             ['--campaign-ids' => implode(',', $ids)],
             'sbid:update'
         );
+    }
+
+    /**
+     * Manually trigger `app:fetch-google-ads-campaigns` so missing rows can be back-filled
+     * without waiting for the daily 09:00 IST cron. Always runs in the background because
+     * the full fetch (campaign list + per-day metrics chunks + GA4 join) routinely takes
+     * several minutes and would time out on a synchronous web request.
+     *
+     * Request JSON (all optional): `{ "days": 1 }` — capped to 1..30 to keep API usage sane.
+     */
+    public function pullData(Request $request): JsonResponse
+    {
+        $days = (int) $request->input('days', 1);
+        if ($days < 1) {
+            $days = 1;
+        }
+        if ($days > 30) {
+            $days = 30;
+        }
+
+        $command = 'app:fetch-google-ads-campaigns';
+        $label = $command;
+
+        try {
+            $cmdParts = [
+                PHP_BINARY ?: 'php',
+                base_path('artisan'),
+                $command,
+                '--days='.escapeshellarg((string) $days),
+            ];
+            $cmdString = implode(' ', $cmdParts).' > /dev/null 2>&1 &';
+            exec($cmdString);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'ok' => false,
+                'exit_code' => 1,
+                'command' => $label,
+                'message' => 'Could not start data pull: '.$e->getMessage(),
+                'output' => '',
+            ], 500);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'exit_code' => 0,
+            'command' => $label,
+            'async' => true,
+            'message' => "Data pull started in background for the last {$days} day(s). The full fetch typically takes a few minutes — refresh the grid in 2-3 minutes to see new rows.",
+            'output' => "Running: {$command} --days={$days} (async mode)\n\nThe process is running in the background. Once finished, click Refresh to reload the grid.\nLogs: tail -f storage/logs/laravel.log",
+        ], 200);
     }
 
     /**
@@ -607,7 +692,7 @@ class GoogleShoppingCampaignsController extends Controller
             ->addSelect(DB::raw('COALESCE(cGa30.sum_ga4_actual, 0) as sum_ga4_actual'))
             ->addSelect(DB::raw('COALESCE(cGa30.sum_ga4_ads, 0) as sum_ga4_ads'))
             ->addSelect(DB::raw('COALESCE(cGa30.sum_ga4_actual_sold, 0) as sum_ga4_actual_sold'))
-            ->addSelect(DB::raw('(CASE WHEN COALESCE(cGa30.sum_ga4_actual, 0) > 0 THEN COALESCE(cGa30.sum_ga4_actual, 0) ELSE COALESCE(cGa30.sum_ga4_ads, 0) END) as sales_l30_agg'));
+            ->addSelect(DB::raw(static::salesL30SqlExpression().' as sales_l30_agg'));
 
         return $query;
     }
@@ -688,12 +773,16 @@ class GoogleShoppingCampaignsController extends Controller
     private function applyRawGridSort($query, Request $request): void
     {
         $spend = '(cSpend.sum_micros / 1000000.0)';
-        $sales = '(CASE WHEN COALESCE(cGa30.sum_ga4_actual, 0) > 0 THEN COALESCE(cGa30.sum_ga4_actual, 0) ELSE COALESCE(cGa30.sum_ga4_ads, 0) END)';
+        $sales = static::salesL30SqlExpression();
         $sold = 'COALESCE(cGa30.sum_ga4_actual_sold, 0)';
+        $clicks = 'COALESCE(cClicks30.sum_clicks_30, 0)';
         $acosExpr = "(CASE "
             ."WHEN ROUND({$sales}) >= 1 THEN (ROUND({$spend}) / ROUND({$sales})) * 100.0 "
             ."WHEN ROUND({$spend}) > 0 THEN 100.0 "
             ."ELSE 0 END)";
+        // CVR sort SQL — mirrors the per-row PHP formula in enrichRawRowGoogleShoppingStyle()
+        // so that ORDER BY cvr_l30 matches the displayed grid value to the percent.
+        $cvrExpr = "(CASE WHEN {$clicks} > 0 THEN ({$sold} / {$clicks}) * 100.0 ELSE 0 END)";
 
         $sortMap = [
             'campaign_name' => 'g.campaign_name',
@@ -705,6 +794,7 @@ class GoogleShoppingCampaignsController extends Controller
             'ad_sold_L30' => $sold,
             'ad_sales_L30' => $sales,
             'acos_l30' => $acosExpr,
+            'cvr_l30' => $cvrExpr,
             'bgt' => 'COALESCE(g.budget_amount_micros, 0)',
             'ub7' => '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL7.sum_micros_l7, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 7.0) * 100.0 ELSE 0 END)',
             'ub2' => '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL2.sum_micros_l2, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 2.0) * 100.0 ELSE 0 END)',
@@ -803,7 +893,7 @@ class GoogleShoppingCampaignsController extends Controller
         }
 
         $spend = '(cSpend.sum_micros / 1000000.0)';
-        $sales = '(CASE WHEN COALESCE(cGa30.sum_ga4_actual, 0) > 0 THEN COALESCE(cGa30.sum_ga4_actual, 0) ELSE COALESCE(cGa30.sum_ga4_ads, 0) END)';
+        $sales = static::salesL30SqlExpression();
         $acosExpr = "(CASE "
             ."WHEN ROUND({$sales}) >= 1 THEN (ROUND({$spend}) / ROUND({$sales})) * 100.0 "
             ."WHEN ROUND({$spend}) > 0 THEN 100.0 "
@@ -989,9 +1079,14 @@ class GoogleShoppingCampaignsController extends Controller
         $sumActualSold = (float) ($arr['sum_ga4_actual_sold'] ?? 0);
         unset($arr['sum_ga4_actual'], $arr['sum_ga4_ads'], $arr['sum_ga4_actual_sold']);
 
-        $salesL30 = $sumActual > 0 ? $sumActual : $sumAds;
+        $salesL30 = static::resolveSalesL30Value($sumActual, $sumAds);
         $arr['ad_sold_L30'] = $sumActualSold;
         $arr['ad_sales_L30'] = $salesL30;
+
+        // CVR L30 — mirrors the toolbar CVR badge: (sold / clicks) * 100, 1 dp.
+        // Both inputs use the same 30-day window as Sold and Clicks above so the
+        // column, the badge, and the SQL sort agree to the percent.
+        $arr['cvr_l30'] = $clicks30 > 0 ? round(($sumActualSold / $clicks30) * 100.0, 1) : 0.0;
 
         $spendR = (int) round($spend);
         $salesR = (int) round($salesL30);
@@ -1084,6 +1179,7 @@ class GoogleShoppingCampaignsController extends Controller
             'ad_sold_L30',
             'ad_sales_L30',
             'acos_l30',
+            'cvr_l30',
             'ub7',
             'ub2',
             'ub1',

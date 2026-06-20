@@ -130,7 +130,36 @@
                 border-radius: 50%;
                 object-fit: cover;
             }
+
+            .topbar-activity-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                margin-right: 0.5rem;
+                width: 42px;
+                height: 42px;
+                padding: 0;
+                border: none;
+                border-radius: 50%;
+                background: #fff;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+                transition: transform 0.2s ease;
+            }
+            .topbar-activity-btn:hover { transform: scale(1.08); }
+            .topbar-activity-btn__icon {
+                width: 100%;
+                height: 100%;
+                border-radius: 50%;
+                object-fit: cover;
+            }
+
         </style>
+
+        <button type="button" id="activityTopbarBtn" class="topbar-activity-btn"
+            title="Earn Monthly Increments" aria-label="Earn Monthly Increments">
+            <img src="{{ asset('images/rupees-bag-icon.png') }}" alt="Earn Monthly Increments" class="topbar-activity-btn__icon">
+        </button>
 
         <button type="button" id="darTopbarOpenBtn" class="topbar-dar-btn"
             title="Daily Activity Report (DAR)" aria-label="Daily Activity Report (DAR)">

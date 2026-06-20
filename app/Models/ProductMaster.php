@@ -104,6 +104,96 @@ class ProductMaster extends Model
         return $this->Values['ship'] ?? null;
     }
 
+    /**
+     * Auto-recalculate LP, CBM and FRGHT in the Values JSON whenever the model is saved.
+     * Source of truth formula:
+     *   CBM   = (L * 2.54) * (W * 2.54) * (H * 2.54) / 1,000,000   (L/W/H in inches -> m^3)
+     *   FRGHT = CBM * 200
+     *   LP    = CP + FRGHT
+     *
+     * SKUs listed in CustomLpMappingService keep their custom LP so the existing
+     * manual overrides continue to work end-to-end.
+     */
+    protected static function booted()
+    {
+        static::saving(function (self $product) {
+            $raw = $product->Values;
+            if ($raw === null) {
+                return;
+            }
+            $values = is_array($raw) ? $raw : json_decode($raw, true);
+            if (! is_array($values)) {
+                return;
+            }
+
+            $sku = (string) ($product->sku ?? '');
+            $recalculated = self::recalcDerivedValues($values, $sku);
+
+            if ($recalculated !== $values) {
+                $product->Values = $recalculated;
+            }
+        });
+    }
+
+    /**
+     * Pure (no DB) recalculation of LP, CBM and FRGHT for a given Values array.
+     * Returns a new array; original $values is not mutated.
+     * Parent SKUs (containing "PARENT") are returned unchanged.
+     */
+    public static function recalcDerivedValues(array $values, string $sku = ''): array
+    {
+        if ($sku !== '' && stripos($sku, 'PARENT') !== false) {
+            return $values;
+        }
+
+        $customMapping = \App\Services\CustomLpMappingService::getCustomLpMapping();
+        $hasCustomLp = $sku !== '' && array_key_exists($sku, $customMapping);
+
+        $cp = self::numericFromValues($values, 'cp');
+        $l = self::numericFromValues($values, 'l');
+        $w = self::numericFromValues($values, 'w');
+        $h = self::numericFromValues($values, 'h');
+
+        $cbm = null;
+        $frght = null;
+        if ($l > 0 && $w > 0 && $h > 0) {
+            $cbm = ($l * 2.54) * ($w * 2.54) * ($h * 2.54) / 1000000;
+            $frght = $cbm * 200;
+        }
+
+        if ($cbm !== null) {
+            $values['cbm'] = round($cbm, 4);
+        }
+        if ($frght !== null) {
+            $values['frght'] = round($frght, 2);
+        }
+
+        if ($hasCustomLp) {
+            $values['lp'] = round((float) $customMapping[$sku], 2);
+        } elseif ($cp > 0 || ($cbm !== null && $cbm > 0)) {
+            $values['lp'] = round($cp + ($frght ?? 0.0), 2);
+        }
+
+        return $values;
+    }
+
+    /**
+     * Safely read a numeric value from a Values JSON array.
+     * Accepts strings with stray spaces/commas and returns 0.0 if not parseable.
+     */
+    private static function numericFromValues(array $values, string $key): float
+    {
+        if (! array_key_exists($key, $values) || $values[$key] === null || $values[$key] === '') {
+            return 0.0;
+        }
+        $raw = $values[$key];
+        if (is_string($raw)) {
+            $raw = trim(str_replace(',', '', $raw));
+        }
+
+        return is_numeric($raw) ? (float) $raw : 0.0;
+    }
+
     protected $casts = [
         'description_v2_images' => 'array',
         'description_v2_features' => 'array',

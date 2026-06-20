@@ -73,6 +73,7 @@ use App\Http\Controllers\Channels\TrafficMasterController;
 use App\Http\Controllers\ChannelTabulatorColumnController;
 use App\Http\Controllers\AuditMasterController;
 use App\Http\Controllers\ComplianceCertificateController;
+use App\Http\Controllers\CustomerCare\CustomerFaqController;
 use App\Http\Controllers\CustomerCare\CustomerFollowupController;
 use App\Http\Controllers\CustomerCare\DARController;
 use App\Http\Controllers\CustomerCare\ShippingController;
@@ -97,6 +98,7 @@ use App\Http\Controllers\InventoryWarehouseController;
 use App\Http\Controllers\InventoryHistoryController;
 use App\Http\Controllers\ShopifyOrdersController;
 use App\Http\Controllers\ListingMaster\AmzListingController;
+use App\Http\Controllers\MapIssuesController;
 use App\Http\Controllers\MarketingMaster\EbayCvrLqsController;
 use App\Http\Controllers\MarketingMaster\FacebookAddsManagerController;
 use App\Http\Controllers\MarketingMaster\InstagramAdsManagerController;
@@ -776,6 +778,24 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/customer-care/shipping/followups', [ShippingController::class, 'followupsStore'])->name('customer.care.shipping.followups.store');
     Route::post('/customer-care/shipping/followups/{shipping_followup}/resolve', [ShippingController::class, 'followupsResolve'])->name('customer.care.shipping.followups.resolve');
     Route::get('/customer-care/refunds', [RefundController::class, 'index'])->name('customer.care.refunds');
+
+    // FAQ / FFP Customers Page (with escalations)
+    Route::get('/customer-care/faq-customers', [CustomerFaqController::class, 'index'])
+        ->name('customer.care.faq.customers.index');
+    Route::get('/customer-care/faq-customers/data', [CustomerFaqController::class, 'data'])
+        ->name('customer.care.faq.customers.data');
+    Route::post('/customer-care/faq-customers', [CustomerFaqController::class, 'store'])
+        ->name('customer.care.faq.customers.store');
+    Route::put('/customer-care/faq-customers/{customer_faq}', [CustomerFaqController::class, 'update'])
+        ->name('customer.care.faq.customers.update');
+    Route::delete('/customer-care/faq-customers/{customer_faq}', [CustomerFaqController::class, 'destroy'])
+        ->name('customer.care.faq.customers.destroy');
+    Route::post('/customer-care/faq-customers/{customer_faq}/escalate', [CustomerFaqController::class, 'escalate'])
+        ->name('customer.care.faq.customers.escalate');
+    Route::post('/customer-care/faq-customers/{customer_faq}/resolve', [CustomerFaqController::class, 'resolve'])
+        ->name('customer.care.faq.customers.resolve');
+    Route::post('/customer-care/faq-customers/{customer_faq}/status', [CustomerFaqController::class, 'updateStatus'])
+        ->name('customer.care.faq.customers.status');
     Route::get('/customer-care/orders-on-hold', function () {
         $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
             ->whereNotNull('marketplace')
@@ -2835,6 +2855,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(ScopeOfImprovementController::class)->group(function () {
         Route::get('/scope-of-improvement', 'index')->name('scope-of-improvement.index');
         Route::get('/scope-of-improvement/data', 'data')->name('scope-of-improvement.data');
+        Route::get('/scope-of-improvement/user-issues/{userId}', 'userIssues')->name('scope-of-improvement.user-issues');
         Route::post('/scope-of-improvement/store', 'store')->name('scope-of-improvement.store');
         Route::post('/scope-of-improvement/update/{id}', 'update')->name('scope-of-improvement.update');
         Route::post('/scope-of-improvement/delete/{id}', 'destroy')->name('scope-of-improvement.delete');
@@ -3007,6 +3028,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/newegg-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'getColumnVisibility']);
     Route::post('/newegg-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveColumnVisibility']);
     Route::post('/newegg-pricing-save-sprice', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveSprice'])->name('newegg.pricing.save.sprice');
+    Route::post('/newegg-pricing-save-sprice-bulk', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveSpriceBulk'])->name('newegg.pricing.save.sprice.bulk');
+    Route::post('/newegg-pricing-push', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'pushPriceToNewegg'])->name('newegg.pricing.push');
     Route::post('/newegg-pricing-save-nr', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveNr'])->name('newegg.pricing.save.nr');
     Route::post('/newegg-pricing-save-links', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveLinks'])->name('newegg.pricing.save.links');
 
@@ -3151,6 +3174,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tiktok-2-save-sprice', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveSpriceTiktokTwoUpdates'])->name('tiktok2.save.sprice');
     Route::post('/tiktok-save-nrp', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveTiktokShopNrp'])->name('tiktok.save.nrp');
     Route::post('/tiktok-save-links', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveLinks'])->name('tiktok.save.links');
+    // LMP modal endpoints for /tiktok-pricing — talks to tiktok_sku_competitors
+    Route::get('/tiktok/competitors', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'getTiktokCompetitors'])->name('tiktok.competitors.get');
+    Route::post('/tiktok/competitors', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'addTiktokCompetitor'])->name('tiktok.competitors.add');
+    Route::post('/tiktok/competitors/delete', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'deleteTiktokCompetitor'])->name('tiktok.competitors.delete');
     Route::post('/tiktok-2-save-links', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveTiktokTwoLinks'])->name('tiktok2.save.links');
     Route::post('/tiktok-2-save-nrp', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveTiktokTwoNrp'])->name('tiktok2.save.nrp');
     Route::get('/tiktok-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'getColumnVisibility'])->name('tiktok.pricing.column.get');
@@ -4575,14 +4602,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_shein/import', [ListingSheinController::class, 'import'])->name('listing_shein.import');
     Route::get('/listing_shein/export', [ListingSheinController::class, 'export'])->name('listing_shein.export');
 
-    Route::get('sheinAnalysis', action: [SheinController::class, 'overallShein']);
-    Route::get('/shein/view-data', [SheinController::class, 'getViewSheinData']);
-    Route::post('/update-all-shein-skus', [SheinController::class, 'updateAllSheinSkus']);
     Route::post('/shein/save-nr', [SheinController::class, 'saveNrToDatabase']);
-    Route::post('/shein/update-listed-live', [SheinController::class, 'updateListedLive']);
-    Route::post('/shein-analytics/import', [SheinController::class, 'importSheinAnalytics'])->name('shein.analytics.import');
-    Route::get('/shein-analytics/export', [SheinController::class, 'exportSheinAnalytics'])->name('shein.analytics.export');
-    Route::get('/shein-analytics/sample', [SheinController::class, 'downloadSample'])->name('shein.analytics.sample');
 
     // Shein Daily Data routes
     Route::post('/shein/upload-daily-data', [SheinController::class, 'uploadDailyDataChunk'])->name('shein.upload.daily.data');
@@ -5550,6 +5570,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-shopping/rule', 'saveRule')->name('google.shopping.campaigns.rule.save');
         Route::post('/google/shopping/google-shopping/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.shopping.campaigns.push.sbgt');
         Route::post('/google/shopping/google-shopping/push-sbid', 'pushSbidShopping')->name('google.shopping.campaigns.push.sbid');
+        Route::post('/google/shopping/google-shopping/pull-data', 'pullData')->name('google.shopping.campaigns.pull.data');
         Route::get('/google/shopping/google-shopping/badge-history', 'badgeHistory')->name('google.shopping.campaigns.badge.history');
         Route::post('/google/shopping/google-shopping/u7-distribution', 'u7Distribution')->name('google.shopping.campaigns.u7.distribution');
         Route::post('/google/shopping/google-shopping/u7-distribution-history', 'u7DistributionHistory')->name('google.shopping.campaigns.u7.history');
@@ -5651,6 +5672,31 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/results', [\App\Http\Controllers\RePricer\GoogleSearchController::class, 'getResults'])->name('results');
         Route::get('/skus', [\App\Http\Controllers\RePricer\GoogleSearchController::class, 'getSkus'])->name('skus');
         Route::post('/store-competitors', [\App\Http\Controllers\RePricer\GoogleSearchController::class, 'storeCompetitors'])->name('store-competitors');
+    });
+
+    // TikTok Shop competitor search — backed by Apify (SerpApi has no TikTok engine).
+    Route::prefix('repricer/tiktok-search')->name('repricer.tiktok-search.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'index'])->name('index');
+        Route::post('/search', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'search'])->name('search');
+        Route::get('/history', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'getSearchHistory'])->name('history');
+        Route::get('/results', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'getResults'])->name('results');
+        Route::get('/filter-options', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'getFilterOptions'])->name('filter-options');
+        Route::get('/raw-response', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'getRawResponse'])->name('raw-response');
+        Route::get('/skus', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'getSkus'])->name('skus');
+        Route::post('/store-competitors', [\App\Http\Controllers\RePricer\TiktokSearchController::class, 'storeCompetitors'])->name('store-competitors');
+    });
+
+    // Shein competitor search — SerpApi has no Shein engine, so this hits
+    // `engine=google_shopping` and filters merchants where source ~ "Shein".
+    Route::prefix('repricer/shein-search')->name('repricer.shein-search.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\RePricer\SheinSearchController::class, 'index'])->name('index');
+        Route::post('/search', [\App\Http\Controllers\RePricer\SheinSearchController::class, 'search'])->name('search');
+        Route::get('/history', [\App\Http\Controllers\RePricer\SheinSearchController::class, 'getSearchHistory'])->name('history');
+        Route::get('/results', [\App\Http\Controllers\RePricer\SheinSearchController::class, 'getResults'])->name('results');
+        Route::get('/filter-options', [\App\Http\Controllers\RePricer\SheinSearchController::class, 'getFilterOptions'])->name('filter-options');
+        Route::get('/raw-response', [\App\Http\Controllers\RePricer\SheinSearchController::class, 'getRawResponse'])->name('raw-response');
+        Route::get('/skus', [\App\Http\Controllers\RePricer\SheinSearchController::class, 'getSkus'])->name('skus');
+        Route::post('/store-competitors', [\App\Http\Controllers\RePricer\SheinSearchController::class, 'storeCompetitors'])->name('store-competitors');
     });
     
     // =========================================================================
@@ -5955,6 +6001,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->middleware('auth')
         ->name('api.users.active');
 
+    // R&R checklist — team-wide tabulator view (must be declared before /users/{user}/... )
+    Route::get('/users/rr-checklist', [UserRRPortfolioController::class, 'checklist'])
+        ->middleware('auth')
+        ->name('users.rr-checklist.index');
+
+    Route::get('/users/rr-checklist/data', [UserRRPortfolioController::class, 'checklistData'])
+        ->middleware('auth')
+        ->name('users.rr-checklist.data');
+
     Route::get('/users/{user}/rr-portfolio', [UserRRPortfolioController::class, 'show'])
         ->middleware('auth')
         ->name('users.rr-portfolio.show');
@@ -6063,6 +6118,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/alerts', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'alerts'])->name('alerts');
         Route::post('/alerts/{id}/resolve', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'resolveAlert'])->name('alerts.resolve');
         Route::post('/upload-csv', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'uploadCsv'])->name('upload-csv');
+        Route::get('/column-visibility', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'getColumnVisibility'])->name('column-visibility.get');
+        Route::post('/column-visibility', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'saveColumnVisibility'])->name('column-visibility.save');
         Route::post('/{id}/generate-reply', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'generateReply'])->name('generate-reply');
         Route::post('/trigger-fetch', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'triggerFetch'])->name('trigger-fetch');
         Route::post('/refresh-summary', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'refreshSummary'])->name('refresh-summary');

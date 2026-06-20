@@ -222,8 +222,7 @@
                             <option value="10-20">10-20%</option>
                             <option value="20-30">20-30%</option>
                             <option value="30-40">30-40%</option>
-                            <option value="40-50">40-50%</option>
-                            <option value="50plus">Above 50%</option>
+                            <option value="40plus">Above 40%</option>
                         </select>
                         <select id="cvr-filter" class="form-select form-select-sm" style="width: 130px;">
                             <option value="all">All CVR%</option>
@@ -303,6 +302,36 @@
                         title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         <i class="fas fa-exchange-alt"></i> Price Mode
                     </button>
+
+                    {{-- Target ROI% bulk control — back-solves SPRICE so SROI = Target ROI%. --}}
+                    {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin (TikTok take-home) --}}
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
+                        id="tt-target-roi-controls"
+                        title="Target ROI% — sets SPRICE = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (back-solves so SROI column equals the target)">
+                        <label for="tt-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">Target ROI%:</label>
+                        <input type="number" id="tt-target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply SPRICE'">
+                        <button id="tt-apply-target-roi-btn" class="btn btn-sm btn-primary" type="button"
+                            title="Compute & save SPRICE = (LP × (1 + Target ROI%/100) + Ship) / margin for every selected row">
+                            <i class="fas fa-calculator"></i> Apply SPRICE
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves SPRICE so SGPFT = Target GPFT%. --}}
+                    {{-- Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
+                        id="tt-target-gpft-controls"
+                        title="Target GPFT% — sets SPRICE = (LP + Ship) / (margin − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
+                        <label for="tt-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">Target GPFT%:</label>
+                        <input type="number" id="tt-target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply SPRICE'. Must be less than the TikTok take-home margin.">
+                        <button id="tt-apply-target-gpft-btn" class="btn btn-sm btn-primary" type="button"
+                            title="Compute & save SPRICE = (LP + Ship) / (margin − Target GPFT%/100) for every selected row">
+                            <i class="fas fa-calculator"></i> Apply SPRICE
+                        </button>
+                    </div>
 
                     <button type="button" id="toggle-utilized-columns-btn" class="btn btn-sm btn-secondary">
                         <i class="fa fa-filter"></i> Show Ads Columns
@@ -455,9 +484,10 @@
                 </div>
                 <div id="tiktok-table-wrapper"
                     style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <!-- SKU Search -->
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
+                    <!-- SKU & Parent Search -->
+                    <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
+                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
+                        <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
                     </div>
                     <!-- Table body -->
                     <div id="tiktok-table" style="flex: 1;"></div>
@@ -550,6 +580,81 @@
             </div>
         </div>
     </div>
+
+    {{-- LMP Competitors Modal (parallel to Amazon Tabulator's lmpModal) --}}
+    <div class="modal fade" id="ttLmpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background:#ff0050;color:#fff;">
+                    <h5 class="modal-title">
+                        <i class="fa fa-shopping-cart"></i> TikTok Competitors for SKU: <span id="ttLmpSku"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="card mb-3 border-success">
+                        <div class="card-header bg-success text-white">
+                            <strong><i class="fa fa-plus-circle"></i> Add New Competitor</strong>
+                        </div>
+                        <div class="card-body">
+                            <form id="ttAddCompetitorForm" class="row g-3">
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>SKU</strong></label>
+                                    <input type="text" class="form-control" id="ttAddCompSku" readonly>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>Product ID</strong> <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="ttAddCompProductId" placeholder="1731826094240797243" required>
+                                </div>
+                                <div class="col-md-1">
+                                    <label class="form-label"><strong>Price</strong> <span class="text-danger">*</span></label>
+                                    <input type="number" class="form-control" id="ttAddCompPrice" placeholder="29.99" step="0.01" min="0.01" required>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>Product Title</strong></label>
+                                    <input type="text" class="form-control" id="ttAddCompTitle" placeholder="Optional">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>Product Link</strong></label>
+                                    <input type="url" class="form-control" id="ttAddCompLink" placeholder="https://www.tiktok.com/shop/pdp/...">
+                                </div>
+                                <div class="col-md-1">
+                                    <label class="form-label"><strong>Region</strong></label>
+                                    <select class="form-select" id="ttAddCompRegion">
+                                        <option value="US" selected>US</option>
+                                        <option value="GB">GB</option>
+                                        <option value="MY">MY</option>
+                                        <option value="PH">PH</option>
+                                        <option value="TH">TH</option>
+                                        <option value="VN">VN</option>
+                                        <option value="ID">ID</option>
+                                        <option value="SG">SG</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2 d-flex align-items-end">
+                                    <button type="submit" class="btn btn-success me-2" style="background:#ff0050;border-color:#ff0050;">
+                                        <i class="fa fa-plus"></i> Add
+                                    </button>
+                                    <button type="reset" class="btn btn-secondary">
+                                        <i class="fa fa-undo"></i> Clear
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div id="ttLmpDataList">
+                        <div class="text-center py-5">
+                            <div class="spinner-border" role="status" style="color:#ff0050;">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading competitors...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @php
@@ -560,8 +665,10 @@
             'saveSprice' => '/tiktok-save-sprice',
             'saveNrp' => route('tiktok.save.nrp'),
             'saveLinks' => '/tiktok-save-links',
-            'columnGet' => '/tiktok-pricing-column-visibility',
-            'columnSet' => '/tiktok-pricing-column-visibility',
+            // Shared DB-backed column visibility (same endpoint ebay-tabulator-view uses).
+            'columnGet' => '/tabulator-column-visibility',
+            'columnSet' => '/tabulator-column-visibility',
+            'columnChannel' => 'tiktok_pricing',
             'distinctCampaign' => '/tiktok-distinct-campaign-count',
             'summaryChannel' => 'tiktok',
         ],
@@ -1024,33 +1131,30 @@
             $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
 
             // Single Price Mode cycle: Off → Decrease → Increase → Same Price → Off
+            // Select column stays visible at all times (ebay-tabulator-view pattern);
+            // Price Mode only swaps the button label / discount panel state.
             function syncPriceModeUi() {
                 const $btn = $('#price-mode-btn');
-                const selectColumn = table.getColumn('_select');
                 if (decreaseModeActive) {
                     $btn.removeClass('btn-secondary btn-primary btn-info').addClass('btn-danger')
                         .html('<i class="fas fa-arrow-down"></i> Decrease ON');
-                    selectColumn.show();
                     syncDiscountInputUi();
                     return;
                 }
                 if (increaseModeActive) {
                     $btn.removeClass('btn-secondary btn-danger btn-info').addClass('btn-primary')
                         .html('<i class="fas fa-arrow-up"></i> Increase ON');
-                    selectColumn.show();
                     syncDiscountInputUi();
                     return;
                 }
                 if (samePriceModeActive) {
                     $btn.removeClass('btn-secondary btn-danger btn-primary').addClass('btn-info')
                         .html('<i class="fas fa-equals"></i> Same Price ON');
-                    selectColumn.show();
                     syncDiscountInputUi();
                     return;
                 }
                 $btn.removeClass('btn-danger btn-primary btn-info').addClass('btn-secondary')
                     .html('<i class="fas fa-exchange-alt"></i> Price Mode');
-                selectColumn.hide();
                 selectedSkus.clear();
                 updateSelectedCount();
                 syncDiscountInputUi();
@@ -1177,6 +1281,170 @@
             // Clear SPRICE button
             $('#clear-sprice-btn').on('click', function() {
                 clearSpriceForSelected();
+            });
+
+            /*
+             * ============================================================================
+             * Target ROI% / Target GPFT% bulk apply for SPRICE (mirrors ebay-tabulator-view)
+             * ----------------------------------------------------------------------------
+             * Pick rows (via Price Mode), type the target %, click Apply SPRICE → back-solve
+             * a sale price that makes the on-page SROI / SGPFT column match the target after
+             * TikTok margin + shipping are paid out.
+             *
+             * Math (mirrors the backend's SGPFT / SROI formulas):
+             *   SROI%  = ((sprice * margin - lp - ship) / lp) * 100
+             *      -> sprice = (lp * (1 + roi%/100) + ship) / margin
+             *
+             *   SGPFT% = ((sprice * margin - ship - lp) / sprice) * 100
+             *      -> sprice = (lp + ship) / (margin - gpft%/100)
+             *      Constraint: (margin - gpft%/100) must be > 0.
+             *
+             * `margin` comes from rowData.percentage with a DEFAULT_TIKTOK_MARGIN_FACTOR fallback.
+             * Saving goes through TTP_CFG.saveSprice exactly like an inline SPRICE edit.
+             * ============================================================================
+             */
+            function ttApplyTargetSpriceBatch(opts) {
+                const $btn = opts.$btn;
+                if (selectedSkus.size === 0) {
+                    showToast('Please select at least one SKU first.', 'error');
+                    return;
+                }
+
+                const rowsToProcess = [];
+                const skipped = [];
+                table.getRows().forEach(function(r) {
+                    const rd = r.getData();
+                    const sku = rd['(Child) sku'];
+                    if (!sku || !selectedSkus.has(sku)) return;
+                    if (rd.Parent && String(rd.Parent).startsWith('PARENT ')) return;
+                    const res = opts.computeSprice(rd);
+                    if (!res || res.skipReason) {
+                        if (res && res.skipReason) skipped.push({ sku: sku, reason: res.skipReason });
+                        return;
+                    }
+                    let sprice = +Number(res.sprice).toFixed(2);
+                    if (!isFinite(sprice) || sprice <= 0) return;
+                    sprice = Math.max(0.99, roundToRetailPrice(sprice));
+                    rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
+                });
+
+                if (rowsToProcess.length === 0) {
+                    if (skipped.length > 0) {
+                        showToast('Cannot apply: ' + skipped[0].reason, 'error');
+                    } else {
+                        showToast('No selected rows have a usable LP > 0', 'error');
+                    }
+                    return;
+                }
+
+                let confirmMsg = `Compute & save SPRICE for ${rowsToProcess.length} selected SKU(s) using ${opts.label}?`;
+                if (skipped.length > 0) {
+                    confirmMsg += `\n\nNote: ${skipped.length} row(s) will be skipped (${skipped[0].reason}).`;
+                }
+                if (!confirm(confirmMsg)) return;
+
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+
+                // Update rows client-side immediately (mirrors applyDiscount handler)
+                const updates = [];
+                rowsToProcess.forEach(function(item) {
+                    const rd = item.row.getData();
+                    const percentage = getRowMarginFactor(rd);
+                    const lp = parseFloat(rd['LP_productmaster']) || 0;
+                    const ship = parseFloat(rd['Ship_productmaster']) || 0;
+                    const sprice = item.sprice;
+                    const sgpft = sprice > 0 ? Math.round(((sprice * percentage - ship - lp) / sprice) * 100 * 100) / 100 : 0;
+                    const sroi = lp > 0 ? Math.round(((sprice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
+                    item.row.update({
+                        SPRICE: sprice,
+                        SGPFT: sgpft,
+                        SPFT: sgpft,
+                        SROI: sroi,
+                        has_custom_sprice: true
+                    });
+                    updates.push({ sku: item.sku, sprice: sprice });
+                });
+
+                $.ajax({
+                    url: TTP_CFG.saveSprice,
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: { updates: updates },
+                    success: function(res) {
+                        if (res && res.success) {
+                            showToast(`SPRICE saved for ${updates.length} SKU(s) @ ${opts.label}`, 'success');
+                        } else {
+                            showToast('Failed to save SPRICE updates', 'error');
+                        }
+                    },
+                    error: function() {
+                        showToast('Error saving SPRICE updates', 'error');
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).html(opts.btnHtml);
+                        // Wipe selection so the next batch starts clean.
+                        selectedSkus.clear();
+                        $('.sku-select-checkbox').prop('checked', false);
+                        $('#select-all-checkbox').prop('checked', false);
+                        updateSelectedCount();
+                    }
+                });
+            }
+
+            // Target ROI%
+            $('#tt-apply-target-roi-btn').on('click', function() {
+                const $btn = $(this);
+                const raw = $('#tt-target-roi-input').val();
+                const targetRoiPct = parseFloat(String(raw).replace(',', '.'));
+                if (raw === '' || raw == null) { showToast('Please enter a Target ROI%', 'error'); return; }
+                if (!isFinite(targetRoiPct)) { showToast('Target ROI% must be a number', 'error'); return; }
+                const roiMultiplier = 1 + (targetRoiPct / 100);
+                ttApplyTargetSpriceBatch({
+                    targetPct: targetRoiPct,
+                    label: `Target ROI ${targetRoiPct}%`,
+                    $btn: $btn,
+                    btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
+                    computeSprice: function(rd) {
+                        const lp = parseFloat(rd['LP_productmaster']) || 0;
+                        if (lp <= 0) return null;
+                        const ship = parseFloat(rd['Ship_productmaster']) || 0;
+                        const margin = getRowMarginFactor(rd);
+                        return { sprice: (lp * roiMultiplier + ship) / margin };
+                    }
+                });
+            });
+            $('#tt-target-roi-input').on('keypress', function(e) {
+                if (e.which === 13) $('#tt-apply-target-roi-btn').click();
+            });
+
+            // Target GPFT%
+            $('#tt-apply-target-gpft-btn').on('click', function() {
+                const $btn = $(this);
+                const raw = $('#tt-target-gpft-input').val();
+                const targetGpftPct = parseFloat(String(raw).replace(',', '.'));
+                if (raw === '' || raw == null) { showToast('Please enter a Target GPFT%', 'error'); return; }
+                if (!isFinite(targetGpftPct)) { showToast('Target GPFT% must be a number', 'error'); return; }
+                const targetFraction = targetGpftPct / 100;
+                ttApplyTargetSpriceBatch({
+                    targetPct: targetGpftPct,
+                    label: `Target GPFT ${targetGpftPct}%`,
+                    $btn: $btn,
+                    btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
+                    computeSprice: function(rd) {
+                        const lp = parseFloat(rd['LP_productmaster']) || 0;
+                        if (lp <= 0) return null;
+                        const ship = parseFloat(rd['Ship_productmaster']) || 0;
+                        const margin = getRowMarginFactor(rd);
+                        const denom = margin - targetFraction;
+                        if (denom <= 0) {
+                            return { skipReason: `Target GPFT% ${targetGpftPct}% ≥ TikTok take-home margin (~${Math.round(margin * 100)}%)` };
+                        }
+                        return { sprice: (lp + ship) / denom };
+                    }
+                });
+            });
+            $('#tt-target-gpft-input').on('keypress', function(e) {
+                if (e.which === 13) $('#tt-apply-target-gpft-btn').click();
             });
 
             let zeroSoldFilterActive = false;
@@ -2188,6 +2456,75 @@
                         width: 70
                     },
                     {
+                        title: "LMP",
+                        field: "lmp_price",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                            if (isParent) return '';
+
+                            const lmpPrice = parseFloat(cell.getValue() || 0);
+                            const totalCompetitors = parseInt(rowData.lmp_entries_total, 10) || 0;
+                            const sku = rowData['(Child) sku'] || '';
+                            const skuAttr = String(sku).replace(/"/g, '&quot;');
+
+                            // No competitors mapped yet — show a "+ Add" entry to seed the modal.
+                            if (!lmpPrice && totalCompetitors === 0) {
+                                return `<a href="#" class="view-tt-lmp-competitors" data-sku="${skuAttr}"
+                                    style="color:#6c757d;text-decoration:none;font-size:11px;cursor:pointer;"
+                                    title="No competitors — click to add one">
+                                    <i class="fa fa-plus-circle"></i> Add
+                                </a>`;
+                            }
+
+                            const currentPrice = parseFloat(rowData['TT Price'] || 0);
+                            const priceColor = (lmpPrice > 0 && lmpPrice < currentPrice) ? '#dc3545' : '#28a745';
+
+                            let html = '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.1;">';
+                            if (lmpPrice) {
+                                html += `<span style="color:${priceColor};font-weight:700;font-size:14px;">$${lmpPrice.toFixed(2)}</span>`;
+                            }
+                            if (totalCompetitors > 0) {
+                                html += `<a href="#" class="view-tt-lmp-competitors" data-sku="${skuAttr}"
+                                    style="color:#ff0050;text-decoration:none;font-size:11px;cursor:pointer;">
+                                    <i class="fa fa-eye"></i> View ${totalCompetitors}
+                                </a>`;
+                            }
+                            html += '</div>';
+                            return html;
+                        }
+                    },
+                    {
+                        title: "Diff",
+                        field: "lmp_diff_pct",
+                        hozAlign: "center",
+                        width: 70,
+                        headerSortStartingDir: "desc",
+                        sorter: function(a, b, aRow, bRow) {
+                            const calc = function(rd) {
+                                const lmp = parseFloat(rd.lmp_price || 0);
+                                const price = parseFloat(rd['TT Price'] || 0);
+                                if (!lmp || lmp <= 0) return -Infinity;
+                                return ((lmp - price) / lmp) * 100;
+                            };
+                            return calc(aRow.getData()) - calc(bRow.getData());
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                            if (isParent) return '';
+                            const lmp = parseFloat(rowData.lmp_price || 0);
+                            const price = parseFloat(rowData['TT Price'] || 0);
+                            if (!lmp || lmp <= 0) return '<span style="color:#999;">N/A</span>';
+                            const diff = ((lmp - price) / lmp) * 100;
+                            const color = diff < 0 ? '#dc3545' : '#28a745';
+                            return `<span style="color:${color};font-weight:600;">${diff.toFixed(1)}%</span>`;
+                        }
+                    },
+                    {
                         title: "GPFT%",
                         field: "GPFT%",
                         hozAlign: "center",
@@ -2381,7 +2718,8 @@
                         hozAlign: "center",
                         headerSort: false,
                         width: 40,
-                        visible: false,
+                        frozen: true,
+                        visible: true,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const sku = rowData['(Child) sku'];
@@ -2547,7 +2885,7 @@
                         }
                     },
                     {
-                        title: "NRP",
+                        title: "NR/Req",
                         field: "nrp",
                         hozAlign: "center",
                         width: 56,
@@ -2629,7 +2967,7 @@
             });
 
             // SKU Search: run applyFilters() so Ad Click and other filters stay applied (missing campaign stays hidden when Ad Click filter is on)
-            $('#sku-search').on('keyup', function() {
+            $('#sku-search, #parent-search').on('keyup', function() {
                 applyFilters();
             });
 
@@ -2640,7 +2978,9 @@
                     const row = cell.getRow();
                     const rowData = row.getData();
                     const sku = rowData['(Child) sku'];
-                    const newSprice = parseFloat(cell.getValue()) || 0;
+                    // Always store SPRICE to exactly 2 decimals (UI input may allow more digits).
+                    const rawSprice = parseFloat(cell.getValue()) || 0;
+                    const newSprice = Math.round(rawSprice * 100) / 100;
 
                     const percentage = getRowMarginFactor(rowData);
                     const lp = rowData['LP_productmaster'] || 0;
@@ -2653,6 +2993,7 @@
                         100) / 100 : 0;
 
                     row.update({
+                        SPRICE: newSprice,
                         SGPFT: sgpft,
                         SPFT: spft,
                         SROI: sroi,
@@ -2962,15 +3303,18 @@
                     });
                 }
 
-                // GPFT filter (parent rows always visible)
+                // GPFT filter (parent rows always visible) — slabs match ebay-tabulator-view
                 if (gpftFilter !== 'all') {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return true;
                         const gpft = parseFloat(data['GPFT%']) || 0;
                         if (gpftFilter === 'negative') return gpft < 0;
-                        if (gpftFilter === '50plus') return gpft >= 50;
-                        const [min, max] = gpftFilter.split('-').map(Number);
-                        return gpft >= min && gpft < max;
+                        if (gpftFilter === '0-10')     return gpft >= 0 && gpft < 10;
+                        if (gpftFilter === '10-20')    return gpft >= 10 && gpft < 20;
+                        if (gpftFilter === '20-30')    return gpft >= 20 && gpft < 30;
+                        if (gpftFilter === '30-40')    return gpft >= 30 && gpft < 40;
+                        if (gpftFilter === '40plus')   return gpft >= 40;
+                        return true;
                     });
                 }
 
@@ -3211,6 +3555,14 @@
                     });
                 }
 
+                const parentSearchVal = $('#parent-search').val();
+                if (parentSearchVal && parentSearchVal.trim() !== '') {
+                    const pTerm = parentSearchVal.trim().toLowerCase();
+                    table.addFilter(function(data) {
+                        return (data.Parent || '').toString().toLowerCase().indexOf(pTerm) !== -1;
+                    });
+                }
+
                 updateSummary();
                 updateTtSummaryBadgeStyles();
             }
@@ -3404,6 +3756,13 @@
                 $('#column-dropdown-menu').html(html);
             }
 
+            /*
+             * Column visibility is persisted through the shared DB-backed
+             * /tabulator-column-visibility endpoint (same one ebay-tabulator-view uses),
+             * so booleans round-trip cleanly. Channel is unique per shop:
+             *   - tiktok_pricing  (TikTok 1)
+             *   - tiktok2_pricing (TikTok 2)
+             */
             function saveColumnVisibilityToServer() {
                 const visibility = {};
                 table.getColumns().forEach(col => {
@@ -3415,37 +3774,42 @@
                     }
                 });
 
-                $.ajax({
-                    url: TTP_CFG.columnSet,
+                fetch(TTP_CFG.columnSet, {
                     method: 'POST',
-                    data: {
-                        visibility: visibility,
-                        channel: TTP_CFG.summaryChannel,
-                        _token: '{{ csrf_token() }}'
-                    }
-                });
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({
+                        channel: TTP_CFG.columnChannel || ('tiktok_pricing'),
+                        visibility: visibility
+                    })
+                }).catch(err => console.error('Error saving TikTok column visibility:', err));
             }
 
             function applyColumnVisibilityFromServer() {
-                $.ajax({
-                    url: TTP_CFG.columnGet,
-                    method: 'GET',
-                    data: {
-                        channel: TTP_CFG.summaryChannel
-                    },
-                    success: function(visibility) {
-                        if (visibility && Object.keys(visibility).length > 0) {
+                const channel = TTP_CFG.columnChannel || 'tiktok_pricing';
+                fetch(TTP_CFG.columnGet + '?channel=' + encodeURIComponent(channel), {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        }
+                    })
+                    .then(r => r.json())
+                    .then(visibility => {
+                        if (visibility && typeof visibility === 'object' && Object.keys(visibility).length > 0) {
                             Object.keys(visibility).forEach(field => {
                                 if (ADS_ONLY_COLUMN_FIELDS.includes(field) ||
                                     ALWAYS_HIDDEN_COLUMNS.includes(field))
                             return; // never show ads or Parent from server
                                 const col = table.getColumn(field);
                                 if (col) {
-                                    if (visibility[field]) {
-                                        col.show();
-                                    } else {
-                                        col.hide();
-                                    }
+                                    // Server stores real booleans via boolean validation,
+                                    // but coerce defensively in case of legacy string values.
+                                    const v = visibility[field];
+                                    const visible = v === true || v === 1 || v === '1' || v === 'true';
+                                    if (visible) col.show(); else col.hide();
                                 }
                             });
                         }
@@ -3457,8 +3821,8 @@
                             } catch (e) {}
                         });
                         buildColumnDropdown();
-                    }
-                });
+                    })
+                    .catch(err => console.error('Error loading TikTok column visibility:', err));
             }
 
             // Wait for table to be built
@@ -3588,6 +3952,231 @@
                 document.body.removeChild(link);
 
                 showToast('Export downloaded successfully!', 'success');
+            });
+
+            // ─────────────────────────────────────────────────────────────
+            //  LMP Modal: open / fetch / render / add / delete
+            // ─────────────────────────────────────────────────────────────
+            let ttCurrentLmpSku = null;
+
+            function ttEscAttr(value) {
+                if (value == null) return '';
+                return String(value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+            }
+
+            function ttLoadCompetitorsModal(sku) {
+                ttCurrentLmpSku = sku;
+                $('#ttLmpSku').text(sku);
+                $('#ttAddCompSku').val(sku);
+                $('#ttAddCompProductId').val('');
+                $('#ttAddCompPrice').val('');
+                $('#ttAddCompTitle').val('');
+                $('#ttAddCompLink').val('');
+                $('#ttAddCompRegion').val('US');
+
+                const modalEl = document.getElementById('ttLmpModal');
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+
+                $('#ttLmpDataList').html(`
+                    <div class="text-center py-5">
+                        <div class="spinner-border" role="status" style="color:#ff0050;">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading competitors...</p>
+                    </div>
+                `);
+
+                $.ajax({
+                    url: '/tiktok/competitors',
+                    method: 'GET',
+                    data: { sku: sku },
+                    success: function(response) {
+                        if (response.success) {
+                            ttRenderCompetitorsList(response.competitors, response.lowest_price);
+                        } else {
+                            ttRenderCompetitorsList([], null);
+                        }
+                    },
+                    error: function() {
+                        ttRenderCompetitorsList([], null);
+                    }
+                });
+            }
+
+            function ttRenderCompetitorsList(competitors, lowestPrice) {
+                if (!competitors || competitors.length === 0) {
+                    $('#ttLmpDataList').html(`
+                        <div class="alert alert-info mb-0">
+                            <i class="fa fa-info-circle"></i> No competitors found for this SKU. Add your first one above, or use
+                            <a href="/repricer/tiktok-search" target="_blank" class="alert-link">/repricer/tiktok-search</a> to discover and bulk-assign.
+                        </div>
+                    `);
+                    return;
+                }
+
+                let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm align-middle">';
+                html += `
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:30px;">#</th>
+                            <th style="width:60px;">Image</th>
+                            <th style="width:140px;">Product ID</th>
+                            <th style="width:260px;">Title</th>
+                            <th>Seller</th>
+                            <th style="width:80px;">Price</th>
+                            <th style="width:80px;">Range</th>
+                            <th style="width:70px;">Rating</th>
+                            <th style="width:80px;">Reviews</th>
+                            <th style="width:80px;">Sold</th>
+                            <th style="width:60px;">Region</th>
+                            <th style="width:60px;">Link</th>
+                            <th style="width:60px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                `;
+
+                competitors.forEach(function(item, index) {
+                    const basePrice = parseFloat(item.price) || 0;
+                    const isLowest = lowestPrice && Math.abs(basePrice - parseFloat(lowestPrice)) < 0.01;
+                    const rowClass = isLowest ? 'table-success' : '';
+                    const priceFormatted = '$' + basePrice.toFixed(2);
+                    const priceBadge = isLowest
+                        ? `<span class="badge bg-success">${priceFormatted} <i class="fa fa-trophy"></i></span>`
+                        : `<strong>${priceFormatted}</strong>`;
+
+                    const productLink = item.link || item.product_link || '#';
+                    const title = item.title || item.product_title || 'N/A';
+                    const seller = item.seller_name || (item.brand_name || '—');
+                    const imageUrl = item.image || '';
+                    const imageHtml = imageUrl
+                        ? `<img src="${ttEscAttr(imageUrl)}" style="width:50px;height:50px;object-fit:contain;" />`
+                        : '<span style="color:#999;">—</span>';
+
+                    let rangeHtml = '<span style="color:#999;">—</span>';
+                    if (item.min_price && item.max_price && item.min_price !== item.max_price) {
+                        rangeHtml = `<small style="color:#666;">$${parseFloat(item.min_price).toFixed(2)}<br>– $${parseFloat(item.max_price).toFixed(2)}</small>`;
+                    }
+                    const rating = item.rating
+                        ? `<span style="color:#ffc107;">${parseFloat(item.rating).toFixed(1)} <i class="fa fa-star"></i></span>`
+                        : '<span style="color:#999;">—</span>';
+                    const reviews = item.reviews
+                        ? `<span>${parseInt(item.reviews).toLocaleString()}</span>`
+                        : '<span style="color:#999;">—</span>';
+                    const sold = item.sold_count
+                        ? `<span style="color:#00796B;font-weight:600;">${parseInt(item.sold_count).toLocaleString()}</span>`
+                        : '<span style="color:#999;">—</span>';
+
+                    html += `
+                        <tr class="${rowClass}">
+                            <td class="text-center"><strong>${index + 1}</strong></td>
+                            <td class="text-center">${imageHtml}</td>
+                            <td><span class="text-primary" style="font-weight:600;font-size:11px;font-family:monospace;">${ttEscAttr(item.product_id || 'N/A')}</span></td>
+                            <td style="font-size:11px;" title="${ttEscAttr(title)}">${ttEscAttr(String(title).substring(0, 80))}${String(title).length > 80 ? '…' : ''}</td>
+                            <td style="font-size:11px;">${ttEscAttr(seller)}</td>
+                            <td>${priceBadge}</td>
+                            <td class="text-center">${rangeHtml}</td>
+                            <td class="text-center">${rating}</td>
+                            <td class="text-center">${reviews}</td>
+                            <td class="text-center">${sold}</td>
+                            <td class="text-center"><span class="badge bg-secondary">${ttEscAttr(item.region || 'US')}</span></td>
+                            <td class="text-center">
+                                <a href="${ttEscAttr(productLink)}" target="_blank" class="btn btn-sm btn-info" title="Open on TikTok Shop">
+                                    <i class="fa fa-external-link-alt"></i>
+                                </a>
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-danger tt-delete-lmp-btn"
+                                    data-id="${item.id}"
+                                    data-product-id="${ttEscAttr(item.product_id)}"
+                                    title="Delete this competitor">
+                                    <i class="fa fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                html += '</tbody></table></div>';
+                $('#ttLmpDataList').html(html);
+            }
+
+            // "View N" / "+ Add" trigger inside the LMP column
+            $(document).on('click', '.view-tt-lmp-competitors', function(e) {
+                e.preventDefault();
+                const sku = $(this).data('sku');
+                if (!sku) return;
+                ttLoadCompetitorsModal(sku);
+            });
+
+            // Add Competitor form
+            $('#ttAddCompetitorForm').on('submit', function(e) {
+                e.preventDefault();
+                const payload = {
+                    sku: $('#ttAddCompSku').val(),
+                    product_id: $('#ttAddCompProductId').val().trim(),
+                    price: parseFloat($('#ttAddCompPrice').val()) || 0,
+                    product_title: $('#ttAddCompTitle').val().trim() || null,
+                    product_link: $('#ttAddCompLink').val().trim() || null,
+                    region: $('#ttAddCompRegion').val() || 'US',
+                    marketplace: 'tiktok',
+                    _token: '{{ csrf_token() }}',
+                };
+                if (!payload.product_id || !payload.price) {
+                    alert('Product ID and Price are required.');
+                    return;
+                }
+                $.ajax({
+                    url: '/tiktok/competitors',
+                    method: 'POST',
+                    data: payload,
+                    success: function(resp) {
+                        if (resp.success) {
+                            $('#ttAddCompProductId').val('');
+                            $('#ttAddCompPrice').val('');
+                            $('#ttAddCompTitle').val('');
+                            $('#ttAddCompLink').val('');
+                            ttLoadCompetitorsModal(ttCurrentLmpSku);
+                            // Refresh underlying table to update lmp_price/Diff cells
+                            if (typeof table !== 'undefined' && table) table.replaceData();
+                        } else {
+                            alert(resp.error || 'Failed to add competitor');
+                        }
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to add competitor';
+                        alert(msg);
+                    }
+                });
+            });
+
+            // Delete competitor
+            $(document).on('click', '.tt-delete-lmp-btn', function() {
+                const id = $(this).data('id');
+                if (!id) return;
+                if (!confirm('Delete this competitor mapping?')) return;
+                $.ajax({
+                    url: '/tiktok/competitors/delete',
+                    method: 'POST',
+                    data: { id: id, _token: '{{ csrf_token() }}' },
+                    success: function(resp) {
+                        if (resp.success) {
+                            ttLoadCompetitorsModal(ttCurrentLmpSku);
+                            if (typeof table !== 'undefined' && table) table.replaceData();
+                        } else {
+                            alert(resp.error || 'Failed to delete');
+                        }
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to delete';
+                        alert(msg);
+                    }
+                });
             });
         });
     </script>
