@@ -250,9 +250,12 @@ final class EbayTradingReviseItem
         $result = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'pictures');
 
         // Append any partial EPS failures to the success message
-        if (($result['success'] ?? false) && $epsErrors) {
-            $result['message'] = ($result['message'] ?? 'eBay images updated.')
-                .' Note: '.count($epsErrors).' of '.count($urls).' image(s) could not be uploaded: '.implode(' | ', $epsErrors);
+        if ($result['success'] ?? false) {
+            $result['normalized_urls'] = $epsUrls;
+            if ($epsErrors) {
+                $result['message'] = ($result['message'] ?? 'eBay images updated.')
+                    .' Note: '.count($epsErrors).' of '.count($urls).' image(s) could not be uploaded: '.implode(' | ', $epsErrors);
+            }
         }
 
         return $result;

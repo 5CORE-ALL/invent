@@ -1565,10 +1565,16 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             return $res;
         }
 
-        $saved = $this->saveImageUrlsToMetrics('ebay_2_metrics', $identifier, $row, $images);
+        $urlsForMetrics = isset($res['normalized_urls']) && is_array($res['normalized_urls'])
+            ? array_values($res['normalized_urls'])
+            : $images;
+
+        $saved = $this->saveImageUrlsToMetrics('ebay_2_metrics', $identifier, $row, $urlsForMetrics);
         if (! $saved) {
             $res['message'] = ($res['message'] ?? 'eBay2 images updated.').' Metrics save failed.';
         }
+
+        $res['normalized_urls'] = $urlsForMetrics;
 
         return $res;
     }

@@ -78,6 +78,49 @@
         #im-alert.im-alert-multiline {
             white-space: pre-wrap;
         }
+
+        .im-market-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+            max-width: 30rem;
+        }
+
+        .im-market-btn {
+            min-width: 2.2rem;
+            height: 2rem;
+            border: 0;
+            border-radius: 0.35rem;
+            color: #fff;
+            font-size: 0.72rem;
+            font-weight: 700;
+            opacity: 0.55;
+            transition: transform .15s, box-shadow .15s, opacity .15s;
+        }
+
+        .im-market-btn.active {
+            opacity: 1;
+            box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.22);
+            transform: translateY(-1px);
+        }
+
+        .im-market-btn:disabled {
+            cursor: not-allowed;
+            filter: grayscale(0.7);
+            opacity: 0.35;
+        }
+
+        .btn-ebay1 { background-color: #0d6efd; }
+        .btn-ebay2 { background-color: #198754; }
+        .btn-ebay3 { background-color: #fd7e14; }
+        .btn-macy { background-color: #0d6efd; }
+        .btn-amazon { background-color: #ff9900; color: #232f3e; }
+        .btn-temu { background-color: #ff6b00; }
+        .btn-reverb { background-color: #333333; }
+        .btn-wayfair { background-color: #7a3ff2; }
+        .btn-bestbuy { background-color: #0046be; }
+        .btn-shopify { background-color: #7cb342; }
+        .btn-shopify-pls { background-color: #5c6bc0; }
     </style>
 @endsection
 
@@ -129,21 +172,18 @@
                 <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <h5 class="mb-0" id="im-panel-title">Select a SKU</h5>
                     <div class="d-flex flex-wrap gap-2 align-items-start">
-                        @if ($pushMarketplaceOptions->isEmpty())
-                            <div class="alert alert-warning small py-2 px-3 mb-0" role="alert" style="max-width:26rem">
-                                Reverb push is not available: add an active <code class="small">marketplaces</code> row with
-                                code <code class="small">reverb</code> (run
-                                <code class="small">php artisan migrate --force</code> or
-                                <code class="small">php artisan db:seed --class=SkuImageMarketplaceSeeder --force</code>).
-                            </div>
-                        @endif
-                        <select class="form-select form-select-sm" id="im-markets" name="marketplace_ids[]" multiple
-                            @if ($pushMarketplaceOptions->isEmpty()) disabled @endif
-                            size="{{ min(3, max(1, $pushMarketplaceOptions->count())) }}">
+                        <div class="im-market-buttons" id="im-markets" aria-label="Marketplace image push targets">
                             @foreach ($pushMarketplaceOptions as $opt)
-                                <option value="{{ $opt->id }}">{{ $opt->label }}</option>
+                                <button type="button"
+                                    class="im-market-btn {{ $opt->class }} @if ($opt->code === 'reverb') active @endif"
+                                    data-code="{{ $opt->code }}"
+                                    data-label="{{ $opt->label }}"
+                                    title="{{ $opt->enabled ? $opt->label : $opt->label.' image push is not implemented yet' }}"
+                                    @disabled(! $opt->enabled)>
+                                    {{ $opt->short }}
+                                </button>
                             @endforeach
-                        </select>
+                        </div>
                         <button type="button" class="btn btn-sm btn-primary" id="im-push" disabled>Push
                             selected</button>
                     </div>
@@ -183,6 +223,27 @@
         </div>
     </div>
     </div>
+
+    <div class="modal fade" id="imPushConfirmModal" tabindex="-1" aria-labelledby="imPushConfirmTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger-subtle">
+                    <h5 class="modal-title" id="imPushConfirmTitle">Confirm Image Push</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2" id="imPushConfirmMessage">Do you want to push these images?</p>
+                    <div class="alert alert-danger small mb-0">
+                        This will update marketplace listing images. Confirm the selected SKU, images, and marketplace buttons before continuing.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="imPushConfirmBtn">Yes, Push Images</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -213,6 +274,9 @@
             const $markets = document.getElementById('im-markets');
             const $selAllWrap = document.getElementById('im-select-all-wrap');
             const $selAllCb = document.getElementById('im-select-all-cb');
+            const pushConfirmModalEl = document.getElementById('imPushConfirmModal');
+            const pushConfirmModal = pushConfirmModalEl && window.bootstrap ? new bootstrap.Modal(pushConfirmModalEl) : null;
+            let pushConfirmResolver = null;
 
             function alertMsg(type, text, opts) {
                 if (!$alert) return;
@@ -224,6 +288,32 @@
 
             function clearAlert() {
                 if ($alert) $alert.classList.add('d-none');
+            }
+
+            function selectedMarketplaces() {
+                return Array.from(document.querySelectorAll('.im-market-btn.active:not(:disabled)'))
+                    .map(btn => ({
+                        code: btn.getAttribute('data-code') || '',
+                        label: btn.getAttribute('data-label') || btn.textContent.trim()
+                    }))
+                    .filter(mp => mp.code);
+            }
+
+            function confirmImagePush(imageCount, marketplaces) {
+                const labels = marketplaces.map(mp => mp.label).join(', ');
+                const sku = $title ? $title.textContent.trim() : '';
+                const message = 'Push ' + imageCount + ' selected image(s)' + (sku ? ' for SKU ' + sku : '') + ' to ' + labels + '?';
+                const msgEl = document.getElementById('imPushConfirmMessage');
+                if (msgEl) {
+                    msgEl.textContent = message;
+                }
+                if (!pushConfirmModal) {
+                    return Promise.resolve(window.confirm(message));
+                }
+                return new Promise(resolve => {
+                    pushConfirmResolver = resolve;
+                    pushConfirmModal.show();
+                });
             }
 
             function setSelectedProduct(id) {
@@ -454,7 +544,7 @@
             }
 
             if ($push) {
-                $push.addEventListener('click', function() {
+                $push.addEventListener('click', async function() {
                     if (!currentProductId) {
                         return;
                     }
@@ -465,12 +555,13 @@
                         alertMsg('warning', 'Select at least one image to push.');
                         return;
                     }
-                    if (!$markets) {
+                    const markets = selectedMarketplaces();
+                    if (!markets.length) {
+                        alertMsg('warning', 'Select at least one marketplace button.');
                         return;
                     }
-                    const mids = Array.from($markets.selectedOptions).map(o => parseInt(o.value, 10));
-                    if (!mids.length) {
-                        alertMsg('warning', 'Select a marketplace (hold Ctrl to choose multiple in some browsers).');
+                    const confirmed = await confirmImagePush(ids.length, markets);
+                    if (!confirmed) {
                         return;
                     }
                     clearAlert();
@@ -485,7 +576,7 @@
                             body: JSON.stringify({
                                 product_id: parseInt(currentProductId, 10),
                                 image_ids: ids,
-                                marketplace_ids: mids
+                                marketplace_codes: markets.map(mp => mp.code)
                             })
                         })
                         .then(r => r.json().then(d => ({ ok: r.ok, d, status: r.status })))
@@ -499,12 +590,14 @@
                             } else {
                                 const n = d.dispatched || 0;
                                 const fails = (d.results || []).filter(r => r.status === 'failed');
-                                let msg = 'Processed ' + n + ' push(es) immediately (no queue).\n\nOpen SKU Image Push Status for full API JSON.\n\nCLI retry: php artisan sku-images:push-reverb YOUR-SKU --status=all';
+                                const failedMarkets = Object.keys(d.marketplace_results || {})
+                                    .filter(code => d.marketplace_results[code] && d.marketplace_results[code].status === 'failed');
+                                let msg = 'Processed ' + n + ' image-marketplace record(s) immediately (no queue).\n\nOpen SKU Image Push Status for full API JSON.';
                                 if (fails.length) {
                                     const resp = fails[0].response || {};
                                     const firstLine = resp.message || resp.error || '';
                                     const hint = resp.data && resp.data.hint ? String(resp.data.hint) : '';
-                                    msg = fails.length + ' of ' + n + ' failed.\n\n' + firstLine +
+                                    msg = fails.length + ' of ' + n + ' failed' + (failedMarkets.length ? ' (' + failedMarkets.join(', ') + ')' : '') + '.\n\n' + firstLine +
                                         (hint ? '\n\n' + hint : '') + '\n\n—\n\n' + msg;
                                     alertMsg('warning', msg.trim(), { pre: true });
                                 } else {
@@ -518,6 +611,37 @@
                                 $push.disabled = false;
                             }
                         });
+                });
+            }
+
+            document.querySelectorAll('.im-market-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    if (this.disabled) {
+                        return;
+                    }
+                    this.classList.toggle('active');
+                    clearAlert();
+                });
+            });
+
+            const confirmBtn = document.getElementById('imPushConfirmBtn');
+            if (confirmBtn) {
+                confirmBtn.addEventListener('click', function() {
+                    if (pushConfirmResolver) {
+                        pushConfirmResolver(true);
+                        pushConfirmResolver = null;
+                    }
+                    if (pushConfirmModal) {
+                        pushConfirmModal.hide();
+                    }
+                });
+            }
+            if (pushConfirmModalEl) {
+                pushConfirmModalEl.addEventListener('hidden.bs.modal', function() {
+                    if (pushConfirmResolver) {
+                        pushConfirmResolver(false);
+                        pushConfirmResolver = null;
+                    }
                 });
             }
 

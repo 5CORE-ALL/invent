@@ -900,6 +900,14 @@ class ShopifyApiService
                 );
                 if ($postRes->successful()) {
                     $uploadedCount++;
+                } else {
+                    Log::warning('Shopify image upload failed', [
+                        'sku_or_identifier' => $identifier,
+                        'product_id'        => $productId,
+                        'status'            => $postRes->status(),
+                        'body'              => mb_substr($postRes->body(), 0, 500),
+                        'source_is_local'   => $this->isLocalStorageUrl($src),
+                    ]);
                 }
             }
 
@@ -980,10 +988,6 @@ class ShopifyApiService
             if (! Schema::hasColumn('shopify_catalog_products', 'id')) {
                 return false;
             }
-            $payload = json_encode(array_values($images), JSON_UNESCAPED_SLASHES);
-            if ($payload === false) {
-                return false;
-            }
 
             $variant = DB::table('shopify_catalog_variants')
                 ->where('store', $store)
@@ -998,17 +1002,36 @@ class ShopifyApiService
             }
 
             $update = [];
-            if (Schema::hasColumn('shopify_catalog_products', 'image_urls')) {
-                $update['image_urls'] = $payload;
-            }
-            if (Schema::hasColumn('shopify_catalog_products', 'image_master_json')) {
-                $update['image_master_json'] = $payload;
-            }
-            if (Schema::hasColumn('shopify_catalog_products', 'images')) {
-                $update['images'] = $payload;
-            }
-            if (Schema::hasColumn('shopify_catalog_products', 'image_src')) {
-                $update['image_src'] = (string) ($images[0] ?? '');
+            if ($images === []) {
+                if (Schema::hasColumn('shopify_catalog_products', 'image_urls')) {
+                    $update['image_urls'] = null;
+                }
+                if (Schema::hasColumn('shopify_catalog_products', 'image_master_json')) {
+                    $update['image_master_json'] = null;
+                }
+                if (Schema::hasColumn('shopify_catalog_products', 'images')) {
+                    $update['images'] = null;
+                }
+                if (Schema::hasColumn('shopify_catalog_products', 'image_src')) {
+                    $update['image_src'] = null;
+                }
+            } else {
+                $payload = json_encode(array_values($images), JSON_UNESCAPED_SLASHES);
+                if ($payload === false) {
+                    return false;
+                }
+                if (Schema::hasColumn('shopify_catalog_products', 'image_urls')) {
+                    $update['image_urls'] = $payload;
+                }
+                if (Schema::hasColumn('shopify_catalog_products', 'image_master_json')) {
+                    $update['image_master_json'] = $payload;
+                }
+                if (Schema::hasColumn('shopify_catalog_products', 'images')) {
+                    $update['images'] = $payload;
+                }
+                if (Schema::hasColumn('shopify_catalog_products', 'image_src')) {
+                    $update['image_src'] = (string) ($images[0] ?? '');
+                }
             }
             if ($update === []) {
                 return false;
@@ -1017,9 +1040,11 @@ class ShopifyApiService
                 $update['updated_at'] = now();
             }
 
-            return DB::table('shopify_catalog_products')
+            DB::table('shopify_catalog_products')
                 ->where('id', $variant->shopify_catalog_product_id)
-                ->update($update) > 0;
+                ->update($update);
+
+            return true;
         } catch (\Throwable $e) {
             Log::warning('Shopify saveImageUrlsToShopifyCatalog failed', ['identifier' => $identifier, 'error' => $e->getMessage()]);
 
