@@ -13455,8 +13455,20 @@ class ChannelMasterController extends Controller
             // come from a single L30/L7 file). The previous behaviour excluded today
             // to avoid "today partial vs yesterday complete" red herrings, but that
             // also meant the dot wouldn't move at all after an upload until *tomorrow's*
-            // snapshot replaced today as the latest. We now compare the two most recent
-            // snapshots regardless of whether one of them is today.
+            // snapshot replaced today as the latest.
+            //
+            // For the "older" baseline, walk back the snapshot history per metric until
+            // we find a value that is meaningfully different from today's value, instead
+            // of blindly using yesterday's snapshot. This is required for channels
+            // (e.g. eBay 1, eBay 2) whose L30 sales / qty / profit come from a once-a-day
+            // marketplace_daily_metrics cron — between cron runs the source value is
+            // frozen, so today's saved snapshot can equal yesterday's, which used to make
+            // the trend dot grey for the entire afternoon/evening even though the metric
+            // is genuinely trending vs the last day it actually changed. We pull a
+            // 30-snapshot window (a month is plenty: any longer flat run is itself a
+            // meaningful "no trend") and pick the most-recent prior snapshot whose value
+            // differs from today's.
+            $snapshotWindow = 30;
             foreach ($channelKeys as $channel) {
                 foreach ($metrics as $metric) {
                     $out[$channel][$metric] = [null, null];
@@ -13465,19 +13477,44 @@ class ChannelMasterController extends Controller
                 // Same source as chart: ChannelMasterSummary. Same key: normalized channel (table saves with this key in saveChannelDailySummaries).
                 $cmsRows = \App\Models\ChannelMasterSummary::where('channel', $channel)
                     ->orderBy('snapshot_date', 'desc')
-                    ->take(2)
+                    ->take($snapshotWindow)
                     ->get();
 
                 if ($cmsRows->count() >= 2) {
-                    // Same order as chart: older = second-to-last, newer = last (chart compares values[last] vs values[last-1])
-                    $older = $cmsRows->get(1)->summary_data ?? [];
-                    $newer = $cmsRows->get(0)->summary_data ?? [];
+                    $newerSd = $cmsRows->get(0)->summary_data ?? [];
                     foreach ($metrics as $metric) {
-                        $v1 = $this->getMetricValueFromSummaryData($channel, $metric, $older, $metricMap);
-                        $v2 = $this->getMetricValueFromSummaryData($channel, $metric, $newer, $metricMap);
-                        if ($v1 !== null || $v2 !== null) {
-                            $out[$channel][$metric] = [$v1, $v2];
+                        $v2 = $this->getMetricValueFromSummaryData($channel, $metric, $newerSd, $metricMap);
+                        if ($v2 === null) continue;
+
+                        // Walk back until we find a snapshot whose metric value differs
+                        // from $v2 (within rounding tolerance). If every prior snapshot
+                        // matches exactly, fall back to the immediate prior value so we
+                        // still emit a [v, v] pair (which renders as a grey "no change"
+                        // dot — same as before for genuinely-flat metrics).
+                        $v1 = $this->getMetricValueFromSummaryData(
+                            $channel,
+                            $metric,
+                            $cmsRows->get(1)->summary_data ?? [],
+                            $metricMap
+                        );
+                        for ($i = 1; $i < $cmsRows->count(); $i++) {
+                            $candidate = $this->getMetricValueFromSummaryData(
+                                $channel,
+                                $metric,
+                                $cmsRows->get($i)->summary_data ?? [],
+                                $metricMap
+                            );
+                            if ($candidate === null) continue;
+                            // Use the same equality check the frontend uses (===) but with
+                            // a tiny epsilon to ignore float-rounding noise from snapshot
+                            // round-trips (e.g. 7.51 → "7.51" → 7.51).
+                            if (abs((float)$candidate - (float)$v2) > 0.0001) {
+                                $v1 = $candidate;
+                                break;
+                            }
                         }
+
+                        $out[$channel][$metric] = [$v1, $v2];
                     }
                 } elseif ($cmsRows->count() === 1) {
                     $sd = $cmsRows->get(0)->summary_data ?? [];
