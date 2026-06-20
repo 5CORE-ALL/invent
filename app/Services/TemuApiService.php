@@ -1346,58 +1346,139 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return null;
         };
 
-        foreach ($types as $type) {
-            if ($type === '') {
-                continue;
+        $tryBase64 = function () use ($imageUrl, $types, $postSigned): ?array {
+            if (! config('services.temu.image_upload_try_base64', true)) {
+                return null;
             }
-
-            $urlVariants = [
-                ['type' => $type, 'url' => $imageUrl],
-                ['type' => $type, 'imageUrl' => $imageUrl],
-                ['type' => $type, 'imgUrl' => $imageUrl],
-                ['type' => $type, 'image_url' => $imageUrl],
-            ];
-
-            foreach ($urlVariants as $body) {
-                $hosted = $postSigned($body);
-                if ($hosted !== null) {
-                    return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
-                }
-            }
-        }
-
-        if (config('services.temu.image_upload_try_base64', true)) {
             try {
                 $imgResp = Http::withoutVerifying()->timeout(90)->get($imageUrl);
-                if ($imgResp->successful()) {
-                    $bytes = $imgResp->body();
-                    $b64 = base64_encode($bytes);
-                    $mime = $imgResp->header('Content-Type') ?: 'image/jpeg';
-                    foreach ($types as $type) {
-                        if ($type === '') {
-                            continue;
-                        }
-                        $baseBodies = [
-                            ['type' => $type, 'image' => $b64],
-                            ['type' => $type, 'imageBase64' => $b64],
-                            ['type' => $type, 'base64' => $b64],
-                            ['type' => $type, 'fileBase64' => $b64],
-                            ['type' => $type, 'content' => $b64, 'mimeType' => $mime],
-                        ];
-                        foreach ($baseBodies as $body) {
-                            $hosted = $postSigned($body);
-                            if ($hosted !== null) {
-                                return ['success' => true, 'url' => $hosted, 'message' => 'OK (base64)'];
-                            }
+                if (! $imgResp->successful()) {
+                    return null;
+                }
+                $bytes = $imgResp->body();
+                $b64 = base64_encode($bytes);
+                $mime = $imgResp->header('Content-Type') ?: 'image/jpeg';
+                foreach ($types as $type) {
+                    if ($type === '') {
+                        continue;
+                    }
+                    $baseBodies = [
+                        ['type' => $type, 'image' => $b64],
+                        ['type' => $type, 'imageBase64' => $b64],
+                        ['type' => $type, 'base64' => $b64],
+                        ['type' => $type, 'fileBase64' => $b64],
+                        ['type' => $type, 'content' => $b64, 'mimeType' => $mime],
+                    ];
+                    foreach ($baseBodies as $body) {
+                        $hosted = $postSigned($body);
+                        if ($hosted !== null) {
+                            return ['success' => true, 'url' => $hosted, 'message' => 'OK (base64)'];
                         }
                     }
                 }
-            } catch (\Throwable $e) {
-                $lastMsg = $e->getMessage();
+            } catch (\Throwable) {
+            }
+
+            return null;
+        };
+
+        $tryUrl = function () use ($imageUrl, $types, $postSigned): ?array {
+            foreach ($types as $type) {
+                if ($type === '') {
+                    continue;
+                }
+
+                $urlVariants = [
+                    ['type' => $type, 'url' => $imageUrl],
+                    ['type' => $type, 'imageUrl' => $imageUrl],
+                    ['type' => $type, 'imgUrl' => $imageUrl],
+                    ['type' => $type, 'image_url' => $imageUrl],
+                ];
+
+                foreach ($urlVariants as $body) {
+                    $hosted = $postSigned($body);
+                    if ($hosted !== null) {
+                        return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
+                    }
+                }
+            }
+
+            return null;
+        };
+
+        $preferBase64 = config('services.temu.image_upload_prefer_base64', true);
+        $attempts = $preferBase64 ? [$tryBase64, $tryUrl] : [$tryUrl, $tryBase64];
+        foreach ($attempts as $attempt) {
+            $result = $attempt();
+            if (is_array($result)) {
+                return $result;
             }
         }
 
-        return ['success' => false, 'url' => null, 'message' => $lastMsg !== '' ? $lastMsg : 'Temu image upload failed for all configured types.'];
+        $message = $lastMsg !== '' ? $lastMsg : 'Temu image upload failed for all configured types.';
+        if ($this->isTemuIpWhitelistError($message)) {
+            $message = $this->temuIpWhitelistHelpMessage($message);
+        }
+
+        return ['success' => false, 'url' => null, 'message' => $message];
+    }
+
+    private function isTemuIpWhitelistError(string $message): bool
+    {
+        return stripos($message, 'NOT_IN_IP_WHITE_LIST') !== false
+            || stripos($message, 'IP_WHITE') !== false;
+    }
+
+    private function temuIpWhitelistHelpMessage(string $apiMessage): string
+    {
+        return trim($apiMessage).' — Temu Open API calls must come from a whitelisted IP. '
+            .'In Temu Partner Platform (partner.temu.com), add your server public IP to the app IP whitelist. '
+            .'Local Image Master pushes use your PC IP; production pushes use the droplet IP (inventory.5coremanagement.com).';
+    }
+
+    /**
+     * @param  list<string>  $sourceUrls
+     * @return array{success: bool, urls: list<string>, message: string}
+     */
+    private function uploadTemuGalleryImagesFromSourceUrls(array $sourceUrls): array
+    {
+        $temuUrls = [];
+        $errors = [];
+        foreach ($sourceUrls as $i => $u) {
+            $up = $this->uploadTemuImageFromUrl($u);
+            if ($up['success'] && ! empty($up['url'])) {
+                $temuUrls[] = $up['url'];
+            } else {
+                $msg = trim((string) ($up['message'] ?? 'upload failed'));
+                $errors[] = 'Image '.($i + 1).': '.$msg;
+                if ($this->isTemuIpWhitelistError($msg)) {
+                    return [
+                        'success' => false,
+                        'urls' => [],
+                        'message' => $this->temuIpWhitelistHelpMessage($msg),
+                    ];
+                }
+            }
+            usleep(100000);
+        }
+
+        if ($temuUrls === []) {
+            return [
+                'success' => false,
+                'urls' => [],
+                'message' => 'Temu image upload failed.'.($errors !== [] ? ' '.implode('; ', $errors) : ''),
+            ];
+        }
+
+        if (count($temuUrls) < count($sourceUrls)) {
+            return [
+                'success' => false,
+                'urls' => $temuUrls,
+                'message' => 'Only '.count($temuUrls).'/'.count($sourceUrls).' images uploaded to Temu. '.implode('; ', $errors),
+            ];
+        }
+
+        return ['success' => true, 'urls' => $temuUrls, 'message' => 'OK'];
     }
 
     /**
@@ -1512,17 +1593,12 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return $res;
         }
 
-        $temuUrls = [];
-        foreach ($raw as $u) {
-            $up = $this->uploadTemuImageFromUrl($u);
-            if ($up['success'] && ! empty($up['url'])) {
-                $temuUrls[] = $up['url'];
-            }
-            usleep(100000);
-        }
-
-        if ($temuUrls === []) {
-            Log::warning('Temu updateDescription: no images uploaded; carousel unchanged', ['sku' => $skuForImages]);
+        $uploaded = $this->uploadTemuGalleryImagesFromSourceUrls($raw);
+        if (! ($uploaded['success'] ?? false)) {
+            Log::warning('Temu updateDescription: no images uploaded; carousel unchanged', [
+                'sku' => $skuForImages,
+                'message' => $uploaded['message'] ?? '',
+            ]);
 
             return [
                 'success' => true,
@@ -1530,7 +1606,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             ];
         }
 
-        $imgRes = $this->updateListingImages($identifier, $temuUrls);
+        $imgRes = $this->updateListingImages($identifier, $uploaded['urls']);
         if (! ($imgRes['success'] ?? false)) {
             return [
                 'success' => true,
@@ -1625,7 +1701,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 return ['success' => true, 'message' => 'Temu listing images updated.'];
             }
 
-            return ['success' => false, 'message' => (string) ($data['errorMsg'] ?? $data['message'] ?? $response->body())];
+            return ['success' => false, 'message' => $this->formatTemuApiErrorMessage((string) ($data['errorMsg'] ?? $data['message'] ?? $response->body()))];
         } catch (\Throwable $e) {
             Log::error('Temu updateListingImages', ['sku' => $sku, 'error' => $e->getMessage()]);
 
@@ -1634,10 +1710,10 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
-     * Image Master compatibility method: push images then persist image_urls in temu_metrics.
+     * Image Master compatibility method: upload to Temu, push carousel, persist source URLs in temu_metrics.
      *
      * @param  list<string>  $images
-     * @return array{success: bool, message: string}
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
      */
     public function updateImages(string $identifier, array $images): array
     {
@@ -1646,7 +1722,12 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return ['success' => false, 'message' => 'At least one image URL is required.'];
         }
 
-        $res = $this->updateListingImages($identifier, $images);
+        $uploaded = $this->uploadTemuGalleryImagesFromSourceUrls($images);
+        if (! ($uploaded['success'] ?? false)) {
+            return ['success' => false, 'message' => (string) ($uploaded['message'] ?? 'Temu image upload failed.')];
+        }
+
+        $res = $this->updateListingImages($identifier, $uploaded['urls']);
         if (! ($res['success'] ?? false)) {
             return $res;
         }
@@ -1658,7 +1739,22 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             $res['message'] = ($res['message'] ?? 'Temu listing images updated.').' Metrics save failed.';
         }
 
+        $res['normalized_urls'] = $images;
+
         return $res;
+    }
+
+    private function formatTemuApiErrorMessage(string $message): string
+    {
+        $message = trim($message);
+        if ($message === '') {
+            return 'Temu API error.';
+        }
+        if ($this->isTemuIpWhitelistError($message)) {
+            return $this->temuIpWhitelistHelpMessage($message);
+        }
+
+        return $message;
     }
 
     /**

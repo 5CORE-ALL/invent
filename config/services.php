@@ -476,6 +476,8 @@ return [
         'openapi_router_url' => env('TEMU_OPENAPI_URL', 'https://openapi-b-us.temu.com/openapi/router'),
         /** If true, after URL-based upload fails, download the image and try base64 fields (implementation-dependent). */
         'image_upload_try_base64' => filter_var(env('TEMU_IMAGE_UPLOAD_TRY_BASE64', true), FILTER_VALIDATE_BOOLEAN),
+        /** If true, download each image and upload base64 first (avoids Temu fetching your image host URL). */
+        'image_upload_prefer_base64' => filter_var(env('TEMU_IMAGE_UPLOAD_PREFER_BASE64', true), FILTER_VALIDATE_BOOLEAN),
         'list_price_field' => env('TEMU_LIST_PRICE_FIELD', 'listPrice'),
         'sku_id_field' => env('TEMU_SKU_ID_FIELD', 'skuId'),
         'sku_code_field' => env('TEMU_SKU_CODE_FIELD', 'outSkuSn'),
