@@ -1,9 +1,9 @@
 {!! view('customer-care.qc_and_packing', [
-    'pageTitle' => 'Carrier and Claim',
-    'addIssueButtonText' => 'Carrier and Claim',
+    'pageTitle' => 'Carriers Claims',
+    'addIssueButtonText' => 'Carriers Claims',
     'hideIntroBanner' => true,
     'recordsTitle' => '',
-    'modalTitle' => 'Carrier and Claim',
+    'modalTitle' => 'Carriers Claims',
     'skuDetailsUrl' => route('customer.care.dispatch.issues.sku.details'),
     'recordsListUrl' => route('customer.care.dispatch.issues.list.index'),
     'recordsStoreUrl' => route('customer.care.dispatch.issues.list.store'),
@@ -27,6 +27,20 @@
     'showClaimsSummaryBadges' => true,
     'showClaimFiledColumn' => true,
     'showAmpUsdColumn' => true,
+    // "Amt Rec" (Amount Received) — inline-editable text input that mirrors
+    // AMT $; rendered immediately after the AMT $ column.
+    'showAmtRecColumn' => true,
     'showClaimReceivedColumn' => true,
     'showCarrierColumn' => true,
+    // Read-only "Details" magnifier column (after Action) that opens a
+    // modal listing every relevant field for the row.
+    'showDetailsColumn' => true,
+    // Hide the wide "Carrier / Tracking / Track R / Img 1 / Img 2 / Link"
+    // group from the table — the same data is available via the Details
+    // magnifier modal.
+    'hideCarrierTrackingMediaColumns' => true,
+    // Merge the standalone "Created At" date column into the "Created By"
+    // cell (name on top, short "21 JUN" date underneath, full timestamp
+    // surfaced via hover tooltip).
+    'mergeCreatedAtIntoCreatedBy' => true,
 ])->render() !!}

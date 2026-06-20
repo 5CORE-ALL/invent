@@ -119,6 +119,11 @@ class DispatchIssuesController extends IssueBoardControllerBase
             // Replacement / Alternate Sent tracking input is capped at 30 chars in the UI;
             // we reuse `replacement_tracking` (varchar 50 in DB) but enforce 30 here.
             'replacement_tracking'   => 'nullable|string|max:30',
+            // Carrier dropdown shown on Carriers Claims / Carrier Scan Issues. Persisted
+            // on dispatch_issue_issues.issue_carrier (also the column edited inline from
+            // the table). Final allow-list (USPS / UPS / FEDEX / GOFO) is enforced after
+            // case-normalization in buildExtraPayload().
+            'issue_carrier'          => 'nullable|string|max:20',
             // Issue? sub-fields (driven by what_happened)
             'wrong_sent_sku'         => 'nullable|string|max:128',
             'issue_notes'            => 'nullable|string|max:200',
@@ -134,6 +139,16 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $il = isset($validated['issue_link']) ? trim((string) $validated['issue_link']) : '';
         $rsku = isset($validated['replacement_sku']) ? trim((string) $validated['replacement_sku']) : '';
         $rtype = isset($validated['refund_type']) ? trim((string) $validated['refund_type']) : '';
+
+        // Carrier dropdown — case-normalize to UPPERCASE and accept only the
+        // four allow-listed values. Anything else (free-text legacy values,
+        // empty string, etc.) is stored as null so the column never carries
+        // an off-list value forward.
+        $carrierRaw = isset($validated['issue_carrier']) ? trim((string) $validated['issue_carrier']) : '';
+        $carrierUpper = $carrierRaw === '' ? '' : strtoupper($carrierRaw);
+        $carrierValue = in_array($carrierUpper, ['USPS', 'UPS', 'FEDEX', 'GOFO'], true)
+            ? $carrierUpper
+            : null;
 
         // Only persist sub-fields when the matching Action is selected; otherwise
         // null them out so a previous Action's data doesn't linger after a switch.
@@ -153,7 +168,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $issueNotes   = isset($validated['issue_notes']) ? trim((string) $validated['issue_notes']) : '';
         $qtyType      = isset($validated['qty_mismatch_type']) ? trim((string) $validated['qty_mismatch_type']) : '';
 
-        return [
+        $payload = [
             'order_number'            => isset($validated['order_number']) ? trim((string) $validated['order_number']) : null,
             'refund_amount'           => $isRefund && isset($validated['refund_amount']) ? (float) $validated['refund_amount'] : null,
             'refund_type'             => $isRefund && in_array($rtype, ['partial', 'full'], true) ? $rtype : null,
@@ -173,6 +188,15 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'qty_sent'                => $isWrongQty && isset($validated['qty_sent']) && $validated['qty_sent'] !== '' ? (float) $validated['qty_sent'] : null,
             'qty_ordered'             => $isWrongQty && isset($validated['qty_ordered']) && $validated['qty_ordered'] !== '' ? (float) $validated['qty_ordered'] : null,
         ];
+
+        // Only persist `issue_carrier` when the column actually exists on the
+        // table — guards against running on schemas that pre-date the carrier
+        // migration (which would throw on insert/update).
+        if (Schema::hasColumn($this->issuesTable(), 'issue_carrier')) {
+            $payload['issue_carrier'] = $carrierValue;
+        }
+
+        return $payload;
     }
 
     protected function extraRowFields(object $row): array
@@ -332,19 +356,63 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return [
             'tracking_number' => ['tracking_number', 'tracking', 'tracking number'],
             'issue_link'      => ['issue_link', 'link', 'url'],
+            'issue_carrier'   => ['issue_carrier', 'carrier'],
+            'claim_filed'     => ['claim_filed', 'claim filed'],
+            'amp_usd'         => ['amp_usd', 'amt $', 'amt$', 'amt usd', 'amt'],
+            'amt_rec'         => ['amt_rec', 'amt rec', 'amount received', 'amt received'],
+            'claim_received'  => ['claim_received', 'claim recd', 'claim received'],
         ];
     }
 
     protected function csvImportExtraPayload(callable $get): array
     {
-        $v = $get('tracking_number');
+        $issuesTable = $this->issuesTable();
 
-        $link = $get('issue_link');
-
-        return [
-            'tracking_number' => $v !== null && $v !== '' ? $v : null,
-            'issue_link'      => $link !== null && $link !== '' ? $link : null,
+        $payload = [
+            'tracking_number' => self::csvNonEmpty($get('tracking_number')),
+            'issue_link'      => self::csvNonEmpty($get('issue_link')),
         ];
+
+        if (Schema::hasColumn($issuesTable, 'issue_carrier')) {
+            $payload['issue_carrier'] = self::csvNonEmpty($get('issue_carrier'), 20);
+        }
+        if (Schema::hasColumn($issuesTable, 'claim_filed')) {
+            $payload['claim_filed'] = self::csvParseBool($get('claim_filed'));
+        }
+        if (Schema::hasColumn($issuesTable, 'amp_usd')) {
+            $payload['amp_usd'] = self::csvNonEmpty($get('amp_usd'), 6);
+        }
+        if (Schema::hasColumn($issuesTable, 'amt_rec')) {
+            $payload['amt_rec'] = self::csvNonEmpty($get('amt_rec'), 6);
+        }
+        if (Schema::hasColumn($issuesTable, 'claim_received')) {
+            $payload['claim_received'] = self::csvParseBool($get('claim_received'));
+        }
+
+        return $payload;
+    }
+
+    /** Trim → null when blank, optionally cap to a max length. */
+    private static function csvNonEmpty(?string $raw, ?int $max = null): ?string
+    {
+        $v = trim((string) ($raw ?? ''));
+        if ($v === '') {
+            return null;
+        }
+        if ($max !== null && $max > 0) {
+            $v = mb_substr($v, 0, $max);
+        }
+        return $v;
+    }
+
+    /** Parse common boolean spellings from CSV cells (yes/no, true/false, 1/0, y/n). */
+    private static function csvParseBool(?string $raw): bool
+    {
+        $v = strtolower(trim((string) ($raw ?? '')));
+        if ($v === '') {
+            return false;
+        }
+        return in_array($v, ['1', 'true', 'yes', 'y', 't'], true);
     }
 
     /**
@@ -359,10 +427,12 @@ class DispatchIssuesController extends IssueBoardControllerBase
         }
 
         $amp = $row->amp_usd ?? null;
+        $amtRec = $row->amt_rec ?? null;
 
         return [
             'claim_filed' => (bool) ($row->claim_filed ?? false),
             'amp_usd' => $amp !== null && trim((string) $amp) !== '' ? (string) $amp : null,
+            'amt_rec' => $amtRec !== null && trim((string) $amtRec) !== '' ? (string) $amtRec : null,
             'claim_received' => (bool) ($row->claim_received ?? false),
             'issue_carrier' => isset($row->issue_carrier) && $row->issue_carrier !== null && trim((string) $row->issue_carrier) !== ''
                 ? trim((string) $row->issue_carrier)
@@ -504,6 +574,34 @@ class DispatchIssuesController extends IssueBoardControllerBase
         }
 
         return response()->json(['message' => 'Updated.', 'amp_usd' => $value]);
+    }
+
+    /**
+     * Inline-edit endpoint for the "Amt Rec" (Amount Received) column on the
+     * Carrier & Claim board. Mirrors `updateAmpUsd` — same 6-char free-text
+     * field, same archive guard.
+     */
+    public function updateAmtRec(Request $request, int $id): JsonResponse
+    {
+        if (! Schema::hasColumn($this->issuesTable(), 'amt_rec')) {
+            return response()->json(['message' => 'Not available.'], 503);
+        }
+        $validated = $request->validate(['amt_rec' => 'nullable|string|max:6']);
+        $raw = isset($validated['amt_rec']) ? trim((string) $validated['amt_rec']) : '';
+        $value = $raw === '' ? null : $raw;
+
+        $updated = DB::table($this->issuesTable())
+            ->where('id', $id)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->update(['amt_rec' => $value, 'updated_at' => now()]);
+
+        if ($updated === 0) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        return response()->json(['message' => 'Updated.', 'amt_rec' => $value]);
     }
 
     public function updateIssueCarrier(Request $request, int $id): JsonResponse
