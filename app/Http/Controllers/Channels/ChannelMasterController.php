@@ -147,9 +147,6 @@ class ChannelMasterController extends Controller
         $this->apiController = $apiController;
     }
 
-    /**
-     * Default pricing / missing-listing page when channel_master.missing_link is empty.
-     */
     private function defaultMissingLinkForChannel(string $channel): ?string
     {
         $paths = [
@@ -13138,7 +13135,7 @@ class ChannelMasterController extends Controller
                 'ad_sold' => null,   // uses ad_sold with clicks × cvr ratio fallback
                 'acos' => null,      // computed: (ad_spend / ad_sales) * 100
                 'ads_cvr' => null,   // computed: (ad_sold / clicks) * 100
-                'cvr' => null,      // computed: (l30_orders / total_views) * 100
+                'cvr' => null,      // computed: (total_quantity / total_views) * 100 — units-based, matches /temu-decrease
                 'total_views' => 'total_views',
                 'inv_at_lp' => 'inv_at_lp',
                 'tat' => null,  // computed: inventory_value_amazon / total l30_sales (all only)
@@ -13201,7 +13198,7 @@ class ChannelMasterController extends Controller
                     $totalNpft = 0;
                     $totalTcos = 0;
                     $totalInvAmazon = 0;
-                    $totalOrdersCvr = 0;
+                    $totalQtyCvr = 0;
                     $totalViewsCvr = 0;
                     $count = 0;
                     // For metrics whose snapshot key was added later (e.g. y_sales), track whether
@@ -13232,7 +13229,14 @@ class ChannelMasterController extends Controller
                             $totalAdSold += floatval($sd['ad_sold'] ?? 0);
                             $totalClicks += floatval($sd['clicks'] ?? 0);
                         } elseif ($metric === 'cvr') {
-                            $totalOrdersCvr += floatval($sd['l30_orders'] ?? 0);
+                            // Units-based listing CVR — matches /temu-decrease (qty / views).
+                            // Falls back to l30_orders for snapshots saved before total_quantity
+                            // was persisted, so older days don't suddenly read zero on the chart.
+                            $qtyForCvr = floatval($sd['total_quantity'] ?? 0);
+                            if ($qtyForCvr <= 0) {
+                                $qtyForCvr = floatval($sd['l30_orders'] ?? 0);
+                            }
+                            $totalQtyCvr += $qtyForCvr;
                             $totalViewsCvr += floatval($sd['total_views'] ?? 0);
                         } elseif ($metric === 'gprofit' || $metric === 'npft' || $metric === 'pft') {
                             $totalPft += $channelPft;
@@ -13265,10 +13269,11 @@ class ChannelMasterController extends Controller
                     } elseif ($metric === 'ads_cvr') {
                         $value = $totalClicks > 0 ? round(($totalAdSold / $totalClicks) * 100, 1) : 0;
                     } elseif ($metric === 'cvr') {
+                        // Units-based: Σ qty / Σ views — matches /temu-decrease badge formula.
                         // 2 decimals: rolling-window CVR moves <0.05% per day, so 1-decimal
                         // rounding collapsed multiple consecutive days into the same value
                         // and the trend looked flat for ~3 days at a time.
-                        $value = $totalViewsCvr > 0 ? round(($totalOrdersCvr / $totalViewsCvr) * 100, 2) : 0;
+                        $value = $totalViewsCvr > 0 ? round(($totalQtyCvr / $totalViewsCvr) * 100, 2) : 0;
                     } elseif ($metric === 'ad_sold') {
                         $value = round($totalAdSold);
                     } elseif ($metric === 'gprofit') {
@@ -13337,12 +13342,18 @@ class ChannelMasterController extends Controller
                         }
                         $value = $clicks > 0 ? round(($adSold / $clicks) * 100, 1) : 0;
                     } elseif ($metric === 'cvr') {
-                        $orders = floatval($summaryData['l30_orders'] ?? 0);
+                        // Units-based: qty / views — matches /temu-decrease badge formula.
+                        // Falls back to l30_orders for older snapshots that pre-date the
+                        // total_quantity field, otherwise the chart would graph zero for those days.
+                        $qty = floatval($summaryData['total_quantity'] ?? 0);
+                        if ($qty <= 0) {
+                            $qty = floatval($summaryData['l30_orders'] ?? 0);
+                        }
                         $views = floatval($summaryData['total_views'] ?? 0);
                         // 2 decimals: rolling-window CVR moves <0.05% per day, so 1-decimal
                         // rounding collapsed multiple consecutive days into the same value
                         // and the trend looked flat for ~3 days at a time.
-                        $value = $views > 0 ? round(($orders / $views) * 100, 2) : 0;
+                        $value = $views > 0 ? round(($qty / $views) * 100, 2) : 0;
                     } elseif ($metric === 'pft') {
                         $gprofitPercent = floatval($summaryData['gprofit_percent'] ?? 0);
                         $sales = floatval($summaryData['l30_sales'] ?? 0);
@@ -13366,7 +13377,7 @@ class ChannelMasterController extends Controller
 
             // For single-channel: show exact DB values (no scaling) so graph matches table data.
             // For "all" channels: scale to match badge total if needed.
-            // Never scale listing CVR: it is a ratio (Σ orders / Σ views); uniform scaling would distort history.
+            // Never scale listing CVR: it is a ratio (Σ qty / Σ views); uniform scaling would distort history.
             if (!empty($chartData) && $isAll && $metric !== 'cvr') {
                 $tableRef = $this->getAllChannelsTableReference($metric);
                 if ($tableRef !== null && $tableRef != 0) {
@@ -13554,12 +13565,18 @@ class ChannelMasterController extends Controller
             return $clicks > 0 ? round(($adSold / $clicks) * 100, 2) : null;
         }
         if ($metric === 'cvr') {
-            $orders = floatval($summaryData['l30_orders'] ?? 0);
+            // Units-based: qty / views — matches /temu-decrease and the chart endpoint.
+            // Falls back to l30_orders for older snapshots that pre-date the
+            // total_quantity field, otherwise the dot would compare against zero.
+            $qty = floatval($summaryData['total_quantity'] ?? 0);
+            if ($qty <= 0) {
+                $qty = floatval($summaryData['l30_orders'] ?? 0);
+            }
             $views = floatval($summaryData['total_views'] ?? 0);
             // 2 decimals: must match the chart endpoint's precision (round to 2). At
             // 1 decimal, consecutive days like 5.22% and 5.24% both round to 5.2 →
             // v1 === v2 → grey dot, even though the chart shows the CVR moved.
-            return $views > 0 ? round(($orders / $views) * 100, 2) : null;
+            return $views > 0 ? round(($qty / $views) * 100, 2) : null;
         }
         if ($metric === 'nroi') {
             $groi = floatval($summaryData['groi_percent'] ?? 0);
@@ -13577,7 +13594,7 @@ class ChannelMasterController extends Controller
      */
     private function getAllChannelsTableReference(string $metric): ?float
     {
-        // Listing CVR = Σ orders / Σ views — not representable from MDM sums; chart uses raw snapshots. No scale ref.
+        // Listing CVR = Σ qty / Σ views — not representable from MDM sums; chart uses raw snapshots. No scale ref.
         if ($metric === 'cvr') {
             return null;
         }
