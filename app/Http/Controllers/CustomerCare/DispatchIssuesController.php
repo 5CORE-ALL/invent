@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\CustomerCare;
 
 use App\Http\Controllers\InventoryManagement\OutgoingController;
+use App\Models\AmazonDatasheet;
 use App\Support\CustomerCareDepartments;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -118,6 +119,11 @@ class DispatchIssuesController extends IssueBoardControllerBase
             // Replacement / Alternate Sent tracking input is capped at 30 chars in the UI;
             // we reuse `replacement_tracking` (varchar 50 in DB) but enforce 30 here.
             'replacement_tracking'   => 'nullable|string|max:30',
+            // Carrier dropdown shown on Carriers Claims / Carrier Scan Issues. Persisted
+            // on dispatch_issue_issues.issue_carrier (also the column edited inline from
+            // the table). Final allow-list (USPS / UPS / FEDEX / GOFO) is enforced after
+            // case-normalization in buildExtraPayload().
+            'issue_carrier'          => 'nullable|string|max:20',
             // Issue? sub-fields (driven by what_happened)
             'wrong_sent_sku'         => 'nullable|string|max:128',
             'issue_notes'            => 'nullable|string|max:200',
@@ -133,6 +139,16 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $il = isset($validated['issue_link']) ? trim((string) $validated['issue_link']) : '';
         $rsku = isset($validated['replacement_sku']) ? trim((string) $validated['replacement_sku']) : '';
         $rtype = isset($validated['refund_type']) ? trim((string) $validated['refund_type']) : '';
+
+        // Carrier dropdown — case-normalize to UPPERCASE and accept only the
+        // four allow-listed values. Anything else (free-text legacy values,
+        // empty string, etc.) is stored as null so the column never carries
+        // an off-list value forward.
+        $carrierRaw = isset($validated['issue_carrier']) ? trim((string) $validated['issue_carrier']) : '';
+        $carrierUpper = $carrierRaw === '' ? '' : strtoupper($carrierRaw);
+        $carrierValue = in_array($carrierUpper, ['USPS', 'UPS', 'FEDEX', 'GOFO'], true)
+            ? $carrierUpper
+            : null;
 
         // Only persist sub-fields when the matching Action is selected; otherwise
         // null them out so a previous Action's data doesn't linger after a switch.
@@ -152,7 +168,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $issueNotes   = isset($validated['issue_notes']) ? trim((string) $validated['issue_notes']) : '';
         $qtyType      = isset($validated['qty_mismatch_type']) ? trim((string) $validated['qty_mismatch_type']) : '';
 
-        return [
+        $payload = [
             'order_number'            => isset($validated['order_number']) ? trim((string) $validated['order_number']) : null,
             'refund_amount'           => $isRefund && isset($validated['refund_amount']) ? (float) $validated['refund_amount'] : null,
             'refund_type'             => $isRefund && in_array($rtype, ['partial', 'full'], true) ? $rtype : null,
@@ -172,6 +188,15 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'qty_sent'                => $isWrongQty && isset($validated['qty_sent']) && $validated['qty_sent'] !== '' ? (float) $validated['qty_sent'] : null,
             'qty_ordered'             => $isWrongQty && isset($validated['qty_ordered']) && $validated['qty_ordered'] !== '' ? (float) $validated['qty_ordered'] : null,
         ];
+
+        // Only persist `issue_carrier` when the column actually exists on the
+        // table — guards against running on schemas that pre-date the carrier
+        // migration (which would throw on insert/update).
+        if (Schema::hasColumn($this->issuesTable(), 'issue_carrier')) {
+            $payload['issue_carrier'] = $carrierValue;
+        }
+
+        return $payload;
     }
 
     protected function extraRowFields(object $row): array
@@ -331,19 +356,63 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return [
             'tracking_number' => ['tracking_number', 'tracking', 'tracking number'],
             'issue_link'      => ['issue_link', 'link', 'url'],
+            'issue_carrier'   => ['issue_carrier', 'carrier'],
+            'claim_filed'     => ['claim_filed', 'claim filed'],
+            'amp_usd'         => ['amp_usd', 'amt $', 'amt$', 'amt usd', 'amt'],
+            'amt_rec'         => ['amt_rec', 'amt rec', 'amount received', 'amt received'],
+            'claim_received'  => ['claim_received', 'claim recd', 'claim received'],
         ];
     }
 
     protected function csvImportExtraPayload(callable $get): array
     {
-        $v = $get('tracking_number');
+        $issuesTable = $this->issuesTable();
 
-        $link = $get('issue_link');
-
-        return [
-            'tracking_number' => $v !== null && $v !== '' ? $v : null,
-            'issue_link'      => $link !== null && $link !== '' ? $link : null,
+        $payload = [
+            'tracking_number' => self::csvNonEmpty($get('tracking_number')),
+            'issue_link'      => self::csvNonEmpty($get('issue_link')),
         ];
+
+        if (Schema::hasColumn($issuesTable, 'issue_carrier')) {
+            $payload['issue_carrier'] = self::csvNonEmpty($get('issue_carrier'), 20);
+        }
+        if (Schema::hasColumn($issuesTable, 'claim_filed')) {
+            $payload['claim_filed'] = self::csvParseBool($get('claim_filed'));
+        }
+        if (Schema::hasColumn($issuesTable, 'amp_usd')) {
+            $payload['amp_usd'] = self::csvNonEmpty($get('amp_usd'), 6);
+        }
+        if (Schema::hasColumn($issuesTable, 'amt_rec')) {
+            $payload['amt_rec'] = self::csvNonEmpty($get('amt_rec'), 6);
+        }
+        if (Schema::hasColumn($issuesTable, 'claim_received')) {
+            $payload['claim_received'] = self::csvParseBool($get('claim_received'));
+        }
+
+        return $payload;
+    }
+
+    /** Trim → null when blank, optionally cap to a max length. */
+    private static function csvNonEmpty(?string $raw, ?int $max = null): ?string
+    {
+        $v = trim((string) ($raw ?? ''));
+        if ($v === '') {
+            return null;
+        }
+        if ($max !== null && $max > 0) {
+            $v = mb_substr($v, 0, $max);
+        }
+        return $v;
+    }
+
+    /** Parse common boolean spellings from CSV cells (yes/no, true/false, 1/0, y/n). */
+    private static function csvParseBool(?string $raw): bool
+    {
+        $v = strtolower(trim((string) ($raw ?? '')));
+        if ($v === '') {
+            return false;
+        }
+        return in_array($v, ['1', 'true', 'yes', 'y', 't'], true);
     }
 
     /**
@@ -358,10 +427,12 @@ class DispatchIssuesController extends IssueBoardControllerBase
         }
 
         $amp = $row->amp_usd ?? null;
+        $amtRec = $row->amt_rec ?? null;
 
         return [
             'claim_filed' => (bool) ($row->claim_filed ?? false),
             'amp_usd' => $amp !== null && trim((string) $amp) !== '' ? (string) $amp : null,
+            'amt_rec' => $amtRec !== null && trim((string) $amtRec) !== '' ? (string) $amtRec : null,
             'claim_received' => (bool) ($row->claim_received ?? false),
             'issue_carrier' => isset($row->issue_carrier) && $row->issue_carrier !== null && trim((string) $row->issue_carrier) !== ''
                 ? trim((string) $row->issue_carrier)
@@ -505,6 +576,34 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return response()->json(['message' => 'Updated.', 'amp_usd' => $value]);
     }
 
+    /**
+     * Inline-edit endpoint for the "Amt Rec" (Amount Received) column on the
+     * Carrier & Claim board. Mirrors `updateAmpUsd` — same 6-char free-text
+     * field, same archive guard.
+     */
+    public function updateAmtRec(Request $request, int $id): JsonResponse
+    {
+        if (! Schema::hasColumn($this->issuesTable(), 'amt_rec')) {
+            return response()->json(['message' => 'Not available.'], 503);
+        }
+        $validated = $request->validate(['amt_rec' => 'nullable|string|max:6']);
+        $raw = isset($validated['amt_rec']) ? trim((string) $validated['amt_rec']) : '';
+        $value = $raw === '' ? null : $raw;
+
+        $updated = DB::table($this->issuesTable())
+            ->where('id', $id)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->update(['amt_rec' => $value, 'updated_at' => now()]);
+
+        if ($updated === 0) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        return response()->json(['message' => 'Updated.', 'amt_rec' => $value]);
+    }
+
     public function updateIssueCarrier(Request $request, int $id): JsonResponse
     {
         if (! Schema::hasColumn($this->issuesTable(), 'issue_carrier')) {
@@ -640,6 +739,108 @@ class DispatchIssuesController extends IssueBoardControllerBase
         ]);
     }
 
+    /**
+     * Normalize a SKU for the amazon_datsheets lookup. Delegates to the
+     * canonical `AmazonDatasheet::normalizeSkuForLookup` so the Loss column
+     * resolves prices through the exact same rules as the amazon-tabulator
+     * view (uppercase, NBSP→space, trim, strip all spaces, fold trailing
+     * piece-count spellings "2 PCS"/"2PCS"/"2PIECES" → "2PC").
+     */
+    private static function normalizeSkuForAmazonLookup(?string $sku): string
+    {
+        return AmazonDatasheet::normalizeSkuForLookup($sku);
+    }
+
+    /**
+     * Build a `normalized-sku => price (float)` map by reading
+     * `amazon_datsheets.price` using the same model + normalization as
+     * amazon-tabulator-view, so a SKU that resolves to a price there resolves
+     * to the same price here. Returns `[]` if the table is missing.
+     *
+     * Note: We intentionally load the entire datasheet (≈1k rows) and key
+     * by normalized SKU, rather than filtering by `whereIn($rawSkus)`. That
+     * mirrors amazon-tabulator-view's approach (line ~154 of
+     * `OverallAmazonController::getViewAmazonData`) and protects against the
+     * SQL filter missing rows whose stored SKU has different whitespace
+     * than the issue row.
+     *
+     * @param  array<int, string>  $rawSkus  Unused (kept for signature parity);
+     *                                       caller may pass [] safely.
+     * @return array<string, float>
+     */
+    private function buildAmazonPriceMap(array $rawSkus): array
+    {
+        $map = [];
+        if (! Schema::hasTable('amazon_datsheets')) {
+            return $map;
+        }
+
+        AmazonDatasheet::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->select('sku', 'price')
+            ->get()
+            ->each(function ($r) use (&$map) {
+                $key = AmazonDatasheet::normalizeSkuForLookup($r->sku ?? '');
+                if ($key === '') {
+                    return;
+                }
+                $price = is_numeric($r->price) ? (float) $r->price : 0.0;
+                if ($price <= 0) {
+                    return;
+                }
+                // First price wins. Schema unique-constrains sku, so this is
+                // really just defensive against post-normalization collisions
+                // like "AB 1 PC" + "AB 1PC" mapping to the same key.
+                if (! array_key_exists($key, $map)) {
+                    $map[$key] = $price;
+                }
+            });
+
+        return $map;
+    }
+
+    /**
+     * Build a `lowercased-sku => instructions_item_pkg.instructions` map for
+     * the given SKU list by joining product_master → instructions_item_pkg.
+     * SKUs without a product_master row, or without an instructions_item_pkg
+     * row, are simply absent from the map (caller treats that as "no data").
+     *
+     * Returns an empty array safely if either table is missing.
+     *
+     * @param  array<int, string>  $rawSkus
+     * @return array<string, string>
+     */
+    private function buildInstructionsItemPkgMap(array $rawSkus): array
+    {
+        $map = [];
+        if ($rawSkus === []) {
+            return $map;
+        }
+        if (! Schema::hasTable('instructions_item_pkg') || ! Schema::hasTable('product_master')) {
+            return $map;
+        }
+
+        DB::table('product_master as pm')
+            ->leftJoin('instructions_item_pkg as iip', 'iip.product_master_id', '=', 'pm.id')
+            ->whereIn('pm.sku', $rawSkus)
+            ->select('pm.sku', 'iip.instructions')
+            ->get()
+            ->each(function ($r) use (&$map) {
+                $text = trim((string) ($r->instructions ?? ''));
+                if ($text === '') {
+                    return;
+                }
+                $key = strtolower(trim((string) $r->sku));
+                if ($key === '') {
+                    return;
+                }
+                $map[$key] = $text;
+            });
+
+        return $map;
+    }
+
     public function issuesIndex(): JsonResponse
     {
         $department = trim((string) request()->query('department', ''));
@@ -695,14 +896,34 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 });
         }
 
+        $instrPkgMap = $this->buildInstructionsItemPkgMap($rawSkus);
+        $amzPriceMap = $this->buildAmazonPriceMap($rawSkus);
+
         $tz = config('app.timezone');
-        $data = $rows->map(function ($row) use ($tz, $imageMap) {
+        $pacificTz = 'America/Los_Angeles';
+        $data = $rows->map(function ($row) use ($tz, $pacificTz, $imageMap, $instrPkgMap, $amzPriceMap) {
             $skuKey = strtolower(trim((string) $row->sku));
+            $amzKey = self::normalizeSkuForAmazonLookup((string) ($row->sku ?? ''));
+            $amzPrice = $amzKey !== '' && isset($amzPriceMap[$amzKey]) ? $amzPriceMap[$amzKey] : null;
+            $rowQty = (float) $row->qty;
+            // Issue rows store the number of units affected in `order_qty`;
+            // `qty` is almost always 0 (it's a leftover/legacy column from the
+            // shared issue board schema). Prefer order_qty so the Loss column
+            // is meaningful, and fall back to qty for any legacy row that did
+               // populate it.
+            $orderQty = $row->order_qty !== null ? (float) $row->order_qty : null;
+            $lossQty = ($orderQty !== null && $orderQty > 0)
+                ? $orderQty
+                : ($rowQty > 0 ? $rowQty : null);
+            $amzLoss = ($amzPrice !== null && $lossQty !== null && $lossQty > 0)
+                ? round($amzPrice * $lossQty, 2)
+                : null;
+            $createdAt = $row->created_at ? \Carbon\Carbon::parse($row->created_at) : null;
             return [
                 'id'                   => (int) $row->id,
                 'sku'                  => $row->sku,
                 'image_url'            => $imageMap[$skuKey] ?? null,
-                'qty'                  => (float) $row->qty,
+                'qty'                  => $rowQty,
                 'order_qty'            => $row->order_qty !== null ? (float) $row->order_qty : null,
                 'parent'               => $row->parent,
                 'marketplace_1'        => $row->marketplace_1,
@@ -720,9 +941,27 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 'departments'          => CustomerCareDepartments::decode($row->department ?? null),
                 'created_by'           => $row->created_by,
                 'created_at'           => $row->created_at,
-                'created_at_display'   => $row->created_at
-                    ? \Carbon\Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y H:i')
+                // Day + short month (e.g. "1 Apr") in app timezone — used as the
+                // visible cell text.
+                'created_at_short'     => $createdAt
+                    ? $createdAt->copy()->timezone($tz)->format('j M')
                     : '',
+                // Kept for backwards compatibility with CSV export / staleness
+                // logic that still reads `created_at_display`.
+                'created_at_display'   => $createdAt
+                    ? $createdAt->copy()->timezone($tz)->format('d-m-Y H:i')
+                    : '',
+                // Full date + time in Pacific time, shown as the cell tooltip.
+                'created_at_pacific'   => $createdAt
+                    ? $createdAt->copy()->timezone($pacificTz)->format('j M Y, H:i T')
+                    : '',
+                'instructions_item_pkg' => $instrPkgMap[$skuKey] ?? null,
+                // Amazon price + derived loss, sourced from amazon_datsheets.
+                // The Loss $ column reads `amz_loss` (= amz_price × qty);
+                // `amz_price` is exposed so the tooltip can show the unit
+                // price + qty breakdown.
+                'amz_price'             => $amzPrice,
+                'amz_loss'              => $amzLoss,
             ] + $this->extraRowFields($row);
         })->values();
 
@@ -739,7 +978,16 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $rows = $query->get();
         $tz = config('app.timezone');
 
-        $data = $rows->map(function ($row) use ($tz) {
+        $rawSkus = $rows->pluck('sku')
+            ->map(fn ($s) => trim((string) $s))
+            ->filter(fn ($s) => $s !== '')
+            ->unique()
+            ->values()
+            ->all();
+        $instrPkgMap = $this->buildInstructionsItemPkgMap($rawSkus);
+
+        $data = $rows->map(function ($row) use ($tz, $instrPkgMap) {
+            $skuKey = strtolower(trim((string) $row->sku));
             return [
                 'id' => (int) $row->id,
                 'orders_on_hold_issue_id' => $row->orders_on_hold_issue_id ? (int) $row->orders_on_hold_issue_id : null,
@@ -772,6 +1020,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 'logged_at_display' => $row->logged_at
                     ? \Carbon\Carbon::parse($row->logged_at)->timezone($tz)->format('d-m-Y H:i')
                     : '',
+                'instructions_item_pkg' => $instrPkgMap[$skuKey] ?? null,
             ] + $this->extraHistoryRowFields($row);
         })->values();
 
@@ -827,28 +1076,70 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $today      = \Carbon\Carbon::now($tz)->toDateString();
         $from       = \Carbon\Carbon::now($tz)->subDays($days - 1)->toDateString();
 
+        // Per-row loss is now derived from amazon_datsheets.price ×
+        // issue.order_qty (matches the Loss $ column in the All Issues
+        // table). We pull the raw issue rows for the window and aggregate in
+        // PHP because the SKU normalization needed to join against
+        // amazon_datsheets isn't expressible in plain SQL (spaces stripped +
+        // piece-count fold).
         $query = DB::table($this->issuesTable())
-            ->selectRaw("DATE(created_at) as day, SUM(total_loss) as daily_loss, COUNT(*) as issue_count")
-            ->whereRaw("DATE(created_at) BETWEEN ? AND ?", [$from, $today])
-            ->whereNotNull('total_loss');
+            ->select('sku', 'qty', 'order_qty', 'created_at')
+            ->whereRaw("DATE(created_at) BETWEEN ? AND ?", [$from, $today]);
 
         if ($department !== '') {
             CustomerCareDepartments::applyWhereDepartmentMatches($query, 'department', $department);
         }
 
-        $rows = $query->groupByRaw("DATE(created_at)")
-            ->orderByRaw("DATE(created_at)")
-            ->get();
+        $issueRows = $query->orderByRaw("DATE(created_at)")->get();
+
+        $rawSkus = $issueRows->pluck('sku')
+            ->map(fn ($s) => trim((string) $s))
+            ->filter(fn ($s) => $s !== '')
+            ->unique()
+            ->values()
+            ->all();
+        $amzPriceMap = $this->buildAmazonPriceMap($rawSkus);
+
+        $perDay = []; // ['YYYY-MM-DD' => ['loss' => float, 'count' => int]]
+        foreach ($issueRows as $r) {
+            $day = $r->created_at
+                ? \Carbon\Carbon::parse($r->created_at)->timezone($tz)->toDateString()
+                : null;
+            if ($day === null) {
+                continue;
+            }
+            if (! isset($perDay[$day])) {
+                $perDay[$day] = ['loss' => 0.0, 'count' => 0];
+            }
+            $perDay[$day]['count']++;
+            $key = self::normalizeSkuForAmazonLookup((string) ($r->sku ?? ''));
+            $price = $key !== '' && isset($amzPriceMap[$key]) ? $amzPriceMap[$key] : null;
+            // Prefer order_qty; fall back to qty if order_qty is missing.
+            $orderQty = $r->order_qty !== null ? (float) $r->order_qty : 0.0;
+            $qty = $orderQty > 0 ? $orderQty : (float) ($r->qty ?? 0);
+            if ($price !== null && $qty > 0) {
+                $perDay[$day]['loss'] += $price * $qty;
+            }
+        }
+
+        ksort($perDay);
+        $daily = [];
+        $total = 0.0;
+        foreach ($perDay as $day => $agg) {
+            $loss = round((float) $agg['loss'], 2);
+            $total += $loss;
+            $daily[] = [
+                'date'  => $day,
+                'loss'  => $loss,
+                'count' => (int) $agg['count'],
+            ];
+        }
 
         return response()->json([
-            'total' => round((float) $rows->sum('daily_loss'), 2),
+            'total' => round($total, 2),
             'from'  => $from,
             'to'    => $today,
-            'daily' => $rows->map(fn ($r) => [
-                'date'  => $r->day,
-                'loss'  => round((float) $r->daily_loss, 2),
-                'count' => (int) $r->issue_count,
-            ])->values(),
+            'daily' => $daily,
         ]);
     }
 

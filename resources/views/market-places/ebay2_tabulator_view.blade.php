@@ -619,6 +619,13 @@
                         <!-- Financial Metrics -->
                         <span class="badge bg-success fs-6 p-2 d-none" id="total-pft-amt-badge" style="color: black; font-weight: bold;" aria-hidden="true">Total PFT: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Sales: $0</span>
+                        {{-- S Qty: L30 units from ebay2_order_items.quantity (period='l30').
+                             Same source the /all-marketplace-master Qty column for the EbayTwo row uses,
+                             so this page agrees with the master page and with the eBay 1 tabulator's S Qty
+                             badge. Static — page filters do not narrow it. --}}
+                        <span class="badge fs-6 p-2" id="qty-sold-badge"
+                              style="background-color: #6f42c1; color: white; font-weight: bold;"
+                              title="L30 units sold (Σ ebay2_order_items.quantity for period='l30'). Same value /all-marketplace-master shows in the EbayTwo row's Qty cell.">S Qty: {{ number_format((int) ($ordersL30TotalQty ?? 0)) }}</span>
                         <span class="badge bg-warning fs-6 p-2 d-none" id="total-spend-l30-badge" style="color: black; font-weight: bold;" aria-hidden="true">PMT Spend: $0</span>
                         
                         <!-- Percentage Metrics -->
@@ -630,7 +637,9 @@
                         
                         <!-- eBay Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Price: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: white; font-weight: bold;">CVR: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge"
+                              style="color: white; font-weight: bold;"
+                              title="CVR = (S Qty / Σ Views) × 100. Numerator is the orders-API L30 units (same value the S Qty badge shows). Denominator is the sum of 'views' across rows with E Stock > 0.">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="ebay2-missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: not listed (no eBay item id), REQ, INV &gt; 0 (Missing L) — same as /map-issues">Missing L: 0</span>
@@ -1022,6 +1031,11 @@
         const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
         /** Same as AD% column — getEbaytwoMasterAdsPercent() / all-marketplace-master */
         const EBAY2_CHANNEL_ADS_PCT = {{ number_format((float) ($channelAdsPercent ?? 0), 4, '.', '') }};
+        /** L30 units sold from ebay2_orders (period='l30'). Same value rendered into the
+         *  S Qty badge and the eBay 2 row's Qty cell on /all-marketplace-master. Used by
+         *  the CVR formula so the page CVR is computed against orders-API ground truth
+         *  instead of the laggier ebay_2_metrics.ebay_l30 sum. */
+        const ORDERS_L30_TOTAL_QTY = {{ (int) ($ordersL30TotalQty ?? 0) }};
         let skuMetricsChart = null;
         let currentSku = null;
         let table = null; // Global table reference
@@ -5508,7 +5522,13 @@
                         totalViews += parseFloat(row.views || 0);
                     }
                 });
-                const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
+                // CVR = (orders-API L30 units / Σ views) × 100. Numerator is the same
+                // fixed value the S Qty badge shows (Σ ebay2_order_items.quantity for
+                // period='l30') — orders-API ground truth, same source the master
+                // page's Qty cell uses. Previously this used the per-row eBay L30 sum
+                // from ebay_2_metrics, which lags the Orders API. Denominator stays
+                // the page sum of 'views' across rows with E Stock > 0.
+                const avgCVR = totalViews > 0 ? (ORDERS_L30_TOTAL_QTY / totalViews * 100) : 0;
 
                 // Missing L / Map / N Map are counted over the FULL dataset (like /map-issues),
                 // not the active/filtered view — otherwise not-listed rows are hidden by the
@@ -5544,7 +5564,7 @@
                 $('#tacos-percent-badge').text('TACOS: ' + tacosPercent.toFixed(1) + '%');
                 
                 $('#avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
-                $('#avg-cvr-badge').text('CVR: ' + Math.round(avgCVR) + '%');
+                $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(2) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                 $('#total-inv-badge').text('E Stock: ' + Math.round(totalFbaInv).toLocaleString());
                 $('#ebay2-missing-count-badge').text('Missing L: ' + missingCount.toLocaleString());
