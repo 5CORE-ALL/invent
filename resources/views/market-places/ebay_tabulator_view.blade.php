@@ -798,6 +798,10 @@
                         <!-- Financial Metrics -->
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge"
                             style="color: black; font-weight: bold;">Sales: $0</span>
+                        
+                        <span class="badge fs-6 p-2" id="qty-sold-badge"
+                            style="background-color: #6f42c1; color: white; font-weight: bold;"
+                            title="L30 units sold (Σ ebay_order_items.quantity for period='l30'). Same value /ebay/daily-sales shows.">S Qty: {{ number_format((int) ($ordersL30TotalQty ?? 0)) }}</span>
                         <span class="badge fs-6 p-2" id="ebay1-shopify-sales-badge"
                             style="background-color: #0f766e; color: white; font-weight: bold;"
                             title="eBay1 sales from Shopify raw data (L30, excludes cancelled)">EShp: $0</span>
@@ -817,7 +821,8 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge"
                             style="color: black; font-weight: bold;">Price: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge"
-                            style="color: white; font-weight: bold;">CVR: 0%</span>
+                            style="color: white; font-weight: bold;"
+                            title="CVR = (S Qty / Σ Views) × 100. Numerator is the orders-API L30 units (same value the S Qty badge shows, same source /ebay/daily-sales uses). Denominator is the sum of 'views' across rows with E Stock > 0.">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge"
                             style="color: black; font-weight: bold;">Views: 0</span>
 
@@ -1267,6 +1272,11 @@
         const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
         /** Channel Ads% — getEbayMasterAdsPercent() / all-marketplace-master (same as AD% on each row) */
         const EBAY_CHANNEL_ADS_PCT = {{ number_format((float) ($channelAdsPercent ?? 0), 4, '.', '') }};
+        /** L30 units sold from ebay_orders (period='l30'). Same value rendered into the
+         *  S Qty badge and the same number /ebay/daily-sales shows. Used by the CVR
+         *  formula so the page CVR is computed against orders-API ground truth instead
+         *  of the laggier ebay_metrics.ebay_l30 sum. */
+        const ORDERS_L30_TOTAL_QTY = {{ (int) ($ordersL30TotalQty ?? 0) }};
         /** App base path (XAMPP subdir / public): root-relative "/ebay-data-json" would 404 */
         const EBAY_DATA_JSON_URL = @json(url('/ebay-data-json'));
         let skuMetricsChart = null;
@@ -7186,7 +7196,16 @@
                         totalViews += parseFloat(row.views || 0);
                     }
                 });
-                const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
+                // CVR = (orders-API L30 units sold / Σ views) × 100. Numerator is the
+                // same fixed value the S Qty badge shows (Σ ebay_order_items.quantity
+                // for period='l30') — same source /ebay/daily-sales uses, so the two
+                // pages report the same units. Previously this used the per-row
+                // eBay L30 sum from ebay_metrics, which lags the Orders API by 1-2
+                // days (often 100+ units short — see /ebay/daily-sales discrepancy
+                // notes), making CVR read low. Denominator stays the page sum of
+                // 'views' across rows with E Stock > 0 — that's the eBay impression
+                // pool the units are converting against.
+                const avgCVR = totalViews > 0 ? (ORDERS_L30_TOTAL_QTY / totalViews * 100) : 0;
 
                 // TACOS badge = channel Ads% (all-marketplace-master), same as Ebay 2/3 and AD% column
                 const tacosPercent = EBAY_CHANNEL_ADS_PCT;
@@ -7212,13 +7231,12 @@
                 $('#tacos-percent-badge').text('TACOS: ' + tacosPercent.toFixed(1) + '%');
 
                 $('#avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
-                $('#avg-cvr-badge').text('CVR: ' + Math.round(avgCVR) + '%');
+                $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(2) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
 
                 $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
                 $('#more-sold-count-badge').text('> 0 Sold: ' + moreSoldCount.toLocaleString());
 
-                // Missing L (same logic as amazon-tabulator-view): not listed on eBay, REQ, INV > 0.
                 let missingLCount = 0;
                 let missingMCount = 0;
                 allData.forEach(row => {

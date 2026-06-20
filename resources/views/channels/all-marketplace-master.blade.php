@@ -432,7 +432,7 @@
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
                             views: <span id="total-views-badge">0</span>
                         </span>
-                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="Listing CVR (all channels): (sum of L30 Orders) ÷ (sum of Total Views) × 100. Total Views = listing/Map traffic (e.g. ov_l30, eBay Views) — not ad clicks. Not the same as column &quot;AD CVR&quot; (ad sold ÷ ad clicks). The ratio can move sharply if views jump (new SKUs, sync) or order windows differ by channel (e.g. Amazon {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day orders vs views from live tabulator).">
+                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="Listing CVR (all channels): (sum of Qty) ÷ (sum of Total Views) × 100. Qty = units sold (not order count) — matches the per-channel /temu-decrease formula. Total Views = listing/Map traffic (e.g. ov_l30, eBay Views) — not ad clicks. Not the same as column &quot;AD CVR&quot; (ad sold ÷ ad clicks). The ratio can move sharply if views jump (new SKUs, sync) or qty windows differ by channel (e.g. Amazon {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day units vs views from live tabulator).">
                             CVR: <span id="cvr-pct-badge">0%</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="pft" style="color: black; font-weight: bold; cursor:pointer;" title="Net profit $ = sum(rolling Sales×Gprofit% − Ad spend); same as Sales × (G% − Ad Spend/Sales) per channel">
@@ -1749,15 +1749,15 @@
                     {
                         title: "CVR",
                         field: "CVR",
-                        headerTooltip: "Per channel: L30 Orders ÷ Total Views. Total Views come from listing/Map snapshots (traffic to offers), not the same as ad clicks. Compare to &quot;AD CVR&quot; (ad sold ÷ clicks). Big view updates can lower this % without &quot;true&quot; conversion collapsing.",
+                        headerTooltip: "Per channel: Qty ÷ Total Views — units-based (matches /temu-decrease). Total Views come from listing/Map snapshots (traffic to offers), not the same as ad clicks. Compare to &quot;AD CVR&quot; (ad sold ÷ clicks). Big view updates can lower this % without &quot;true&quot; conversion collapsing.",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
-                            const ordersA = parseNumber(aRow.getData()['L30 Orders'] || 0);
+                            const qtyA = parseNumber(aRow.getData()['Qty'] || 0);
                             const viewsA = parseNumber(aRow.getData()['Total Views'] || 0);
-                            const ordersB = parseNumber(bRow.getData()['L30 Orders'] || 0);
+                            const qtyB = parseNumber(bRow.getData()['Qty'] || 0);
                             const viewsB = parseNumber(bRow.getData()['Total Views'] || 0);
-                            const cvrA = viewsA > 0 ? (ordersA / viewsA) * 100 : 0;
-                            const cvrB = viewsB > 0 ? (ordersB / viewsB) * 100 : 0;
+                            const cvrA = viewsA > 0 ? (qtyA / viewsA) * 100 : 0;
+                            const cvrB = viewsB > 0 ? (qtyB / viewsB) * 100 : 0;
                             return cvrA - cvrB;
                         },
                         width: 70,
@@ -1765,10 +1765,10 @@
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const channel = (row['Channel '] || '').trim();
-                            const orders = parseNumber(row['L30 Orders'] || 0);
+                            const qty = parseNumber(row['Qty'] || 0);
                             const views = parseNumber(row['Total Views'] || 0);
                             if (views === 0) return '-';
-                            const pct = (orders / views) * 100;
+                            const pct = (qty / views) * 100;
                             const dotColor = getMetricDotColor(channel, 'cvr');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="cvr" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View CVR trend"></i>`;
                             // 2 decimals so day-to-day movement on a rolling window is visible (matches chart precision).
@@ -1783,13 +1783,13 @@
                             }
                         },
                         bottomCalc: function(values, data) {
-                            let totalOrders = 0, totalViews = 0;
+                            let totalQty = 0, totalViews = 0;
                             data.forEach(function(row) {
-                                totalOrders += parseNumber(row['L30 Orders'] || 0);
+                                totalQty += parseNumber(row['Qty'] || 0);
                                 totalViews += parseNumber(row['Total Views'] || 0);
                             });
                             if (totalViews === 0) return '-';
-                            return '<strong>' + ((totalOrders / totalViews) * 100).toFixed(2) + '%</strong>';
+                            return '<strong>' + ((totalQty / totalViews) * 100).toFixed(2) + '%</strong>';
                         }
                     },
                     {
@@ -3591,10 +3591,11 @@
                 $('#total-ad-spend').text('$' + Math.round(totalAdSpend).toLocaleString('en-US'));
                 $('#avg-ads-percent').text(avgAdsPercent.toFixed(1) + '%');
                 $('#total-views-badge').text(Math.round(totalViews).toLocaleString('en-US'));
-                // Listing CVR (overall): Σ L30 Orders / Σ Total Views — not ad conversion; see badge title.
+                // Listing CVR (overall): Σ Qty / Σ Total Views — units-based to match the per-channel
+                // /temu-decrease badge (qty / views), not ad conversion; see badge title.
                 // 2 decimals so the badge value shifts day-over-day instead of holding the same
                 // rounded number for 3+ days (rolling-window CVR moves <0.05% per day).
-                const cvrPct = totalViews > 0 ? (totalL30Orders / totalViews) * 100 : null;
+                const cvrPct = totalViews > 0 ? (totalQty / totalViews) * 100 : null;
                 $('#cvr-pct-badge').text(cvrPct !== null ? cvrPct.toFixed(2) + '%' : '-');
                 // NPFT $ = gross profit $ − total ad spend (= L30 × (G% − Ad Spend/Sales) in aggregate)
                 $('#total-pft').text('$' + Math.round(netProfit).toLocaleString('en-US'));

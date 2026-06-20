@@ -3031,16 +3031,21 @@
             $('#not-mapped-count-badge').text('Missing M: ' + notMappedCount.toLocaleString());
             $('#temu-green-alert-badge').text('Green Alert: ' + greenAlertCount.toLocaleString());
             $('#temu-red-alert-badge').text('Red Alert: ' + redAlertCount.toLocaleString());
-            // CVR badge prefers the daily snapshot value (same row the chart's "today"
-            // point reads from temu_badge_daily_data via the badge-history endpoint),
-            // so the badge and chart always agree. Falls back to the locally-computed
-            // qtyPerViews when no snapshot exists yet (first load before today's cron).
-            // Renders with 2 decimals to match the chart tooltip exactly — without this
-            // the badge would round 7.06 -> 7.1 and not visually match the 7.06 hover.
-            const snapshotCvr = todayBadgeSnapshotFromBackend != null
-                ? parseFloat(todayBadgeSnapshotFromBackend.avg_cvr_pct)
-                : NaN;
-            const displayCvr = isFinite(snapshotCvr) ? snapshotCvr : qtyPerViews;
+            // CVR badge: use the LIVE qtyPerViews computed from the same totalQuantity
+            // and totalViews that drive the QTY and Views badges. Previously this preferred
+            // the daily snapshot in temu_badge_daily_data so the badge would visually match
+            // the chart's "today" tooltip — but that meant when the user uploaded fresh data,
+            // the QTY/Views badges updated immediately while CVR was frozen at the last cron
+            // value, making the ratio look "stuck" and out of sync with its own numerator/denominator.
+            // Now the badge always reflects the data on screen; the chart's "today" point will
+            // catch up to it on the next CollectTemuMetrics run. The snapshot is used only as
+            // a last-resort fallback when there is no live data (e.g. zero rows on first load).
+            // Renders with 2 decimals to match the chart tooltip precision.
+            let displayCvr = qtyPerViews;
+            if (!isFinite(displayCvr) || (totalViews <= 0 && todayBadgeSnapshotFromBackend != null)) {
+                const snapshotCvr = parseFloat(todayBadgeSnapshotFromBackend.avg_cvr_pct);
+                if (isFinite(snapshotCvr)) displayCvr = snapshotCvr;
+            }
             $('#avg-cvr-badge').text('CVR: ' + displayCvr.toFixed(2) + '%');
             $('#avg-dil-badge').text('Avg DIL: ' + Math.round(avgDil) + '%');
             // Total Revenue badge set above from sales_summary or table
