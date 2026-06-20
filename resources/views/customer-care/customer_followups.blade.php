@@ -584,18 +584,34 @@
                     '</td>';
             }
 
-            /** Reference URL: icon opens in new tab; `--` when empty. */
+            /** Reference URL + attachment thumbnail. Both icons open in new tabs. */
             function referenceLinkCellHtml(row) {
                 const raw = row.reference_link;
                 const trimmed = raw != null ? String(raw).trim() : '';
-                if (!trimmed) {
+                const imageUrl = row && row.image_url ? String(row.image_url).trim() : '';
+
+                let html = '';
+                if (trimmed) {
+                    const safe = escapeAttr(trimmed);
+                    html += '<a href="' + safe + '" target="_blank" rel="noopener noreferrer" title="Open reference link">' +
+                        '<i class="bi bi-link-45deg" aria-hidden="true"></i>' +
+                        '<span class="visually-hidden">Open link</span>' +
+                        '</a>';
+                }
+                if (imageUrl) {
+                    const safeImg = escapeAttr(imageUrl);
+                    html += (html ? '<span class="ms-1"></span>' : '') +
+                        '<a href="' + safeImg + '" target="_blank" rel="noopener noreferrer" ' +
+                        'class="followup-image-thumb-link" title="Open attached image">' +
+                        '<img src="' + safeImg + '" alt="Attachment" ' +
+                        'style="width:24px;height:24px;object-fit:cover;border-radius:4px;border:1px solid #dee2e6;vertical-align:middle;">' +
+                        '</a>';
+                }
+
+                if (!html) {
                     return '<td class="followup-ref-link-cell text-muted">--</td>';
                 }
-                const safe = escapeAttr(trimmed);
-                return '<td class="followup-ref-link-cell">' +
-                    '<a href="' + safe + '" target="_blank" rel="noopener noreferrer" title="Open reference link">' +
-                    '<i class="bi bi-link-45deg" aria-hidden="true"></i><span class="visually-hidden">Open link</span>' +
-                    '</a></td>';
+                return '<td class="followup-ref-link-cell">' + html + '</td>';
             }
 
             let skuSearchTimer = null;
@@ -826,22 +842,152 @@
                 }
             }
 
-            function formPayload() {
-                const fd = new FormData(document.getElementById('followupForm'));
-                const ch = fd.get('channel_master_id');
-                const payload = {
-                    ticket_id: fd.get('ticket_id'),
-                    order_id: fd.get('order_id') || null,
-                    sku: fd.get('sku') || null,
-                    channel_master_id: ch ? parseInt(ch, 10) : null,
-                    customer_name: fd.get('customer_name'),
-                    status: fd.get('status'),
-                    comments: fd.get('comments') || null,
-                    reference_link: fd.get('reference_link') || null,
-                };
-                if (payload.channel_master_id === 0 || isNaN(payload.channel_master_id)) payload.channel_master_id =
-                    null;
-                return payload;
+            // Hard upper bound, mirrors the server-side `max:1024` rule. 1 MB minus a small
+            // margin so we reject *before* the multipart envelope pushes the request over.
+            const FOLLOWUP_IMAGE_MAX_BYTES = 1024 * 1024;
+            const FOLLOWUP_IMAGE_ACCEPT = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+
+            /**
+             * Build a multipart payload from the modal form. We use FormData
+             * (not JSON) so the optional image upload comes along for the ride.
+             * `_method` is appended by the caller for edits because PHP can't
+             * read PUT request bodies that contain files.
+             */
+            function buildFollowupFormData() {
+                const form = document.getElementById('followupForm');
+                const src = new FormData(form);
+
+                const fd = new FormData();
+                const fields = [
+                    'ticket_id', 'order_id', 'sku', 'channel_master_id',
+                    'customer_name', 'status', 'comments', 'reference_link',
+                    'remove_image',
+                ];
+                fields.forEach(name => {
+                    const v = src.get(name);
+                    if (v !== null && v !== undefined) {
+                        fd.append(name, v);
+                    }
+                });
+
+                const fileInput = document.getElementById('followup_image');
+                if (fileInput && fileInput.files && fileInput.files[0]) {
+                    fd.append('image', fileInput.files[0]);
+                }
+
+                return fd;
+            }
+
+            function followupImageError(msg) {
+                const el = document.querySelector('[data-error-for="image"]');
+                if (!el) return;
+                el.textContent = msg || '';
+                el.classList.toggle('d-block', !!msg);
+            }
+
+            function setFollowupImagePreview({ src, label, meta, allowOpen }) {
+                const wrap = document.getElementById('followup_image_preview_wrap');
+                const img = document.getElementById('followup_image_preview');
+                const open = document.getElementById('followup_image_preview_open');
+                const lbl = document.getElementById('followup_image_preview_label');
+                const m = document.getElementById('followup_image_preview_meta');
+                if (!wrap || !img) return;
+
+                if (!src) {
+                    wrap.classList.add('d-none');
+                    img.removeAttribute('src');
+                    if (open) {
+                        open.href = '#';
+                        open.classList.add('d-none');
+                    }
+                    if (lbl) lbl.textContent = 'Selected image';
+                    if (m) m.textContent = '';
+                    return;
+                }
+
+                img.src = src;
+                if (lbl) lbl.textContent = label || 'Selected image';
+                if (m) m.textContent = meta || '';
+                if (open) {
+                    if (allowOpen) {
+                        open.href = src;
+                        open.classList.remove('d-none');
+                    } else {
+                        open.href = '#';
+                        open.classList.add('d-none');
+                    }
+                }
+                wrap.classList.remove('d-none');
+            }
+
+            function clearFollowupImageState({ keepFile = false } = {}) {
+                const fileInput = document.getElementById('followup_image');
+                if (fileInput && !keepFile) fileInput.value = '';
+                const removeFlag = document.getElementById('followup_remove_image');
+                if (removeFlag) removeFlag.value = '';
+                followupImageError('');
+                setFollowupImagePreview({ src: '' });
+            }
+
+            function formatBytes(bytes) {
+                if (!bytes && bytes !== 0) return '';
+                if (bytes < 1024) return bytes + ' B';
+                if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+                return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+            }
+
+            const followupImageInput = document.getElementById('followup_image');
+            if (followupImageInput) {
+                followupImageInput.addEventListener('change', () => {
+                    followupImageError('');
+                    const file = followupImageInput.files && followupImageInput.files[0];
+                    if (!file) {
+                        // Cleared via OS dialog: keep any existing-image preview visible only if
+                        // an image was already attached on the server (preview src starts with /storage).
+                        const img = document.getElementById('followup_image_preview');
+                        if (!img || !img.src || img.src === window.location.href + '#' || img.src.startsWith('blob:')) {
+                            setFollowupImagePreview({ src: '' });
+                        }
+                        return;
+                    }
+
+                    if (FOLLOWUP_IMAGE_ACCEPT.indexOf(file.type) === -1) {
+                        followupImageError('Only JPG, PNG, WEBP or GIF images are allowed.');
+                        followupImageInput.value = '';
+                        setFollowupImagePreview({ src: '' });
+                        return;
+                    }
+                    if (file.size > FOLLOWUP_IMAGE_MAX_BYTES) {
+                        followupImageError('Image must be under 1 MB. Selected file is ' + formatBytes(file.size) + '.');
+                        followupImageInput.value = '';
+                        setFollowupImagePreview({ src: '' });
+                        return;
+                    }
+
+                    // New selection overrides any "remove existing" intent.
+                    const removeFlag = document.getElementById('followup_remove_image');
+                    if (removeFlag) removeFlag.value = '';
+
+                    const url = URL.createObjectURL(file);
+                    setFollowupImagePreview({
+                        src: url,
+                        label: file.name,
+                        meta: formatBytes(file.size) + ' · ' + (file.type || 'image'),
+                        allowOpen: true,
+                    });
+                });
+            }
+
+            const followupImageRemoveBtn = document.getElementById('followup_image_remove_btn');
+            if (followupImageRemoveBtn) {
+                followupImageRemoveBtn.addEventListener('click', () => {
+                    const fileInput = document.getElementById('followup_image');
+                    if (fileInput) fileInput.value = '';
+                    const removeFlag = document.getElementById('followup_remove_image');
+                    if (removeFlag) removeFlag.value = '1';
+                    followupImageError('');
+                    setFollowupImagePreview({ src: '' });
+                });
             }
 
             let followupSearchDebounce = null;
@@ -871,6 +1017,7 @@
                 document.getElementById('ticket_id_hint').textContent =
                     'Generated automatically when you save (e.g. TKT-000001).';
                 document.getElementById('ticket_id_hint').classList.remove('d-none');
+                clearFollowupImageState();
                 clearFormErrors();
             });
 
@@ -881,23 +1028,43 @@
                     form.reportValidity();
                     return;
                 }
+
+                // Re-check the image client-side; the input's `change` handler caught it
+                // earlier but a paste-into-form or multiple selections can still slip
+                // through. The server enforces `max:1024` (KB) regardless.
+                const fileInput = document.getElementById('followup_image');
+                if (fileInput && fileInput.files && fileInput.files[0]) {
+                    const f = fileInput.files[0];
+                    if (FOLLOWUP_IMAGE_ACCEPT.indexOf(f.type) === -1) {
+                        followupImageError('Only JPG, PNG, WEBP or GIF images are allowed.');
+                        return;
+                    }
+                    if (f.size > FOLLOWUP_IMAGE_MAX_BYTES) {
+                        followupImageError('Image must be under 1 MB. Selected file is ' + formatBytes(f.size) + '.');
+                        return;
+                    }
+                }
+
                 const id = document.getElementById('edit_id').value;
-                const payload = formPayload();
+                const fd = buildFollowupFormData();
                 if (!id) {
-                    delete payload.ticket_id;
+                    fd.delete('ticket_id');
+                } else {
+                    // PHP can't parse multipart bodies on PUT; spoof the method.
+                    fd.append('_method', 'PUT');
                 }
                 const url = id ? followupBase + '/' + id : storeUrl;
-                const method = id ? 'PUT' : 'POST';
                 try {
                     const res = await fetch(url, {
-                        method,
+                        method: 'POST',
                         headers: {
-                            'Content-Type': 'application/json',
                             'Accept': 'application/json',
                             'X-CSRF-TOKEN': csrf,
                             'X-Requested-With': 'XMLHttpRequest'
+                            // NOTE: do not set Content-Type — the browser sets the
+                            // multipart boundary header for FormData automatically.
                         },
-                        body: JSON.stringify(payload)
+                        body: fd
                     });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) {
@@ -1064,6 +1231,17 @@
                     document.getElementById('followup_status').value = d.status;
                     document.getElementById('comments').value = d.comments || '';
                     document.getElementById('reference_link').value = d.reference_link || '';
+                    clearFollowupImageState();
+                    if (d.image_url) {
+                        // Show the existing server-stored image; user can replace by
+                        // picking a new file or remove via the trash button.
+                        setFollowupImagePreview({
+                            src: d.image_url,
+                            label: 'Current attachment',
+                            meta: 'Pick a new file to replace, or click Remove image to detach.',
+                            allowOpen: true,
+                        });
+                    }
                     clearFormErrors();
                     new bootstrap.Modal(document.getElementById('followupModal')).show();
                 }

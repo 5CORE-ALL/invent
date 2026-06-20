@@ -142,6 +142,26 @@
             position: relative;
         }
 
+        /* "Issue?" column: allow the full label (e.g. "LOST IN TRANSIT") to wrap
+           onto two lines instead of being clipped with an ellipsis. */
+        #all-issues-tabulator .tabulator-cell[tabulator-field="what_happened"],
+        #all-issues-history-tabulator .tabulator-cell[tabulator-field="what_happened"] {
+            white-space: normal;
+            overflow: visible;
+            text-overflow: clip;
+            line-height: 1.25;
+        }
+
+        /* SKU column auto-sizes to fit the longest SKU in the page; cells must
+           not clip with an ellipsis or the column won't grow to show the full
+           value (e.g. "GSTOOL RND BLK REST"). */
+        #all-issues-tabulator .tabulator-cell.ai-sku-cell,
+        #all-issues-history-tabulator .tabulator-cell.ai-sku-cell {
+            white-space: nowrap;
+            overflow: visible;
+            text-overflow: clip;
+        }
+
         #all-issues-tabulator .tabulator-cell:hover:has(.tracking-cell) {
             overflow: visible;
             z-index: 30;
@@ -211,13 +231,79 @@
         .cb-row-btn {
             border: none;
             background: transparent;
-            padding: 1px 5px;
+            padding: 1px 2px;
             cursor: pointer;
             color: #2563eb;
+            line-height: 1;
         }
 
         .cb-row-btn.cb-danger {
             color: #dc2626;
+        }
+
+        .cb-row-btn.cb-details {
+            color: #0d9488;
+        }
+        .cb-row-btn.cb-details:hover {
+            color: #115e59;
+            background: rgba(13, 148, 136, 0.12);
+            border-radius: 4px;
+        }
+
+        /* Read-only "Details" modal grid */
+        .ai-detail-section {
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.75rem;
+            background: #fff;
+        }
+        .ai-detail-section-title {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #6b7280;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            border-bottom: 1px solid #f3f4f6;
+            padding-bottom: 0.35rem;
+        }
+        .ai-detail-row {
+            display: flex;
+            gap: 0.75rem;
+            padding: 0.35rem 0;
+            border-bottom: 1px dashed #f3f4f6;
+            font-size: 0.92rem;
+            line-height: 1.35;
+        }
+        .ai-detail-row:last-child { border-bottom: none; }
+        .ai-detail-label {
+            flex: 0 0 38%;
+            color: #6b7280;
+            font-weight: 600;
+        }
+        .ai-detail-value {
+            flex: 1 1 auto;
+            color: #111827;
+            word-break: break-word;
+        }
+        .ai-detail-value.empty {
+            color: #9ca3af;
+            font-style: italic;
+        }
+        .ai-detail-thumb {
+            max-width: 140px;
+            max-height: 140px;
+            object-fit: contain;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.375rem;
+            background: #fff;
+            padding: 2px;
+        }
+        .ai-detail-status-line {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
         }
 
         .sku-image-preview {
@@ -239,24 +325,26 @@
             vertical-align: middle;
         }
 
-        /* L30 badges */
+        /* L30 badges — compact to fit alongside filters on a single toolbar row */
         .l30-badge,
         .l30-issues-badge {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
-            padding: 6px 14px;
-            border-radius: 0.4rem;
+            gap: 5px;
+            padding: 3px 9px;
+            border-radius: 0.375rem;
             cursor: pointer;
             user-select: none;
-            border: 1.5px solid;
+            border: 1px solid;
             background: #fff;
             white-space: nowrap;
             transition: box-shadow 0.15s;
             text-decoration: none;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 600;
             line-height: 1;
+            height: 31px;
+            flex: 0 0 auto;
         }
 
         .l30-badge {
@@ -277,11 +365,51 @@
             box-shadow: 0 2px 8px rgba(74, 158, 107, .2);
         }
 
+        /* Single-row toolbar: keep every item from stretching across the flex
+           line when wrapping (a bare <select> with min-width grows otherwise),
+           and let the toolbar scroll horizontally on very narrow screens
+           instead of stacking. */
+        #all-issues-toolbar {
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            overflow-y: visible;
+            scrollbar-width: thin;
+        }
+
+        #all-issues-toolbar > * {
+            flex: 0 0 auto;
+        }
+
+        #all-issues-toolbar .btn {
+            white-space: nowrap;
+        }
+
+        /* Search field grows to absorb extra space, while keeping a reasonable
+           minimum and a cap so it never crowds out the Total badge on wide
+           screens. */
+        #all-issues-toolbar #ai-search-wrap {
+            flex: 1 1 220px;
+            min-width: 180px;
+            max-width: 360px;
+        }
+
+        #all-issues-toolbar #ai-search {
+            height: 31px;
+            font-size: 12px;
+        }
+
+        #all-issues-toolbar #hold_issue_total_count_wrap {
+            margin-left: auto;
+            white-space: nowrap;
+        }
+
         #dept-filter-select {
             font-size: 12px;
-            padding: 2px 8px;
+            padding: 2px 24px 2px 8px;
             height: 31px;
-            min-width: 150px;
+            width: 170px;
+            min-width: 170px;
+            max-width: 170px;
             border-radius: 0.375rem;
             border: 1px solid #dee2e6;
             cursor: pointer;
@@ -371,6 +499,24 @@
         .ai-loader .spinner-border {
             margin-right: 0.5rem;
         }
+
+        /* Combined Created By cell — stack "name" on top of the short date */
+        .created-by-combo {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            line-height: 1.15;
+        }
+
+        .created-by-combo .created-by-name {
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        .created-by-combo .created-by-date {
+            font-size: 11px;
+            opacity: 0.85;
+        }
     </style>
 @endsection
 
@@ -383,7 +529,7 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+                <div id="all-issues-toolbar" class="d-flex align-items-center gap-2 mb-3">
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
                         data-bs-target="#ordersOnHoldIssueModal">
                         <i class="fa-solid fa-plus"></i> All Issues
@@ -391,8 +537,9 @@
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="btnShowHistory">
                         <i class="fa-solid fa-clock-rotate-left"></i> History
                     </button>
-                    <button type="button" class="btn btn-sm btn-success" id="btnExportCsv">
-                        <i class="fa-solid fa-file-csv"></i> Export CSV
+                    <button type="button" class="btn btn-sm btn-success" id="btnExportCsv"
+                        title="Export CSV" aria-label="Export CSV">
+                        <i class="fa-solid fa-download"></i>
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-info" id="btnImportCsv">
                         <i class="fa-solid fa-upload"></i> Import CSV
@@ -417,22 +564,25 @@
                         <div class="dropdown-menu p-2" id="ai-columns-menu"
                             style="max-height: 60vh; overflow-y: auto; min-width: 220px;"></div>
                     </div>
-                    <span class="badge bg-light text-dark align-self-center ms-auto"
+                    <div id="ai-search-wrap" class="position-relative">
+                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"
+                            style="position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #adb5bd; font-size: 12px; pointer-events: none;"></i>
+                        <input type="text" id="ai-search" class="form-control form-control-sm"
+                            placeholder="Search all columns (case-insensitive)..."
+                            style="padding-left: 28px;">
+                    </div>
+                    <span id="hold_issue_total_count_wrap" class="badge bg-light text-dark align-self-center"
                         title="Total active error groups">Total: <span id="hold_issue_total_count">0</span></span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="all-issues-table-wrapper"
-                    style="height: calc(100vh - 220px); display: flex; flex-direction: column;">
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="ai-search" class="form-control form-control-sm"
-                            placeholder="Search all columns (case-insensitive)...">
-                    </div>
-                    <div class="ai-loader-wrap" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                    style="height: calc(100vh - 220px); min-height: 320px; display: flex; flex-direction: column;">
+                    <div class="ai-loader-wrap" style="flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0;">
                         <div id="ai-main-loader" class="ai-loader">
                             <div class="spinner-border spinner-border-sm" role="status"></div> Loading issues…
                         </div>
-                        <div id="all-issues-tabulator" style="flex: 1;"></div>
+                        <div id="all-issues-tabulator" style="flex: 1 1 auto; min-height: 0;"></div>
                     </div>
                 </div>
             </div>
@@ -447,11 +597,33 @@
                 <span class="badge bg-light text-dark" id="hold_issue_history_total_count">0</span>
             </div>
             <div class="card-body" style="padding: 0;">
-                <div class="ai-loader-wrap" style="height: 60vh;">
+                <div class="ai-loader-wrap" id="all-issues-history-wrapper"
+                    style="height: 60vh; min-height: 320px; display: flex; flex-direction: column;">
                     <div id="ai-history-loader" class="ai-loader d-none">
                         <div class="spinner-border spinner-border-sm" role="status"></div> Loading history…
                     </div>
-                    <div id="all-issues-history-tabulator" style="height: 100%;"></div>
+                    <div id="all-issues-history-tabulator" style="flex: 1 1 auto; min-height: 0;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ── Row Details Modal (read-only — opened by the Details column magnifier) ── --}}
+    <div class="modal fade" id="allIssuesDetailsModal" tabindex="-1" aria-hidden="true" aria-labelledby="allIssuesDetailsModalLabel">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="allIssuesDetailsModalLabel">
+                        <i class="bi bi-search me-2"></i>Issue details
+                        <span class="text-muted small ms-1" id="allIssuesDetailsModalSubtitle"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="allIssuesDetailsModalBody">
+                    {{-- Populated by openDetailsModal() in JS --}}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -474,7 +646,7 @@
                             c_action_1, c_action_1_remark, department</code>
                     </p>
                     <p class="text-muted small mb-3">
-                        Required: <strong>sku</strong>, <strong>qty</strong>, <strong>issue</strong> (Root Cause Found),
+                        Required: <strong>sku</strong>, <strong>qty</strong>, <strong>issue</strong> (Root Cause),
                         <strong>department</strong>. Use multiple departments separated by <strong>|</strong> or
                         <strong>,</strong>
                         (e.g. <code>Dispatch|QC</code>). Other columns are optional.
@@ -574,14 +746,17 @@
 
                             <div class="col-md-6">
                                 <label for="hold_issue_marketplace_1" class="form-label">MKT</label>
-                                <input type="text" class="form-control" id="hold_issue_marketplace_1"
-                                    name="marketplace_1" list="hold_issue_marketplace_datalist"
-                                    placeholder="Select Marketplace">
-                                <datalist id="hold_issue_marketplace_datalist">
-                                    @foreach ($marketplaces ?? collect() as $marketplace)
-                                        <option value="{{ $marketplace }}"></option>
+                                {{-- Options show the channel ALIAS to the user
+                                     (e.g. "Ebay 1", "P Power") while the
+                                     submitted value remains the canonical
+                                     `channel` name from channel_master so the
+                                     backend stays untouched. --}}
+                                <select class="form-select" id="hold_issue_marketplace_1" name="marketplace_1">
+                                    <option value="">Select Marketplace</option>
+                                    @foreach ($mktChannels ?? collect() as $mkt)
+                                        <option value="{{ $mkt['channel'] }}">{{ $mkt['label'] }}</option>
                                     @endforeach
-                                </datalist>
+                                </select>
                             </div>
 
                             <div class="col-md-6">
@@ -841,7 +1016,7 @@
                             </div>
 
                             <div class="col-md-6">
-                                <label for="hold_issue_text" class="form-label">Root Cause Found</label>
+                                <label for="hold_issue_text" class="form-label">Root Cause</label>
                                 <div class="input-group">
                                     <input type="text" class="form-control" id="hold_issue_text" name="issue"
                                         list="hold_issue_root_cause_found_datalist"
@@ -1097,6 +1272,44 @@
             let editingIssueId = null;
             let skuTimer = null;
 
+            // ── Layout: keep the table wrappers anchored to the viewport so the
+            //    Tabulator (with its sticky pagination footer) is always visible
+            //    even when the toolbar wraps to multiple lines on narrow screens.
+            //    Without this, the wrapper used a fixed `calc(100vh - 220px)`,
+            //    which under-counted the toolbar height and pushed the table
+            //    (and its pagination bar) below the viewport — the user then
+            //    scrolled the page and the data + pagination scrolled out of
+            //    view, making them appear to "disappear".
+            function fitWrapperToViewport(wrapper, opts) {
+                if (!wrapper) return;
+                const bottomGap = (opts && typeof opts.bottomGap === 'number') ? opts.bottomGap : 16;
+                const minHeight = (opts && typeof opts.minHeight === 'number') ? opts.minHeight : 320;
+                const rect = wrapper.getBoundingClientRect();
+                const available = window.innerHeight - rect.top - bottomGap;
+                wrapper.style.height = Math.max(minHeight, available) + 'px';
+            }
+
+            function fitAllIssuesTables() {
+                const mainWrap = document.getElementById('all-issues-table-wrapper');
+                fitWrapperToViewport(mainWrap);
+                const historyCard = document.getElementById('holdIssueHistoryCard');
+                if (historyCard && !historyCard.classList.contains('d-none')) {
+                    fitWrapperToViewport(document.getElementById('all-issues-history-wrapper'));
+                }
+                if (table && typeof table.redraw === 'function') {
+                    try { table.redraw(true); } catch (e) {}
+                }
+                if (historyTable && typeof historyTable.redraw === 'function') {
+                    try { historyTable.redraw(true); } catch (e) {}
+                }
+            }
+
+            let fitResizeTimer = null;
+            function scheduleFitAllIssuesTables() {
+                clearTimeout(fitResizeTimer);
+                fitResizeTimer = setTimeout(fitAllIssuesTables, 80);
+            }
+
             // ── Generic helpers ────────────────────────────────────────────────
             function escapeHtml(value) {
                 const el = document.createElement('div');
@@ -1181,9 +1394,39 @@
                 return '<button class="copy-order-btn" data-copy="' + escAttr(v) + '" title="' + escAttr(v) +
                     '"><i class="bi bi-clipboard"></i></button>';
             };
+            // Loss $ — column shows the Amazon listing price for that SKU
+            // (from amazon_datsheets.price), so users can see the per-unit
+            // dollar value at a glance. The price × qty total is in the
+            // tooltip alongside it.
+            //
+            // Rounded to whole dollars in the cell (no cents) per request —
+            // exact two-decimal values still appear in the hover tooltip.
             const fmtLoss = function(cell) {
-                const v = cell.getValue();
-                return (v != null && v !== '') ? '$' + Math.round(parseFloat(v)) : '—';
+                const d = cell.getData();
+                const price = d.amz_price;
+                if (price == null || isNaN(parseFloat(price))) return '—';
+                return '$' + Math.round(Number(price)).toLocaleString();
+            };
+            const tooltipLoss = function(e, cell) {
+                const d = cell.getData();
+                const price = d.amz_price;
+                const loss = d.amz_loss;
+                if (price == null || isNaN(parseFloat(price))) {
+                    return 'No Amazon price for this SKU';
+                }
+                const orderQty = d.order_qty;
+                const qty = d.qty;
+                const lossQty = (orderQty != null && !isNaN(parseFloat(orderQty)) && parseFloat(orderQty) > 0)
+                    ? orderQty
+                    : qty;
+                const parts = ['Amazon price $' + Number(price).toFixed(2)];
+                if (lossQty != null && !isNaN(parseFloat(lossQty))) {
+                    parts.push('× qty ' + lossQty);
+                }
+                if (loss != null && !isNaN(parseFloat(loss))) {
+                    parts.push('= total loss $' + Number(loss).toFixed(2));
+                }
+                return parts.join(' ');
             };
             const fmtWhatHappened = function(cell) {
                 const t = String(cell.getValue() || '').trim();
@@ -1236,22 +1479,332 @@
                 const tip = (!fx && !rmk) ? 'No data' : (!fx ? rmk : (rmk ? fx + ': ' + rmk : fx));
                 return statusDot(!!(fx || rmk), tip);
             };
-            const fmtCtn = function() {
-                return statusDot(false, 'No matching product_master row');
+            // Show a status dot for the Instructions Item PKG column. Data is
+            // joined server-side from product_master → instructions_item_pkg.
+            // Green dot = packaging instructions exist for this SKU (full text
+            // in the native tooltip). Red dot = no SKU match in product_master
+            // or no instructions saved yet on the Dim Wt Master page.
+            const fmtCtn = function(cell) {
+                const d = cell.getData();
+                const text = String(d.instructions_item_pkg || '').trim();
+                if (!text) return statusDot(false, 'No Instructions item PKG saved for this SKU');
+                return statusDot(true, text);
             };
+            // Created At cell — shows a compact "D Mon" string (e.g. "1 Apr").
+            // The full Pacific-time timestamp is exposed via the column's
+            // `tooltip` callback (`tooltipCreatedAt`) below.
             const fmtCreatedAt = function(cell) {
                 const d = cell.getData();
-                const disp = String(d.created_at_display || d.created_at || '').trim();
-                if (!disp) return '';
+                const short = String(d.created_at_short || d.created_at_display || d.created_at || '').trim();
+                if (!short) return '';
                 const raw = d.created_at_raw ? new Date(String(d.created_at_raw).replace(' ', 'T')) : null;
                 const stale = raw && !isNaN(raw.getTime()) && (Date.now() - raw.getTime()) > 14 * 24 * 60 * 60 *
                     1000;
-                return stale ? '<span class="text-danger">' + escapeHtml(disp) + '</span>' : escapeHtml(disp);
+                return stale ? '<span class="text-danger">' + escapeHtml(short) + '</span>' : escapeHtml(short);
+            };
+
+            // Tooltip for the Created At cell — full date + time in
+            // America/Los_Angeles (Pacific), formatted server-side. Falls back
+            // to the app-timezone string if the Pacific value is missing.
+            const tooltipCreatedAt = function(e, cell) {
+                const d = cell.getData();
+                const pac = String(d.created_at_pacific || '').trim();
+                if (pac) return pac + ' (Pacific)';
+                return String(d.created_at_display || '').trim();
+            };
+
+            // Created By cell — truncate to 8 characters in the column.
+            // The full name is still exposed via the column's `tooltip`
+            // callback (the cell title attribute + Tabulator tooltip).
+            const fmtCreatedBy = function(cell) {
+                const raw = String(cell.getValue() ?? '').trim();
+                if (raw === '') return dash('');
+                const shown = raw.length > 8 ? raw.slice(0, 8) + '…' : raw;
+                return escapeHtml(shown);
+            };
+            const tooltipCreatedBy = function(e, cell) {
+                return String(cell.getValue() ?? '').trim();
+            };
+
+            // Derive a "D Mon" string (no year, no time) from whatever
+            // timestamp fields the row carries. We try, in order:
+            //   1) the server-provided `created_at_short` (e.g. "20 Jun"),
+            //   2) parse "DD-MM-YYYY HH:MM" out of `created_at_display`,
+            //   3) parse the raw DB timestamp `created_at_raw` as a Date.
+            // This way the cell never falls back to showing the full year +
+            // time, even if the server response is from a slightly older
+            // cache that didn't include `created_at_short`.
+            const SHORT_MONTH_NAMES = [
+                'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+            ];
+            function shortDateFromRow(d) {
+                const fromServer = String(d.created_at_short || '').trim();
+                if (fromServer) return fromServer;
+                const disp = String(d.created_at_display || '').trim();
+                const m = disp.match(/^(\d{1,2})[-\/](\d{1,2})[-\/]\d{2,4}/);
+                if (m) {
+                    const day = parseInt(m[1], 10);
+                    const monthIdx = parseInt(m[2], 10) - 1;
+                    if (day > 0 && monthIdx >= 0 && monthIdx < 12) {
+                        return day + ' ' + SHORT_MONTH_NAMES[monthIdx];
+                    }
+                }
+                const raw = d.created_at_raw || d.created_at;
+                if (raw) {
+                    const ts = new Date(String(raw).replace(' ', 'T'));
+                    if (!isNaN(ts.getTime())) {
+                        return ts.getDate() + ' ' + SHORT_MONTH_NAMES[ts.getMonth()];
+                    }
+                }
+                return '';
+            }
+
+            // Combined "Created By" cell — renders the user name (truncated to
+            // 8 chars) on the first line and the short "D Mon" date underneath.
+            // The hover tooltip is also combined: full name + full date+time
+            // (with year) in Pacific timezone, separated by a newline.
+            const fmtCreatedByCombo = function(cell) {
+                const d = cell.getData();
+                const rawName = String(d.created_by ?? '').trim();
+                const nameShort = rawName === ''
+                    ? '—'
+                    : (rawName.length > 8 ? rawName.slice(0, 8) + '…' : rawName);
+                const dateShort = shortDateFromRow(d);
+                const rawTs = d.created_at_raw ? new Date(String(d.created_at_raw).replace(' ', 'T')) : null;
+                const stale = rawTs && !isNaN(rawTs.getTime())
+                    && (Date.now() - rawTs.getTime()) > 14 * 24 * 60 * 60 * 1000;
+                const dateHtml = dateShort
+                    ? (stale
+                        ? '<div class="created-by-date text-danger">' + escapeHtml(dateShort) + '</div>'
+                        : '<div class="created-by-date text-muted">' + escapeHtml(dateShort) + '</div>')
+                    : '';
+                return '<div class="created-by-combo">' +
+                    '<div class="created-by-name">' + escapeHtml(nameShort) + '</div>' +
+                    dateHtml +
+                    '</div>';
+            };
+            const tooltipCreatedByCombo = function(e, cell) {
+                const d = cell.getData();
+                const name = String(d.created_by ?? '').trim();
+                const pac = String(d.created_at_pacific || '').trim();
+                const fallbackDate = String(d.created_at_display || '').trim();
+                const parts = [];
+                if (name) parts.push(name);
+                if (pac) parts.push(pac + ' (Pacific)');
+                else if (fallbackDate) parts.push(fallbackDate);
+                return parts.join('\n');
             };
             const fmtLoggedAt = function(cell) {
                 const disp = String(cell.getValue() || '').trim();
                 return disp ? escapeHtml(disp) : '';
             };
+            // Magnifier button rendered in the new "Details" column. Click handler
+            // lives in the table-level cellClick listener (it filters by field name).
+            const fmtDetails = function () {
+                return '<button type="button" class="cb-row-btn cb-details" title="View all column data for this row" aria-label="View details">' +
+                    '<i class="bi bi-search"></i>' +
+                    '</button>';
+            };
+
+            // Build one "label : value" line for the read-only details modal.
+            // `valueHtml` is inserted as raw HTML; pass already-escaped content
+            // (or use buildDetailsRow with escapeHtml) — empty values render the
+            // grey "—" placeholder so the layout is uniform.
+            function buildDetailsRow(label, valueHtml, isEmpty) {
+                const labelHtml = '<div class="ai-detail-label">' + escapeHtml(label) + '</div>';
+                const valueClass = 'ai-detail-value' + (isEmpty ? ' empty' : '');
+                const inner = isEmpty ? '—' : valueHtml;
+                return '<div class="ai-detail-row">' + labelHtml +
+                    '<div class="' + valueClass + '">' + inner + '</div></div>';
+            }
+
+            // Normalize → either an HTML-safe string or the empty marker.
+            function detailsTextRow(label, raw) {
+                const t = String(raw ?? '').trim();
+                return buildDetailsRow(label, escapeHtml(t), t === '');
+            }
+
+            // Tracking-style row: copy button + monospace text.
+            function detailsTrackingRow(label, raw) {
+                const t = String(raw ?? '').trim();
+                if (!t) return buildDetailsRow(label, '', true);
+                const html = '<span class="tracking-cell" style="display:inline-flex;align-items:center;gap:6px;">' +
+                    '<span class="tracking-full">' + escapeHtml(t) + '</span>' +
+                    '<button class="copy-tracking-btn" data-copy="' + escAttr(t) +
+                    '" title="Copy tracking"><i class="bi bi-clipboard"></i></button>' +
+                    '</span>';
+                return buildDetailsRow(label, html, false);
+            }
+
+            // Image row: shows a clickable thumbnail (open full size in new tab).
+            function detailsImageRow(label, url) {
+                const u = String(url ?? '').trim();
+                if (!u) return buildDetailsRow(label, '', true);
+                const html = '<a href="' + escAttr(u) + '" target="_blank" rel="noopener">' +
+                    '<img src="' + escAttr(u) + '" class="ai-detail-thumb" loading="lazy" alt="">' +
+                    '</a>';
+                return buildDetailsRow(label, html, false);
+            }
+
+            // Reference link row: hyperlink + raw text fallback.
+            function detailsLinkRow(label, raw) {
+                const t = String(raw ?? '').trim();
+                if (!t) return buildDetailsRow(label, '', true);
+                const href = linkHrefFromText(t);
+                const html = '<a href="' + escAttr(href) + '" target="_blank" rel="noopener noreferrer">' +
+                    escapeHtml(t) + '</a>';
+                return buildDetailsRow(label, html, false);
+            }
+
+            // Status field with green/red dot + the actual reason (root + remark, etc).
+            function detailsStatusRow(label, value, remark) {
+                const v = String(value ?? '').trim();
+                const r = String(remark ?? '').trim();
+                if (!v && !r) return buildDetailsRow(label, '', true);
+                const dot = statusDot(true, '');
+                const text = v ? (r ? v + ' — ' + r : v) : r;
+                const html = '<span class="ai-detail-status-line">' + dot + escapeHtml(text) + '</span>';
+                return buildDetailsRow(label, html, false);
+            }
+
+            // Render the body of the read-only details modal from a Tabulator row's
+            // data object. Sections mirror the visible column groups so it's easy
+            // to find a value here that is too truncated in the grid.
+            function renderDetailsModalBody(d) {
+                if (!d) return '<div class="text-muted">No data.</div>';
+
+                const lossPrice = d.amz_price;
+                const lossTotal = d.amz_loss;
+                // Rounded to whole dollars to match the Loss $ column.
+                const lossDisplay = (lossPrice == null || isNaN(parseFloat(lossPrice)))
+                    ? ''
+                    : ('$' + Math.round(Number(lossPrice)).toLocaleString() +
+                        (lossTotal != null && !isNaN(parseFloat(lossTotal))
+                            ? '  (total loss $' + Math.round(Number(lossTotal)).toLocaleString() + ')'
+                            : ''));
+
+                const action1 = String(d.action_1 || '').trim();
+                const action1Remark = String(d.action_1_remark || '').trim();
+                const actionDisplay = action1
+                    ? (action1Remark ? action1 + ' — ' + action1Remark : action1)
+                    : action1Remark;
+
+                const departments = (Array.isArray(d.departments) && d.departments.length)
+                    ? d.departments.join(', ')
+                    : (function () {
+                        const list = parseDepartmentList(d.department);
+                        return list && list.length ? list.join(', ') : (d.department || '');
+                    })();
+
+                const createdAtDisplay = String(d.created_at_pacific || d.created_at_display || d.created_at || '').trim();
+
+                const sections = [];
+
+                // Order info
+                sections.push(
+                    '<div class="ai-detail-section">' +
+                    '<div class="ai-detail-section-title">Order</div>' +
+                    detailsTextRow('SKU', d.sku) +
+                    detailsTextRow('Parent', d.parent) +
+                    detailsTextRow('Order #', d.order_number) +
+                    detailsTextRow('QTY', d.order_qty != null && d.order_qty !== '' ? d.order_qty : d.qty) +
+                    detailsTextRow('Marketplace', d.marketplace_1) +
+                    buildDetailsRow('Loss $', escapeHtml(lossDisplay), lossDisplay === '') +
+                    '</div>'
+                );
+
+                // Issue + action
+                sections.push(
+                    '<div class="ai-detail-section">' +
+                    '<div class="ai-detail-section-title">Issue</div>' +
+                    detailsTextRow('Issue?', d.what_happened) +
+                    buildDetailsRow('Action', escapeHtml(actionDisplay), actionDisplay === '') +
+                    detailsStatusRow('Root Cause', d.issue, d.issue_remark) +
+                    detailsStatusRow('Root Cause Fixed', d.c_action_1, d.c_action_1_remark) +
+                    detailsStatusRow('Instr Pkg', d.instructions_item_pkg, '') +
+                    '</div>'
+                );
+
+                // Tracking + media
+                sections.push(
+                    '<div class="ai-detail-section">' +
+                    '<div class="ai-detail-section-title">Tracking &amp; media</div>' +
+                    detailsTrackingRow('Tracking', d.tracking_number) +
+                    detailsTrackingRow('Track R (replacement)', d.replacement_tracking) +
+                    detailsImageRow('SKU image', d.image_url) +
+                    detailsImageRow('Img 1', d.image_1_url) +
+                    detailsImageRow('Img 2', d.image_2_url) +
+                    detailsLinkRow('Link', d.issue_link) +
+                    '</div>'
+                );
+
+                // Replacement / refund detail (only render fields that exist).
+                const replacementParts = [];
+                if (String(d.replacement_sku || '').trim() !== '') {
+                    replacementParts.push(detailsTextRow('Replacement SKU', d.replacement_sku));
+                }
+                if (d.replacement_qty_sending != null && String(d.replacement_qty_sending).trim() !== '') {
+                    replacementParts.push(detailsTextRow('Qty sending', d.replacement_qty_sending));
+                }
+                if (d.outgoing_needed != null && String(d.outgoing_needed).trim() !== '') {
+                    const yn = String(d.outgoing_needed) === '1' || d.outgoing_needed === true ? 'Yes' : 'No';
+                    replacementParts.push(detailsTextRow('Outgoing needed', yn));
+                }
+                if (d.refund_amount != null && String(d.refund_amount).trim() !== '') {
+                    const amt = '$' + Number(d.refund_amount).toFixed(2);
+                    replacementParts.push(buildDetailsRow('Refund amount', escapeHtml(amt), false));
+                }
+                if (String(d.refund_type || '').trim() !== '') {
+                    replacementParts.push(detailsTextRow('Refund type', d.refund_type));
+                }
+                if (replacementParts.length) {
+                    sections.push(
+                        '<div class="ai-detail-section">' +
+                        '<div class="ai-detail-section-title">Replacement / refund</div>' +
+                        replacementParts.join('') +
+                        '</div>'
+                    );
+                }
+
+                // Audit
+                sections.push(
+                    '<div class="ai-detail-section">' +
+                    '<div class="ai-detail-section-title">Department &amp; audit</div>' +
+                    detailsTextRow('Department', departments) +
+                    detailsTextRow('Created by', d.created_by) +
+                    detailsTextRow('Created at', createdAtDisplay) +
+                    detailsTextRow('Close note', d.close_note) +
+                    detailsTextRow('Event', d.event_type) +
+                    detailsTextRow('Logged at', d.logged_at_display) +
+                    '</div>'
+                );
+
+                return sections.join('');
+            }
+
+            // Open the read-only details modal for a Tabulator row. Subtitle uses
+            // SKU / order # / id (whichever is populated first) so the user can see
+            // which row they're looking at.
+            function openDetailsModal(rowData) {
+                if (!rowData) return;
+                const subtitleParts = [];
+                if (rowData.sku) subtitleParts.push(String(rowData.sku));
+                if (rowData.order_number) subtitleParts.push('Ord #' + String(rowData.order_number));
+                if (rowData.id != null) subtitleParts.push('Row #' + String(rowData.id));
+                const subtitle = subtitleParts.join('  ·  ');
+
+                const subEl = document.getElementById('allIssuesDetailsModalSubtitle');
+                if (subEl) subEl.textContent = subtitle;
+
+                const body = document.getElementById('allIssuesDetailsModalBody');
+                if (body) body.innerHTML = renderDetailsModalBody(rowData);
+
+                const el = document.getElementById('allIssuesDetailsModal');
+                if (!el) return;
+                bootstrap.Modal.getOrCreateInstance(el).show();
+            }
+
             const fmtActions = function() {
                 let html =
                     '<div><button type="button" class="cb-row-btn cb-edit" title="Edit"><i class="bi bi-pencil-fill"></i></button>';
@@ -1289,11 +1842,15 @@
                     formatter: fmtImage,
                     headerSort: false
                 },
+                // SKU column auto-fits to the widest SKU in the current page
+                // (fitDataStretch layout sizes unset-width columns to data).
+                // minWidth prevents short SKUs from collapsing the header.
                 {
                     title: 'SKU',
                     field: 'sku',
-                    width: 120,
-                    formatter: fmtSku
+                    minWidth: 130,
+                    formatter: fmtSku,
+                    cssClass: 'ai-sku-cell'
                 },
                 {
                     title: 'Ord',
@@ -1304,9 +1861,10 @@
                 },
                 {
                     title: 'Loss $',
-                    field: 'total_loss',
+                    field: 'amz_price',
                     width: 70,
-                    formatter: fmtLoss
+                    formatter: fmtLoss,
+                    tooltip: tooltipLoss
                 },
                 {
                     title: 'QTY',
@@ -1327,9 +1885,11 @@
                 {
                     title: 'Issue?',
                     field: 'what_happened',
-                    width: 60,
+                    width: 140,
+                    minWidth: 100,
                     formatter: fmtWhatHappened,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    variableHeight: true
                 },
                 {
                     title: 'Action',
@@ -1337,19 +1897,36 @@
                     width: 130,
                     formatter: fmtAction
                 },
+                // Read-only "view all column data" column. Click the magnifier
+                // to open a modal that lists every relevant field for the row,
+                // including images and tracking values truncated in the grid.
+                // Placed right after the Action column for quick access.
+                {
+                    title: 'Details',
+                    field: '_details',
+                    width: 70,
+                    formatter: fmtDetails,
+                    headerSort: false,
+                    hozAlign: 'center'
+                },
+                // Hidden by default — the values are surfaced in the Details
+                // modal (magnifier in the column right after Action). Users
+                // can re-enable any of these from the "Columns" dropdown.
                 {
                     title: 'Tracking',
                     field: 'tracking_number',
                     width: 80,
                     formatter: fmtTracking,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    visible: false
                 },
                 {
                     title: 'Track R',
                     field: 'replacement_tracking',
                     width: 80,
                     formatter: fmtTracking,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    visible: false
                 },
                 {
                     title: 'Img 1',
@@ -1357,7 +1934,8 @@
                     width: 60,
                     formatter: fmtIssueImg,
                     headerSort: false,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    visible: false
                 },
                 {
                     title: 'Img 2',
@@ -1365,7 +1943,8 @@
                     width: 60,
                     formatter: fmtIssueImg,
                     headerSort: false,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    visible: false
                 },
                 {
                     title: 'Link',
@@ -1373,29 +1952,33 @@
                     width: 50,
                     formatter: fmtLink,
                     headerSort: false,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    visible: false
                 },
                 {
-                    title: 'Root Cause Found',
+                    title: 'Root Cause',
                     field: 'issue',
                     width: 60,
                     formatter: fmtRootCause,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    visible: false
                 },
                 {
-                    title: 'Instructions CTN',
+                    title: 'Instr Pkg',
                     field: '_ctn',
                     width: 60,
                     formatter: fmtCtn,
                     headerSort: false,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    visible: false
                 },
                 {
-                    title: 'Root Cause Fixed',
+                    title: 'RC Fixed',
                     field: 'c_action_1',
                     width: 60,
                     formatter: fmtRootCauseFixed,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    visible: false
                 },
                 {
                     title: 'Dept',
@@ -1404,28 +1987,27 @@
                     variableHeight: true,
                     formatter: fmtDept,
                 },
-                {
-                    title: 'Close',
-                    field: '_actions',
-                    width: 70,
-                    formatter: fmtActions,
-                    headerSort: false,
-                    hozAlign: 'center',
-                    frozen: true
-                },
+                // Combined Created By + Created At column. The cell shows the
+                // user name (truncated) on top and the short date below; the
+                // hover tooltip shows the full name + full Pacific timestamp.
                 {
                     title: 'Created By',
                     field: 'created_by',
-                    width: 100,
-                    formatter: function(c) {
-                        return dash(c.getValue());
-                    }
+                    width: 88,
+                    formatter: fmtCreatedByCombo,
+                    tooltip: tooltipCreatedByCombo
                 },
+                // Action buttons (edit + archive) — pinned to the right edge
+                // so they remain visible regardless of horizontal scroll.
                 {
-                    title: 'Created At',
-                    field: 'created_at_display',
-                    width: 120,
-                    formatter: fmtCreatedAt
+                    title: 'Close',
+                    field: '_actions',
+                    width: 10,
+                    minWidth: 10,
+                    formatter: fmtActions,
+                    headerSort: false,
+                    hozAlign: 'center',
+                   
                 },
             ];
 
@@ -1441,11 +2023,13 @@
                     formatter: fmtImage,
                     headerSort: false
                 },
+                // SKU column auto-fits to the widest SKU in the current page.
                 {
                     title: 'SKU',
                     field: 'sku',
-                    width: 120,
-                    formatter: fmtSku
+                    minWidth: 130,
+                    formatter: fmtSku,
+                    cssClass: 'ai-sku-cell'
                 },
                 {
                     title: 'Ord',
@@ -1473,9 +2057,11 @@
                 {
                     title: 'Issue?',
                     field: 'what_happened',
-                    width: 60,
+                    width: 140,
+                    minWidth: 100,
                     formatter: fmtWhatHappened,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    variableHeight: true
                 },
                 {
                     title: 'Action',
@@ -1483,19 +2069,33 @@
                     width: 130,
                     formatter: fmtAction
                 },
+                // Read-only details modal — same magnifier as the main grid.
+                // Placed right after the Action column for quick access.
+                {
+                    title: 'Details',
+                    field: '_details',
+                    width: 70,
+                    formatter: fmtDetails,
+                    headerSort: false,
+                    hozAlign: 'center'
+                },
+                // Hidden by default — values are visible via the Details
+                // magnifier modal. Users can re-enable from the Columns menu.
                 {
                     title: 'Tracking',
                     field: 'tracking_number',
                     width: 80,
                     formatter: fmtTracking,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    visible: false
                 },
                 {
                     title: 'Track R',
                     field: 'replacement_tracking',
                     width: 80,
                     formatter: fmtTracking,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    visible: false
                 },
                 {
                     title: 'Img 1',
@@ -1503,7 +2103,8 @@
                     width: 60,
                     formatter: fmtIssueImg,
                     headerSort: false,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    visible: false
                 },
                 {
                     title: 'Img 2',
@@ -1511,7 +2112,8 @@
                     width: 60,
                     formatter: fmtIssueImg,
                     headerSort: false,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    visible: false
                 },
                 {
                     title: 'Link',
@@ -1519,29 +2121,33 @@
                     width: 50,
                     formatter: fmtLink,
                     headerSort: false,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    visible: false
                 },
                 {
-                    title: 'Root Cause Found',
+                    title: 'Root Cause',
                     field: 'issue',
                     width: 60,
                     formatter: fmtRootCause,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    visible: false
                 },
                 {
-                    title: 'Instructions CTN',
+                    title: 'Instr Pkg',
                     field: '_ctn',
                     width: 60,
                     formatter: fmtCtn,
                     headerSort: false,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    visible: false
                 },
                 {
-                    title: 'Root Cause Fixed',
+                    title: 'RC Fixed',
                     field: 'c_action_1',
                     width: 60,
                     formatter: fmtRootCauseFixed,
-                    hozAlign: 'center'
+                    hozAlign: 'center',
+                    visible: false
                 },
                 {
                     title: 'Dept',
@@ -1553,7 +2159,7 @@
                 {
                     title: 'Close',
                     field: 'close_note',
-                    width: 110,
+                   
                     formatter: function(c) {
                         return dash(c.getValue());
                     }
@@ -1569,10 +2175,9 @@
                 {
                     title: 'Created By',
                     field: 'created_by',
-                    width: 100,
-                    formatter: function(c) {
-                        return dash(c.getValue());
-                    }
+                    width: 72,
+                    formatter: fmtCreatedBy,
+                    tooltip: tooltipCreatedBy
                 },
                 {
                     title: 'Logged At',
@@ -1636,7 +2241,14 @@
 
                 table.on('cellClick', function(e, cell) {
                     if (handleCopyClick(e)) return;
-                    if (cell.getField() !== '_actions') return;
+                    const field = cell.getField();
+                    if (field === '_details') {
+                        const btn = e.target.closest('button');
+                        if (!btn) return;
+                        openDetailsModal(cell.getRow().getData());
+                        return;
+                    }
+                    if (field !== '_actions') return;
                     const btn = e.target.closest('button');
                     if (!btn) return;
                     const data = cell.getRow().getData();
@@ -1650,6 +2262,9 @@
                 // After first render, schedule non-critical work without blocking.
                 table.on('tableBuilt', function() {
                     applyFilters();
+                    // Re-fit the wrapper now that the header is measured so the
+                    // pagination footer is guaranteed to sit inside the viewport.
+                    fitAllIssuesTables();
                     const idle = window.requestIdleCallback || function(fn) {
                         return setTimeout(fn, 1);
                     };
@@ -1682,8 +2297,16 @@
                     },
                     columns: historyColumns,
                 });
-                historyTable.on('cellClick', function(e) {
-                    handleCopyClick(e);
+                historyTable.on('cellClick', function(e, cell) {
+                    if (handleCopyClick(e)) return;
+                    if (cell && cell.getField && cell.getField() === '_details') {
+                        const btn = e.target.closest('button');
+                        if (!btn) return;
+                        openDetailsModal(cell.getRow().getData());
+                    }
+                });
+                historyTable.on('tableBuilt', function() {
+                    fitAllIssuesTables();
                 });
             }
 
@@ -1693,8 +2316,9 @@
                 if (!menu) return;
                 const labels = {
                     image_url: 'Image',
-                    _ctn: 'Instructions CTN',
+                    _ctn: 'Instr Pkg',
                     _actions: 'Close',
+                    _details: 'Details',
                     created_at_display: 'Created At'
                 };
                 menu.innerHTML = '';
@@ -1791,8 +2415,22 @@
                     created_by: row?.created_by ?? 'System',
                     created_at_raw: row?.created_at ?? '',
                     created_at_display: row?.created_at_display ?? row?.created_at ?? '',
+                    // Compact date string ("20 Jun") + Pacific-timezone full
+                    // timestamp used by the combined Created By cell + tooltip.
+                    created_at_short: row?.created_at_short ?? '',
+                    created_at_pacific: row?.created_at_pacific ?? '',
                     order_number: row?.order_number ?? '',
                     total_loss: row?.total_loss ?? null,
+                    // Amazon datasheet price + derived total loss used by the
+                    // Loss $ column. These come from buildAmazonPriceMap() on
+                    // the server; they MUST be carried through normalizeRecord
+                    // or the cell silently falls back to "—".
+                    amz_price: row?.amz_price ?? null,
+                    amz_loss: row?.amz_loss ?? null,
+                    // Instructions item PKG text used by the Instr Pkg dot
+                    // formatter (server-joined from product_master →
+                    // instructions_item_pkg).
+                    instructions_item_pkg: row?.instructions_item_pkg ?? null,
                     refund_type: row?.refund_type ?? '',
                     refund_amount: row?.refund_amount ?? null,
                     replacement_sku: row?.replacement_sku ?? '',
@@ -1837,6 +2475,9 @@
                     created_by: row?.created_by ?? 'System',
                     order_number: row?.order_number ?? '',
                     logged_at_display: row?.logged_at_display ?? row?.logged_at ?? '',
+                    // Carry through history-table server fields so the same
+                    // Instr Pkg column / combined Created By cell work there.
+                    instructions_item_pkg: row?.instructions_item_pkg ?? null,
                 };
             }
 
@@ -2315,6 +2956,24 @@
                 grp.appendChild(opt);
             }
 
+            // Preserve legacy / unknown marketplace values when opening an
+            // existing issue for edit. The MKT <select> is sourced from
+            // channel_master, but some older rows store a marketplace_1 that
+            // no longer matches any channel (or matches by a different cased
+            // spelling). Without this helper the select would silently reset
+            // to "" and the user could accidentally lose the original value.
+            function ensureMarketplaceOptionPresent(value) {
+                const v = String(value || '').trim();
+                if (!v) return;
+                const sel = document.getElementById('hold_issue_marketplace_1');
+                if (!sel) return;
+                if (Array.from(sel.options).some(o => o.value === v)) return;
+                const opt = document.createElement('option');
+                opt.value = v;
+                opt.textContent = v + ' (legacy)';
+                sel.appendChild(opt);
+            }
+
             async function addWhatHappenedOption() {
                 const value = String(prompt('Enter new issue type') || '').trim();
                 if (!value) return;
@@ -2732,6 +3391,7 @@
                 qtyInput.value = record.qty ?? '';
                 orderQtyInput.value = record.order_qty ?? '';
                 parentInput.value = record.parent || '';
+                ensureMarketplaceOptionPresent(record.marketplace_1);
                 marketplace1Input.value = record.marketplace_1 || '';
                 ensureWhatHappenedOptionPresent(record.what_happened);
                 whatHappenedInput.value = record.what_happened || '';
@@ -3265,7 +3925,7 @@
                     URL.revokeObjectURL(url);
                 }
                 const headers = ['#', 'SKU', 'Order Number', 'Order QTY', 'MKT', 'Issue?', 'Action', 'Action Remark',
-                    'Tracking', 'Link', 'Track R', 'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed',
+                    'Tracking', 'Link', 'Track R', 'Root Cause', 'Root Cause Remark', 'Root Cause Fixed',
                     'Root Cause Fixed Remark', 'Dept', 'Created By', 'Created At'
                 ];
                 const data = holdIssueRows.map(r => [
@@ -3812,6 +4472,9 @@
                     const card = document.getElementById('holdIssueHistoryCard');
                     card.classList.remove('d-none');
                     loadHoldIssueHistoryRows();
+                    // The history card was display:none, so its wrapper had no
+                    // measurable position; size it now that it's visible.
+                    fitAllIssuesTables();
                     card.scrollIntoView({
                         behavior: 'smooth',
                         block: 'start'
@@ -3891,6 +4554,21 @@
                 toggleAction1RemarkField();
                 toggleCAction1RemarkField();
                 wireUi();
+                // Size the table wrappers to the viewport before fetching rows
+                // so the placeholder loader sits in the correct area.
+                fitAllIssuesTables();
+                window.addEventListener('resize', scheduleFitAllIssuesTables);
+                window.addEventListener('orientationchange', scheduleFitAllIssuesTables);
+                // Toolbar can wrap to multiple lines (it has many buttons + badges)
+                // which changes the offset of the table wrapper; watch the card
+                // for size changes and re-fit.
+                if (typeof ResizeObserver !== 'undefined') {
+                    const cardEl = document.querySelector('#all-issues-table-wrapper')?.closest('.card');
+                    if (cardEl) {
+                        const ro = new ResizeObserver(scheduleFitAllIssuesTables);
+                        ro.observe(cardEl);
+                    }
+                }
                 // Fetch first, then build the Tabulator with the resolved rows
                 // (overallAmazon-style). The custom #ai-main-loader overlay is
                 // already visible in the DOM, so the user sees feedback immediately.

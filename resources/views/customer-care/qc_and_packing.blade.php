@@ -38,6 +38,80 @@
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <style>
+        /* ---------------------------------------------------------------
+           Add/Edit Issue modal: lock to the viewport with a real flex
+           layout so the form body is the only thing that scrolls — the
+           Save button (footer) and header always stay visible.
+
+           Mirrors the working layout used on /customer-care/all-issues
+           (#ordersOnHoldIssueModal block in all_issues.blade.php), with
+           one extra rule: this partial wraps body+footer in a <form>, so
+           the form must also be a flex column to forward height down.
+           --------------------------------------------------------------- */
+        #ordersOnHoldIssueModal {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100% !important;
+            height: 100vh !important;
+            overflow: hidden !important;
+            z-index: 1060 !important;
+        }
+        #ordersOnHoldIssueModal .modal-dialog {
+            max-width: 800px !important;
+            width: calc(100% - 2rem) !important;
+            max-height: calc(100vh - 1rem) !important;
+            height: calc(100vh - 1rem) !important;
+            margin: 0.5rem auto !important;
+            display: flex !important;
+            align-items: stretch !important;
+        }
+        #ordersOnHoldIssueModal .modal-content {
+            max-height: 100% !important;
+            height: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            overflow: hidden !important;
+            background: #fff !important;
+        }
+        #ordersOnHoldIssueModal .modal-header,
+        #ordersOnHoldIssueModal .modal-footer {
+            flex: 0 0 auto !important;
+        }
+        #ordersOnHoldIssueModal #ordersOnHoldIssueForm {
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+        }
+        #ordersOnHoldIssueModal .modal-body {
+            flex: 1 1 auto !important;
+            overflow-y: auto !important;
+            min-height: 0 !important;
+            /* Visible default-thickness scrollbar (Firefox) */
+            scrollbar-width: auto;
+            scrollbar-color: #6c757d #f1f3f5;
+        }
+        /* Visible scrollbar (WebKit / Blink) */
+        #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar {
+            width: 14px;
+        }
+        #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar-track {
+            background: #f1f3f5;
+            border-radius: 8px;
+        }
+        #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar-thumb {
+            background-color: #adb5bd;
+            border: 3px solid #f1f3f5;
+            border-radius: 8px;
+        }
+        #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar-thumb:hover {
+            background-color: #6c757d;
+        }
+
         .orders-hold-table {
             table-layout: auto;
             width: 100%;
@@ -981,6 +1055,12 @@
                                     @endif
                                     <th class="orders-hold-col-close">Close</th>
                                     <th class="orders-hold-col-created-by">Created By</th>
+                                    {{-- Optional Dept column rendered AFTER Created By
+                                         (used by /customer-care/carrier-and-claim where
+                                         the original Dept column is hidden). --}}
+                                    @if ($showDepartmentColumnAfterCreatedBy ?? false)
+                                        <th class="orders-hold-col-dept">Dept</th>
+                                    @endif
                                     @if (!($createdAtColumnAfterTrack ?? false))
                                         <th class="orders-hold-col-created-at">Created At</th>
                                         @if ($showClaimFiledColumn ?? false)
@@ -997,7 +1077,7 @@
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="{{ ($showDispatchExtras ?? false ? 22 : ($showOrderIdField ?? false ? 17 : 16)) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 3 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) }}"
+                                    <td colspan="{{ ($showDispatchExtras ?? false ? 22 : ($showOrderIdField ?? false ? 17 : 16)) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 3 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) }}"
                                         class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
@@ -1051,6 +1131,10 @@
                                     <th class="orders-hold-col-action">Close</th>
                                     <th class="orders-hold-col-action">Event</th>
                                     <th class="orders-hold-col-created-by">Created By</th>
+                                    {{-- See main table: optional Dept column after Created By. --}}
+                                    @if ($showDepartmentColumnAfterCreatedBy ?? false)
+                                        <th class="orders-hold-col-dept">Dept</th>
+                                    @endif
                                     @if (!($createdAtColumnAfterTrack ?? false))
                                         <th class="orders-hold-col-created-at">Logged At</th>
                                     @endif
@@ -1058,7 +1142,7 @@
                             </thead>
                             <tbody id="hold_issue_history_table_body">
                                 <tr id="hold_issue_history_empty_row">
-                                    <td colspan="{{ ($showOrderIdField ?? false ? 18 : 17) + ($showDispatchExtras ?? false ? 4 : 0) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 3 : 0) }}"
+                                    <td colspan="{{ ($showOrderIdField ?? false ? 18 : 17) + ($showDispatchExtras ?? false ? 4 : 0) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 3 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) }}"
                                         class="text-center text-muted py-4">No history found.</td>
                                 </tr>
                             </tbody>
@@ -1080,18 +1164,27 @@
                 </div>
                 <div class="modal-body">
                     <div id="importCsvAlert" class="d-none mb-3"></div>
+                    {{-- Build the CSV header sample as a single string in PHP. Using
+                         inline `@if (cond) ... @endif` directives here was breaking
+                         Blade's compileStatements regex because the literal
+                         `@if (...)`/`@endif` substrings collided with real directives
+                         elsewhere in this file (notably the modal's #sku-rows-wrapper
+                         and #ordersOnHoldIssueModal blocks), causing Blade's
+                         `replaceFirstStatement` strpos to swap the wrong occurrence
+                         and leave the real directives as literal text in the output. --}}
+                    @php
+                        $csvActionRemarkPart   = ($hideActionRemark ?? false) ? '' : ', action_1_remark';
+                        $csvDispatchExtrasPart = ($showDispatchExtras ?? false) ? ', tracking_number, issue_link' : '';
+                        $csvOrderNumberPart    = ($showOrderIdField ?? false)   ? 'sku, order_number (or order id / order_id), qty, order_qty, parent, marketplace_1,'
+                                                                                : 'sku, qty, order_qty, parent, marketplace_1,';
+                        $csvSampleHeaders = $csvOrderNumberPart
+                            . ' what_happened, action_1' . $csvActionRemarkPart
+                            . $csvDispatchExtrasPart
+                            . ', replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark, department';
+                    @endphp
                     <p class="text-muted small mb-2">
                         Upload a CSV file with the following columns (header row required):<br>
-                        <code>
-                            @if ($showOrderIdField ?? false)
-                                sku, order_number (or order id / order_id), qty, order_qty, parent, marketplace_1,
-                                what_happened, action_1@if (!($hideActionRemark ?? false)), action_1_remark@endif@if ($showDispatchExtras ?? false), tracking_number, issue_link@endif, replacement_tracking, issue, issue_remark, c_action_1,
-                                    c_action_1_remark, department
-                                @else
-                                    sku, qty, order_qty, parent, marketplace_1, what_happened, action_1@if (!($hideActionRemark ?? false)), action_1_remark@endif@if ($showDispatchExtras ?? false), tracking_number, issue_link@endif, replacement_tracking, issue, issue_remark, c_action_1,
-                                        c_action_1_remark, department
-                                    @endif
-                        </code>
+                        <code>{{ $csvSampleHeaders }}</code>
                     </p>
                     <p class="text-muted small mb-3">
                         Required: <strong>sku</strong>, <strong>qty</strong>, <strong>issue</strong> (Root Cause Found),
@@ -2599,6 +2692,9 @@
                     @endif
                     '<td class="orders-hold-close-cell">' + buttonsHtml + '</td>' +
                         '<td>' + escapeHtml(row.created_by) + '</td>' +
+                        @if ($showDepartmentColumnAfterCreatedBy ?? false)
+                            '<td>' + escapeHtml(rowDepartments(row).join(', ') || row.department || '—') + '</td>' +
+                        @endif
                         @if (!($createdAtColumnAfterTrack ?? false))
                             issueRecordDateTdHtml(row.created_at) +
                         @endif
@@ -2690,6 +2786,9 @@
                     '<td>' + escapeHtml(row.close_note) + '</td>' +
                         '<td>' + escapeHtml(row.event_type) + '</td>' +
                         '<td>' + escapeHtml(row.created_by) + '</td>' +
+                        @if ($showDepartmentColumnAfterCreatedBy ?? false)
+                            '<td>' + escapeHtml(rowDepartments(row).join(', ') || row.department || '—') + '</td>' +
+                        @endif
                         @if (!($createdAtColumnAfterTrack ?? false))
                             issueRecordDateTdHtml(row.logged_at) +
                         @endif

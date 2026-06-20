@@ -1,9 +1,9 @@
 {!! view('customer-care.qc_and_packing', [
-    'pageTitle' => 'Carrier Issue',
-    'addIssueButtonText' => 'Carrier Issue',
+    'pageTitle' => 'Carrier Scan Issues',
+    'addIssueButtonText' => 'Carrier Scan Issues',
     'hideIntroBanner' => true,
     'recordsTitle' => '',
-    'modalTitle' => 'Carrier Issue',
+    'modalTitle' => 'Carrier Scan Issues',
     'skuDetailsUrl' => route('customer.care.dispatch.issues.sku.details'),
     'recordsListUrl' => route('customer.care.dispatch.issues.list.index'),
     'recordsStoreUrl' => route('customer.care.dispatch.issues.list.store'),
@@ -17,9 +17,12 @@
     'marketplaces' => $marketplaces ?? collect(),
     'showDispatchExtras' => true,
     'defaultDepartmentFilter' => 'Carrier Issue',
-    'lockedDepartment' => 'Carrier Issue',
-    'hideDepartmentFieldInModal' => true,
+    // Department field is shown in the modal as a multi-select (same UX as
+    // /customer-care/all-issues). The page-level filter still defaults to
+    // "Carrier Issue" via `defaultDepartmentFilter`, but records can be
+    // tagged with multiple departments.
     'hideDepartmentColumnAndFilter' => true,
+    'showDepartmentColumnAfterCreatedBy' => true,
     'hideRootCauseAndInstructionsCtnColumns' => true,
     'createdAtColumnAfterTrack' => true,
     'showClaimsSummaryBadges' => true,

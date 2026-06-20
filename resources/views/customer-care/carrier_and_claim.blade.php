@@ -18,6 +18,10 @@
     'showDispatchExtras' => true,
     'defaultDepartmentFilter' => 'Carrier',
     'hideDepartmentColumnAndFilter' => true,
+    // Render the Department column AFTER the Created By column instead of
+    // its default position, so the user can see which department(s) the
+    // ticket belongs to without bringing back the dropdown filter.
+    'showDepartmentColumnAfterCreatedBy' => true,
     'hideRootCauseAndInstructionsCtnColumns' => true,
     'createdAtColumnAfterTrack' => true,
     'showClaimsSummaryBadges' => true,

@@ -16,6 +16,7 @@ class CustomerFollowup extends Model
         'next_followup_at', 'assigned_executive', 'original_executive', 'executive_history',
         'created_by_user_id',
         'comments', 'internal_remarks', 'reference_link',
+        'image_path',
         'resolved_at',
     ];
 

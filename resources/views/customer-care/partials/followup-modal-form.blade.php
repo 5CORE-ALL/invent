@@ -48,5 +48,40 @@
             <input type="url" name="reference_link" id="reference_link" class="form-control" placeholder="https://">
             <div class="invalid-feedback d-block" data-error-for="reference_link"></div>
         </div>
+        <div class="col-12 mb-3">
+            <label for="followup_image" class="form-label">
+                Attach image
+                <small class="text-muted">(optional &mdash; JPG / PNG / WEBP / GIF, must be under <strong>1 MB</strong>)</small>
+            </label>
+            <input type="file" name="image" id="followup_image"
+                   class="form-control"
+                   accept="image/png,image/jpeg,image/jpg,image/webp,image/gif">
+            <div class="invalid-feedback d-block" data-error-for="image"></div>
+
+            <div id="followup_image_preview_wrap" class="mt-2 d-none">
+                <div class="d-flex align-items-start gap-3 p-2 border rounded bg-light">
+                    <img id="followup_image_preview"
+                         src="" alt="Selected image preview"
+                         style="max-width:120px;max-height:120px;object-fit:cover;border-radius:6px;border:1px solid #dee2e6;">
+                    <div class="flex-grow-1 small">
+                        <div class="text-muted">
+                            <span id="followup_image_preview_label">Selected image</span>
+                        </div>
+                        <div class="text-muted" id="followup_image_preview_meta"></div>
+                        <div class="mt-2 d-flex flex-wrap gap-2">
+                            <a href="#" id="followup_image_preview_open" target="_blank" rel="noopener"
+                               class="btn btn-sm btn-outline-primary d-none">
+                                <i class="mdi mdi-open-in-new"></i> Open full size
+                            </a>
+                            <button type="button" class="btn btn-sm btn-outline-danger" id="followup_image_remove_btn">
+                                <i class="mdi mdi-delete"></i> Remove image
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {{-- Set to "1" by Remove image button when editing an existing image --}}
+            <input type="hidden" name="remove_image" id="followup_remove_image" value="">
+        </div>
     </div>
 </form>

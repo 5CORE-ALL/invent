@@ -152,6 +152,86 @@
             padding: 6px 12px;
         }
 
+        /* Custom SKU autocomplete search */
+        .custom-sku-search {
+            position: relative;
+        }
+        .custom-sku-search .input-group-text {
+            background: #f1f5fb;
+        }
+        .custom-sku-search .row-sku-search.is-selected {
+            background-color: #e8f5e9;
+            border-color: #198754;
+            font-weight: 600;
+        }
+        .custom-sku-search .sku-clear-btn {
+            display: none;
+        }
+        .custom-sku-search.has-value .sku-clear-btn {
+            display: inline-flex;
+            align-items: center;
+        }
+        .sku-search-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            z-index: 1080;
+            max-height: 280px;
+            overflow-y: auto;
+            background: #fff;
+            border: 1px solid #ced4da;
+            border-top: none;
+            border-radius: 0 0 0.375rem 0.375rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+            display: none;
+        }
+        .sku-search-dropdown.show {
+            display: block;
+        }
+        .sku-search-dropdown .sku-result-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            border-bottom: 1px solid #f1f1f1;
+            line-height: 1.3;
+        }
+        .sku-search-dropdown .sku-result-item:last-child {
+            border-bottom: none;
+        }
+        .sku-search-dropdown .sku-result-item:hover,
+        .sku-search-dropdown .sku-result-item.active {
+            background-color: #2c6ed5;
+            color: #fff;
+        }
+        .sku-search-dropdown .sku-result-empty,
+        .sku-search-dropdown .sku-result-hint {
+            padding: 12px;
+            color: #6c757d;
+            font-style: italic;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+        .sku-search-dropdown .sku-result-more {
+            padding: 6px 12px;
+            color: #6c757d;
+            font-size: 0.8rem;
+            background: #f8f9fa;
+            text-align: center;
+            border-top: 1px solid #e9ecef;
+        }
+        .sku-search-dropdown mark {
+            background: #fff3cd;
+            padding: 0;
+            font-weight: 700;
+            color: inherit;
+        }
+        .sku-result-item.active mark,
+        .sku-result-item:hover mark {
+            background: rgba(255, 255, 255, 0.35);
+            color: #fff;
+        }
+
     </style>
 @endsection
 
@@ -328,7 +408,7 @@
                                     <div class="modal-body">
                                         <div class="alert alert-info mb-3">
                                             <i class="fas fa-info-circle me-2"></i>
-                                            <strong>{{ count($skus ?? []) }} SKUs</strong> available. Use the SKU dropdown to search by typing any part of the SKU name.
+                                            <strong>{{ count($skus ?? []) }} SKUs</strong> available. Start typing in the SKU search box below to see matches.
                                         </div>
                                         <div id="incoming-errors" class="mb-2 text-danger"></div>
 
@@ -336,13 +416,25 @@
                                             <div class="outgoing-row border rounded p-3 mb-3" data-row="0">
                                                 <div class="row mb-2">
                                                     <div class="col-md-8">
-                                                        <label for="sku_0" class="form-label fw-bold">SKU <small class="text-muted">(Type to search)</small></label>
-                                                        <select class="form-select row-sku" id="sku_0" name="sku[]" required>
-                                                            <option value="" selected disabled>Type to search SKU...</option>
-                                                            @foreach($skus as $item)
-                                                                <option value="{{ $item->sku }}">{{ $item->sku }}</option>
-                                                            @endforeach
-                                                        </select>
+                                                        <label for="sku_search_0" class="form-label fw-bold">SKU <small class="text-muted">(Custom search &mdash; type any part of the SKU)</small></label>
+                                                        <div class="custom-sku-search" data-row="0">
+                                                            <div class="input-group">
+                                                                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                                                                <input type="text"
+                                                                       id="sku_search_0"
+                                                                       class="form-control row-sku-search"
+                                                                       placeholder="Type at least 1 character (e.g. CAMERA, PNB WD HD)..."
+                                                                       autocomplete="off"
+                                                                       aria-autocomplete="list"
+                                                                       aria-expanded="false">
+                                                                <button type="button" class="btn btn-outline-secondary sku-clear-btn" tabindex="-1" title="Clear SKU">
+                                                                    <i class="fas fa-times"></i>
+                                                                </button>
+                                                            </div>
+                                                            <input type="hidden" id="sku_0" name="sku[]" class="row-sku" value="" required>
+                                                            <div class="sku-search-dropdown" id="sku_dropdown_0" role="listbox" aria-label="SKU search results"></div>
+                                                            <div class="sku-search-status small text-muted mt-1" id="sku_status_0">No SKU selected.</div>
+                                                        </div>
                                                     </div>
                                                     <div class="col-md-2">
                                                         <label for="qty_0" class="form-label fw-bold">Qty</label>
@@ -859,8 +951,8 @@
                         const qtyVal = $row.find('input[name="qty[]"]').val();
                         if (!skuVal || skuVal === 'Select SKU' || !qtyVal || parseInt(qtyVal, 10) < 1) {
                             hasError = true;
-                            $row.find('.row-sku, input[name="qty[]"]').addClass('is-invalid');
-                            $row.append(`<div class="text-danger error-message small">Row ${idx + 1}: SKU and Qty required.</div>`);
+                            $row.find('.row-sku, .row-sku-search, input[name="qty[]"]').addClass('is-invalid');
+                            $row.append(`<div class="text-danger error-message small">Row ${idx + 1}: SKU and Qty required (pick a SKU from the search results).</div>`);
                         }
                     });
                     const reasonVal = $('#reason').val();
@@ -914,9 +1006,17 @@
                             alert(response.message || 'Refund record saved.');
                             $('#refundsModal').modal('hide');
                             $('#refundForm')[0].reset();
-                            if ($('#sku_0').data('select2')) {
-                                $('#sku_0').val(null).trigger('change');
-                            }
+                            $('.custom-sku-search').each(function () {
+                                var $w = $(this);
+                                $w.find('.row-sku').val('').trigger('change');
+                                $w.find('.row-sku-search').val('').removeClass('is-selected');
+                                $w.removeClass('has-value');
+                                $w.find('.sku-search-dropdown').removeClass('show').empty();
+                                $w.find('.sku-search-status')
+                                  .text('No SKU selected.')
+                                  .removeClass('text-success text-danger')
+                                  .addClass('text-muted');
+                            });
                             location.reload();
                         },
                         error: function (xhr) {
@@ -930,66 +1030,219 @@
 
                 var $modal = $('#refundsModal');
 
-                // Initialize Select2 only AFTER the modal is fully shown.
-                // Initializing while the modal is display:none causes Select2 to
-                // cache wrong offsets and the dropdown pops up far to the left,
-                // outside the modal (the "SKU glitch").
-                function initSkuSelect2() {
-                    if ($('#sku_0').data('select2')) {
-                        return; // already initialized
-                    }
-                    $('#sku_0').select2({
-                        dropdownParent: $modal,
-                        placeholder: "Type to search SKU...",
-                        allowClear: true,
-                        width: '100%',
-                        matcher: function(params, data) {
-                            if ($.trim(params.term) === '') {
-                                return data;
-                            }
-                            if (typeof data.text === 'undefined') {
-                                return null;
-                            }
-                            var searchTerm = params.term.toLowerCase().replace(/\s+/g, '');
-                            var dataText = data.text.toLowerCase().replace(/\s+/g, '');
-                            if (dataText.indexOf(searchTerm) > -1) {
-                                return data;
-                            }
-                            var words = params.term.toLowerCase().split(/\s+/);
-                            var allWordsFound = true;
-                            for (var i = 0; i < words.length; i++) {
-                                if (data.text.toLowerCase().indexOf(words[i]) === -1) {
-                                    allWordsFound = false;
-                                    break;
-                                }
-                            }
-                            if (allWordsFound) {
-                                return data;
-                            }
-                            return null;
-                        }
+                // ----------------------------------------------------------------
+                // Custom SKU search (replaces the old Select2 dropdown).
+                // - Plain text input + autocomplete dropdown (only matches shown).
+                // - Keyboard nav: ArrowUp/Down/Enter/Escape.
+                // - Selection writes into the hidden #sku_0 input and triggers
+                //   `change` so the existing supplier-lookup logic still fires.
+                // ----------------------------------------------------------------
+                var allSkuList = @json(($skus ?? collect())->pluck('sku')->filter(function ($s) { return $s !== null && $s !== ''; })->values()->all());
+                var SKU_RESULT_LIMIT = 50;
+
+                function escHtml(s) {
+                    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+                        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
                     });
                 }
+                function escRe(s) {
+                    return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                }
 
-                $modal.on('shown.bs.modal', function () {
-                    initSkuSelect2();
-                });
+                function highlightSku(text, term) {
+                    var safe = escHtml(text);
+                    var t = (term || '').trim();
+                    if (!t) return safe;
+                    var words = t.split(/\s+/).filter(Boolean).map(escRe);
+                    if (!words.length) return safe;
+                    var re = new RegExp('(' + words.join('|') + ')', 'gi');
+                    return safe.replace(re, '<mark>$1</mark>');
+                }
 
-                // Debug: Log all SKUs containing "PNB" to help find the exact SKU
-                var allSkus = [];
-                $('#sku_0 option').each(function() {
-                    var sku = $(this).val();
-                    if (sku && sku.trim() !== '') {
-                        allSkus.push(sku);
-                        if (sku.toUpperCase().indexOf('PNB') > -1) {
-                            console.log('Found PNB SKU:', sku);
+                function customSkuSearch(term, limit) {
+                    var t = (term || '').trim();
+                    if (!t) return { results: [], total: 0 };
+                    var lc = t.toLowerCase();
+                    var lcCondensed = lc.replace(/\s+/g, '');
+                    var words = lc.split(/\s+/).filter(Boolean);
+                    var prefix = [], substring = [], allWordsMatch = [];
+
+                    for (var i = 0; i < allSkuList.length; i++) {
+                        var s = allSkuList[i];
+                        if (!s) continue;
+                        var sLc = s.toLowerCase();
+                        var sLcCondensed = sLc.replace(/\s+/g, '');
+                        var idx = sLc.indexOf(lc);
+                        if (idx === 0) {
+                            prefix.push(s);
+                        } else if (idx > 0 || sLcCondensed.indexOf(lcCondensed) > -1) {
+                            substring.push(s);
+                        } else if (words.length > 1) {
+                            var ok = true;
+                            for (var j = 0; j < words.length; j++) {
+                                if (sLc.indexOf(words[j]) === -1) { ok = false; break; }
+                            }
+                            if (ok) allWordsMatch.push(s);
                         }
                     }
+                    var total = prefix.length + substring.length + allWordsMatch.length;
+                    var combined = prefix.concat(substring).concat(allWordsMatch);
+                    return { results: combined.slice(0, limit), total: total };
+                }
+
+                function renderSkuDropdown($wrap, term, search) {
+                    var $dd = $wrap.find('.sku-search-dropdown');
+                    var results = search.results;
+                    var html = '';
+                    if (!results.length) {
+                        html = '<div class="sku-result-empty">No matching SKUs found for "' + escHtml(term) + '"</div>';
+                    } else {
+                        for (var i = 0; i < results.length; i++) {
+                            html += '<div class="sku-result-item" role="option" data-sku="'
+                                + escHtml(results[i]) + '" data-idx="' + i + '">'
+                                + highlightSku(results[i], term) + '</div>';
+                        }
+                        if (search.total > results.length) {
+                            html += '<div class="sku-result-more">Showing first ' + results.length
+                                + ' of ' + search.total + ' matches &mdash; refine your search to narrow down.</div>';
+                        }
+                    }
+                    $dd.html(html).addClass('show');
+                    $wrap.find('.row-sku-search').attr('aria-expanded', 'true');
+                }
+
+                function hideSkuDropdown($wrap) {
+                    $wrap.find('.sku-search-dropdown').removeClass('show').empty();
+                    $wrap.find('.row-sku-search').attr('aria-expanded', 'false');
+                }
+
+                function setSkuValue($wrap, sku) {
+                    sku = sku == null ? '' : String(sku);
+                    var $hidden = $wrap.find('.row-sku');
+                    var $input = $wrap.find('.row-sku-search');
+                    var $status = $wrap.find('.sku-search-status');
+
+                    $hidden.val(sku);
+                    $input.val(sku).toggleClass('is-selected', !!sku);
+                    $wrap.toggleClass('has-value', !!sku);
+
+                    if ($status.length) {
+                        if (sku) {
+                            $status.html('Selected SKU: <strong>' + escHtml(sku) + '</strong>')
+                                   .removeClass('text-muted text-danger')
+                                   .addClass('text-success');
+                        } else {
+                            $status.text('No SKU selected.')
+                                   .removeClass('text-success text-danger')
+                                   .addClass('text-muted');
+                        }
+                    }
+
+                    $hidden.trigger('change');
+                }
+
+                function clearSkuSelection($wrap) {
+                    setSkuValue($wrap, '');
+                    $wrap.find('.row-sku-search').val('');
+                    hideSkuDropdown($wrap);
+                }
+
+                // Typing in the search input
+                $(document).on('input', '.row-sku-search', function () {
+                    var $input = $(this);
+                    var $wrap = $input.closest('.custom-sku-search');
+                    var term = $input.val();
+
+                    // Typing invalidates any prior selection (until user picks again)
+                    if ($wrap.hasClass('has-value')) {
+                        $wrap.find('.row-sku').val('').trigger('change');
+                        $wrap.removeClass('has-value');
+                        $input.removeClass('is-selected');
+                        $wrap.find('.sku-search-status')
+                             .text('No SKU selected.')
+                             .removeClass('text-success text-danger')
+                             .addClass('text-muted');
+                    }
+
+                    if (!term || !term.trim()) { hideSkuDropdown($wrap); return; }
+                    var search = customSkuSearch(term, SKU_RESULT_LIMIT);
+                    renderSkuDropdown($wrap, term, search);
                 });
-                console.log('Total SKUs loaded:', allSkus.length);
-                console.log('Search for "PNB WD HD PNK" in Select2 dropdown using the search box');
+
+                // Re-open dropdown on focus if there's a query
+                $(document).on('focus', '.row-sku-search', function () {
+                    var $input = $(this);
+                    var term = $input.val();
+                    if (!term || !term.trim()) return;
+                    var $wrap = $input.closest('.custom-sku-search');
+                    if ($wrap.hasClass('has-value')) return; // already chosen
+                    var search = customSkuSearch(term, SKU_RESULT_LIMIT);
+                    renderSkuDropdown($wrap, term, search);
+                });
+
+                // Click a result to select it
+                $(document).on('mousedown', '.sku-result-item', function (e) {
+                    e.preventDefault(); // keep input focus
+                    var sku = $(this).data('sku');
+                    var $wrap = $(this).closest('.custom-sku-search');
+                    setSkuValue($wrap, sku);
+                    hideSkuDropdown($wrap);
+                });
+
+                // Clear button
+                $(document).on('click', '.sku-clear-btn', function () {
+                    var $wrap = $(this).closest('.custom-sku-search');
+                    clearSkuSelection($wrap);
+                    $wrap.find('.row-sku-search').focus();
+                });
+
+                // Keyboard nav inside the search input
+                $(document).on('keydown', '.row-sku-search', function (e) {
+                    var $wrap = $(this).closest('.custom-sku-search');
+                    var $items = $wrap.find('.sku-result-item');
+                    var $active = $items.filter('.active');
+
+                    if (e.key === 'ArrowDown') {
+                        if (!$items.length) return;
+                        e.preventDefault();
+                        var idx = $items.index($active);
+                        idx = (idx + 1) % $items.length;
+                        $items.removeClass('active');
+                        var next = $items.eq(idx).addClass('active')[0];
+                        if (next && next.scrollIntoView) next.scrollIntoView({ block: 'nearest' });
+                    } else if (e.key === 'ArrowUp') {
+                        if (!$items.length) return;
+                        e.preventDefault();
+                        var idx2 = $items.index($active);
+                        idx2 = idx2 <= 0 ? $items.length - 1 : idx2 - 1;
+                        $items.removeClass('active');
+                        var prev = $items.eq(idx2).addClass('active')[0];
+                        if (prev && prev.scrollIntoView) prev.scrollIntoView({ block: 'nearest' });
+                    } else if (e.key === 'Enter') {
+                        if ($active.length) {
+                            e.preventDefault();
+                            setSkuValue($wrap, $active.data('sku'));
+                            hideSkuDropdown($wrap);
+                        } else if ($items.length === 1) {
+                            e.preventDefault();
+                            setSkuValue($wrap, $items.first().data('sku'));
+                            hideSkuDropdown($wrap);
+                        }
+                    } else if (e.key === 'Escape') {
+                        hideSkuDropdown($wrap);
+                    }
+                });
+
+                // Click outside closes any open dropdown
+                $(document).on('mousedown', function (e) {
+                    if (!$(e.target).closest('.custom-sku-search').length) {
+                        $('.custom-sku-search').each(function () { hideSkuDropdown($(this)); });
+                    }
+                });
+
+                // Existing supplier-lookup keeps working: triggered on hidden #sku_0 change
                 var skuSupplierTimer = null;
-                $('#sku_0').on('change', function () {
+                $(document).on('change', '#sku_0', function () {
                     var sku = $(this).val();
                     clearTimeout(skuSupplierTimer);
                     if (!sku) {
@@ -1010,17 +1263,25 @@
                             });
                     }, 200);
                 });
+
+                // Reset on modal open
                 $(document).on('click', '#openRefundModal', function () {
                     $('#refundForm')[0].reset();
                     $('#comment-char-count').text('0');
                     $('#refundModalLabel').text('Create Outgoing Refunds Records');
-                    if ($('#sku_0').data('select2')) {
-                        $('#sku_0').val(null).trigger('change');
-                    }
+                    $('.custom-sku-search').each(function () {
+                        clearSkuSelection($(this));
+                    });
                     $('#order_id').val('');
                     $('#channel_master_id').val('').trigger('change');
                     $('#supplier_id').val('').trigger('change');
                     $('#refundsModal').modal('show');
+                });
+
+                // Focus the SKU search the moment the modal is fully visible
+                $modal.on('shown.bs.modal', function () {
+                    var $first = $('#sku_search_0');
+                    if ($first.length) $first.trigger('focus');
                 });
                 $(document).on('input', '#comment', function () {
                     $('#comment-char-count').text(this.value.length);

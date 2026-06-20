@@ -76,9 +76,41 @@ class EbayTwoController extends Controller
     {
         $channelAdsPercent = app(ChannelMasterController::class)->getEbaytwoMasterAdsPercent();
 
+        // L30 units sold from ebay2_orders (period='l30') — same source the
+        // /all-marketplace-master "Qty items" column for the EbayTwo row uses,
+        // and the same shape eBay 1's tabulator-view S Qty badge uses. Fixed
+        // value rendered straight into the badge.
+        $ordersL30TotalQty = $this->fetchEbay2L30OrderQty();
+
         return view('market-places.ebay2_tabulator_view', [
-            'channelAdsPercent' => $channelAdsPercent,
+            'channelAdsPercent'  => $channelAdsPercent,
+            'ordersL30TotalQty'  => $ordersL30TotalQty,
         ]);
+    }
+
+    /**
+     * Σ ebay2_order_items.quantity for orders where period='l30'. Mirrors
+     * EbayController::fetchEbayL30OrderQty (eBay 1) so the two tabulator pages
+     * derive their S Qty badge the same way.
+     */
+    private function fetchEbay2L30OrderQty(): int
+    {
+        try {
+            $total = 0;
+            \App\Models\Ebay2Order::with('items')
+                ->where('period', 'l30')
+                ->get()
+                ->each(function ($order) use (&$total) {
+                    foreach ($order->items as $item) {
+                        $qty = (int) ($item->quantity ?? 0);
+                        if ($qty > 0) $total += $qty;
+                    }
+                });
+            return $total;
+        } catch (\Throwable $e) {
+            \Log::warning('fetchEbay2L30OrderQty failed: ' . $e->getMessage());
+            return 0;
+        }
     }
 
     public function ebay2opTabulatorView(Request $request)
