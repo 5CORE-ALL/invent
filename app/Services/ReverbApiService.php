@@ -1583,7 +1583,10 @@ class ReverbApiService
      */
     public function updateImages(string $identifier, array $images, string $mode = 'replace'): array
     {
-        $images = array_slice(array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))), 0, 12);
+        $images = array_slice(array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))), 0, 25);
+        if ($images === [] && strtolower(trim($mode)) !== 'replace') {
+            return ['success' => true, 'message' => 'No images to add; skipped.'];
+        }
         if ($images === []) {
             return ['success' => false, 'message' => 'At least one image URL is required.'];
         }

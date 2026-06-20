@@ -1286,10 +1286,16 @@ class EbayThreeApiService
             return $res;
         }
 
-        $saved = $this->saveImageUrlsToMetrics('ebay_3_metrics', $identifier, $row, $images);
+        $urlsForMetrics = isset($res['normalized_urls']) && is_array($res['normalized_urls'])
+            ? array_values($res['normalized_urls'])
+            : $images;
+
+        $saved = $this->saveImageUrlsToMetrics('ebay_3_metrics', $identifier, $row, $urlsForMetrics);
         if (! $saved) {
             $res['message'] = ($res['message'] ?? 'eBay3 images updated.').' Metrics save failed.';
         }
+
+        $res['normalized_urls'] = $urlsForMetrics;
 
         return $res;
     }

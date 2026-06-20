@@ -56,6 +56,10 @@ class ImageMasterController extends Controller
                 $metricsByMarketplace[$marketplace] = $this->loadImageMetricsBySku($table);
             }
 
+            $mainBySku = $this->loadImageMainByMarketplaceForSkus(
+                array_map(fn ($row) => $this->normalizeSku($row['SKU'] ?? null), $products)
+            );
+
             foreach ($products as &$row) {
                 $sku = $this->normalizeSku($row['SKU'] ?? null);
                 $im = [];
@@ -63,6 +67,7 @@ class ImageMasterController extends Controller
                     $im[$mp] = $metricsByMarketplace[$mp][$sku] ?? '';
                 }
                 $row['image_master'] = $im;
+                $row['image_main_by_marketplace'] = $mainBySku[$sku] ?? [];
                 $row['preview_thumb'] = $this->firstPreviewUrl($row);
             }
 
@@ -204,18 +209,32 @@ class ImageMasterController extends Controller
             'updates.*.images'       => 'required|array',          // allow empty for "clear all"
             'updates.*.images.*'     => 'nullable|string|max:2048',
             'mode'                   => 'nullable|string|in:replace,add',
+            'main_by_marketplace'    => 'nullable|array',
+            'main_by_marketplace.*'  => 'integer|min:0|max:11',
+            'dry_run'                => 'nullable|boolean',
         ]);
 
         $sku     = $this->normalizeSku($validated['sku']);
         $mode    = $validated['mode'] ?? 'replace';   // 'replace' | 'add'
+        $dryRun  = (bool) ($validated['dry_run'] ?? false);
         $allowed = array_keys($this->marketplaceTableMap());
         $results = [];
+
+        $maxImageCount = 0;
+        foreach ($validated['updates'] as $u) {
+            $maxImageCount = max($maxImageCount, count(array_values(array_filter(array_map('trim', $u['images'] ?? []), fn ($s) => $s !== ''))));
+        }
+        $mainMap = $this->resolveMainByMarketplaceForPush(
+            $sku,
+            $validated['main_by_marketplace'] ?? null,
+            $maxImageCount
+        );
 
         foreach ($validated['updates'] as $u) {
             $mp     = strtolower(trim($u['marketplace']));
             // Preserve original order — do NOT sort, trim only
             $images = array_values(array_filter(array_map('trim', $u['images'] ?? []), fn ($s) => $s !== ''));
-            $images = array_slice($images, 0, 20);
+            $originalCount = count($images);
 
             if (! in_array($mp, $allowed, true)) {
                 $results[$mp] = ['success' => false, 'message' => 'Unknown marketplace'];
@@ -228,51 +247,206 @@ class ImageMasterController extends Controller
                 continue;
             }
 
+            // Clear-all is only implemented for Shopify stores
+            if ($images === [] && $mode === 'replace' && ! in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
+                $results[$mp] = [
+                    'success' => false,
+                    'message' => 'Clear-all images is only supported for Shopify Main and Shopify PLS.',
+                ];
+                continue;
+            }
+
+            if ($images !== [] && $mode !== 'add') {
+                $mainIndex = $this->mainImageIndexFromMap($mainMap, $mp, $originalCount);
+                if ($mainIndex > 0) {
+                    $images = $this->reorderImagesWithMainFirst($images, $mainIndex);
+                }
+            }
+
+            $mainNote = '';
+            if ($images !== [] && $mode !== 'add') {
+                $mainIdx = $this->mainImageIndexFromMap($mainMap, $mp, $originalCount);
+                $mainNote = ' Main image: Image '.($mainIdx + 1).'.';
+            }
+
+            $limit = $this->marketplaceImageLimit($mp);
+            $images = array_slice($images, 0, $limit);
+            $truncatedNote = $originalCount > $limit
+                ? " Truncated from {$originalCount} to {$limit} image(s) ({$mp} limit)."
+                : '';
+
+            $effectiveMode = $mode;
+            $addModeNote = '';
+            if ($mode === 'add' && ! in_array($mp, $this->marketplacesSupportingAddMode(), true)) {
+                $effectiveMode = 'replace';
+                $addModeNote = ' Add mode is not supported for this marketplace; used replace instead.';
+            }
+
             // Rewrite localhost/127.0.0.1 storage URLs for marketplaces that fetch by URL.
             // Shopify must keep local storage URLs so its service can upload the file as base64.
             $imagesForPush = in_array($mp, ['shopify_main', 'shopify_pls'], true)
                 ? $images
                 : $this->rewriteLocalStorageUrlsToPublic($images);
 
-            $remote   = $this->pushImagesToRemote($mp, $sku, $imagesForPush, $mode);
+            if ($dryRun) {
+                $remote   = $this->dryRunPushToRemote($mp, $sku, $imagesForPush, $effectiveMode);
+                $remoteOk = (bool) ($remote['success'] ?? false);
+                $dryNote  = ' (dry run — no marketplace write).';
+                $message  = trim(($remote['message'] ?? '').$mainNote.$truncatedNote.$addModeNote.$dryNote);
+                $results[$mp] = array_merge([
+                    'success'       => $remoteOk,
+                    'dry_run'       => true,
+                    'metrics_saved' => false,
+                    'message'       => $message,
+                    'images_count'  => count($imagesForPush),
+                ], array_diff_key($remote, ['success' => 1, 'message' => 1]));
+
+                continue;
+            }
+
+            $remote   = $this->pushImagesToRemote($mp, $sku, $imagesForPush, $effectiveMode);
             $remoteOk = (bool) ($remote['success'] ?? false);
 
             $urlsForMetrics = $imagesForPush;
             if ($remoteOk && ! empty($remote['normalized_urls']) && is_array($remote['normalized_urls'])) {
                 $urlsForMetrics = array_values($remote['normalized_urls']);
             } elseif ($remoteOk && $imagesForPush !== []) {
-                // eBay, Amazon, etc. return no normalized_urls — already rewritten to public URL above
                 $urlsForMetrics = $imagesForPush;
+            } elseif ($remoteOk && $imagesForPush === []) {
+                $urlsForMetrics = [];
             }
 
-            // Only persist metrics when we have actual image URLs
             $saved = false;
-            if ($remoteOk && $imagesForPush !== []) {
+            if ($remoteOk) {
                 $saved = $this->saveImageMetricsToTable($mp, $sku, $urlsForMetrics);
                 if (in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
                     $saved = $this->saveShopifyCatalogImages($sku, $mp, $urlsForMetrics) || $saved;
                 }
             }
 
+            $message = trim(($remote['message'] ?? '').$mainNote.$truncatedNote.$addModeNote);
+            if ($remoteOk && ! $saved) {
+                $message .= ' Metrics not saved.';
+            }
+
             $results[$mp] = [
                 'success'        => $remoteOk,
                 'metrics_saved'  => $saved,
-                'message'        => ($remote['message'] ?? '').($saved ? '' : ($imagesForPush !== [] ? ' Metrics not saved.' : '')),
+                'message'        => $message,
             ];
         }
 
         $totalSuccess = collect($results)->where('success', true)->count();
         $totalFailed = collect($results)->where('success', false)->count();
-        $totalMetricsFailed = collect($results)->where('metrics_saved', false)->count();
+        $totalMetricsFailed = collect($results)->filter(
+            fn ($r) => ($r['success'] ?? false) && ! ($r['metrics_saved'] ?? false)
+        )->count();
 
         return response()->json([
             'success' => $totalFailed === 0,
+            'dry_run' => $dryRun,
             'results' => $results,
             'total_success' => $totalSuccess,
             'total_failed' => $totalFailed,
             'total_metrics_failed' => $totalMetricsFailed,
             'message' => "Updated {$totalSuccess} marketplace(s).".($totalFailed > 0 ? " {$totalFailed} failed." : '').($totalMetricsFailed > 0 ? " {$totalMetricsFailed} metrics save failed." : ''),
         ]);
+    }
+
+    /**
+     * Validate push readiness without calling marketplace write APIs (where supported).
+     *
+     * @return array<string, mixed>
+     */
+    private function dryRunPushToRemote(string $marketplace, string $sku, array $imageUrls, string $mode = 'replace'): array
+    {
+        if ($imageUrls === [] && $mode === 'replace' && in_array($marketplace, ['shopify_main', 'shopify_pls'], true)) {
+            return ['success' => true, 'message' => 'Dry run OK: would clear all Shopify images.'];
+        }
+
+        if ($imageUrls === []) {
+            return ['success' => false, 'message' => 'No images to push.'];
+        }
+
+        try {
+            switch ($marketplace) {
+                case 'amazon':
+                    return app(AmazonSpApiService::class)->dryRunUpdateImages($sku, $imageUrls);
+                case 'ebay':
+                case 'ebay2':
+                case 'ebay3':
+                    return $this->dryRunEbayPush($marketplace, $sku, $imageUrls);
+                default:
+                    return $this->dryRunGenericPush($marketplace, $sku, $imageUrls);
+            }
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage(), 'dry_run' => true];
+        }
+    }
+
+    /**
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string, dry_run?: bool}
+     */
+    private function dryRunGenericPush(string $marketplace, string $sku, array $imageUrls): array
+    {
+        $table = $this->marketplaceTableMap()[$marketplace] ?? null;
+        if ($table && Schema::hasTable($table) && Schema::hasColumn($table, 'sku')) {
+            $hasRow = DB::table($table)->where('sku', $sku)->exists();
+            if (! $hasRow) {
+                return [
+                    'success' => false,
+                    'message' => "Dry run: no {$marketplace} metrics row for SKU (listing may be missing).",
+                    'dry_run' => true,
+                ];
+            }
+        }
+
+        foreach ($imageUrls as $url) {
+            if (! preg_match('#^https?://#i', $url)) {
+                return ['success' => false, 'message' => 'Dry run: invalid image URL (must be http/https).', 'dry_run' => true];
+            }
+        }
+
+        return [
+            'success' => true,
+            'dry_run' => true,
+            'message' => 'Dry run OK: would push '.count($imageUrls).' image(s) to '.($marketplace).'.',
+        ];
+    }
+
+    /**
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string, dry_run?: bool}
+     */
+    private function dryRunEbayPush(string $marketplace, string $sku, array $imageUrls): array
+    {
+        $tableMap = [
+            'ebay' => 'ebay_metrics',
+            'ebay2' => 'ebay_2_metrics',
+            'ebay3' => 'ebay_3_metrics',
+        ];
+        $table = $tableMap[$marketplace] ?? null;
+        if (! $table || ! Schema::hasTable($table)) {
+            return ['success' => false, 'message' => 'Dry run: metrics table missing.', 'dry_run' => true];
+        }
+
+        $row = DB::table($table)->where('sku', $sku)->first();
+        if (! $row) {
+            return ['success' => false, 'message' => 'Dry run: no eBay listing row for SKU.', 'dry_run' => true];
+        }
+
+        foreach ($imageUrls as $url) {
+            if (! preg_match('#^https?://#i', $url)) {
+                return ['success' => false, 'message' => 'Dry run: invalid image URL.', 'dry_run' => true];
+            }
+        }
+
+        return [
+            'success' => true,
+            'dry_run' => true,
+            'message' => 'Dry run OK: would push '.count($imageUrls).' image(s) to '.$marketplace.'.',
+        ];
     }
 
     /**
@@ -284,10 +458,16 @@ class ImageMasterController extends Controller
             'sku' => 'required|string|max:255',
             'images' => 'present|array|max:12',
             'images.*' => 'nullable|string|max:2048',
+            'main_by_marketplace' => 'nullable|array',
+            'main_by_marketplace.*' => 'integer|min:0|max:11',
         ]);
         $sku = $this->normalizeSku($validated['sku']);
         $images = $this->normalizeStorageUrlsForImageMasterMetrics(
             array_values(array_slice($validated['images'], 0, 12))
+        );
+        $mainByMarketplace = $this->sanitizeMainByMarketplace(
+            $validated['main_by_marketplace'] ?? [],
+            count($images)
         );
 
         $product = ProductMaster::query()->where('sku', $sku)->first();
@@ -300,11 +480,20 @@ class ImageMasterController extends Controller
             $product->{$col} = $images[$i] ?? null;
         }
         $product->main_image = $images[0] ?? null;
+        if (Schema::hasColumn('product_master', 'image_main_by_marketplace_json')) {
+            $product->image_main_by_marketplace_json = $mainByMarketplace === []
+                ? null
+                : json_encode($mainByMarketplace, JSON_UNESCAPED_SLASHES);
+        }
 
         try {
             $product->save();
 
-            return response()->json(['success' => true, 'message' => 'Product Master images saved.']);
+            return response()->json([
+                'success' => true,
+                'message' => 'Product Master images saved.',
+                'image_main_by_marketplace' => $mainByMarketplace,
+            ]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
@@ -458,20 +647,31 @@ class ImageMasterController extends Controller
             return false;
         }
 
-        $payload = json_encode(array_values($imageUrls), JSON_UNESCAPED_SLASHES);
-        if ($payload === false) {
-            return false;
-        }
+        $isClear = $imageUrls === [];
 
         try {
             $now = now();
             $updatable = [];
-            if (Schema::hasColumn($table, 'image_master_json')) {
-                $updatable['image_master_json'] = $payload;
+            if ($isClear) {
+                if (Schema::hasColumn($table, 'image_master_json')) {
+                    $updatable['image_master_json'] = null;
+                }
+                if (Schema::hasColumn($table, 'image_urls')) {
+                    $updatable['image_urls'] = null;
+                }
+            } else {
+                $payload = json_encode(array_values($imageUrls), JSON_UNESCAPED_SLASHES);
+                if ($payload === false) {
+                    return false;
+                }
+                if (Schema::hasColumn($table, 'image_master_json')) {
+                    $updatable['image_master_json'] = $payload;
+                }
+                if (Schema::hasColumn($table, 'image_urls')) {
+                    $updatable['image_urls'] = $payload;
+                }
             }
-            if (Schema::hasColumn($table, 'image_urls')) {
-                $updatable['image_urls'] = $payload;
-            }
+
             if ($updatable === []) {
                 return false;
             }
@@ -518,6 +718,183 @@ class ImageMasterController extends Controller
     }
 
     /**
+     * @return list<string>
+     */
+    private function marketplacesSupportingAddMode(): array
+    {
+        return ['shopify_main', 'shopify_pls', 'reverb'];
+    }
+
+    private function marketplaceImageLimit(string $marketplace): int
+    {
+        return match ($marketplace) {
+            'amazon' => 9,
+            'reverb' => 25,
+            'shopify_main', 'shopify_pls' => 20,
+            default => 12,
+        };
+    }
+
+    /**
+     * @param  list<string|null>  $skus
+     * @return array<string, array<string, int>>
+     */
+    private function loadImageMainByMarketplaceForSkus(array $skus): array
+    {
+        if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'image_main_by_marketplace_json')) {
+            return [];
+        }
+
+        $skus = array_values(array_unique(array_filter(array_map(fn ($s) => $this->normalizeSku($s), $skus))));
+        if ($skus === []) {
+            return [];
+        }
+
+        $out = [];
+        foreach (DB::table('product_master')->whereIn('sku', $skus)->get(['sku', 'image_main_by_marketplace_json']) as $row) {
+            $sku = $this->normalizeSku($row->sku ?? null);
+            if ($sku === '') {
+                continue;
+            }
+            $out[$sku] = $this->decodeImageMainByMarketplaceJson((string) ($row->image_main_by_marketplace_json ?? ''));
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function loadImageMainByMarketplace(string $sku): array
+    {
+        if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'image_main_by_marketplace_json')) {
+            return [];
+        }
+
+        $raw = DB::table('product_master')->where('sku', $sku)->value('image_main_by_marketplace_json');
+
+        return $this->decodeImageMainByMarketplaceJson((string) ($raw ?? ''));
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function decodeImageMainByMarketplaceJson(string $raw): array
+    {
+        $trim = trim($raw);
+        if ($trim === '' || $trim === '{}') {
+            return [];
+        }
+
+        $decoded = json_decode($trim, true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $allowed = array_keys($this->marketplaceTableMap());
+        $out = [];
+        foreach ($decoded as $mp => $idx) {
+            $mp = strtolower(trim((string) $mp));
+            if (! in_array($mp, $allowed, true)) {
+                continue;
+            }
+            $out[$mp] = max(0, min(11, (int) $idx));
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array<string, int>  Only non-zero overrides are stored (0 = default first image).
+     */
+    private function sanitizeMainByMarketplace(array $input, int $imageCount): array
+    {
+        if ($imageCount <= 0) {
+            return [];
+        }
+
+        $allowed = array_keys($this->marketplaceTableMap());
+        $maxIdx = min(11, $imageCount - 1);
+        $out = [];
+        foreach ($input as $mp => $idx) {
+            $mp = strtolower(trim((string) $mp));
+            if (! in_array($mp, $allowed, true)) {
+                continue;
+            }
+            $idx = max(0, min($maxIdx, (int) $idx));
+            if ($idx > 0) {
+                $out[$mp] = $idx;
+            }
+        }
+
+        return $out;
+    }
+
+    private function mainImageIndexForMarketplace(string $sku, string $marketplace, int $imageCount): int
+    {
+        return $this->mainImageIndexFromMap($this->loadImageMainByMarketplace($sku), $marketplace, $imageCount);
+    }
+
+    /**
+     * @param  array<string, int>  $map
+     */
+    private function mainImageIndexFromMap(array $map, string $marketplace, int $imageCount): int
+    {
+        if ($imageCount <= 0) {
+            return 0;
+        }
+
+        $idx = (int) ($map[$marketplace] ?? 0);
+
+        return max(0, min($imageCount - 1, $idx));
+    }
+
+    /**
+     * DB settings merged with optional request override (request wins per marketplace).
+     *
+     * @return array<string, int>
+     */
+    private function resolveMainByMarketplaceForPush(string $sku, ?array $requestMain, int $imageCount): array
+    {
+        $fromDb = $this->loadImageMainByMarketplace($sku);
+        if ($requestMain === null) {
+            return $fromDb;
+        }
+
+        $fromRequest = $this->sanitizeMainByMarketplace($requestMain, $imageCount);
+
+        return array_merge($fromDb, $fromRequest);
+    }
+
+    /**
+     * @param  list<string>  $images
+     * @return list<string>
+     */
+    private function reorderImagesWithMainFirst(array $images, int $mainIndex): array
+    {
+        $count = count($images);
+        if ($count <= 1) {
+            return $images;
+        }
+
+        $mainIndex = max(0, min($mainIndex, $count - 1));
+        if ($mainIndex === 0) {
+            return $images;
+        }
+
+        $picked = $images[$mainIndex];
+        $rest = [];
+        foreach ($images as $i => $url) {
+            if ($i !== $mainIndex) {
+                $rest[] = $url;
+            }
+        }
+
+        return array_merge([$picked], $rest);
+    }
+
+    /**
      * @return array<string, string> sku => image_master_json raw or ''
      */
     private function loadImageMetricsBySku(string $table): array
@@ -540,6 +917,13 @@ class ImageMasterController extends Controller
                 ->mapWithKeys(function ($row) use ($valueColumn) {
                     $raw = (string) ($row->{$valueColumn} ?? '');
                     $trim = trim($raw);
+                    if ($trim === '' || $trim === '[]') {
+                        return [$this->normalizeSku($row->sku) => ''];
+                    }
+                    $decoded = json_decode($trim, true);
+                    if (is_array($decoded) && $decoded === []) {
+                        return [$this->normalizeSku($row->sku) => ''];
+                    }
 
                     return [$this->normalizeSku($row->sku) => $trim];
                 })
@@ -720,14 +1104,6 @@ class ImageMasterController extends Controller
             }
 
             $store = $marketplace === 'shopify_pls' ? 'pls' : 'main';
-            $payload = json_encode(array_values($imageUrls), JSON_UNESCAPED_SLASHES);
-            if ($payload === false) {
-                return false;
-            }
-            $first = (string) ($imageUrls[0] ?? '');
-            if ($first === '') {
-                return false;
-            }
 
             $productId = DB::table('shopify_catalog_variants')
                 ->where('store', $store)
@@ -741,17 +1117,47 @@ class ImageMasterController extends Controller
                 return false;
             }
 
-            $update = [
-                'image_src' => $first,
-                'images' => $payload,
-            ];
+            if ($imageUrls === []) {
+                $update = [
+                    'image_src' => null,
+                    'images' => null,
+                ];
+                if (Schema::hasColumn('shopify_catalog_products', 'image_urls')) {
+                    $update['image_urls'] = null;
+                }
+                if (Schema::hasColumn('shopify_catalog_products', 'image_master_json')) {
+                    $update['image_master_json'] = null;
+                }
+            } else {
+                $payload = json_encode(array_values($imageUrls), JSON_UNESCAPED_SLASHES);
+                if ($payload === false) {
+                    return false;
+                }
+                $first = (string) ($imageUrls[0] ?? '');
+                if ($first === '') {
+                    return false;
+                }
+                $update = [
+                    'image_src' => $first,
+                    'images' => $payload,
+                ];
+                if (Schema::hasColumn('shopify_catalog_products', 'image_urls')) {
+                    $update['image_urls'] = $payload;
+                }
+                if (Schema::hasColumn('shopify_catalog_products', 'image_master_json')) {
+                    $update['image_master_json'] = $payload;
+                }
+            }
+
             if (Schema::hasColumn('shopify_catalog_products', 'updated_at')) {
                 $update['updated_at'] = now();
             }
 
-            return DB::table('shopify_catalog_products')
+            DB::table('shopify_catalog_products')
                 ->where('id', $productId)
-                ->update($update) > 0;
+                ->update($update);
+
+            return true;
         } catch (\Throwable $e) {
             Log::warning('ImageMaster: failed saving shopify_catalog_products images', ['sku' => $sku, 'marketplace' => $marketplace, 'error' => $e->getMessage()]);
 
@@ -769,9 +1175,11 @@ class ImageMasterController extends Controller
         try {
             $validated = $request->validate([
                 'sku' => 'required|string',
+                'dry_run' => 'nullable|boolean',
             ]);
 
             $sku = $this->normalizeSku($validated['sku']);
+            $dryRun = (bool) ($validated['dry_run'] ?? false);
             $pullLog->info('Shopify image pull started', ['sku' => $sku]);
             $product = $this->findProductMasterBySku($sku);
             if (! $product) {
@@ -823,6 +1231,36 @@ class ImageMasterController extends Controller
                 ], 422);
             }
 
+            $matchedBefore = $this->normalizedImageArray($currentImages) === $this->normalizedImageArray($shopifyImages);
+
+            if ($dryRun) {
+                $pullLog->info('Shopify image pull dry run', [
+                    'sku' => $sku,
+                    'shopify_product_id' => $shopify['product_id'] ?? null,
+                    'variant_id' => $shopify['variant_id'] ?? null,
+                    'source' => $shopify['source'] ?? null,
+                    'matched_before' => $matchedBefore,
+                    'before_count' => count($currentImages),
+                    'shopify_count' => count($shopifyImages),
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'dry_run' => true,
+                    'sku' => $sku,
+                    'status' => $matchedBefore ? 'already_matched' : 'would_import',
+                    'message' => $matchedBefore
+                        ? 'Dry run: already matched Shopify images (no change).'
+                        : 'Dry run: would import '.count($shopifyImages).' image(s) to Product Master.',
+                    'source' => $shopify['source'] ?? 'shopify_admin',
+                    'shopify_product_id' => $shopify['product_id'] ?? null,
+                    'variant_id' => $shopify['variant_id'] ?? null,
+                    'before_images' => $currentImages,
+                    'shopify_images' => $shopifyImages,
+                    'after_images' => $shopifyImages,
+                ]);
+            }
+
             for ($i = 1; $i <= 12; $i++) {
                 $product->{'image'.$i} = $shopifyImages[$i - 1] ?? null;
             }
@@ -830,7 +1268,6 @@ class ImageMasterController extends Controller
             $product->save();
 
             $newImages = $this->productMasterImageArray($product->fresh());
-            $matchedBefore = $this->normalizedImageArray($currentImages) === $this->normalizedImageArray($shopifyImages);
             Log::info('ImageMaster: pulled Shopify images to Product Master', [
                 'sku' => $sku,
                 'shopify_product_id' => $shopify['product_id'] ?? null,
@@ -852,6 +1289,7 @@ class ImageMasterController extends Controller
 
             return response()->json([
                 'success' => true,
+                'dry_run' => false,
                 'sku' => $sku,
                 'status' => $matchedBefore ? 'already_matched' : 'imported_to_product_master',
                 'message' => $matchedBefore ? 'Already matched Shopify images.' : 'Imported Shopify images to Product Master.',

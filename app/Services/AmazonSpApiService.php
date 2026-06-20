@@ -3592,6 +3592,77 @@ class AmazonSpApiService
     }
 
     /**
+     * Dry run: validate SKU, URLs, listing, and patch strategies without PATCH or metrics write.
+     *
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string, dry_run?: bool, amazon_sku?: string, product_type?: string, strategies?: list<string>, image_count?: int}
+     */
+    public function dryRunUpdateImages(string $identifier, array $imageUrls): array
+    {
+        $sku = $this->resolveAmazonSellerSkuForBullets($identifier);
+        $urls = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));
+        $urls = array_slice($urls, 0, 9);
+        if ($sku === '' || $urls === []) {
+            return ['success' => false, 'message' => 'SKU (or ASIN from amazon_metrics) and at least one image URL are required.', 'dry_run' => true];
+        }
+
+        foreach ($urls as $u) {
+            if (! preg_match('#^https://#i', $u)) {
+                return ['success' => false, 'message' => 'Amazon requires publicly reachable HTTPS image URLs.', 'dry_run' => true];
+            }
+        }
+
+        $sellerId = config('services.amazon_sp.seller_id');
+        $marketplaceId = (string) config('services.amazon_sp.marketplace_id', 'ATVPDKIKX0DER');
+        if (empty($sellerId)) {
+            return ['success' => false, 'message' => 'Amazon Seller ID is not configured.', 'dry_run' => true];
+        }
+
+        try {
+            $accessToken = $this->getAccessToken();
+            if (empty($accessToken)) {
+                return ['success' => false, 'message' => 'Failed to get Amazon access token.', 'dry_run' => true];
+            }
+
+            $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken);
+            if (empty($amazonSku)) {
+                return ['success' => false, 'message' => 'SKU not found in Amazon.', 'dry_run' => true];
+            }
+
+            $productType = $this->getAmazonProductType($sku, $amazonSku, $accessToken);
+            if (empty($productType)) {
+                return ['success' => false, 'message' => 'Product type not found for SKU.', 'dry_run' => true];
+            }
+
+            $attributes = $this->getListingItemAttributes($amazonSku, $accessToken);
+            $strategies = $this->buildAmazonListingImagePatchStrategies($urls, $marketplaceId, $attributes);
+            if ($strategies === []) {
+                return [
+                    'success' => false,
+                    'message' => 'No image patch strategies could be built for product type '.$productType.'.',
+                    'dry_run' => true,
+                    'amazon_sku' => $amazonSku,
+                    'product_type' => $productType,
+                ];
+            }
+
+            $labels = array_map(fn ($s) => $s['label'] ?? 'unknown', $strategies);
+
+            return [
+                'success' => true,
+                'dry_run' => true,
+                'message' => 'Dry run OK: would push '.count($urls).' image(s) to Amazon listing '.$amazonSku.' ('.count($strategies).' patch strateg'.(count($strategies) === 1 ? 'y' : 'ies').': '.implode(', ', $labels).').',
+                'amazon_sku' => $amazonSku,
+                'product_type' => $productType,
+                'strategies' => $labels,
+                'image_count' => count($urls),
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage(), 'dry_run' => true];
+        }
+    }
+
+    /**
      * Image Master compatibility method: push images then persist image_urls in amazon_metrics.
      *
      * @param  list<string>  $images

@@ -40,10 +40,17 @@
         .im-card-del:hover { background:#b91c1c; }
         .im-card:hover .im-card-del { display:flex; }
         .im-card-footer { padding:4px 6px 5px; }
-        .im-card-name { font-size:10px; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:108px; }
+        .im-card-name { font-size:11px; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:108px; font-weight:600; }
+        .im-card-filename { font-size:9px; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:108px; margin-top:1px; }
         .im-card-arrows { display:flex; gap:3px; margin-top:3px; }
         .im-card-arrows button { flex:1; border:1px solid #e2e8f0; background:#f8fafc; border-radius:4px; font-size:11px; cursor:pointer; padding:1px 0; color:#475569; transition:background .1s; }
         .im-card-arrows button:hover { background:#e0e7ff; color:#4338ca; }
+        .im-card.is-main-default { border-color:#22c55e; box-shadow:0 0 0 2px rgba(34,197,94,.25); }
+        .im-card-badge-main { background:#16a34a; }
+        .im-main-mp-section { border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; background:#f8fafc; }
+        .im-main-mp-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+        .im-main-mp-row label { min-width:92px; font-size:11px; font-weight:600; margin:0; color:#334155; }
+        .im-main-mp-row select { flex:1; min-width:0; font-size:11px; padding:2px 6px; }
         /* stored-image badge tint */
         .im-card.is-stored .im-card-img-wrap { border-bottom:2px solid #6366f1; }
         /* selection bar */
@@ -167,6 +174,14 @@
                         <span class="text-muted small ms-auto">Drag cards to reorder</span>
                     </div>
                     <div id="imSlots"></div>
+                    <div id="imMainByMpSection" class="im-main-mp-section mt-3" style="display:none;">
+                        <div class="d-flex align-items-center justify-content-between gap-2 mb-2 flex-wrap">
+                            <span class="fw-semibold small"><i class="fas fa-star text-warning me-1"></i>Main image per marketplace</span>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="resetMainAllBtn">Reset all to #1</button>
+                        </div>
+                        <p class="small text-muted mb-2 mb-md-3">When you push, the selected image is sent <strong>first</strong> as the main/hero image on that platform. Default is image #1 for every marketplace.</p>
+                        <div id="imMainByMpGrid" class="row g-2"></div>
+                    </div>
                     <div class="alert alert-info small mt-3 mb-0">
                         Save images here first. Use the marketplace buttons in the table row after saving when you are ready to push images.
                     </div>
@@ -247,6 +262,9 @@
                 <div class="modal-body pb-1">
                     <p class="small mb-1">Pushing <strong id="pmImageCount"></strong> image(s) to <strong id="pmMpCount"></strong> marketplace(s).</p>
                     <p class="small text-muted mb-0">What should happen to the <strong>existing</strong> marketplace images?</p>
+                    <p class="small text-warning mb-0 mt-2" id="pmAddHint" style="display:none;">
+                        Add is only available when every selected marketplace is Shopify Main, Shopify PLS, or Reverb.
+                    </p>
                 </div>
                 <div class="modal-footer flex-column gap-2 pt-2 pb-3 border-0">
                     <button type="button" class="btn btn-danger w-100" id="pmReplaceBtn">
@@ -289,6 +307,12 @@ document.addEventListener('DOMContentLoaded', () => {
         gChannels: ['ebay','ebay2','ebay3','macy','amazon','temu','reverb','wayfair','bestbuy'],
         gShopify: ['shopify_main','shopify_pls'],
     };
+    const ADD_MODE_MARKETPLACES = ['shopify_main', 'shopify_pls', 'reverb'];
+    const SHOPIFY_MARKETPLACES = ['shopify_main', 'shopify_pls'];
+    const MP_IMAGE_LIMITS = {
+        ebay: 12, ebay2: 12, ebay3: 12, amazon: 9, temu: 12, wayfair: 12, bestbuy: 12, macy: 12, reverb: 25,
+        shopify_main: 20, shopify_pls: 20,
+    };
     const EBAY3_WARN = 'eBay3 has different listing structure. Please verify images before pushing.';
 
     let tableData = [];
@@ -300,6 +324,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let shopifyPullSelectedSkus = null;
     let shopifyPullConfirmResolver = null;
     let modalUrls = [];
+    let modalMainByMp = {};
     let pendingFiles = [];
     let selectedUrls = new Set();   // URLs checked for push
 
@@ -362,8 +387,19 @@ document.addEventListener('DOMContentLoaded', () => {
         .finally(() => { document.getElementById('rainbow-loader').style.display = 'none'; });
     }
 
+    function hasPushedImages(val) {
+        const s = (val || '').trim();
+        if (!s || s === '[]') return false;
+        try {
+            const parsed = JSON.parse(s);
+            return !(Array.isArray(parsed) && parsed.length === 0);
+        } catch (_) {
+            return true;
+        }
+    }
+
     function mpStackHtml(sku, mp, val) {
-        const pushed = (val || '').trim() !== '';
+        const pushed = hasPushedImages(val);
         const tile = MP_TILE[mp] || 'btn-secondary';
         const short = MP_SHORT[mp] || mp;
         const enabled = ENABLED_MARKETPLACES.includes(mp);
@@ -411,6 +447,113 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.bp-mp-stack[data-push-mp]:not(:disabled)').forEach(b => b.addEventListener('click', () => quickPush(b.dataset.sku, b.dataset.pushMp)));
     }
 
+    function defaultMainByMarketplace() {
+        const o = {};
+        MARKETPLACES.forEach(mp => { o[mp] = 0; });
+        return o;
+    }
+
+    function normalizeMainByMarketplace(raw) {
+        const out = defaultMainByMarketplace();
+        if (!raw || typeof raw !== 'object') return out;
+        MARKETPLACES.forEach(mp => {
+            if (raw[mp] != null && raw[mp] !== '') {
+                out[mp] = Math.max(0, Math.min(11, parseInt(raw[mp], 10) || 0));
+            }
+        });
+        return out;
+    }
+
+    function clampMainIndicesAfterDelete(deletedIdx) {
+        MARKETPLACES.forEach(mp => {
+            let idx = modalMainByMp[mp] ?? 0;
+            if (idx === deletedIdx) idx = 0;
+            else if (idx > deletedIdx) idx--;
+            modalMainByMp[mp] = Math.max(0, idx);
+        });
+    }
+
+    function remapMainIndicesAfterMove(from, to) {
+        if (from === to) return;
+        MARKETPLACES.forEach(mp => {
+            let idx = modalMainByMp[mp] ?? 0;
+            if (idx === from) idx = to;
+            else if (from < to && idx > from && idx <= to) idx--;
+            else if (from > to && idx >= to && idx < from) idx++;
+            modalMainByMp[mp] = idx;
+        });
+    }
+
+    function clampMainIndicesToLength() {
+        const max = Math.max(0, modalUrls.length - 1);
+        MARKETPLACES.forEach(mp => {
+            let idx = modalMainByMp[mp] ?? 0;
+            if (modalUrls.length === 0) idx = 0;
+            else if (idx > max) idx = 0;
+            modalMainByMp[mp] = idx;
+        });
+    }
+
+    function mainByMarketplacePayload() {
+        const out = {};
+        const max = Math.max(0, modalUrls.length - 1);
+        MARKETPLACES.forEach(mp => {
+            const idx = Math.max(0, Math.min(max, modalMainByMp[mp] ?? 0));
+            if (idx > 0) out[mp] = idx;
+        });
+        return out;
+    }
+
+    function mainByMarketplacePayloadFromRow(row) {
+        const out = {};
+        const map = normalizeMainByMarketplace(row?.image_main_by_marketplace);
+        MARKETPLACES.forEach(mp => {
+            const idx = map[mp] ?? 0;
+            if (idx > 0) out[mp] = idx;
+        });
+        return out;
+    }
+
+    function mainImageLabelFor(mp, idx) {
+        return `Image ${(idx ?? 0) + 1}`;
+    }
+
+    function mainImageIndexFor(mp, source) {
+        if (source === 'modal') return modalMainByMp[mp] ?? 0;
+        return normalizeMainByMarketplace(source?.image_main_by_marketplace)[mp] ?? 0;
+    }
+
+    function renderMainByMpSelectors() {
+        const section = document.getElementById('imMainByMpSection');
+        const grid = document.getElementById('imMainByMpGrid');
+        if (!section || !grid) return;
+        if (!modalUrls.length) {
+            section.style.display = 'none';
+            grid.innerHTML = '';
+            return;
+        }
+        section.style.display = 'block';
+        clampMainIndicesToLength();
+        grid.innerHTML = MARKETPLACES.map(mp => {
+            const idx = modalMainByMp[mp] ?? 0;
+            const opts = modalUrls.map((url, i) =>
+                `<option value="${i}"${i === idx ? ' selected' : ''}>Image ${i + 1}</option>`
+            ).join('');
+            return `<div class="col-6 col-md-4 col-lg-3">
+                <div class="im-main-mp-row">
+                    <label for="im-main-${mp}">${esc(LABELS[mp] || mp)}</label>
+                    <select id="im-main-${mp}" class="form-select form-select-sm im-main-mp-select" data-mp="${mp}">${opts}</select>
+                </div>
+            </div>`;
+        }).join('');
+        grid.querySelectorAll('.im-main-mp-select').forEach(sel => {
+            sel.addEventListener('change', () => {
+                modalMainByMp[sel.dataset.mp] = parseInt(sel.value, 10) || 0;
+                renderSlots();
+            });
+        });
+    }
+
     function pmImageUrls(row) {
         const u = [];
         for (let i=1;i<=12;i++) {
@@ -436,6 +579,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('modalProductLabel').textContent = row.Parent || sku;
         storedImageMeta.clear();
         modalUrls = pmImageUrls(row);
+        modalMainByMp = normalizeMainByMarketplace(row.image_main_by_marketplace);
         renderSlots();
         // Reset the upload section
         pendingFiles = [];
@@ -479,19 +623,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isStored = !!meta;
                 const name     = meta?.name ?? decodeURIComponent(url.split('/').pop().split('?')[0]);
                 const dbId     = meta?.id ?? '';
-                return `<div class="im-card${isStored?' is-stored':''}"
+                const isDefaultMain = idx === 0;
+                return `<div class="im-card${isStored?' is-stored':''}${isDefaultMain?' is-main-default':''}"
                             draggable="true" data-idx="${idx}"
                             data-url="${esc(url)}" data-dbid="${esc(String(dbId))}">
                     <div class="im-card-img-wrap">
                         <img src="${esc(imgSrc(url))}" alt=""
                              onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22120%22 height=%22100%22%3E%3Crect width=%22120%22 height=%22100%22 fill=%22%23f1f5f9%22/%3E%3Ctext x=%2260%22 y=%2254%22 font-size=%2211%22 fill=%22%2394a3b8%22 text-anchor=%22middle%22%3ENo preview%3C/text%3E%3C/svg%3E'">
-                        <span class="im-card-badge">${idx + 1}</span>
+                        <span class="im-card-badge${isDefaultMain?' im-card-badge-main':''}">${isDefaultMain ? 'MAIN' : (idx + 1)}</span>
                         <button type="button" class="im-card-del" data-i="${idx}" title="Delete image"><i class="fas fa-times"></i></button>
                     </div>
                     <div class="im-card-footer">
-                        <div class="im-card-name" title="${esc(url)}">${esc(name)}</div>
+                        <div class="im-card-name">Image ${idx + 1}</div>
+                        <div class="im-card-filename" title="${esc(url)}">${esc(name)}</div>
                         <div class="im-card-arrows">
                             <button type="button" class="im-up" data-i="${idx}" title="Move left">&#8592;</button>
+                            <button type="button" class="im-set-main" data-i="${idx}" title="Set as main (#1) for all marketplaces">&#9733;</button>
                             <button type="button" class="im-down" data-i="${idx}" title="Move right">&#8594;</button>
                         </div>
                     </div>
@@ -505,8 +652,21 @@ document.addEventListener('DOMContentLoaded', () => {
             b.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 const i      = +b.dataset.i;
+                clampMainIndicesAfterDelete(i);
                 const removed = modalUrls.splice(i, 1)[0];
                 storedImageMeta.delete(removed);
+                renderSlots();
+            });
+        });
+
+        grid.querySelectorAll('.im-set-main').forEach(b => {
+            b.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const i = +b.dataset.i;
+                if (i <= 0) return;
+                const picked = modalUrls.splice(i, 1)[0];
+                modalUrls.unshift(picked);
+                modalMainByMp = defaultMainByMarketplace();
                 renderSlots();
             });
         });
@@ -516,14 +676,22 @@ document.addEventListener('DOMContentLoaded', () => {
             b.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const i = +b.dataset.i;
-                if (i > 0) { [modalUrls[i-1], modalUrls[i]] = [modalUrls[i], modalUrls[i-1]]; renderSlots(); }
+                if (i > 0) {
+                    remapMainIndicesAfterMove(i, i - 1);
+                    [modalUrls[i-1], modalUrls[i]] = [modalUrls[i], modalUrls[i-1]];
+                    renderSlots();
+                }
             });
         });
         grid.querySelectorAll('.im-down').forEach(b => {
             b.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const i = +b.dataset.i;
-                if (i < modalUrls.length - 1) { [modalUrls[i+1], modalUrls[i]] = [modalUrls[i], modalUrls[i+1]]; renderSlots(); }
+                if (i < modalUrls.length - 1) {
+                    remapMainIndicesAfterMove(i, i + 1);
+                    [modalUrls[i+1], modalUrls[i]] = [modalUrls[i], modalUrls[i+1]];
+                    renderSlots();
+                }
             });
         });
 
@@ -541,6 +709,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.preventDefault();
                 const to = +card.dataset.idx;
                 if (dragFrom === null || dragFrom === to) return;
+                remapMainIndicesAfterMove(dragFrom, to);
                 const moved = modalUrls.splice(dragFrom, 1)[0];
                 modalUrls.splice(to, 0, moved);
                 dragFrom = null;
@@ -548,7 +717,13 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
+        renderMainByMpSelectors();
     }
+
+    document.getElementById('resetMainAllBtn')?.addEventListener('click', () => {
+        modalMainByMp = defaultMainByMarketplace();
+        renderSlots();
+    });
 
     // ── ADD IMAGES: two-step flow (preview → explicit upload) ───────────────────
 
@@ -704,11 +879,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const r = await fetch('/image-master/save-pm', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                body: JSON.stringify({ sku, images: modalUrls }),
+                body: JSON.stringify({ sku, images: modalUrls, main_by_marketplace: mainByMarketplacePayload() }),
             });
             const j = await r.json();
             if (j.success) {
                 toast(modalUrls.length === 0 ? 'Product Master images cleared' : 'Images saved to Product Master');
+                const savedRow = bySku.get(String(sku));
+                if (savedRow && j.image_main_by_marketplace) {
+                    savedRow.image_main_by_marketplace = j.image_main_by_marketplace;
+                }
                 loadData();
                 if (editModal) editModal.hide();
             } else {
@@ -730,6 +909,31 @@ document.addEventListener('DOMContentLoaded', () => {
         pushModeModal = new bootstrap.Modal(document.getElementById('pushModeModal'));
     }
 
+    function syncPushModeModal(checks, imageCount) {
+        const addBtn = document.getElementById('pmAddBtn');
+        const addHint = document.getElementById('pmAddHint');
+        const addOk = checks.length > 0 && checks.every(mp => ADD_MODE_MARKETPLACES.includes(mp));
+        if (addBtn) {
+            addBtn.disabled = !addOk;
+            addBtn.title = addOk ? '' : 'Add mode requires Shopify Main, Shopify PLS, and/or Reverb only';
+        }
+        if (addHint) addHint.style.display = addOk ? 'none' : 'block';
+        const countEl = document.getElementById('pmImageCount');
+        const mpCountEl = document.getElementById('pmMpCount');
+        if (countEl) countEl.textContent = String(imageCount);
+        if (mpCountEl) mpCountEl.textContent = String(checks.length);
+    }
+
+    function canPushImages(checks, imagesToPush) {
+        if (imagesToPush.length > 0) return true;
+        return checks.length > 0 && checks.every(mp => SHOPIFY_MARKETPLACES.includes(mp));
+    }
+
+    function confirmShopifyClear(checks) {
+        const names = checks.map(mp => LABELS[mp] || mp).join(', ');
+        return window.confirm(`Remove all images from ${names}? This only works for Shopify stores.`);
+    }
+
     document.getElementById('pushModalBtn')?.addEventListener('click', () => {
         const sku    = document.getElementById('modalSku').value;
         const checks = Array.from(document.querySelectorAll('.im-mp-chk:checked:not(:disabled)')).map(c => c.value);
@@ -738,12 +942,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const imagesToPush = selectedUrls.size > 0
             ? modalUrls.filter(u => selectedUrls.has(u))
             : modalUrls;
-        if (!imagesToPush.length) { toast('No images to push', false); return; }
+        if (!canPushImages(checks, imagesToPush)) {
+            toast('No images to push. Save images first, or select only Shopify to clear all images.', false);
+            return;
+        }
+        if (imagesToPush.length === 0 && !confirmShopifyClear(checks)) return;
         if (!confirmEbay3Push(checks)) return;
 
-        // Show mode-choice popup
-        document.getElementById('pmImageCount').textContent = imagesToPush.length;
-        document.getElementById('pmMpCount').textContent    = checks.length;
+        syncPushModeModal(checks, imagesToPush.length);
         if (pushModeModal) pushModeModal.show();
     });
 
@@ -757,7 +963,13 @@ document.addEventListener('DOMContentLoaded', () => {
             ? modalUrls.filter(u => selectedUrls.has(u))   // grid order, selected only
             : [...modalUrls];                               // grid order, all
 
-        const selLabel = selectedUrls.size > 0 ? `${imagesToPush.length} selected` : `all ${imagesToPush.length}`;
+        if (!canPushImages(checks, imagesToPush)) {
+            toast('No images to push. Save images first, or select only Shopify to clear all images.', false);
+            return;
+        }
+        if (imagesToPush.length === 0 && mode === 'replace' && !confirmShopifyClear(checks)) return;
+
+        const selLabel = selectedUrls.size > 0 ? `${imagesToPush.length} selected` : (imagesToPush.length ? `all ${imagesToPush.length}` : 'clear-all');
         const modeLabel = mode === 'add' ? 'adding to' : 'replacing';
 
         const progress = [];
@@ -772,7 +984,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const r = await fetch('/image-master/push', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                    body: JSON.stringify({ sku, mode, updates }),
+                    body: JSON.stringify({
+                        sku,
+                        mode,
+                        updates,
+                        main_by_marketplace: mainByMarketplacePayload(),
+                    }),
                     signal: controller.signal,
                 });
                 const rawText = await r.text();
@@ -838,12 +1055,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const urls = pmImageUrls(row);
         if (!urls.length) { toast('No images on Product Master for this SKU — open Edit first.', false); openEditModal(sku); return; }
         if (!confirmEbay3Push([mp])) return;
-        if (!window.confirm(`Push ${urls.length} image(s) for ${sku} to ${LABELS[mp]}? This will replace existing marketplace images.`)) return;
-        setPushProgress(true, `Pushing images to 1 marketplace... This may take 1-2 minutes`, `1/1 ${LABELS[mp]}: in progress`);
+        const mainIdx = mainImageIndexFor(mp, row);
+        const mainLabel = mainImageLabelFor(mp, mainIdx);
+        if (!window.confirm(`Push ${urls.length} image(s) for ${sku} to ${LABELS[mp]}?\n\nMain image for this platform: ${mainLabel} (sent first).\nThis will replace existing marketplace images.`)) return;
+        setPushProgress(true, `Pushing images to 1 marketplace... This may take 1-2 minutes`, `1/1 ${LABELS[mp]}: in progress (${mainLabel} first)`);
         fetch('/image-master/push', {
             method:'POST',
             headers:{'Content-Type':'application/json','X-CSRF-TOKEN':csrfToken,'Accept':'application/json'},
-            body: JSON.stringify({ sku, mode: 'replace', updates: [{ marketplace: mp, images: urls }] }),
+            body: JSON.stringify({
+                sku,
+                mode: 'replace',
+                updates: [{ marketplace: mp, images: urls }],
+                main_by_marketplace: mainByMarketplacePayloadFromRow(row),
+            }),
         }).then(r=>r.json()).then(j => {
             const rowRes = (j.results && j.results[mp]) ? j.results[mp] : null;
             const ok = !!(rowRes && rowRes.success);
@@ -902,10 +1126,115 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('pushSelectedBtn')?.addEventListener('click', () => toast('Select rows in a future update, or use Edit → Push selected', false));
 
-    document.getElementById('pushAllBtn')?.addEventListener('click', () => {
-        if (!confirm('Push Product Master images to ALL marketplaces for ALL loaded products? This may take a long time.')) return;
-        toast('Bulk push: use per-row icons or extend with row selection.', false);
-    });
+    let bulkPushAllRunning = false;
+
+    function failedMarketplaceSummary(results) {
+        if (!results || typeof results !== 'object') return '';
+        const failed = MARKETPLACES.filter(mp => results[mp] && !results[mp].success);
+        if (!failed.length) return '';
+        return failed.map(mp => LABELS[mp] || mp).join(', ');
+    }
+
+    async function bulkPushAll() {
+        if (bulkPushAllRunning) {
+            toast('Bulk push is already running.', false);
+            return;
+        }
+        const rows = currentFilteredRowsForPull().filter(r => pmImageUrls(r).length > 0);
+        if (!rows.length) {
+            toast('No products with images in the current view.', false);
+            return;
+        }
+        const mpCount = ENABLED_MARKETPLACES.length;
+        const skuLabel = rows.length === 1 ? '1 product' : `${rows.length} products`;
+        if (!window.confirm(
+            `Push images to ALL ${mpCount} marketplaces for ${skuLabel}?\n\n`
+            + 'Per-platform main image settings (Image 1 by default) will be applied.\n'
+            + 'Each product is sent in one batch; this may take a long time.'
+        )) return;
+        if (!confirmEbay3Push(ENABLED_MARKETPLACES)) return;
+
+        bulkPushAllRunning = true;
+        const pushAllBtn = document.getElementById('pushAllBtn');
+        const pushSelectedBtn = document.getElementById('pushSelectedBtn');
+        if (pushAllBtn) pushAllBtn.disabled = true;
+        if (pushSelectedBtn) pushSelectedBtn.disabled = true;
+
+        let okSkus = 0;
+        let failSkus = 0;
+        const progress = [];
+        const msTimeout = Math.max(600000, mpCount * 120000);
+
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            const sku = String(row.SKU || '');
+            const urls = pmImageUrls(row);
+            if (!urls.length) continue;
+
+            const updates = ENABLED_MARKETPLACES.map(mp => ({ marketplace: mp, images: urls }));
+            const main_by_marketplace = mainByMarketplacePayloadFromRow(row);
+            setPushProgress(
+                true,
+                `Bulk push ${i + 1}/${rows.length}: ${sku}… (${mpCount} marketplaces)`,
+                progress.slice(-40).join('<br>')
+            );
+
+            const controller = new AbortController();
+            const t = setTimeout(() => controller.abort(), msTimeout);
+            try {
+                const r = await fetch('/image-master/push', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                    body: JSON.stringify({ sku, mode: 'replace', updates, main_by_marketplace }),
+                    signal: controller.signal,
+                });
+                const rawText = await r.text();
+                let j = null;
+                try { j = JSON.parse(rawText); } catch (_) {}
+                const mpFailed = Number(j?.total_failed ?? 0);
+                const mpOk = Number(j?.total_success ?? 0);
+                const metricsFailed = Number(j?.total_metrics_failed ?? 0);
+                const batchOk = r.ok && j && mpFailed === 0 && (mpOk > 0 || j.success);
+                if (batchOk) {
+                    okSkus++;
+                    const metricsNote = metricsFailed > 0 ? ` (${metricsFailed} metrics save failed)` : '';
+                    progress.push(`✓ ${esc(sku)} — ${mpOk}/${mpCount} marketplace(s)${metricsNote}`);
+                } else {
+                    failSkus++;
+                    const failedMps = failedMarketplaceSummary(j?.results);
+                    const errMsg = j?.message || (mpFailed ? `${mpFailed} marketplace(s) failed` : `HTTP ${r.status}`);
+                    progress.push(`✗ ${esc(sku)} — ${esc(errMsg)}${failedMps ? ` (${esc(failedMps)})` : ''}`);
+                }
+            } catch (e) {
+                failSkus++;
+                const txt = (e?.name === 'AbortError')
+                    ? `Timed out after ${Math.round(msTimeout / 1000)}s`
+                    : (e.message || 'Request failed');
+                progress.push(`✗ ${esc(sku)} — ${esc(txt)}`);
+            } finally {
+                clearTimeout(t);
+            }
+
+            if (i < rows.length - 1) await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+
+        bulkPushAllRunning = false;
+        if (pushAllBtn) pushAllBtn.disabled = false;
+        if (pushSelectedBtn) pushSelectedBtn.disabled = false;
+
+        const hasError = failSkus > 0;
+        setPushProgress(
+            true,
+            `Bulk push finished: ${okSkus} SKU(s) ok, ${failSkus} failed`,
+            progress.join('<br>'),
+            hasError
+        );
+        toast(`Bulk push done: ${okSkus} ok, ${failSkus} failed`, !hasError);
+        loadData();
+        if (!hasError) setTimeout(() => setPushProgress(false, '', ''), 8000);
+    }
+
+    document.getElementById('pushAllBtn')?.addEventListener('click', () => bulkPushAll());
 
     // ── Shopify image pull (mirrors Bullet Points pull) ───────────────────────
 

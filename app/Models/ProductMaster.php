@@ -75,6 +75,7 @@ class ProductMaster extends Model
         'image10',
         'image11',
         'image12',
+        'image_main_by_marketplace_json',
         'video_product_overview',
         'video_product_overview_status',
         'video_unboxing',
