@@ -733,9 +733,27 @@
                                 Accepts .xlsx, .xls, or .csv files (Max: 10MB)
                             </div>
                         </div>
+                        {{-- Report range drives temu_campaign_reports.report_range so the
+                             Spend / ACOS / ROAS badges (which sum that table by range)
+                             refresh after this upload. Defaults to L30 to match the
+                             default "Campaign Data" filter at the top of the page. --}}
+                        <div class="mb-3">
+                            <label for="adDataReportRange" class="form-label fw-bold">
+                                <i class="fa fa-calendar-alt text-primary me-1"></i>Report Range
+                            </label>
+                            <select class="form-select" id="adDataReportRange" name="report_range" required>
+                                <option value="L30" selected>L30 (last 30 days)</option>
+                                <option value="L7">L7 (last 7 days)</option>
+                                <option value="L60">L60 (last 60 days)</option>
+                            </select>
+                            <div class="form-text">
+                                <i class="fa fa-info-circle text-info me-1"></i>
+                                Match this to the period the Temu export covers — it's used by the Spend/ACOS/ROAS badges.
+                            </div>
+                        </div>
                         <div class="alert alert-warning">
                             <i class="fa fa-exclamation-triangle me-2"></i>
-                            <strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading new data!
+                            <strong>Warning:</strong> This will clear existing ad data and replace the selected report range before uploading new data.
                             <br>
                             <i class="fa fa-info-circle me-1"></i>
                             Upload the Temu Ads report Excel directly (as exported from Temu).
@@ -3030,7 +3048,13 @@
             $('#total-lp-badge').text('Total LP: $' + Math.round(totalLp).toLocaleString());
             $('#avg-gprft-badge').text('GPFT: ' + Math.round(avgGprft) + '%');
             $('#avg-groi-badge').text('GROI: ' + Math.round(avgGroi) + '%');
-            $('#total-spend-badge').text('Spend: $' + Math.round(totalSpend).toLocaleString());
+            // Prefer the file total from temu_campaign_reports (computed in PHP) so
+            // the badge always matches what the user uploaded — even rows whose
+            // goods_id isn't yet in temu_pricing AND have no SKU column would
+            // otherwise be dropped by the per-row sum above.
+            const spendForSummaryBadge = (adTotalsFromBackend && adTotalsFromBackend.spend != null)
+                ? Number(adTotalsFromBackend.spend) : totalSpend;
+            $('#total-spend-badge').text('Spend: $' + Math.round(spendForSummaryBadge).toLocaleString());
             // Use badgeAvgAds (aggregate Ads% from backend) for badge display (matches all-marketplace-master)
             const displayAdsPercent = (badgeAvgAds != null) ? badgeAvgAds : adsPercentForNpft;
             $('#avg-ads-badge').text('Ads: ' + displayAdsPercent.toFixed(1) + '%');
@@ -3099,9 +3123,24 @@
                 const st = (r.campaign_status || '').trim();
                 if (st === 'Active' || s > 0 || c > 0) uniqueCampaignSkus.add(r.sku);
             });
-            const avgAcos = totalAdSales > 0 ? (totalSpend / totalAdSales) * 100 : 0;
-            const roas = totalSpend > 0 ? totalAdSales / totalSpend : 0;
-            const avgClicks = adSkuSet.size > 0 ? totalAdClicks / adSkuSet.size : 0;
+            // Prefer file totals from temu_campaign_reports (returned in
+            // response.ad_totals). The per-row sums above silently miss any
+            // uploaded row whose goods_id isn't in temu_pricing AND whose SKU
+            // column is empty, so the badges would otherwise be lower than the
+            // upload. ROAS / ACOS / Avg Clicks are derived from these totals so
+            // they stay self-consistent with Spend and Ad Sales.
+            const adB = adTotalsFromBackend || {};
+            const spendForBadges    = (adB.spend != null) ? Number(adB.spend)    : totalSpend;
+            const clicksForBadges   = (adB.clicks != null) ? Number(adB.clicks)   : totalAdClicks;
+            const adSoldForBadges   = (adB.sub_orders != null) ? Number(adB.sub_orders) : totalAdSold;
+            const adSalesForBadges  = (adB.base_price_sales != null) ? Number(adB.base_price_sales) : totalAdSales;
+
+            const avgAcos = adSalesForBadges > 0 ? (spendForBadges / adSalesForBadges) * 100 : 0;
+            const roas = spendForBadges > 0 ? adSalesForBadges / spendForBadges : 0;
+            // Avg Clicks denominator stays the matched-Ad-SKU count: we don't
+            // know how many distinct unmatched goods_ids should be counted as
+            // SKUs, so dividing by a backend row count would be misleading.
+            const avgClicks = adSkuSet.size > 0 ? clicksForBadges / adSkuSet.size : 0;
 
             const campaignCount = totalCampaignCountFromBackend > 0 ? totalCampaignCountFromBackend : uniqueCampaignSkus.size;
 
@@ -3113,13 +3152,13 @@
             $('#temu-zero-inv-count').text('Zero INV: ' + zeroInvCount);
             $('#temu-nra-count').text('NRA: ' + nraCount);
             $('#temu-ra-count').text('RA: ' + raCount);
-            $('#temu-total-spend-badge').text('Total Ads Spend: $' + Math.round(totalSpend).toLocaleString());
+            $('#temu-total-spend-badge').text('Total Ads Spend: $' + Math.round(spendForBadges).toLocaleString());
             $('#temu-total-budget-badge').text('Budget: $' + totalBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-            $('#temu-total-ad-sales-badge').text('Ad Sales: $' + Math.round(totalAdSales).toLocaleString());
+            $('#temu-total-ad-sales-badge').text('Ad Sales: $' + Math.round(adSalesForBadges).toLocaleString());
             const adSoldLabel = (typeof currentCampaignPeriod !== 'undefined' && currentCampaignPeriod === 'L7') ? 'Total L7 Ad Sold' : 'Total L30 Ad Sold';
-            $('#temu-total-ad-sold-badge').text(adSoldLabel + ': ' + totalAdSold.toLocaleString());
-            $('#temu-total-ad-clicks-badge').text('Ad Clicks: ' + totalAdClicks.toLocaleString());
-            $('#temu-total-clicks-badge').text('Total Clicks: ' + totalAdClicks.toLocaleString());
+            $('#temu-total-ad-sold-badge').text(adSoldLabel + ': ' + adSoldForBadges.toLocaleString());
+            $('#temu-total-ad-clicks-badge').text('Ad Clicks: ' + clicksForBadges.toLocaleString());
+            $('#temu-total-clicks-badge').text('Total Clicks: ' + clicksForBadges.toLocaleString());
             $('#temu-avg-clicks-badge').text('Avg Clicks: ' + (avgClicks % 1 === 0 ? Math.round(avgClicks).toLocaleString() : avgClicks.toFixed(1)));
             $('#temu-avg-acos-badge').text('Avg ACOS: ' + Math.round(avgAcos) + '%');
             $('#temu-roas-badge').text('ROAS: ' + roas.toFixed(2));
@@ -3151,6 +3190,11 @@
         // instead of the locally-computed aggregates so badge and chart can never diverge.
         let todayBadgeSnapshotFromBackend = null;
         let badgeAvgAds = null; // Ads % from badge — shown in ADS% column for all rows
+        // File totals straight from temu_campaign_reports for the current range.
+        // Used by the Spend / Total Ads Spend / Ad Sales / Ad Sold / Ad Clicks
+        // badges so they always equal the upload — including rows whose goods_id
+        // isn't yet in temu_pricing (which the per-row sum would drop).
+        let adTotalsFromBackend = null;
         let currentCampaignPeriod = 'L30';
 
         // Play/Pause parent navigation (like pricing-master-cvr)
@@ -3178,6 +3222,7 @@
                     totalCampaignCountFromBackend = parseInt(response.total_campaign_count || 0, 10);
                     salesSummaryFromBackend = response.sales_summary || null;
                     todayBadgeSnapshotFromBackend = response.today_badge_snapshot || null;
+                    adTotalsFromBackend = response.ad_totals || null;
                     // Use exact aggregate_ads_percent from backend (matches all-marketplace-master)
                     // This is the authoritative value - always use it for NPFT calculation
                     if (response.aggregate_ads_percent != null && response.aggregate_ads_percent !== undefined) {

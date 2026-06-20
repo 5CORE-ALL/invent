@@ -46,6 +46,7 @@ use Carbon\Carbon;
 use App\Models\AmazonChannelSummary;
 use App\Support\TemuGoodsIdHelper;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\RichText\RichText;
 
 class TemuController extends Controller
 {
@@ -2139,8 +2140,11 @@ class TemuController extends Controller
 
             DB::beginTransaction();
             try {
-                // Truncate table before inserting new data
-                TemuPricing::truncate();
+                // Wipe existing rows. truncate() implicitly commits in MySQL,
+                // which would break the surrounding DB::commit/rollBack with
+                // "There is no active transaction" — use delete() so the wipe
+                // is part of the transaction.
+                TemuPricing::query()->delete();
                 
                 foreach ($rows as $index => $row) {
                     if (empty(array_filter($row))) {
@@ -2327,7 +2331,10 @@ class TemuController extends Controller
 
             DB::beginTransaction();
             try {
-                Temu2Pricing::truncate();
+                // delete() instead of truncate() — truncate() implicitly commits
+                // the active transaction in MySQL, which would later make
+                // DB::commit/rollBack throw "There is no active transaction".
+                Temu2Pricing::query()->delete();
 
                 foreach ($rows as $index => $row) {
                     if (empty(array_filter($row))) {
@@ -2917,6 +2924,18 @@ class TemuController extends Controller
                 return $sku;
             };
 
+            // Loose normalization: alphanumeric only, uppercase. Used as a final
+            // fallback so SKUs that differ only in punctuation (dashes, slashes,
+            // underscores) or whitespace still match. Examples that all collapse
+            // to the same loose key: "ABC-123", "ABC 123", "abc_123", "abc123".
+            $normalizeSkuLoose = function ($sku) {
+                $s = strtoupper(trim((string) $sku));
+                if ($s === '') {
+                    return '';
+                }
+                return preg_replace('/[^A-Z0-9]/', '', $s);
+            };
+
             // Create normalized SKU lookup for ProductMaster
             $normalizedSkuMap = [];
             foreach ($skus as $sku) {
@@ -3135,20 +3154,40 @@ class TemuController extends Controller
                     ->filter(fn ($r) => !empty(trim((string)($r->sku ?? ''))))
                     ->keyBy(fn ($r) => $normalizeSku($r->sku));
 
-                // L60
-                $campaignReportL60 = TemuCampaignReport::where('report_range', 'L60')
-                    ->selectRaw('goods_id,
+                // Loose fallback index: by alphanumeric-only SKU. Catches rows
+                // that fail strict matching only because of dashes / slashes /
+                // underscores in either side. keyBy keeps the *last* row per
+                // collapsed key — acceptable for a fallback (real exact matches
+                // already won earlier in the chain).
+                $campaignReportL30BySkuLoose = $campaignReportL30Raw
+                    ->filter(fn ($r) => $normalizeSkuLoose($r->sku ?? '') !== '')
+                    ->keyBy(fn ($r) => $normalizeSkuLoose($r->sku));
+
+                // L60 — same three indexes as L30 so badges/Spend L60 column also
+                // benefit from the loose match.
+                $campaignReportL60Raw = TemuCampaignReport::where('report_range', 'L60')
+                    ->selectRaw('goods_id, sku,
                         SUM(spend) as spend_l60,
                         SUM(COALESCE(sub_orders, 0)) as ad_sold_l60,
                         SUM(COALESCE(NULLIF(base_price_sales, 0), net_declared_sales, 0)) as ad_sales_l60')
-                    ->groupBy('goods_id')
-                    ->get()
+                    ->groupBy('goods_id', 'sku')
+                    ->get();
+                $campaignReportL60 = $campaignReportL60Raw
                     ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
                     ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
+                $campaignReportL60BySku = $campaignReportL60Raw
+                    ->filter(fn ($r) => !empty(trim((string)($r->sku ?? ''))))
+                    ->keyBy(fn ($r) => $normalizeSku($r->sku));
+                $campaignReportL60BySkuLoose = $campaignReportL60Raw
+                    ->filter(fn ($r) => $normalizeSkuLoose($r->sku ?? '') !== '')
+                    ->keyBy(fn ($r) => $normalizeSkuLoose($r->sku));
             } else {
-                $campaignReportL30      = collect();
-                $campaignReportL30BySku = collect();
-                $campaignReportL60      = collect();
+                $campaignReportL30          = collect();
+                $campaignReportL30BySku     = collect();
+                $campaignReportL30BySkuLoose= collect();
+                $campaignReportL60          = collect();
+                $campaignReportL60BySku     = collect();
+                $campaignReportL60BySkuLoose= collect();
             }
 
             // Fetch saved SPRICE values (Temu 2 uses temu2_data_view)
@@ -3220,7 +3259,7 @@ class TemuController extends Controller
                 });
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $viewData, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL60, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -3278,11 +3317,17 @@ class TemuController extends Controller
                 // Join keys: normalize goods_id so campaign reports match temu_pricing (Excel float issues)
                 $goodsIdKey = $goodsId ? TemuGoodsIdHelper::normalizeKey($goodsId) : null;
 
-                // Campaign report: primary match by goods_id, fallback by SKU.
-                // SKU fallback is essential when the file was uploaded as TSV with
-                // sku column, or when goods_id wasn't captured correctly.
+                // Campaign report match chain (most specific → most lenient):
+                //   1. goods_id (only set when this SKU has a row in temu_pricing
+                //      AND that row's goods_id appears in the campaign report)
+                //   2. SKU under strict normalization (uppercase, trim, "PCS"/"PIECES" → "PC")
+                //   3. SKU under loose normalization (alphanumeric only — collapses
+                //      dashes, slashes, underscores, internal spaces). This recovers
+                //      rows where the SKU on the ad sheet differs from ProductMaster
+                //      only by punctuation, e.g. "ABC-123 1PC" vs "ABC123 1 PC".
                 $campaignReportItem = ($goodsIdKey ? $campaignReportL30->get($goodsIdKey) : null)
-                    ?? $campaignReportL30BySku->get($normalizeSku($sku));
+                    ?? $campaignReportL30BySku->get($normalizeSku($sku))
+                    ?? $campaignReportL30BySkuLoose->get($normalizeSkuLoose($sku));
 
                 $spend         = $campaignReportItem ? round((float) ($campaignReportItem->spend_l30 ?? 0), 2)        : 0.0;
                 $adClicks      = $campaignReportItem ? (int) ($campaignReportItem->clicks_l30 ?? 0)                   : 0;
@@ -3299,8 +3344,11 @@ class TemuController extends Controller
                 $adSalesL30 = $campaignReportItem ? round((float) ($campaignReportItem->ad_sales_l30 ?? 0), 2) : 0;
                 $adSoldL30  = $campaignReportItem ? (int) ($campaignReportItem->ad_sold_l30 ?? 0)              : 0;
                 $campaignStatus = null;
-                // Get campaign report data (L60) for spend, ad sold, ad sales
-                $l60Item = $goodsIdKey ? $campaignReportL60->get($goodsIdKey) : null;
+                // Get campaign report data (L60) for spend, ad sold, ad sales —
+                // same goods_id → strict SKU → loose SKU fallback chain as L30.
+                $l60Item = ($goodsIdKey ? $campaignReportL60->get($goodsIdKey) : null)
+                    ?? $campaignReportL60BySku->get($normalizeSku($sku))
+                    ?? $campaignReportL60BySkuLoose->get($normalizeSkuLoose($sku));
                 $spendL60 = $l60Item ? round((float)$l60Item->spend_l60, 2) : 0;
                 $adSoldL60 = $l60Item ? (int)($l60Item->ad_sold_l60 ?? 0) : 0;
                 $adSalesL60 = $l60Item ? round((float)($l60Item->ad_sales_l60 ?? 0), 2) : 0;
@@ -3628,6 +3676,45 @@ class TemuController extends Controller
                 Log::warning('Temu decrease: today badge snapshot lookup failed: ' . $e->getMessage());
             }
 
+            // Pre-aggregated upload totals straight from temu_campaign_reports for
+            // the active range. The page's per-row sums (over ProductMaster) silently
+            // drop rows whose goods_id isn't in temu_pricing AND whose SKU column is
+            // empty — see the unmatched-rows diagnostic. Surfacing the file totals
+            // here lets the JS show the actual uploaded numbers on the badges so
+            // they always match what the user uploaded.
+            $adTotals = [
+                'spend'              => 0.0,
+                'clicks'             => 0,
+                'sub_orders'         => 0,
+                'base_price_sales'   => 0.0,
+                'impressions'        => 0,
+                'add_to_cart_number' => 0,
+                'row_count'          => 0,
+            ];
+            if (!$isTemu2Pricing) {
+                $tot = TemuCampaignReport::where('report_range', $campaignRange)
+                    ->selectRaw("
+                        COUNT(*) AS row_count,
+                        COALESCE(SUM(spend), 0) AS spend,
+                        COALESCE(SUM(clicks), 0) AS clicks,
+                        COALESCE(SUM(sub_orders), 0) AS sub_orders,
+                        COALESCE(SUM(COALESCE(NULLIF(base_price_sales, 0), net_declared_sales, 0)), 0) AS base_price_sales,
+                        COALESCE(SUM(impressions), 0) AS impressions,
+                        COALESCE(SUM(add_to_cart_number), 0) AS add_to_cart_number
+                    ")->first();
+                if ($tot) {
+                    $adTotals = [
+                        'spend'              => round((float) $tot->spend, 2),
+                        'clicks'             => (int) $tot->clicks,
+                        'sub_orders'         => (int) $tot->sub_orders,
+                        'base_price_sales'   => round((float) $tot->base_price_sales, 2),
+                        'impressions'        => (int) $tot->impressions,
+                        'add_to_cart_number' => (int) $tot->add_to_cart_number,
+                        'row_count'          => (int) $tot->row_count,
+                    ];
+                }
+            }
+
             return response()->json([
                 'data' => $processedData,
                 'period' => $selectedPeriod,
@@ -3635,6 +3722,7 @@ class TemuController extends Controller
                 'sales_summary' => $salesSummary,
                 'aggregate_ads_percent' => $aggregateAdsPercent, // Exact Ads% from marketplace_daily_metrics (matches all-marketplace-master)
                 'today_badge_snapshot' => $todayBadge,
+                'ad_totals' => $adTotals,
             ]);
         } catch (\Exception $e) {
             Log::error('Temu decrease data error: ' . $e->getMessage(), [
@@ -4004,8 +4092,17 @@ class TemuController extends Controller
     {
         try {
             $request->validate([
-                'ad_data_file' => 'required|file|mimes:xlsx,xls,csv'
+                'ad_data_file' => 'required|file|mimes:xlsx,xls,csv',
+                // Optional report range — drives temu_campaign_reports.report_range so the
+                // Spend/ACOS/ROAS badges on Temu Decrease (which sum that table by range)
+                // refresh after this upload. Defaults to L30 to match the page default.
+                'report_range' => 'nullable|in:L7,L30,L60',
             ]);
+
+            $reportRange = strtoupper((string) ($request->input('report_range') ?: 'L30'));
+            if (!in_array($reportRange, ['L7', 'L30', 'L60'], true)) {
+                $reportRange = 'L30';
+            }
 
             $file = $request->file('ad_data_file');
             $spreadsheet = IOFactory::load($file->getPathName());
@@ -4019,20 +4116,49 @@ class TemuController extends Controller
             if ($goodsIdColIdx === false) {
                 return back()->with('error', 'Excel must contain a column named exactly "Goods ID".');
             }
+            // SKU column is optional but useful — temu_campaign_reports has a SKU
+            // fallback index that the Decrease page uses when goods_id doesn't match.
+            $skuColIdx = array_search('SKU', $headers, true);
 
-            $parseCurrency = function ($value) {
-                if (empty($value) || $value === '∞') {
-                    return null;
+            // Coerce RichText / Stringable cell values to plain strings so that
+            // downstream numeric casts (floatval / (int) / (float)) don't blow up
+            // with "Object of class RichText could not be converted to float".
+            $normalizeCellValue = function ($value) {
+                if ($value instanceof RichText) {
+                    return trim($value->getPlainText());
+                }
+                if (is_object($value) && method_exists($value, '__toString')) {
+                    return trim((string) $value);
+                }
+                if (is_string($value)) {
+                    return trim($value);
                 }
 
-                return floatval(str_replace(['$', ','], '', $value));
+                return $value;
             };
-            $parsePercent = function ($value) {
+            $parseCurrency = function ($value) use ($normalizeCellValue) {
+                $value = $normalizeCellValue($value);
                 if (empty($value) || $value === '∞') {
                     return null;
                 }
 
-                return floatval(str_replace('%', '', $value));
+                return floatval(str_replace(['$', ','], '', (string) $value));
+            };
+            $parsePercent = function ($value) use ($normalizeCellValue) {
+                $value = $normalizeCellValue($value);
+                if (empty($value) || $value === '∞') {
+                    return null;
+                }
+
+                return floatval(str_replace('%', '', (string) $value));
+            };
+            $parseFloat = function ($value) use ($normalizeCellValue) {
+                $value = $normalizeCellValue($value);
+                if ($value === null || $value === '' || $value === '∞') {
+                    return 0.0;
+                }
+
+                return floatval(str_replace([',', '$', '%'], '', (string) $value));
             };
             // Read a value by trying the new Temu export header first, then legacy aliases.
             $col = function (array $rowData, array $aliases) {
@@ -4044,7 +4170,11 @@ class TemuController extends Controller
 
                 return null;
             };
-            $parseInt = fn ($value) => (int) str_replace(',', '', (string) ($value ?? 0));
+            $parseInt = function ($value) use ($normalizeCellValue) {
+                $value = $normalizeCellValue($value);
+
+                return (int) str_replace(',', '', (string) ($value ?? 0));
+            };
 
             $imported = 0;
             $highestRow = (int) $sheet->getHighestDataRow();
@@ -4052,7 +4182,16 @@ class TemuController extends Controller
 
             DB::beginTransaction();
             try {
-                TemuAdData::truncate();
+                // delete() instead of truncate() — truncate() implicitly commits
+                // the active transaction in MySQL, which would later make
+                // DB::commit/rollBack throw "There is no active transaction".
+                TemuAdData::query()->delete();
+                // Replace only the chosen range in temu_campaign_reports so the
+                // Spend/ACOS/ROAS badges on Temu Decrease refresh; other ranges
+                // (e.g. user uploaded L30 today, L7 yesterday) are preserved.
+                TemuCampaignReport::where('report_range', $reportRange)->delete();
+
+                $campaignImported = 0;
 
                 for ($rowNum = 2; $rowNum <= $highestRow; $rowNum++) {
                     $firstCell = $sheet->getCell(Coordinate::stringFromColumnIndex(1).$rowNum)->getValue();
@@ -4062,7 +4201,13 @@ class TemuController extends Controller
 
                     $row = [];
                     for ($c = 1; $c <= $numCols; $c++) {
-                        $row[] = $sheet->getCell(Coordinate::stringFromColumnIndex($c).$rowNum)->getValue();
+                        $cellValue = $sheet->getCell(Coordinate::stringFromColumnIndex($c).$rowNum)->getValue();
+                        // Flatten rich-text cells (e.g. Temu exports with bold/colored
+                        // segments in product names) so downstream numeric casts work.
+                        if ($cellValue instanceof RichText) {
+                            $cellValue = $cellValue->getPlainText();
+                        }
+                        $row[] = $cellValue;
                     }
                     if (empty(array_filter($row, fn ($v) => $v !== null && $v !== ''))) {
                         continue;
@@ -4083,18 +4228,18 @@ class TemuController extends Controller
 
                     // Map each field to the new Temu export columns (Ad variants), legacy headers as fallback.
                     $adData = [
-                        'goods_name' => $col($rowData, ['Goods name']),
+                        'goods_name' => $normalizeCellValue($col($rowData, ['Goods name'])),
                         'goods_id' => $goodsIdNormalized,
                         'spend' => $parseCurrency($col($rowData, ['Spend'])),
                         'base_price_sales' => $parseCurrency($col($rowData, ['Base Price Sales (Ad)', 'Base price sales'])),
-                        'roas' => floatval($col($rowData, ['ROAS (Ad)', 'ROAS']) ?? 0),
+                        'roas' => $parseFloat($col($rowData, ['ROAS (Ad)', 'ROAS'])),
                         'acos_ad' => $parsePercent($col($rowData, ['ACOS (Ad)', 'ACOS(AD)'])),
                         'cost_per_transaction' => $parseCurrency($col($rowData, ['Cost Per Order (Ad)', 'Cost per transaction'])),
                         'sub_orders' => $parseInt($col($rowData, ['Sub Order Count (Ad)', 'Sub-Orders'])),
                         'items' => $parseInt($col($rowData, ['Item Quantity (Ad)', 'Items'])),
                         'net_total_cost' => $parseCurrency($col($rowData, ['Net total cost'])),
                         'net_declared_sales' => $parseCurrency($col($rowData, ['Net Base Price Sales (Ad)', 'Net declared sales'])),
-                        'net_roas' => floatval($col($rowData, ['Net ROAS (Ad)', 'Net advertising return on investment (ROAS)']) ?? 0),
+                        'net_roas' => $parseFloat($col($rowData, ['Net ROAS (Ad)', 'Net advertising return on investment (ROAS)'])),
                         'net_acos_ad' => $parsePercent($col($rowData, ['Net ACOS (Ad)', 'Net advertising cost ratio (advertising)'])),
                         'net_cost_per_transaction' => $parseCurrency($col($rowData, ['Net Cost Per Order (Ad)', 'Net cost per transaction'])),
                         'net_orders' => $parseInt($col($rowData, ['Net Sub Order Count (Ad)', 'Net Orders'])),
@@ -4104,17 +4249,42 @@ class TemuController extends Controller
                         'ctr' => $parsePercent($col($rowData, ['Click Through Rate (Ad)', 'CTR'])),
                         'cvr' => $parsePercent($col($rowData, ['Conversion Rate (Ad)', 'Conversion Rate (CVR)'])),
                         'add_to_cart_number' => $parseInt($col($rowData, ['Add To Cart (Ad)', 'Add-to-cart number'])),
-                        'weekly_roas' => floatval($col($rowData, ['Natural Week ROAS (Ad)', 'Weekly ROAS']) ?? 0),
-                        'target' => floatval($col($rowData, ['Natural Week Target ROAS (Ad)', 'Target']) ?? 0),
+                        'weekly_roas' => $parseFloat($col($rowData, ['Natural Week ROAS (Ad)', 'Weekly ROAS'])),
+                        'target' => $parseFloat($col($rowData, ['Natural Week Target ROAS (Ad)', 'Target'])),
                     ];
 
                     TemuAdData::create($adData);
                     $imported++;
+
+                    // Mirror the same row into temu_campaign_reports for the chosen
+                    // report_range so getTemuDecreaseData (which aggregates that table
+                    // for the Spend/ACOS/ROAS badges) reflects this upload.
+                    $skuValue = null;
+                    if ($skuColIdx !== false) {
+                        $rawSku = $row[$skuColIdx] ?? null;
+                        if ($rawSku instanceof RichText) {
+                            $rawSku = $rawSku->getPlainText();
+                        }
+                        $skuValue = strtoupper(trim((string) ($rawSku ?? '')));
+                        if ($skuValue === '') {
+                            $skuValue = null;
+                        }
+                    }
+
+                    $campaignData = $adData + [
+                        'sku' => $skuValue,
+                        'report_range' => $reportRange,
+                    ];
+                    TemuCampaignReport::create($campaignData);
+                    $campaignImported++;
                 }
 
                 DB::commit();
 
-                return back()->with('success', "Successfully imported $imported ad records! (All previous data was cleared)");
+                return back()->with(
+                    'success',
+                    "Successfully imported {$imported} ad records and refreshed {$campaignImported} {$reportRange} campaign rows."
+                );
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;

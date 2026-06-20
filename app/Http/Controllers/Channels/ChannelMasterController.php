@@ -3073,15 +3073,37 @@ class ChannelMasterController extends Controller
                     if (!is_array($responseData)) {
                         return $defaults;
                     }
-                    $rows = $responseData['data'] ?? [];
-                    $sp = 0; $spSnapshot = 0; $c = 0; $s = 0; $u = 0;
-                    foreach ($rows as $row) {
-                        if (empty($row['sku'])) continue;
-                        $sp += round((float) ($row['spend_l30'] ?? 0), 2);
-                        $spSnapshot += round((float) ($row['spend'] ?? 0), 2);
-                        $c += (int) ($row['clicks_l30'] ?? 0);
-                        $s += round((float) ($row['ad_sales_l30'] ?? 0), 2);
-                        $u += (int) ($row['ad_sold_l30'] ?? 0);
+
+                    // Prefer the file totals returned in `ad_totals` (computed
+                    // directly from temu_campaign_reports for the active range).
+                    // The previous implementation summed per-row over the
+                    // ProductMaster-matched rows in `data`, which silently dropped
+                    // any campaign row whose goods_id wasn't in temu_pricing AND
+                    // whose SKU column was empty — producing badges below the
+                    // actual upload total. We still fall back to per-row sums for
+                    // older deploys / cached responses that don't include
+                    // ad_totals yet.
+                    $adTotals = is_array($responseData['ad_totals'] ?? null)
+                        ? $responseData['ad_totals']
+                        : null;
+
+                    if ($adTotals !== null) {
+                        $sp = round((float) ($adTotals['spend'] ?? 0), 2);
+                        $c  = (int) ($adTotals['clicks'] ?? 0);
+                        $s  = round((float) ($adTotals['base_price_sales'] ?? 0), 2);
+                        $u  = (int) ($adTotals['sub_orders'] ?? 0);
+                        $spSnapshot = $sp;
+                    } else {
+                        $rows = $responseData['data'] ?? [];
+                        $sp = 0; $spSnapshot = 0; $c = 0; $s = 0; $u = 0;
+                        foreach ($rows as $row) {
+                            if (empty($row['sku'])) continue;
+                            $sp += round((float) ($row['spend_l30'] ?? 0), 2);
+                            $spSnapshot += round((float) ($row['spend'] ?? 0), 2);
+                            $c += (int) ($row['clicks_l30'] ?? 0);
+                            $s += round((float) ($row['ad_sales_l30'] ?? 0), 2);
+                            $u += (int) ($row['ad_sold_l30'] ?? 0);
+                        }
                     }
 
                     // Same ads% source priority as temu_decrease badge:
@@ -13416,11 +13438,14 @@ class ChannelMasterController extends Controller
             $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp'];
             $out = [];
 
-            // Today's California date — excluded from dot comparisons because the current PT day
-            // is still in progress. Comparing today (partial) vs yesterday (complete) yields
-            // a misleading "no change" / grey dot. We compare the two latest COMPLETED PT days.
-            $todayCa = now('America/Los_Angeles')->toDateString();
-
+            // Today's snapshot is included in the comparison: saveChannelDailySummaries
+            // overwrites today's row on every page load, so it always reflects the
+            // freshest values (including post-upload metrics like total_ad_spend that
+            // come from a single L30/L7 file). The previous behaviour excluded today
+            // to avoid "today partial vs yesterday complete" red herrings, but that
+            // also meant the dot wouldn't move at all after an upload until *tomorrow's*
+            // snapshot replaced today as the latest. We now compare the two most recent
+            // snapshots regardless of whether one of them is today.
             foreach ($channelKeys as $channel) {
                 foreach ($metrics as $metric) {
                     $out[$channel][$metric] = [null, null];
@@ -13428,7 +13453,6 @@ class ChannelMasterController extends Controller
 
                 // Same source as chart: ChannelMasterSummary. Same key: normalized channel (table saves with this key in saveChannelDailySummaries).
                 $cmsRows = \App\Models\ChannelMasterSummary::where('channel', $channel)
-                    ->where('snapshot_date', '<', $todayCa)
                     ->orderBy('snapshot_date', 'desc')
                     ->take(2)
                     ->get();
