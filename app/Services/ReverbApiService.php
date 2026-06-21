@@ -1222,40 +1222,373 @@ class ReverbApiService
     }
 
     /**
-     * Remove every gallery image so Reverb accepts brand-new source URLs (inventory/staging hosts).
-     * {@see photo_upload_method} "override_position" only reorders URLs already on the listing.
+     * @return list<array{id: string, url: string}>
      */
-    private function deleteAllReverbListingImages(string $token, string $listingId): array
+    private function collectReverbListingImageRecords(array $data): array
     {
-        $ids = $this->fetchListingImageIdsForDeletion($token, $listingId);
-        $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
-        $listingSeg = rawurlencode(trim((string) $listingId));
-        $failures = [];
-
-        foreach ($ids as $imageId) {
-            $delUrl = $apiBase.'/listings/'.$listingSeg.'/images/'.rawurlencode(trim((string) $imageId));
-            $res = $this->reverbDeleteListingImageWithRetry($token, $delUrl);
-            if (! $res->successful() && $res->status() !== 404) {
-                $failures[] = $imageId.':'.$res->status();
-                Log::warning('Reverb DELETE listing image failed', [
-                    'listing_id' => $listingId,
-                    'image_id' => $imageId,
-                    'status' => $res->status(),
-                    'body' => mb_substr($res->body(), 0, 500),
-                ]);
+        $out = [];
+        $seen = [];
+        $buckets = [
+            $data['images'] ?? null,
+            $data['photos'] ?? null,
+        ];
+        if (isset($data['_embedded']['images']) && is_array($data['_embedded']['images'])) {
+            $buckets[] = $data['_embedded']['images'];
+        }
+        if (isset($data['_embedded']['photos']) && is_array($data['_embedded']['photos'])) {
+            $buckets[] = $data['_embedded']['photos'];
+        }
+        foreach ($buckets as $candidates) {
+            if (! is_array($candidates)) {
+                continue;
             }
-            usleep(120000);
+            foreach ($candidates as $img) {
+                if (! is_array($img) || ! isset($img['id'])) {
+                    continue;
+                }
+                $id = trim((string) $img['id']);
+                if ($id === '' || isset($seen[$id])) {
+                    continue;
+                }
+                $url = '';
+                if (! empty($img['url']) && is_string($img['url'])) {
+                    $url = (string) $img['url'];
+                } elseif (isset($img['_links']['full']['href']) && is_string($img['_links']['full']['href'])) {
+                    $url = (string) $img['_links']['full']['href'];
+                } elseif (isset($img['_links']['thumbnail']['href']) && is_string($img['_links']['thumbnail']['href'])) {
+                    $url = (string) $img['_links']['thumbnail']['href'];
+                }
+                $seen[$id] = true;
+                $out[] = ['id' => $id, 'url' => $url];
+            }
         }
 
-        if ($ids !== []) {
-            Log::info('Reverb: cleared listing images before replace', ['listing_id' => $listingId, 'deleted' => count($ids), 'failures' => count($failures)]);
-        }
-
-        return ['deleted' => count($ids), 'failures' => $failures];
+        return $out;
     }
 
     /**
-     * Try payloads Reverb accepts when applying fresh photo URLs after optional gallery clear.
+     * @return list<array{id: string, url: string}>
+     */
+    private function fetchListingImageRecords(string $token, string $listingId): array
+    {
+        $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
+        $seg = rawurlencode(trim((string) $listingId));
+
+        foreach ([$apiBase.'/listings/'.$seg.'/images/', $apiBase.'/listings/'.$seg.'/images'] as $url) {
+            try {
+                $response = Http::withoutVerifying()
+                    ->timeout(45)
+                    ->withHeaders([
+                        'Authorization' => 'Bearer '.$token,
+                        'Accept' => 'application/hal+json',
+                        'Accept-Version' => '3.0',
+                    ])->get($url);
+                if ($response->successful()) {
+                    $json = $response->json();
+                    if (is_array($json)) {
+                        $records = $this->collectReverbListingImageRecords($json);
+                        if ($records !== []) {
+                            return $records;
+                        }
+                    }
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(45)
+                ->withHeaders([
+                    'Authorization' => 'Bearer '.$token,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                ])->get($apiBase.'/listings/'.$seg);
+            if ($response->successful()) {
+                $json = $response->json();
+                if (is_array($json)) {
+                    return $this->collectReverbListingImageRecords($json);
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        return [];
+    }
+
+    private function deleteReverbListingImageById(string $token, string $listingId, string $imageId): bool
+    {
+        $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
+        $listingSeg = rawurlencode(trim($listingId));
+        $delUrl = $apiBase.'/listings/'.$listingSeg.'/images/'.rawurlencode(trim($imageId));
+        $res = $this->reverbDeleteListingImageWithRetry($token, $delUrl);
+
+        if ($res->successful() || $res->status() === 404) {
+            return true;
+        }
+
+        if ($res->status() === 400 && str_contains($res->body(), 'Cannot delete the last photo')) {
+            Log::info('Reverb: skip DELETE (last photo protected)', [
+                'listing_id' => $listingId,
+                'image_id' => $imageId,
+            ]);
+
+            return false;
+        }
+
+        Log::warning('Reverb DELETE listing image failed', [
+            'listing_id' => $listingId,
+            'image_id' => $imageId,
+            'status' => $res->status(),
+            'body' => mb_substr($res->body(), 0, 500),
+        ]);
+
+        return false;
+    }
+
+    /**
+     * Count listing images whose ids were not present before a replace push.
+     *
+     * @param  list<array{id: string, url: string}>  $records
+     * @param  array<string, int>  $oldIdSet
+     */
+    private function countReverbImagesNotInSet(array $records, array $oldIdSet): int
+    {
+        $n = 0;
+        foreach ($records as $record) {
+            $id = (string) ($record['id'] ?? '');
+            if ($id !== '' && ! isset($oldIdSet[$id])) {
+                $n++;
+            }
+        }
+
+        return $n;
+    }
+
+    /**
+     * Poll until Reverb has ingested at least {@see $minCount} new images (by id).
+     *
+     * @param  array<string, int>  $oldIdSet
+     */
+    private function waitForReverbNewImageIngest(string $token, string $listingId, array $oldIdSet, int $minCount, int $maxSeconds = 120): int
+    {
+        $lastNew = 0;
+        for ($wait = 0; $wait < $maxSeconds; $wait++) {
+            $current = $this->fetchListingImageRecords($token, $listingId);
+            $lastNew = $this->countReverbImagesNotInSet($current, $oldIdSet);
+            if ($lastNew >= $minCount) {
+                return $lastNew;
+            }
+            usleep(1_000_000);
+        }
+
+        return $lastNew;
+    }
+
+    /**
+     * Poll until the listing has at least {@see $minCount} total images.
+     */
+    private function waitForReverbListingImageCount(string $token, string $listingId, int $minCount, int $maxSeconds = 60): int
+    {
+        $last = 0;
+        for ($wait = 0; $wait < $maxSeconds; $wait++) {
+            $current = $this->fetchListingImageRecords($token, $listingId);
+            $last = count($current);
+            if ($last >= $minCount) {
+                return $last;
+            }
+            usleep(1_000_000);
+        }
+
+        return $last;
+    }
+
+    /**
+     * @param  list<array{id: string, url: string}>  $records
+     * @param  array<string, int>  $oldIdSet
+     * @return list<string>
+     */
+    private function reverbImageIdsStillInOldSet(array $records, array $oldIdSet): array
+    {
+        $ids = [];
+        foreach ($records as $record) {
+            $id = (string) ($record['id'] ?? '');
+            if ($id !== '' && isset($oldIdSet[$id])) {
+                $ids[] = $id;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * Remove every pre-push image id once at least one replacement photo exists.
+     *
+     * @param  array<string, int>  $oldIdSet
+     */
+    private function purgeReverbOldListingImages(string $token, string $listingId, array $oldIdSet): int
+    {
+        $deleted = 0;
+        for ($pass = 0; $pass < 15; $pass++) {
+            $current = $this->fetchListingImageRecords($token, $listingId);
+            $newCount = $this->countReverbImagesNotInSet($current, $oldIdSet);
+            if ($newCount < 1) {
+                break;
+            }
+
+            $removedThisPass = false;
+            foreach ($this->reverbImageIdsStillInOldSet($current, $oldIdSet) as $oldId) {
+                $fresh = $this->fetchListingImageRecords($token, $listingId);
+                if (count($fresh) <= 1) {
+                    break 2;
+                }
+                if ($this->countReverbImagesNotInSet($fresh, $oldIdSet) < 1) {
+                    break 2;
+                }
+                if ($this->deleteReverbListingImageById($token, $listingId, $oldId)) {
+                    $deleted++;
+                    $removedThisPass = true;
+                    usleep(200000);
+                }
+            }
+            if (! $removedThisPass) {
+                break;
+            }
+        }
+
+        return $deleted;
+    }
+
+    /**
+     * PUT the pushed URLs repeatedly until the gallery contains only new photos at the target count.
+     *
+     * @param  array<string, int>  $oldIdSet
+     * @param  list<string>  $urls
+     */
+    private function syncReverbListingGalleryToUrls(string $token, string $listingId, array $urls, array $oldIdSet, Response $fallback): Response
+    {
+        $targetCount = count($urls);
+        $final = $fallback;
+
+        for ($attempt = 0; $attempt < 6; $attempt++) {
+            $records = $this->fetchListingImageRecords($token, $listingId);
+            $oldRemaining = $this->reverbImageIdsStillInOldSet($records, $oldIdSet);
+            $newCount = $this->countReverbImagesNotInSet($records, $oldIdSet);
+
+            if ($newCount >= $targetCount && $oldRemaining === []) {
+                $orderPut = $this->putReverbListingPhotos($token, $listingId, $urls);
+                if ($orderPut->successful()) {
+                    return $orderPut;
+                }
+
+                return $final->successful() ? $final : $orderPut;
+            }
+
+            if ($oldRemaining !== [] && $newCount >= 1) {
+                $this->purgeReverbOldListingImages($token, $listingId, $oldIdSet);
+            }
+
+            $put = $this->putReverbListingPhotos($token, $listingId, $urls);
+            if ($put->successful()) {
+                $final = $put;
+            }
+
+            $this->waitForReverbNewImageIngest($token, $listingId, $oldIdSet, $targetCount, 45);
+            $this->waitForReverbListingImageCount($token, $listingId, min($targetCount, max(1, $newCount)), 15);
+        }
+
+        return $final;
+    }
+
+    /**
+     * Full replace: gallery ends up as exactly the pushed public URLs (any count 1–25).
+     * Reverb forbids deleting the last photo on a live listing, so we keep one old photo
+     * as a temporary anchor, PUT replacements, purge every pre-push id, then re-sync.
+     *
+     * @param  list<string>  $urls
+     */
+    private function replaceReverbListingImages(string $token, string $listingId, array $urls): Response
+    {
+        $targetCount = count($urls);
+        $records = $this->fetchListingImageRecords($token, $listingId);
+        $oldIdSet = array_flip(array_column($records, 'id'));
+        $deletedSecondary = 0;
+
+        if ($records === []) {
+            $response = $this->putReverbListingPhotos($token, $listingId, $urls);
+            if (! $response->successful()) {
+                return $response;
+            }
+            $this->waitForReverbListingImageCount($token, $listingId, $targetCount, min(240, 90 + ($targetCount * 8)));
+            $remainingRecords = $this->fetchListingImageRecords($token, $listingId);
+            Log::info('Reverb: replaced listing images (empty gallery)', [
+                'listing_id' => $listingId,
+                'target_count' => $targetCount,
+                'remaining' => count($remainingRecords),
+            ]);
+
+            return $response;
+        }
+
+        if (count($records) > 1) {
+            foreach (array_slice($records, 1) as $record) {
+                if ($this->deleteReverbListingImageById($token, $listingId, $record['id'])) {
+                    $deletedSecondary++;
+                }
+                usleep(120000);
+            }
+        }
+
+        $response = $this->putReverbListingPhotos($token, $listingId, $urls);
+        if (! $response->successful()) {
+            return $response;
+        }
+
+        $maxWait = min(240, 90 + ($targetCount * 8));
+        $ingestedNew = $this->waitForReverbNewImageIngest($token, $listingId, $oldIdSet, $targetCount, $maxWait);
+        if ($ingestedNew < $targetCount && $targetCount > 1) {
+            $ingestedNew = max(
+                $ingestedNew,
+                $this->waitForReverbNewImageIngest($token, $listingId, $oldIdSet, $targetCount - 1, 60)
+            );
+        }
+        if ($ingestedNew < 1) {
+            $ingestedNew = $this->waitForReverbNewImageIngest($token, $listingId, $oldIdSet, 1, 60);
+        }
+
+        $deletedOld = 0;
+        if ($ingestedNew >= 1) {
+            $deletedOld = $this->purgeReverbOldListingImages($token, $listingId, $oldIdSet);
+        }
+
+        $final = $this->syncReverbListingGalleryToUrls($token, $listingId, $urls, $oldIdSet, $response);
+
+        $remainingRecords = $this->fetchListingImageRecords($token, $listingId);
+        $oldIdsRemaining = $this->reverbImageIdsStillInOldSet($remainingRecords, $oldIdSet);
+        Log::info('Reverb: replaced listing images', [
+            'listing_id' => $listingId,
+            'target_count' => $targetCount,
+            'deleted_secondary' => $deletedSecondary,
+            'deleted_old' => $deletedOld,
+            'ingested_new' => $ingestedNew,
+            'remaining' => count($remainingRecords),
+            'old_ids_remaining' => count($oldIdsRemaining),
+            'remaining_ids' => array_column($remainingRecords, 'id'),
+        ]);
+
+        if ($oldIdsRemaining !== []) {
+            Log::warning('Reverb replace: pre-push photos still on listing after sync', [
+                'listing_id' => $listingId,
+                'target_count' => $targetCount,
+                'old_ids_remaining' => $oldIdsRemaining,
+            ]);
+        }
+
+        return $final->successful() ? $final : $response;
+    }
+
+    /**
+     * Try payloads Reverb accepts when applying fresh photo URLs.
      *
      * @param  list<string>  $urls
      */
@@ -1360,13 +1693,12 @@ class ReverbApiService
                 $merged[] = $u;
             }
             $urls = array_slice($merged, 0, 25);
-        } else {
-            // Full replace: new inventory URLs are not a reorder of Reverb's existing CDN URLs — clear first.
-            $this->deleteAllReverbListingImages($token, (string) $listingId);
         }
 
         try {
-            $response = $this->putReverbListingPhotos($token, (string) $listingId, $urls);
+            $response = $mode === 'replace'
+                ? $this->replaceReverbListingImages($token, (string) $listingId, $urls)
+                : $this->putReverbListingPhotos($token, (string) $listingId, $urls);
 
             if ($response->successful()) {
                 return [
