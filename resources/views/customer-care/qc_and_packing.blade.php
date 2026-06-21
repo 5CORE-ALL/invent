@@ -479,7 +479,7 @@
         }
 
         /* Combined "Created By" cell: name on top, short date below.
-           Used when $mergeCreatedAtIntoCreatedBy flag is on (Carriers Claims,
+           Used when $mergeCreatedAtIntoCreatedBy flag is on (Carrier Claims,
            Carrier Scan Issues). Hover tooltip on the cell shows the full
            timestamp. */
         .orders-hold-table .created-by-combo {
@@ -1559,7 +1559,7 @@
 
                             @if ($showCarrierColumn ?? false)
                                 {{-- Carrier dropdown — same options as the inline cell editor on the
-                                     Carriers Claims / Carrier Scan Issues boards. Backed by the
+                                     Carrier Claims / Carrier Scan Issues boards. Backed by the
                                      `issue_carrier` column on dispatch_issue_issues. --}}
                                 <div class="col-md-6">
                                     <label for="hold_issue_issue_carrier" class="form-label">Carrier</label>

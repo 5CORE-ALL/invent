@@ -119,7 +119,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
             // Replacement / Alternate Sent tracking input is capped at 30 chars in the UI;
             // we reuse `replacement_tracking` (varchar 50 in DB) but enforce 30 here.
             'replacement_tracking'   => 'nullable|string|max:30',
-            // Carrier dropdown shown on Carriers Claims / Carrier Scan Issues. Persisted
+            // Carrier dropdown shown on Carrier Claims / Carrier Scan Issues. Persisted
             // on dispatch_issue_issues.issue_carrier (also the column edited inline from
             // the table). Final allow-list (USPS / UPS / FEDEX / GOFO) is enforced after
             // case-normalization in buildExtraPayload().

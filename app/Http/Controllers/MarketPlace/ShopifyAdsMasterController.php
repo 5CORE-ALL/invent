@@ -34,6 +34,68 @@ class ShopifyAdsMasterController extends Controller
      */
     public const SUBROW_SEPARATOR = ' · ';
 
+    /**
+     * Rolled-up Spend + TCOS for the four parent channels the /shopify-ads-master
+     * page treats as "all channels" (Google Shopping, Google SERP, Facebook,
+     * Instagram — sub-rows excluded so Facebook · G Video etc. don't double count).
+     * Used by the Shopify row on /all-marketplace-master so its "Total Ad Spend"
+     * and "TACOS %" agree with the badges that page shows.
+     *
+     * Side-effect-free (no snapshot writes) — safe to call multiple times.
+     *
+     * @return array{
+     *     total_spend: float,
+     *     net_sales: float,
+     *     tcos_pct: float,
+     *     breakdown: array<string, float>
+     * }
+     */
+    public function getRolledUpSpend(): array
+    {
+        // Same set updateBadges() in the blade sums (parents only). loadFacebookContext()
+        // gracefully returns no-op rows when Meta data is absent, so this works even
+        // without an active Meta sheet.
+        try {
+            $rows = [
+                $this->googleShoppingMetrics(),
+                $this->googleSerpMetrics(),
+                $this->metaChannelMetrics('Facebook', 'FB'),
+                $this->metaChannelMetrics('Instagram', 'Insta'),
+            ];
+        } catch (\Throwable $e) {
+            \Log::warning('ShopifyAdsMaster::getRolledUpSpend rows failed: ' . $e->getMessage());
+            $rows = [];
+        }
+
+        $totalSpend = 0.0;
+        $breakdown  = [];
+        foreach ($rows as $r) {
+            // metricRow() keys the channel name as 'channel' — not 'label'.
+            $label = (string) ($r['channel'] ?? 'unknown');
+            $spend = (float)  ($r['spend']   ?? 0);
+            $totalSpend += $spend;
+            $breakdown[$label] = round($spend, 2);
+        }
+
+        $netSales = 0.0;
+        try {
+            $netSales = $this->shopifyNetSales();
+        } catch (\Throwable $e) {
+            \Log::warning('ShopifyAdsMaster::getRolledUpSpend netSales failed: ' . $e->getMessage());
+        }
+
+        $tcos = $netSales > 0
+            ? round(($totalSpend / $netSales) * 100, 2)
+            : ($totalSpend > 0 ? 100.0 : 0.0);
+
+        return [
+            'total_spend' => round($totalSpend, 2),
+            'net_sales'   => round($netSales, 2),
+            'tcos_pct'    => $tcos,
+            'breakdown'   => $breakdown,
+        ];
+    }
+
     public function index(Request $request)
     {
         $mode = $request->query('mode');

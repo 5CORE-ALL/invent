@@ -42,7 +42,7 @@
     // magnifier modal.
     'hideCarrierTrackingMediaColumns' => true,
     // Merge "Created At" into the "Created By" cell so the user name and
-    // short date sit in a single column (Carriers Claims style).
+    // short date sit in a single column (Carrier Claims style).
     'mergeCreatedAtIntoCreatedBy' => true,
     'hideLossDollarInput' => true,
     'hideActionRemark' => true,

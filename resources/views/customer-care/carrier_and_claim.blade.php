@@ -1,9 +1,9 @@
 {!! view('customer-care.qc_and_packing', [
-    'pageTitle' => 'Carriers Claims',
-    'addIssueButtonText' => 'Carriers Claims',
+    'pageTitle' => 'Carrier Claims',
+    'addIssueButtonText' => 'Carrier Claims',
     'hideIntroBanner' => true,
     'recordsTitle' => '',
-    'modalTitle' => 'Carriers Claims',
+    'modalTitle' => 'Carrier Claims',
     'skuDetailsUrl' => route('customer.care.dispatch.issues.sku.details'),
     'recordsListUrl' => route('customer.care.dispatch.issues.list.index'),
     'recordsStoreUrl' => route('customer.care.dispatch.issues.list.store'),
