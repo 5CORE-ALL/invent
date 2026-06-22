@@ -48,6 +48,19 @@ class TaskBusinessTime
 
     public static function parse(mixed $value): Carbon
     {
+        // Task datetimes (start_date, due_date, deleted_at, …) are stored as office
+        // "wall clock" times — the numbers in DB literally are the business-TZ clock.
+        // When the value reaches us as a DateTimeInterface (e.g. via Eloquent's
+        // 'datetime' cast applied in the app TZ = Asia/Kolkata), Carbon::parse(
+        // $carbon, biz_tz) would CONVERT the instant across timezones and roll the
+        // calendar day for wall-clock times near midnight in either zone — that's
+        // how a TID typed as "2026-06-25 11:00" was rendering / filtering as
+        // 2026-06-24 right after an edit. Strip any incoming TZ first so the
+        // wall-clock numbers are reinterpreted AS the business TZ.
+        if ($value instanceof \DateTimeInterface) {
+            $value = $value->format('Y-m-d H:i:s');
+        }
+
         return Carbon::parse($value, static::tz());
     }
 

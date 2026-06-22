@@ -40,7 +40,9 @@ abstract class IssueBoardControllerBase extends Controller
     protected function normalizeFieldType(string $fieldType): string
     {
         $value = trim($fieldType);
-        abort_unless(in_array($value, ['root_cause_found', 'root_cause_fixed', 'action', 'what_happened'], true), 422, 'Invalid field type.');
+        // `wrong_sent_reason` powers the All Issues → Wrong Item Sent panel's
+        // "Why it happened" dropdown; same custom-add UX as the others.
+        abort_unless(in_array($value, ['root_cause_found', 'root_cause_fixed', 'action', 'what_happened', 'wrong_sent_reason'], true), 422, 'Invalid field type.');
         return $value;
     }
 

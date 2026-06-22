@@ -130,6 +130,16 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'qty_mismatch_type'      => 'nullable|in:less,more',
             'qty_sent'               => 'nullable|numeric|min:0',
             'qty_ordered'            => 'nullable|numeric|min:0',
+            // Wrong Item Sent → Outgoing trigger sub-fields. Independent of the
+            // Replacement action's `outgoing_*` columns so an issue can fire
+            // BOTH outgoings (replacement SKU + wrongly sent SKU) on a single save.
+            'wrong_sent_qty'                   => 'nullable|numeric|min:0',
+            'wrong_sent_outgoing_needed'       => 'nullable|boolean',
+            'wrong_sent_outgoing_warehouse_id' => 'nullable|integer|exists:warehouses,id',
+            // "Why it happened" dropdown shown inside the Wrong Item Sent panel.
+            // Built-in options + custom user-added options stored in
+            // customer_care_issue_dropdown_options under field_type='wrong_sent_reason'.
+            'wrong_sent_reason'                => 'nullable|string|max:64',
         ];
     }
 
@@ -189,6 +199,34 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'qty_ordered'             => $isWrongQty && isset($validated['qty_ordered']) && $validated['qty_ordered'] !== '' ? (float) $validated['qty_ordered'] : null,
         ];
 
+        // Wrong Item Sent → outgoing pipeline (independent of Replacement
+        // outgoing). Only persist these when Wrong Item Sent is the active
+        // sub-section so a switch to a different "Issue?" type clears them.
+        if (Schema::hasColumn($this->issuesTable(), 'wrong_sent_qty')) {
+            $wrongQtyRaw = $validated['wrong_sent_qty'] ?? null;
+            $payload['wrong_sent_qty'] = $isWrongItem && $wrongQtyRaw !== null && $wrongQtyRaw !== ''
+                ? (float) $wrongQtyRaw
+                : null;
+        }
+        if (Schema::hasColumn($this->issuesTable(), 'wrong_sent_outgoing_needed')) {
+            $payload['wrong_sent_outgoing_needed'] = $isWrongItem
+                ? (bool) ($validated['wrong_sent_outgoing_needed'] ?? false)
+                : false;
+        }
+        if (Schema::hasColumn($this->issuesTable(), 'wrong_sent_outgoing_warehouse_id')) {
+            $payload['wrong_sent_outgoing_warehouse_id'] =
+                $isWrongItem
+                && (bool) ($validated['wrong_sent_outgoing_needed'] ?? false)
+                && isset($validated['wrong_sent_outgoing_warehouse_id'])
+                && $validated['wrong_sent_outgoing_warehouse_id'] !== ''
+                    ? (int) $validated['wrong_sent_outgoing_warehouse_id']
+                    : null;
+        }
+        if (Schema::hasColumn($this->issuesTable(), 'wrong_sent_reason')) {
+            $reasonRaw = isset($validated['wrong_sent_reason']) ? trim((string) $validated['wrong_sent_reason']) : '';
+            $payload['wrong_sent_reason'] = $isWrongItem && $reasonRaw !== '' ? $reasonRaw : null;
+        }
+
         // Only persist `issue_carrier` when the column actually exists on the
         // table — guards against running on schemas that pre-date the carrier
         // migration (which would throw on insert/update).
@@ -223,6 +261,16 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 'qty_mismatch_type'       => $row->qty_mismatch_type ?? null,
                 'qty_sent'                => isset($row->qty_sent) && $row->qty_sent !== null ? (float) $row->qty_sent : null,
                 'qty_ordered'             => isset($row->qty_ordered) && $row->qty_ordered !== null ? (float) $row->qty_ordered : null,
+                // Wrong Item Sent → outgoing trigger sub-fields. The processed_at /
+                // inventory_id pair lets the modal lock the checkbox so a re-save
+                // never double-decrements Shopify.
+                'wrong_sent_qty'                   => isset($row->wrong_sent_qty) && $row->wrong_sent_qty !== null ? (float) $row->wrong_sent_qty : null,
+                'wrong_sent_outgoing_needed'       => (bool) ($row->wrong_sent_outgoing_needed ?? false),
+                'wrong_sent_outgoing_warehouse_id' => isset($row->wrong_sent_outgoing_warehouse_id) && $row->wrong_sent_outgoing_warehouse_id !== null ? (int) $row->wrong_sent_outgoing_warehouse_id : null,
+                'wrong_sent_outgoing_processed_at' => $row->wrong_sent_outgoing_processed_at ?? null,
+                'wrong_sent_outgoing_inventory_id' => isset($row->wrong_sent_outgoing_inventory_id) && $row->wrong_sent_outgoing_inventory_id !== null ? (int) $row->wrong_sent_outgoing_inventory_id : null,
+                // "Why it happened" reason for the Wrong Item Sent panel.
+                'wrong_sent_reason'                => $row->wrong_sent_reason ?? null,
             ],
             $this->dispatchClaimCarrierRowSlice($row, $this->issuesTable())
         );
@@ -1313,6 +1361,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
         // sibling row id from this group so they all get marked as processed.
         $outgoingMsg     = null;
         $outgoingWarning = null;
+        $rowIds = array_map(fn ($r) => (int) $r['id'], $insertedRows);
         try {
             $validatedFromRequest = [
                 'action_1'                => $request->input('action_1'),
@@ -1322,7 +1371,6 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 'outgoing_warehouse_id'   => $request->input('outgoing_warehouse_id'),
                 'replacement_tracking'    => $request->input('replacement_tracking'),
             ];
-            $rowIds = array_map(fn ($r) => (int) $r['id'], $insertedRows);
             $outgoing = $this->fireOutgoingForIssue(
                 $request,
                 $validatedFromRequest,
@@ -1339,9 +1387,40 @@ class DispatchIssuesController extends IssueBoardControllerBase
             $outgoingWarning = 'Issue saved, but outgoing failed: ' . $e->getMessage();
         }
 
+        // Wrong Item Sent → outgoing trigger (independent from the Replacement
+        // outgoing above). Fires only when the user ticked the new
+        // "Outgoing needed?" checkbox inside the Wrong Item Sent sub-section.
+        $wrongSentOutgoingMsg = null;
+        try {
+            $wrongSentValidated = [
+                'what_happened'                    => $request->input('what_happened'),
+                'wrong_sent_outgoing_needed'       => $request->boolean('wrong_sent_outgoing_needed'),
+                'wrong_sent_sku'                   => $request->input('wrong_sent_sku'),
+                'wrong_sent_qty'                   => $request->input('wrong_sent_qty'),
+                'wrong_sent_outgoing_warehouse_id' => $request->input('wrong_sent_outgoing_warehouse_id'),
+            ];
+            $wsOutgoing = $this->fireWrongSentOutgoingForIssue(
+                $request,
+                $wrongSentValidated,
+                $rowIds,
+                $request->input('order_number')
+            );
+            if ($wsOutgoing['success']) {
+                $wrongSentOutgoingMsg = 'Wrongly sent SKU: Shopify inventory adjusted by -' .
+                    (int) $request->input('wrong_sent_qty') . ' and a row was added to /outgoing-view.';
+            } elseif ($wsOutgoing['error'] && $request->boolean('wrong_sent_outgoing_needed')) {
+                $extra = 'Wrong-item outgoing could NOT be processed: ' . $wsOutgoing['error'];
+                $outgoingWarning = $outgoingWarning ? ($outgoingWarning . ' | ' . $extra) : $extra;
+            }
+        } catch (\Throwable $e) {
+            $extra = 'Wrong-item outgoing failed: ' . $e->getMessage();
+            $outgoingWarning = $outgoingWarning ? ($outgoingWarning . ' | ' . $extra) : $extra;
+        }
+
         return response()->json([
             'message'          => count($insertedRows) . ' record(s) saved as 1 error group.'
-                . ($outgoingMsg ? ' ' . $outgoingMsg : ''),
+                . ($outgoingMsg ? ' ' . $outgoingMsg : '')
+                . ($wrongSentOutgoingMsg ? ' ' . $wrongSentOutgoingMsg : ''),
             'rows'             => $insertedRows,
             'group_id'         => $groupId,
             'outgoing_warning' => $outgoingWarning,
@@ -1525,43 +1604,77 @@ class DispatchIssuesController extends IssueBoardControllerBase
         });
 
         // Outgoing trigger on update — only fires if Outgoing needed is checked
-        // and the group hasn't already been processed (idempotent).
-        $outgoingMsg     = null;
-        $outgoingWarning = null;
-        if ($request->boolean('outgoing_needed')) {
-            try {
-                $rowIds = DB::table($this->issuesTable())
-                    ->where('group_id', $groupId)
-                    ->where('sku', $sku)
-                    ->where(function ($q) {
-                        $q->whereNull('is_archived')->orWhere('is_archived', false);
-                    })
-                    ->pluck('id')
-                    ->all();
+        // and the group hasn't already been processed (idempotent). Computed
+        // once and reused for both the Replacement and Wrong-Item outgoing
+        // triggers so we don't query siblings twice.
+        $outgoingMsg          = null;
+        $wrongSentOutgoingMsg = null;
+        $outgoingWarning      = null;
 
-                $outgoing = $this->fireOutgoingForIssue($request, [
-                    'action_1'                => $request->input('action_1'),
-                    'outgoing_needed'         => true,
-                    'replacement_sku'         => $request->input('replacement_sku'),
-                    'replacement_qty_sending' => $request->input('replacement_qty_sending'),
-                    'outgoing_warehouse_id'   => $request->input('outgoing_warehouse_id'),
-                    'replacement_tracking'    => $request->input('replacement_tracking'),
-                ], array_map('intval', $rowIds), $request->input('order_number'));
+        $shouldFireRepl  = $request->boolean('outgoing_needed');
+        $shouldFireWrong = $request->boolean('wrong_sent_outgoing_needed');
 
-                if ($outgoing['success']) {
-                    $outgoingMsg = 'Shopify inventory adjusted by -' . (int) $request->input('replacement_qty_sending') .
-                        ' and a row was added to /outgoing-view.';
-                } elseif ($outgoing['error'] && stripos($outgoing['error'], 'already processed') === false) {
-                    $outgoingWarning = 'Issue updated, but outgoing could NOT be processed: ' . $outgoing['error'];
+        if ($shouldFireRepl || $shouldFireWrong) {
+            $rowIds = DB::table($this->issuesTable())
+                ->where('group_id', $groupId)
+                ->where('sku', $sku)
+                ->where(function ($q) {
+                    $q->whereNull('is_archived')->orWhere('is_archived', false);
+                })
+                ->pluck('id')
+                ->all();
+            $rowIds = array_map('intval', $rowIds);
+
+            if ($shouldFireRepl) {
+                try {
+                    $outgoing = $this->fireOutgoingForIssue($request, [
+                        'action_1'                => $request->input('action_1'),
+                        'outgoing_needed'         => true,
+                        'replacement_sku'         => $request->input('replacement_sku'),
+                        'replacement_qty_sending' => $request->input('replacement_qty_sending'),
+                        'outgoing_warehouse_id'   => $request->input('outgoing_warehouse_id'),
+                        'replacement_tracking'    => $request->input('replacement_tracking'),
+                    ], $rowIds, $request->input('order_number'));
+
+                    if ($outgoing['success']) {
+                        $outgoingMsg = 'Shopify inventory adjusted by -' . (int) $request->input('replacement_qty_sending') .
+                            ' and a row was added to /outgoing-view.';
+                    } elseif ($outgoing['error'] && stripos($outgoing['error'], 'already processed') === false) {
+                        $outgoingWarning = 'Issue updated, but outgoing could NOT be processed: ' . $outgoing['error'];
+                    }
+                } catch (\Throwable $e) {
+                    $outgoingWarning = 'Issue updated, but outgoing failed: ' . $e->getMessage();
                 }
-            } catch (\Throwable $e) {
-                $outgoingWarning = 'Issue updated, but outgoing failed: ' . $e->getMessage();
+            }
+
+            if ($shouldFireWrong) {
+                try {
+                    $wsOutgoing = $this->fireWrongSentOutgoingForIssue($request, [
+                        'what_happened'                    => $request->input('what_happened'),
+                        'wrong_sent_outgoing_needed'       => true,
+                        'wrong_sent_sku'                   => $request->input('wrong_sent_sku'),
+                        'wrong_sent_qty'                   => $request->input('wrong_sent_qty'),
+                        'wrong_sent_outgoing_warehouse_id' => $request->input('wrong_sent_outgoing_warehouse_id'),
+                    ], $rowIds, $request->input('order_number'));
+
+                    if ($wsOutgoing['success']) {
+                        $wrongSentOutgoingMsg = 'Wrongly sent SKU: Shopify inventory adjusted by -' .
+                            (int) $request->input('wrong_sent_qty') . ' and a row was added to /outgoing-view.';
+                    } elseif ($wsOutgoing['error'] && stripos($wsOutgoing['error'], 'already processed') === false) {
+                        $extra = 'Wrong-item outgoing could NOT be processed: ' . $wsOutgoing['error'];
+                        $outgoingWarning = $outgoingWarning ? ($outgoingWarning . ' | ' . $extra) : $extra;
+                    }
+                } catch (\Throwable $e) {
+                    $extra = 'Wrong-item outgoing failed: ' . $e->getMessage();
+                    $outgoingWarning = $outgoingWarning ? ($outgoingWarning . ' | ' . $extra) : $extra;
+                }
             }
         }
 
         return response()->json([
             'message'          => 'Issue updated. Department changes have been reconciled across sibling rows.'
-                . ($outgoingMsg ? ' ' . $outgoingMsg : ''),
+                . ($outgoingMsg ? ' ' . $outgoingMsg : '')
+                . ($wrongSentOutgoingMsg ? ' ' . $wrongSentOutgoingMsg : ''),
             'group_id'         => $groupId,
             'outgoing_warning' => $outgoingWarning,
         ]);
@@ -1630,6 +1743,76 @@ class DispatchIssuesController extends IssueBoardControllerBase
                     'outgoing_processed_at' => now(),
                     'outgoing_inventory_id' => $outgoing['inventory_id'],
                     'updated_at'            => now(),
+                ]);
+        }
+
+        return $outgoing;
+    }
+
+    /**
+     * Mirror of {@see self::fireOutgoingForIssue()} for the Wrong Item Sent
+     * sub-section. When the user ticks "Outgoing needed?" inside the Wrong
+     * Item Sent panel, we treat the wrongly-sent SKU as having physically
+     * left the warehouse and fire the same Outgoing pipeline — adjusting
+     * Shopify inventory by -wrong_sent_qty and writing an `inventories` row
+     * of type=outgoing.
+     *
+     * Lives independently of the Replacement outgoing flow so a single issue
+     * can fire BOTH (replacement SKU + wrongly sent SKU) on one save.
+     *
+     * @param  int[]  $issueRowIds  Issue row IDs to flag as processed on success.
+     * @return array{success: bool, error: string|null, inventory_id: int|null}
+     */
+    private function fireWrongSentOutgoingForIssue(
+        Request $request,
+        array $validated,
+        array $issueRowIds,
+        ?string $orderNumber = null
+    ): array {
+        if (empty($issueRowIds)) {
+            return ['success' => false, 'error' => 'No issue rows to mark.', 'inventory_id' => null];
+        }
+        if (! Schema::hasColumn($this->issuesTable(), 'wrong_sent_outgoing_processed_at')) {
+            return ['success' => false, 'error' => 'wrong_sent_outgoing_* columns are missing — run the migration.', 'inventory_id' => null];
+        }
+
+        $whatHappened = isset($validated['what_happened']) ? trim((string) $validated['what_happened']) : '';
+        $isWrongItem  = strcasecmp($whatHappened, 'Wrong Item Sent') === 0;
+        $needed       = (bool) ($validated['wrong_sent_outgoing_needed'] ?? false);
+        if (! $isWrongItem || ! $needed) {
+            return ['success' => false, 'error' => 'Wrong-item outgoing not requested.', 'inventory_id' => null];
+        }
+
+        $sku  = isset($validated['wrong_sent_sku']) ? trim((string) $validated['wrong_sent_sku']) : '';
+        $qty  = isset($validated['wrong_sent_qty']) ? (int) $validated['wrong_sent_qty'] : 0;
+        $whId = (int) ($validated['wrong_sent_outgoing_warehouse_id'] ?? 0);
+        if ($sku === '' || $qty <= 0 || $whId <= 0) {
+            return ['success' => false, 'error' => 'Wrongly sent SKU, qty and warehouse are required.', 'inventory_id' => null];
+        }
+
+        // Skip if any sibling has already been processed (idempotency guard).
+        $alreadyProcessed = DB::table($this->issuesTable())
+            ->whereIn('id', $issueRowIds)
+            ->whereNotNull('wrong_sent_outgoing_processed_at')
+            ->exists();
+        if ($alreadyProcessed) {
+            return ['success' => false, 'error' => 'Wrong-item outgoing already processed for this issue.', 'inventory_id' => null];
+        }
+
+        $outgoing = app(OutgoingController::class)->processOutgoingFromIssue($sku, $qty, [
+            'warehouse_id' => $whId,
+            'reason'       => 'Wrong Item Sent (All Issues)',
+            'comment'      => 'Auto (wrong item) from All Issues #' . implode(',', $issueRowIds),
+            'order_id'     => $orderNumber,
+        ]);
+
+        if ($outgoing['success']) {
+            DB::table($this->issuesTable())
+                ->whereIn('id', $issueRowIds)
+                ->update([
+                    'wrong_sent_outgoing_processed_at' => now(),
+                    'wrong_sent_outgoing_inventory_id' => $outgoing['inventory_id'],
+                    'updated_at'                       => now(),
                 ]);
         }
 

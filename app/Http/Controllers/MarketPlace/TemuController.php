@@ -2978,6 +2978,23 @@ class TemuController extends Controller
             
             // Flip for quick lookup
             $temuPricingSkusNormalized = $temuPricingSkusNormalized->flip();
+
+            // Side lookup: when this is the Temu 2 endpoint, also pull the Temu 1 base price
+            // (from temu_pricing) keyed by the same ProductMaster SKU. This drives the
+            // "Temu 1 Price" comparison column on the Temu 2 - Analytics page. Only the
+            // sku + base_price are read — that's all the column needs and it keeps the
+            // payload light. When this is the Temu 1 endpoint we skip the lookup; the
+            // Temu 1 column on the Temu 2 page is a one-way reference, not bi-directional.
+            $temu1PricingBySku = [];
+            if ($isTemu2Pricing) {
+                $temu1All = TemuPricing::select(['sku', 'base_price'])->get();
+                foreach ($temu1All as $row) {
+                    $n = $normalizeSku($row->sku);
+                    if (isset($normalizedSkuMap[$n])) {
+                        $temu1PricingBySku[$normalizedSkuMap[$n]] = $row;
+                    }
+                }
+            }
             
             // Fetch shopify data for inventory
             $shopifyData = ShopifySku::mapByProductSkus($skus);
@@ -3383,6 +3400,15 @@ class TemuController extends Controller
                 } else {
                     $temuPrice = 0;
                 }
+
+                // Temu 1 base/listing price for the same SKU. Only populated on the Temu 2
+                // endpoint (see $temu1PricingBySku build above). Same +$2.99 adjustment as
+                // the Temu Price column so both numbers are directly comparable.
+                $temu1Item = $temu1PricingBySku[$sku] ?? null;
+                $temu1BasePrice = $temu1Item ? (float) ($temu1Item->base_price ?? 0) : 0;
+                $temu1Price = $temu1BasePrice > 0
+                    ? ($temu1BasePrice <= 26.99 ? $temu1BasePrice + 2.99 : $temu1BasePrice)
+                    : 0;
                 
                 // GPRFT% = ((FB Prc * 0.96 - LP - Temu Ship) / FB Prc) * 100 (temuPrice = FB Prc)
                 $profit = $temuPrice * $percentage - $lp - $temuShip;
@@ -3541,6 +3567,9 @@ class TemuController extends Controller
                     'dil_percent' => $dilPercent,
                     'temu_ship' => $temuShip,
                     'temu_price' => round($temuPrice, 2),
+                    // Temu 1 reference price (populated only on the Temu 2 endpoint).
+                    'temu1_base_price' => round((float) $temu1BasePrice, 2),
+                    'temu1_price' => round((float) $temu1Price, 2),
                     'a_price' => $amazonPrice,
                     'e_price' => $ebayPrice,
                     'e2_price' => $ebay2Price,

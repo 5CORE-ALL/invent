@@ -3031,6 +3031,14 @@ class EbayController extends Controller
             }
             $fetcher = app(EbayLivePriceFetcher::class);
 
+            // Best-effort live refresh. Background command `ebay:update-sku-prices` is the
+            // source of truth for keeping these prices fresh — this loop is only a
+            // courtesy on modal open. We DO NOT overwrite a stored price with a degenerate
+            // SerpApi response (total_price <= 0 means the listing ended / sold out /
+            // returned no price). Doing so previously caused the bug where the tabulator
+            // row said "View 24" but the modal returned 0 competitors: the live fetch
+            // zeroed the records and the subsequent total_price > 0 query filtered them
+            // out. See `EbaySkuCompetitor::getCompetitorsForSku` for that filter.
             foreach ($competitors as $competitor) {
                 $listingId = $fetcher->resolveListingId($competitor->product_link, $competitor->item_id);
                 if (!$listingId) {
@@ -3042,12 +3050,17 @@ class EbayController extends Controller
                     continue;
                 }
 
+                $liveTotal = isset($live['total_price']) ? (float) $live['total_price'] : 0.0;
+                if ($liveTotal <= 0) {
+                    continue;
+                }
+
                 $originalItemId = $competitor->item_id;
                 $competitor->update([
                     'item_id' => $listingId,
                     'price' => $live['price'],
                     'shipping_cost' => $live['shipping_cost'],
-                    'total_price' => $live['total_price'],
+                    'total_price' => $liveTotal,
                     'product_title' => $live['title'] ?? $competitor->product_title,
                     'product_link' => $live['link'] ?? $competitor->product_link,
                     'image' => $live['image'] ?? $competitor->image,
@@ -3066,14 +3079,17 @@ class EbayController extends Controller
                 ]);
             }
 
-            $competitors = collect();
-            foreach (\App\Models\EbaySkuCompetitor::resolveLookupKeys($sku) as $lookupSku) {
-                $found = \App\Models\EbaySkuCompetitor::getCompetitorsForSku($lookupSku, 'ebay');
-                if ($found->isNotEmpty()) {
-                    $competitors = $found;
-                    break;
-                }
-            }
+            // Reuse the collection we already loaded (refreshed in-place by the loop
+            // above where the live fetch succeeded). We deliberately do NOT re-query the
+            // DB here — that re-query is what dropped competitors whose live total_price
+            // came back as 0. Resort because some prices may have been refreshed.
+            $competitors = $competitors
+                ->map(function ($comp) { return $comp->refresh(); })
+                ->filter(function ($comp) {
+                    return (float) ($comp->total_price ?? 0) > 0;
+                })
+                ->sortBy(function ($comp) { return (float) $comp->total_price; })
+                ->values();
             $lowestPrice = $competitors->first();
             
             return response()->json([

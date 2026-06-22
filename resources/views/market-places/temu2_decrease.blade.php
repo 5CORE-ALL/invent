@@ -2948,6 +2948,23 @@
                     }
                 },
                 {
+                    // Reference column: Temu 1 listing price for the same SKU, served by the
+                    // /temu2-decrease-data endpoint as `temu1_price` (server pre-applies the
+                    // +$2.99 adjustment, same rule as the Temu Price column above). Read-only.
+                    // SKUs with no Temu 1 listing show a dash so they're easy to spot.
+                    title: "Temu 1 Price",
+                    field: "temu1_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue());
+                        if (!value || isNaN(value) || value <= 0) {
+                            return '<span style="color:#999;">-</span>';
+                        }
+                        return '$' + value.toFixed(2);
+                    }
+                },
+                {
                     title: "PRFT AMT",
                     field: "profit",
                     hozAlign: "center",

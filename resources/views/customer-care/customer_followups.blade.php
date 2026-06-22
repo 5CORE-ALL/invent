@@ -13,13 +13,17 @@
         }
 
         /*
-         * Single table inside a scroll box: table.table thead th { position: sticky; top: 0 } is relative to
-         * this scrollport, so rows never paint over/under a separate “floating” header (split-table bug).
+         * Table grows to its natural height; the page (window) is the scroll port.
+         * Earlier this was a fixed-height scroll box with `max-height: min(70vh, …)`,
+         * but that left a big blank gap below the card whenever the result set was
+         * short (the .content-page min-height keeps the page tall regardless).
+         * The header below still uses `position: sticky` — sticky resolves against
+         * the nearest scrolling ancestor, which is now <html>, so column headers stay
+         * visible while you scroll the page; `top` is set to the topbar height so the
+         * sticky header docks just below the (also-sticky) topbar instead of sliding
+         * underneath it.
          */
         .followup-table-scroll {
-            max-height: min(70vh, calc(100vh - 13.5rem));
-            overflow: auto;
-            scrollbar-gutter: stable;
             border: 1px solid #dee2e6;
         }
 
@@ -44,7 +48,7 @@
 
         .followup-table-scroll table.table thead th {
             position: sticky;
-            top: 0;
+            top: var(--ct-topbar-height, 70px);
             z-index: 6;
             background: #2c6ed5 !important;
             color: #fff !important;
@@ -752,8 +756,46 @@
                 return p.toString();
             }
 
+            /**
+             * Tear down tooltips owned by the followup table before we wipe the tbody.
+             *
+             * Two problems this fixes:
+             *
+             *  1. Re-rendering the tbody destroys the trigger elements, but any tooltip
+             *     popup currently shown is appended to <body> by Bootstrap. With the
+             *     trigger gone, the mouseleave that would hide+remove the popup never
+             *     fires, so the .tooltip element stays in <body> at an absolute
+             *     position. document.body grows to enclose it, which is exactly the
+             *     "huge blank scrollable space below the page" symptom users see right
+             *     after picking a status (either the toolbar filter or the inline dot).
+             *
+             *  2. The previous code called `new bootstrap.Tooltip(el)` on every
+             *     [data-bs-toggle="tooltip"] on the page on every refresh, stacking
+             *     duplicate instances on the topbar / sidebar nodes that aren't even
+             *     ours. Now we only touch nodes inside the followup table.
+             */
+            function teardownFollowupTooltips() {
+                const tbody = document.getElementById('followupTableBody');
+                if (tbody) {
+                    tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+                        const inst = bootstrap.Tooltip.getInstance(el);
+                        if (inst) inst.dispose();
+                    });
+                }
+                // Sweep orphan tooltip popups: only remove ones whose trigger
+                // (the element referencing them via aria-describedby) no longer
+                // exists. Topbar / sidebar tooltips are kept intact.
+                document.querySelectorAll('body > .tooltip').forEach(node => {
+                    const id = node.getAttribute('id');
+                    if (!id) { node.remove(); return; }
+                    const trigger = document.querySelector('[aria-describedby="' + id + '"]');
+                    if (!trigger) node.remove();
+                });
+            }
+
             async function loadTable() {
                 const tbody = document.getElementById('followupTableBody');
+                teardownFollowupTooltips();
                 try {
                     const res = await fetch(dataUrl + '?' + buildQuery(), {
                         headers: {
@@ -802,7 +844,9 @@
                             '</div></td></tr>';
                     }).join('');
 
-                    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
+                    tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+                        if (!bootstrap.Tooltip.getInstance(el)) new bootstrap.Tooltip(el);
+                    });
                 } catch (e) {
                     tbody.innerHTML =
                         '<tr><td colspan="11" class="text-center text-danger py-4">Failed to load data.</td></tr>';

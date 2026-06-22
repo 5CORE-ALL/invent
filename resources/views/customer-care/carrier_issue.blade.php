@@ -46,4 +46,8 @@
     'mergeCreatedAtIntoCreatedBy' => true,
     'hideLossDollarInput' => true,
     'hideActionRemark' => true,
+    // Widen the SKU column on this page (the default of 80px clipped most
+    // SKUs after a few characters). Other pages using qc_and_packing.blade.php
+    // are unaffected because the default is preserved when this is omitted.
+    'skuColumnMaxPx' => 180,
 ])->render() !!}

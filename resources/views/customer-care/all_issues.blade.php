@@ -800,14 +800,96 @@
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="col-md-6">
+                                        {{-- Wrongly sent quantity. Optional at form-level; only
+                                             becomes required when "Outgoing needed?" below is
+                                             checked, since the Shopify deduction needs a number. --}}
+                                        <div class="col-md-3">
+                                            <label for="hold_issue_wrong_sent_qty" class="form-label small mb-1">
+                                                Qty wrongly sent
+                                            </label>
+                                            <input type="number" min="0" step="1" class="form-control"
+                                                id="hold_issue_wrong_sent_qty" name="wrong_sent_qty" placeholder="Qty">
+                                        </div>
+                                        <div class="col-md-3">
                                             <label for="hold_issue_issue_notes" class="form-label small mb-1">
-                                                Notes <span class="text-muted">(max 200 chars)</span>
+                                                Notes <span class="text-muted">(≤200)</span>
                                             </label>
                                             <textarea class="form-control" id="hold_issue_issue_notes" name="issue_notes"
-                                                maxlength="200" rows="2" placeholder="Notes about what was sent wrong..."></textarea>
+                                                maxlength="200" rows="2" placeholder="Notes..."></textarea>
                                             <div class="form-text text-end small">
                                                 <span id="issueNotesCharCount">0</span> / 200
+                                            </div>
+                                        </div>
+                                        {{-- "Why it happened" dropdown — built-in starter options +
+                                             custom user-added options. Same UX as the Issue? / Action
+                                             dropdowns: the + button adds a custom option, the trash
+                                             button deletes the currently-selected custom option.
+                                             Optional (not enforced). --}}
+                                        <div class="col-md-6">
+                                            <label for="hold_issue_wrong_sent_reason" class="form-label small mb-1">
+                                                Why it happened?
+                                            </label>
+                                            <div class="input-group">
+                                                <select class="form-select" id="hold_issue_wrong_sent_reason"
+                                                    name="wrong_sent_reason">
+                                                    <option value="">— Select reason —</option>
+                                                    <optgroup label="Common reasons" id="hold_issue_wrong_sent_reason_builtin_group">
+                                                        <option value="Picker error">Picker error</option>
+                                                        <option value="Label swap">Label swap</option>
+                                                        <option value="Mis-scan / barcode mismatch">Mis-scan / barcode mismatch</option>
+                                                        <option value="Look-alike SKU">Look-alike SKU</option>
+                                                        <option value="Listing image mismatch">Listing image mismatch</option>
+                                                        <option value="Other">Other</option>
+                                                    </optgroup>
+                                                    <optgroup label="Custom reasons" id="hold_issue_wrong_sent_reason_custom_group"></optgroup>
+                                                </select>
+                                                <button type="button" class="btn btn-outline-secondary"
+                                                    id="add-wrong-sent-reason-option" title="Add custom reason"><i class="bi bi-plus-lg"></i></button>
+                                                <button type="button" class="btn btn-outline-danger"
+                                                    id="delete-wrong-sent-reason-option" title="Delete the selected custom reason"><i class="bi bi-trash"></i></button>
+                                            </div>
+                                            <div class="form-text">Pick a built-in reason or click + to add your own.</div>
+                                        </div>
+                                        {{-- Outgoing trigger for the Wrongly Sent SKU. Mirrors the
+                                             Replacement "Outgoing needed?" pattern but lives in its
+                                             own column set so an issue can fire BOTH outgoings
+                                             (replacement SKU + wrongly sent SKU) on a single save.
+                                             Optional. When ticked, /outgoing-view receives a row
+                                             with reason "Wrong Item Sent (All Issues)" and Shopify
+                                             inventory is decremented by Qty wrongly sent. --}}
+                                        <div class="col-12">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox"
+                                                    id="hold_issue_wrong_sent_outgoing_needed"
+                                                    name="wrong_sent_outgoing_needed" value="1">
+                                                <label class="form-check-label"
+                                                    for="hold_issue_wrong_sent_outgoing_needed">
+                                                    Outgoing needed? <span class="text-muted small">(deduct wrongly sent qty from Shopify)</span>
+                                                </label>
+                                                <div class="form-text mt-1 d-none"
+                                                    id="wrongSentOutgoingProcessedNotice">
+                                                    <i class="bi bi-check-circle-fill text-success me-1"></i>
+                                                    Already processed — Shopify inventory was decremented and a row was added to <a href="/outgoing-view" target="_blank">/outgoing-view</a>. Re-saves will not double-decrement.
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {{-- Warehouse picker: required only when "Outgoing needed?"
+                                             above is checked. --}}
+                                        <div class="col-md-6 d-none" id="wrongSentOutgoingWarehouseWrap">
+                                            <label for="hold_issue_wrong_sent_outgoing_warehouse_id"
+                                                class="form-label small mb-1">
+                                                Outgoing warehouse <span class="text-danger">*</span>
+                                            </label>
+                                            <select class="form-select"
+                                                id="hold_issue_wrong_sent_outgoing_warehouse_id"
+                                                name="wrong_sent_outgoing_warehouse_id">
+                                                <option value="">— Select warehouse —</option>
+                                                @foreach (($outgoingWarehouses ?? collect()) as $w)
+                                                    <option value="{{ $w->id }}">{{ $w->name }}</option>
+                                                @endforeach
+                                            </select>
+                                            <div class="form-text small">
+                                                Saving will deduct <strong>Qty wrongly sent</strong> from Shopify inventory and create an <a href="/outgoing-view" target="_blank">/outgoing-view</a> row (reason: <em>Wrong Item Sent (All Issues)</em>).
                                             </div>
                                         </div>
                                     </div>
@@ -1767,6 +1849,38 @@
                     );
                 }
 
+                // Wrong Item Sent — outgoing trigger (separate from the
+                // Replacement outgoing above). Only render when at least one
+                // field is populated so non-Wrong-Item issues don't show an
+                // empty section.
+                const wrongSentParts = [];
+                if (String(d.wrong_sent_sku || '').trim() !== '') {
+                    wrongSentParts.push(detailsTextRow('Wrongly sent SKU', d.wrong_sent_sku));
+                }
+                if (d.wrong_sent_qty != null && String(d.wrong_sent_qty).trim() !== '') {
+                    wrongSentParts.push(detailsTextRow('Qty wrongly sent', d.wrong_sent_qty));
+                }
+                if (String(d.wrong_sent_reason || '').trim() !== '') {
+                    wrongSentParts.push(detailsTextRow('Why it happened', d.wrong_sent_reason));
+                }
+                if (d.wrong_sent_outgoing_needed != null) {
+                    const yn = String(d.wrong_sent_outgoing_needed) === '1' || d.wrong_sent_outgoing_needed === true ? 'Yes' : 'No';
+                    if (yn === 'Yes' || String(d.wrong_sent_sku || '').trim() !== '') {
+                        wrongSentParts.push(detailsTextRow('Outgoing needed (wrong item)', yn));
+                    }
+                }
+                if (d.wrong_sent_outgoing_processed_at) {
+                    wrongSentParts.push(detailsTextRow('Outgoing processed at', d.wrong_sent_outgoing_processed_at));
+                }
+                if (wrongSentParts.length) {
+                    sections.push(
+                        '<div class="ai-detail-section">' +
+                        '<div class="ai-detail-section-title">Wrong Item Sent</div>' +
+                        wrongSentParts.join('') +
+                        '</div>'
+                    );
+                }
+
                 // Audit
                 sections.push(
                     '<div class="ai-detail-section">' +
@@ -2159,7 +2273,10 @@
                 {
                     title: 'Close',
                     field: 'close_note',
-                   
+                    width: 200,
+                    minWidth: 140,
+                    maxWidth: 260,
+                    variableHeight: true,
                     formatter: function(c) {
                         return dash(c.getValue());
                     }
@@ -2444,6 +2561,16 @@
                     qty_mismatch_type: row?.qty_mismatch_type ?? '',
                     qty_sent: row?.qty_sent ?? '',
                     qty_ordered: row?.qty_ordered ?? '',
+                    // Wrong Item Sent → outgoing trigger sub-fields. Mirror the
+                    // Replacement outgoing_* shape so the modal can prefill +
+                    // lock the checkbox after a successful Shopify deduction.
+                    wrong_sent_qty: row?.wrong_sent_qty ?? '',
+                    wrong_sent_outgoing_needed: !!row?.wrong_sent_outgoing_needed,
+                    wrong_sent_outgoing_warehouse_id: row?.wrong_sent_outgoing_warehouse_id ?? '',
+                    wrong_sent_outgoing_processed_at: row?.wrong_sent_outgoing_processed_at ?? null,
+                    wrong_sent_outgoing_inventory_id: row?.wrong_sent_outgoing_inventory_id ?? null,
+                    // "Why it happened" dropdown value (built-in or custom).
+                    wrong_sent_reason: row?.wrong_sent_reason ?? '',
                 };
             }
 
@@ -2914,6 +3041,7 @@
                     'root_cause_fixed'));
                 await loadActionCustomOptions();
                 await loadWhatHappenedCustomOptions();
+                await loadWrongSentReasonCustomOptions();
             }
 
             // ── Issue? dropdown: built-in + custom user-added options ──
@@ -3045,16 +3173,36 @@
             function clearWrongItemSubsection() {
                 const skuInp = document.getElementById('hold_issue_wrong_sent_sku');
                 const notes  = document.getElementById('hold_issue_issue_notes');
+                const qtyInp = document.getElementById('hold_issue_wrong_sent_qty');
+                const outChk = document.getElementById('hold_issue_wrong_sent_outgoing_needed');
+                const whInp  = document.getElementById('hold_issue_wrong_sent_outgoing_warehouse_id');
+                const whWrap = document.getElementById('wrongSentOutgoingWarehouseWrap');
+                const notice = document.getElementById('wrongSentOutgoingProcessedNotice');
+                const reason = document.getElementById('hold_issue_wrong_sent_reason');
                 const preview = document.getElementById('wrongSentSkuPreview');
                 const qtyAv  = document.getElementById('wrongSentQtyAvailable');
                 const img    = document.getElementById('wrongSentSkuImage');
                 const cnt    = document.getElementById('issueNotesCharCount');
                 if (skuInp) skuInp.value = '';
                 if (notes) notes.value = '';
+                if (qtyInp) qtyInp.value = '';
+                if (outChk) { outChk.checked = false; outChk.disabled = false; }
+                if (whInp) whInp.value = '';
+                if (whWrap) whWrap.classList.add('d-none');
+                if (notice) notice.classList.add('d-none');
+                if (reason) reason.value = '';
                 if (preview) preview.classList.add('d-none');
                 if (qtyAv) qtyAv.textContent = '—';
                 if (img) img.setAttribute('src', '');
                 if (cnt) cnt.textContent = '0';
+            }
+
+            // Show/hide the warehouse picker for the Wrong Item Sent outgoing
+            // checkbox. Mirrors toggleOutgoingWarehouseVisibility() above but
+            // for the Wrong Item Sent sub-section's own checkbox/picker pair.
+            function toggleWrongSentOutgoingWarehouseVisibility() {
+                const checked = !!document.getElementById('hold_issue_wrong_sent_outgoing_needed')?.checked;
+                document.getElementById('wrongSentOutgoingWarehouseWrap')?.classList.toggle('d-none', !checked);
             }
 
             function clearWrongQtySubsection() {
@@ -3242,6 +3390,111 @@
                     showAlert('Unable to delete action.');
                 }
             }
+
+            // ── "Why it happened" dropdown (Wrong Item Sent panel) ──────────
+            // Same UX as the Action / Issue? dropdowns: built-in optgroup is
+            // already in the HTML; this just fills the "Custom reasons"
+            // optgroup from customer_care_issue_dropdown_options where
+            // field_type = 'wrong_sent_reason'.
+            async function loadWrongSentReasonCustomOptions() {
+                const sel = document.getElementById('hold_issue_wrong_sent_reason');
+                const grp = document.getElementById('hold_issue_wrong_sent_reason_custom_group');
+                if (!sel || !grp) return;
+                const previous = sel.value;
+                let custom = [];
+                try { custom = await fetchDropdownOptions('wrong_sent_reason'); } catch (e) { custom = []; }
+                const builtIns = new Set(
+                    Array.from(document.querySelectorAll('#hold_issue_wrong_sent_reason_builtin_group option'))
+                        .map(o => o.value.toLowerCase().trim())
+                );
+                const seen = new Set();
+                grp.innerHTML = (custom || [])
+                    .filter(v => {
+                        const k = String(v).toLowerCase().trim();
+                        if (!k || seen.has(k) || builtIns.has(k)) return false;
+                        seen.add(k); return true;
+                    })
+                    .map(v => '<option value="' + escAttr(v) + '">' + escapeHtml(v) + '</option>')
+                    .join('');
+                if (previous && Array.from(sel.options).some(o => o.value === previous)) {
+                    sel.value = previous;
+                }
+            }
+
+            // Preserve legacy / unknown reasons saved before they were added
+            // to the dropdown — append them to the Custom group on edit so the
+            // <select> can display the original value instead of falling back
+            // to "" and silently losing user data.
+            function ensureWrongSentReasonOptionPresent(value) {
+                const v = String(value || '').trim();
+                if (!v) return;
+                const sel = document.getElementById('hold_issue_wrong_sent_reason');
+                if (!sel) return;
+                if (Array.from(sel.options).some(o => o.value === v)) return;
+                const grp = document.getElementById('hold_issue_wrong_sent_reason_custom_group');
+                if (!grp) return;
+                const opt = document.createElement('option');
+                opt.value = v;
+                opt.textContent = v;
+                grp.appendChild(opt);
+            }
+
+            async function addWrongSentReasonOption() {
+                const value = String(prompt('Enter new reason') || '').trim();
+                if (!value) return;
+                try {
+                    const { response, data } = await postDropdownOption(dropdownOptionsStoreUrl, {
+                        field_type: 'wrong_sent_reason',
+                        option_value: value,
+                    });
+                    if (!response.ok) {
+                        showAlert(data?.message || 'Unable to add reason.');
+                        return;
+                    }
+                    await loadWrongSentReasonCustomOptions();
+                    const sel = document.getElementById('hold_issue_wrong_sent_reason');
+                    if (sel) {
+                        sel.value = value;
+                        sel.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                } catch (e) {
+                    showAlert('Unable to add reason.');
+                }
+            }
+
+            async function deleteWrongSentReasonOption() {
+                const sel = document.getElementById('hold_issue_wrong_sent_reason');
+                if (!sel) return;
+                const selected = sel.value.trim();
+                if (!selected) {
+                    showAlert('Pick the custom reason to delete first.');
+                    return;
+                }
+                const isBuiltIn = !!document.querySelector(
+                    '#hold_issue_wrong_sent_reason_builtin_group option[value="' + selected.replace(/"/g, '&quot;') + '"]'
+                );
+                if (isBuiltIn) {
+                    showAlert('Built-in reasons cannot be deleted. Pick a custom reason.');
+                    return;
+                }
+                if (!confirm('Delete custom reason "' + selected + '"?')) return;
+                try {
+                    const { response, data } = await postDropdownOption(dropdownOptionsDeleteUrl, {
+                        field_type: 'wrong_sent_reason',
+                        option_value: selected,
+                    });
+                    if (!response.ok) {
+                        showAlert(data?.message || 'Unable to delete reason.');
+                        return;
+                    }
+                    await loadWrongSentReasonCustomOptions();
+                    sel.value = '';
+                    sel.dispatchEvent(new Event('change', { bubbles: true }));
+                } catch (e) {
+                    showAlert('Unable to delete reason.');
+                }
+            }
+
             async function addRootCauseOption(inputEl, fieldType, datalistId) {
                 const value = String(prompt('Enter new option') || '').trim();
                 if (!value) return;
@@ -3406,6 +3659,32 @@
                     const cnt = document.getElementById('issueNotesCharCount');
                     if (cnt) cnt.textContent = String((record.issue_notes || '').length);
                     if (record.wrong_sent_sku) fillWrongSentSkuDetails();
+                    // Prefill "Why it happened" — append legacy/unknown values
+                    // to the Custom group so the select can show them instead
+                    // of silently falling back to "" and losing the value.
+                    ensureWrongSentReasonOptionPresent(record.wrong_sent_reason);
+                    const reasonSel = document.getElementById('hold_issue_wrong_sent_reason');
+                    if (reasonSel) reasonSel.value = record.wrong_sent_reason || '';
+                    // Prefill the new Wrong-Item outgoing trigger fields.
+                    const qtyInp = document.getElementById('hold_issue_wrong_sent_qty');
+                    if (qtyInp) qtyInp.value =
+                        (record.wrong_sent_qty != null && record.wrong_sent_qty !== '')
+                            ? record.wrong_sent_qty : '';
+                    const outChk = document.getElementById('hold_issue_wrong_sent_outgoing_needed');
+                    if (outChk) outChk.checked = !!record.wrong_sent_outgoing_needed;
+                    const wsWh = document.getElementById('hold_issue_wrong_sent_outgoing_warehouse_id');
+                    if (wsWh) wsWh.value = record.wrong_sent_outgoing_warehouse_id
+                        ? String(record.wrong_sent_outgoing_warehouse_id) : '';
+                    toggleWrongSentOutgoingWarehouseVisibility();
+                    // Lock the checkbox + show the "already processed" notice when
+                    // Shopify has already been decremented for this issue, so
+                    // re-saves don't double-deduct.
+                    if (record.wrong_sent_outgoing_processed_at) {
+                        const cb = document.getElementById('hold_issue_wrong_sent_outgoing_needed');
+                        const notice = document.getElementById('wrongSentOutgoingProcessedNotice');
+                        if (cb) { cb.checked = true; cb.disabled = true; }
+                        if (notice) notice.classList.remove('d-none');
+                    }
                 } else if (whKey === 'wrong_qty') {
                     const t = String(record.qty_mismatch_type || '').toLowerCase();
                     if (t === 'less') document.getElementById('qtyMismatch_less').checked = true;
@@ -3674,6 +3953,13 @@
                 let qtyMismatchType = '';
                 let qtySentVal = '';
                 let qtyOrderedVal = '';
+                // Wrong Item Sent → outgoing trigger payload (independent of
+                // the Replacement outgoing). Default to "off" so nothing fires
+                // when the user hasn't ticked the new checkbox.
+                let wrongSentQtyVal = '';
+                let wrongSentOutgoingNeeded = false;
+                let wrongSentOutgoingWarehouseId = '';
+                let wrongSentReasonVal = '';
 
                 if (whSubKey === 'wrong_item') {
                     const ws = document.getElementById('hold_issue_wrong_sent_sku').value.trim();
@@ -3690,6 +3976,44 @@
                     }
                     wrongSku = ws;
                     issueNotesVal = n;
+
+                    // Optional reason. Just trim and pass through — values
+                    // longer than 64 chars are clipped server-side, so we
+                    // don't need to enforce a length here.
+                    wrongSentReasonVal = (document.getElementById('hold_issue_wrong_sent_reason')?.value || '').trim();
+
+                    // Optional Qty wrongly sent. Empty is allowed; only validate
+                    // sign / numeric shape if the user typed something.
+                    const wsq = (document.getElementById('hold_issue_wrong_sent_qty')?.value || '').trim();
+                    if (wsq !== '') {
+                        if (isNaN(Number(wsq)) || Number(wsq) < 0) {
+                            showAlert('Qty wrongly sent must be a non-negative number.');
+                            document.getElementById('hold_issue_wrong_sent_qty')?.focus();
+                            return;
+                        }
+                        wrongSentQtyVal = wsq;
+                    }
+
+                    // Outgoing checkbox is itself optional — it ONLY becomes
+                    // strict when the user has checked it (Qty + Warehouse
+                    // both required at that point so Shopify gets a usable
+                    // pair to deduct).
+                    const outChk = document.getElementById('hold_issue_wrong_sent_outgoing_needed');
+                    wrongSentOutgoingNeeded = !!outChk?.checked;
+                    if (wrongSentOutgoingNeeded) {
+                        if (wsq === '' || isNaN(Number(wsq)) || Number(wsq) <= 0) {
+                            showAlert('Qty wrongly sent must be greater than 0 to deduct from Shopify.');
+                            document.getElementById('hold_issue_wrong_sent_qty')?.focus();
+                            return;
+                        }
+                        const whSel = document.getElementById('hold_issue_wrong_sent_outgoing_warehouse_id');
+                        if (!whSel || !whSel.value) {
+                            showAlert('Please pick an outgoing warehouse for the wrongly sent SKU.');
+                            whSel?.focus();
+                            return;
+                        }
+                        wrongSentOutgoingWarehouseId = whSel.value;
+                    }
                 } else if (whSubKey === 'wrong_qty') {
                     const r = (Array.from(document.getElementsByName('qty_mismatch_type')).find(x => x.checked) || {}).value || '';
                     const qs = document.getElementById('hold_issue_qty_sent').value;
@@ -3756,6 +4080,13 @@
                         qty_mismatch_type: qtyMismatchType,
                         qty_sent: qtySentVal,
                         qty_ordered: qtyOrderedVal,
+                        // Wrong Item Sent → outgoing trigger payload:
+                        wrong_sent_qty: wrongSentQtyVal,
+                        wrong_sent_outgoing_needed: wrongSentOutgoingNeeded ? '1' : '0',
+                        wrong_sent_outgoing_warehouse_id: wrongSentOutgoingNeeded
+                            ? wrongSentOutgoingWarehouseId : '',
+                        // "Why it happened" reason for the Wrong Item Sent panel:
+                        wrong_sent_reason: wrongSentReasonVal,
                     };
                     let payload;
                     if (isMultiSku) {
@@ -4402,6 +4733,9 @@
                 }
                 document.getElementById('add-what-happened-option')?.addEventListener('click', addWhatHappenedOption);
                 document.getElementById('delete-what-happened-option')?.addEventListener('click', deleteWhatHappenedOption);
+                // "Why it happened?" dropdown inside the Wrong Item Sent panel.
+                document.getElementById('add-wrong-sent-reason-option')?.addEventListener('click', addWrongSentReasonOption);
+                document.getElementById('delete-wrong-sent-reason-option')?.addEventListener('click', deleteWrongSentReasonOption);
 
                 // Wrong Item Sent: SKU autocomplete (reuses /skus search) + image/qty preview.
                 const wrongSkuInput = document.getElementById('hold_issue_wrong_sent_sku');
@@ -4456,6 +4790,9 @@
 
                 // Outgoing needed checkbox: reveal warehouse picker when on.
                 document.getElementById('hold_issue_outgoing_needed')?.addEventListener('change', toggleOutgoingWarehouseVisibility);
+                // Wrong Item Sent → its own outgoing checkbox + warehouse picker.
+                document.getElementById('hold_issue_wrong_sent_outgoing_needed')
+                    ?.addEventListener('change', toggleWrongSentOutgoingWarehouseVisibility);
 
                 form.addEventListener('submit', submitIssueForm);
                 modalEl.addEventListener('hidden.bs.modal', resetForm);

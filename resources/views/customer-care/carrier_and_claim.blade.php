@@ -43,4 +43,9 @@
     // cell (name on top, short "21 JUN" date underneath, full timestamp
     // surfaced via hover tooltip).
     'mergeCreatedAtIntoCreatedBy' => true,
+    // Quick-search input in the toolbar: matches against SKU, order #,
+    // tracking, carrier, created-by, issue/action text, marketplace, AMP $,
+    // Amt Rec and department.
+    'showSearchBar' => true,
+    'searchBarPlaceholder' => 'Search SKU, order, tracking, carrier…',
 ])->render() !!}

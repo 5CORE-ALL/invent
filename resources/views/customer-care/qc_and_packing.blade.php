@@ -245,7 +245,7 @@
 
         .orders-hold-col-sku {
             width: 9%;
-            max-width: 80px;
+            max-width: {{ (int) ($skuColumnMaxPx ?? 80) }}px;
         }
 
         .orders-hold-col-img {
@@ -277,7 +277,7 @@
 
         .sku-cell {
             display: block;
-            max-width: 80px;
+            max-width: {{ (int) ($skuColumnMaxPx ?? 80) }}px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -286,7 +286,7 @@
         }
 
         td:hover .sku-cell {
-            max-width: 300px;
+            max-width: {{ max((int) ($skuColumnMaxPx ?? 80) + 220, 300) }}px;
             overflow: visible;
             white-space: normal;
             word-break: break-all;
@@ -430,6 +430,23 @@
         }
 
         .orders-hold-table .carrier-amp-usd-input {
+            max-width: 7.5rem;
+            min-width: 5.5rem;
+            width: 100%;
+        }
+
+        /* Amt Rec column mirrors AMT $ — without these rules the column
+           collapses to near-zero width and the input becomes too small to
+           click/edit (looks "not editable"). */
+        .orders-hold-table th.orders-hold-col-amt-rec,
+        .orders-hold-table td.orders-hold-col-amt-rec {
+            width: 1%;
+            min-width: 6.25rem;
+            max-width: 8rem;
+            vertical-align: middle;
+        }
+
+        .orders-hold-table .carrier-amt-rec-input {
             max-width: 7.5rem;
             min-width: 5.5rem;
             width: 100%;
@@ -945,6 +962,33 @@
             min-width: 8rem;
         }
 
+        /* ── Quick-search input (Carrier Claims and similar pages) ───── */
+        .issues-toolbar-search {
+            flex: 1 1 220px;
+            min-width: 200px;
+            max-width: 360px;
+        }
+
+        .issues-toolbar-search .input-group-text {
+            background: #fff;
+            border-right: 0;
+            color: #6c757d;
+        }
+
+        .issues-toolbar-search .form-control {
+            border-left: 0;
+        }
+
+        .issues-toolbar-search .form-control:focus {
+            box-shadow: none;
+            border-color: #ced4da;
+        }
+
+        .issues-toolbar-search .input-group:focus-within {
+            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+            border-radius: 0.25rem;
+        }
+
         .carrier-claims-summary-wrap {
             gap: 0.42rem 0.6rem !important;
         }
@@ -1085,6 +1129,20 @@
                                         @endif
                                     @endif
                                 </div>
+                                @if ($showSearchBar ?? false)
+                                    <div class="issues-toolbar-search">
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-text" id="issues-search-icon">
+                                                <i class="bi bi-search"></i>
+                                            </span>
+                                            <input type="search" id="issues-search-input"
+                                                class="form-control"
+                                                placeholder="{{ $searchBarPlaceholder ?? 'Search SKU, order, tracking, carrier…' }}"
+                                                aria-label="Search records" aria-describedby="issues-search-icon"
+                                                autocomplete="off">
+                                        </div>
+                                    </div>
+                                @endif
                                 <div
                                     class="issues-toolbar-actions-secondary d-flex flex-wrap align-items-center gap-2 ms-xl-auto flex-xl-grow-1 min-w-0 @if ($showClaimsSummaryBadges ?? false) issues-toolbar-actions-secondary--claims @endif">
                                     @if ($showClaimsSummaryBadges ?? false)
@@ -2000,9 +2058,37 @@
                 return rowDepartments(r).some(d => String(d).trim().toLowerCase() === needle);
             }
 
+            // Quick-search query (lowercased). Empty string = no search filter.
+            let activeSearchQuery = '';
+
+            function rowSearchHaystack(r) {
+                if (!r) return '';
+                const depts = Array.isArray(r.departments) ? r.departments.join(' ') : '';
+                const parts = [
+                    r.id, r.issue_ref, r.orders_on_hold_issue_id, r.product_master_id,
+                    r.sku, r.parent, r.order_number, r.order_qty,
+                    r.tracking_number, r.replacement_tracking, r.issue_carrier,
+                    r.what_happened, r.action_1, r.action_1_remark,
+                    r.c_action_1, r.c_action_1_remark,
+                    r.issue, r.issue_remark,
+                    r.marketplace_1, r.department, depts,
+                    r.amp_usd, r.amt_rec, r.total_loss,
+                    r.created_by, r.close_note, r.event_type,
+                    r.issue_link
+                ];
+                return parts.map(v => String(v ?? '').toLowerCase()).join(' | ');
+            }
+
+            function rowMatchesSearchQuery(r) {
+                if (!activeSearchQuery) return true;
+                return rowSearchHaystack(r).includes(activeSearchQuery);
+            }
+
             function getFilteredRows() {
-                if (!activeDeptFilter) return holdIssueRows;
-                return holdIssueRows.filter(rowMatchesActiveDeptFilter);
+                let rows = holdIssueRows;
+                if (activeDeptFilter) rows = rows.filter(rowMatchesActiveDeptFilter);
+                if (activeSearchQuery) rows = rows.filter(rowMatchesSearchQuery);
+                return rows;
             }
 
             function buildDeptFilters() {
@@ -2042,6 +2128,29 @@
                 loadL30Loss();
                 loadL30Issues();
             });
+
+            // Quick-search: debounced filter across SKU / order / tracking /
+            // carrier / created-by / issue / action / marketplace / amounts.
+            (function setupIssuesSearch() {
+                const searchInput = document.getElementById('issues-search-input');
+                if (!searchInput) return;
+                let searchTimer = null;
+                searchInput.addEventListener('input', (e) => {
+                    const next = String(e.target.value || '').trim().toLowerCase();
+                    if (searchTimer) clearTimeout(searchTimer);
+                    searchTimer = setTimeout(() => {
+                        if (next === activeSearchQuery) return;
+                        activeSearchQuery = next;
+                        renderRows();
+                    }, 120);
+                });
+                searchInput.addEventListener('search', () => {
+                    const next = String(searchInput.value || '').trim().toLowerCase();
+                    if (next === activeSearchQuery) return;
+                    activeSearchQuery = next;
+                    renderRows();
+                });
+            })();
 
             function escAttr(value) {
                 return String(value ?? '')

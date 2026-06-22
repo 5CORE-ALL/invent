@@ -7768,9 +7768,14 @@
                 },
                 error: function(xhr) {
                     console.error('Error loading competitors:', xhr);
+                    // Distinct message: an AJAX failure is NOT the same as "really empty".
+                    // The form to add a new competitor is already visible above the list,
+                    // so we don't need to nudge the user there — they need to know the
+                    // load actually failed and a retry is the right next step.
                     $('#lmpDataList').html(`
-                        <div class="alert alert-warning">
-                            <i class="fa fa-info-circle"></i> No competitors found yet. Add your first competitor above!
+                        <div class="alert alert-danger">
+                            <i class="fa fa-exclamation-triangle"></i>
+                            Could not load competitors. Please close this dialog and try again.
                         </div>
                     `);
                 }
