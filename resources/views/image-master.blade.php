@@ -355,6 +355,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const esc = (s) => { const d=document.createElement('div'); d.textContent = String(s??''); return d.innerHTML; };
 
+    function pushFailureMessage(j, mp, httpStatus) {
+        const rowRes = (j && j.results && j.results[mp]) ? j.results[mp] : null;
+        if (rowRes?.message) return String(rowRes.message);
+        if (j?.message) return String(j.message);
+        if (rowRes && rowRes.success === false) {
+            return `${LABELS[mp] || mp} push failed (no error detail). Check server logs.`;
+        }
+        if (httpStatus) return `Request failed (HTTP ${httpStatus}).`;
+        return 'Push failed.';
+    }
+
     function toast(msg, ok=true) {
         if (!window.bootstrap?.Toast) { alert(msg); return; }
         const id = 't'+Date.now();
@@ -1119,6 +1130,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const mainLabel = mainImageLabelFor(mp, mainIdx);
         if (!window.confirm(`Push ${urls.length} image(s) for ${sku} to ${LABELS[mp]}?\n\nMain image for this platform: ${mainLabel} (sent first).\nThis will replace existing marketplace images.`)) return;
         setPushProgress(true, `Pushing images to 1 marketplace... This may take 1-2 minutes`, `1/1 ${LABELS[mp]}: in progress (${mainLabel} first)`);
+        const controller = new AbortController();
+        const pushTimeoutMs = mp === 'reverb' ? 180000 : 120000;
+        const pushTimer = setTimeout(() => controller.abort(), pushTimeoutMs);
         fetch('/image-master/push', {
             method:'POST',
             headers:{'Content-Type':'application/json','X-CSRF-TOKEN':csrfToken,'Accept':'application/json'},
@@ -1128,16 +1142,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 updates: [{ marketplace: mp, images: urls }],
                 main_by_marketplace: mainByMarketplacePayloadFromRow(row),
             }),
-        }).then(r=>r.json()).then(j => {
+            signal: controller.signal,
+        }).then(async r => {
+            const rawText = await r.text();
+            let j = null;
+            try { j = rawText ? JSON.parse(rawText) : null; } catch (_) {}
+            if (!j) {
+                throw new Error(r.ok ? 'Invalid server response' : `HTTP ${r.status}${rawText ? ': ' + rawText.slice(0, 200) : ''}`);
+            }
+            return { r, j };
+        }).then(({ r, j }) => {
+            clearTimeout(pushTimer);
             const rowRes = (j.results && j.results[mp]) ? j.results[mp] : null;
             const ok = !!(rowRes && rowRes.success);
-            const msg = rowRes?.message || j.message || (ok ? 'Updated' : 'Failed');
+            const msg = ok ? (rowRes?.message || j.message || 'Updated') : pushFailureMessage(j, mp, r.status);
             setPushProgress(true, `Push finished: ${ok ? '1 success' : '1 failed'}`, `1/1 ${LABELS[mp]}: ${ok ? '✓ OK' : '✗ Failed'} — ${esc(msg)}`, !ok);
             if (ok) { toast(LABELS[mp]+' pushed'); loadData(); setTimeout(() => setPushProgress(false,'',''), 5000); }
             else toast(msg, false);
         }).catch(e => {
-            setPushProgress(true, 'Push finished: 1 failed', `1/1 ${LABELS[mp]}: ✗ Failed — ${esc(e.message || 'Request failed')}`, true);
-            toast(e.message, false);
+            clearTimeout(pushTimer);
+            const msg = e.name === 'AbortError'
+                ? `Push timed out after ${Math.round(pushTimeoutMs / 1000)}s (Reverb image replace can take 1–2 minutes — ask ops to raise PHP/nginx timeouts).`
+                : (e.message || 'Request failed');
+            setPushProgress(true, 'Push finished: 1 failed', `1/1 ${LABELS[mp]}: ✗ Failed — ${esc(msg)}`, true);
+            toast(msg, false);
         });
     }
 

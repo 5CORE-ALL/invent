@@ -310,6 +310,17 @@ class ImageMasterController extends Controller
             $remote   = $this->pushImagesToRemote($mp, $sku, $imagesForPush, $effectiveMode);
             $remoteOk = (bool) ($remote['success'] ?? false);
 
+            if (! $remoteOk) {
+                Log::warning('ImageMaster marketplace push failed', [
+                    'marketplace' => $mp,
+                    'sku' => $sku,
+                    'message' => $remote['message'] ?? null,
+                    'image_count' => count($imagesForPush),
+                    'first_image' => isset($imagesForPush[0]) ? mb_substr((string) $imagesForPush[0], 0, 300) : null,
+                    'listing_id' => $remote['listing_id'] ?? null,
+                ]);
+            }
+
             $urlsForMetrics = $imagesForPush;
             if ($remoteOk && ! empty($remote['normalized_urls']) && is_array($remote['normalized_urls'])) {
                 $urlsForMetrics = array_values($remote['normalized_urls']);
@@ -328,6 +339,9 @@ class ImageMasterController extends Controller
             }
 
             $message = trim(($remote['message'] ?? '').$mainNote.$truncatedNote.$addModeNote);
+            if ($message === '' && ! $remoteOk) {
+                $message = ucfirst($mp).' push failed (no error detail returned). Check storage/logs/laravel.log.';
+            }
             if ($remoteOk && ! $saved) {
                 $message .= ' Metrics not saved.';
             }
@@ -375,6 +389,8 @@ class ImageMasterController extends Controller
             switch ($marketplace) {
                 case 'amazon':
                     return app(AmazonSpApiService::class)->dryRunUpdateImages($sku, $imageUrls);
+                case 'reverb':
+                    return app(ReverbApiService::class)->dryRunUpdateImages($sku, $imageUrls);
                 case 'ebay':
                 case 'ebay2':
                 case 'ebay3':

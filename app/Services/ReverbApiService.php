@@ -437,6 +437,38 @@ class ReverbApiService
     }
 
     /**
+     * Resolve listing id from reverb_products or Reverb API (same order as image push).
+     */
+    private function resolveReverbListingId(string $identifier): ?string
+    {
+        $trim = trim($identifier);
+        if ($trim === '') {
+            return null;
+        }
+
+        $listingId = null;
+        $product = ReverbProduct::query()
+            ->where('sku', $trim)
+            ->orWhere('sku', strtoupper($trim))
+            ->orWhere('sku', strtolower($trim))
+            ->first();
+        if ($product && $product->reverb_listing_id) {
+            $listingId = trim((string) $product->reverb_listing_id);
+        }
+        if (! $listingId) {
+            $product = ReverbProduct::query()->where('reverb_listing_id', $trim)->first();
+            if ($product && $product->reverb_listing_id) {
+                $listingId = trim((string) $product->reverb_listing_id);
+            }
+        }
+        if (! $listingId) {
+            $listingId = $this->getListingIdBySku($trim);
+        }
+
+        return $listingId !== '' ? $listingId : null;
+    }
+
+    /**
      * Persist the freshly-resolved listing id so the next lookup short-circuits to the DB
      * instead of paginating my/listings again (which is the source of intermittent failures).
      */
@@ -1642,24 +1674,7 @@ class ReverbApiService
             return ['success' => false, 'message' => 'SKU or listing_id is required.'];
         }
 
-        $listingId = null;
-        $product = ReverbProduct::query()
-            ->where('sku', $trim)
-            ->orWhere('sku', strtoupper($trim))
-            ->orWhere('sku', strtolower($trim))
-            ->first();
-        if ($product && $product->reverb_listing_id) {
-            $listingId = trim((string) $product->reverb_listing_id);
-        }
-        if (! $listingId) {
-            $product = ReverbProduct::query()->where('reverb_listing_id', $trim)->first();
-            if ($product && $product->reverb_listing_id) {
-                $listingId = trim((string) $product->reverb_listing_id);
-            }
-        }
-        if (! $listingId) {
-            $listingId = $this->getListingIdBySku($trim);
-        }
+        $listingId = $this->resolveReverbListingId($trim);
         if ($listingId === null) {
             return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.'];
         }
@@ -1905,6 +1920,52 @@ class ReverbApiService
         }
 
         return array_values(array_unique($out));
+    }
+
+    /**
+     * Validate Reverb image push readiness without calling the listing photo API.
+     *
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string, dry_run?: bool, listing_id?: string, normalized_urls?: list<string>}
+     */
+    public function dryRunUpdateImages(string $identifier, array $imageUrls): array
+    {
+        $token = self::getReverbBearerToken();
+        if (! $token) {
+            return [
+                'success' => false,
+                'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).',
+                'dry_run' => true,
+            ];
+        }
+
+        $urls = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));
+        $prep = $this->prepareReverbPhotoUrls($urls);
+        if (! $prep['success']) {
+            return ['success' => false, 'message' => $prep['message'], 'dry_run' => true];
+        }
+        $urls = array_slice($prep['urls'], 0, 25);
+        if ($urls === []) {
+            return ['success' => false, 'message' => 'At least one image URL is required.', 'dry_run' => true];
+        }
+
+        $trim = trim($identifier);
+        if ($trim === '') {
+            return ['success' => false, 'message' => 'SKU or listing_id is required.', 'dry_run' => true];
+        }
+
+        $listingId = $this->resolveReverbListingId($trim);
+        if ($listingId === null) {
+            return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.', 'dry_run' => true];
+        }
+
+        return [
+            'success' => true,
+            'dry_run' => true,
+            'message' => 'Dry run OK: would push '.count($urls).' image(s) to Reverb listing '.$listingId.'.',
+            'listing_id' => $listingId,
+            'normalized_urls' => $urls,
+        ];
     }
 
     /**
