@@ -101,6 +101,15 @@ class FetchDobaMetrics extends Command
                             'self_pick_price' => $selfPickPrice,
                             'msrp' => $msrp,
                             'map' => $map,
+                            // Doba API returns availableInventory in the same stocks object as
+                            // the price fields. Persist it here so /doba-tabulator's INV column
+                            // (and the Map / N Map / Missing-L counts that compare it to
+                            // shopify_skus.inv) reflects real Doba stock. Previously the only
+                            // writer for doba_metrics.inventory was DobaApiService::getinventoryData(),
+                            // which is dead code — getinventory() (the method that is actually
+                            // called) writes to product_stock_mappings.inventory_doba instead,
+                            // leaving doba_metrics.inventory permanently at 0 and inflating N Map.
+                            'inventory' => (int) ($item['availableInventory'] ?? 0),
                         ]
                     );
                     $totalUpdated++;
