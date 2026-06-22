@@ -3321,6 +3321,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/image-master', [ImageMasterController::class, 'index'])->name('image.master');
     Route::get('/image-master-data', [ImageMasterController::class, 'getData'])->name('image.master.data');
     Route::post('/image-master/push', [ImageMasterController::class, 'pushToMarketplace'])->name('image.master.push');
+    Route::get('/image-master/push/status', [ImageMasterController::class, 'pushJobStatus'])->name('image.master.push.status');
     Route::post('/image-master/save-pm', [ImageMasterController::class, 'saveProductMasterImages'])->name('image.master.save.pm');
     Route::post('/image-master/upload', [ImageMasterController::class, 'uploadImages'])->name('image.master.upload');
     Route::get('/image-master/amazon-images', [ImageMasterController::class, 'getAmazonImages'])->name('image.master.amazon.images');
