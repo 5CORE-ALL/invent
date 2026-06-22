@@ -93,8 +93,16 @@ class FetchDobaMetrics extends Command
                     $msrp = !empty($sku['msrp']) ? $sku['msrp'] : null;
                     $map = !empty($sku['map']) ? $sku['map'] : null;
 
+                    // Normalize the SKU at write time so doba_metrics never accumulates
+                    // case/whitespace duplicates if the Doba API ever returns mixed casing
+                    // for the same logical SKU. Reads (DobaController) already strtoupper+trim,
+                    // so doing the same on writes keeps both sides aligned and protects against
+                    // future regressions if the column collation changes from case-insensitive.
+                    $normalizedSku = strtoupper(trim((string) ($sku['skuCode'] ?? '')));
+                    if ($normalizedSku === '') continue;
+
                     DobaMetric::updateOrCreate(
-                        ['sku' => $sku['skuCode']],
+                        ['sku' => $normalizedSku],
                         [
                             'item_id' => $item['itemNo'],
                             'anticipated_income' => $item['anticipatedIncome'],

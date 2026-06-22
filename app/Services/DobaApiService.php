@@ -787,9 +787,12 @@ class DobaApiService
 
                     if (!$item) continue;
 
-                    // Doba API returns inventory (availableInventory) in the same stocks object — store it on doba_metrics
+                    // Doba API returns inventory (availableInventory) in the same stocks object — store it on doba_metrics.
+                    // SKU normalized at write time (strtoupper+trim) to match every reader.
+                    $normalizedSku = strtoupper(trim((string) ($sku['skuCode'] ?? '')));
+                    if ($normalizedSku === '') continue;
                     DobaMetric::updateOrCreate(
-                        ['sku' => $sku['skuCode']],
+                        ['sku' => $normalizedSku],
                         [
                             'item_id' => $item['itemNo'],
                             'anticipated_income' => $item['anticipatedIncome'],
@@ -834,33 +837,42 @@ class DobaApiService
             foreach ($data as $product) {
                 foreach ($product['skus'] as $sku) {
                     $item = $sku['stocks'][0] ?? null;
-                    $quantity=$item['availableInventory'];
-                    $itemsku=$sku['skuCode'];
                     if (!$item) continue;
 
-                    $allStock[]=[
-                           'sku' => $itemsku,
-                        'quantity' => (int) $quantity,
+                    $quantity = (int) ($item['availableInventory'] ?? 0);
+                    // Normalize SKU at write time — see comment in FetchDobaMetrics for the
+                    // full rationale. Same normalization (strtoupper + trim) the DobaController
+                    // reader uses on every keyBy() so writes and reads always meet on the same key.
+                    $itemsku  = strtoupper(trim((string) ($sku['skuCode'] ?? '')));
+                    if ($itemsku === '') continue;
+
+                    $allStock[] = [
+                        'sku'      => $itemsku,
+                        'quantity' => $quantity,
                     ];
-                    // DobaMetric::updateOrCreate(
-                    //     ['sku' => $sku['skuCode']],
-                    //     [
-                    //         'item_id' => $item['itemNo'],
-                    //         'anticipated_income' => $item['anticipatedIncome'],
-                    //     ]
-                    // );
+
+                    // Keep doba_metrics in sync with the same fields FetchDobaMetrics writes,
+                    // so /doba-tabulator's INV column (which reads doba_metrics.inventory) and
+                    // every other consumer of doba_metrics sees fresh data even when this fetch
+                    // is triggered from a controller / missing-listing job rather than the cron.
+                    \App\Models\DobaMetric::updateOrCreate(
+                        ['sku' => $itemsku],
+                        [
+                            'item_id'            => $item['itemNo'] ?? null,
+                            'anticipated_income' => $item['anticipatedIncome'] ?? null,
+                            'inventory'          => $quantity,
+                        ]
+                    );
                 }
             }
             $page++;
         } while (count($data) === 100);
         foreach ($allStock as $sku => $data) {
-                $sku = $data['sku'] ?? null;
-                $quantity = $data['quantity'];
-            // ProductStockMapping::updateOrCreate(
-            //     ['sku' => $sku],
-            //     ['inventory_doba'=>$quantity,]
-            // );
-            
+            $sku = $data['sku'] ?? null;
+            $quantity = $data['quantity'];
+
+            // product_stock_mappings.sku is also normalized elsewhere; case-insensitive
+            // MySQL collation handles the match either way.
             ProductStockMapping::where('sku', $sku)->update(['inventory_doba' => (int) $quantity]);
         }
         return $allStock;
