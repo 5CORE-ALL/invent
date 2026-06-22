@@ -1767,15 +1767,21 @@
         let mapBadgeFilterActive = false;
         let notMapBadgeFilterActive = false;
 
-        // Map tolerance — matches amazon-tabulator-view (amazonInvWithinMapTolerance):
-        // |INV − stock| <= 3 units OR <= 3% of INV. INV <= 0 always counts as mapped.
+        // Map tolerance — same formula as /map-issues, /temu-decrease, and the
+        // /all-marketplace-master Temu 2 row helper (getTemuLiveMapMissNMapFromDecreaseData):
+        //   if inv * 3% < 3   →  mapped iff diff <= 3
+        //   else              →  mapped iff round((diff / inv) * 100) <= 3
+        // This produces identical results to those endpoints (down to the round-to-3 edge
+        // case at inv ≈ 350+ and diff/inv between 3.0% and 3.5%) so the badge count exactly
+        // matches the Map / N Map column on /all-marketplace-master's Temu 2 row.
+        // INV <= 0 always counts as mapped.
         function temuInvWithinMapTolerance(inv, stock) {
             const invNum = parseFloat(inv) || 0;
             const stockNum = parseFloat(stock) || 0;
             if (invNum <= 0) return true;
             const diff = Math.abs(invNum - stockNum);
-            if (diff <= 3 + 1e-9) return true;
-            return diff <= (invNum * 0.03) + 1e-9;
+            if (invNum * 0.03 < 3) return diff <= 3;
+            return Math.round((diff / invNum) * 100) <= 3;
         }
 
         $('#zero-sold-count-badge').on('click', function() {
@@ -2428,9 +2434,13 @@
                     missingCount++;
                 }
 
-                // Map / Missing M: REQ, listed, price > 0 — tolerance = |INV − stock| <= 3 OR <= 3% of INV
-                // (mirrors amazonInvWithinMapTolerance + map count conditions)
-                if (inventory > 0 && nrReq === 'REQ' && missing !== 'M' && temuPrice > 0) {
+                // Map / Missing M: REQ, listed, price > 0, BOTH sides with stock (temu_stock > 0)
+                // — same gate as /map-issues, /temu-decrease, and the /all-marketplace-master
+                // Temu 2 row. Tolerance: |INV − stock| <= 3 OR <= 3% of INV.
+                // Rows where temu_stock = 0 are neither Map nor Missing M (nothing comparable
+                // to map to) — without this gate, the badge over-counted by 29 vs the
+                // master page and was the source of the "different Missing M" discrepancy.
+                if (inventory > 0 && nrReq === 'REQ' && missing !== 'M' && temuPrice > 0 && temuStock > 0) {
                     if (temuInvWithinMapTolerance(inventory, temuStock)) {
                         mappedCount++;
                     } else {
@@ -3750,28 +3760,30 @@
                 });
             }
 
-            // Map badge — REQ, listed, price > 0; within tolerance (3 units OR 3% of INV)
+            // Map badge — REQ, listed, price > 0, both sides with stock (same gate as the badge counter);
+            // within tolerance (3 units OR 3% of INV).
             if (mapBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
                     const missing = data['missing'];
                     const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
                     const price = parseFloat(data['temu_price']) || 0;
-                    if (inv <= 0 || nrReq !== 'REQ' || missing === 'M' || price <= 0) return false;
                     const temuStock = parseFloat(data['temu_stock']) || 0;
+                    if (inv <= 0 || nrReq !== 'REQ' || missing === 'M' || price <= 0 || temuStock <= 0) return false;
                     return temuInvWithinMapTolerance(inv, temuStock);
                 });
             }
 
-            // Missing M badge — REQ, listed, price > 0; NOT within tolerance (3 units OR 3% of INV)
+            // Missing M badge — REQ, listed, price > 0, both sides with stock (same gate as the badge counter);
+            // NOT within tolerance (3 units OR 3% of INV).
             if (notMapBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
                     const missing = data['missing'];
                     const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
                     const price = parseFloat(data['temu_price']) || 0;
-                    if (inv <= 0 || nrReq !== 'REQ' || missing === 'M' || price <= 0) return false;
                     const temuStock = parseFloat(data['temu_stock']) || 0;
+                    if (inv <= 0 || nrReq !== 'REQ' || missing === 'M' || price <= 0 || temuStock <= 0) return false;
                     return !temuInvWithinMapTolerance(inv, temuStock);
                 });
             }
