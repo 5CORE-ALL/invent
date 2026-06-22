@@ -1051,6 +1051,101 @@ class ChannelMasterController extends Controller
      *
      * @return array{l30_sales: float, l30_orders: int, qty: int, l60_sales: float, l60_orders: int}|null
      */
+    /**
+     * Public, lightweight view of the Shopify-Direct L30 numbers — same source
+     * `/shopify` reports (shopify_raw_orders with the marketplace exclusions),
+     * same window `overlayLiveShopifyDirectMetricsOnChannelRows()` already uses
+     * for the Shopify row on /all-marketplace-master. Used by other pages
+     * (e.g. /shopify-b2c-pricing) so their badges agree with /shopify
+     * byte-for-byte.
+     *
+     * Returns:
+     *   l30_sales, l30_orders, qty                 — basic L30 totals
+     *   total_pft  (= Σ (net_sales × 0.95) − cogs) — gross profit, 0.95 margin
+     *   total_cogs (= Σ lp × qty)                  — same LP source /shopify uses
+     *   total_ad_spend                             — Google + Meta rollup from
+     *                                                /shopify-ads-master (matches
+     *                                                that page's Spend badge)
+     *   gpft_pct, groi_pct, tcos_pct, npft_pct, nroi_pct
+     *                                              — pre-computed so callers
+     *                                                don't have to re-derive
+     *
+     * Falls back to zeroes on any failure so callers don't have to handle
+     * null — easier to render in a Blade with `number_format`.
+     *
+     * @return array{
+     *     l30_sales: float, l30_orders: int, qty: int,
+     *     total_pft: float, total_cogs: float, total_ad_spend: float,
+     *     gpft_pct: float, groi_pct: float, tcos_pct: float,
+     *     npft_pct: float, nroi_pct: float
+     * }
+     */
+    public function getShopifyDirectL30Snapshot(): array
+    {
+        $defaults = [
+            'l30_sales' => 0.0, 'l30_orders' => 0, 'qty' => 0,
+            'total_pft' => 0.0, 'total_cogs' => 0.0, 'total_ad_spend' => 0.0,
+            'gpft_pct' => 0.0, 'groi_pct' => 0.0, 'tcos_pct' => 0.0,
+            'npft_pct' => 0.0, 'nroi_pct' => 0.0,
+        ];
+
+        try {
+            $today    = Carbon::now();
+            $l30Start = $today->copy()->subDays(30)->startOfDay();
+            $l30End   = $today->copy()->endOfDay();
+            $l30      = $this->computeShopifyDirectMetricsFromOrders($l30Start, $l30End);
+
+            // Profit + COGS using the same 0.95 margin /shopify's NPFT / NROI cards
+            // and the master Shopify row use. Single source of truth: this method.
+            $profit = $this->computeShopifyDirectProfitCogsForRange($l30Start, $l30End);
+
+            // Rolled-up ad spend (Google Shopping + SERP + Facebook + Instagram, no
+            // sub-rows) from /shopify-ads-master. tcos_pct here is what the badge
+            // on that page shows, computed against /shopify net sales (not the
+            // l30_sales below — minor PST/window differences). We expose both so
+            // callers can pick whichever denominator makes sense for their layout.
+            $totalAdSpend = 0.0;
+            $rolledTcos   = 0.0;
+            try {
+                $rollup = app(\App\Http\Controllers\MarketPlace\ShopifyAdsMasterController::class)
+                    ->getRolledUpSpend();
+                $totalAdSpend = (float) ($rollup['total_spend'] ?? 0);
+                $rolledTcos   = (float) ($rollup['tcos_pct']    ?? 0);
+            } catch (\Throwable $e) {
+                Log::warning('getShopifyDirectL30Snapshot rollup fetch failed: ' . $e->getMessage());
+            }
+
+            $sales = (float) ($l30['sales'] ?? 0);
+            $pft   = (float) ($profit['total_pft']  ?? 0);
+            $cogs  = (float) ($profit['total_cogs'] ?? 0);
+
+            $gpft = $sales > 0 ? round(($pft / $sales) * 100, 2) : 0.0;
+            $groi = $cogs  > 0 ? round(($pft / $cogs)  * 100, 2) : 0.0;
+            $tcos = $rolledTcos > 0
+                ? round($rolledTcos, 2)
+                : ($sales > 0 ? round(($totalAdSpend / $sales) * 100, 2) : 0.0);
+            $npft = round($gpft - $tcos, 2);
+            $nroi = $cogs > 0 ? round((($pft - $totalAdSpend) / $cogs) * 100, 2) : 0.0;
+
+            return [
+                'l30_sales'      => $sales,
+                'l30_orders'     => (int) ($l30['orders'] ?? 0),
+                'qty'            => (int) ($l30['qty']    ?? 0),
+                'total_pft'      => round($pft, 2),
+                'total_cogs'     => round($cogs, 2),
+                'total_ad_spend' => round($totalAdSpend, 2),
+                'gpft_pct'       => $gpft,
+                'groi_pct'       => $groi,
+                'tcos_pct'       => $tcos,
+                'npft_pct'       => $npft,
+                'nroi_pct'       => $nroi,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('getShopifyDirectL30Snapshot failed: ' . $e->getMessage());
+            return $defaults;
+        }
+    }
+
     private function getShopifyDirectLiveMetricsSummary(): ?array
     {
         try {
@@ -1067,17 +1162,142 @@ class ChannelMasterController extends Controller
             $l30 = $this->computeShopifyDirectMetricsFromOrders($l30Start, $l30End);
             $l60 = $this->computeShopifyDirectMetricsFromOrders($l60Start, $l60End);
 
+            // Profit + COGS for the L30 window using the same 0.95 gross-margin
+            // assumption the /shopify NPFT / NROI cards use, so this row's GPFT
+            // and GROI agree with that page when summed over the same window.
+            $profit  = $this->computeShopifyDirectProfitCogsForRange($l30Start, $l30End);
+
+            // Google Ads spend (Shopping + Search) for the same window — same
+            // source the /shopify page reports as `total_ad_spend`.
+            $adSpend = $this->fetchShopifyDirectAdSpendForRange($l30Start, $l30End);
+
             return [
-                'l30_sales'  => $l30['sales'],
-                'l30_orders' => $l30['orders'],
-                'qty'        => $l30['qty'],
-                'l60_sales'  => $l60['sales'],
-                'l60_orders' => $l60['orders'],
+                'l30_sales'      => $l30['sales'],
+                'l30_orders'     => $l30['orders'],
+                'qty'            => $l30['qty'],
+                'l60_sales'      => $l60['sales'],
+                'l60_orders'     => $l60['orders'],
+                'total_pft'      => $profit['total_pft'],
+                'total_cogs'     => $profit['total_cogs'],
+                'total_ad_spend' => $adSpend['total'],
+                'shopping_spent' => $adSpend['shopping'],
+                'serp_spent'     => $adSpend['serp'],
             ];
         } catch (\Throwable $e) {
             Log::warning('Shopify Direct live metrics summary failed: ' . $e->getMessage());
 
             return null;
+        }
+    }
+
+    /**
+     * Σ (net_sales × 0.95) − Σ (lp × qty) over the given window, using the same
+     * shopify_raw_orders row set the Sales overlay uses (and the same exclusions
+     * `/shopify` applies). LP comes from product_master.Values JSON, key 'lp'.
+     * Mirrors the per-row math in /shopify's NPFT / NROI cards so the master
+     * page row's GPFT / GROI agree with that page when looked at L30.
+     *
+     * @return array{total_pft: float, total_cogs: float}
+     */
+    private function computeShopifyDirectProfitCogsForRange(Carbon $start, Carbon $end): array
+    {
+        try {
+            $startDate = $start->toDateString();
+            $endDate   = $end->toDateString();
+
+            $base = DB::table('shopify_raw_orders')
+                ->where('order_date', '>=', $startDate)
+                ->where('order_date', '<=', $endDate);
+            $this->applyShopifyDirectOrderExclusions($base);
+
+            // Pull only what we need so this stays light even with thousands of rows.
+            $rows = $base->select(['sku', 'quantity', 'net_sales'])->get();
+            if ($rows->isEmpty()) {
+                return ['total_pft' => 0.0, 'total_cogs' => 0.0];
+            }
+
+            // Build the SKU → LP lookup once (same extraction path /shopify uses).
+            $skus = $rows->pluck('sku')->filter()->unique()->values()->all();
+            $lpBySku = [];
+            if (!empty($skus)) {
+                $masters = ProductMaster::whereIn('sku', $skus)->get(['sku', 'Values']);
+                foreach ($masters as $pm) {
+                    $values = is_array($pm->Values)
+                        ? $pm->Values
+                        : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                    $lp = 0.0;
+                    if (is_array($values)) {
+                        foreach ($values as $k => $v) {
+                            if (strtolower((string) $k) === 'lp') {
+                                $lp = (float) $v;
+                                break;
+                            }
+                        }
+                    }
+                    if ($lp <= 0 && isset($pm->lp)) {
+                        $lp = (float) $pm->lp;
+                    }
+                    $lpBySku[$pm->sku] = $lp;
+                }
+            }
+
+            $margin = \App\Http\Controllers\ShopifyRawDataController::SHOPIFY_GROSS_MARGIN;
+            $totalPft  = 0.0;
+            $totalCogs = 0.0;
+            foreach ($rows as $r) {
+                $sku = (string) ($r->sku ?? '');
+                $qty = (int) ($r->quantity ?? 0);
+                $ns  = (float) ($r->net_sales ?? 0);
+                $lp  = (float) ($lpBySku[$sku] ?? 0);
+                $cogs = $lp * $qty;
+                $totalCogs += $cogs;
+                $totalPft  += ($ns * $margin) - $cogs;
+            }
+
+            return [
+                'total_pft'  => round($totalPft, 2),
+                'total_cogs' => round($totalCogs, 2),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('computeShopifyDirectProfitCogsForRange failed: ' . $e->getMessage());
+            return ['total_pft' => 0.0, 'total_cogs' => 0.0];
+        }
+    }
+
+    /**
+     * Google Ads cost over the given range, split by Shopping vs Search — same
+     * source `/shopify` uses for `total_ad_spend` and `getShopifyB2CChannelData`
+     * uses for the Shopify B2C row's spend.  metrics_cost_micros is USD micros.
+     *
+     * @return array{total: float, shopping: float, serp: float}
+     */
+    private function fetchShopifyDirectAdSpendForRange(Carbon $start, Carbon $end): array
+    {
+        try {
+            $rows = DB::table('google_ads_campaigns')
+                ->whereDate('date', '>=', $start->toDateString())
+                ->whereDate('date', '<=', $end->toDateString())
+                ->whereIn('advertising_channel_type', ['SHOPPING', 'SEARCH'])
+                ->whereIn('campaign_status', ['ENABLED', 'PAUSED'])
+                ->selectRaw('advertising_channel_type as type, COALESCE(SUM(metrics_cost_micros), 0) as cost')
+                ->groupBy('advertising_channel_type')
+                ->get();
+
+            $shopping = 0.0;
+            $serp     = 0.0;
+            foreach ($rows as $row) {
+                $usd = ((float) $row->cost) / 1_000_000.0;
+                if (strtoupper((string) $row->type) === 'SHOPPING') $shopping += $usd;
+                else                                                $serp     += $usd;
+            }
+            return [
+                'total'    => round($shopping + $serp, 2),
+                'shopping' => round($shopping, 2),
+                'serp'     => round($serp, 2),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('fetchShopifyDirectAdSpendForRange failed: ' . $e->getMessage());
+            return ['total' => 0.0, 'shopping' => 0.0, 'serp' => 0.0];
         }
     }
 
@@ -1171,6 +1391,60 @@ class ChannelMasterController extends Controller
             $row['Qty']        = (int) $live['qty'];
             $row['L-60 Sales'] = (int) round($l60Sales);
             $row['L60 Orders'] = (int) $live['l60_orders'];
+
+            // Profit / ROI / Ads metrics — connect /all-marketplace-master Shopify row
+            // to the same numbers /shopify computes for its NPFT / NROI cards (same
+            // 0.95 margin, same Google Ads window). Without this overlay these cells
+            // read 0 because there's no getShopifyChannelData() handler defined.
+            $totalPft  = (float) ($live['total_pft']  ?? 0);
+            $totalCogs = (float) ($live['total_cogs'] ?? 0);
+
+            // Total Ad Spend + TCOS now come from /shopify-ads-master's rolled-up
+            // total (Google Shopping + Google SERP + Facebook + Instagram, sub-rows
+            // excluded). The previous version used Google-only spend (~$1,594) which
+            // ignored Meta — /shopify-ads-master shows the full picture, so we mirror
+            // that here. The Google-only Shopping/SERP columns still get their
+            // per-source split so the breakdown stays meaningful (the difference
+            // between Total Ad Spend and Shopping+SERP equals the Meta portion).
+            //
+            // TCOS uses the rollup's own tcos_pct (Spend / S Sales) so this row's
+            // "TACOS %" cell is byte-identical with the badge /shopify-ads-master
+            // shows. We keep "Ads%" as the rollup's value too — they're the same
+            // metric on this page.
+            $totalAdSpend = (float) ($live['total_ad_spend'] ?? 0);
+            $rolledTcos   = null;
+            try {
+                $rollup = app(\App\Http\Controllers\MarketPlace\ShopifyAdsMasterController::class)
+                    ->getRolledUpSpend();
+                $totalAdSpend = (float) ($rollup['total_spend'] ?? $totalAdSpend);
+                $rolledTcos   = isset($rollup['tcos_pct']) ? (float) $rollup['tcos_pct'] : null;
+            } catch (\Throwable $e) {
+                Log::warning('Shopify rollup spend fetch failed, falling back to Google-only: ' . $e->getMessage());
+            }
+            $shoppingSpend = (float) ($live['shopping_spent'] ?? 0);
+            $serpSpend     = (float) ($live['serp_spent']     ?? 0);
+
+            $gpftPct  = $l30Sales  > 0 ? ($totalPft / $l30Sales) * 100 : 0.0;
+            $groi     = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
+            $tacosPct = $rolledTcos !== null
+                ? $rolledTcos
+                : ($l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0.0);
+            $adsPct   = $tacosPct;                            // same definition on this page
+            $nPftPct  = $gpftPct - $tacosPct;
+            $netPft   = $totalPft - $totalAdSpend;
+            $nRoi     = $totalCogs > 0 ? ($netPft / $totalCogs) * 100 : 0.0;
+
+            $row['Total PFT']      = round($totalPft, 2);
+            $row['cogs']           = round($totalCogs, 2);
+            $row['Gprofit%']       = round($gpftPct, 1) . '%';
+            $row['G Roi']          = round($groi, 1);
+            $row['N PFT']          = round($nPftPct, 1) . '%';
+            $row['N ROI']          = round($nRoi, 1);
+            $row['Total Ad Spend'] = round($totalAdSpend, 2);
+            $row['Shopping Spent'] = round($shoppingSpend, 2);
+            $row['SERP Spent']     = round($serpSpend, 2);
+            $row['Ads%']           = round($adsPct, 1) . '%';
+            $row['TACOS %']        = round($tacosPct, 1) . '%';
 
             if ($l60Sales > 0) {
                 $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2) . '%';

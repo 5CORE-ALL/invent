@@ -289,7 +289,24 @@
                     <h6 class="mb-3">Summary (95% Margin)</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total Sales: $0</span>
+                        {{-- Total Sales is the L30 net-sales total from the actual /shopify page
+                             (shopify_raw_orders with marketplace exclusions). Server-rendered so it
+                             always matches /shopify and the eBay row pattern on /all-marketplace-master.
+                             Page filters do not narrow this number — it's the page-level reference. --}}
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge"
+                              style="color: black; font-weight: bold;"
+                              title="L30 Net Sales from shopify_raw_orders (matches /shopify Net Sales card and the Shopify row on /all-marketplace-master). Page-level total — unaffected by table filters.">Total Sales: ${{ number_format((float) ($shopifyDirectL30Sales ?? 0), 0) }}</span>
+                        {{-- Orders: distinct order_id count from the same source. New badge requested
+                             so this page agrees with /shopify and /all-marketplace-master Shopify row. --}}
+                        <span class="badge bg-secondary fs-6 p-2" id="total-orders-badge"
+                              style="color: white; font-weight: bold;"
+                              title="L30 distinct orders from shopify_raw_orders (matches /shopify and /all-marketplace-master Shopify row).">Orders: {{ number_format((int) ($shopifyDirectL30Orders ?? 0)) }}</span>
+                        {{-- Qty: Σ ebay_order_items.quantity-equivalent from shopify_raw_orders for the
+                             same L30 window. Same value /shopify reports as "Total Qty" and
+                             /all-marketplace-master shows in the Shopify row's "Qty items" cell. --}}
+                        <span class="badge fs-6 p-2" id="total-qty-badge"
+                              style="background-color: #6f42c1; color: white; font-weight: bold;"
+                              title="L30 units sold from shopify_raw_orders (matches /shopify and /all-marketplace-master Shopify row).">Qty: {{ number_format((int) ($shopifyDirectL30Qty ?? 0)) }}</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT %: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total INV: 0</span>
@@ -297,7 +314,6 @@
                         <span class="badge bg-info fs-6 p-2" id="total-b2b-l30-badge" style="color: black; font-weight: bold;">Total B2B L30: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 = 0">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 > 0">&gt; 0 Sold: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color: black; font-weight: bold;">DIL%: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
                         <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">NROI%: 0%</span>
@@ -356,6 +372,25 @@
 @section('script-bottom')
 <script>
     const COLUMN_VIS_KEY = "shopify_b2c_tabulator_column_visibility";
+    /** L30 sales + distinct order count from /shopify (shopify_raw_orders with
+     *  marketplace exclusions). Page-level totals — used to drive the Total
+     *  Sales and Orders badges so this page agrees with /shopify and the
+     *  /all-marketplace-master Shopify row. Page filters do NOT narrow these
+     *  numbers, mirroring how /shopify reports them. */
+    const SHOPIFY_DIRECT_L30_SALES   = {{ (float) ($shopifyDirectL30Sales   ?? 0) }};
+    const SHOPIFY_DIRECT_L30_ORDERS  = {{ (int)   ($shopifyDirectL30Orders  ?? 0) }};
+    const SHOPIFY_DIRECT_L30_QTY     = {{ (int)   ($shopifyDirectL30Qty     ?? 0) }};
+    /** Profit / cost / spend + derived percentages from the same /shopify snapshot
+     *  the master Shopify row uses. Drives Total PFT, GPFT, Total Spend, TCOS,
+     *  NPFT, and NROI badges on this page so they agree with /all-marketplace-master. */
+    const SHOPIFY_DIRECT_TOTAL_PFT   = {{ (float) ($shopifyDirectTotalPft   ?? 0) }};
+    const SHOPIFY_DIRECT_TOTAL_COGS  = {{ (float) ($shopifyDirectTotalCogs  ?? 0) }};
+    const SHOPIFY_DIRECT_TOTAL_SPEND = {{ (float) ($shopifyDirectTotalSpend ?? 0) }};
+    const SHOPIFY_DIRECT_GPFT_PCT    = {{ (float) ($shopifyDirectGpftPct    ?? 0) }};
+    const SHOPIFY_DIRECT_GROI_PCT    = {{ (float) ($shopifyDirectGroiPct    ?? 0) }};
+    const SHOPIFY_DIRECT_TCOS_PCT    = {{ (float) ($shopifyDirectTcosPct    ?? 0) }};
+    const SHOPIFY_DIRECT_NPFT_PCT    = {{ (float) ($shopifyDirectNpftPct    ?? 0) }};
+    const SHOPIFY_DIRECT_NROI_PCT    = {{ (float) ($shopifyDirectNroiPct    ?? 0) }};
     let table = null;
     let decreaseModeActive = false;
     let increaseModeActive = false;
@@ -1765,7 +1800,7 @@
             console.log('UpdateSummary - Total rows (ignoring search):', data.length);
 
             let totalPft = 0, totalSales = 0, totalGpft = 0, totalPrice = 0, priceCount = 0;
-            let totalInv = 0, totalL30 = 0, totalB2BL30 = 0, zeroSoldCount = 0, moreSoldCount = 0, totalDil = 0, dilCount = 0;
+            let totalInv = 0, totalL30 = 0, totalB2BL30 = 0, zeroSoldCount = 0, moreSoldCount = 0;
             let totalCogs = 0, totalRoi = 0, roiCount = 0, lessAmzCount = 0, moreAmzCount = 0;
             let missingCount = 0;
 
@@ -1790,12 +1825,6 @@
                     zeroSoldCount++;
                 } else {
                     moreSoldCount++;
-                }
-                
-                const dil = parseFloat(row['DIL%']) || 0;
-                if (dil > 0) {
-                    totalDil += dil;
-                    dilCount++;
                 }
                 
                 // COGS = LP × B2B L30 (not OV L30)
@@ -1830,43 +1859,40 @@
             // Calculate GPFT % = (Total PFT / Total Sales) * 100 (same as Sales page)
             const avgGpft = totalSales > 0 ? (totalPft / totalSales) * 100 : 0;
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
-            const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
             const avgRoi = roiCount > 0 ? totalRoi / roiCount : 0;
 
-            $('#total-pft-amt-badge').text(`Total PFT: $${Math.round(totalPft).toLocaleString()}`);
-            $('#total-sales-amt-badge').text(`Total Sales: $${Math.round(totalSales).toLocaleString()}`);
-            $('#avg-gpft-badge').text(`GPFT %: ${avgGpft.toFixed(1)}%`);
+            // All page-level financials below come from the same /shopify L30 snapshot
+            // the Shopify row on /all-marketplace-master uses (single source of truth:
+            // ChannelMasterController::getShopifyDirectL30Snapshot). Per-row totals are
+            // still computed in updateSummary above for any per-row consumer that
+            // needs them, but the BADGES read the page-level constants so this page,
+            // /shopify, and the master Shopify row always show the same numbers.
+            $('#total-pft-amt-badge').text(`Total PFT: $${Math.round(SHOPIFY_DIRECT_TOTAL_PFT).toLocaleString()}`);
+            $('#total-sales-amt-badge').text(`Total Sales: $${Math.round(SHOPIFY_DIRECT_L30_SALES).toLocaleString()}`);
+            $('#total-orders-badge').text(`Orders: ${SHOPIFY_DIRECT_L30_ORDERS.toLocaleString()}`);
+            $('#total-qty-badge').text(`Qty: ${SHOPIFY_DIRECT_L30_QTY.toLocaleString()}`);
+            $('#avg-gpft-badge').text(`GPFT %: ${SHOPIFY_DIRECT_GPFT_PCT.toFixed(1)}%`);
             $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);
             $('#total-inv-badge').text(`Total INV: ${totalInv.toLocaleString()}`);
             $('#total-l30-badge').text(`Total L30: ${totalL30.toLocaleString()}`);
             $('#total-b2b-l30-badge').text(`Total B2B L30: ${totalB2BL30.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
-            $('#avg-dil-badge').text(`DIL%: ${(avgDil * 100).toFixed(1)}%`);
             $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
             $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount}`);
             $('#missing-count-badge').text(`Missing: ${missingCount}`);
             
-            // Calculate Total Spend from campaign totals (like Amazon - avoids double-counting)
-            // This matches what Google Ads actually shows
-            const totalSpend = campaignTotals.google_spend_L30 || 0;
-            
-            // TCOS% = (Total Spend / Total Sales) × 100
-            // Use totalSales from filtered data (already calculated above at line 1594)
-            const tcosPercent = totalSales > 0 ? (totalSpend / totalSales) * 100 : 0;
-            
-            // NPFT% = GPFT% - TCOS%
-            const npftPercent = avgGpft - tcosPercent;
-            
-            // NROI% = ROI% - TCOS%
-            const nroiPercent = avgRoi - tcosPercent;
-            
-            $('#total-tcos-badge').text(`Total TCOS: ${tcosPercent.toFixed(1)}%`);
-            $('#total-spend-badge').text(`Total Spend: $${totalSpend.toFixed(2)}`);
-            $('#avg-npft-badge').text(`NPFT %: ${npftPercent.toFixed(1)}%`);
-            $('#nroi-percent-badge').text(`NROI%: ${nroiPercent.toFixed(1)}%`);
+            // Total Spend / TCOS / NPFT / NROI all read the page-level snapshot now.
+            // Total Spend = Google + Meta rollup from /shopify-ads-master (same number
+            // its Spend badge shows). TCOS = that rollup's tcos_pct (same number its
+            // TCOS badge shows). NPFT = GPFT − TCOS. NROI = (TotalPft − Total Spend) / COGS.
+            // All four agree with the Shopify row on /all-marketplace-master.
+            $('#total-tcos-badge').text(`Total TCOS: ${SHOPIFY_DIRECT_TCOS_PCT.toFixed(1)}%`);
+            $('#total-spend-badge').text(`Total Spend: $${SHOPIFY_DIRECT_TOTAL_SPEND.toFixed(2)}`);
+            $('#avg-npft-badge').text(`NPFT %: ${SHOPIFY_DIRECT_NPFT_PCT.toFixed(1)}%`);
+            $('#nroi-percent-badge').text(`NROI%: ${SHOPIFY_DIRECT_NROI_PCT.toFixed(1)}%`);
         }
 
         // Build Column Visibility Dropdown

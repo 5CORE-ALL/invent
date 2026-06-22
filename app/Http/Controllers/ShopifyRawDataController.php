@@ -2,12 +2,20 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ProductMaster;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class ShopifyRawDataController extends Controller
 {
+    /**
+     * Gross-margin assumption used by /shopify NPFT / NROI stat cards.
+     * Same shape as Reverb's 0.85 margin in CalculateChannelMasterData (gross
+     * profit per row = revenue × MARGIN − cogs). User-requested 0.95 here.
+     */
+    const SHOPIFY_GROSS_MARGIN = 0.95;
+
     // Sources/tags this page tracks
     const FILTER_SOURCES = ['checkout-via-buy-now-button', 'wsaio-app', 'shopify_draft_order'];
 
@@ -89,18 +97,27 @@ class ShopifyRawDataController extends Controller
 
         $rows = $query->orderBy('order_date', 'desc')->get();
 
-        $data = $rows->map(function ($row) {
+        // Build a SKU → LP lookup so the stat-cards can compute COGS per row
+        // client-side. LP lives in product_master.Values JSON (key 'lp', case
+        // insensitive) — same extraction path /ebay/daily-sales uses. We pull
+        // only the SKUs actually present in this result set so this stays
+        // O(rows) instead of O(table).
+        $lpBySku = $this->fetchLpBySkuForRows($rows);
+
+        $data = $rows->map(function ($row) use ($lpBySku) {
             $totalAmount    = round((float) ($row->total_amount    ?? 0), 2);
             $discountAmount = round((float) ($row->discount_amount ?? 0), 2);
             $netSales       = round((float) ($row->net_sales       ?? ($totalAmount - $discountAmount)), 2);
             $orderTotal     = $row->order_total    !== null ? round((float) $row->order_total,    2) : null;
             $orderSubtotal  = $row->order_subtotal !== null ? round((float) $row->order_subtotal, 2) : null;
+            $sku            = $row->sku ?? '';
+            $lp             = (float) ($lpBySku[$sku] ?? 0);
 
             return [
                 'id'                 => $row->id              ?? '',
                 'order_id'           => $row->order_id        ?? '',
                 'order_number'       => $row->order_number    ?? '',
-                'sku'                => $row->sku             ?? '',
+                'sku'                => $sku,
                 'product_title'      => $row->product_title   ?? '',
                 'quantity'           => (int) ($row->quantity ?? 0),
                 'price'              => round((float) ($row->price ?? 0), 2),
@@ -124,14 +141,80 @@ class ShopifyRawDataController extends Controller
                 'shipment_checked_at'    => $row->shipment_checked_at    ?? '',
                 'tags'               => $row->tags                ?? '',
                 'source_name'        => $row->source_name         ?? '',
+                // LP per unit (used by NPFT / NROI cards). 0 when SKU not found
+                // in product_master so missing-SKU rows simply contribute 0 COGS.
+                'lp'                 => round($lp, 2),
             ];
         });
 
+        // Total Shopify ad spend (Google Ads — Shopping + Search) for the SAME
+        // date range the table is showing. Mirrors the channel-level ad-spend
+        // pattern /ebay/daily-sales uses (KW + PMT spent over the rolling
+        // window). 'metrics_cost_micros' is in micros (USD * 1e6).
+        $totalAdSpend = $this->fetchShopifyAdSpendForRange($dateFrom, $dateTo);
+
         return response()->json([
-            'data'   => $data,
-            'total'  => $data->count(),
-            'status' => 200,
+            'data'           => $data,
+            'total'          => $data->count(),
+            'total_ad_spend' => round($totalAdSpend, 2),
+            'gross_margin'   => self::SHOPIFY_GROSS_MARGIN,
+            'status'         => 200,
         ]);
+    }
+
+    /**
+     * Extract LP from product_master.Values JSON for a set of SKUs.
+     *
+     * @param  iterable $rows  collection of order rows (must expose ->sku)
+     * @return array<string, float>  sku → lp
+     */
+    private function fetchLpBySkuForRows($rows): array
+    {
+        $skus = collect($rows)->pluck('sku')->filter()->unique()->values()->all();
+        if (empty($skus)) return [];
+
+        $masters = ProductMaster::whereIn('sku', $skus)->get(['sku', 'Values']);
+        $out = [];
+        foreach ($masters as $pm) {
+            $values = is_array($pm->Values)
+                ? $pm->Values
+                : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+            $lp = 0.0;
+            if (is_array($values)) {
+                foreach ($values as $k => $v) {
+                    if (strtolower((string) $k) === 'lp') {
+                        $lp = (float) $v;
+                        break;
+                    }
+                }
+            }
+            if ($lp <= 0 && isset($pm->lp)) {
+                $lp = (float) $pm->lp;
+            }
+            $out[$pm->sku] = $lp;
+        }
+        return $out;
+    }
+
+    /**
+     * Sum Google Ads cost (Shopping + Search) for the given date range — the
+     * Shopify ad-spend source used by /all-marketplace-master's Shopify B2C
+     * row. 'metrics_cost_micros' is stored as USD micros (1e6 = $1).
+     */
+    private function fetchShopifyAdSpendForRange(Carbon $dateFrom, Carbon $dateTo): float
+    {
+        try {
+            $costMicros = (float) DB::table('google_ads_campaigns')
+                ->whereDate('date', '>=', $dateFrom->toDateString())
+                ->whereDate('date', '<=', $dateTo->toDateString())
+                ->whereIn('advertising_channel_type', ['SHOPPING', 'SEARCH'])
+                ->whereIn('campaign_status', ['ENABLED', 'PAUSED'])
+                ->sum('metrics_cost_micros');
+            return $costMicros / 1_000_000.0;
+        } catch (\Throwable $e) {
+            \Log::warning('fetchShopifyAdSpendForRange failed: ' . $e->getMessage());
+            return 0.0;
+        }
     }
 
     /**

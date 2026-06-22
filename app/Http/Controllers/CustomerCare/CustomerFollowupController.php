@@ -11,6 +11,8 @@ use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class CustomerFollowupController extends Controller
@@ -124,6 +126,64 @@ class CustomerFollowupController extends Controller
         $email = strtolower(trim((string) auth()->user()?->email ?? ''));
 
         return $email === 'president@5core.com';
+    }
+
+    /** Hard upper bound enforced server-side ("under 1 MB"). Mirrors the client-side guard. */
+    private const IMAGE_MAX_KB = 1024;
+
+    /** Where attachments live on the public disk. */
+    private const IMAGE_STORAGE_DIR = 'customer-care/followups';
+
+    /**
+     * Build a public URL for an `image_path` value. Returns null when no
+     * image is attached. Mirrors DispatchIssuesController::publicIssueImageUrl
+     * so the URL works regardless of APP_URL drift (localhost vs 127.0.0.1).
+     */
+    private function publicImageUrl(?string $path): ?string
+    {
+        if ($path === null || trim((string) $path) === '') {
+            return null;
+        }
+
+        $path = ltrim(str_replace('\\', '/', trim((string) $path)), '/');
+
+        if (app()->bound('request') && request() && !app()->runningInConsole()) {
+            return rtrim(request()->root(), '/') . '/storage/' . $path;
+        }
+
+        return Storage::disk('public')->url($path);
+    }
+
+    /**
+     * Persist the uploaded image (if any) for a follow-up and delete the
+     * previous file when replaced. Returns the new storage key, ''
+     * (caller should clear the column) when `remove_image=1`, or null when
+     * nothing changed.
+     *
+     * Validation in store()/update() guarantees the file is an image and
+     * ≤ 1024 KB — we still re-check $file->isValid() defensively.
+     */
+    private function handleImageUpload(Request $request, ?string $existingPath): ?string
+    {
+        if ($request->hasFile('image')) {
+            $file = $request->file('image');
+            if ($file instanceof UploadedFile && $file->isValid()) {
+                if ($existingPath && Storage::disk('public')->exists($existingPath)) {
+                    Storage::disk('public')->delete($existingPath);
+                }
+
+                return $file->store(self::IMAGE_STORAGE_DIR, 'public');
+            }
+        }
+
+        if ($request->boolean('remove_image')) {
+            if ($existingPath && Storage::disk('public')->exists($existingPath)) {
+                Storage::disk('public')->delete($existingPath);
+            }
+            return '';
+        }
+
+        return null;
     }
 
     /**
@@ -305,6 +365,7 @@ class CustomerFollowupController extends Controller
                 'executive_current' => trim((string) ($f->assigned_executive ?? '')),
                 'executive_history' => $historyDisplay,
                 'reference_link' => $f->reference_link,
+                'image_url' => $this->publicImageUrl($f->image_path),
                 'overdue' => $f->isOverdue(),
             ];
         });
@@ -422,11 +483,16 @@ class CustomerFollowupController extends Controller
             'next_followup_at' => 'nullable|date',
             'comments' => 'nullable|string',
             'reference_link' => 'nullable|string|max:512',
+            // Hard cap "under 1 MB". Laravel's `max` rule is in KB.
+            'image' => 'nullable|image|mimes:jpg,jpeg,png,webp,gif|max:' . self::IMAGE_MAX_KB,
         ]);
 
         if (!empty($validated['reference_link']) && !filter_var($validated['reference_link'], FILTER_VALIDATE_URL)) {
             return response()->json(['success' => false, 'message' => 'Reference link must be a valid URL.', 'errors' => ['reference_link' => ['Invalid URL']]], 422);
         }
+
+        // Image is handled separately so it never lands in the mass-assigned payload.
+        unset($validated['image']);
 
         $validated['customer_name'] = isset($validated['customer_name']) && trim((string) $validated['customer_name']) !== ''
             ? trim($validated['customer_name'])
@@ -464,6 +530,13 @@ class CustomerFollowupController extends Controller
 
         $validated['ticket_id'] = CustomerFollowup::temporaryTicketId();
         $followup = CustomerFollowup::create($validated);
+
+        $newImagePath = $this->handleImageUpload($request, null);
+        if ($newImagePath !== null) {
+            $followup->image_path = $newImagePath !== '' ? $newImagePath : null;
+            $followup->saveQuietly();
+        }
+
         if ($executiveName !== '') {
             $followup->appendExecutiveHistoryEntry($executiveName, 'created');
             $followup->saveQuietly();
@@ -475,6 +548,7 @@ class CustomerFollowupController extends Controller
             'message' => 'Follow-up created.',
             'ticket_id' => $ticketId,
             'id' => $followup->id,
+            'image_url' => $this->publicImageUrl($followup->image_path),
         ]);
     }
 
@@ -499,6 +573,8 @@ class CustomerFollowupController extends Controller
             'next_followup_at' => $f->next_followup_at ? $f->next_followup_at->format('Y-m-d\TH:i') : '',
             'comments' => $f->comments,
             'reference_link' => $f->reference_link,
+            'image_url' => $this->publicImageUrl($f->image_path),
+            'image_path' => $f->image_path,
         ]);
     }
 
@@ -517,11 +593,16 @@ class CustomerFollowupController extends Controller
             'next_followup_at' => 'nullable|date',
             'comments' => 'nullable|string',
             'reference_link' => 'nullable|string|max:512',
+            'image' => 'nullable|image|mimes:jpg,jpeg,png,webp,gif|max:' . self::IMAGE_MAX_KB,
+            'remove_image' => 'nullable|in:0,1,true,false',
         ]);
 
         if (!empty($validated['reference_link']) && !filter_var($validated['reference_link'], FILTER_VALIDATE_URL)) {
             return response()->json(['success' => false, 'message' => 'Reference link must be a valid URL.'], 422);
         }
+
+        // Image handled separately; never let it slip into mass-assignment.
+        unset($validated['image'], $validated['remove_image']);
 
         $validated['customer_name'] = isset($validated['customer_name']) && trim((string) $validated['customer_name']) !== ''
             ? trim($validated['customer_name'])
@@ -558,6 +639,13 @@ class CustomerFollowupController extends Controller
         unset($validated['ticket_id']);
 
         $customer_followup->update($validated);
+
+        $newImagePath = $this->handleImageUpload($request, $customer_followup->image_path);
+        if ($newImagePath !== null) {
+            $customer_followup->image_path = $newImagePath !== '' ? $newImagePath : null;
+            $customer_followup->saveQuietly();
+        }
+
         if ($executiveName !== '') {
             // Backfill original_executive only for tickets that pre-date this
             // column (no creator stamped). Picking the first editor we see is
@@ -584,7 +672,11 @@ class CustomerFollowupController extends Controller
             $customer_followup->saveQuietly();
         }
 
-        return response()->json(['success' => true, 'message' => 'Updated.']);
+        return response()->json([
+            'success' => true,
+            'message' => 'Updated.',
+            'image_url' => $this->publicImageUrl($customer_followup->image_path),
+        ]);
     }
 
     public function destroy(CustomerFollowup $customer_followup)

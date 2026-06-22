@@ -741,7 +741,29 @@ class Shopifyb2cController extends Controller
     
     public function shopifyB2cTabulatorView()
     {
-        return view('market-places.shopify_b2c_tabulator_view');
+        // Pull L30 sales + distinct-order count + units sold from the same source
+        // `/shopify` and the /all-marketplace-master Shopify row use
+        // (shopify_raw_orders with the marketplace exclusions). Lets this page's
+        // Total Sales / Orders / Qty badges agree with that page byte-for-byte.
+        $shopifySnapshot = app(\App\Http\Controllers\Channels\ChannelMasterController::class)
+            ->getShopifyDirectL30Snapshot();
+
+        return view('market-places.shopify_b2c_tabulator_view', [
+            'shopifyDirectL30Sales'    => (float) ($shopifySnapshot['l30_sales']      ?? 0),
+            'shopifyDirectL30Orders'   => (int)   ($shopifySnapshot['l30_orders']     ?? 0),
+            'shopifyDirectL30Qty'      => (int)   ($shopifySnapshot['qty']            ?? 0),
+            // Profit / cost / ad-spend + the derived percentages — same numbers
+            // /all-marketplace-master shows for the Shopify row, so the GPFT /
+            // TCOS / NPFT badges on this page agree with that page byte-for-byte.
+            'shopifyDirectTotalPft'    => (float) ($shopifySnapshot['total_pft']      ?? 0),
+            'shopifyDirectTotalCogs'   => (float) ($shopifySnapshot['total_cogs']     ?? 0),
+            'shopifyDirectTotalSpend'  => (float) ($shopifySnapshot['total_ad_spend'] ?? 0),
+            'shopifyDirectGpftPct'     => (float) ($shopifySnapshot['gpft_pct']       ?? 0),
+            'shopifyDirectGroiPct'     => (float) ($shopifySnapshot['groi_pct']       ?? 0),
+            'shopifyDirectTcosPct'     => (float) ($shopifySnapshot['tcos_pct']       ?? 0),
+            'shopifyDirectNpftPct'     => (float) ($shopifySnapshot['npft_pct']       ?? 0),
+            'shopifyDirectNroiPct'     => (float) ($shopifySnapshot['nroi_pct']       ?? 0),
+        ]);
     }
 
     public function shopifyB2cDataJson()

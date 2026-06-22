@@ -99,6 +99,25 @@
                     <div class="stat-value" id="stat-total-qty">—</div>
                     <div class="stat-sub">all sources</div>
                 </div>
+                {{-- NPFT and NROI use the same shape /ebay/daily-sales does:
+                       GPFT% = totalPft / totalNetSales × 100
+                       TACOS% = totalAdSpend / totalNetSales × 100
+                       NPFT% = GPFT% − TACOS%
+                       NROI% = (totalPft − totalAdSpend) / totalCogs × 100
+                     totalPft is computed per row as (net_sales × 0.95) − (lp × qty),
+                     where 0.95 is the Shopify gross-margin assumption (see
+                     ShopifyRawDataController::SHOPIFY_GROSS_MARGIN). Ad spend is the
+                     Google Ads cost (Shopping + Search) for the same date range. --}}
+                <div class="stat-card text-white" style="background-color:#fd7e14;">
+                    <div class="stat-label">N PFT %</div>
+                    <div class="stat-value" id="stat-npft">—</div>
+                    <div class="stat-sub" title="GPFT − TACOS, with 0.95 gross margin">net of Google Ads</div>
+                </div>
+                <div class="stat-card text-white" style="background-color:#e83e8c;">
+                    <div class="stat-label">N ROI %</div>
+                    <div class="stat-value" id="stat-nroi">—</div>
+                    <div class="stat-sub" title="(Σ profit − Σ ad spend) / Σ COGS × 100">net of Google Ads</div>
+                </div>
             </div>
         </div>
     </div>
@@ -180,6 +199,10 @@
     let filterActive = false;
     let hideUnknown  = true;   // hide rows with empty tags by default
     let allData      = [];   // full dataset cache
+    // Page-level totals updated on every loadData() — used by the NPFT and
+    // NROI stat cards (TACOS = totalAdSpend / netSales × 100).
+    let pageAdSpend     = 0;
+    let pageGrossMargin = 0.95;
 
     const SOURCE_LABELS = {
         'all'                         : 'All Sources',
@@ -370,18 +393,42 @@
     function updateStatCards(rows) {
         if (!rows) rows = allData;
         let orders = 0, revenue = 0, discount = 0, netSales = 0, qty = 0;
+        // Per-row aggregates for NPFT / NROI. COGS = lp × qty. Gross profit
+        // per row = (net_sales × MARGIN) − cogs, mirroring the per-row PFT in
+        // EbaySalesController::getData and Reverb's 0.85-margin calculation.
+        let totalCogs = 0, totalGrossPft = 0;
         (rows || []).forEach(r => {
             orders++;
-            qty      += parseInt(r.quantity)        || 0;
+            const q  = parseInt(r.quantity)        || 0;
+            const lp = parseFloat(r.lp)            || 0;
+            const ns = parseFloat(r.net_sales)     || 0;
+            qty      += q;
             revenue  += parseFloat(r.total_amount)  || 0;
             discount += parseFloat(r.discount_amount) || 0;
-            netSales += parseFloat(r.net_sales)     || 0;
+            netSales += ns;
+            const cogs    = lp * q;
+            totalCogs    += cogs;
+            totalGrossPft += (ns * pageGrossMargin) - cogs;
         });
+
+        // GPFT% / TACOS% / NPFT% / NROI% — same shape /ebay/daily-sales uses.
+        // pageAdSpend is the Google Ads cost (Shopping + Search) for the same
+        // date range the table is showing, so TACOS scales correctly when the
+        // user widens or narrows the date filter.
+        const gpftPct  = netSales > 0  ? (totalGrossPft / netSales) * 100 : 0;
+        const tacosPct = netSales > 0  ? (pageAdSpend  / netSales) * 100 : 0;
+        const npftPct  = gpftPct - tacosPct;
+        const netProfit = totalGrossPft - pageAdSpend;
+        const nroiPct  = totalCogs > 0 ? (netProfit / totalCogs) * 100 : 0;
+
         $('#stat-total-orders').text(orders.toLocaleString());
         $('#stat-total-revenue').text(fmtMoney(revenue));
         $('#stat-total-discount').text(fmtMoney(discount));
         $('#stat-net-sales').text(fmtMoney(netSales));
         $('#stat-total-qty').text(qty.toLocaleString());
+        $('#stat-npft').text((isFinite(npftPct) ? npftPct.toFixed(1) : '0.0') + '%');
+        $('#stat-nroi').text((isFinite(nroiPct) ? nroiPct.toFixed(1) : '0.0') + '%');
+
         const total = allData.length;
         const sub   = filterActive ? `${orders} of ${total} filtered` : 'all sources';
         // Only update the sub for orders/revenue cards, not the "gross − discounts" sub
@@ -390,6 +437,10 @@
         $('#stat-total-discount').closest('.stat-card').find('.stat-sub').text(sub);
         $('#stat-net-sales').closest('.stat-card').find('.stat-sub').text('gross − discounts');
         $('#stat-total-qty').closest('.stat-card').find('.stat-sub').text(sub);
+        // NPFT / NROI sub text shows the ad-spend basis so the user can sanity-check.
+        const adSpendLabel = pageAdSpend > 0 ? `Ads $${Math.round(pageAdSpend).toLocaleString()}` : 'no ads in range';
+        $('#stat-npft').closest('.stat-card').find('.stat-sub').text(adSpendLabel);
+        $('#stat-nroi').closest('.stat-card').find('.stat-sub').text(adSpendLabel);
     }
 
     // ── Load data ──────────────────────────────────────────────────────────
@@ -399,6 +450,11 @@
 
         $.get('{{ route("shopify-raw-data.get-data") }}', params)
             .done(function(res) {
+                // Capture page-level numbers for NPFT/NROI before rendering so
+                // the first updateStatCards() call (fired by table dataLoaded)
+                // sees the new values.
+                pageAdSpend     = Number(res.total_ad_spend) || 0;
+                pageGrossMargin = Number(res.gross_margin)   || 0.95;
                 buildTable(res.data || []);
                 showToast(`Loaded ${(res.data||[]).length} records`, 'success');
                 applySearchFilters();

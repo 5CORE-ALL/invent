@@ -33,11 +33,181 @@
         $sampleTail = array_merge(['1Z999AA10123456784', 'https://example.com'], $sampleTail);
     }
     $importCsvSampleRow = array_merge($importCsvSampleRow, $sampleTail);
+
+    // Carrier / Claims columns that exist on the dispatch_issue_issues table.
+    // Append them to the sample CSV whenever the corresponding column is shown
+    // on the page (e.g. /customer-care/carrier-and-claim) so the downloaded
+    // sample matches the actual table layout.
+    $extraClaimColumns = [];
+    $extraClaimSample  = [];
+    if ($showCarrierColumn ?? false) {
+        $extraClaimColumns[] = 'issue_carrier';
+        $extraClaimSample[]  = 'USPS';
+    }
+    if ($showClaimFiledColumn ?? false) {
+        $extraClaimColumns[] = 'claim_filed';
+        $extraClaimSample[]  = 'no'; // yes / no
+    }
+    if ($showAmpUsdColumn ?? false) {
+        $extraClaimColumns[] = 'amp_usd';
+        $extraClaimSample[]  = '0.00';
+    }
+    if ($showAmtRecColumn ?? false) {
+        $extraClaimColumns[] = 'amt_rec';
+        $extraClaimSample[]  = '0.00';
+    }
+    if ($showClaimReceivedColumn ?? false) {
+        $extraClaimColumns[] = 'claim_received';
+        $extraClaimSample[]  = 'no'; // yes / no
+    }
+    if (!empty($extraClaimColumns)) {
+        $importCsvHeaders   = array_merge($importCsvHeaders, $extraClaimColumns);
+        $importCsvSampleRow = array_merge($importCsvSampleRow, $extraClaimSample);
+    }
 @endphp
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <style>
+        /* ---------------------------------------------------------------
+           Add/Edit Issue modal: lock to the viewport with a real flex
+           layout so the form body is the only thing that scrolls — the
+           Save button (footer) and header always stay visible.
+
+           Mirrors the working layout used on /customer-care/all-issues
+           (#ordersOnHoldIssueModal block in all_issues.blade.php), with
+           one extra rule: this partial wraps body+footer in a <form>, so
+           the form must also be a flex column to forward height down.
+           --------------------------------------------------------------- */
+        #ordersOnHoldIssueModal {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100% !important;
+            height: 100vh !important;
+            overflow: hidden !important;
+            z-index: 1060 !important;
+        }
+        #ordersOnHoldIssueModal .modal-dialog {
+            max-width: 800px !important;
+            width: calc(100% - 2rem) !important;
+            max-height: calc(100vh - 1rem) !important;
+            height: calc(100vh - 1rem) !important;
+            margin: 0.5rem auto !important;
+            display: flex !important;
+            align-items: stretch !important;
+        }
+        #ordersOnHoldIssueModal .modal-content {
+            max-height: 100% !important;
+            height: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            overflow: hidden !important;
+            background: #fff !important;
+        }
+        #ordersOnHoldIssueModal .modal-header,
+        #ordersOnHoldIssueModal .modal-footer {
+            flex: 0 0 auto !important;
+        }
+        #ordersOnHoldIssueModal #ordersOnHoldIssueForm {
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+        }
+        #ordersOnHoldIssueModal .modal-body {
+            flex: 1 1 auto !important;
+            overflow-y: auto !important;
+            min-height: 0 !important;
+            /* Visible default-thickness scrollbar (Firefox) */
+            scrollbar-width: auto;
+            scrollbar-color: #6c757d #f1f3f5;
+        }
+        /* Visible scrollbar (WebKit / Blink) */
+        #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar {
+            width: 14px;
+        }
+        #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar-track {
+            background: #f1f3f5;
+            border-radius: 8px;
+        }
+        #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar-thumb {
+            background-color: #adb5bd;
+            border: 3px solid #f1f3f5;
+            border-radius: 8px;
+        }
+        #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar-thumb:hover {
+            background-color: #6c757d;
+        }
+
+        /* Details column: small teal magnifier button (read-only modal opener). */
+        .qc-details-btn {
+            border: none;
+            background: transparent;
+            padding: 1px 4px;
+            cursor: pointer;
+            color: #0d9488;
+        }
+        .qc-details-btn:hover {
+            color: #115e59;
+            background: rgba(13, 148, 136, 0.12);
+            border-radius: 4px;
+        }
+
+        /* Read-only "Details" modal grid */
+        #qcDetailsModal .ai-detail-section {
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.75rem;
+            background: #fff;
+        }
+        #qcDetailsModal .ai-detail-section-title {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #6b7280;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            border-bottom: 1px solid #f3f4f6;
+            padding-bottom: 0.35rem;
+        }
+        #qcDetailsModal .ai-detail-row {
+            display: flex;
+            gap: 0.75rem;
+            padding: 0.35rem 0;
+            border-bottom: 1px dashed #f3f4f6;
+            font-size: 0.92rem;
+            line-height: 1.35;
+        }
+        #qcDetailsModal .ai-detail-row:last-child { border-bottom: none; }
+        #qcDetailsModal .ai-detail-label {
+            flex: 0 0 38%;
+            color: #6b7280;
+            font-weight: 600;
+        }
+        #qcDetailsModal .ai-detail-value {
+            flex: 1 1 auto;
+            color: #111827;
+            word-break: break-word;
+        }
+        #qcDetailsModal .ai-detail-value.empty {
+            color: #9ca3af;
+            font-style: italic;
+        }
+        #qcDetailsModal .ai-detail-thumb {
+            max-width: 140px;
+            max-height: 140px;
+            object-fit: contain;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.375rem;
+            background: #fff;
+            padding: 2px;
+        }
+
         .orders-hold-table {
             table-layout: auto;
             width: 100%;
@@ -308,9 +478,40 @@
             min-width: 90px;
         }
 
+        /* Combined "Created By" cell: name on top, short date below.
+           Used when $mergeCreatedAtIntoCreatedBy flag is on (Carrier Claims,
+           Carrier Scan Issues). Hover tooltip on the cell shows the full
+           timestamp. */
+        .orders-hold-table .created-by-combo {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            line-height: 1.15;
+        }
+        .orders-hold-table .created-by-combo .created-by-name {
+            font-weight: 600;
+        }
+        .orders-hold-table .created-by-combo .created-by-date {
+            font-size: 0.78rem;
+            color: #6c757d;
+        }
+        .orders-hold-table .created-by-combo .created-by-date.is-stale {
+            color: #dc3545;
+        }
+
         .orders-hold-col-created-at {
-            width: 9%;
-            min-width: 110px;
+            width: 60px;
+            min-width: 60px;
+            max-width: 80px;
+            white-space: nowrap;
+            text-align: center;
+        }
+        /* Tighter cell padding so the short "21 JUN" label sits comfortably
+           in the narrowed column without forcing a line-break. */
+        .orders-hold-table td.orders-hold-col-created-at,
+        .orders-hold-table th.orders-hold-col-created-at {
+            padding-left: 0.3rem;
+            padding-right: 0.3rem;
         }
 
         .orders-hold-col-action {
@@ -947,25 +1148,41 @@
                                     <th
                                         class="orders-hold-col-action @if ($showDispatchExtras ?? false) dispatch-action-col @endif">
                                         Action</th>
-                                    @if ($showCarrierColumn ?? false)
+                                    {{-- Read-only "view all column data" magnifier; opens a modal
+                                         showing every relevant field for the row. --}}
+                                    @if ($showDetailsColumn ?? false)
+                                        <th class="orders-hold-col-action text-center">Details</th>
+                                    @endif
+                                    {{-- Carrier / Tracking / Track R / Img 1 / Img 2 / Link
+                                         can be hidden as a group via $hideCarrierTrackingMediaColumns
+                                         — used by Carrier and Claim / Carrier Scan Issues, where
+                                         this data is reachable through the Details modal. --}}
+                                    @if (($showCarrierColumn ?? false) && !($hideCarrierTrackingMediaColumns ?? false))
                                         <th class="orders-hold-col-carrier">Carrier</th>
                                     @endif
-                                    @if ($showDispatchExtras ?? false)
+                                    @if (($showDispatchExtras ?? false) && !($hideCarrierTrackingMediaColumns ?? false))
                                         <th class="orders-hold-col-action">Tracking</th>
                                     @endif
-                                    <th class="orders-hold-col-action">Track R</th>
-                                    @if ($showDispatchExtras ?? false)
+                                    @if (!($hideCarrierTrackingMediaColumns ?? false))
+                                        <th class="orders-hold-col-action">Track R</th>
+                                    @endif
+                                    @if (($showDispatchExtras ?? false) && !($hideCarrierTrackingMediaColumns ?? false))
                                         <th class="orders-hold-col-action">Img 1</th>
                                         <th class="orders-hold-col-action">Img 2</th>
                                         <th class="orders-hold-col-action">Link</th>
                                     @endif
                                     @if ($createdAtColumnAfterTrack ?? false)
-                                        <th class="orders-hold-col-created-at">Created At</th>
+                                        @if (!($mergeCreatedAtIntoCreatedBy ?? false))
+                                            <th class="orders-hold-col-created-at">Created At</th>
+                                        @endif
                                         @if ($showClaimFiledColumn ?? false)
                                             <th class="orders-hold-col-claim-filed text-center">Claim<br>Filed</th>
                                         @endif
                                         @if ($showAmpUsdColumn ?? false)
                                             <th class="orders-hold-col-amp-usd text-center">AMT<br>$</th>
+                                        @endif
+                                        @if ($showAmtRecColumn ?? false)
+                                            <th class="orders-hold-col-amt-rec text-center">Amt<br>Rec</th>
                                         @endif
                                         @if ($showClaimReceivedColumn ?? false)
                                             <th class="orders-hold-col-claim-received text-center">Claim<br>Recd</th>
@@ -981,13 +1198,24 @@
                                     @endif
                                     <th class="orders-hold-col-close">Close</th>
                                     <th class="orders-hold-col-created-by">Created By</th>
+                                    {{-- Optional Dept column rendered AFTER Created By
+                                         (used by /customer-care/carrier-and-claim where
+                                         the original Dept column is hidden). --}}
+                                    @if ($showDepartmentColumnAfterCreatedBy ?? false)
+                                        <th class="orders-hold-col-dept">Dept</th>
+                                    @endif
                                     @if (!($createdAtColumnAfterTrack ?? false))
-                                        <th class="orders-hold-col-created-at">Created At</th>
+                                        @if (!($mergeCreatedAtIntoCreatedBy ?? false))
+                                            <th class="orders-hold-col-created-at">Created At</th>
+                                        @endif
                                         @if ($showClaimFiledColumn ?? false)
                                             <th class="orders-hold-col-claim-filed text-center">Claim<br>Filed</th>
                                         @endif
                                         @if ($showAmpUsdColumn ?? false)
                                             <th class="orders-hold-col-amp-usd text-center">AMT<br>$</th>
+                                        @endif
+                                        @if ($showAmtRecColumn ?? false)
+                                            <th class="orders-hold-col-amt-rec text-center">Amt<br>Rec</th>
                                         @endif
                                         @if ($showClaimReceivedColumn ?? false)
                                             <th class="orders-hold-col-claim-received text-center">Claim<br>Recd</th>
@@ -997,7 +1225,7 @@
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="{{ ($showDispatchExtras ?? false ? 22 : ($showOrderIdField ?? false ? 17 : 16)) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 3 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) }}"
+                                    <td colspan="{{ ($showDispatchExtras ?? false ? 22 : ($showOrderIdField ?? false ? 17 : 16)) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 3 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? (($showDispatchExtras ?? false ? 5 : 1) + ($showCarrierColumn ?? false ? 1 : 0)) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) }}"
                                         class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
@@ -1028,16 +1256,21 @@
                                         class="orders-hold-col-what @if ($showDispatchExtras ?? false) dispatch-what-col @endif">
                                         Issue?</th>
                                     <th class="orders-hold-col-action">Action</th>
-                                    @if ($showDispatchExtras ?? false)
+                                    @if ($showDetailsColumn ?? false)
+                                        <th class="orders-hold-col-action text-center">Details</th>
+                                    @endif
+                                    @if (($showDispatchExtras ?? false) && !($hideCarrierTrackingMediaColumns ?? false))
                                         <th class="orders-hold-col-action">Tracking</th>
                                     @endif
-                                    <th class="orders-hold-col-action">Track R</th>
-                                    @if ($showDispatchExtras ?? false)
+                                    @if (!($hideCarrierTrackingMediaColumns ?? false))
+                                        <th class="orders-hold-col-action">Track R</th>
+                                    @endif
+                                    @if (($showDispatchExtras ?? false) && !($hideCarrierTrackingMediaColumns ?? false))
                                         <th class="orders-hold-col-action">Img 1</th>
                                         <th class="orders-hold-col-action">Img 2</th>
                                         <th class="orders-hold-col-action">Link</th>
                                     @endif
-                                    @if ($createdAtColumnAfterTrack ?? false)
+                                    @if (($createdAtColumnAfterTrack ?? false) && !($mergeCreatedAtIntoCreatedBy ?? false))
                                         <th class="orders-hold-col-created-at">Logged At</th>
                                     @endif
                                     @if (!($hideRootCauseAndInstructionsCtnColumns ?? false))
@@ -1051,14 +1284,18 @@
                                     <th class="orders-hold-col-action">Close</th>
                                     <th class="orders-hold-col-action">Event</th>
                                     <th class="orders-hold-col-created-by">Created By</th>
-                                    @if (!($createdAtColumnAfterTrack ?? false))
+                                    {{-- See main table: optional Dept column after Created By. --}}
+                                    @if ($showDepartmentColumnAfterCreatedBy ?? false)
+                                        <th class="orders-hold-col-dept">Dept</th>
+                                    @endif
+                                    @if (!($createdAtColumnAfterTrack ?? false) && !($mergeCreatedAtIntoCreatedBy ?? false))
                                         <th class="orders-hold-col-created-at">Logged At</th>
                                     @endif
                                 </tr>
                             </thead>
                             <tbody id="hold_issue_history_table_body">
                                 <tr id="hold_issue_history_empty_row">
-                                    <td colspan="{{ ($showOrderIdField ?? false ? 18 : 17) + ($showDispatchExtras ?? false ? 4 : 0) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 3 : 0) }}"
+                                    <td colspan="{{ ($showOrderIdField ?? false ? 18 : 17) + ($showDispatchExtras ?? false ? 4 : 0) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 3 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) }}"
                                         class="text-center text-muted py-4">No history found.</td>
                                 </tr>
                             </tbody>
@@ -1068,6 +1305,29 @@
             </div>
         </div>
     </div>
+
+    {{-- ── Read-only Details Modal (opened by the Details column magnifier) ── --}}
+    @if ($showDetailsColumn ?? false)
+        <div class="modal fade" id="qcDetailsModal" tabindex="-1" aria-hidden="true" aria-labelledby="qcDetailsModalLabel">
+            <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="qcDetailsModalLabel">
+                            <i class="bi bi-search me-2"></i>Issue details
+                            <span class="text-muted small ms-1" id="qcDetailsModalSubtitle"></span>
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body" id="qcDetailsModalBody">
+                        {{-- Populated dynamically by openQcDetailsModal() --}}
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
 
     {{-- ── Import CSV Modal ── --}}
     <div class="modal fade" id="importCsvModal" tabindex="-1" aria-labelledby="importCsvModalLabel"
@@ -1080,18 +1340,34 @@
                 </div>
                 <div class="modal-body">
                     <div id="importCsvAlert" class="d-none mb-3"></div>
+                    {{-- Build the CSV header sample as a single string in PHP. Using
+                         inline `@if (cond) ... @endif` directives here was breaking
+                         Blade's compileStatements regex because the literal
+                         `@if (...)`/`@endif` substrings collided with real directives
+                         elsewhere in this file (notably the modal's #sku-rows-wrapper
+                         and #ordersOnHoldIssueModal blocks), causing Blade's
+                         `replaceFirstStatement` strpos to swap the wrong occurrence
+                         and leave the real directives as literal text in the output. --}}
+                    @php
+                        $csvActionRemarkPart   = ($hideActionRemark ?? false) ? '' : ', action_1_remark';
+                        $csvDispatchExtrasPart = ($showDispatchExtras ?? false) ? ', tracking_number, issue_link' : '';
+                        $csvOrderNumberPart    = ($showOrderIdField ?? false)   ? 'sku, order_number (or order id / order_id), qty, order_qty, parent, marketplace_1,'
+                                                                                : 'sku, qty, order_qty, parent, marketplace_1,';
+                        $csvClaimsTail = '';
+                        if ($showCarrierColumn ?? false)        { $csvClaimsTail .= ', issue_carrier'; }
+                        if ($showClaimFiledColumn ?? false)     { $csvClaimsTail .= ', claim_filed'; }
+                        if ($showAmpUsdColumn ?? false)         { $csvClaimsTail .= ', amp_usd'; }
+                        if ($showAmtRecColumn ?? false)         { $csvClaimsTail .= ', amt_rec'; }
+                        if ($showClaimReceivedColumn ?? false)  { $csvClaimsTail .= ', claim_received'; }
+                        $csvSampleHeaders = $csvOrderNumberPart
+                            . ' what_happened, action_1' . $csvActionRemarkPart
+                            . $csvDispatchExtrasPart
+                            . ', replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark, department'
+                            . $csvClaimsTail;
+                    @endphp
                     <p class="text-muted small mb-2">
                         Upload a CSV file with the following columns (header row required):<br>
-                        <code>
-                            @if ($showOrderIdField ?? false)
-                                sku, order_number (or order id / order_id), qty, order_qty, parent, marketplace_1,
-                                what_happened, action_1@if (!($hideActionRemark ?? false)), action_1_remark@endif@if ($showDispatchExtras ?? false), tracking_number, issue_link@endif, replacement_tracking, issue, issue_remark, c_action_1,
-                                    c_action_1_remark, department
-                                @else
-                                    sku, qty, order_qty, parent, marketplace_1, what_happened, action_1@if (!($hideActionRemark ?? false)), action_1_remark@endif@if ($showDispatchExtras ?? false), tracking_number, issue_link@endif, replacement_tracking, issue, issue_remark, c_action_1,
-                                        c_action_1_remark, department
-                                    @endif
-                        </code>
+                        <code>{{ $csvSampleHeaders }}</code>
                     </p>
                     <p class="text-muted small mb-3">
                         Required: <strong>sku</strong>, <strong>qty</strong>, <strong>issue</strong> (Root Cause Found),
@@ -1280,6 +1556,22 @@
                                 <input type="text" class="form-control" id="hold_issue_replacement_tracking"
                                     name="replacement_tracking" maxlength="50" placeholder="Optional tracking number">
                             </div>
+
+                            @if ($showCarrierColumn ?? false)
+                                {{-- Carrier dropdown — same options as the inline cell editor on the
+                                     Carrier Claims / Carrier Scan Issues boards. Backed by the
+                                     `issue_carrier` column on dispatch_issue_issues. --}}
+                                <div class="col-md-6">
+                                    <label for="hold_issue_issue_carrier" class="form-label">Carrier</label>
+                                    <select class="form-select" id="hold_issue_issue_carrier" name="issue_carrier">
+                                        <option value="">— Select carrier —</option>
+                                        <option value="USPS">USPS</option>
+                                        <option value="FEDEX">FEDEX</option>
+                                        <option value="GOFO">GOFO</option>
+                                        <option value="UPS">UPS</option>
+                                    </select>
+                                </div>
+                            @endif
 
                             <div class="col-md-6">
                                 <label for="hold_issue_text" class="form-label">Root Cause Found <span
@@ -1572,6 +1864,7 @@
             const showDispatchExtras = @json((bool) ($showDispatchExtras ?? false));
             const showClaimFiledColumn = @json((bool) ($showClaimFiledColumn ?? false));
             const showAmpUsdColumn = @json((bool) ($showAmpUsdColumn ?? false));
+            const showAmtRecColumn = @json((bool) ($showAmtRecColumn ?? false));
             const showClaimReceivedColumn = @json((bool) ($showClaimReceivedColumn ?? false));
             const showCarrierColumn = @json((bool) ($showCarrierColumn ?? false));
             const claimsStatsUrl = @json($claimsStatsUrl ?? null);
@@ -1775,19 +2068,120 @@
                 return el.innerHTML;
             }
 
-            /** Created At / Logged At table cell: red text if the timestamp is more than 14 days before now. */
+            /**
+             * Combined "Created By" cell: stacks the user name (top) with the
+             * short "21 JUN" date label (bottom). Hover tooltip shows the full
+             * timestamp, mirroring the all-issues page UX. Used when
+             * $mergeCreatedAtIntoCreatedBy is true.
+             */
+            function combinedCreatedByCellHtml(row, dateField) {
+                const name = String(row?.created_by ?? '').trim() || '—';
+                const raw = String(row?.[dateField] ?? '').trim();
+                const MONTH_NAMES = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+                let day = null, monthIdx = null, year = null, hour = 0, minute = 0;
+                if (raw) {
+                    let m = raw.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::\d{2})?)?$/);
+                    if (m) {
+                        day = parseInt(m[1], 10);
+                        monthIdx = parseInt(m[2], 10) - 1;
+                        year = parseInt(m[3], 10);
+                        hour = m[4] ? parseInt(m[4], 10) : 0;
+                        minute = m[5] ? parseInt(m[5], 10) : 0;
+                        if (year < 100) year += 2000;
+                    } else {
+                        m = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?/);
+                        if (m) {
+                            year = parseInt(m[1], 10);
+                            monthIdx = parseInt(m[2], 10) - 1;
+                            day = parseInt(m[3], 10);
+                            hour = m[4] ? parseInt(m[4], 10) : 0;
+                            minute = m[5] ? parseInt(m[5], 10) : 0;
+                        }
+                    }
+                }
+
+                let shortLabel = '';
+                let isStale = false;
+                if (day !== null && monthIdx !== null && monthIdx >= 0 && monthIdx <= 11) {
+                    shortLabel = day + ' ' + MONTH_NAMES[monthIdx];
+                    const dt = new Date(year, monthIdx, day, hour, minute, 0);
+                    if (!Number.isNaN(dt.getTime())) {
+                        isStale = (Date.now() - dt.getTime()) > 14 * 24 * 60 * 60 * 1000;
+                    }
+                }
+
+                const dateHtml = shortLabel
+                    ? '<div class="created-by-date' + (isStale ? ' is-stale' : '') + '">' +
+                        escapeHtml(shortLabel) + '</div>'
+                    : '';
+
+                const titleParts = [];
+                if (name && name !== '—') titleParts.push(name);
+                if (raw) titleParts.push(raw);
+                const titleAttr = titleParts.length
+                    ? ' title="' + escAttr(titleParts.join(' · ')) + '"'
+                    : '';
+
+                return '<td class="orders-hold-col-created-by"' + titleAttr + '>' +
+                    '<div class="created-by-combo">' +
+                    '<div class="created-by-name">' + escapeHtml(name) + '</div>' +
+                    dateHtml +
+                    '</div>' +
+                    '</td>';
+            }
+
+            /**
+             * Created At / Logged At table cell:
+             *   • Short label  → "21 JUN" (day + uppercase 3-letter month).
+             *   • Tooltip      → full original timestamp ("21-06-2026 04:07")
+             *                    so users can still see the precise time on hover.
+             *   • Stale rows   → red text if the timestamp is older than 14 days.
+             *
+             * Accepts either ISO ("2026-06-21 04:07[:ss]") or the legacy display
+             * format ("21-06-2026 04:07[:ss]") that the server currently emits.
+             */
             function issueRecordDateTdHtml(dateStr) {
                 const raw = String(dateStr ?? '').trim();
                 if (!raw) {
                     return '<td></td>';
                 }
-                const d = new Date(raw);
-                if (Number.isNaN(d.getTime())) {
-                    return '<td>' + escapeHtml(raw) + '</td>';
+
+                // Try to find a Date from either format. We prefer regex so that
+                // we don't depend on browser locale parsing.
+                const MONTH_NAMES = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+                let day = null, monthIdx = null, year = null, hour = 0, minute = 0;
+                let m = raw.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+                if (m) {
+                    day      = parseInt(m[1], 10);
+                    monthIdx = parseInt(m[2], 10) - 1;
+                    year     = parseInt(m[3], 10);
+                    hour     = m[4] ? parseInt(m[4], 10) : 0;
+                    minute   = m[5] ? parseInt(m[5], 10) : 0;
+                    if (year < 100) year += 2000;
+                } else {
+                    m = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+                    if (m) {
+                        year     = parseInt(m[1], 10);
+                        monthIdx = parseInt(m[2], 10) - 1;
+                        day      = parseInt(m[3], 10);
+                        hour     = m[4] ? parseInt(m[4], 10) : 0;
+                        minute   = m[5] ? parseInt(m[5], 10) : 0;
+                    }
                 }
-                const stale = (Date.now() - d.getTime()) > 14 * 24 * 60 * 60 * 1000;
-                const cls = stale ? ' class="text-danger"' : '';
-                return '<td' + cls + '>' + escapeHtml(raw) + '</td>';
+                if (day === null || monthIdx === null || monthIdx < 0 || monthIdx > 11) {
+                    return '<td class="orders-hold-col-created-at" title="' + escAttr(raw) + '">' +
+                        escapeHtml(raw) + '</td>';
+                }
+
+                const dt = new Date(year, monthIdx, day, hour, minute, 0);
+                const stale = !Number.isNaN(dt.getTime())
+                    && (Date.now() - dt.getTime()) > 14 * 24 * 60 * 60 * 1000;
+                const cls = 'orders-hold-col-created-at' + (stale ? ' text-danger' : '');
+                const shortLabel = day + ' ' + MONTH_NAMES[monthIdx];
+                return '<td class="' + cls + '" title="' + escAttr(raw) + '">' +
+                    escapeHtml(shortLabel) +
+                    '</td>';
             }
 
             function carrierSelectCellHtml(row) {
@@ -1898,6 +2292,53 @@
                     loadClaimsStats();
                 } catch (e) {
                     alert(e.message || 'Could not save AMT $');
+                    input.value = prev;
+                }
+            }
+
+            // ── "Amt Rec" (Amount Received): mirrors AMT $ ─────────────────────
+            function amtRecCellHtml(row) {
+                const v = String(row.amt_rec ?? '').slice(0, 6);
+                return '<td class="orders-hold-col-amt-rec">' +
+                    '<input type="text" class="form-control form-control-sm carrier-amt-rec-input" maxlength="6" ' +
+                    'value="' + escAttr(v) + '" data-issue-id="' + escAttr(String(row.id)) + '" ' +
+                    'inputmode="text" autocomplete="off" aria-label="Amt Rec">' +
+                    '</td>';
+            }
+
+            async function saveAmtRecFromInput(input) {
+                if (!showAmtRecColumn) return;
+                const id = input.getAttribute('data-issue-id');
+                if (!id) return;
+                let newV = String(input.value || '').trim().slice(0, 6);
+                if (input.value !== newV) {
+                    input.value = newV;
+                }
+                const r = holdIssueRows.find(x => String(x.id) === String(id));
+                const prev = r ? String(r.amt_rec ?? '').trim().slice(0, 6) : '';
+                if (newV === prev) return;
+                try {
+                    const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(id) + '/amt-rec', {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        body: JSON.stringify({
+                            amt_rec: newV.length ? newV : null
+                        }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        throw new Error(data.message || 'Save failed');
+                    }
+                    if (r) {
+                        r.amt_rec = newV;
+                    }
+                } catch (e) {
+                    alert(e.message || 'Could not save Amt Rec');
                     input.value = prev;
                 }
             }
@@ -2320,6 +2761,178 @@
                 return rmk ? escapeHtml(action + ': ' + rmk) : escapeHtml(action);
             }
 
+            // ---------------------------------------------------------------
+            // "Details" column: read-only modal showing all column data for a
+            // row. Magnifier rendered per row, click handler bound on table
+            // body. Same pattern as /customer-care/all-issues.
+            // ---------------------------------------------------------------
+            function qcDetailsCellHtml(row) {
+                const id = row?.id != null ? String(row.id) : '';
+                return '<td class="orders-hold-col-action text-center">' +
+                    '<button type="button" class="qc-details-btn" data-id="' + escAttr(id) +
+                    '" title="View all column data for this row" aria-label="View details">' +
+                    '<i class="bi bi-search"></i></button></td>';
+            }
+
+            function qcDetailsRowHtml(label, valueHtml, isEmpty) {
+                const valueClass = 'ai-detail-value' + (isEmpty ? ' empty' : '');
+                const inner = isEmpty ? '—' : valueHtml;
+                return '<div class="ai-detail-row">' +
+                    '<div class="ai-detail-label">' + escapeHtml(label) + '</div>' +
+                    '<div class="' + valueClass + '">' + inner + '</div>' +
+                    '</div>';
+            }
+
+            function qcDetailsTextRow(label, raw) {
+                const t = String(raw ?? '').trim();
+                return qcDetailsRowHtml(label, escapeHtml(t), t === '');
+            }
+
+            function qcDetailsTrackingRow(label, raw) {
+                const t = String(raw ?? '').trim();
+                if (!t) return qcDetailsRowHtml(label, '', true);
+                const html = '<span class="tracking-cell" style="display:inline-flex;align-items:center;gap:6px;">' +
+                    escapeHtml(t) +
+                    '<button class="copy-tracking-btn" data-copy="' + escAttr(t) +
+                    '" title="Copy tracking"><i class="bi bi-clipboard"></i></button>' +
+                    '</span>';
+                return qcDetailsRowHtml(label, html, false);
+            }
+
+            function qcDetailsImageRow(label, url) {
+                const u = String(url ?? '').trim();
+                if (!u) return qcDetailsRowHtml(label, '', true);
+                const html = '<a href="' + escAttr(u) + '" target="_blank" rel="noopener">' +
+                    '<img src="' + escAttr(u) + '" class="ai-detail-thumb" loading="lazy" alt="">' +
+                    '</a>';
+                return qcDetailsRowHtml(label, html, false);
+            }
+
+            function qcDetailsLinkRow(label, raw) {
+                const t = String(raw ?? '').trim();
+                if (!t) return qcDetailsRowHtml(label, '', true);
+                let href = t;
+                if (!/^https?:\/\//i.test(t)) {
+                    href = /^\/\//.test(t) ? 'https:' + t : 'https://' + t;
+                }
+                const html = '<a href="' + escAttr(href) + '" target="_blank" rel="noopener noreferrer">' +
+                    escapeHtml(t) + '</a>';
+                return qcDetailsRowHtml(label, html, false);
+            }
+
+            function qcDetailsStatusRow(label, value, remark) {
+                const v = String(value ?? '').trim();
+                const r = String(remark ?? '').trim();
+                if (!v && !r) return qcDetailsRowHtml(label, '', true);
+                const text = v ? (r ? v + ' — ' + r : v) : r;
+                return qcDetailsRowHtml(label, escapeHtml(text), false);
+            }
+
+            function renderQcDetailsBody(d) {
+                if (!d) return '<div class="text-muted">No data.</div>';
+                const departments = (Array.isArray(d.departments) && d.departments.length)
+                    ? d.departments.join(', ')
+                    : (d.department || '');
+                const totalLossDisplay = (d.total_loss != null && d.total_loss !== '')
+                    ? '$' + Math.round(parseFloat(d.total_loss)).toLocaleString()
+                    : '';
+                const action = String(d.action_1 || '').trim();
+                const actionRemark = String(d.action_1_remark || '').trim();
+                const actionDisplay = action
+                    ? (actionRemark ? action + ' — ' + actionRemark : action)
+                    : actionRemark;
+
+                const sections = [];
+
+                sections.push(
+                    '<div class="ai-detail-section">' +
+                    '<div class="ai-detail-section-title">Order</div>' +
+                    qcDetailsTextRow('SKU', d.sku) +
+                    qcDetailsTextRow('Parent', d.parent) +
+                    qcDetailsTextRow('Order #', d.order_number) +
+                    qcDetailsTextRow('QTY', d.order_qty != null && d.order_qty !== '' ? d.order_qty : d.qty) +
+                    qcDetailsTextRow('Marketplace', d.marketplace_1) +
+                    qcDetailsRowHtml('Loss $', escapeHtml(totalLossDisplay), totalLossDisplay === '') +
+                    '</div>'
+                );
+
+                sections.push(
+                    '<div class="ai-detail-section">' +
+                    '<div class="ai-detail-section-title">Issue</div>' +
+                    qcDetailsTextRow('Issue?', d.what_happened) +
+                    qcDetailsRowHtml('Action', escapeHtml(actionDisplay), actionDisplay === '') +
+                    qcDetailsStatusRow('Root Cause Found', d.issue, d.issue_remark) +
+                    qcDetailsStatusRow('Root Cause Fixed', d.c_action_1, d.c_action_1_remark) +
+                    qcDetailsTextRow('Instructions CTN', d.ctn_instructions) +
+                    '</div>'
+                );
+
+                sections.push(
+                    '<div class="ai-detail-section">' +
+                    '<div class="ai-detail-section-title">Tracking &amp; media</div>' +
+                    qcDetailsTextRow('Carrier', d.issue_carrier) +
+                    qcDetailsTrackingRow('Tracking', d.tracking_number) +
+                    qcDetailsTrackingRow('Track R (replacement)', d.replacement_tracking) +
+                    qcDetailsImageRow('SKU image', d.image_url) +
+                    qcDetailsImageRow('Img 1', d.image_1_url) +
+                    qcDetailsImageRow('Img 2', d.image_2_url) +
+                    qcDetailsLinkRow('Link', d.issue_link) +
+                    '</div>'
+                );
+
+                // Claims section only when relevant fields are populated.
+                const claimsRows = [];
+                if (typeof d.claim_filed !== 'undefined') {
+                    claimsRows.push(qcDetailsTextRow('Claim filed', d.claim_filed ? 'Yes' : 'No'));
+                }
+                if (d.amp_usd != null && String(d.amp_usd).trim() !== '') {
+                    claimsRows.push(qcDetailsTextRow('AMT $', d.amp_usd));
+                }
+                if (d.amt_rec != null && String(d.amt_rec).trim() !== '') {
+                    claimsRows.push(qcDetailsTextRow('Amt Rec', d.amt_rec));
+                }
+                if (typeof d.claim_received !== 'undefined') {
+                    claimsRows.push(qcDetailsTextRow('Claim received', d.claim_received ? 'Yes' : 'No'));
+                }
+                if (claimsRows.length) {
+                    sections.push(
+                        '<div class="ai-detail-section">' +
+                        '<div class="ai-detail-section-title">Claims</div>' +
+                        claimsRows.join('') +
+                        '</div>'
+                    );
+                }
+
+                sections.push(
+                    '<div class="ai-detail-section">' +
+                    '<div class="ai-detail-section-title">Department &amp; audit</div>' +
+                    qcDetailsTextRow('Department', departments) +
+                    qcDetailsTextRow('Created by', d.created_by) +
+                    qcDetailsTextRow('Created at', d.created_at) +
+                    qcDetailsTextRow('Logged at', d.logged_at) +
+                    qcDetailsTextRow('Close note', d.close_note) +
+                    qcDetailsTextRow('Event', d.event_type) +
+                    '</div>'
+                );
+
+                return sections.join('');
+            }
+
+            function openQcDetailsModal(record) {
+                if (!record) return;
+                const modalEl = document.getElementById('qcDetailsModal');
+                if (!modalEl) return;
+                const subtitleParts = [];
+                if (record.sku) subtitleParts.push(String(record.sku));
+                if (record.order_number) subtitleParts.push('Ord #' + String(record.order_number));
+                if (record.id != null) subtitleParts.push('Row #' + String(record.id));
+                const subEl = document.getElementById('qcDetailsModalSubtitle');
+                if (subEl) subEl.textContent = subtitleParts.join('  ·  ');
+                const body = document.getElementById('qcDetailsModalBody');
+                if (body) body.innerHTML = renderQcDetailsBody(record);
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            }
+
             function rootCauseDisplayHtml(value, remark) {
                 const root = String(value || '').trim();
                 const rmk = String(remark || '').trim();
@@ -2562,20 +3175,25 @@
                         '<td>' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) +
                             '</td>' +
                     @endif
-                    @if ($showCarrierColumn ?? false)
+                    @if ($showDetailsColumn ?? false)
+                        qcDetailsCellHtml(row) +
+                    @endif
+                    @if (($showCarrierColumn ?? false) && !($hideCarrierTrackingMediaColumns ?? false))
                         carrierSelectCellHtml(row) +
                     @endif
-                    @if ($showDispatchExtras ?? false)
+                    @if (($showDispatchExtras ?? false) && !($hideCarrierTrackingMediaColumns ?? false))
                         '<td>' + trackingCellHtml(row.tracking_number) + '</td>' +
                     @endif
-                    '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +
-                        @if ($showDispatchExtras ?? false)
+                    @if (!($hideCarrierTrackingMediaColumns ?? false))
+                        '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +
+                    @endif
+                        @if (($showDispatchExtras ?? false) && !($hideCarrierTrackingMediaColumns ?? false))
                             '<td class="issue-attach-cell">' + issueImageThumbCell(row.image_1_url) + '</td>' +
                                 '<td class="issue-attach-cell">' + issueImageThumbCell(row.image_2_url) +
                                 '</td>' +
                                 linkCellHtml(row.issue_link) +
                         @endif
-                    @if ($createdAtColumnAfterTrack ?? false)
+                    @if (($createdAtColumnAfterTrack ?? false) && !($mergeCreatedAtIntoCreatedBy ?? false))
                         issueRecordDateTdHtml(row.created_at) +
                     @endif
                     @if (($showClaimFiledColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
@@ -2583,6 +3201,9 @@
                     @endif
                     @if (($showAmpUsdColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
                         ampUsdCellHtml(row) +
+                    @endif
+                    @if (($showAmtRecColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
+                        amtRecCellHtml(row) +
                     @endif
                     @if (($showClaimReceivedColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
                         claimReceivedCellHtml(row) +
@@ -2598,8 +3219,15 @@
                         '<td>' + escapeHtml(row.department || '—') + '</td>' +
                     @endif
                     '<td class="orders-hold-close-cell">' + buttonsHtml + '</td>' +
-                        '<td>' + escapeHtml(row.created_by) + '</td>' +
-                        @if (!($createdAtColumnAfterTrack ?? false))
+                        @if ($mergeCreatedAtIntoCreatedBy ?? false)
+                            combinedCreatedByCellHtml(row, 'created_at') +
+                        @else
+                            '<td>' + escapeHtml(row.created_by) + '</td>' +
+                        @endif
+                        @if ($showDepartmentColumnAfterCreatedBy ?? false)
+                            '<td>' + escapeHtml(rowDepartments(row).join(', ') || row.department || '—') + '</td>' +
+                        @endif
+                        @if (!($createdAtColumnAfterTrack ?? false) && !($mergeCreatedAtIntoCreatedBy ?? false))
                             issueRecordDateTdHtml(row.created_at) +
                         @endif
                     @if (($showClaimFiledColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
@@ -2607,6 +3235,9 @@
                     @endif
                     @if (($showAmpUsdColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
                         ampUsdCellHtml(row) +
+                    @endif
+                    @if (($showAmtRecColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
+                        amtRecCellHtml(row) +
                     @endif
                     @if (($showClaimReceivedColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
                         claimReceivedCellHtml(row) +
@@ -2664,17 +3295,22 @@
                         @endif
                     '<td>' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) +
                         '</td>' +
-                        @if ($showDispatchExtras ?? false)
+                        @if ($showDetailsColumn ?? false)
+                            qcDetailsCellHtml(row) +
+                        @endif
+                        @if (($showDispatchExtras ?? false) && !($hideCarrierTrackingMediaColumns ?? false))
                             '<td>' + trackingCellHtml(row.tracking_number) + '</td>' +
                         @endif
+                        @if (!($hideCarrierTrackingMediaColumns ?? false))
                     '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +
-                        @if ($showDispatchExtras ?? false)
+                        @endif
+                        @if (($showDispatchExtras ?? false) && !($hideCarrierTrackingMediaColumns ?? false))
                             '<td class="issue-attach-cell">' + issueImageThumbCell(row.image_1_url) + '</td>' +
                                 '<td class="issue-attach-cell">' + issueImageThumbCell(row.image_2_url) +
                                 '</td>' +
                                 linkCellHtml(row.issue_link) +
                         @endif
-                    @if ($createdAtColumnAfterTrack ?? false)
+                    @if (($createdAtColumnAfterTrack ?? false) && !($mergeCreatedAtIntoCreatedBy ?? false))
                         issueRecordDateTdHtml(row.logged_at) +
                     @endif
                     @if (!($hideRootCauseAndInstructionsCtnColumns ?? false))
@@ -2689,8 +3325,15 @@
                     @endif
                     '<td>' + escapeHtml(row.close_note) + '</td>' +
                         '<td>' + escapeHtml(row.event_type) + '</td>' +
-                        '<td>' + escapeHtml(row.created_by) + '</td>' +
-                        @if (!($createdAtColumnAfterTrack ?? false))
+                        @if ($mergeCreatedAtIntoCreatedBy ?? false)
+                            combinedCreatedByCellHtml(row, 'logged_at') +
+                        @else
+                            '<td>' + escapeHtml(row.created_by) + '</td>' +
+                        @endif
+                        @if ($showDepartmentColumnAfterCreatedBy ?? false)
+                            '<td>' + escapeHtml(rowDepartments(row).join(', ') || row.department || '—') + '</td>' +
+                        @endif
+                        @if (!($createdAtColumnAfterTrack ?? false) && !($mergeCreatedAtIntoCreatedBy ?? false))
                             issueRecordDateTdHtml(row.logged_at) +
                         @endif
                     '</tr>';
@@ -2736,6 +3379,7 @@
                     ctn_instructions: row?.ctn_instructions ?? '',
                     claim_filed: !!row?.claim_filed,
                     amp_usd: row?.amp_usd != null && row?.amp_usd !== '' ? String(row.amp_usd).slice(0, 6) : '',
+                    amt_rec: row?.amt_rec != null && row?.amt_rec !== '' ? String(row.amt_rec).slice(0, 6) : '',
                     claim_received: !!row?.claim_received,
                     issue_carrier: row?.issue_carrier != null && row?.issue_carrier !== '' ? String(row.issue_carrier)
                         .trim() : '',
@@ -2847,6 +3491,10 @@
                 if (trackingNumberInput) trackingNumberInput.value = '';
                 if (issueLinkInput) issueLinkInput.value = '';
                 replacementTrackingInput.value = '';
+                {
+                    const carrierSel = document.getElementById('hold_issue_issue_carrier');
+                    if (carrierSel) carrierSel.value = '';
+                }
                 @if ($showDispatchExtras ?? false)
                     (function() {
                         const hi1 = document.getElementById('hold_issue_image_1');
@@ -2915,6 +3563,16 @@
                 if (trackingNumberInput) trackingNumberInput.value = record.tracking_number || '';
                 if (issueLinkInput) issueLinkInput.value = record.issue_link || '';
                 replacementTrackingInput.value = record.replacement_tracking || '';
+                {
+                    const carrierSel = document.getElementById('hold_issue_issue_carrier');
+                    if (carrierSel) {
+                        const v = String(record.issue_carrier || '').toUpperCase();
+                        // Pre-select if it matches one of the dropdown options;
+                        // otherwise clear (e.g. legacy stored values).
+                        const allowed = ['USPS', 'FEDEX', 'GOFO', 'UPS'];
+                        carrierSel.value = allowed.indexOf(v) > -1 ? v : '';
+                    }
+                }
                 @if ($showDispatchExtras ?? false)
                     (function() {
                         const hi1 = document.getElementById('hold_issue_image_1');
@@ -3272,6 +3930,10 @@
                 if (ampInp && tableBody.contains(ampInp) && showAmpUsdColumn) {
                     saveAmpUsdFromInput(ampInp);
                 }
+                const amtRecInp = event.target.closest('.carrier-amt-rec-input');
+                if (amtRecInp && tableBody.contains(amtRecInp) && showAmtRecColumn) {
+                    saveAmtRecFromInput(amtRecInp);
+                }
             });
 
             tableBody.addEventListener('change', (event) => {
@@ -3292,6 +3954,16 @@
                 const qcCopyHist = event.target.closest('.qc-copy-ctn-instr');
                 if (qcCopyHist && historyTableBody.contains(qcCopyHist)) {
                     copyQcCtnInstrFromButton(qcCopyHist);
+                    return;
+                }
+
+                const detailsBtn = event.target.closest('.qc-details-btn');
+                if (detailsBtn && historyTableBody.contains(detailsBtn)) {
+                    event.preventDefault();
+                    const id = detailsBtn.getAttribute('data-id');
+                    const record = (Array.isArray(holdIssueHistoryRows) ? holdIssueHistoryRows : [])
+                        .find(r => String(r?.id ?? '') === String(id));
+                    openQcDetailsModal(record);
                 }
             });
 
@@ -3299,6 +3971,14 @@
                 const qcCopyCtn = event.target.closest('.qc-copy-ctn-instr');
                 if (qcCopyCtn && tableBody.contains(qcCopyCtn)) {
                     copyQcCtnInstrFromButton(qcCopyCtn);
+                    return;
+                }
+
+                const detailsBtn = event.target.closest('.qc-details-btn');
+                if (detailsBtn && tableBody.contains(detailsBtn)) {
+                    event.preventDefault();
+                    const record = getRecordById(detailsBtn.getAttribute('data-id'));
+                    openQcDetailsModal(record);
                     return;
                 }
 

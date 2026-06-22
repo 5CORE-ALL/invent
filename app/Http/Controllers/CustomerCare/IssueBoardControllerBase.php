@@ -7,6 +7,7 @@ use App\Support\CustomerCareDepartments;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 abstract class IssueBoardControllerBase extends Controller
 {
@@ -120,7 +121,35 @@ abstract class IssueBoardControllerBase extends Controller
             ->unique(fn ($m) => strtolower(preg_replace('/\s+/', '', $m)))
             ->values();
 
-        return compact('marketplaces');
+        // MKT options sourced from `channel_master`. The dropdown shows the
+        // human-friendly `alias` (e.g. "Ebay 1", "P Power") while the form
+        // value submitted to the backend is the canonical `channel` name
+        // (e.g. "EbayTwo", "PurchasingPower"). When a channel has no alias
+        // we fall back to displaying the channel name itself.
+        $mktChannels = collect();
+        if (Schema::hasTable('channel_master') && Schema::hasColumn('channel_master', 'channel')) {
+            $hasAlias = Schema::hasColumn('channel_master', 'alias');
+            $select = $hasAlias ? ['channel', 'alias'] : ['channel'];
+            $mktChannels = DB::table('channel_master')
+                ->whereNotNull('channel')
+                ->where('channel', '!=', '')
+                ->select($select)
+                ->get()
+                ->map(function ($row) use ($hasAlias) {
+                    $channel = trim((string) ($row->channel ?? ''));
+                    $alias = $hasAlias ? trim((string) ($row->alias ?? '')) : '';
+                    return [
+                        'channel' => $channel,
+                        'label'   => $alias !== '' ? $alias : $channel,
+                    ];
+                })
+                ->filter(fn ($r) => $r['channel'] !== '')
+                ->unique(fn ($r) => strtolower($r['channel']))
+                ->sortBy(fn ($r) => strtolower($r['label']))
+                ->values();
+        }
+
+        return compact('marketplaces', 'mktChannels');
     }
 
     public function index()
