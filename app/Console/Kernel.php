@@ -113,6 +113,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\InventorySnapshot::class,
         \App\Console\Commands\RunShopifyBulletPull::class,
         \App\Console\Commands\RunShopifyImagePull::class,
+        \App\Console\Commands\RunImageMasterPush::class,
     ];
 
     /**

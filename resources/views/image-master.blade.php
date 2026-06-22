@@ -366,6 +366,61 @@ document.addEventListener('DOMContentLoaded', () => {
         return 'Push failed.';
     }
 
+    function isImagePushJobActive(status) {
+        return status === 'running';
+    }
+
+    function sleepMs(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function fetchImagePushJobStatus() {
+        const res = await fetch('/image-master/push/status', { headers: { 'Accept': 'application/json' } });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j.message || `HTTP ${res.status}`);
+        return j;
+    }
+
+    function renderImagePushJobProgress(j, titleFallback) {
+        const job = j?.job || {};
+        const lines = (job.messages || []).slice(-25).map(item =>
+            `<div class="${item.ok ? 'text-success' : 'text-danger'}">[${esc(item.time || '')}] ${esc(item.message || '')}</div>`
+        );
+        const title = job.last_message || titleFallback || 'Image push in progress…';
+        const idx = Number(job.current_index ?? 0);
+        const total = Number(job.total ?? 0);
+        const detail = total > 0 ? `${title} (${idx}/${total})` : title;
+        setPushProgress(true, detail, lines.join(''), false);
+    }
+
+    async function queueImagePushAndWait(payload, onProgress) {
+        const res = await fetch('/image-master/push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const rawText = await res.text();
+        let j = null;
+        try { j = rawText ? JSON.parse(rawText) : null; } catch (_) {}
+        if (!j) {
+            throw new Error(res.ok ? 'Invalid server response' : `HTTP ${res.status}${rawText ? ': ' + rawText.slice(0, 200) : ''}`);
+        }
+        if (j.dry_run || j.queued === false) {
+            return { res, j };
+        }
+        if (res.status === 409 && isImagePushJobActive(j?.job?.status)) {
+            if (onProgress) onProgress(j);
+        } else if (onProgress) {
+            onProgress(j);
+        }
+        while (isImagePushJobActive(j?.job?.status)) {
+            await sleepMs(2500);
+            j = await fetchImagePushJobStatus();
+            if (onProgress) onProgress(j);
+        }
+        return { res: { ok: j.success !== false, status: j.success ? 200 : 422 }, j };
+    }
+
     function toast(msg, ok=true) {
         if (!window.bootstrap?.Toast) { alert(msg); return; }
         const id = 't'+Date.now();
@@ -1046,58 +1101,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const progress = [];
         let okCount = 0, failCount = 0, metricsFailCount = 0;
         const updates = checks.map(mp => ({ marketplace: mp, images: imagesToPush }));
-        const msTimeout = Math.max(600000, checks.length * 120000);
         try {
-            setPushProgress(true, `Pushing ${selLabel} image(s) (${modeLabel} existing) to ${checks.length} marketplace(s)… One request, please wait.`, '');
-            const controller = new AbortController();
-            const t = setTimeout(() => controller.abort(), msTimeout);
-            try {
-                const r = await fetch('/image-master/push', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                    body: JSON.stringify({
-                        sku,
-                        mode,
-                        updates,
-                        main_by_marketplace: mainByMarketplacePayload(),
-                    }),
-                    signal: controller.signal,
-                });
-                const rawText = await r.text();
-                let j = null;
-                try {
-                    j = JSON.parse(rawText);
-                } catch (parseErr) {
-                    progress.push(`Bad response (HTTP ${r.status}). ${esc(rawText.slice(0, 280))}`);
-                    failCount = checks.length;
-                }
-                if (j && !r.ok && (j.message || j.error)) {
-                    progress.unshift(`${esc(String(j.message || j.error))} (HTTP ${r.status})`);
-                } else if (j && !r.ok) {
-                    progress.unshift(`HTTP ${r.status}`);
-                }
-                if (j && j.results) {
+            setPushProgress(true, `Queuing push for ${checks.length} marketplace(s)…`, '');
+            const { res, j } = await queueImagePushAndWait({
+                sku,
+                mode,
+                updates,
+                main_by_marketplace: mainByMarketplacePayload(),
+            }, (st) => renderImagePushJobProgress(st, `Pushing ${selLabel} image(s) to ${checks.length} marketplace(s)…`));
+
+            if (j && j.results) {
                 okCount = 0;
                 failCount = 0;
-                metricsFailCount = 0;
+                metricsFailCount = Number(j.total_metrics_failed ?? 0);
                 let idx = 0;
                 for (const mp of checks) {
                     idx++;
                     const row = j.results[mp] ? j.results[mp] : null;
                     const rowOk = !!(row && row.success);
                     if (rowOk) { okCount++; } else { failCount++; }
-                    if (row && rowOk && !row.metrics_saved) { metricsFailCount++; }
                     progress.push(`${idx}/${checks.length} ${LABELS[mp]}: ${rowOk ? 'OK' : 'Failed'}${row && row.message ? ` - ${esc(row.message)}` : ''}`);
                 }
-                } else if (j && failCount === 0) {
-                    failCount = checks.length;
-                }
-            } catch (e) {
+            } else if (!res.ok) {
                 failCount = checks.length;
-                const txt = (e?.name === 'AbortError') ? `Request timed out after ${Math.round(msTimeout/1000)}s` : (e.message || 'Request failed');
-                progress.push(`Batch failed: ${esc(txt)}`);
-            } finally {
-                clearTimeout(t);
+                progress.push(esc(j?.message || `HTTP ${res.status}`));
             }
             const hasAnyError = failCount > 0;
             setPushProgress(true, `Push finished: ${okCount} success, ${failCount} failed${metricsFailCount ? `, ${metricsFailCount} metrics save failed` : ''}`, progress.join('<br>'), hasAnyError);
@@ -1111,6 +1138,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadData();
                 // Keep failures visible until user clicks elsewhere — don't auto-hide
             }
+        } catch (e) {
+            failCount = checks.length;
+            setPushProgress(true, 'Push failed', esc(e.message || 'Request failed'), true);
+            toast(e.message || 'Push failed', false);
         } finally {
             // spinner already stopped in setPushProgress(hasError=true); do nothing here
         }
@@ -1129,43 +1160,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const mainIdx = mainImageIndexFor(mp, row);
         const mainLabel = mainImageLabelFor(mp, mainIdx);
         if (!window.confirm(`Push ${urls.length} image(s) for ${sku} to ${LABELS[mp]}?\n\nMain image for this platform: ${mainLabel} (sent first).\nThis will replace existing marketplace images.`)) return;
-        setPushProgress(true, `Pushing images to 1 marketplace... This may take 1-2 minutes`, `1/1 ${LABELS[mp]}: in progress (${mainLabel} first)`);
-        const controller = new AbortController();
-        const pushTimeoutMs = mp === 'reverb' ? 180000 : 120000;
-        const pushTimer = setTimeout(() => controller.abort(), pushTimeoutMs);
-        fetch('/image-master/push', {
-            method:'POST',
-            headers:{'Content-Type':'application/json','X-CSRF-TOKEN':csrfToken,'Accept':'application/json'},
-            body: JSON.stringify({
-                sku,
-                mode: 'replace',
-                updates: [{ marketplace: mp, images: urls }],
-                main_by_marketplace: mainByMarketplacePayloadFromRow(row),
-            }),
-            signal: controller.signal,
-        }).then(async r => {
-            const rawText = await r.text();
-            let j = null;
-            try { j = rawText ? JSON.parse(rawText) : null; } catch (_) {}
-            if (!j) {
-                throw new Error(r.ok ? 'Invalid server response' : `HTTP ${r.status}${rawText ? ': ' + rawText.slice(0, 200) : ''}`);
-            }
-            return { r, j };
-        }).then(({ r, j }) => {
-            clearTimeout(pushTimer);
+        setPushProgress(true, `Queuing ${LABELS[mp]} push…`, '');
+        queueImagePushAndWait({
+            sku,
+            mode: 'replace',
+            updates: [{ marketplace: mp, images: urls }],
+            main_by_marketplace: mainByMarketplacePayloadFromRow(row),
+        }, (st) => renderImagePushJobProgress(st, `Pushing to ${LABELS[mp]}…`))
+        .then(({ res, j }) => {
             const rowRes = (j.results && j.results[mp]) ? j.results[mp] : null;
             const ok = !!(rowRes && rowRes.success);
-            const msg = ok ? (rowRes?.message || j.message || 'Updated') : pushFailureMessage(j, mp, r.status);
+            const msg = ok ? (rowRes?.message || j.message || 'Updated') : pushFailureMessage(j, mp, res.status);
             setPushProgress(true, `Push finished: ${ok ? '1 success' : '1 failed'}`, `1/1 ${LABELS[mp]}: ${ok ? '✓ OK' : '✗ Failed'} — ${esc(msg)}`, !ok);
             if (ok) { toast(LABELS[mp]+' pushed'); loadData(); setTimeout(() => setPushProgress(false,'',''), 5000); }
             else toast(msg, false);
         }).catch(e => {
-            clearTimeout(pushTimer);
-            const msg = e.name === 'AbortError'
-                ? `Push timed out after ${Math.round(pushTimeoutMs / 1000)}s (Reverb image replace can take 1–2 minutes — ask ops to raise PHP/nginx timeouts).`
-                : (e.message || 'Request failed');
-            setPushProgress(true, 'Push finished: 1 failed', `1/1 ${LABELS[mp]}: ✗ Failed — ${esc(msg)}`, true);
-            toast(msg, false);
+            setPushProgress(true, 'Push finished: 1 failed', `1/1 ${LABELS[mp]}: ✗ Failed — ${esc(e.message || 'Request failed')}`, true);
+            toast(e.message, false);
         });
     }
 
@@ -1251,7 +1262,6 @@ document.addEventListener('DOMContentLoaded', () => {
         let okSkus = 0;
         let failSkus = 0;
         const progress = [];
-        const msTimeout = Math.max(600000, mpCount * 120000);
 
         for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
@@ -1263,26 +1273,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const main_by_marketplace = mainByMarketplacePayloadFromRow(row);
             setPushProgress(
                 true,
-                `Bulk push ${i + 1}/${rows.length}: ${sku}… (${mpCount} marketplaces)`,
+                `Bulk push ${i + 1}/${rows.length}: queuing ${sku}… (${mpCount} marketplaces)`,
                 progress.slice(-40).join('<br>')
             );
 
-            const controller = new AbortController();
-            const t = setTimeout(() => controller.abort(), msTimeout);
             try {
-                const r = await fetch('/image-master/push', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                    body: JSON.stringify({ sku, mode: 'replace', updates, main_by_marketplace }),
-                    signal: controller.signal,
-                });
-                const rawText = await r.text();
-                let j = null;
-                try { j = JSON.parse(rawText); } catch (_) {}
+                const { res, j } = await queueImagePushAndWait(
+                    { sku, mode: 'replace', updates, main_by_marketplace },
+                    (st) => renderImagePushJobProgress(st, `Bulk push ${i + 1}/${rows.length}: ${sku}…`)
+                );
                 const mpFailed = Number(j?.total_failed ?? 0);
                 const mpOk = Number(j?.total_success ?? 0);
                 const metricsFailed = Number(j?.total_metrics_failed ?? 0);
-                const batchOk = r.ok && j && mpFailed === 0 && (mpOk > 0 || j.success);
+                const batchOk = res.ok && j && mpFailed === 0 && (mpOk > 0 || j.success);
                 if (batchOk) {
                     okSkus++;
                     const metricsNote = metricsFailed > 0 ? ` (${metricsFailed} metrics save failed)` : '';
@@ -1290,20 +1293,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     failSkus++;
                     const failedMps = failedMarketplaceSummary(j?.results);
-                    const errMsg = j?.message || (mpFailed ? `${mpFailed} marketplace(s) failed` : `HTTP ${r.status}`);
+                    const errMsg = j?.message || (mpFailed ? `${mpFailed} marketplace(s) failed` : `HTTP ${res.status}`);
                     progress.push(`✗ ${esc(sku)} — ${esc(errMsg)}${failedMps ? ` (${esc(failedMps)})` : ''}`);
                 }
             } catch (e) {
                 failSkus++;
-                const txt = (e?.name === 'AbortError')
-                    ? `Timed out after ${Math.round(msTimeout / 1000)}s`
-                    : (e.message || 'Request failed');
-                progress.push(`✗ ${esc(sku)} — ${esc(txt)}`);
-            } finally {
-                clearTimeout(t);
+                progress.push(`✗ ${esc(sku)} — ${esc(e.message || 'Request failed')}`);
             }
 
-            if (i < rows.length - 1) await new Promise(resolve => setTimeout(resolve, 2000));
+            if (i < rows.length - 1) await sleepMs(1500);
         }
 
         bulkPushAllRunning = false;

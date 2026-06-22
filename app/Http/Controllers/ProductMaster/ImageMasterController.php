@@ -4,6 +4,7 @@ namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\ProductMaster\ProductMasterController as PMController;
+use App\Jobs\RunImageMasterPushJob;
 use App\Jobs\RunShopifyImagePullJob;
 use App\Models\ProductImage;
 use App\Models\ProductMaster;
@@ -19,6 +20,7 @@ use App\Services\ReverbApiService;
 use App\Services\ShopifyApiService;
 use App\Services\ShopifyPLSApiService;
 use App\Services\ShopifyPlsTokenService;
+use App\Services\Support\ImageMasterPushJobStore;
 use App\Services\Support\ShopifyImagePullJobStore;
 use App\Services\Support\EbaySellInventoryListingResolver;
 use App\Services\Support\EbayTradingReviseItem;
@@ -199,12 +201,6 @@ class ImageMasterController extends Controller
      */
     public function pushToMarketplace(Request $request)
     {
-        // Remove PHP execution time limit and keep running even if browser disconnects.
-        // Critical: without ignore_user_abort the DELETE loop gets killed mid-way when the
-        // browser's AbortController fires, leaving old Shopify images un-deleted.
-        set_time_limit(0);
-        ignore_user_abort(true);
-
         $validated = $request->validate([
             'sku'                    => 'required|string|max:255',
             'updates'                => 'required|array|min:1',
@@ -220,7 +216,6 @@ class ImageMasterController extends Controller
         $sku     = $this->normalizeSku($validated['sku']);
         $mode    = $validated['mode'] ?? 'replace';   // 'replace' | 'add'
         $dryRun  = (bool) ($validated['dry_run'] ?? false);
-        $allowed = array_keys($this->marketplaceTableMap());
         $results = [];
 
         $maxImageCount = 0;
@@ -233,141 +228,208 @@ class ImageMasterController extends Controller
             $maxImageCount
         );
 
+        if ($dryRun) {
+            foreach ($validated['updates'] as $u) {
+                $mp = strtolower(trim($u['marketplace']));
+                $images = array_values(array_filter(array_map('trim', $u['images'] ?? []), fn ($s) => $s !== ''));
+                $results[$mp] = $this->runQueuedMarketplacePush(
+                    $sku,
+                    $mp,
+                    $images,
+                    $mode,
+                    $mainMap,
+                    true
+                );
+            }
+
+            $totalSuccess = collect($results)->where('success', true)->count();
+            $totalFailed = collect($results)->where('success', false)->count();
+            $totalMetricsFailed = collect($results)->filter(
+                fn ($r) => ($r['success'] ?? false) && ! ($r['metrics_saved'] ?? false)
+            )->count();
+
+            return response()->json([
+                'success' => $totalFailed === 0,
+                'dry_run' => true,
+                'queued' => false,
+                'results' => $results,
+                'total_success' => $totalSuccess,
+                'total_failed' => $totalFailed,
+                'total_metrics_failed' => $totalMetricsFailed,
+                'message' => "Updated {$totalSuccess} marketplace(s).".($totalFailed > 0 ? " {$totalFailed} failed." : '').($totalMetricsFailed > 0 ? " {$totalMetricsFailed} metrics save failed." : ''),
+            ]);
+        }
+
+        /** @var ImageMasterPushJobStore $pushStore */
+        $pushStore = app(ImageMasterPushJobStore::class);
+        $currentJob = $pushStore->load();
+        if ($pushStore->isActive($currentJob)) {
+            return response()->json(array_merge($pushStore->toApiResponse($currentJob), [
+                'success' => false,
+                'message' => 'An image push is already running. Wait for it to finish or check progress below.',
+            ]), 409);
+        }
+
+        $tasks = [];
         foreach ($validated['updates'] as $u) {
-            $mp     = strtolower(trim($u['marketplace']));
-            // Preserve original order — do NOT sort, trim only
-            $images = array_values(array_filter(array_map('trim', $u['images'] ?? []), fn ($s) => $s !== ''));
-            $originalCount = count($images);
-
-            if (! in_array($mp, $allowed, true)) {
-                $results[$mp] = ['success' => false, 'message' => 'Unknown marketplace'];
-                continue;
-            }
-
-            // Empty images + add mode = nothing to do
-            if ($images === [] && $mode !== 'replace') {
-                $results[$mp] = ['success' => true, 'message' => 'No images to add; skipped.'];
-                continue;
-            }
-
-            // Clear-all is only implemented for Shopify stores
-            if ($images === [] && $mode === 'replace' && ! in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
-                $results[$mp] = [
-                    'success' => false,
-                    'message' => 'Clear-all images is only supported for Shopify Main and Shopify PLS.',
-                ];
-                continue;
-            }
-
-            if ($images !== [] && $mode !== 'add') {
-                $mainIndex = $this->mainImageIndexFromMap($mainMap, $mp, $originalCount);
-                if ($mainIndex > 0) {
-                    $images = $this->reorderImagesWithMainFirst($images, $mainIndex);
-                }
-            }
-
-            $mainNote = '';
-            if ($images !== [] && $mode !== 'add') {
-                $mainIdx = $this->mainImageIndexFromMap($mainMap, $mp, $originalCount);
-                $mainNote = ' Main image: Image '.($mainIdx + 1).'.';
-            }
-
-            $limit = $this->marketplaceImageLimit($mp);
-            $images = array_slice($images, 0, $limit);
-            $truncatedNote = $originalCount > $limit
-                ? " Truncated from {$originalCount} to {$limit} image(s) ({$mp} limit)."
-                : '';
-
-            $effectiveMode = $mode;
-            $addModeNote = '';
-            if ($mode === 'add' && ! in_array($mp, $this->marketplacesSupportingAddMode(), true)) {
-                $effectiveMode = 'replace';
-                $addModeNote = ' Add mode is not supported for this marketplace; used replace instead.';
-            }
-
-            // Rewrite localhost/127.0.0.1 storage URLs for marketplaces that fetch by URL.
-            // Shopify must keep local storage URLs so its service can upload the file as base64.
-            $imagesForPush = in_array($mp, ['shopify_main', 'shopify_pls'], true)
-                ? $images
-                : $this->rewriteLocalStorageUrlsToPublic($images);
-
-            if ($dryRun) {
-                $remote   = $this->dryRunPushToRemote($mp, $sku, $imagesForPush, $effectiveMode);
-                $remoteOk = (bool) ($remote['success'] ?? false);
-                $dryNote  = ' (dry run — no marketplace write).';
-                $message  = trim(($remote['message'] ?? '').$mainNote.$truncatedNote.$addModeNote.$dryNote);
-                $results[$mp] = array_merge([
-                    'success'       => $remoteOk,
-                    'dry_run'       => true,
-                    'metrics_saved' => false,
-                    'message'       => $message,
-                    'images_count'  => count($imagesForPush),
-                ], array_diff_key($remote, ['success' => 1, 'message' => 1]));
-
-                continue;
-            }
-
-            $remote   = $this->pushImagesToRemote($mp, $sku, $imagesForPush, $effectiveMode);
-            $remoteOk = (bool) ($remote['success'] ?? false);
-
-            if (! $remoteOk) {
-                Log::warning('ImageMaster marketplace push failed', [
-                    'marketplace' => $mp,
-                    'sku' => $sku,
-                    'message' => $remote['message'] ?? null,
-                    'image_count' => count($imagesForPush),
-                    'first_image' => isset($imagesForPush[0]) ? mb_substr((string) $imagesForPush[0], 0, 300) : null,
-                    'listing_id' => $remote['listing_id'] ?? null,
-                ]);
-            }
-
-            $urlsForMetrics = $imagesForPush;
-            if ($remoteOk && ! empty($remote['normalized_urls']) && is_array($remote['normalized_urls'])) {
-                $urlsForMetrics = array_values($remote['normalized_urls']);
-            } elseif ($remoteOk && $imagesForPush !== []) {
-                $urlsForMetrics = $imagesForPush;
-            } elseif ($remoteOk && $imagesForPush === []) {
-                $urlsForMetrics = [];
-            }
-
-            $saved = false;
-            if ($remoteOk) {
-                $saved = $this->saveImageMetricsToTable($mp, $sku, $urlsForMetrics);
-                if (in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
-                    $saved = $this->saveShopifyCatalogImages($sku, $mp, $urlsForMetrics) || $saved;
-                }
-            }
-
-            $message = trim(($remote['message'] ?? '').$mainNote.$truncatedNote.$addModeNote);
-            if ($message === '' && ! $remoteOk) {
-                $message = ucfirst($mp).' push failed (no error detail returned). Check storage/logs/laravel.log.';
-            }
-            if ($remoteOk && ! $saved) {
-                $message .= ' Metrics not saved.';
-            }
-
-            $results[$mp] = [
-                'success'        => $remoteOk,
-                'metrics_saved'  => $saved,
-                'message'        => $message,
+            $tasks[] = [
+                'marketplace' => strtolower(trim($u['marketplace'])),
+                'images' => array_values(array_filter(array_map('trim', $u['images'] ?? []), fn ($s) => $s !== '')),
             ];
         }
 
-        $totalSuccess = collect($results)->where('success', true)->count();
-        $totalFailed = collect($results)->where('success', false)->count();
-        $totalMetricsFailed = collect($results)->filter(
-            fn ($r) => ($r['success'] ?? false) && ! ($r['metrics_saved'] ?? false)
-        )->count();
+        $job = $pushStore->create($sku, $mode, $tasks, $mainMap);
+        try {
+            $this->dispatchImageMasterPushJob();
+        } catch (\Throwable $e) {
+            $pushStore->markFailed('Could not queue worker: '.$e->getMessage());
+            Log::warning('ImageMaster push queue dispatch failed', ['error' => $e->getMessage()]);
 
-        return response()->json([
-            'success' => $totalFailed === 0,
-            'dry_run' => $dryRun,
-            'results' => $results,
-            'total_success' => $totalSuccess,
-            'total_failed' => $totalFailed,
-            'total_metrics_failed' => $totalMetricsFailed,
-            'message' => "Updated {$totalSuccess} marketplace(s).".($totalFailed > 0 ? " {$totalFailed} failed." : '').($totalMetricsFailed > 0 ? " {$totalMetricsFailed} metrics save failed." : ''),
-        ]);
+            return response()->json(array_merge($pushStore->toApiResponse($pushStore->load()), [
+                'success' => false,
+                'message' => 'Could not queue image push worker. Is the image-master-push queue worker running?',
+            ]), 500);
+        }
+
+        return response()->json(array_merge($pushStore->toApiResponse($job), [
+            'message' => 'Image push queued ('.count($tasks).' marketplace(s)). Processing in background…',
+        ]));
+    }
+
+    /**
+     * Push one SKU to one marketplace (used by queue worker and dry-run).
+     *
+     * @param  list<string>  $images
+     * @param  array<string, int>|null  $mainMap
+     * @return array{success: bool, message: string, metrics_saved?: bool, dry_run?: bool, images_count?: int}
+     */
+    public function runQueuedMarketplacePush(
+        string $sku,
+        string $marketplace,
+        array $images,
+        string $mode = 'replace',
+        ?array $mainMap = null,
+        bool $dryRun = false
+    ): array {
+        @set_time_limit(0);
+
+        $mp = strtolower(trim($marketplace));
+        $allowed = array_keys($this->marketplaceTableMap());
+        $images = array_values(array_filter(array_map('trim', $images), fn ($s) => $s !== ''));
+        $originalCount = count($images);
+        $mainMap = $mainMap ?? [];
+
+        if (! in_array($mp, $allowed, true)) {
+            return ['success' => false, 'message' => 'Unknown marketplace'];
+        }
+
+        if ($images === [] && $mode !== 'replace') {
+            return ['success' => true, 'message' => 'No images to add; skipped.'];
+        }
+
+        if ($images === [] && $mode === 'replace' && ! in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
+            return [
+                'success' => false,
+                'message' => 'Clear-all images is only supported for Shopify Main and Shopify PLS.',
+            ];
+        }
+
+        if ($images !== [] && $mode !== 'add') {
+            $mainIndex = $this->mainImageIndexFromMap($mainMap, $mp, $originalCount);
+            if ($mainIndex > 0) {
+                $images = $this->reorderImagesWithMainFirst($images, $mainIndex);
+            }
+        }
+
+        $mainNote = '';
+        if ($images !== [] && $mode !== 'add') {
+            $mainIdx = $this->mainImageIndexFromMap($mainMap, $mp, $originalCount);
+            $mainNote = ' Main image: Image '.($mainIdx + 1).'.';
+        }
+
+        $limit = $this->marketplaceImageLimit($mp);
+        $images = array_slice($images, 0, $limit);
+        $truncatedNote = $originalCount > $limit
+            ? " Truncated from {$originalCount} to {$limit} image(s) ({$mp} limit)."
+            : '';
+
+        $effectiveMode = $mode;
+        $addModeNote = '';
+        if ($mode === 'add' && ! in_array($mp, $this->marketplacesSupportingAddMode(), true)) {
+            $effectiveMode = 'replace';
+            $addModeNote = ' Add mode is not supported for this marketplace; used replace instead.';
+        }
+
+        $imagesForPush = in_array($mp, ['shopify_main', 'shopify_pls'], true)
+            ? $images
+            : $this->rewriteLocalStorageUrlsToPublic($images);
+
+        if ($dryRun) {
+            $remote = $this->dryRunPushToRemote($mp, $sku, $imagesForPush, $effectiveMode);
+            $remoteOk = (bool) ($remote['success'] ?? false);
+            $dryNote = ' (dry run — no marketplace write).';
+            $message = trim(($remote['message'] ?? '').$mainNote.$truncatedNote.$addModeNote.$dryNote);
+
+            return array_merge([
+                'success' => $remoteOk,
+                'dry_run' => true,
+                'metrics_saved' => false,
+                'message' => $message,
+                'images_count' => count($imagesForPush),
+            ], array_diff_key($remote, ['success' => 1, 'message' => 1]));
+        }
+
+        $remote = $this->pushImagesToRemote($mp, $sku, $imagesForPush, $effectiveMode);
+        $remoteOk = (bool) ($remote['success'] ?? false);
+
+        if (! $remoteOk) {
+            Log::warning('ImageMaster marketplace push failed', [
+                'marketplace' => $mp,
+                'sku' => $sku,
+                'message' => $remote['message'] ?? null,
+                'image_count' => count($imagesForPush),
+                'first_image' => isset($imagesForPush[0]) ? mb_substr((string) $imagesForPush[0], 0, 300) : null,
+                'listing_id' => $remote['listing_id'] ?? null,
+            ]);
+        }
+
+        $urlsForMetrics = $imagesForPush;
+        if ($remoteOk && ! empty($remote['normalized_urls']) && is_array($remote['normalized_urls'])) {
+            $urlsForMetrics = array_values($remote['normalized_urls']);
+        } elseif ($remoteOk && $imagesForPush !== []) {
+            $urlsForMetrics = $imagesForPush;
+        } elseif ($remoteOk && $imagesForPush === []) {
+            $urlsForMetrics = [];
+        }
+
+        $saved = false;
+        if ($remoteOk) {
+            $saved = $this->saveImageMetricsToTable($mp, $sku, $urlsForMetrics);
+            if (in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
+                $saved = $this->saveShopifyCatalogImages($sku, $mp, $urlsForMetrics) || $saved;
+            }
+        }
+
+        $message = trim(($remote['message'] ?? '').$mainNote.$truncatedNote.$addModeNote);
+        if ($message === '' && ! $remoteOk) {
+            $message = ucfirst($mp).' push failed (no error detail returned). Check storage/logs/laravel.log.';
+        }
+        if ($remoteOk && ! $saved) {
+            $message .= ' Metrics not saved.';
+        }
+
+        return [
+            'success' => $remoteOk,
+            'metrics_saved' => $saved,
+            'message' => $message,
+        ];
+    }
+
+    public function pushJobStatus(ImageMasterPushJobStore $store)
+    {
+        $job = $store->load();
+
+        return response()->json($store->toApiResponse($job));
     }
 
     /**
@@ -1796,6 +1858,11 @@ class ImageMasterController extends Controller
     private function dispatchShopifyImagePullJob(): void
     {
         RunShopifyImagePullJob::dispatch();
+    }
+
+    private function dispatchImageMasterPushJob(): void
+    {
+        RunImageMasterPushJob::dispatch();
     }
 
     private function shopifyPullAdminGet(string $url, string $token): \Illuminate\Http\Client\Response
