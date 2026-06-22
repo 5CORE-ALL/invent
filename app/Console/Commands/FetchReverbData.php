@@ -152,7 +152,7 @@ class FetchReverbData extends Command
 
         $snapshot = [];
         DB::table('reverb_products')
-            ->select(['sku', 'bump_bid'])
+            ->select(['id', 'sku', 'bump_bid'])
             ->whereNotNull('sku')
             ->orderBy('id')
             ->chunkById(1000, function ($rows) use (&$snapshot) {
