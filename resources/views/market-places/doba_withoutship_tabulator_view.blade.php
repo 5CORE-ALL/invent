@@ -418,12 +418,18 @@
                         <span id="missing-count" class="badge fs-6 p-2" style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
                         <span id="nmap-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter inventory mismatch (Shop INV vs D INV)">N Map: 0</span>
                         <span id="disc-vs-amz-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter non-competitive items"><i class="fas fa-chart-line"></i> VS AMZ: 0</span>
-                        <span id="growth-sales-badge" class="badge fs-6 p-2" style="background-color: #28a745; color: white; font-weight:700;">GROWTH: 0%</span>
+                        {{--
+                            GROWTH / GROWTH GPFT / GROWTH GPFT % badges intentionally removed.
+                            They compared totalL30* vs totalL60*, but doba_metrics.quantity_l60 is
+                            populated as "every order older than 30 days" (FetchDobaDailyData tags
+                            anything not in the last 30 days as period='l60' with no upper bound),
+                            so L60 covered ~7 months of accumulated history. The math always made
+                            GROWTH look catastrophically red (e.g. -89%) even when sales were fine.
+                            Re-add only after redefining L60 as "the prior 30 days (today-60 → today-31)".
+                        --}}
                         <span id="pft-percentage-badge" class="badge bg-danger fs-6 p-2" style="color: white; font-weight:700;">L30 GPFT %: 0%</span>
-                        <span id="growth-gpft-percent-badge" class="badge fs-6 p-2" style="background-color: #198754; color: white; font-weight:700;">GROWTH GPFT %: 0%</span>
                         <span id="roi-percentage-badge" class="badge fs-6 p-2" style="background-color: #6f42c1; color: white; font-weight:700;">L30 ROI %: 0%</span>
                         <span id="pft-total-badge" class="badge bg-dark fs-6 p-2" style="color: white; font-weight:700;">L30 GPFT: $0</span>
-                        <span id="growth-gpft-badge" class="badge fs-6 p-2" style="background-color: #28a745; color: white; font-weight:700;">GROWTH GPFT: $0</span>
                         <span id="total-cogs-badge" class="badge bg-secondary fs-6 p-2" style="color: white; font-weight:700;">Total COGS: $0</span>
                     </div>
                 </div>
@@ -2023,11 +2029,8 @@
                 let nmap = 0;
                 let discVsAmzCount = 0;
                 let totalL30Sales = 0;
-                let totalL60Sales = 0;
                 let totalL30COGS = 0;
                 let totalL30Shipping = 0;
-                let totalL60COGS = 0;
-                let totalL60Shipping = 0;
 
                 allNonParentData.forEach(row => {
                     if (dobaInvMismatch(row)) nmap++;
@@ -2036,20 +2039,16 @@
                 filteredData.forEach(row => {
                     const inv = parseFloat(row.INV) || 0;
                     const dobaL30 = parseFloat(row['doba L30']) || 0;
-                    const dobaL60 = parseFloat(row['doba L60']) || 0;
                     const dobaPrice = parseFloat(row.self_pick_price) || 0;
                     const lp = parseFloat(row.LP_productmaster) || 0;
                     const ship = FORMULA_SHIP;
-                    
+
                     if (dobaL30 === 0 && inv > 0) l30ZeroSold++;
                     if (dobaL30 > 0) sold++;
-                    
+
                     totalL30Sales += dobaL30 * dobaPrice;
-                    totalL60Sales += dobaL60 * dobaPrice;
                     totalL30COGS += dobaL30 * lp;
                     totalL30Shipping += dobaL30 * ship;
-                    totalL60COGS += dobaL60 * lp;
-                    totalL60Shipping += dobaL60 * ship;
                 });
 
                 // Calculate missing and disc vs amz from all data (not filtered)
@@ -2069,51 +2068,12 @@
                     }
                 });
 
-                // Calculate growth percentage
-                let growthPercent = 0;
-                let growthColor = '#28a745'; // Default green
-                if (totalL60Sales > 0) {
-                    growthPercent = Math.round(((totalL30Sales - totalL60Sales) / totalL60Sales) * 100);
-                    if (growthPercent < 0) {
-                        growthColor = '#dc3545'; // Red for negative
-                    } else if (growthPercent === 0) {
-                        growthColor = '#6c757d'; // Gray for zero
-                    }
-                } else if (totalL30Sales > 0) {
-                    growthPercent = 100;
-                    growthColor = '#28a745'; // Green
-                }
-
-                // Calculate L30 GPFT and L30 GPFT %
+                // L30 GPFT and L30 GPFT % (period-over-period growth badges removed —
+                // see HTML comment above the badge bar for why L60 was unreliable).
                 const l30Profit = totalL30Sales - totalL30COGS - totalL30Shipping;
                 let l30GpftPercent = 0;
                 if (totalL30Sales > 0) {
                     l30GpftPercent = (l30Profit / totalL30Sales) * 100;
-                }
-                
-                let l60GpftPercent = 0;
-                let l60GpftTotal = 0;
-                if (totalL60Sales > 0) {
-                    const l60Profit = totalL60Sales - totalL60COGS - totalL60Shipping;
-                    l60GpftTotal = l60Profit;
-                    l60GpftPercent = (l60Profit / totalL60Sales) * 100;
-                }
-
-                const gpftPercentGrowth = l30GpftPercent - l60GpftPercent;
-                let gpftPercentColor = '#6c757d';
-                if (gpftPercentGrowth > 0) {
-                    gpftPercentColor = '#28a745';
-                } else if (gpftPercentGrowth < 0) {
-                    gpftPercentColor = '#dc3545';
-                }
-
-                // Calculate GPFT Growth (in dollars)
-                const gpftGrowth = l30Profit - l60GpftTotal;
-                let gpftGrowthColor = '#6c757d'; // Gray for zero
-                if (gpftGrowth > 0) {
-                    gpftGrowthColor = '#28a745'; // Green for positive
-                } else if (gpftGrowth < 0) {
-                    gpftGrowthColor = '#dc3545'; // Red for negative
                 }
 
                 $('#dws-total-sales-badge').text('Sales: $' + Math.round(totalL30Sales).toLocaleString());
@@ -2123,27 +2083,13 @@
                 $('#missing-count').html('<i class="fas fa-exclamation-triangle"></i> Missing: ' + missing);
                 $('#nmap-count').text('N Map: ' + nmap);
                 $('#disc-vs-amz-count').html('<i class="fas fa-chart-line"></i> VS AMZ: ' + discVsAmzCount);
-                
-                const growthSign = growthPercent > 0 ? '+' : '';
-                $('#growth-sales-badge').text('GROWTH: ' + growthSign + growthPercent + '%');
-                $('#growth-sales-badge').css('background-color', growthColor);
-                
+
                 $('#pft-percentage-badge').text('L30 GPFT %: ' + l30GpftPercent.toFixed(1) + '%');
-                
-                const gpftPercentSign = gpftPercentGrowth > 0 ? '+' : '';
-                $('#growth-gpft-percent-badge').text('GROWTH GPFT %: ' + gpftPercentSign + gpftPercentGrowth.toFixed(1) + '%');
-                $('#growth-gpft-percent-badge').css('background-color', gpftPercentColor);
-                
                 $('#pft-total-badge').text('L30 GPFT: $' + Math.round(l30Profit).toLocaleString());
 
                 const l30RoiAgg = totalL30COGS > 0 ? (l30Profit / totalL30COGS) * 100 : 0;
                 $('#roi-percentage-badge').text('L30 ROI %: ' + Math.round(l30RoiAgg) + '%');
                 $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalL30COGS).toLocaleString());
-                
-                const gpftGrowthSign = gpftGrowth > 0 ? '+$' : gpftGrowth < 0 ? '-$' : '$';
-                const gpftGrowthAbs = Math.abs(Math.round(gpftGrowth));
-                $('#growth-gpft-badge').text('GROWTH GPFT: ' + gpftGrowthSign + gpftGrowthAbs.toLocaleString());
-                $('#growth-gpft-badge').css('background-color', gpftGrowthColor);
             }
 
             // Build Column Visibility Dropdown

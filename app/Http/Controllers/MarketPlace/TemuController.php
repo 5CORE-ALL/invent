@@ -23,6 +23,7 @@ use App\Models\TemuPricing;
 use App\Models\Temu2Pricing;
 use App\Models\Temu2DataView;
 use App\Models\TemuViewData;
+use App\Models\Temu2ViewData;
 use App\Models\TemuAdData;
 use App\Models\TemuRPricing;
 use App\Models\TemuLmp;
@@ -3115,8 +3116,13 @@ class TemuController extends Controller
                 'total_revenue' => round($salesTotalRevenue, 2),
             ];
 
-            // Fetch all view data from temu_view_data (no date filter)
-            $viewData = TemuViewData::selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
+            // Fetch all view data (no date filter). Each marketplace has its own
+            // table — temu_view_data for Temu 1, temu2_view_data for Temu 2 —
+            // because the upload handler wipes + replaces, so sharing one table
+            // would leave whichever marketplace was uploaded last as the only
+            // one with non-zero product_clicks (and therefore non-zero CVR).
+            $viewModel = $isTemu2Pricing ? Temu2ViewData::class : TemuViewData::class;
+            $viewData = $viewModel::selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
                 ->groupBy('goods_id')
                 ->get()
                 ->keyBy('goods_id');
@@ -4075,6 +4081,153 @@ class TemuController extends Controller
 
         // Output Download
         $fileName = 'Temu_View_Data_Sample_' . date('Y-m-d') . '.xlsx';
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="' . $fileName . '"');
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+    }
+
+    /**
+     * Upload Temu 2 View Data. Mirrors uploadTemuViewData but writes to
+     * temu2_view_data so the two stores don't share a table (the replace-all
+     * upload would otherwise zero out the other marketplace's CVR).
+     */
+    public function uploadTemu2ViewData(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls,csv|max:10240'
+        ]);
+
+        try {
+            $file = $request->file('file');
+            $spreadsheet = IOFactory::load($file->getRealPath());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            $headers = array_shift($rows);
+
+            $imported = 0;
+            $skipped = 0;
+
+            DB::beginTransaction();
+            try {
+                $deletedCount = Temu2ViewData::query()->delete();
+
+                foreach ($rows as $row) {
+                    if (empty($row[0]) || empty($row[1])) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $rowData = array_combine($headers, $row);
+
+                    $date = null;
+                    if (!empty($rowData['Date'])) {
+                        try {
+                            $date = Carbon::parse($rowData['Date'])->format('Y-m-d');
+                        } catch (\Exception $e) {
+                            Log::warning("Could not parse date: " . $rowData['Date']);
+                        }
+                    }
+
+                    $ctr = 0;
+                    if (!empty($rowData['CTR'])) {
+                        $ctrValue = str_replace('%', '', $rowData['CTR']);
+                        $ctr = (float)$ctrValue;
+                    }
+
+                    $goodsId = $rowData['Goods ID'] ?? null;
+
+                    $viewData = [
+                        'goods_name' => $rowData['Goods Name'] ?? null,
+                        'product_impressions' => !empty($rowData['Product impressions']) ? (int)$rowData['Product impressions'] : 0,
+                        'visitor_impressions' => !empty($rowData['Number of visitor impressions of the product']) ? (int)$rowData['Number of visitor impressions of the product'] : 0,
+                        'product_clicks' => !empty($rowData['Product clicks']) ? (int)$rowData['Product clicks'] : 0,
+                        'visitor_clicks' => !empty($rowData['Number of visitor clicks on the product']) ? (int)$rowData['Number of visitor clicks on the product'] : 0,
+                        'ctr' => $ctr,
+                    ];
+
+                    Temu2ViewData::updateOrCreate(
+                        ['date' => $date, 'goods_id' => $goodsId],
+                        $viewData
+                    );
+                    $imported++;
+                }
+
+                DB::commit();
+
+                return back()->with('success', "Successfully imported $imported records! ($skipped skipped, replaced $deletedCount existing rows)");
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            Log::error('Error uploading Temu 2 view data: ' . $e->getMessage());
+            return back()->with('error', 'Error uploading file: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Download Temu 2 View Data Sample File (same columns as Temu 1).
+     */
+    public function downloadTemu2ViewDataSample()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $headers = [
+            'Date',
+            'Goods ID',
+            'Goods Name',
+            'Product impressions',
+            'Number of visitor impressions of the product',
+            'Product clicks',
+            'Number of visitor clicks on the product',
+            'CTR'
+        ];
+
+        $sheet->fromArray($headers, NULL, 'A1');
+
+        $sampleData = [
+            [
+                '2025-11-01',
+                '603163444796046',
+                '5Core 6.5 Inch Midrange Car Door Speaker',
+                '98493',
+                '71393',
+                '3188',
+                '2825',
+                '3.24%'
+            ],
+            [
+                '2025-11-01',
+                '603258940684269',
+                'Adjustable Heavy Duty Guitar Stand',
+                '79303',
+                '56745',
+                '496',
+                '439',
+                '0.63%'
+            ]
+        ];
+
+        $sheet->fromArray($sampleData, NULL, 'A2');
+
+        foreach (range('A', 'H') as $col) {
+            $sheet->getColumnDimension($col)->setWidth(25);
+        }
+
+        $headerStyle = [
+            'font' => ['bold' => true],
+            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']]
+        ];
+        $sheet->getStyle('A1:H1')->applyFromArray($headerStyle);
+
+        $fileName = 'Temu2_View_Data_Sample_' . date('Y-m-d') . '.xlsx';
 
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment;filename="' . $fileName . '"');

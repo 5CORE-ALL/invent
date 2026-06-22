@@ -137,6 +137,30 @@
             transform: scale(1.15);
         }
 
+        /* Sortable column headers */
+        #suppliers-table thead th.sortable {
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+        #suppliers-table thead th.sortable:hover {
+            background-color: #eef0f7;
+        }
+        #suppliers-table thead th.sortable .sort-icon {
+            display: inline-block;
+            margin-left: 4px;
+            opacity: 0.45;
+            font-size: 14px;
+            vertical-align: middle;
+        }
+        #suppliers-table thead th.sortable.active {
+            color: #4f46e5;
+        }
+        #suppliers-table thead th.sortable.active .sort-icon {
+            opacity: 1;
+            color: #4f46e5;
+        }
+
         /* Remove black backdrop completely */
         .modal-backdrop {
             display: none !important;
@@ -181,10 +205,6 @@
                         <button type="button" class="btn btn-primary" data-bs-toggle="modal"
                             data-bs-target="#addSupplierModal">
                             <i class="mdi mdi-plus me-1"></i> Add Supplier
-                        </button>
-                        <button type="button" class="btn btn-info" data-bs-toggle="modal"
-                            data-bs-target="#addCategoryModal">
-                            <i class="mdi mdi-plus me-1"></i> Add Category
                         </button>
                         <button type="button" class="btn btn-success" data-bs-toggle="modal"
                             data-bs-target="#bulkImportModal">
@@ -281,18 +301,18 @@
                     <table class="table table-centered table-hover mb-0" id="suppliers-table">
                         <thead class="table-light">
                             <tr>
-                                <th>Category</th>
-                                <th>Name</th>
-                                <th class="text-center">Approved</th>
-                                <th>Company</th>
-                                <th class="parents-col">Product</th>
-                                <th>Zone</th>
-                                <th>Phone</th>
-                                <th>Rating</th>
-                                <th>Email</th>
-                                <th>WhatsApp</th>
-                                <th>WeChat</th>
-                                <th>Alibaba</th>
+                                <th class="sortable" data-sort-key="category">Category <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="sortable" data-sort-key="name">Name <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="sortable text-center" data-sort-key="approval">Approved <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="sortable" data-sort-key="company">Company <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="sortable parents-col" data-sort-key="parent">Product <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="sortable" data-sort-key="zone">Zone <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="sortable" data-sort-key="phone">Phone <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="sortable" data-sort-key="rating">Rating <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="sortable" data-sort-key="alibaba">Alibaba <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="sortable" data-sort-key="email">Email <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="sortable" data-sort-key="whatsapp">WhatsApp <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="sortable" data-sort-key="wechat">WeChat <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="text-end">Actions</th>
                             </tr>
                         </thead>
@@ -356,40 +376,6 @@
                         }
                     }
                 </style>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Add Category Modal -->
-<div class="modal fade" id="addCategoryModal" tabindex="-1" aria-labelledby="addCategoryModalLabel" aria-hidden="true" data-bs-backdrop="static">
-    <div class="modal-dialog modal-dialog-centered shadow-none modal-lg">
-        <div class="modal-content border-0 rounded-3">
-            <div class="modal-header bg-primary text-white rounded-top">
-                <h5 class="modal-title" id="addCategoryModalLabel">
-                    <i class="mdi mdi-plus-circle me-1"></i> Add New Category
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body p-4">
-                <div class="row g-3">
-                    <div class="col-md-8">
-                        <label for="new_category_name" class="form-label fw-semibold">Category Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="new_category_name" name="category_name" placeholder="Enter category name">
-                    </div>
-                    <div class="col-md-4">
-                        <label for="new_category_status" class="form-label fw-semibold">Status</label>
-                        <select class="form-select" id="new_category_status" name="status">
-                            <option value="active" selected>Active</option>
-                            <option value="inactive">Inactive</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-primary px-4" id="submit-add-category">
-                    <i class="mdi mdi-content-save me-1"></i> Save Category
-                </button>
             </div>
         </div>
     </div>
@@ -686,7 +672,7 @@
                         console.log('Initializing category Select2 - Options count:', optionCount);
                     }
                     
-                    $select.select2({
+                    var select2Options = {
                         theme: 'bootstrap-5',
                         width: '100%',
                         placeholder: function () {
@@ -694,7 +680,41 @@
                         },
                         dropdownParent: $modal.length ? $modal : $(document.body),
                         allowClear: false
-                    });
+                    };
+
+                    // Category select: allow typing a brand-new category and creating it on the fly.
+                    // The actual server-side creation is handled by the global "select2:select" handler below.
+                    if (isCategorySelect) {
+                        select2Options.tags = true;
+                        select2Options.createTag = function (params) {
+                            var term = $.trim(params.term);
+                            if (term === '') {
+                                return null;
+                            }
+                            // Don't offer "new" if a real option with this exact name already exists.
+                            var exists = false;
+                            $select.find('option').each(function () {
+                                if ($.trim($(this).text()).toLowerCase() === term.toLowerCase()) {
+                                    exists = true;
+                                    return false;
+                                }
+                            });
+                            if (exists) {
+                                return null;
+                            }
+                            return {
+                                id: '__new__:' + term,
+                                text: term,
+                                newTag: true,
+                                newName: term
+                            };
+                        };
+                        select2Options.insertTag = function (data, tag) {
+                            data.push(tag);
+                        };
+                    }
+
+                    $select.select2(select2Options);
                     
                     // Ensure selected values are set after initialization
                     if (selectedValues.length > 0) {
@@ -760,6 +780,112 @@
 
             // Initialize Select2 on page load
             initSelect2();
+
+            // ---------------------------------------------------------------------
+            // Inline category creation from the Supplier Add / Edit modals.
+            // When the user types a category that doesn't exist and selects the
+            // newly offered entry, we POST to category.create, then swap the
+            // temporary "__new__:<name>" tag for the real DB ID so the supplier
+            // form submits with a valid integer category_id.
+            // ---------------------------------------------------------------------
+            window.pendingCategoryCreations = window.pendingCategoryCreations || 0;
+
+            function setCategorySubmitButtonsDisabled(disabled) {
+                $('form#addSupplierForm, form[id^="editSupplierForm"]').each(function () {
+                    $(this).find('button[type="submit"]').prop('disabled', disabled);
+                });
+            }
+
+            $(document).on('select2:select', 'select[name="category_id[]"]', function (e) {
+                var data = e.params && e.params.data ? e.params.data : null;
+                if (!data || !data.newTag) {
+                    return;
+                }
+
+                var $select = $(this);
+                var tempId = data.id;
+                var newCategoryName = (data.newName || '').trim();
+                if (!newCategoryName) {
+                    return;
+                }
+
+                window.pendingCategoryCreations++;
+                setCategorySubmitButtonsDisabled(true);
+
+                $.ajax({
+                    url: '{{ route('category.create') }}',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        category_name: newCategoryName,
+                        status: 'active'
+                    },
+                    dataType: 'json',
+                    success: function (response) {
+                        if (response && response.success && response.category && response.category.id) {
+                            var newId = String(response.category.id);
+                            var newName = response.category.name || newCategoryName;
+
+                            // Remove the temporary "__new__:..." option / value from this select.
+                            var selected = ($select.val() || []).map(String).filter(function (v) {
+                                return v !== tempId;
+                            });
+                            $select.find('option[value="' + tempId + '"]').remove();
+
+                            // Append the real option (if not already present) and select it.
+                            if ($select.find('option[value="' + newId + '"]').length === 0) {
+                                $select.append(new Option(newName, newId, false, false));
+                            }
+                            if (selected.indexOf(newId) === -1) {
+                                selected.push(newId);
+                            }
+                            $select.val(selected).trigger('change');
+
+                            $('select[name="category_id[]"]').not($select).each(function () {
+                                var $other = $(this);
+                                if ($other.find('option[value="' + newId + '"]').length === 0) {
+                                    $other.append(new Option(newName, newId, false, false));
+                                }
+                            });
+
+                            // Add it to the page's category filter (which uses name as the value).
+                            var $filter = $('#category-filter');
+                            if ($filter.length && $filter.find('option[value="' + newName + '"]').length === 0) {
+                                $filter.append(new Option(newName, newName, false, false));
+                            }
+                        } else {
+                            removeTempCategory($select, tempId);
+                            alert((response && response.message) || 'Failed to create category.');
+                        }
+                    },
+                    error: function (xhr) {
+                        removeTempCategory($select, tempId);
+                        var msg = 'Failed to create category.';
+                        if (xhr.responseJSON) {
+                            if (xhr.responseJSON.errors) {
+                                msg = Object.values(xhr.responseJSON.errors).flat().join('\n');
+                            } else if (xhr.responseJSON.message) {
+                                msg = xhr.responseJSON.message;
+                            }
+                        }
+                        alert(msg);
+                    },
+                    complete: function () {
+                        window.pendingCategoryCreations = Math.max(0, window.pendingCategoryCreations - 1);
+                        if (window.pendingCategoryCreations === 0) {
+                            setCategorySubmitButtonsDisabled(false);
+                        }
+                    }
+                });
+            });
+
+            function removeTempCategory($select, tempId) {
+                var selected = ($select.val() || []).filter(function (v) {
+                    return String(v) !== String(tempId);
+                });
+                $select.find('option[value="' + tempId + '"]').remove();
+                $select.val(selected).trigger('change');
+            }
             
             // Initialize Select2 when edit modal is shown
             $(document).on('shown.bs.modal', '[id^="editSupplierModal"]', function() {
@@ -812,64 +938,6 @@
                 modal.find('form')[0].reset();
             });
 
-            // Add Category modal — submit handler
-            $('#submit-add-category').on('click', function(e) {
-                e.preventDefault();
-
-                const categoryName = $('#new_category_name').val().trim();
-                if (!categoryName) {
-                    alert('Please enter a category name.');
-                    $('#new_category_name').focus();
-                    return;
-                }
-
-                const data = {
-                    _token: $('meta[name="csrf-token"]').attr('content'),
-                    category_name: categoryName,
-                    status: $('#new_category_status').val() || 'inactive'
-                };
-
-                const submitBtn = $('#submit-add-category');
-                const origHtml = submitBtn.html();
-                submitBtn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Saving...');
-
-                $.ajax({
-                    url: '{{ route('category.create') }}',
-                    method: 'POST',
-                    data: data,
-                    dataType: 'json',
-                    success: function(response) {
-                        if (response.success) {
-                            $('#addCategoryModal').modal('hide');
-                            $('#new_category_name').val('');
-                            $('#new_category_status').val('active');
-                            location.reload();
-                        } else {
-                            alert(response.message || 'Failed to save category.');
-                            submitBtn.prop('disabled', false).html(origHtml);
-                        }
-                    },
-                    error: function(xhr) {
-                        let errorMessage = 'An error occurred while saving the category.';
-                        if (xhr.responseJSON) {
-                            if (xhr.responseJSON.errors) {
-                                errorMessage = Object.values(xhr.responseJSON.errors).flat().join('\n');
-                            } else if (xhr.responseJSON.message) {
-                                errorMessage = xhr.responseJSON.message;
-                            }
-                        }
-                        alert(errorMessage);
-                        submitBtn.prop('disabled', false).html(origHtml);
-                    }
-                });
-            });
-
-            // Reset Add Category modal when closed
-            $('#addCategoryModal').on('hidden.bs.modal', function() {
-                $('#new_category_name').val('');
-                $('#new_category_status').val('active');
-            });
-            
             // Handle form submission with validation
             $(document).on('submit', 'form[action="{{ route('supplier.create') }}"]', function(e) {
                 const form = $(this);
@@ -911,6 +979,24 @@
                 } else {
                     console.log('✅ ALLOWING: Categories found in FormData:', finalCategories);
                     // Categories are valid, continue with other validations
+                }
+
+                // If a new category is still being created on the server, hold the submit
+                // until it finishes and the temporary value has been swapped for a real ID.
+                if (window.pendingCategoryCreations && window.pendingCategoryCreations > 0) {
+                    e.preventDefault();
+                    alert('A new category is still being created. Please wait a moment and try again.');
+                    return false;
+                }
+
+                // Safety net: never submit unresolved "__new__:..." placeholders.
+                var unresolved = finalCategories.filter(function (v) {
+                    return String(v).indexOf('__new__:') === 0;
+                });
+                if (unresolved.length > 0) {
+                    e.preventDefault();
+                    alert('A new category was not created yet. Please wait a moment and try again.');
+                    return false;
                 }
                 
                 // Validate type - use FormData
@@ -973,6 +1059,48 @@
                 });
             }
 
+            // Column sorting state (server-side; round-tripped through loadSuppliers).
+            // Initialised from the request that rendered this page so deep-links / refreshes work.
+            var currentSort = {
+                key: @json($sortKey ?? ''),
+                direction: @json(($direction ?? 'asc') === 'desc' ? 'desc' : 'asc')
+            };
+
+            function updateSortIcons() {
+                $('#suppliers-table thead th.sortable').each(function () {
+                    var $th = $(this);
+                    var key = $th.attr('data-sort-key');
+                    var $icon = $th.find('.sort-icon i');
+                    $th.removeClass('active');
+                    if (key && key === currentSort.key) {
+                        $th.addClass('active');
+                        $icon.attr('class', currentSort.direction === 'desc' ? 'mdi mdi-arrow-down' : 'mdi mdi-arrow-up');
+                    } else {
+                        $icon.attr('class', 'mdi mdi-unfold-more-horizontal');
+                    }
+                });
+            }
+            updateSortIcons();
+
+            // Cycle: unsorted -> asc -> desc -> unsorted (per column)
+            $(document).on('click', '#suppliers-table thead th.sortable', function () {
+                var key = $(this).attr('data-sort-key');
+                if (!key) return;
+                if (currentSort.key === key) {
+                    if (currentSort.direction === 'asc') {
+                        currentSort.direction = 'desc';
+                    } else {
+                        currentSort.key = '';
+                        currentSort.direction = 'asc';
+                    }
+                } else {
+                    currentSort.key = key;
+                    currentSort.direction = 'asc';
+                }
+                updateSortIcons();
+                loadSuppliers(1);
+            });
+
             // Function to load suppliers via AJAX (no page refresh)
             function loadSuppliers(page = 1) {
                 // Get values from Select2 properly - ensure we get the actual selected value
@@ -990,6 +1118,10 @@
                 if (category) params.set('category', category);
                 if (type) params.set('type', type);
                 if (search) params.set('search', search);
+                if (currentSort.key) {
+                    params.set('sort', currentSort.key);
+                    params.set('direction', currentSort.direction);
+                }
                 if (page > 1) params.set('page', page);
                 
                 // Smooth scroll to table if not on first page or if filters are applied

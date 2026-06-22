@@ -468,6 +468,76 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Map / Miss (Missing L) / NMap for Doba — same rules as /doba-tabulator badges:
+     *   Missing L: is_missing_doba == true, NR !== 'NR', shopify_inv > 0
+     *   Map      : listed (not missing), shopify_inv > 0, doba_price > 0,
+     *              |shopify_inv − doba_inv| within tolerance (≤ 3 OR ≤ shopify_inv × 3%)
+     *   N Map    : same gates as Map but tolerance exceeded.
+     *
+     * amazon_channel_summary_data has no rows for Doba — getMapAndMissCounts('doba')
+     * therefore returns zeros and the Doba row on /all-marketplace-master shows
+     * stale 0 / 0. This helper computes the counts live from /doba-data-view so
+     * the page matches the badge bar on /doba-tabulator.
+     */
+    private function getDobaLiveMapMissNMapFromTabulatorData(): array
+    {
+        try {
+            $dobaCtrl = app(\App\Http\Controllers\MarketPlace\DobaController::class);
+            $response = $dobaCtrl->getViewDobaData(Request::create('/doba-data-view', 'GET'));
+            $payload = json_decode($response->getContent(), true);
+            $data = is_array($payload)
+                ? ($payload['data'] ?? (isset($payload[0]) ? $payload : []))
+                : [];
+            if (!is_array($data) || empty($data)) {
+                return $this->getMapAndMissCounts('doba');
+            }
+
+            $mapC = 0;
+            $missC = 0;
+            $nmapC = 0;
+
+            foreach ($data as $row) {
+                if (!empty($row['is_parent'])) {
+                    continue;
+                }
+                $shopInv  = (float) ($row['shopify_inv'] ?? 0);
+                $dInv     = (float) ($row['INV'] ?? 0);
+                $dPrice   = (float) ($row['doba Price'] ?? 0);
+                $nr       = strtoupper(trim((string) ($row['NR'] ?? '')));
+                $isMissing = !empty($row['is_missing_doba']);
+
+                // Missing L
+                if ($isMissing && $nr !== 'NR' && $shopInv > 0) {
+                    $missC++;
+                    continue;
+                }
+                // Map / N Map — listed with stock and price; tolerance same as doba_tabulator JS
+                if (!$isMissing && $shopInv > 0 && $dPrice > 0) {
+                    $diff = abs($shopInv - $dInv);
+                    $withinTol = ($diff <= 3 + 1e-9) || ($diff <= ($shopInv * 0.03) + 1e-9);
+                    if ($withinTol) {
+                        $mapC++;
+                    } else {
+                        $nmapC++;
+                    }
+                }
+            }
+
+            return [
+                'map' => $mapC,
+                'miss' => $missC,
+                'nmap' => $nmapC,
+                // Doba has no view-data source — leave Total Views at 0 so the
+                // /all-marketplace-master Doba row matches the page (no views badge).
+                'total_views' => 0,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Doba live map/miss/nmap fallback: '.$e->getMessage());
+            return $this->getMapAndMissCounts('doba');
+        }
+    }
+
+    /**
      * L30 sales summary — Temu from shopify_order_items (/shopify-orders); Temu 2 from tabulator.
      *
      * @return array{total_orders: int, total_quantity: int, total_revenue: float}|null
@@ -7585,8 +7655,12 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Doba')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('doba');
+        // Live Map / Miss / NMap from the /doba-tabulator endpoint — keeps these
+        // counts in sync with the badge bar on /doba-tabulator. amazon_channel_summary_data
+        // has no rows for Doba, so the old getMapAndMissCounts('doba') call always
+        // returned 0 / 0 / 0; the live helper falls back to it if the tabulator
+        // endpoint fails.
+        $mapMissCounts = $this->getDobaLiveMapMissNMapFromTabulatorData();
 
         $result[] = [
             'Channel '   => 'Doba',
@@ -13882,18 +13956,14 @@ class ChannelMasterController extends Controller
             return $clicks > 0 ? round(($adSold / $clicks) * 100, 2) : null;
         }
         if ($metric === 'cvr') {
-            // Units-based: qty / views — matches /temu-decrease and the chart endpoint.
-            // Falls back to l30_orders for older snapshots that pre-date the
-            // total_quantity field, otherwise the dot would compare against zero.
+           
             $qty = floatval($summaryData['total_quantity'] ?? 0);
             if ($qty <= 0) {
                 $qty = floatval($summaryData['l30_orders'] ?? 0);
             }
             $views = floatval($summaryData['total_views'] ?? 0);
-            // 2 decimals: must match the chart endpoint's precision (round to 2). At
-            // 1 decimal, consecutive days like 5.22% and 5.24% both round to 5.2 →
-            // v1 === v2 → grey dot, even though the chart shows the CVR moved.
-            return $views > 0 ? round(($qty / $views) * 100, 2) : null;
+            
+            return $views > 0 ? round(($qty / $views) * 100, 2) : 0.0;
         }
         if ($metric === 'nroi') {
             $groi = floatval($summaryData['groi_percent'] ?? 0);
@@ -13904,14 +13974,9 @@ class ChannelMasterController extends Controller
         return array_key_exists($metricKey, $summaryData) ? floatval($summaryData[$metricKey]) : null;
     }
 
-    /**
-     * Get the "table reference value" for ALL channels combined.
-     * Sums the latest marketplace_daily_metrics value across every channel.
-     * Used when channel='all' to scale charts to match the badge totals.
-     */
+   
     private function getAllChannelsTableReference(string $metric): ?float
     {
-        // Listing CVR = Σ qty / Σ views — not representable from MDM sums; chart uses raw snapshots. No scale ref.
         if ($metric === 'cvr') {
             return null;
         }
@@ -13962,14 +14027,8 @@ class ChannelMasterController extends Controller
                 $val = match($metric) {
                     'gprofit' => (float) ($mdm->pft_percentage ?? 0),
                     'ads_pct' => (float) ($mdm->tacos_percentage ?? 0),
-                    // NPFT% must be derived from pft_percentage − tacos_percentage. The raw `n_pft`
-                    // column is unreliable for blending: some channels (Amazon, eBay, Temu, etc.)
-                    // store it as a percent, while others (TikTok, Mercari, several Shopify variants)
-                    // store it as a dollar amount. Sales-weighting that mixed-unit column produces
-                    // a huge nonsense reference (~460) that would then rescale the chart points to
-                    // match it — which is the “wrong history” the badge click was showing.
+                   
                     'npft' => (float) ($mdm->pft_percentage ?? 0) - (float) ($mdm->tacos_percentage ?? 0),
-                    // groi/nroi handled above (they need cogs as denominator, not sales).
                     default => null,
                 };
                 if ($val === null) continue;
@@ -14062,11 +14121,7 @@ class ChannelMasterController extends Controller
         return $total > 0 ? round($total, 2) : null;
     }
 
-    /**
-     * Get the "table reference value" for a given channel and metric.
-     * This returns the exact value that the table displays, ensuring charts match.
-     * Table sources: marketplace_daily_metrics for most metrics, fetchAdMetricsFromTables for ad metrics.
-     */
+  
     private function getTableReferenceValue(string $channel, string $metric): ?float
     {
         static $mdmCache = [];

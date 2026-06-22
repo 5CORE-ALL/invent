@@ -51,6 +51,7 @@ use App\Models\BestbuyPriceData;
 use App\Models\ShopifyB2CDailyData;
 use App\Models\ViewsPullData;
 use App\Models\TemuViewData;
+use App\Models\Temu2ViewData;
 use App\Models\TemuAdData;
 use App\Models\MarketplacePercentage;
 use App\Models\MarketplaceDailyMetric;
@@ -884,7 +885,7 @@ class CvrMasterController extends Controller
                 if ($temu2Pricing) {
                     $temu2GoodsId = $temu2Pricing->goods_id ?? null;
                     if ($temu2GoodsId) {
-                        $temu2ViewAgg = TemuViewData::where('goods_id', $temu2GoodsId)
+                        $temu2ViewAgg = Temu2ViewData::where('goods_id', $temu2GoodsId)
                             ->selectRaw('SUM(product_clicks) as product_clicks')
                             ->first();
                         $temu2Views = $temu2ViewAgg ? intval($temu2ViewAgg->product_clicks ?? 0) : 0;
@@ -2310,7 +2311,7 @@ class CvrMasterController extends Controller
                     $temu2GPFTBr = $temu2PriceBr > 0 ? (($temu2PriceBr * $temuMargin - $lp - $temuShip) / $temu2PriceBr) * 100 : 0;
                     $temu2NPFTBr = $temu2L30Br == 0 ? $temu2GPFTBr : $temu2GPFTBr;
                     if ($temu2PricingRow && ($g2b = $temu2PricingRow->goods_id ?? null)) {
-                        $v2b = TemuViewData::where('goods_id', $g2b)
+                        $v2b = Temu2ViewData::where('goods_id', $g2b)
                             ->selectRaw('SUM(product_clicks) as product_clicks')
                             ->first();
                         $temu2ViewsBr = $v2b ? (int) ($v2b->product_clicks ?? 0) : 0;

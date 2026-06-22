@@ -3894,6 +3894,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Temu View Data Upload
     Route::post('/temu-view-data/upload', [TemuController::class, 'uploadTemuViewData'])->name('temu.viewdata.upload');
     Route::get('/temu-view-data/sample', [TemuController::class, 'downloadTemuViewDataSample'])->name('temu.viewdata.sample');
+    Route::post('/temu2-view-data/upload', [TemuController::class, 'uploadTemu2ViewData'])->name('temu2.viewdata.upload');
+    Route::get('/temu2-view-data/sample', [TemuController::class, 'downloadTemu2ViewDataSample'])->name('temu2.viewdata.sample');
 
     // Temu Ad Data Upload
     Route::post('/temu-ad-data/upload', [TemuController::class, 'uploadTemuAdData'])->name('temu.addata.upload');

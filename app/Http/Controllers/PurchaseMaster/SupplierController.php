@@ -43,6 +43,44 @@ class SupplierController extends Controller
             });
         }
 
+        // Apply sorting (whitelisted to prevent SQL injection)
+        $sortableColumns = [
+            'category' => 'category_id',
+            'name'     => 'name',
+            'approval' => 'approval_status',
+            'company'  => 'company',
+            'parent'   => 'parent',
+            'zone'     => 'zone',
+            'phone'    => 'phone',
+            'rating'   => null,            // computed via correlated subquery
+            'alibaba'  => 'alibaba',
+            'email'    => 'email',
+            'whatsapp' => 'whatsapp',
+            'wechat'   => 'wechat',
+        ];
+
+        $sortKey   = $request->get('sort');
+        $direction = strtolower((string) $request->get('direction', 'asc')) === 'desc' ? 'desc' : 'asc';
+
+        if ($sortKey && array_key_exists($sortKey, $sortableColumns)) {
+            if ($sortKey === 'rating') {
+                $query->orderByRaw(
+                    '(SELECT AVG(final_score) FROM supplier_ratings WHERE supplier_ratings.supplier_id = suppliers.id) ' . $direction
+                );
+                $query->orderBy('name', 'asc');
+            } else {
+                $column = $sortableColumns[$sortKey];
+                $query->orderBy($column, $direction);
+                if ($column !== 'name') {
+                    $query->orderBy('name', 'asc');
+                }
+            }
+        } else {
+            // No explicit sort requested — keep prior behaviour (default MySQL order).
+            $sortKey   = '';
+            $direction = 'asc';
+        }
+
         // Get total count before pagination (for filtered results)
         $filteredCount = $query->count();
         
@@ -60,10 +98,12 @@ class SupplierController extends Controller
                 'pagination' => (string) $suppliers->onEachSide(1)->links('pagination::bootstrap-5'),
                 'filteredCount' => $filteredCount,
                 'totalCount' => $totalCount,
+                'sort' => $sortKey,
+                'direction' => $direction,
             ]);
         }
         
-        return view('purchase-master.supplier.suppliers' , compact('suppliers', 'categories', 'filteredCount', 'totalCount'));
+        return view('purchase-master.supplier.suppliers' , compact('suppliers', 'categories', 'filteredCount', 'totalCount', 'sortKey', 'direction'));
     }
 
     /**

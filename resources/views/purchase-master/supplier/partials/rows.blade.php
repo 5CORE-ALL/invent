@@ -65,18 +65,7 @@
     </td>
     <td>
         @if(!empty($supplier->company))
-            <div class="d-flex align-items-center">
-                <span title="{{ $supplier->company }}">{{ \Illuminate\Support\Str::limit($supplier->company, 15, '...') }}</span>
-                @if(!empty($supplier->website))
-                    <a href="{{ $supplier->website }}" target="_blank" class="text-decoration-none" title="Visit Website">
-                        <i class="mdi mdi-link-variant ms-1 text-primary" style="font-size: 18px;"></i>
-                    </a>
-                @elseif(!empty($supplier->alibaba))
-                    <a href="{{ $supplier->alibaba }}" target="_blank" class="text-decoration-none" title="Visit Alibaba">
-                        <i class="mdi mdi-link-variant ms-1 text-warning" style="font-size: 18px;"></i>
-                    </a>
-                @endif
-            </div>
+            <span title="{{ $supplier->company }}">{{ \Illuminate\Support\Str::limit($supplier->company, 15, '...') }}</span>
         @else
             <span class="text-muted">-</span>
         @endif
@@ -170,6 +159,28 @@
         @endif
     </td>
     <td>
+        @if(!empty($supplier->alibaba))
+            <a href="{{ $supplier->alibaba }}" target="_blank"
+            class="d-flex justify-content-center align-items-center text-decoration-none"
+            title="View Alibaba Profile">
+                <span class="supplier-contact-wrap">
+                    <span class="supplier-contact-icon-inner" style="background: #ffecb3; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
+                        <i class="mdi mdi-shopping" style="font-size: 1.4rem; color: #ff9800;"></i>
+                    </span>
+                </span>
+            </a>
+        @else
+            <div class="d-flex justify-content-center align-items-center" title="No Alibaba on file">
+                <span class="supplier-contact-wrap supplier-contact-wrap--missing">
+                    <span class="supplier-contact-icon-inner" style="background: #ffecb3; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
+                        <i class="mdi mdi-shopping" style="font-size: 1.4rem; color: #ff9800;"></i>
+                    </span>
+                </span>
+            </div>
+        @endif
+    </td>
+
+    <td>
         @if(!empty($supplier->email))
             <a href="mailto:{{ $supplier->email }}"
             class="d-flex justify-content-center align-items-center text-decoration-none"
@@ -253,29 +264,6 @@
             </div>
         @endif
     </td>
-
-    <td>
-        @if(!empty($supplier->alibaba))
-            <a href="{{ $supplier->alibaba }}" target="_blank"
-            class="d-flex justify-content-center align-items-center text-decoration-none"
-            title="View Alibaba Profile">
-                <span class="supplier-contact-wrap">
-                    <span class="supplier-contact-icon-inner" style="background: #ffecb3; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                        <i class="mdi mdi-shopping" style="font-size: 1.4rem; color: #ff9800;"></i>
-                    </span>
-                </span>
-            </a>
-        @else
-            <div class="d-flex justify-content-center align-items-center" title="No Alibaba on file">
-                <span class="supplier-contact-wrap supplier-contact-wrap--missing">
-                    <span class="supplier-contact-icon-inner" style="background: #ffecb3; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                        <i class="mdi mdi-shopping" style="font-size: 1.4rem; color: #ff9800;"></i>
-                    </span>
-                </span>
-            </div>
-        @endif
-    </td>
-
 
     <td class="text-center">
         <div class="d-flex justify-content-center align-items-center gap-1">

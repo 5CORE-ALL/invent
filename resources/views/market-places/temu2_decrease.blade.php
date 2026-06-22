@@ -316,7 +316,10 @@
                         
                         <!-- Pricing & Performance -->
                         <span class="badge bg-info fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">AVG: $0.00</span>
-                        <span class="badge bg-warning fs-6 p-2 temu-badge-history" id="avg-cvr-badge" data-badge-metric="avg_cvr_pct" data-badge-label="CVR %" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">CVR: 0.0%</span>
+                       
+                        <span class="badge bg-info fs-6 p-2" id="cvr-total-views-badge" style="color: black; font-weight: bold;" title="Sum of product_clicks for all visible rows (from temu2_view_data)">Total Views: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="cvr-total-sold-badge" style="color: black; font-weight: bold;" title="Sum of temu_l30 for all visible rows (from temu2_daily_data)">Total Sold: 0</span>
+                        <span class="badge bg-warning fs-6 p-2 temu-badge-history" id="avg-cvr-badge" data-badge-metric="avg_cvr_pct" data-badge-label="CVR %" style="color: black; font-weight: bold; cursor: pointer;" title="Total Sold / Total Views * 100">CVR: 0.0%</span>
                         
                         <!-- Financial Totals -->
                         <span class="badge bg-primary fs-6 p-2" id="total-profit-badge" style="color: black; font-weight: bold; display: none;">PFT: $0</span>
@@ -479,7 +482,7 @@
                         </div>
                     @endif
                     
-                    <form id="uploadViewDataForm" action="{{ route('temu.viewdata.upload') }}" method="POST" enctype="multipart/form-data">
+                    <form id="uploadViewDataForm" action="{{ route('temu2.viewdata.upload') }}" method="POST" enctype="multipart/form-data">
                         @csrf
                         <div class="mb-3">
                             <label for="viewDataFile" class="form-label fw-bold">
@@ -488,13 +491,13 @@
                             <input type="file" class="form-control" id="viewDataFile" name="file" accept=".xlsx,.xls,.csv" required>
                             <div class="form-text">
                                 <i class="fa fa-info-circle text-info me-1"></i>
-                                Accepts .xlsx, .xls, or .csv files (Max: 10MB)
+                                Accepts .xlsx, .xls, or .csv files (Max: 10MB). Writes to <code>temu2_view_data</code> (separate from Temu 1).
                             </div>
                         </div>
                         <div class="alert alert-info">
                             <i class="fa fa-lightbulb me-2"></i>
-                            <strong>Note:</strong> This will INSERT new records only (no truncate/update).
-                            <a href="{{ route('temu.viewdata.sample') }}" class="alert-link">
+                            <strong>Note:</strong> This replaces the existing Temu 2 view data only.
+                            <a href="{{ route('temu2.viewdata.sample') }}" class="alert-link">
                                 <i class="fa fa-download"></i> Download Sample File
                             </a>
                         </div>
@@ -2479,8 +2482,15 @@
             // NROI% = GROI% - ADS% (simple formula)
             const avgNroi = avgGroi - adsPercentForNpft;
             const avgCvr = cvrCount > 0 ? totalCvr / cvrCount : 0;
-            // QTY/Views = (Total QTY / Total Views) × 100
-            const qtyPerViews = totalViews > 0 ? (totalQuantity / totalViews) * 100 : 0;
+            // CVR is driven by the two dedicated badges below — Total Views and Total Sold —
+            // so the badge value matches "sold ÷ views" exactly. totalViews comes from the
+            // same product_clicks sum used by the Total Views badge; totalTemuL30 comes from
+            // the same temu_l30 sum used by the Total Sold badge. Using totalTemuL30 (not
+            // totalQuantity, which can be overridden by sales_summary) keeps the math
+            // strictly = SoldBadge / ViewsBadge so the displayed numbers always agree.
+            const cvrTotalViews = totalViews;
+            const cvrTotalSold  = totalTemuL30;
+            const qtyPerViews = cvrTotalViews > 0 ? (cvrTotalSold / cvrTotalViews) * 100 : 0;
             const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
 
             // Calculate TCOS: (Total Ad Spend / Total Revenue) × 100
@@ -2515,6 +2525,8 @@
             $('#missing-count-badge').text('Missing L: ' + missingCount.toLocaleString());
             $('#not-mapped-count-badge').text('Missing M: ' + notMappedCount.toLocaleString());
             $('#avg-price-badge').text('AVG: $' + avgPrice.toFixed(2));
+            $('#cvr-total-views-badge').text('Total Views: ' + cvrTotalViews.toLocaleString());
+            $('#cvr-total-sold-badge').text('Total Sold: ' + cvrTotalSold.toLocaleString());
             $('#avg-cvr-badge').text('CVR: ' + qtyPerViews.toFixed(1) + '%');
             $('#avg-dil-badge').text('Avg DIL: ' + Math.round(avgDil) + '%');
             // Total Revenue badge set above from sales_summary or table
