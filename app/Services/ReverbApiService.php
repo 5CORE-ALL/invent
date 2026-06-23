@@ -1492,7 +1492,22 @@ class ReverbApiService
     }
 
     /**
-     * PUT the pushed URLs repeatedly until the gallery contains only new photos at the target count.
+     * @param  array<string, int>  $oldIdSet
+     * @return array{total: int, new: int, old_ids: list<string>}
+     */
+    private function reverbListingGalleryCounts(string $token, string $listingId, array $oldIdSet): array
+    {
+        $records = $this->fetchListingImageRecords($token, $listingId);
+
+        return [
+            'total' => count($records),
+            'new' => $this->countReverbImagesNotInSet($records, $oldIdSet),
+            'old_ids' => $this->reverbImageIdsStillInOldSet($records, $oldIdSet),
+        ];
+    }
+
+    /**
+     * PUT the pushed URLs repeatedly until the gallery has exactly the target count of new photos.
      *
      * @param  array<string, int>  $oldIdSet
      * @param  list<string>  $urls
@@ -1501,13 +1516,12 @@ class ReverbApiService
     {
         $targetCount = count($urls);
         $final = $fallback;
+        $waitSecs = min(90, 20 + (int) ceil($targetCount / 2));
 
-        for ($attempt = 0; $attempt < 6; $attempt++) {
-            $records = $this->fetchListingImageRecords($token, $listingId);
-            $oldRemaining = $this->reverbImageIdsStillInOldSet($records, $oldIdSet);
-            $newCount = $this->countReverbImagesNotInSet($records, $oldIdSet);
+        for ($attempt = 0; $attempt < 8; $attempt++) {
+            $counts = $this->reverbListingGalleryCounts($token, $listingId, $oldIdSet);
 
-            if ($newCount >= $targetCount && $oldRemaining === []) {
+            if ($counts['total'] >= $targetCount && $counts['old_ids'] === []) {
                 $orderPut = $this->putReverbListingPhotos($token, $listingId, $urls);
                 if ($orderPut->successful()) {
                     return $orderPut;
@@ -1516,8 +1530,9 @@ class ReverbApiService
                 return $final->successful() ? $final : $orderPut;
             }
 
-            if ($oldRemaining !== [] && $newCount >= 1) {
+            if ($counts['old_ids'] !== [] && $counts['new'] >= $targetCount) {
                 $this->purgeReverbOldListingImages($token, $listingId, $oldIdSet);
+                continue;
             }
 
             $put = $this->putReverbListingPhotos($token, $listingId, $urls);
@@ -1525,8 +1540,21 @@ class ReverbApiService
                 $final = $put;
             }
 
-            $this->waitForReverbNewImageIngest($token, $listingId, $oldIdSet, $targetCount, 45);
-            $this->waitForReverbListingImageCount($token, $listingId, min($targetCount, max(1, $newCount)), 15);
+            $this->waitForReverbListingImageCount($token, $listingId, $targetCount, $waitSecs);
+            $this->waitForReverbNewImageIngest($token, $listingId, $oldIdSet, $targetCount, $waitSecs);
+        }
+
+        for ($topUp = 0; $topUp < 3; $topUp++) {
+            $counts = $this->reverbListingGalleryCounts($token, $listingId, $oldIdSet);
+            if ($counts['total'] >= $targetCount && $counts['old_ids'] === []) {
+                break;
+            }
+
+            $put = $this->putReverbListingPhotos($token, $listingId, $urls);
+            if ($put->successful()) {
+                $final = $put;
+            }
+            $this->waitForReverbListingImageCount($token, $listingId, $targetCount, $waitSecs);
         }
 
         return $final;
@@ -1571,26 +1599,59 @@ class ReverbApiService
             }
         }
 
+        // Prime the anchor slot so the first pushed URL gets a new image id before the full gallery PUT.
+        if ($targetCount > 1) {
+            $prime = $this->putReverbListingPhotos($token, $listingId, [$urls[0]]);
+            if ($prime->successful()) {
+                $this->waitForReverbListingImageCount($token, $listingId, 1, 25);
+                usleep(400000);
+            }
+        }
+
         $response = $this->putReverbListingPhotos($token, $listingId, $urls);
         if (! $response->successful()) {
             return $response;
         }
 
         $maxWait = min(240, 90 + ($targetCount * 8));
-        $ingestedNew = $this->waitForReverbNewImageIngest($token, $listingId, $oldIdSet, $targetCount, $maxWait);
-        if ($ingestedNew < $targetCount && $targetCount > 1) {
+        $this->waitForReverbListingImageCount($token, $listingId, $targetCount, $maxWait);
+
+        $ingestedNew = 0;
+        for ($fill = 0; $fill < 4; $fill++) {
+            $counts = $this->reverbListingGalleryCounts($token, $listingId, $oldIdSet);
+            $ingestedNew = $counts['new'];
+            if ($ingestedNew >= $targetCount) {
+                break;
+            }
+            if ($counts['total'] < $targetCount) {
+                $this->waitForReverbListingImageCount($token, $listingId, $targetCount, min(60, $maxWait));
+                $counts = $this->reverbListingGalleryCounts($token, $listingId, $oldIdSet);
+                $ingestedNew = $counts['new'];
+                if ($ingestedNew >= $targetCount) {
+                    break;
+                }
+            }
+
+            $retry = $this->putReverbListingPhotos($token, $listingId, $urls);
+            if ($retry->successful()) {
+                $response = $retry;
+            }
+            $this->waitForReverbListingImageCount($token, $listingId, $targetCount, 45);
             $ingestedNew = max(
                 $ingestedNew,
-                $this->waitForReverbNewImageIngest($token, $listingId, $oldIdSet, $targetCount - 1, 60)
+                $this->waitForReverbNewImageIngest($token, $listingId, $oldIdSet, $targetCount, 45)
             );
-        }
-        if ($ingestedNew < 1) {
-            $ingestedNew = $this->waitForReverbNewImageIngest($token, $listingId, $oldIdSet, 1, 60);
         }
 
         $deletedOld = 0;
-        if ($ingestedNew >= 1) {
+        $counts = $this->reverbListingGalleryCounts($token, $listingId, $oldIdSet);
+        if ($counts['new'] >= $targetCount) {
             $deletedOld = $this->purgeReverbOldListingImages($token, $listingId, $oldIdSet);
+        } elseif ($ingestedNew < 1) {
+            $ingestedNew = $this->waitForReverbNewImageIngest($token, $listingId, $oldIdSet, 1, 60);
+            if ($ingestedNew >= 1) {
+                $deletedOld = $this->purgeReverbOldListingImages($token, $listingId, $oldIdSet);
+            }
         }
 
         $final = $this->syncReverbListingGalleryToUrls($token, $listingId, $urls, $oldIdSet, $response);
@@ -1613,6 +1674,14 @@ class ReverbApiService
                 'listing_id' => $listingId,
                 'target_count' => $targetCount,
                 'old_ids_remaining' => $oldIdsRemaining,
+            ]);
+        }
+
+        if (count($remainingRecords) < $targetCount) {
+            Log::warning('Reverb replace: gallery short of target after sync', [
+                'listing_id' => $listingId,
+                'target_count' => $targetCount,
+                'remaining' => count($remainingRecords),
             ]);
         }
 
