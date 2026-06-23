@@ -20,16 +20,21 @@ return new class extends Migration
 
         Schema::create('user_mgr_checkpoint_progress', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('designation_mgr_checkpoint_id')
-                ->constrained('designation_mgr_checkpoints')
+            $table->foreignId('user_id')
+                ->constrained('users', 'id', 'umcp_user_id_fk')
                 ->cascadeOnDelete();
+            // Explicit short FK names — MySQL caps identifiers at 64 chars
+            // and the auto-generated names on this combination exceed that.
+            $table->unsignedBigInteger('designation_mgr_checkpoint_id');
+            $table->foreign('designation_mgr_checkpoint_id', 'umcp_dmcp_id_fk')
+                ->references('id')->on('designation_mgr_checkpoints')
+                ->onDelete('cascade');
             $table->boolean('checked')->default(false);
             $table->timestamp('checked_at')->nullable();
             $table->text('note')->nullable();
             $table->timestamps();
 
-            $table->unique(['user_id', 'designation_mgr_checkpoint_id'], 'user_mgr_checkpoint_progress_unique');
+            $table->unique(['user_id', 'designation_mgr_checkpoint_id'], 'umcp_user_cp_unique');
         });
     }
 
