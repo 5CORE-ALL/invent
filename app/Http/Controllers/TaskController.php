@@ -2,19 +2,31 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DesignationMgrCheckpoint;
+use App\Models\DesignationRrCheckpoint;
+use App\Models\DesignationRrItem;
+use App\Models\GeneralChecklistItem;
+use App\Models\ManagerJunior;
 use App\Models\PerformanceReview;
 use App\Models\Task;
 use App\Models\User;
+use App\Models\UserGeneralChecklistProgress;
+use App\Models\UserMgrCheckpointProgress;
 use App\Models\UserRR;
+use App\Models\UserRrCheckpointProgress;
+use App\Models\UserRrProgress;
+use App\Models\UserScoreHistory;
 use App\Models\DeletedTask;
 use App\Policies\TaskPolicy;
 use App\Services\TaskWhatsAppNotificationService;
+use App\Support\OpenAiRequest;
 use App\Support\TaskBusinessTime;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Validation\Rule;
@@ -453,9 +465,22 @@ class TaskController extends Controller
     {
         $tasksQuery = $this->taskManagerVisibilityQuery();
 
-        $tasks = (clone $tasksQuery)->get(['id', 'assign_to', 'assignor', 'status', 'start_date', 'is_automate_task', 'eta_time']);
+        $tasks = (clone $tasksQuery)->get(['id', 'assign_to', 'assignor', 'status', 'start_date', 'completion_date', 'is_automate_task', 'is_missed', 'eta_time']);
 
-        $defaultCounts = ['task' => 0, 'overdue' => 0, 'a_task' => 0, 'a_task_h' => 0, 'need_approval' => 0, 'assignor_task' => 0, 'done' => 0];
+        // tat_sum_days + tat_count are used to compute the average L30 TAT
+        // (Turn-Around Time, in calendar days) for tasks the user closed
+        // (status=Done) in the last 30 days.
+        // missed_l30 counts tasks with is_missed = true whose start_date
+        // falls inside the same rolling 30-day window.
+        $defaultCounts = [
+            'task' => 0, 'overdue' => 0, 'a_task' => 0, 'a_task_h' => 0,
+            'need_approval' => 0, 'assignor_task' => 0, 'done' => 0,
+            'tat_sum_days' => 0.0, 'tat_count' => 0,
+            'missed_l30' => 0,
+        ];
+
+        $tatCutoff = \Carbon\Carbon::now()->subDays(30);
+        $missedCutoff = $tatCutoff; // same 30-day window
 
         $byEmail = [];
         foreach ($tasks as $task) {
@@ -512,12 +537,55 @@ class TaskController extends Controller
                 if (!empty($task->is_automate_task)) {
                     $byEmail[$email]['a_task_h'] += (float) ($task->eta_time ?? 0);
                 }
+
+                // L30 TAT: tasks the assignee completed (Done) in the last 30
+                // days, measuring days from start_date → completion_date.
+                if (
+                    ($task->status ?? '') === 'Done'
+                    && !empty($task->start_date)
+                    && !empty($task->completion_date)
+                ) {
+                    try {
+                        $start = \Carbon\Carbon::parse($task->start_date);
+                        $end = \Carbon\Carbon::parse($task->completion_date);
+                        if ($end->greaterThanOrEqualTo($tatCutoff) && $end->greaterThanOrEqualTo($start)) {
+                            // Wall-clock days (fractional). Works on any
+                            // Carbon version without needing floatDiffInDays.
+                            $days = ($end->getTimestamp() - $start->getTimestamp()) / 86400.0;
+                            if ($days < 0) {
+                                $days = 0.0;
+                            }
+                            $byEmail[$email]['tat_sum_days'] += $days;
+                            $byEmail[$email]['tat_count']++;
+                        }
+                    } catch (\Throwable $e) {
+                        // Malformed timestamp — silently skip this row's TAT.
+                    }
+                }
+
+                // L30 Missed: tasks flagged is_missed whose start_date is
+                // within the last 30 days.
+                if (! empty($task->is_missed) && ! empty($task->start_date)) {
+                    try {
+                        $startMissed = \Carbon\Carbon::parse($task->start_date);
+                        if ($startMissed->greaterThanOrEqualTo($missedCutoff)) {
+                            $byEmail[$email]['missed_l30']++;
+                        }
+                    } catch (\Throwable $e) {
+                        // Malformed timestamp — skip silently.
+                    }
+                }
             }
         }
 
         $members = $this->activeTeamUsersQuery()
             ->orderBy('name')
-            ->get(['id', 'name', 'email', 'avatar', 'designation']);
+            ->get(['id', 'name', 'email', 'avatar', 'designation', 'org_level']);
+
+        $scoresByUser = $this->bulkComputeCLScores(
+            $members->pluck('id')->all(),
+            $members->pluck('designation')->filter()->unique()->values()->all()
+        );
 
         // Fetch TeamLogger data for current month
         $teamLoggerData = [];
@@ -540,15 +608,26 @@ class TaskController extends Controller
                 $l30Hours = $teamLoggerData[$email]['hours'] ?? 0;
             }
             
+            $tatCount = (int) $counts['tat_count'];
+            $tatAvgDays = $tatCount > 0 ? round($counts['tat_sum_days'] / $tatCount, 1) : null;
+
             $rows[] = [
+                'user_id' => $member->id,
                 'team_member' => $member->name,
                 'email' => $email,
                 'avatar' => $member->avatar,
                 'designation' => $member->designation,
+                'org_level' => $member->org_level,
                 'task' => $counts['task'],
                 'l30_hrs' => round($l30Hours, 1),
                 'assignor_task' => $counts['assignor_task'],
                 'overdue' => $counts['overdue'],
+                'tat_l30_days' => $tatAvgDays,
+                'tat_l30_count' => $tatCount,
+                'missed_l30' => (int) $counts['missed_l30'],
+                'score_clrr' => (int) ($scoresByUser[$member->id]['clrr'] ?? 0),
+                'score_clmgr' => (int) ($scoresByUser[$member->id]['clmgr'] ?? 0),
+                'score_clgen' => (int) ($scoresByUser[$member->id]['clgen'] ?? 0),
                 'a_task' => $counts['a_task'],
                 'a_task_h' => (int) round($counts['a_task_h'] / 60),
                 'need_approval' => $counts['need_approval'],
@@ -567,6 +646,144 @@ class TaskController extends Controller
         });
 
         return $rows;
+    }
+
+    /**
+     * Compute the three CL scores (CL R&R / CL Mgr / CL Gen own%) for a
+     * batch of users in a few bulk queries instead of per-row N+1 lookups.
+     *
+     * @param  array<int>     $userIds
+     * @param  array<string>  $designations
+     * @return array<int, array{clrr:int, clmgr:int, clgen:int}>
+     */
+    protected function bulkComputeCLScores(array $userIds, array $designations): array
+    {
+        $out = [];
+        foreach ($userIds as $uid) {
+            $out[(int) $uid] = ['clrr' => 0, 'clmgr' => 0, 'clgen' => 0];
+        }
+        if (empty($userIds)) {
+            return $out;
+        }
+
+        // ---------------------- CL Gen (global) ---------------------------
+        $genItems = GeneralChecklistItem::get(['id', 'weightage']);
+        if ($genItems->isNotEmpty()) {
+            $genWeightById = $genItems->mapWithKeys(fn ($i) => [(int) $i->id => max(1, (int) $i->weightage)]);
+            $genTotal = $genWeightById->sum();
+            if ($genTotal > 0) {
+                $genProgress = UserGeneralChecklistProgress::query()
+                    ->whereIn('user_id', $userIds)
+                    ->where('checked', true)
+                    ->whereIn('general_checklist_item_id', $genWeightById->keys())
+                    ->get(['user_id', 'general_checklist_item_id']);
+                $genEarnedByUser = [];
+                foreach ($genProgress as $p) {
+                    $uid = (int) $p->user_id;
+                    $iid = (int) $p->general_checklist_item_id;
+                    $genEarnedByUser[$uid] = ($genEarnedByUser[$uid] ?? 0) + ($genWeightById[$iid] ?? 0);
+                }
+                foreach ($userIds as $uid) {
+                    $earned = $genEarnedByUser[(int) $uid] ?? 0;
+                    $out[(int) $uid]['clgen'] = (int) round(($earned / $genTotal) * 100);
+                }
+            }
+        }
+
+        // ---------------------- CL R&R (per designation) ------------------
+        $rrItemIdsByDesignation = DesignationRrItem::query()
+            ->whereIn('designation', array_values(array_unique(array_filter($designations))))
+            ->get(['id', 'designation'])
+            ->groupBy('designation')
+            ->map(fn ($coll) => $coll->pluck('id')->all());
+
+        // All checkpoints under those items.
+        $allRrItemIds = $rrItemIdsByDesignation->flatten()->unique()->values();
+        $rrCheckpoints = $allRrItemIds->isEmpty()
+            ? collect()
+            : DesignationRrCheckpoint::query()
+                ->whereIn('designation_rr_item_id', $allRrItemIds)
+                ->get(['id', 'designation_rr_item_id', 'weightage']);
+        $rrCheckpointWeightById = $rrCheckpoints->mapWithKeys(fn ($c) => [(int) $c->id => max(1, (int) $c->weightage)]);
+        $rrCheckpointsByItem = $rrCheckpoints->groupBy('designation_rr_item_id');
+
+        // Total weight per designation = sum of all checkpoint weights under its items.
+        $rrTotalByDesignation = [];
+        foreach ($rrItemIdsByDesignation as $des => $itemIds) {
+            $sum = 0;
+            foreach ($itemIds as $iid) {
+                foreach (($rrCheckpointsByItem[$iid] ?? []) as $cp) {
+                    $sum += max(1, (int) $cp->weightage);
+                }
+            }
+            $rrTotalByDesignation[$des] = $sum;
+        }
+
+        $rrProgress = $rrCheckpointWeightById->isEmpty()
+            ? collect()
+            : UserRrCheckpointProgress::query()
+                ->whereIn('user_id', $userIds)
+                ->where('checked', true)
+                ->whereIn('designation_rr_checkpoint_id', $rrCheckpointWeightById->keys())
+                ->get(['user_id', 'designation_rr_checkpoint_id']);
+
+        $rrEarnedByUser = [];
+        foreach ($rrProgress as $p) {
+            $uid = (int) $p->user_id;
+            $cid = (int) $p->designation_rr_checkpoint_id;
+            $rrEarnedByUser[$uid] = ($rrEarnedByUser[$uid] ?? 0) + ($rrCheckpointWeightById[$cid] ?? 0);
+        }
+
+        // ---------------------- CL Mgr (own % per designation) ------------
+        $mgrCheckpoints = DesignationMgrCheckpoint::query()
+            ->whereIn('designation', array_values(array_unique(array_filter($designations))))
+            ->get(['id', 'designation', 'weightage']);
+        $mgrWeightById = $mgrCheckpoints->mapWithKeys(fn ($c) => [(int) $c->id => max(1, (int) $c->weightage)]);
+        $mgrTotalByDesignation = $mgrCheckpoints->groupBy('designation')->map(function ($coll) {
+            return $coll->sum(fn ($c) => max(1, (int) $c->weightage));
+        });
+
+        $mgrProgress = $mgrWeightById->isEmpty()
+            ? collect()
+            : UserMgrCheckpointProgress::query()
+                ->whereIn('user_id', $userIds)
+                ->where('checked', true)
+                ->whereIn('designation_mgr_checkpoint_id', $mgrWeightById->keys())
+                ->get(['user_id', 'designation_mgr_checkpoint_id']);
+
+        $mgrEarnedByUser = [];
+        foreach ($mgrProgress as $p) {
+            $uid = (int) $p->user_id;
+            $cid = (int) $p->designation_mgr_checkpoint_id;
+            $mgrEarnedByUser[$uid] = ($mgrEarnedByUser[$uid] ?? 0) + ($mgrWeightById[$cid] ?? 0);
+        }
+
+        // ---------------------- Assemble per-user CL R&R + CL Mgr ---------
+        // Need each user's designation for the denominator lookup.
+        $userDesignations = User::query()
+            ->whereIn('id', $userIds)
+            ->pluck('designation', 'id');
+
+        foreach ($userIds as $uid) {
+            $uid = (int) $uid;
+            $des = (string) ($userDesignations[$uid] ?? '');
+
+            // CL R&R
+            $rrTotal = (int) ($rrTotalByDesignation[$des] ?? 0);
+            if ($rrTotal > 0) {
+                $earned = (int) ($rrEarnedByUser[$uid] ?? 0);
+                $out[$uid]['clrr'] = (int) round(($earned / $rrTotal) * 100);
+            }
+
+            // CL Mgr (own %; the combined-with-juniors number lives in the modal).
+            $mgrTotal = (int) ($mgrTotalByDesignation[$des] ?? 0);
+            if ($mgrTotal > 0) {
+                $earned = (int) ($mgrEarnedByUser[$uid] ?? 0);
+                $out[$uid]['clmgr'] = (int) round(($earned / $mgrTotal) * 100);
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -649,13 +866,164 @@ class TaskController extends Controller
 
     /**
      * Task summary page (same data as {@see getTaskSummaryMemberRows()}).
+     *
+     * Row visibility is gated by the viewer's org_level (Task Summary
+     * "Role" column) — see {@see getTaskSummaryVisibleUserIds()}:
+     *  - Admin (system role) or Director → sees every row.
+     *  - Manager (org_level='mgr')        → sees self + their juniors only.
+     *  - Executive / no role              → sees only their own row.
+     *
+     * Also ships the manager_juniors pairs as $orgGraph so the front-end
+     * can rearrange the table into Director → Mgr → Exec hierarchy groups
+     * without a second round-trip. The graph is filtered to the same
+     * visible-user set so the hierarchy view never tries to render
+     * orphaned rows.
      */
     public function taskSummary()
     {
+        $viewer = Auth::user();
+        $visibleIds = $this->getTaskSummaryVisibleUserIds($viewer);
+
         $rows = $this->getTaskSummaryMemberRows();
+        if ($visibleIds !== null) {
+            $allowed = array_flip($visibleIds);
+            $rows = array_values(array_filter($rows, function (array $r) use ($allowed) {
+                return isset($allowed[(int) ($r['user_id'] ?? 0)]);
+            }));
+        }
+
         $taskDashboardStats = $this->getTaskDashboardAggregates();
 
-        return view('tasks.task-summary', compact('rows', 'taskDashboardStats'));
+        $orgGraphQuery = ManagerJunior::query();
+        if ($visibleIds !== null) {
+            $orgGraphQuery
+                ->whereIn('manager_user_id', $visibleIds)
+                ->whereIn('junior_user_id', $visibleIds);
+        }
+        $orgGraph = $orgGraphQuery
+            ->get(['manager_user_id', 'junior_user_id'])
+            ->map(function (ManagerJunior $r) {
+                return [
+                    'm' => (int) $r->manager_user_id,
+                    'j' => (int) $r->junior_user_id,
+                ];
+            })
+            ->values()
+            ->all();
+
+        $visibility = $this->describeTaskSummaryVisibility($viewer, $visibleIds, count($rows));
+        $canEditTags = $this->canEditOrgTags($viewer);
+
+        return view(
+            'tasks.task-summary',
+            compact('rows', 'taskDashboardStats', 'orgGraph', 'visibility', 'canEditTags')
+        );
+    }
+
+    /**
+     * Who is allowed to edit org tags from the Task Summary "Role" column?
+     *
+     * Per business rule: admins, anyone whose org_level is Director, and
+     * a designated user named "shobha" (matched on name or email). Everyone
+     * else sees the dropdown but not the Tags dot, so they can't reassign
+     * juniors.
+     */
+    protected function canEditOrgTags(?User $viewer): bool
+    {
+        if (! $viewer) {
+            return false;
+        }
+        if (strtolower((string) ($viewer->role ?? '')) === 'admin') {
+            return true;
+        }
+        if (strtolower((string) ($viewer->org_level ?? '')) === 'director') {
+            return true;
+        }
+        $name = strtolower((string) ($viewer->name ?? ''));
+        $email = strtolower((string) ($viewer->email ?? ''));
+        if (str_contains($name, 'shobha') || str_contains($email, 'shobha')) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Compute the set of user IDs visible to the current viewer for the
+     * Task Summary page.
+     *
+     * @return array<int,int>|null  null = no filter (admin / director).
+     */
+    protected function getTaskSummaryVisibleUserIds(?User $viewer): ?array
+    {
+        if (! $viewer) {
+            // No authenticated viewer (CLI / unusual context) — block all
+            // rows to fail safe; the auth middleware on the route should
+            // mean we never actually hit this in practice.
+            return [];
+        }
+
+        // Admin (system role) — global visibility, same as before.
+        if (strtolower((string) $viewer->role) === 'admin') {
+            return null;
+        }
+
+        $level = strtolower((string) ($viewer->org_level ?? ''));
+
+        if ($level === 'director') {
+            return null;
+        }
+
+        if ($level === 'mgr') {
+            $juniorIds = ManagerJunior::where('manager_user_id', $viewer->id)
+                ->pluck('junior_user_id')
+                ->map(fn ($v) => (int) $v)
+                ->all();
+
+            $ids = array_values(array_unique(array_merge([(int) $viewer->id], $juniorIds)));
+            return $ids;
+        }
+
+        // Exec / no role → see only self.
+        return [(int) $viewer->id];
+    }
+
+    /**
+     * Build a small descriptor the blade can use to render the visibility
+     * banner.  Returns an associative array with `scope` ('all'|'team'|'self'),
+     * a human label, the viewer name + role, and how many rows are shown.
+     *
+     * @return array{scope:string, label:string, role_label:string, viewer:?string, shown:int}
+     */
+    protected function describeTaskSummaryVisibility(?User $viewer, ?array $visibleIds, int $shown): array
+    {
+        if ($visibleIds === null) {
+            return [
+                'scope' => 'all',
+                'label' => 'Showing every team member.',
+                'role_label' => $viewer && strtolower((string) $viewer->role) === 'admin' ? 'Admin' : 'Director',
+                'viewer' => $viewer ? $viewer->name : null,
+                'shown' => $shown,
+            ];
+        }
+
+        $level = $viewer ? strtolower((string) ($viewer->org_level ?? '')) : '';
+        if ($level === 'mgr') {
+            return [
+                'scope' => 'team',
+                'label' => 'Showing your own row and the executives tagged to you (' . $shown . ').',
+                'role_label' => 'Manager',
+                'viewer' => $viewer ? $viewer->name : null,
+                'shown' => $shown,
+            ];
+        }
+
+        return [
+            'scope' => 'self',
+            'label' => 'Showing only your own row.',
+            'role_label' => $level === 'exec' ? 'Executive' : 'Team member',
+            'viewer' => $viewer ? $viewer->name : null,
+            'shown' => $shown,
+        ];
     }
 
     /**
@@ -3509,4 +3877,2214 @@ class TaskController extends Controller
         ]);
     }
 
+    /**
+     * ---------------------------------------------------------------------
+     * Designation-level R&R (Task Summary "R&R" magnifying-glass column)
+     * ---------------------------------------------------------------------
+     *
+     * The Task Summary R&R modal is keyed on the user's designation. All
+     * users sharing a designation see the same list of items (seeded by
+     * AI the first time a designation is opened, manually edited
+     * afterwards), but each user owns their own progress (status + note)
+     * on each item.
+     */
+
+    /**
+     * Return designation-level R&R items + the requested user's progress.
+     * Used by the Task Summary R&R modal as its primary data source.
+     */
+    public function getDesignationRR(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'nullable|integer|exists:users,id',
+            'user_email' => 'nullable|email',
+            'designation' => 'nullable|string|max:191',
+        ]);
+
+        $user = null;
+        if (! empty($validated['user_id'])) {
+            $user = User::find($validated['user_id']);
+        } elseif (! empty($validated['user_email'])) {
+            $user = User::where('email', $validated['user_email'])->first();
+        }
+
+        $designation = trim((string) ($validated['designation']
+            ?? ($user->designation ?? '')));
+
+        if ($designation === '') {
+            return response()->json([
+                'designation' => '',
+                'user' => $user ? [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'designation' => null,
+                ] : null,
+                'items' => [],
+                'needs_ai_seed' => false,
+                'message' => 'No designation set for this user. Set a designation on the user record first.',
+            ]);
+        }
+
+        $items = DesignationRrItem::where('designation', $designation)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        $progressByItem = [];
+        if ($user && $items->isNotEmpty()) {
+            $progressByItem = UserRrProgress::where('user_id', $user->id)
+                ->whereIn('designation_rr_item_id', $items->pluck('id'))
+                ->get()
+                ->keyBy('designation_rr_item_id');
+        }
+
+        $payload = $items->map(function (DesignationRrItem $item) use ($progressByItem, $user) {
+            $progress = $user
+                ? ($progressByItem[$item->id] ?? null)
+                : null;
+
+            return [
+                'id' => $item->id,
+                'title' => $item->title,
+                'description' => $item->description,
+                'sort_order' => $item->sort_order,
+                'source' => $item->source,
+                'status' => $progress ? $progress->status : UserRrProgress::STATUS_PENDING,
+                'note' => $progress ? $progress->note : null,
+                'done_at' => $progress && $progress->done_at ? $progress->done_at->toDateTimeString() : null,
+            ];
+        })->values();
+
+        $done = $payload->where('status', UserRrProgress::STATUS_DONE)->count();
+        $inProgress = $payload->where('status', UserRrProgress::STATUS_IN_PROGRESS)->count();
+        $total = $payload->count();
+
+        return response()->json([
+            'designation' => $designation,
+            'user' => $user ? [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'designation' => $user->designation,
+            ] : null,
+            'items' => $payload,
+            'needs_ai_seed' => $items->isEmpty(),
+            'progress' => [
+                'total' => $total,
+                'done' => $done,
+                'in_progress' => $inProgress,
+                'percent' => $total > 0 ? (int) round(($done / $total) * 100) : 0,
+            ],
+        ]);
+    }
+
+    /**
+     * Ask OpenAI for a starter list of R&R items for the given designation
+     * and persist them as `source = ai`. Idempotent: if items already exist
+     * for the designation we return the existing list untouched.
+     */
+    public function generateDesignationRR(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'designation' => 'required|string|max:191',
+        ]);
+
+        $designation = trim($validated['designation']);
+        if ($designation === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Designation is required.',
+            ], 422);
+        }
+
+        $existing = DesignationRrItem::where('designation', $designation)->count();
+        if ($existing > 0) {
+            return response()->json([
+                'success' => true,
+                'created' => 0,
+                'message' => 'R&R already exists for this designation.',
+            ]);
+        }
+
+        $generated = $this->generateRRViaOpenAi($designation);
+        if (empty($generated)) {
+            // AI failed (no key, network error, parse error). Fall back to
+            // a generic starter set so the UI never breaks.
+            $generated = $this->fallbackRRStarterSet($designation);
+        }
+
+        $createdById = optional(Auth::user())->id;
+        $rows = [];
+        foreach (array_values($generated) as $idx => $item) {
+            $title = trim((string) ($item['title'] ?? ''));
+            if ($title === '') {
+                continue;
+            }
+            $rows[] = DesignationRrItem::create([
+                'designation' => $designation,
+                'title' => mb_substr($title, 0, 500),
+                'description' => isset($item['description']) ? trim((string) $item['description']) : null,
+                'sort_order' => $idx + 1,
+                'source' => 'ai',
+                'created_by' => $createdById,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'created' => count($rows),
+            'designation' => $designation,
+        ]);
+    }
+
+    /**
+     * Add a single manual R&R item to a designation (from the modal "+" button).
+     */
+    public function addDesignationRRItem(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'designation' => 'required|string|max:191',
+            'title' => 'required|string|max:500',
+            'description' => 'nullable|string|max:2000',
+        ]);
+
+        $designation = trim($validated['designation']);
+        $nextOrder = (int) DesignationRrItem::where('designation', $designation)->max('sort_order') + 1;
+
+        $item = DesignationRrItem::create([
+            'designation' => $designation,
+            'title' => trim($validated['title']),
+            'description' => isset($validated['description']) ? trim($validated['description']) : null,
+            'sort_order' => $nextOrder,
+            'source' => 'manual',
+            'created_by' => optional(Auth::user())->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'item' => [
+                'id' => $item->id,
+                'title' => $item->title,
+                'description' => $item->description,
+                'sort_order' => $item->sort_order,
+                'source' => $item->source,
+                'status' => UserRrProgress::STATUS_PENDING,
+                'note' => null,
+                'done_at' => null,
+            ],
+        ]);
+    }
+
+    /**
+     * Delete an R&R item from a designation. Cascades user progress rows.
+     */
+    public function deleteDesignationRRItem(int $id): JsonResponse
+    {
+        $item = DesignationRrItem::findOrFail($id);
+        $item->delete();
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Append a snapshot row to user_score_history for one (user, score_type).
+     *
+     * Called from the three CL toggle endpoints right after a successful
+     * write so the lifetime-graph dot has fresh data with no cron / job.
+     */
+    protected function snapshotUserScore(int $userId, string $scoreType, int $percent): void
+    {
+        $percent = max(0, min(100, (int) $percent));
+        try {
+            UserScoreHistory::create([
+                'user_id' => $userId,
+                'score_type' => $scoreType,
+                'percent' => $percent,
+                'captured_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            // Never break a toggle save because of history-snapshot issues.
+            \Log::warning('snapshotUserScore failed', [
+                'user_id' => $userId,
+                'score_type' => $scoreType,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Update a user's progress on a single R&R item (pending / in_progress / done).
+     * Used both when toggling status and when saving the per-item note.
+     */
+    public function updateUserRRProgress(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'designation_rr_item_id' => 'required|integer|exists:designation_rr_items,id',
+            'status' => ['nullable', Rule::in(UserRrProgress::STATUSES)],
+            'note' => 'nullable|string|max:2000',
+        ]);
+
+        $payload = [];
+        if (array_key_exists('status', $validated) && $validated['status'] !== null) {
+            $payload['status'] = $validated['status'];
+            $payload['done_at'] = $validated['status'] === UserRrProgress::STATUS_DONE ? now() : null;
+        }
+        if (array_key_exists('note', $validated)) {
+            $payload['note'] = $validated['note'];
+        }
+
+        if (empty($payload)) {
+            return response()->json(['success' => false, 'message' => 'Nothing to update.'], 422);
+        }
+
+        $progress = UserRrProgress::updateOrCreate(
+            [
+                'user_id' => $validated['user_id'],
+                'designation_rr_item_id' => $validated['designation_rr_item_id'],
+            ],
+            $payload
+        );
+
+        return response()->json([
+            'success' => true,
+            'progress' => [
+                'id' => $progress->id,
+                'status' => $progress->status,
+                'note' => $progress->note,
+                'done_at' => $progress->done_at ? $progress->done_at->toDateTimeString() : null,
+            ],
+        ]);
+    }
+
+    /**
+     * Call OpenAI chat completions for a JSON list of R&R bullets tailored
+     * to the given designation. Returns an array of ['title' => ..., 'description' => ...]
+     * or [] when the call fails for any reason (no key, network, bad JSON).
+     *
+     * @return array<int, array{title: string, description?: string|null}>
+     */
+    protected function generateRRViaOpenAi(string $designation): array
+    {
+        $headers = OpenAiRequest::authHeaders();
+        if (empty($headers)) {
+            \Log::warning('Designation R&R: OpenAI key missing, falling back to starter set.');
+            return [];
+        }
+
+        $model = (string) config('services.openai.title_master_stack_model', 'gpt-4o-mini');
+
+        $system = 'You are an HR + operations expert. Given a job designation, produce a concise, '
+            . 'practical list of 8 to 12 day-to-day Roles & Responsibilities. Each item must be '
+            . 'action-oriented (start with a verb), specific to the role, and trackable so a manager '
+            . 'can mark it Done. Return ONLY valid JSON with this exact shape: '
+            . '{"items":[{"title":"string (<=120 chars)","description":"string (<=240 chars, optional context)"}]}';
+
+        $user = "Designation: {$designation}\nGenerate the R&R list for this designation.";
+
+        try {
+            $response = Http::withHeaders($headers)
+                ->timeout(60)
+                ->post('https://api.openai.com/v1/chat/completions', [
+                    'model' => $model,
+                    'temperature' => 0.3,
+                    'response_format' => ['type' => 'json_object'],
+                    'messages' => [
+                        ['role' => 'system', 'content' => $system],
+                        ['role' => 'user', 'content' => $user],
+                    ],
+                ]);
+
+            if (! $response->successful()) {
+                \Log::warning('Designation R&R: OpenAI HTTP error', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                return [];
+            }
+
+            $text = (string) ($response->json('choices.0.message.content') ?? '');
+            $text = trim($text);
+            // Defensive: strip code fences if model ignored response_format.
+            $text = preg_replace('/^```(?:json)?\s*/i', '', $text);
+            $text = preg_replace('/\s*```$/', '', $text);
+
+            $decoded = json_decode($text, true);
+            if (! is_array($decoded)) {
+                \Log::warning('Designation R&R: OpenAI returned non-JSON', ['text' => $text]);
+                return [];
+            }
+
+            $items = $decoded['items'] ?? $decoded;
+            if (! is_array($items)) {
+                return [];
+            }
+
+            $clean = [];
+            foreach ($items as $row) {
+                if (is_string($row)) {
+                    $clean[] = ['title' => $row, 'description' => null];
+                    continue;
+                }
+                if (! is_array($row)) {
+                    continue;
+                }
+                $title = trim((string) ($row['title'] ?? $row['name'] ?? $row['responsibility'] ?? ''));
+                if ($title === '') {
+                    continue;
+                }
+                $clean[] = [
+                    'title' => $title,
+                    'description' => isset($row['description']) ? trim((string) $row['description']) : null,
+                ];
+            }
+
+            return $clean;
+        } catch (\Throwable $e) {
+            \Log::error('Designation R&R: OpenAI call failed', ['message' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * Generic starter R&R used when AI is unavailable so the modal always
+     * has something to show on first open.
+     *
+     * @return array<int, array{title: string, description: string|null}>
+     */
+    protected function fallbackRRStarterSet(string $designation): array
+    {
+        return [
+            ['title' => 'Define daily / weekly priorities for the ' . $designation . ' role', 'description' => null],
+            ['title' => 'Own deliverables and report progress to the reporting manager', 'description' => null],
+            ['title' => 'Collaborate with cross-functional teams to unblock dependencies', 'description' => null],
+            ['title' => 'Maintain documentation / SOPs for repeatable tasks', 'description' => null],
+            ['title' => 'Identify process improvements and raise them to the team lead', 'description' => null],
+            ['title' => 'Respond to escalations within the agreed SLA', 'description' => null],
+        ];
+    }
+
+    /**
+     * ---------------------------------------------------------------------
+     * CL R&R — Checklist of checkpoints under each designation R&R item
+     * ---------------------------------------------------------------------
+     *
+     * Sits one level under {@see getDesignationRR()}: every R&R item gets
+     * a set of weighted checkpoints (AI-seeded, manually editable). A
+     * user's progress is the boolean check state on each checkpoint, which
+     * is then rolled up via weightages into per-item and overall scores.
+     *
+     * Score formula
+     * -------------
+     *  item_score    = sum(weightage of checked checkpoints in item)
+     *                / sum(weightage of all checkpoints in item) * 100
+     *  overall_score = sum(weightage of checked checkpoints across all items)
+     *                / sum(weightage of all checkpoints across all items) * 100
+     */
+
+    /**
+     * Return the full checklist payload for a user: every R&R item with
+     * its checkpoints, the user's check state, and per-item + overall scores.
+     */
+    public function getDesignationChecklist(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'nullable|integer|exists:users,id',
+            'designation' => 'nullable|string|max:191',
+        ]);
+
+        $user = null;
+        if (! empty($validated['user_id'])) {
+            $user = User::find($validated['user_id']);
+        }
+
+        $designation = trim((string) ($validated['designation']
+            ?? ($user->designation ?? '')));
+
+        if ($designation === '') {
+            return response()->json([
+                'designation' => '',
+                'user' => $user ? ['id' => $user->id, 'name' => $user->name, 'email' => $user->email, 'designation' => null] : null,
+                'items' => [],
+                'needs_rr_seed' => true,
+                'needs_checklist_seed' => false,
+                'message' => 'No designation set for this user. Set a designation on the user record first.',
+                'overall' => ['percent' => 0, 'earned' => 0, 'total' => 0, 'checked' => 0, 'count' => 0],
+            ]);
+        }
+
+        $items = DesignationRrItem::with('checkpoints')
+            ->where('designation', $designation)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        if ($items->isEmpty()) {
+            // The R&R hasn't been seeded yet — the CL R&R modal will prompt
+            // the user to open the R&R modal first.
+            return response()->json([
+                'designation' => $designation,
+                'user' => $user ? ['id' => $user->id, 'name' => $user->name, 'email' => $user->email, 'designation' => $user->designation] : null,
+                'items' => [],
+                'needs_rr_seed' => true,
+                'needs_checklist_seed' => false,
+                'overall' => ['percent' => 0, 'earned' => 0, 'total' => 0, 'checked' => 0, 'count' => 0],
+            ]);
+        }
+
+        return response()->json(
+            $this->buildRRChecklistPayload($designation, $items, $user)
+        );
+    }
+
+    /**
+     * Build the full checklist response payload — used both by the GET
+     * endpoint and after AI generation so the modal can hot-swap state.
+     */
+    protected function buildRRChecklistPayload(string $designation, $items, ?User $user): array
+    {
+        // Pre-fetch progress in one query keyed by checkpoint id.
+        $progressByCheckpoint = collect();
+        if ($user) {
+            $checkpointIds = $items->flatMap(function (DesignationRrItem $i) {
+                return $i->checkpoints->pluck('id');
+            });
+            if ($checkpointIds->isNotEmpty()) {
+                $progressByCheckpoint = UserRrCheckpointProgress::where('user_id', $user->id)
+                    ->whereIn('designation_rr_checkpoint_id', $checkpointIds)
+                    ->get()
+                    ->keyBy('designation_rr_checkpoint_id');
+            }
+        }
+
+        $overallEarned = 0;
+        $overallTotal = 0;
+        $overallChecked = 0;
+        $overallCount = 0;
+        $needsChecklistSeed = false;
+
+        $itemRows = $items->map(function (DesignationRrItem $item) use ($progressByCheckpoint, &$overallEarned, &$overallTotal, &$overallChecked, &$overallCount, &$needsChecklistSeed) {
+            $itemTotal = 0;
+            $itemEarned = 0;
+            $itemChecked = 0;
+            if ($item->checkpoints->isEmpty()) {
+                $needsChecklistSeed = true;
+            }
+
+            $checkpoints = $item->checkpoints->map(function (DesignationRrCheckpoint $cp) use ($progressByCheckpoint, &$itemTotal, &$itemEarned, &$itemChecked) {
+                $weight = max(1, (int) $cp->weightage);
+                $progress = $progressByCheckpoint->get($cp->id);
+                $checked = $progress ? (bool) $progress->checked : false;
+                $itemTotal += $weight;
+                if ($checked) {
+                    $itemEarned += $weight;
+                    $itemChecked++;
+                }
+                return [
+                    'id' => $cp->id,
+                    'title' => $cp->title,
+                    'description' => $cp->description,
+                    'weightage' => $weight,
+                    'sort_order' => $cp->sort_order,
+                    'source' => $cp->source,
+                    'checked' => $checked,
+                    'note' => $progress ? $progress->note : null,
+                    'checked_at' => $progress && $progress->checked_at ? $progress->checked_at->toDateTimeString() : null,
+                ];
+            })->values();
+
+            $overallEarned += $itemEarned;
+            $overallTotal += $itemTotal;
+            $overallChecked += $itemChecked;
+            $overallCount += $item->checkpoints->count();
+
+            return [
+                'id' => $item->id,
+                'title' => $item->title,
+                'description' => $item->description,
+                'sort_order' => $item->sort_order,
+                'checkpoints' => $checkpoints,
+                'score' => [
+                    'percent' => $itemTotal > 0 ? (int) round(($itemEarned / $itemTotal) * 100) : 0,
+                    'earned' => $itemEarned,
+                    'total' => $itemTotal,
+                    'checked' => $itemChecked,
+                    'count' => $item->checkpoints->count(),
+                ],
+            ];
+        })->values();
+
+        return [
+            'designation' => $designation,
+            'user' => $user ? [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'designation' => $user->designation,
+            ] : null,
+            'items' => $itemRows,
+            'needs_rr_seed' => false,
+            'needs_checklist_seed' => $needsChecklistSeed,
+            'overall' => [
+                'percent' => $overallTotal > 0 ? (int) round(($overallEarned / $overallTotal) * 100) : 0,
+                'earned' => $overallEarned,
+                'total' => $overallTotal,
+                'checked' => $overallChecked,
+                'count' => $overallCount,
+            ],
+        ];
+    }
+
+    /**
+     * Ask AI for checkpoint sets per R&R item in a designation.
+     *
+     * Body params:
+     *  - designation (required)
+     *  - item_id     (optional) — regenerate just this single R&R item
+     *  - force       (optional bool) — wipe existing checkpoints first (refresh)
+     */
+    public function generateDesignationChecklist(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'designation' => 'required|string|max:191',
+            'item_id' => 'nullable|integer|exists:designation_rr_items,id',
+            'force' => 'nullable|boolean',
+        ]);
+
+        $designation = trim($validated['designation']);
+        $force = (bool) ($validated['force'] ?? false);
+
+        $itemsQuery = DesignationRrItem::where('designation', $designation);
+        if (! empty($validated['item_id'])) {
+            $itemsQuery->where('id', $validated['item_id']);
+        }
+        $items = $itemsQuery->orderBy('sort_order')->orderBy('id')->get();
+
+        if ($items->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No R&R items found for this designation. Open the R&R modal first to seed them.',
+            ], 422);
+        }
+
+        $totalCreated = 0;
+        foreach ($items as $item) {
+            $existing = $item->checkpoints()->count();
+            if ($existing > 0 && ! $force) {
+                continue; // Don't duplicate; refresh requires force=true.
+            }
+            if ($force && $existing > 0) {
+                $item->checkpoints()->delete();
+            }
+
+            $generated = $this->generateChecklistViaOpenAi($designation, $item->title, $item->description);
+            if (empty($generated)) {
+                $generated = $this->fallbackChecklistStarterSet($item->title);
+            }
+
+            $createdById = optional(Auth::user())->id;
+            foreach (array_values($generated) as $idx => $cp) {
+                $title = trim((string) ($cp['title'] ?? ''));
+                if ($title === '') {
+                    continue;
+                }
+                $weight = (int) ($cp['weightage'] ?? 1);
+                $weight = max(1, min(10, $weight));
+                DesignationRrCheckpoint::create([
+                    'designation_rr_item_id' => $item->id,
+                    'title' => mb_substr($title, 0, 500),
+                    'description' => isset($cp['description']) ? trim((string) $cp['description']) : null,
+                    'weightage' => $weight,
+                    'sort_order' => $idx + 1,
+                    'source' => 'ai',
+                    'created_by' => $createdById,
+                ]);
+                $totalCreated++;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'created' => $totalCreated,
+            'designation' => $designation,
+        ]);
+    }
+
+    /**
+     * Add a single manual checkpoint to a designation R&R item.
+     */
+    public function addDesignationChecklistItem(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'designation_rr_item_id' => 'required|integer|exists:designation_rr_items,id',
+            'title' => 'required|string|max:500',
+            'description' => 'nullable|string|max:2000',
+            'weightage' => 'nullable|integer|min:1|max:10',
+        ]);
+
+        $itemId = (int) $validated['designation_rr_item_id'];
+        $nextOrder = (int) DesignationRrCheckpoint::where('designation_rr_item_id', $itemId)->max('sort_order') + 1;
+
+        $cp = DesignationRrCheckpoint::create([
+            'designation_rr_item_id' => $itemId,
+            'title' => trim($validated['title']),
+            'description' => isset($validated['description']) ? trim($validated['description']) : null,
+            'weightage' => (int) ($validated['weightage'] ?? 1),
+            'sort_order' => $nextOrder,
+            'source' => 'manual',
+            'created_by' => optional(Auth::user())->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'checkpoint' => [
+                'id' => $cp->id,
+                'designation_rr_item_id' => $cp->designation_rr_item_id,
+                'title' => $cp->title,
+                'description' => $cp->description,
+                'weightage' => $cp->weightage,
+                'sort_order' => $cp->sort_order,
+                'source' => $cp->source,
+                'checked' => false,
+                'note' => null,
+                'checked_at' => null,
+            ],
+        ]);
+    }
+
+    /**
+     * Delete a CL R&R checkpoint. Cascades user check progress.
+     */
+    public function deleteDesignationChecklistItem(int $id): JsonResponse
+    {
+        $cp = DesignationRrCheckpoint::findOrFail($id);
+        $cp->delete();
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Update the checkpoint's weightage (1–10) from the modal.
+     */
+    public function updateDesignationChecklistItem(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'weightage' => 'nullable|integer|min:1|max:10',
+            'title' => 'nullable|string|max:500',
+        ]);
+
+        $cp = DesignationRrCheckpoint::findOrFail($id);
+        if (array_key_exists('weightage', $validated) && $validated['weightage'] !== null) {
+            $cp->weightage = max(1, min(10, (int) $validated['weightage']));
+        }
+        if (array_key_exists('title', $validated) && $validated['title'] !== null && trim($validated['title']) !== '') {
+            $cp->title = trim($validated['title']);
+        }
+        $cp->save();
+
+        return response()->json([
+            'success' => true,
+            'checkpoint' => [
+                'id' => $cp->id,
+                'weightage' => $cp->weightage,
+                'title' => $cp->title,
+            ],
+        ]);
+    }
+
+    /**
+     * Upsert a user's check state for one checkpoint.
+     */
+    public function toggleUserChecklistProgress(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'designation_rr_checkpoint_id' => 'required|integer|exists:designation_rr_checkpoints,id',
+            'checked' => 'required|boolean',
+            'note' => 'nullable|string|max:2000',
+        ]);
+
+        $progress = UserRrCheckpointProgress::updateOrCreate(
+            [
+                'user_id' => $validated['user_id'],
+                'designation_rr_checkpoint_id' => $validated['designation_rr_checkpoint_id'],
+            ],
+            [
+                'checked' => (bool) $validated['checked'],
+                'checked_at' => $validated['checked'] ? now() : null,
+                'note' => $validated['note'] ?? null,
+            ]
+        );
+
+        $user = User::find($validated['user_id']);
+        if ($user) {
+            $this->snapshotUserScore(
+                (int) $user->id,
+                UserScoreHistory::TYPE_CLRR,
+                $this->computeUserClrrPercent($user)
+            );
+        }
+
+        return response()->json([
+            'success' => true,
+            'progress' => [
+                'id' => $progress->id,
+                'checked' => $progress->checked,
+                'note' => $progress->note,
+                'checked_at' => $progress->checked_at ? $progress->checked_at->toDateTimeString() : null,
+            ],
+        ]);
+    }
+
+    /**
+     * Ask OpenAI for 4–8 weighted checkpoints under one R&R item.
+     *
+     * @return array<int, array{title: string, description?: string|null, weightage?: int}>
+     */
+    protected function generateChecklistViaOpenAi(string $designation, string $rrTitle, ?string $rrDescription = null): array
+    {
+        $headers = OpenAiRequest::authHeaders();
+        if (empty($headers)) {
+            \Log::warning('CL R&R: OpenAI key missing, falling back to starter set.');
+            return [];
+        }
+
+        $model = (string) config('services.openai.title_master_stack_model', 'gpt-4o-mini');
+
+        $system = 'You build evaluation checklists. Given a job designation and ONE Roles & Responsibilities '
+            . 'item, produce 4 to 8 concrete, observable checkpoints a manager can tick off to confirm the '
+            . 'person is meeting the responsibility. Each checkpoint must be action-oriented (start with a verb), '
+            . 'unambiguous, and individually verifiable. Assign each a weightage 1–10 reflecting relative '
+            . 'importance (10 = critical, 1 = nice-to-have); higher weightage = bigger contribution to the score. '
+            . 'Return ONLY valid JSON: '
+            . '{"checkpoints":[{"title":"string (<=140 chars)","description":"string (<=200 chars, optional)","weightage":1-10}]}';
+
+        $userMsg = "Designation: {$designation}\nR&R item: {$rrTitle}";
+        if ($rrDescription) {
+            $userMsg .= "\nR&R description: {$rrDescription}";
+        }
+        $userMsg .= "\nGenerate the evaluation checklist.";
+
+        try {
+            $response = Http::withHeaders($headers)
+                ->timeout(60)
+                ->post('https://api.openai.com/v1/chat/completions', [
+                    'model' => $model,
+                    'temperature' => 0.3,
+                    'response_format' => ['type' => 'json_object'],
+                    'messages' => [
+                        ['role' => 'system', 'content' => $system],
+                        ['role' => 'user', 'content' => $userMsg],
+                    ],
+                ]);
+
+            if (! $response->successful()) {
+                \Log::warning('CL R&R: OpenAI HTTP error', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                return [];
+            }
+
+            $text = trim((string) ($response->json('choices.0.message.content') ?? ''));
+            $text = preg_replace('/^```(?:json)?\s*/i', '', $text);
+            $text = preg_replace('/\s*```$/', '', $text);
+
+            $decoded = json_decode($text, true);
+            if (! is_array($decoded)) {
+                \Log::warning('CL R&R: OpenAI returned non-JSON', ['text' => $text]);
+                return [];
+            }
+
+            $rows = $decoded['checkpoints'] ?? $decoded;
+            if (! is_array($rows)) {
+                return [];
+            }
+
+            $clean = [];
+            foreach ($rows as $row) {
+                if (is_string($row)) {
+                    $clean[] = ['title' => $row, 'weightage' => 1];
+                    continue;
+                }
+                if (! is_array($row)) {
+                    continue;
+                }
+                $title = trim((string) ($row['title'] ?? $row['name'] ?? $row['checkpoint'] ?? ''));
+                if ($title === '') {
+                    continue;
+                }
+                $clean[] = [
+                    'title' => $title,
+                    'description' => isset($row['description']) ? trim((string) $row['description']) : null,
+                    'weightage' => isset($row['weightage']) ? (int) $row['weightage'] : 1,
+                ];
+            }
+            return $clean;
+        } catch (\Throwable $e) {
+            \Log::error('CL R&R: OpenAI call failed', ['message' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * Generic checklist starter when AI is unavailable.
+     *
+     * @return array<int, array{title: string, weightage: int}>
+     */
+    protected function fallbackChecklistStarterSet(string $rrTitle): array
+    {
+        return [
+            ['title' => 'Document the standard operating procedure for: ' . $rrTitle, 'weightage' => 3],
+            ['title' => 'Demonstrate the activity end-to-end with the reporting manager', 'weightage' => 5],
+            ['title' => 'Track progress / output in the agreed tracker (sheet / tool)', 'weightage' => 4],
+            ['title' => 'Report blockers within 24 hours of identifying them', 'weightage' => 3],
+            ['title' => 'Review outcomes weekly and propose at least one improvement', 'weightage' => 2],
+        ];
+    }
+
+    /**
+     * ---------------------------------------------------------------------
+     * CL Gen — Global checklist applied to every team member
+     * ---------------------------------------------------------------------
+     *
+     * One shared list (attendance, communication, helpfulness, ETC/ATC,
+     * overdues, TAT etc.) seeded by AI on first open. Each user owns their
+     * own boolean check state per item; weightages roll up into a single
+     * "General score" per user.
+     *
+     * Score formula
+     * -------------
+     *  general_score = sum(weightage of checked items)
+     *                / sum(weightage of all items) * 100
+     */
+
+    /**
+     * Return the global checklist + the given user's check state + score.
+     */
+    public function getGeneralChecklist(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'nullable|integer|exists:users,id',
+        ]);
+
+        $user = ! empty($validated['user_id']) ? User::find($validated['user_id']) : null;
+
+        $items = GeneralChecklistItem::orderBy('sort_order')->orderBy('id')->get();
+
+        return response()->json(
+            $this->buildGeneralChecklistPayload($items, $user)
+        );
+    }
+
+    /**
+     * Build the General checklist payload (used both by GET and after AI seed).
+     */
+    protected function buildGeneralChecklistPayload($items, ?User $user): array
+    {
+        $progressByItem = collect();
+        if ($user && $items->isNotEmpty()) {
+            $progressByItem = UserGeneralChecklistProgress::where('user_id', $user->id)
+                ->whereIn('general_checklist_item_id', $items->pluck('id'))
+                ->get()
+                ->keyBy('general_checklist_item_id');
+        }
+
+        $earned = 0;
+        $total = 0;
+        $checkedCount = 0;
+        $rows = $items->map(function (GeneralChecklistItem $item) use ($progressByItem, &$earned, &$total, &$checkedCount) {
+            $weight = max(1, (int) $item->weightage);
+            $progress = $progressByItem->get($item->id);
+            $checked = $progress ? (bool) $progress->checked : false;
+            $total += $weight;
+            if ($checked) {
+                $earned += $weight;
+                $checkedCount++;
+            }
+            return [
+                'id' => $item->id,
+                'category' => $item->category,
+                'title' => $item->title,
+                'description' => $item->description,
+                'weightage' => $weight,
+                'sort_order' => $item->sort_order,
+                'source' => $item->source,
+                'checked' => $checked,
+                'note' => $progress ? $progress->note : null,
+                'checked_at' => $progress && $progress->checked_at ? $progress->checked_at->toDateTimeString() : null,
+            ];
+        })->values();
+
+        return [
+            'user' => $user ? [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'designation' => $user->designation,
+            ] : null,
+            'items' => $rows,
+            'needs_seed' => $items->isEmpty(),
+            'score' => [
+                'percent' => $total > 0 ? (int) round(($earned / $total) * 100) : 0,
+                'earned' => $earned,
+                'total' => $total,
+                'checked' => $checkedCount,
+                'count' => $rows->count(),
+            ],
+        ];
+    }
+
+    /**
+     * Ask AI for a starter global checklist applicable to every team member.
+     *
+     * Body params:
+     *  - force (optional bool) — wipe existing checklist and re-seed.
+     */
+    public function generateGeneralChecklist(Request $request): JsonResponse
+    {
+        $force = (bool) $request->input('force', false);
+        $existing = GeneralChecklistItem::count();
+        if ($existing > 0 && ! $force) {
+            return response()->json([
+                'success' => true,
+                'created' => 0,
+                'message' => 'General checklist already exists.',
+            ]);
+        }
+        if ($force && $existing > 0) {
+            GeneralChecklistItem::query()->delete();
+        }
+
+        $generated = $this->generateGeneralChecklistViaOpenAi();
+        if (empty($generated)) {
+            $generated = $this->fallbackGeneralChecklistStarterSet();
+        }
+
+        $createdById = optional(Auth::user())->id;
+        $created = 0;
+        foreach (array_values($generated) as $idx => $row) {
+            $title = trim((string) ($row['title'] ?? ''));
+            if ($title === '') {
+                continue;
+            }
+            $weight = (int) ($row['weightage'] ?? 1);
+            $weight = max(1, min(10, $weight));
+            GeneralChecklistItem::create([
+                'category' => isset($row['category']) ? mb_substr(trim((string) $row['category']), 0, 100) : null,
+                'title' => mb_substr($title, 0, 500),
+                'description' => isset($row['description']) ? trim((string) $row['description']) : null,
+                'weightage' => $weight,
+                'sort_order' => $idx + 1,
+                'source' => 'ai',
+                'created_by' => $createdById,
+            ]);
+            $created++;
+        }
+
+        return response()->json([
+            'success' => true,
+            'created' => $created,
+        ]);
+    }
+
+    /**
+     * Add a manual checkpoint to the global checklist.
+     */
+    public function addGeneralChecklistItem(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => 'required|string|max:500',
+            'category' => 'nullable|string|max:100',
+            'description' => 'nullable|string|max:2000',
+            'weightage' => 'nullable|integer|min:1|max:10',
+        ]);
+
+        $nextOrder = (int) GeneralChecklistItem::max('sort_order') + 1;
+
+        $item = GeneralChecklistItem::create([
+            'category' => isset($validated['category']) ? trim($validated['category']) : null,
+            'title' => trim($validated['title']),
+            'description' => isset($validated['description']) ? trim($validated['description']) : null,
+            'weightage' => (int) ($validated['weightage'] ?? 1),
+            'sort_order' => $nextOrder,
+            'source' => 'manual',
+            'created_by' => optional(Auth::user())->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'item' => [
+                'id' => $item->id,
+                'category' => $item->category,
+                'title' => $item->title,
+                'description' => $item->description,
+                'weightage' => $item->weightage,
+                'sort_order' => $item->sort_order,
+                'source' => $item->source,
+                'checked' => false,
+                'note' => null,
+                'checked_at' => null,
+            ],
+        ]);
+    }
+
+    /**
+     * Update weightage (and/or title/category) of a single general item.
+     */
+    public function updateGeneralChecklistItem(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => 'nullable|string|max:500',
+            'category' => 'nullable|string|max:100',
+            'weightage' => 'nullable|integer|min:1|max:10',
+        ]);
+
+        $item = GeneralChecklistItem::findOrFail($id);
+        if (array_key_exists('title', $validated) && $validated['title'] !== null && trim($validated['title']) !== '') {
+            $item->title = trim($validated['title']);
+        }
+        if (array_key_exists('category', $validated)) {
+            $item->category = $validated['category'] !== null ? trim($validated['category']) : null;
+        }
+        if (array_key_exists('weightage', $validated) && $validated['weightage'] !== null) {
+            $item->weightage = max(1, min(10, (int) $validated['weightage']));
+        }
+        $item->save();
+
+        return response()->json([
+            'success' => true,
+            'item' => [
+                'id' => $item->id,
+                'category' => $item->category,
+                'title' => $item->title,
+                'weightage' => $item->weightage,
+            ],
+        ]);
+    }
+
+    /**
+     * Delete a general checklist item (cascades user progress).
+     */
+    public function deleteGeneralChecklistItem(int $id): JsonResponse
+    {
+        $item = GeneralChecklistItem::findOrFail($id);
+        $item->delete();
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Upsert a user's check state for one general item.
+     */
+    public function toggleUserGeneralChecklistProgress(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'general_checklist_item_id' => 'required|integer|exists:general_checklist_items,id',
+            'checked' => 'required|boolean',
+            'note' => 'nullable|string|max:2000',
+        ]);
+
+        $progress = UserGeneralChecklistProgress::updateOrCreate(
+            [
+                'user_id' => $validated['user_id'],
+                'general_checklist_item_id' => $validated['general_checklist_item_id'],
+            ],
+            [
+                'checked' => (bool) $validated['checked'],
+                'checked_at' => $validated['checked'] ? now() : null,
+                'note' => $validated['note'] ?? null,
+            ]
+        );
+
+        $user = User::find($validated['user_id']);
+        if ($user) {
+            $this->snapshotUserScore(
+                (int) $user->id,
+                UserScoreHistory::TYPE_CLGEN,
+                $this->computeUserClGenPercent($user)
+            );
+        }
+
+        return response()->json([
+            'success' => true,
+            'progress' => [
+                'id' => $progress->id,
+                'checked' => $progress->checked,
+                'note' => $progress->note,
+                'checked_at' => $progress->checked_at ? $progress->checked_at->toDateTimeString() : null,
+            ],
+        ]);
+    }
+
+    /**
+     * Ask OpenAI for a starter global checklist applicable to every team member.
+     *
+     * @return array<int, array{title: string, description?: string|null, weightage?: int, category?: string|null}>
+     */
+    protected function generateGeneralChecklistViaOpenAi(): array
+    {
+        $headers = OpenAiRequest::authHeaders();
+        if (empty($headers)) {
+            \Log::warning('CL Gen: OpenAI key missing, falling back to starter set.');
+            return [];
+        }
+
+        $model = (string) config('services.openai.title_master_stack_model', 'gpt-4o-mini');
+
+        $system = 'You are a performance / HR expert. Produce a single comprehensive evaluation checklist '
+            . 'that applies to EVERY team member regardless of designation. Cover at minimum: Attendance & '
+            . 'Punctuality, Communication, Helpfulness to colleagues/seniors/juniors, ETC vs ATC accuracy '
+            . '(estimated vs actual time), Overdues average, TAT (turn-around time) average, ownership, '
+            . 'documentation, learning / training, escalation discipline. 12 to 18 items total. '
+            . 'Each item: action-oriented, individually verifiable (a manager should be able to mark it '
+            . 'Done or Not yet). Assign each a weightage 1–10 (10 = most critical) and a short category '
+            . '(e.g. "Attendance", "Communication", "Productivity", "Quality", "Teamwork", "Learning"). '
+            . 'Return ONLY valid JSON: '
+            . '{"items":[{"category":"string","title":"string (<=140 chars)","description":"string (<=200 chars, optional)","weightage":1-10}]}';
+
+        $userMsg = 'Generate the global team-wide evaluation checklist now.';
+
+        try {
+            $response = Http::withHeaders($headers)
+                ->timeout(90)
+                ->post('https://api.openai.com/v1/chat/completions', [
+                    'model' => $model,
+                    'temperature' => 0.3,
+                    'response_format' => ['type' => 'json_object'],
+                    'messages' => [
+                        ['role' => 'system', 'content' => $system],
+                        ['role' => 'user', 'content' => $userMsg],
+                    ],
+                ]);
+
+            if (! $response->successful()) {
+                \Log::warning('CL Gen: OpenAI HTTP error', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                return [];
+            }
+
+            $text = trim((string) ($response->json('choices.0.message.content') ?? ''));
+            $text = preg_replace('/^```(?:json)?\s*/i', '', $text);
+            $text = preg_replace('/\s*```$/', '', $text);
+
+            $decoded = json_decode($text, true);
+            if (! is_array($decoded)) {
+                \Log::warning('CL Gen: OpenAI returned non-JSON', ['text' => $text]);
+                return [];
+            }
+
+            $rows = $decoded['items'] ?? $decoded;
+            if (! is_array($rows)) {
+                return [];
+            }
+
+            $clean = [];
+            foreach ($rows as $row) {
+                if (is_string($row)) {
+                    $clean[] = ['title' => $row, 'weightage' => 1, 'category' => null];
+                    continue;
+                }
+                if (! is_array($row)) {
+                    continue;
+                }
+                $title = trim((string) ($row['title'] ?? $row['name'] ?? ''));
+                if ($title === '') {
+                    continue;
+                }
+                $clean[] = [
+                    'title' => $title,
+                    'category' => isset($row['category']) ? trim((string) $row['category']) : null,
+                    'description' => isset($row['description']) ? trim((string) $row['description']) : null,
+                    'weightage' => isset($row['weightage']) ? (int) $row['weightage'] : 1,
+                ];
+            }
+            return $clean;
+        } catch (\Throwable $e) {
+            \Log::error('CL Gen: OpenAI call failed', ['message' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * Generic team-wide checklist starter when AI is unavailable.
+     *
+     * @return array<int, array{title: string, weightage: int, category: string}>
+     */
+    protected function fallbackGeneralChecklistStarterSet(): array
+    {
+        return [
+            ['category' => 'Attendance', 'title' => 'On-time arrival ≥ 95% in last 30 days', 'weightage' => 8],
+            ['category' => 'Attendance', 'title' => 'No unplanned absences in last 30 days', 'weightage' => 6],
+            ['category' => 'Communication', 'title' => 'Responds to messages within 2 working hours', 'weightage' => 7],
+            ['category' => 'Communication', 'title' => 'Status updates posted daily on tasks in progress', 'weightage' => 6],
+            ['category' => 'Teamwork', 'title' => 'Helps colleagues / juniors at least twice a week', 'weightage' => 6],
+            ['category' => 'Teamwork', 'title' => 'Supports seniors when extra workload arises', 'weightage' => 5],
+            ['category' => 'Productivity', 'title' => 'ETC vs ATC variance within ±20% on most tasks', 'weightage' => 8],
+            ['category' => 'Productivity', 'title' => 'Overdue tasks count < 5 at any time', 'weightage' => 9],
+            ['category' => 'Productivity', 'title' => 'Average TAT within team target', 'weightage' => 8],
+            ['category' => 'Quality', 'title' => 'Rework rate < 10% in last 30 days', 'weightage' => 6],
+            ['category' => 'Quality', 'title' => 'Documentation / SOP updates owned for each completed task', 'weightage' => 4],
+            ['category' => 'Learning', 'title' => 'Completes assigned training within deadline', 'weightage' => 5],
+            ['category' => 'Discipline', 'title' => 'Escalates blockers within 24 hours of identifying them', 'weightage' => 7],
+            ['category' => 'Discipline', 'title' => 'Follows the agreed daily / weekly reporting cadence', 'weightage' => 6],
+        ];
+    }
+
+    /**
+     * ---------------------------------------------------------------------
+     * CL Mgr — Senior / Manager checklist, per-designation, with juniors
+     * ---------------------------------------------------------------------
+     *
+     * Per-designation weighted checkpoints aimed at leadership duties
+     * (training, auditing, monitoring, assigning, follow-ups, on-time
+     * delivery, etc). Each manager owns a list of juniors they oversee;
+     * the manager's final score blends their own checkpoint score with
+     * the average of their juniors' overall scores.
+     *
+     * Combined Mgr score formula
+     * --------------------------
+     *  own_score      = sum(weightage of checked CL Mgr items)
+     *                 / sum(weightage of all CL Mgr items) * 100
+     *
+     *  junior_score   = average over juniors of:
+     *                     (CL R&R overall % + CL Gen %) / 2
+     *
+     *  combined_score = own_score * OWN_WEIGHT + junior_score * JUNIORS_WEIGHT
+     *                   (OWN_WEIGHT + JUNIORS_WEIGHT = 1.0)
+     *
+     * Defaults: 60% own / 40% juniors. With no juniors the formula falls
+     * back to 100% own_score so single-contributor managers aren't
+     * penalised for not having a team.
+     */
+    public const CL_MGR_OWN_WEIGHT = 0.60;
+    public const CL_MGR_JUNIORS_WEIGHT = 0.40;
+
+    /**
+     * Return CL Mgr checkpoints + the user's check state + their juniors
+     * (with each junior's blended team-score) + combined Mgr score.
+     */
+    public function getDesignationMgrChecklist(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'nullable|integer|exists:users,id',
+            'designation' => 'nullable|string|max:191',
+        ]);
+
+        $user = ! empty($validated['user_id']) ? User::find($validated['user_id']) : null;
+        $designation = trim((string) ($validated['designation'] ?? ($user->designation ?? '')));
+
+        if ($designation === '') {
+            return response()->json([
+                'designation' => '',
+                'user' => $user ? ['id' => $user->id, 'name' => $user->name, 'email' => $user->email, 'designation' => null] : null,
+                'items' => [],
+                'needs_seed' => true,
+                'juniors' => [],
+                'eligible_juniors' => [],
+                'own_score' => ['percent' => 0, 'earned' => 0, 'total' => 0],
+                'juniors_score' => ['percent' => 0, 'count' => 0],
+                'combined_score' => ['percent' => 0, 'own_weight' => self::CL_MGR_OWN_WEIGHT, 'juniors_weight' => self::CL_MGR_JUNIORS_WEIGHT],
+                'message' => 'No designation set for this user. Set a designation on the user record first.',
+            ]);
+        }
+
+        $items = DesignationMgrCheckpoint::where('designation', $designation)
+            ->orderBy('sort_order')->orderBy('id')->get();
+
+        return response()->json(
+            $this->buildMgrChecklistPayload($designation, $items, $user)
+        );
+    }
+
+    /**
+     * Build the CL Mgr response payload — used by both the GET endpoint
+     * and after AI generation so the modal can hot-swap state.
+     */
+    protected function buildMgrChecklistPayload(string $designation, $items, ?User $user): array
+    {
+        // ---------------------- Own (manager) checkpoints -----------------------
+        $progressByCheckpoint = collect();
+        if ($user && $items->isNotEmpty()) {
+            $progressByCheckpoint = UserMgrCheckpointProgress::where('user_id', $user->id)
+                ->whereIn('designation_mgr_checkpoint_id', $items->pluck('id'))
+                ->get()
+                ->keyBy('designation_mgr_checkpoint_id');
+        }
+
+        $ownEarned = 0;
+        $ownTotal = 0;
+        $ownChecked = 0;
+        $rows = $items->map(function (DesignationMgrCheckpoint $cp) use ($progressByCheckpoint, &$ownEarned, &$ownTotal, &$ownChecked) {
+            $weight = max(1, (int) $cp->weightage);
+            $progress = $progressByCheckpoint->get($cp->id);
+            $checked = $progress ? (bool) $progress->checked : false;
+            $ownTotal += $weight;
+            if ($checked) {
+                $ownEarned += $weight;
+                $ownChecked++;
+            }
+            return [
+                'id' => $cp->id,
+                'category' => $cp->category,
+                'title' => $cp->title,
+                'description' => $cp->description,
+                'weightage' => $weight,
+                'sort_order' => $cp->sort_order,
+                'source' => $cp->source,
+                'checked' => $checked,
+                'note' => $progress ? $progress->note : null,
+                'checked_at' => $progress && $progress->checked_at ? $progress->checked_at->toDateTimeString() : null,
+            ];
+        })->values();
+
+        $ownPercent = $ownTotal > 0 ? (int) round(($ownEarned / $ownTotal) * 100) : 0;
+
+        // ------------------------ Juniors + their scores ------------------------
+        $juniorsPayload = [];
+        $juniorsAvgPercent = 0;
+        $juniorIds = [];
+        if ($user) {
+            $juniorIds = ManagerJunior::where('manager_user_id', $user->id)
+                ->pluck('junior_user_id')
+                ->all();
+        }
+
+        if (! empty($juniorIds)) {
+            $juniors = User::whereIn('id', $juniorIds)->get(['id', 'name', 'email', 'designation', 'avatar']);
+            $sum = 0;
+            $cnt = 0;
+            foreach ($juniors as $j) {
+                $clrr = $this->computeUserClrrPercent($j);
+                $clgen = $this->computeUserClGenPercent($j);
+                $blend = (int) round(($clrr + $clgen) / 2);
+                $sum += $blend;
+                $cnt++;
+                $juniorsPayload[] = [
+                    'id' => $j->id,
+                    'name' => $j->name,
+                    'email' => $j->email,
+                    'designation' => $j->designation,
+                    'avatar' => $j->avatar,
+                    'clrr_percent' => $clrr,
+                    'clgen_percent' => $clgen,
+                    'blend_percent' => $blend,
+                ];
+            }
+            $juniorsAvgPercent = $cnt > 0 ? (int) round($sum / $cnt) : 0;
+        }
+
+        // -------------------- Pool of eligible juniors (UI) --------------------
+        $eligible = [];
+        if ($user) {
+            $eligible = User::query()
+                ->where('is_active', true)
+                ->whereNull('deactivated_at')
+                ->where('id', '!=', $user->id)
+                ->whereNotIn('id', $juniorIds)
+                ->orderBy('name')
+                ->limit(500)
+                ->get(['id', 'name', 'email', 'designation'])
+                ->map(function (User $u) {
+                    return [
+                        'id' => $u->id,
+                        'name' => $u->name,
+                        'email' => $u->email,
+                        'designation' => $u->designation,
+                    ];
+                })
+                ->values()
+                ->all();
+        }
+
+        // ----------------------------- Combined ---------------------------------
+        $combined = $ownPercent;
+        $juniorsWeight = self::CL_MGR_JUNIORS_WEIGHT;
+        $ownWeight = self::CL_MGR_OWN_WEIGHT;
+        if (! empty($juniorsPayload)) {
+            $combined = (int) round(($ownPercent * $ownWeight) + ($juniorsAvgPercent * $juniorsWeight));
+        }
+
+        return [
+            'designation' => $designation,
+            'user' => $user ? [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'designation' => $user->designation,
+            ] : null,
+            'items' => $rows,
+            'needs_seed' => $items->isEmpty(),
+            'juniors' => $juniorsPayload,
+            'eligible_juniors' => $eligible,
+            'own_score' => [
+                'percent' => $ownPercent,
+                'earned' => $ownEarned,
+                'total' => $ownTotal,
+                'checked' => $ownChecked,
+                'count' => $rows->count(),
+            ],
+            'juniors_score' => [
+                'percent' => $juniorsAvgPercent,
+                'count' => count($juniorsPayload),
+            ],
+            'combined_score' => [
+                'percent' => $combined,
+                'own_weight' => $ownWeight,
+                'juniors_weight' => $juniorsWeight,
+            ],
+        ];
+    }
+
+    /**
+     * Compute a single user's CL R&R overall percent across all their
+     * designation's R&R items' checkpoints. Mirrors the formula in
+     * {@see buildRRChecklistPayload()} but trimmed to just a percent.
+     */
+    protected function computeUserClrrPercent(User $user): int
+    {
+        $designation = trim((string) ($user->designation ?? ''));
+        if ($designation === '') {
+            return 0;
+        }
+        $checkpointIds = DesignationRrCheckpoint::whereIn(
+            'designation_rr_item_id',
+            DesignationRrItem::where('designation', $designation)->pluck('id')
+        )->pluck('id', 'id');
+        if ($checkpointIds->isEmpty()) {
+            return 0;
+        }
+        $weights = DesignationRrCheckpoint::whereIn('id', $checkpointIds)->pluck('weightage', 'id');
+        $progress = UserRrCheckpointProgress::where('user_id', $user->id)
+            ->whereIn('designation_rr_checkpoint_id', $checkpointIds)
+            ->get(['designation_rr_checkpoint_id', 'checked'])
+            ->keyBy('designation_rr_checkpoint_id');
+
+        $earned = 0; $total = 0;
+        foreach ($weights as $id => $w) {
+            $w = max(1, (int) $w);
+            $total += $w;
+            $p = $progress->get($id);
+            if ($p && $p->checked) {
+                $earned += $w;
+            }
+        }
+        return $total > 0 ? (int) round(($earned / $total) * 100) : 0;
+    }
+
+    /**
+     * Compute a single user's CL Gen (global) percent.
+     */
+    protected function computeUserClGenPercent(User $user): int
+    {
+        $weights = GeneralChecklistItem::pluck('weightage', 'id');
+        if ($weights->isEmpty()) {
+            return 0;
+        }
+        $progress = UserGeneralChecklistProgress::where('user_id', $user->id)
+            ->whereIn('general_checklist_item_id', $weights->keys())
+            ->get(['general_checklist_item_id', 'checked'])
+            ->keyBy('general_checklist_item_id');
+
+        $earned = 0; $total = 0;
+        foreach ($weights as $id => $w) {
+            $w = max(1, (int) $w);
+            $total += $w;
+            $p = $progress->get($id);
+            if ($p && $p->checked) {
+                $earned += $w;
+            }
+        }
+        return $total > 0 ? (int) round(($earned / $total) * 100) : 0;
+    }
+
+    /**
+     * Ask AI for the CL Mgr checklist for a designation.
+     * Body params: designation (req), force (optional bool — wipe existing first).
+     */
+    public function generateDesignationMgrChecklist(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'designation' => 'required|string|max:191',
+            'force' => 'nullable|boolean',
+        ]);
+
+        $designation = trim($validated['designation']);
+        $force = (bool) ($validated['force'] ?? false);
+
+        $existing = DesignationMgrCheckpoint::where('designation', $designation)->count();
+        if ($existing > 0 && ! $force) {
+            return response()->json([
+                'success' => true,
+                'created' => 0,
+                'message' => 'CL Mgr already exists for this designation.',
+            ]);
+        }
+        if ($force && $existing > 0) {
+            DesignationMgrCheckpoint::where('designation', $designation)->delete();
+        }
+
+        $generated = $this->generateMgrChecklistViaOpenAi($designation);
+        if (empty($generated)) {
+            $generated = $this->fallbackMgrChecklistStarterSet();
+        }
+
+        $createdById = optional(Auth::user())->id;
+        $created = 0;
+        foreach (array_values($generated) as $idx => $row) {
+            $title = trim((string) ($row['title'] ?? ''));
+            if ($title === '') {
+                continue;
+            }
+            $weight = (int) ($row['weightage'] ?? 1);
+            $weight = max(1, min(10, $weight));
+            DesignationMgrCheckpoint::create([
+                'designation' => $designation,
+                'category' => isset($row['category']) ? mb_substr(trim((string) $row['category']), 0, 100) : null,
+                'title' => mb_substr($title, 0, 500),
+                'description' => isset($row['description']) ? trim((string) $row['description']) : null,
+                'weightage' => $weight,
+                'sort_order' => $idx + 1,
+                'source' => 'ai',
+                'created_by' => $createdById,
+            ]);
+            $created++;
+        }
+
+        return response()->json([
+            'success' => true,
+            'created' => $created,
+            'designation' => $designation,
+        ]);
+    }
+
+    /** Add a manual CL Mgr checkpoint to a designation. */
+    public function addDesignationMgrCheckpoint(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'designation' => 'required|string|max:191',
+            'title' => 'required|string|max:500',
+            'category' => 'nullable|string|max:100',
+            'description' => 'nullable|string|max:2000',
+            'weightage' => 'nullable|integer|min:1|max:10',
+        ]);
+
+        $designation = trim($validated['designation']);
+        $nextOrder = (int) DesignationMgrCheckpoint::where('designation', $designation)->max('sort_order') + 1;
+
+        $cp = DesignationMgrCheckpoint::create([
+            'designation' => $designation,
+            'category' => isset($validated['category']) ? trim($validated['category']) : null,
+            'title' => trim($validated['title']),
+            'description' => isset($validated['description']) ? trim($validated['description']) : null,
+            'weightage' => (int) ($validated['weightage'] ?? 1),
+            'sort_order' => $nextOrder,
+            'source' => 'manual',
+            'created_by' => optional(Auth::user())->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'item' => [
+                'id' => $cp->id,
+                'category' => $cp->category,
+                'title' => $cp->title,
+                'description' => $cp->description,
+                'weightage' => $cp->weightage,
+                'sort_order' => $cp->sort_order,
+                'source' => $cp->source,
+                'checked' => false,
+                'note' => null,
+                'checked_at' => null,
+            ],
+        ]);
+    }
+
+    /** Update CL Mgr checkpoint (title / category / weightage). */
+    public function updateDesignationMgrCheckpoint(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => 'nullable|string|max:500',
+            'category' => 'nullable|string|max:100',
+            'weightage' => 'nullable|integer|min:1|max:10',
+        ]);
+
+        $cp = DesignationMgrCheckpoint::findOrFail($id);
+        if (array_key_exists('title', $validated) && $validated['title'] !== null && trim($validated['title']) !== '') {
+            $cp->title = trim($validated['title']);
+        }
+        if (array_key_exists('category', $validated)) {
+            $cp->category = $validated['category'] !== null ? trim($validated['category']) : null;
+        }
+        if (array_key_exists('weightage', $validated) && $validated['weightage'] !== null) {
+            $cp->weightage = max(1, min(10, (int) $validated['weightage']));
+        }
+        $cp->save();
+
+        return response()->json([
+            'success' => true,
+            'item' => [
+                'id' => $cp->id,
+                'category' => $cp->category,
+                'title' => $cp->title,
+                'weightage' => $cp->weightage,
+            ],
+        ]);
+    }
+
+    /** Delete a CL Mgr checkpoint (cascades user progress). */
+    public function deleteDesignationMgrCheckpoint(int $id): JsonResponse
+    {
+        $cp = DesignationMgrCheckpoint::findOrFail($id);
+        $cp->delete();
+
+        return response()->json(['success' => true]);
+    }
+
+    /** Upsert a manager's check state for one CL Mgr checkpoint. */
+    public function toggleUserMgrProgress(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'designation_mgr_checkpoint_id' => 'required|integer|exists:designation_mgr_checkpoints,id',
+            'checked' => 'required|boolean',
+            'note' => 'nullable|string|max:2000',
+        ]);
+
+        $progress = UserMgrCheckpointProgress::updateOrCreate(
+            [
+                'user_id' => $validated['user_id'],
+                'designation_mgr_checkpoint_id' => $validated['designation_mgr_checkpoint_id'],
+            ],
+            [
+                'checked' => (bool) $validated['checked'],
+                'checked_at' => $validated['checked'] ? now() : null,
+                'note' => $validated['note'] ?? null,
+            ]
+        );
+
+        $user = User::find($validated['user_id']);
+        if ($user) {
+            $designation = (string) ($user->designation ?? '');
+            $mgrCheckpoints = $designation === ''
+                ? collect()
+                : DesignationMgrCheckpoint::where('designation', $designation)
+                    ->orderBy('sort_order')->orderBy('id')->get();
+            $payload = $this->buildMgrChecklistPayload($designation, $mgrCheckpoints, $user);
+            $this->snapshotUserScore(
+                (int) $user->id,
+                UserScoreHistory::TYPE_CLMGR,
+                (int) ($payload['combined_score']['percent'] ?? 0)
+            );
+        }
+
+        return response()->json([
+            'success' => true,
+            'progress' => [
+                'id' => $progress->id,
+                'checked' => $progress->checked,
+                'note' => $progress->note,
+                'checked_at' => $progress->checked_at ? $progress->checked_at->toDateTimeString() : null,
+            ],
+        ]);
+    }
+
+    /** Add a junior under a manager (idempotent). */
+    public function addManagerJunior(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'manager_user_id' => 'required|integer|exists:users,id',
+            'junior_user_id' => 'required|integer|exists:users,id|different:manager_user_id',
+        ]);
+
+        ManagerJunior::firstOrCreate([
+            'manager_user_id' => $validated['manager_user_id'],
+            'junior_user_id' => $validated['junior_user_id'],
+        ]);
+
+        $j = User::find($validated['junior_user_id']);
+        $clrr = $this->computeUserClrrPercent($j);
+        $clgen = $this->computeUserClGenPercent($j);
+
+        return response()->json([
+            'success' => true,
+            'junior' => [
+                'id' => $j->id,
+                'name' => $j->name,
+                'email' => $j->email,
+                'designation' => $j->designation,
+                'avatar' => $j->avatar,
+                'clrr_percent' => $clrr,
+                'clgen_percent' => $clgen,
+                'blend_percent' => (int) round(($clrr + $clgen) / 2),
+            ],
+        ]);
+    }
+
+    /** Remove a junior under a manager. */
+    public function removeManagerJunior(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'manager_user_id' => 'required|integer|exists:users,id',
+            'junior_user_id' => 'required|integer|exists:users,id',
+        ]);
+
+        ManagerJunior::where('manager_user_id', $validated['manager_user_id'])
+            ->where('junior_user_id', $validated['junior_user_id'])
+            ->delete();
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Ask OpenAI for the CL Mgr checklist for a single manager designation.
+     *
+     * @return array<int, array{title: string, description?: string|null, weightage?: int, category?: string|null}>
+     */
+    protected function generateMgrChecklistViaOpenAi(string $designation): array
+    {
+        $headers = OpenAiRequest::authHeaders();
+        if (empty($headers)) {
+            \Log::warning('CL Mgr: OpenAI key missing, falling back to starter set.');
+            return [];
+        }
+
+        $model = (string) config('services.openai.title_master_stack_model', 'gpt-4o-mini');
+
+        $system = 'You are an HR / operations expert. Given a MANAGER / SENIOR designation, produce a '
+            . 'practical leadership checklist a reporting manager can tick off to confirm the senior is '
+            . 'doing their leadership duties. Cover at minimum: training & onboarding juniors, auditing '
+            . 'their work, monitoring throughput, assigning tasks fairly, ensuring on-time delivery, '
+            . 'following up on overdue tasks, mentoring / 1:1s, performance reviews, escalation handling, '
+            . 'process improvement. 10 to 16 items. Each item: action-oriented (start with a verb), '
+            . 'verifiable. Assign each a weightage 1–10 (10 = most critical) and a short category '
+            . '(Training, Auditing, Delivery, Mentoring, Process, Reviews, etc). Return ONLY valid JSON: '
+            . '{"items":[{"category":"string","title":"string (<=140 chars)","description":"string (<=200 chars, optional)","weightage":1-10}]}';
+
+        $userMsg = "Designation: {$designation}\nGenerate the manager-level checklist for this designation.";
+
+        try {
+            $response = Http::withHeaders($headers)
+                ->timeout(90)
+                ->post('https://api.openai.com/v1/chat/completions', [
+                    'model' => $model,
+                    'temperature' => 0.3,
+                    'response_format' => ['type' => 'json_object'],
+                    'messages' => [
+                        ['role' => 'system', 'content' => $system],
+                        ['role' => 'user', 'content' => $userMsg],
+                    ],
+                ]);
+
+            if (! $response->successful()) {
+                \Log::warning('CL Mgr: OpenAI HTTP error', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                return [];
+            }
+
+            $text = trim((string) ($response->json('choices.0.message.content') ?? ''));
+            $text = preg_replace('/^```(?:json)?\s*/i', '', $text);
+            $text = preg_replace('/\s*```$/', '', $text);
+
+            $decoded = json_decode($text, true);
+            if (! is_array($decoded)) {
+                \Log::warning('CL Mgr: OpenAI returned non-JSON', ['text' => $text]);
+                return [];
+            }
+
+            $rows = $decoded['items'] ?? $decoded;
+            if (! is_array($rows)) {
+                return [];
+            }
+
+            $clean = [];
+            foreach ($rows as $row) {
+                if (is_string($row)) {
+                    $clean[] = ['title' => $row, 'weightage' => 1, 'category' => null];
+                    continue;
+                }
+                if (! is_array($row)) {
+                    continue;
+                }
+                $title = trim((string) ($row['title'] ?? $row['name'] ?? ''));
+                if ($title === '') {
+                    continue;
+                }
+                $clean[] = [
+                    'title' => $title,
+                    'category' => isset($row['category']) ? trim((string) $row['category']) : null,
+                    'description' => isset($row['description']) ? trim((string) $row['description']) : null,
+                    'weightage' => isset($row['weightage']) ? (int) $row['weightage'] : 1,
+                ];
+            }
+            return $clean;
+        } catch (\Throwable $e) {
+            \Log::error('CL Mgr: OpenAI call failed', ['message' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * Generic CL Mgr starter when AI is unavailable.
+     *
+     * @return array<int, array{title: string, weightage: int, category: string}>
+     */
+    /**
+     * Return the lifetime score history for a (user, score_type) pair —
+     * powers the small line chart opened from the history dot next to
+     * each CL column score chip.
+     *
+     * If the table has fewer than 2 points we still include the current
+     * computed value as a "today" point so the chart isn't blank.
+     */
+    public function getUserScoreHistory(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'score_type' => ['required', Rule::in(UserScoreHistory::TYPES)],
+        ]);
+
+        // Apply the same visibility rules as the rest of Task Summary so a
+        // manager can't peek at a director's chart by hitting this URL.
+        $viewer = Auth::user();
+        $visible = $this->getTaskSummaryVisibleUserIds($viewer);
+        if ($visible !== null && ! in_array((int) $validated['user_id'], $visible, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have access to this user.',
+            ], 403);
+        }
+
+        $user = User::find($validated['user_id']);
+        if (! $user) {
+            return response()->json(['success' => false, 'message' => 'User not found.'], 404);
+        }
+
+        $rows = UserScoreHistory::query()
+            ->where('user_id', $user->id)
+            ->where('score_type', $validated['score_type'])
+            ->orderBy('captured_at')
+            ->limit(500)
+            ->get(['percent', 'captured_at']);
+
+        $points = $rows->map(function (UserScoreHistory $r) {
+            return [
+                't' => $r->captured_at ? $r->captured_at->toIso8601String() : null,
+                'p' => (int) $r->percent,
+            ];
+        })->values();
+
+        // Append a "now" point computed live so the chart always shows the
+        // current value, even when history is empty.
+        $current = 0;
+        switch ($validated['score_type']) {
+            case UserScoreHistory::TYPE_CLRR:
+                $current = $this->computeUserClrrPercent($user);
+                break;
+            case UserScoreHistory::TYPE_CLGEN:
+                $current = $this->computeUserClGenPercent($user);
+                break;
+            case UserScoreHistory::TYPE_CLMGR:
+                $designation = (string) ($user->designation ?? '');
+                $cps = $designation === ''
+                    ? collect()
+                    : DesignationMgrCheckpoint::where('designation', $designation)
+                        ->orderBy('sort_order')->orderBy('id')->get();
+                $payload = $this->buildMgrChecklistPayload($designation, $cps, $user);
+                $current = (int) ($payload['combined_score']['percent'] ?? 0);
+                break;
+        }
+        $points->push(['t' => now()->toIso8601String(), 'p' => $current]);
+
+        return response()->json([
+            'success' => true,
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'designation' => $user->designation,
+            ],
+            'score_type' => $validated['score_type'],
+            'current' => $current,
+            'points' => $points,
+        ]);
+    }
+
+    /**
+     * Return a per-user "dashboard" payload for the magnifying-glass button
+     * on the KPI column. Includes the user's own metrics + their scores
+     * (R&R / CL R&R / CL Mgr / CL Gen) + every junior tagged under them
+     * with the same metrics, so the modal can show what the user
+     * effectively "owns" based on their tags.
+     */
+    public function getUserDashboard(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+        ]);
+
+        $viewer = Auth::user();
+        $visible = $this->getTaskSummaryVisibleUserIds($viewer);
+        if ($visible !== null && ! in_array((int) $validated['user_id'], $visible, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have access to this user.',
+            ], 403);
+        }
+
+        $user = User::find($validated['user_id']);
+        if (! $user) {
+            return response()->json(['success' => false, 'message' => 'User not found.'], 404);
+        }
+
+        $allRows = $this->getTaskSummaryMemberRows();
+        $rowsById = [];
+        foreach ($allRows as $r) {
+            $rowsById[(int) ($r['user_id'] ?? 0)] = $r;
+        }
+
+        $juniorIds = ManagerJunior::where('manager_user_id', $user->id)
+            ->pluck('junior_user_id')
+            ->map(fn ($v) => (int) $v)
+            ->all();
+
+        $juniorUsers = empty($juniorIds)
+            ? collect()
+            : User::whereIn('id', $juniorIds)->orderBy('name')->get();
+
+        // Reverse lookup: who manages this user (people who tagged them as a junior).
+        $managerIds = ManagerJunior::where('junior_user_id', $user->id)
+            ->pluck('manager_user_id')
+            ->map(fn ($v) => (int) $v)
+            ->all();
+        $managerUsers = empty($managerIds)
+            ? collect()
+            : User::whereIn('id', $managerIds)->orderBy('name')->get();
+
+        // Build the manager's own Mgr-combined score (own × 60% + juniors-avg × 40%).
+        $mgrPayload = $this->buildMgrChecklistPayload(
+            (string) ($user->designation ?? ''),
+            DesignationMgrCheckpoint::where('designation', $user->designation)
+                ->orderBy('sort_order')->orderBy('id')->get(),
+            $user
+        );
+
+        // Profile-only extras (used by the Team Member Profile modal). Wrapped
+        // in try/catch so a missing column on older deployments can't break
+        // the response.
+        $profile = [];
+        try {
+            $profile = [
+                'phone' => $user->phone ?? null,
+                'role' => $user->role ?? null, // system role (admin / user)
+                'date_of_joining' => $user->date_of_joining ? $user->date_of_joining->toDateString() : null,
+                'tenure_label' => $user->date_of_joining
+                    ? \Carbon\Carbon::parse($user->date_of_joining)->diffForHumans(now(), ['parts' => 2, 'syntax' => \Carbon\CarbonInterface::DIFF_ABSOLUTE])
+                    : null,
+                'resource_department' => optional($user->resourceDepartment ?? null)->name ?? null,
+            ];
+        } catch (\Throwable $e) {
+            $profile = [
+                'phone' => null,
+                'role' => null,
+                'date_of_joining' => null,
+                'tenure_label' => null,
+                'resource_department' => null,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'user' => $this->buildUserDashboardSnapshot($user, $rowsById),
+            'profile' => $profile,
+            'managers' => $managerUsers->map(function (User $m) use ($rowsById) {
+                return $this->buildUserDashboardSnapshot($m, $rowsById);
+            })->values(),
+            'juniors' => $juniorUsers->map(function (User $j) use ($rowsById) {
+                return $this->buildUserDashboardSnapshot($j, $rowsById);
+            })->values(),
+            'mgr' => [
+                'own_percent' => $mgrPayload['own_score']['percent'] ?? 0,
+                'juniors_avg_percent' => $mgrPayload['juniors_score']['percent'] ?? 0,
+                'combined_percent' => $mgrPayload['combined_score']['percent'] ?? 0,
+                'has_mgr_checklist' => empty($mgrPayload['needs_seed']),
+            ],
+        ]);
+    }
+
+    /**
+     * Compose a per-user snapshot (used for the user being viewed and each
+     * of their tagged juniors in the dashboard modal).
+     */
+    protected function buildUserDashboardSnapshot(User $user, array $rowsById): array
+    {
+        $row = $rowsById[$user->id] ?? null;
+
+        $clrr = $this->computeUserClrrPercent($user);
+        $clgen = $this->computeUserClGenPercent($user);
+
+        // Per-user R&R progress percent (parent items, not checkpoints — gives
+        // a quick "R&R progress" feel separate from the deeper CL R&R).
+        $rrPercent = 0;
+        $designation = trim((string) ($user->designation ?? ''));
+        if ($designation !== '') {
+            $rrItems = DesignationRrItem::where('designation', $designation)->pluck('id');
+            if ($rrItems->isNotEmpty()) {
+                $progressRows = UserRrProgress::where('user_id', $user->id)
+                    ->whereIn('designation_rr_item_id', $rrItems)
+                    ->get(['status']);
+                $total = $rrItems->count();
+                $done = $progressRows->filter(fn ($p) => $p->status === UserRrProgress::STATUS_DONE)->count();
+                $rrPercent = $total > 0 ? (int) round(($done / $total) * 100) : 0;
+            }
+        }
+
+        $avatar = $user->avatar
+            ? asset('storage/' . $user->avatar)
+            : asset('images/users/add-image-placeholder.svg');
+
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'designation' => $user->designation,
+            'org_level' => $user->org_level,
+            'avatar' => $avatar,
+            'metrics' => $row ? [
+                'task' => (int) ($row['task'] ?? 0),
+                'l30_hrs' => (float) ($row['l30_hrs'] ?? 0),
+                'assignor_task' => (int) ($row['assignor_task'] ?? 0),
+                'done' => (int) ($row['done'] ?? 0),
+                'overdue' => (int) ($row['overdue'] ?? 0),
+                'tat_l30_days' => $row['tat_l30_days'] ?? null,
+                'tat_l30_count' => (int) ($row['tat_l30_count'] ?? 0),
+                'missed_l30' => (int) ($row['missed_l30'] ?? 0),
+                'a_task' => (int) ($row['a_task'] ?? 0),
+                'a_task_h' => (int) ($row['a_task_h'] ?? 0),
+                'need_approval' => (int) ($row['need_approval'] ?? 0),
+            ] : [
+                'task' => 0, 'l30_hrs' => 0, 'assignor_task' => 0,
+                'done' => 0, 'overdue' => 0, 'tat_l30_days' => null, 'tat_l30_count' => 0,
+                'missed_l30' => 0, 'a_task' => 0, 'a_task_h' => 0, 'need_approval' => 0,
+            ],
+            'scores' => [
+                'rr_percent' => $rrPercent,
+                'clrr_percent' => $clrr,
+                'clgen_percent' => $clgen,
+                // Quick "blend" used in the CL Mgr roll-up.
+                'blend_percent' => (int) round(($clrr + $clgen) / 2),
+            ],
+        ];
+    }
+
+    /**
+     * Update the user's organisational level (Task Summary "Role" column).
+     *
+     * Allowed values: 'mgr' | 'director' | 'exec' | null (cleared).
+     */
+    public function updateUserOrgLevel(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'org_level' => ['nullable', 'string', Rule::in(['mgr', 'director', 'exec'])],
+        ]);
+
+        $user = User::findOrFail($validated['user_id']);
+        $user->org_level = $validated['org_level'] ?? null;
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'user' => [
+                'id' => $user->id,
+                'org_level' => $user->org_level,
+            ],
+        ]);
+    }
+
+    /**
+     * Lightweight juniors-tags payload for the Mgr tags modal (Task Summary
+     * "Role" column dot). Returns the current juniors for the manager plus
+     * an alphabetic list of every other active user as the "add tag"
+     * dropdown source. Shares the manager_juniors pivot with CL Mgr.
+     */
+    public function getManagerJuniorsForTags(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+        ]);
+
+        $manager = User::findOrFail($validated['user_id']);
+
+        $juniorIds = ManagerJunior::where('manager_user_id', $manager->id)
+            ->pluck('junior_user_id')
+            ->all();
+
+        $juniors = empty($juniorIds)
+            ? collect()
+            : User::whereIn('id', $juniorIds)
+                ->orderBy('name')
+                ->get(['id', 'name', 'email', 'designation', 'avatar']);
+
+        $eligible = User::query()
+            ->where('is_active', true)
+            ->whereNull('deactivated_at')
+            ->where('id', '!=', $manager->id)
+            ->whereNotIn('id', $juniorIds)
+            ->orderBy('name')
+            ->limit(500)
+            ->get(['id', 'name', 'email', 'designation']);
+
+        return response()->json([
+            'success' => true,
+            'manager' => [
+                'id' => $manager->id,
+                'name' => $manager->name,
+                'email' => $manager->email,
+                'designation' => $manager->designation,
+                'org_level' => $manager->org_level,
+            ],
+            'juniors' => $juniors->map(function (User $u) {
+                return [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'email' => $u->email,
+                    'designation' => $u->designation,
+                    'avatar' => $u->avatar,
+                ];
+            })->values(),
+            'eligible' => $eligible->map(function (User $u) {
+                return [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'email' => $u->email,
+                    'designation' => $u->designation,
+                ];
+            })->values(),
+        ]);
+    }
+
+    protected function fallbackMgrChecklistStarterSet(): array
+    {
+        return [
+            ['category' => 'Training', 'title' => 'Onboards new juniors within the first 2 weeks', 'weightage' => 7],
+            ['category' => 'Training', 'title' => 'Schedules at least 1 training / knowledge-share per month for the team', 'weightage' => 5],
+            ['category' => 'Auditing', 'title' => 'Audits a random sample of juniors\' work weekly', 'weightage' => 7],
+            ['category' => 'Auditing', 'title' => 'Reviews rework / defects with the responsible junior within 48 hours', 'weightage' => 6],
+            ['category' => 'Monitoring', 'title' => 'Reviews team task board daily and re-prioritises if needed', 'weightage' => 8],
+            ['category' => 'Delivery', 'title' => 'Tracks team\'s overdue count and clears it weekly', 'weightage' => 9],
+            ['category' => 'Delivery', 'title' => 'Ensures team TAT stays within the agreed target', 'weightage' => 8],
+            ['category' => 'Assigning', 'title' => 'Assigns tasks fairly based on capacity and skill', 'weightage' => 7],
+            ['category' => 'Follow-ups', 'title' => 'Follows up on every overdue junior task within 24 hours', 'weightage' => 8],
+            ['category' => 'Mentoring', 'title' => 'Holds 1:1 with every junior at least twice a month', 'weightage' => 6],
+            ['category' => 'Reviews', 'title' => 'Submits monthly performance notes for each junior', 'weightage' => 5],
+            ['category' => 'Process', 'title' => 'Owns at least one process-improvement initiative per quarter', 'weightage' => 4],
+        ];
+    }
 }

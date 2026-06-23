@@ -30,6 +30,7 @@ class User extends Authenticatable
         'google_id',
         'role',
         'designation',
+        'org_level',
         'date_of_joining',
         'is_active',
         'show_in_salary',

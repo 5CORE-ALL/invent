@@ -3378,6 +3378,20 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/videos-for-ads/audience-options', [VideosForAdsController::class, 'storeAudienceOption'])->name('videos.for.ads.audience.options.store');
     Route::post('/videos-for-ads/import', [VideosForAdsController::class, 'import'])->name('videos.for.ads.import');
 
+    // ── Video Ads Master — standalone Tabulator sheet (separate from
+    // MarketingMaster\VideoAdsMasterController which serves the legacy
+    // per-platform views). Uses its own table `video_ads_master` and the
+    // `video_ads_hook_options` lookup for the dynamic HOOK NAME dropdown.
+    Route::get('/video-ads-master',                       [\App\Http\Controllers\VideoAdsMasterController::class, 'index'])->name('video.ads.master');
+    Route::get('/video-ads-master/data',                  [\App\Http\Controllers\VideoAdsMasterController::class, 'getData'])->name('video.ads.master.data');
+    Route::post('/video-ads-master',                      [\App\Http\Controllers\VideoAdsMasterController::class, 'store'])->name('video.ads.master.store');
+    Route::put('/video-ads-master/{id}',                  [\App\Http\Controllers\VideoAdsMasterController::class, 'update'])->whereNumber('id')->name('video.ads.master.update');
+    Route::delete('/video-ads-master/{id}',               [\App\Http\Controllers\VideoAdsMasterController::class, 'destroy'])->whereNumber('id')->name('video.ads.master.destroy');
+    Route::post('/video-ads-master/{id}/copy',            [\App\Http\Controllers\VideoAdsMasterController::class, 'copy'])->whereNumber('id')->name('video.ads.master.copy');
+    Route::post('/video-ads-master/hook-options',         [\App\Http\Controllers\VideoAdsMasterController::class, 'storeHookOption'])->name('video.ads.master.hook.options.store');
+    Route::get('/video-ads-master/sample-csv',            [\App\Http\Controllers\VideoAdsMasterController::class, 'sampleCsv'])->name('video.ads.master.sample.csv');
+    Route::post('/video-ads-master/import',               [\App\Http\Controllers\VideoAdsMasterController::class, 'import'])->name('video.ads.master.import');
+
     // FB Video Ads (video-for-ds)
     Route::get('/video-for-ds', [VideoForDsController::class, 'index'])->name('video.for.ds');
     Route::get('/video-for-ds/data', [VideoForDsController::class, 'getData'])->name('video.for.ds.data');
@@ -5843,6 +5857,40 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/get-user-rr', [\App\Http\Controllers\TaskController::class, 'getUserRR'])->name('tasks.getUserRR');
     Route::post('/tasks/store-user-rr', [\App\Http\Controllers\TaskController::class, 'storeUserRR'])->name('tasks.storeUserRR');
     Route::get('/tasks/get-user-rr-data', [\App\Http\Controllers\TaskController::class, 'getUserRRData'])->name('tasks.getUserRRData');
+    // Designation-level R&R for Task Summary (magnifying-glass column)
+    Route::get('/tasks/designation-rr', [\App\Http\Controllers\TaskController::class, 'getDesignationRR'])->name('tasks.designationRR.get');
+    Route::post('/tasks/designation-rr/generate', [\App\Http\Controllers\TaskController::class, 'generateDesignationRR'])->name('tasks.designationRR.generate');
+    Route::post('/tasks/designation-rr/items', [\App\Http\Controllers\TaskController::class, 'addDesignationRRItem'])->name('tasks.designationRR.add');
+    Route::delete('/tasks/designation-rr/items/{id}', [\App\Http\Controllers\TaskController::class, 'deleteDesignationRRItem'])->whereNumber('id')->name('tasks.designationRR.delete');
+    Route::post('/tasks/designation-rr/progress', [\App\Http\Controllers\TaskController::class, 'updateUserRRProgress'])->name('tasks.designationRR.progress');
+    // CL R&R — Checklist of checkpoints under each R&R item (per designation)
+    Route::get('/tasks/designation-rr/checklist', [\App\Http\Controllers\TaskController::class, 'getDesignationChecklist'])->name('tasks.designationRR.checklist.get');
+    Route::post('/tasks/designation-rr/checklist/generate', [\App\Http\Controllers\TaskController::class, 'generateDesignationChecklist'])->name('tasks.designationRR.checklist.generate');
+    Route::post('/tasks/designation-rr/checklist/items', [\App\Http\Controllers\TaskController::class, 'addDesignationChecklistItem'])->name('tasks.designationRR.checklist.add');
+    Route::patch('/tasks/designation-rr/checklist/items/{id}', [\App\Http\Controllers\TaskController::class, 'updateDesignationChecklistItem'])->whereNumber('id')->name('tasks.designationRR.checklist.update');
+    Route::delete('/tasks/designation-rr/checklist/items/{id}', [\App\Http\Controllers\TaskController::class, 'deleteDesignationChecklistItem'])->whereNumber('id')->name('tasks.designationRR.checklist.delete');
+    Route::post('/tasks/designation-rr/checklist/progress', [\App\Http\Controllers\TaskController::class, 'toggleUserChecklistProgress'])->name('tasks.designationRR.checklist.progress');
+    // CL Gen — Global, team-wide checklist (one shared list for every user)
+    Route::get('/tasks/general-checklist', [\App\Http\Controllers\TaskController::class, 'getGeneralChecklist'])->name('tasks.generalChecklist.get');
+    Route::post('/tasks/general-checklist/generate', [\App\Http\Controllers\TaskController::class, 'generateGeneralChecklist'])->name('tasks.generalChecklist.generate');
+    Route::post('/tasks/general-checklist/items', [\App\Http\Controllers\TaskController::class, 'addGeneralChecklistItem'])->name('tasks.generalChecklist.add');
+    Route::patch('/tasks/general-checklist/items/{id}', [\App\Http\Controllers\TaskController::class, 'updateGeneralChecklistItem'])->whereNumber('id')->name('tasks.generalChecklist.update');
+    Route::delete('/tasks/general-checklist/items/{id}', [\App\Http\Controllers\TaskController::class, 'deleteGeneralChecklistItem'])->whereNumber('id')->name('tasks.generalChecklist.delete');
+    Route::post('/tasks/general-checklist/progress', [\App\Http\Controllers\TaskController::class, 'toggleUserGeneralChecklistProgress'])->name('tasks.generalChecklist.progress');
+    // CL Mgr — Senior / Manager checklist per designation, with juniors roll-up
+    Route::get('/tasks/mgr-checklist', [\App\Http\Controllers\TaskController::class, 'getDesignationMgrChecklist'])->name('tasks.mgrChecklist.get');
+    Route::post('/tasks/mgr-checklist/generate', [\App\Http\Controllers\TaskController::class, 'generateDesignationMgrChecklist'])->name('tasks.mgrChecklist.generate');
+    Route::post('/tasks/mgr-checklist/items', [\App\Http\Controllers\TaskController::class, 'addDesignationMgrCheckpoint'])->name('tasks.mgrChecklist.add');
+    Route::patch('/tasks/mgr-checklist/items/{id}', [\App\Http\Controllers\TaskController::class, 'updateDesignationMgrCheckpoint'])->whereNumber('id')->name('tasks.mgrChecklist.update');
+    Route::delete('/tasks/mgr-checklist/items/{id}', [\App\Http\Controllers\TaskController::class, 'deleteDesignationMgrCheckpoint'])->whereNumber('id')->name('tasks.mgrChecklist.delete');
+    Route::post('/tasks/mgr-checklist/progress', [\App\Http\Controllers\TaskController::class, 'toggleUserMgrProgress'])->name('tasks.mgrChecklist.progress');
+    Route::post('/tasks/mgr-checklist/juniors', [\App\Http\Controllers\TaskController::class, 'addManagerJunior'])->name('tasks.mgrChecklist.juniors.add');
+    Route::delete('/tasks/mgr-checklist/juniors', [\App\Http\Controllers\TaskController::class, 'removeManagerJunior'])->name('tasks.mgrChecklist.juniors.remove');
+    // Task Summary "Role" column — org_level dropdown + Mgr tags modal
+    Route::post('/tasks/users/org-level', [\App\Http\Controllers\TaskController::class, 'updateUserOrgLevel'])->name('tasks.users.orgLevel');
+    Route::get('/tasks/mgr-tags', [\App\Http\Controllers\TaskController::class, 'getManagerJuniorsForTags'])->name('tasks.mgrTags.get');
+    Route::get('/tasks/user-dashboard', [\App\Http\Controllers\TaskController::class, 'getUserDashboard'])->name('tasks.userDashboard.get');
+    Route::get('/tasks/user-score-history', [\App\Http\Controllers\TaskController::class, 'getUserScoreHistory'])->name('tasks.userScoreHistory.get');
     Route::post('/tasks/upload-image', [\App\Http\Controllers\TaskController::class, 'uploadImage'])->name('tasks.uploadImage');
     Route::get('/tasks/training-video', [\App\Http\Controllers\TaskController::class, 'getTrainingVideo'])->name('tasks.trainingVideo.get');
     Route::post('/tasks/training-video', [\App\Http\Controllers\TaskController::class, 'saveTrainingVideo'])->name('tasks.trainingVideo.save');

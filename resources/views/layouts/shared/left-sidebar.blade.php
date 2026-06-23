@@ -761,6 +761,14 @@
                 </a>
             </li>
 
+            {{-- ── Video Ads Master (Tabulator sheet — own controller) ── --}}
+            <li class="side-nav-item">
+                <a href="{{ route('video.ads.master') }}" class="side-nav-link">
+                    <i class="ri-video-add-line"></i>
+                    <span>Video Ads Master</span>
+                </a>
+            </li>
+
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarPages2" aria-expanded="false"
                     aria-controls="sidebarPages2" class="side-nav-link">

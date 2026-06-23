@@ -148,6 +148,27 @@
                         </select>
                     </div>
 
+                    {{--
+                        Stock Transfer filter — identifies SKUs that are out of stock so they
+                        can be queued for a transfer between the local warehouse (INV column)
+                        and Temu's side (Temu Stock column). Uses BOTH stock fields:
+                          • "Both = 0"  →  INV = 0 AND Temu Stock = 0  (out of stock everywhere)
+                          • "Either = 0" →  INV = 0 OR  Temu Stock = 0 (one side is empty;
+                             these are the actual stock-transfer candidates because at least
+                             one warehouse has zero units to fulfill from).
+                        Both options are independent of the Inventory filter above so users
+                        can combine them (e.g. INV > 0 + Either = 0 → SKUs with local stock
+                        but nothing on Temu).
+                    --}}
+                    <div>
+                        <select id="stock-transfer-filter" class="form-select form-select-sm" style="width: 170px;"
+                                title="Filter SKUs with 0 in stock (uses both INV and Temu Stock columns)">
+                            <option value="all">Stock Transfer</option>
+                            <option value="both0">0 Stock (Both INV &amp; Temu)</option>
+                            <option value="either0">0 Stock (Either INV or Temu)</option>
+                        </select>
+                    </div>
+
                     <!-- GPFT + CVR (one row, same height as other filters) -->
                     <div class="d-inline-flex align-items-center gap-1 flex-shrink-0">
                         <select id="gpft-filter" class="form-select form-select-sm" style="width: 118px;">
@@ -3617,6 +3638,21 @@
                 });
             }
 
+            // Stock Transfer filter — 0-in-stock SKUs using BOTH inventory & temu_stock.
+            // "both0"   = INV == 0 AND Temu Stock == 0 (out of stock everywhere)
+            // "either0" = INV == 0 OR  Temu Stock == 0 (the real transfer candidates —
+            //             one side has zero units to fulfill from)
+            const stockTransferFilter = $('#stock-transfer-filter').val();
+            if (stockTransferFilter && stockTransferFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const inv       = parseFloat(data.inventory)  || 0;
+                    const temuStock = parseFloat(data.temu_stock) || 0;
+                    if (stockTransferFilter === 'both0')   return inv === 0 && temuStock === 0;
+                    if (stockTransferFilter === 'either0') return inv === 0 || temuStock === 0;
+                    return true;
+                });
+            }
+
             // GPFT filter — use same formula as column: (temu_price * 0.96 - lp - temu_ship) / temu_price * 100
             if (gpftFilter !== 'all') {
                 table.addFilter(function(data) {
@@ -4050,7 +4086,7 @@
             });
         });
 
-        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #sprice-filter, #nr-req-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #sprice-filter, #nr-req-filter, #stock-transfer-filter').on('change', function() {
             applyFilters();
         });
 
