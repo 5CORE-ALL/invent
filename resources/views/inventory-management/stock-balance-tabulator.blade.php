@@ -775,8 +775,24 @@
                 $row.find('.to-parent-display').val(fromParent);
                 $row.find('.from-inv-display').val(fromInv);
                 $row.find('.from-sold-display').val(fromSold);
-                $row.find('.from-qty-input').val(fromInv); // Set FROM Qty to FROM SKU's INV
-                
+
+                // FROM Qty: preserve a user-edited override during synthetic restore events
+                // (restoreSavedFromSku triggers change() on every render; without this guard the
+                // user's typed FROM Qty was being clobbered back to fromInv while TO Qty kept the
+                // older smaller value, causing the entire source INV to be deducted on Submit).
+                // When the user explicitly picks a (new) FROM SKU, drop the override so the new
+                // source's INV becomes the default.
+                const existingCustomQty = customFromQty[toSku];
+                const hasCustomQty = (typeof existingCustomQty !== 'undefined' && !isNaN(existingCustomQty));
+                if (restoringSavedFromSku && hasCustomQty) {
+                    $row.find('.from-qty-input').val(existingCustomQty);
+                } else {
+                    $row.find('.from-qty-input').val(fromInv);
+                    if (!restoringSavedFromSku) {
+                        delete customFromQty[toSku];
+                    }
+                }
+
                 // Set FROM DIL% with color coding
                 const $dilSpan = $row.find('.from-dil-percent');
                 let dilClass = '';
@@ -786,6 +802,10 @@
                 else dilClass = 'dil-pink';
                 
                 $dilSpan.attr('class', 'from-dil-percent ' + dilClass).text(fromDilPercent + '%');
+
+                // Always recompute TO Qty so the destination amount stays in sync with the
+                // (possibly preserved) FROM Qty and current Ratio.
+                calculateToQty($row);
             } else {
                 // Clear fields if no FROM SKU selected
                 $row.find('.to-parent-display').val('');
@@ -877,13 +897,29 @@
             const toParent = rowData.Parent || '';
             const toInv = parseInt(rowData.INV) || 0;
             const toDil = parseFloat(rowData.DIL) || 0;
-            const toQty = parseInt($row.find('.to-qty-display').val()) || 0;
-            
+
             // User selects FROM SKU manually (from dropdown)
             const fromSku = $row.find('.to-sku-select').val();
             const fromParent = $row.find('.to-parent-display').val();
             const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
-            const ratio = $row.find('.ratio-select').val();
+            const ratio = $row.find('.ratio-select').val() || '1:1';
+
+            // Recompute TO Qty from the *current* FROM Qty + Ratio instead of trusting the
+            // DOM value. The displayed TO Qty input is readonly, but renderComplete-driven
+            // restore events can leave the FROM Qty input and the TO Qty display momentarily
+            // out of sync (FROM Qty was being clobbered while TO Qty kept the older value),
+            // which previously caused the source to be over-deducted vs what the receiver got.
+            // Deriving TO Qty here guarantees both sides of the transfer always agree.
+            const ratioParts = ratio.split(':');
+            const ratioFrom = parseFloat(ratioParts[0]);
+            const ratioTo = parseFloat(ratioParts[1]);
+            let toQty = 0;
+            if (fromQty > 0 && ratioFrom > 0 && !isNaN(ratioTo)) {
+                toQty = Math.round(fromQty * (ratioTo / ratioFrom));
+            }
+            // Reflect the trusted value back to the readonly TO Qty field so what the user
+            // sees matches what gets submitted.
+            $row.find('.to-qty-display').val(toQty || '');
             
             // Validation
             if (!fromSku) {
