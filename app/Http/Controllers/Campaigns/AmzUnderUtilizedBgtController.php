@@ -12,6 +12,7 @@ use App\Models\FbaTable;
 use GuzzleHttp\Client;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class AmzUnderUtilizedBgtController extends Controller
 {
@@ -224,6 +225,10 @@ class AmzUnderUtilizedBgtController extends Controller
         }
 
         $allTargets = [];
+        // Auto-targeted PT campaigns (no manual targets) need their adGroup.defaultBid
+        // updated instead — /sp/targets is a no-op for them. See companion fix in
+        // AmazonSpBudgetController::updateCampaignTargetsBid for the same situation.
+        $defaultBidByCampaign = [];
 
         foreach ($campaignIds as $index => $campaignId) {
             $newBid = floatval($newBids[$index] ?? 0);
@@ -236,7 +241,12 @@ class AmzUnderUtilizedBgtController extends Controller
                 ]);
 
             $adTargets = $this->getTargetsAdByCampaign([$campaignId]);
-            if (empty($adTargets)) continue;
+            if (empty($adTargets)) {
+                if ($newBid > 0) {
+                    $defaultBidByCampaign[(string) $campaignId] = $newBid;
+                }
+                continue;
+            }
 
             foreach ($adTargets as $adTarget) {
                 $allTargets[] = [
@@ -246,9 +256,32 @@ class AmzUnderUtilizedBgtController extends Controller
             }
         }
 
-        if (empty($allTargets)) {
+        $allAdGroupUpdates = [];
+        if (! empty($defaultBidByCampaign)) {
+            try {
+                $adGroups = $this->getAdGroupsByCampaigns(array_keys($defaultBidByCampaign));
+                foreach ($adGroups as $g) {
+                    $cid = isset($g['campaignId']) ? (string) $g['campaignId'] : '';
+                    $agId = isset($g['adGroupId']) ? trim((string) $g['adGroupId']) : '';
+                    if ($cid === '' || $agId === '' || ! isset($defaultBidByCampaign[$cid])) {
+                        continue;
+                    }
+                    $allAdGroupUpdates[] = [
+                        'adGroupId' => $agId,
+                        'defaultBid' => round($defaultBidByCampaign[$cid], 2),
+                    ];
+                }
+            } catch (\Exception $e) {
+                Log::warning('Under updateCampaignTargetsBid: getAdGroupsByCampaigns failed', [
+                    'error' => $e->getMessage(),
+                    'campaign_ids' => array_keys($defaultBidByCampaign),
+                ]);
+            }
+        }
+
+        if (empty($allTargets) && empty($allAdGroupUpdates)) {
             return response()->json([
-                'message' => 'No targets found to update',
+                'message' => 'No targets or auto-targeted ad groups found to update',
                 'status' => 404,
             ]);
         }
@@ -257,36 +290,69 @@ class AmzUnderUtilizedBgtController extends Controller
             ->unique('targetId')
             ->values()
             ->toArray();
+        $allAdGroupUpdates = collect($allAdGroupUpdates)
+            ->unique('adGroupId')
+            ->values()
+            ->toArray();
 
         $accessToken = $this->getAccessToken();
         $client = new Client();
-        $url = 'https://advertising-api.amazon.com/sp/targets';
         $results = [];
+        $adGroupResults = [];
 
         try {
-            $chunks = array_chunk($allTargets, 100);
-            foreach ($chunks as $chunk) {
-                $response = $client->put($url, [
-                    'headers' => [
-                        'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
-                        'Authorization' => 'Bearer ' . $accessToken,
-                        'Amazon-Advertising-API-Scope' => $this->profileId,
-                        'Content-Type' => 'application/vnd.spTargetingClause.v3+json',
-                        'Accept' => 'application/vnd.spTargetingClause.v3+json',
-                    ],
-                    'json' => [
-                        'targetingClauses' => $chunk
-                    ],
-                    'timeout' => 60,
-                    'connect_timeout' => 30,
-                ]);
+            if (! empty($allTargets)) {
+                $url = 'https://advertising-api.amazon.com/sp/targets';
+                $chunks = array_chunk($allTargets, 100);
+                foreach ($chunks as $chunk) {
+                    $response = $client->put($url, [
+                        'headers' => [
+                            'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
+                            'Authorization' => 'Bearer ' . $accessToken,
+                            'Amazon-Advertising-API-Scope' => (string) $this->profileId,
+                            'Content-Type' => 'application/vnd.spTargetingClause.v3+json',
+                            'Accept' => 'application/vnd.spTargetingClause.v3+json',
+                        ],
+                        'json' => [
+                            'targetingClauses' => $chunk
+                        ],
+                        'timeout' => 60,
+                        'connect_timeout' => 30,
+                    ]);
 
-                $results[] = json_decode($response->getBody(), true);
+                    $results[] = json_decode($response->getBody(), true);
+                }
+            }
+
+            if (! empty($allAdGroupUpdates)) {
+                $agUrl = 'https://advertising-api.amazon.com/sp/adGroups';
+                $agChunks = array_chunk($allAdGroupUpdates, 100);
+                foreach ($agChunks as $chunk) {
+                    $response = $client->put($agUrl, [
+                        'headers' => [
+                            'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
+                            'Authorization' => 'Bearer ' . $accessToken,
+                            'Amazon-Advertising-API-Scope' => (string) $this->profileId,
+                            'Content-Type' => 'application/vnd.spAdGroup.v3+json',
+                            'Accept' => 'application/vnd.spAdGroup.v3+json',
+                        ],
+                        'json' => [
+                            'adGroups' => $chunk,
+                        ],
+                        'timeout' => 60,
+                        'connect_timeout' => 30,
+                        'http_errors' => false,
+                    ]);
+                    $adGroupResults[] = json_decode($response->getBody(), true);
+                }
             }
 
             return response()->json([
                 'message' => 'Targets bid updated successfully',
                 'data' => $results,
+                'adGroup_data' => $adGroupResults,
+                'adGroup_defaultBid_updates' => count($allAdGroupUpdates),
+                'target_updates' => count($allTargets),
                 'status' => 200,
             ]);
 

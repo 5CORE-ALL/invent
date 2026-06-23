@@ -30,18 +30,6 @@
         font-size: 0.78rem;
         opacity: 0.9;
     }
-    #taskSummaryRrModal .rr-progress-bar-wrap {
-        height: 8px;
-        background: rgba(255, 255, 255, 0.25);
-        border-radius: 999px;
-        overflow: hidden;
-    }
-    #taskSummaryRrModal .rr-progress-bar-fill {
-        height: 100%;
-        background: linear-gradient(90deg, #34d399, #10b981);
-        width: 0%;
-        transition: width 0.35s ease;
-    }
     .rr-search-icon-btn {
         border: none;
         background: transparent;
@@ -72,23 +60,16 @@
         border-color: #c4b5fd;
         box-shadow: 0 4px 14px rgba(109, 40, 217, 0.08);
     }
-    #ts-rr-item-list .rr-item[data-status="done"] {
-        background: #f0fdf4;
-        border-color: #bbf7d0;
-    }
-    #ts-rr-item-list .rr-item[data-status="in_progress"] {
-        background: #fffbeb;
-        border-color: #fde68a;
+    #ts-rr-item-list .rr-item.is-editing {
+        border-color: #8b5cf6;
+        box-shadow: 0 4px 14px rgba(109, 40, 217, 0.15);
+        background: #faf5ff;
     }
     #ts-rr-item-list .rr-item .rr-item-title {
         font-weight: 600;
         font-size: 0.92rem;
         color: #1f2937;
         line-height: 1.3;
-    }
-    #ts-rr-item-list .rr-item[data-status="done"] .rr-item-title {
-        text-decoration: line-through;
-        color: #15803d;
     }
     #ts-rr-item-list .rr-item .rr-item-desc {
         font-size: 0.78rem;
@@ -111,21 +92,54 @@
         background: #f1f5f9;
         color: #475569;
     }
-    #ts-rr-item-list .rr-status-select {
-        font-size: 0.78rem;
-        padding: 0.2rem 1.7rem 0.2rem 0.5rem;
-        min-width: 130px;
-    }
+    #ts-rr-item-list .rr-edit-btn,
     #ts-rr-item-list .rr-delete-btn {
-        color: #dc2626;
         background: transparent;
         border: none;
         padding: 0.15rem 0.4rem;
         border-radius: 6px;
         transition: background 0.15s ease;
+        cursor: pointer;
+    }
+    #ts-rr-item-list .rr-edit-btn {
+        color: #6d28d9;
+    }
+    #ts-rr-item-list .rr-edit-btn:hover {
+        background: rgba(109, 40, 217, 0.10);
+    }
+    #ts-rr-item-list .rr-delete-btn {
+        color: #dc2626;
     }
     #ts-rr-item-list .rr-delete-btn:hover {
         background: rgba(220, 38, 38, 0.1);
+    }
+    #ts-rr-item-list .rr-edit-form .rr-edit-title,
+    #ts-rr-item-list .rr-edit-form .rr-edit-desc {
+        font-size: 0.85rem;
+    }
+    /* "Ask AI" button next to "+ Add" in the add-new-responsibility form */
+    #ts-rr-add-form .rr-ai-suggest-btn {
+        background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+        color: #fff;
+        border: none;
+        white-space: nowrap;
+        transition: background 0.15s ease, opacity 0.15s ease;
+    }
+    #ts-rr-add-form .rr-ai-suggest-btn:hover:not(:disabled) {
+        background: linear-gradient(135deg, #5b21b6, #6d28d9);
+        color: #fff;
+    }
+    #ts-rr-add-form .rr-ai-suggest-btn:disabled {
+        opacity: 0.7;
+        cursor: progress;
+    }
+    #ts-rr-add-form .rr-ai-suggest-btn .spin {
+        display: inline-block;
+        animation: rr-spin 0.9s linear infinite;
+    }
+    @keyframes rr-spin {
+        from { transform: rotate(0deg); }
+        to   { transform: rotate(360deg); }
     }
     #ts-rr-empty {
         text-align: center;
@@ -167,13 +181,9 @@
                         </h5>
                         <div class="rr-meta">
                             <span id="ts-rr-modal-designation"></span>
-                            <span class="ms-2" id="ts-rr-modal-progress-text"></span>
                         </div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="mt-2 rr-progress-bar-wrap" role="progressbar" aria-label="R&R completion">
-                    <div class="rr-progress-bar-fill" id="ts-rr-modal-progress-fill"></div>
                 </div>
             </div>
             <div class="modal-body">
@@ -213,8 +223,11 @@
                         </label>
                         <div class="input-group input-group-sm">
                             <input type="text" id="ts-rr-add-title" class="form-control" placeholder="e.g. Review weekly KPI dashboard" maxlength="500" />
-                            <button type="button" class="btn btn-primary" id="ts-rr-add-btn" style="background:#6d28d9;border-color:#6d28d9;">
+                            <button type="button" class="btn btn-primary" id="ts-rr-add-btn" style="background:#6d28d9;border-color:#6d28d9;" title="Add the typed responsibility manually">
                                 <i class="ri-add-line"></i> Add
+                            </button>
+                            <button type="button" class="btn rr-ai-suggest-btn" id="ts-rr-ai-suggest-btn" title="Ask AI — if the box is empty, it suggests a brand-new responsibility; if you typed something, AI refines it into a clean R&R bullet">
+                                <i class="ri-sparkling-line"></i> Ask AI
                             </button>
                         </div>
                     </div>

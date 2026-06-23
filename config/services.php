@@ -674,11 +674,11 @@ return [
 
     'anthropic' => [
         'key' => env('ANTHROPIC_API_KEY', env('CLAUDE_API_KEY')),
-        'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-4-20250514'),
-        // Default to Sonnet 4 because that's the model the rest of the app is
-        // currently authorised for (see ProductMasterController stack drafts).
-        // If your key only has Haiku access, set ANTHROPIC_HERO_VISION_MODEL=claude-3-haiku-20240307.
-        'hero_vision_model' => env('ANTHROPIC_HERO_VISION_MODEL', 'claude-sonnet-4-20250514'),
+        // Default model picked from the currently-available list returned by
+        // /v1/models for this key (claude-haiku-4-5-20251001 is the fastest /
+        // cheapest tier the key has access to). Override via ANTHROPIC_MODEL.
+        'model' => env('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001'),
+        'hero_vision_model' => env('ANTHROPIC_HERO_VISION_MODEL', 'claude-sonnet-4-5-20250929'),
         'version' => env('ANTHROPIC_API_VERSION', '2023-06-01'),
     ],
 

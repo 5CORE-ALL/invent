@@ -193,6 +193,36 @@
             border-radius: 0;
         }
 
+        /* Pink "badge" styling for cells whose value is "pink" (DIL >= 50%,
+           GROI% > 100%, etc.). Generic utility class so any percent cell can
+           opt in by adding `pink-pct-badge`. Applied only to the inline span
+           inside the cell so only the number pill changes — surrounding cell
+           padding/border stays as-is.
+           NOTE: `.forecast-dil-pct` uses `!important` on `background` and
+           `border`, so this utility must use `!important` too or it gets
+           cancelled out on DIL cells. */
+        .pink-pct-badge {
+            display: inline-block !important;
+            background-color: #fbe3ee !important;
+            color: #ad1457 !important;
+            border: 1px solid #f1b5d0 !important;
+            border-radius: 999px !important;
+            padding: 1px 10px !important;
+            line-height: 1.2 !important;
+            font-weight: 700;
+        }
+        /* Backwards-compatible alias so any existing template still using
+           `.forecast-dil-pct.is-pink` keeps working. */
+        .forecast-dil-pct.is-pink {
+            display: inline-block !important;
+            background-color: #fbe3ee !important;
+            color: #ad1457 !important;
+            border: 1px solid #f1b5d0 !important;
+            border-radius: 999px !important;
+            padding: 1px 10px !important;
+            line-height: 1.2 !important;
+        }
+
         .forecast-to-order-pct {
             font-weight: 700;
             font-size: 0.95rem;
@@ -533,6 +563,28 @@
                                 title="Reset every search, filter, play mode, NRP selection, header filter and zero-stock toggle">
                             <i class="fas fa-times-circle"></i>
                         </button>
+
+                        @php
+                            $__forecastPresidentEmail = 'president@5core.com';
+                            $__forecastIsPresident = strtolower(trim((string) (\Illuminate\Support\Facades\Auth::user()->email ?? ''))) === $__forecastPresidentEmail;
+                        @endphp
+                        @if ($__forecastIsPresident)
+                            <!-- Archive selected (president only) -->
+                            <button id="archive-selected-btn"
+                                    class="btn btn-sm btn-outline-dark fw-semibold d-flex align-items-center gap-1"
+                                    type="button" disabled
+                                    title="Archive the rows you've ticked. Archived rows disappear from this view and live on the Restore page.">
+                                <i class="fas fa-box-archive"></i>
+                                <span>Archive (<span id="archive-selected-count">0</span>)</span>
+                            </button>
+                            <!-- Restore page link (president only) -->
+                            <a href="{{ route('forecast.analysis.archived') }}"
+                               class="btn btn-sm btn-outline-secondary fw-semibold d-flex align-items-center gap-1"
+                               title="Open the Restore page to bring archived rows back">
+                                <i class="fas fa-rotate-left"></i>
+                                <span>Restore</span>
+                            </a>
+                        @endif
                     </div>
 
                     <!-- ── Row 3: Value badges ── -->
@@ -796,6 +848,158 @@
         </div>
     </div>
 
+    {{-- Per-row Edit modal. All fields here post to the same /update-forecast-data
+         endpoint used by inline cell editing (see updateForecastField()). Only fields
+         the user actually changes are sent; unchanged fields are skipped. --}}
+    <div class="modal fade" id="forecastRowEditModal" tabindex="-1" role="dialog"
+        aria-labelledby="forecastRowEditLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable shadow-none" role="document">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-primary text-white border-0">
+                    <h5 class="modal-title" id="forecastRowEditLabel">
+                        <i class="fas fa-edit me-2"></i> Edit Row
+                        <small class="text-white-50 ms-2" id="forecastRowEditSubtitle"></small>
+                    </h5>
+                    <button type="button" class="close text-white custom-close" data-bs-dismiss="modal"
+                        aria-label="Close" style="font-size:25px; background-color: transparent; border: none;">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="forecastRowEditForm" autocomplete="off">
+                        <input type="hidden" id="fre_sku">
+                        <input type="hidden" id="fre_parent">
+
+                        <div class="row g-3">
+                            {{-- Quantities --}}
+                            <div class="col-12">
+                                <h6 class="text-muted small text-uppercase mb-2">Quantities</h6>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1">MOQ (Approved Qty)</label>
+                                <input type="number" step="1" class="form-control" id="fre_moq">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1">2 Order</label>
+                                <input type="number" step="1" min="0" class="form-control" id="fre_order">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1">MIP</label>
+                                <input type="number" step="1" min="0" class="form-control" id="fre_mip">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1">R2S</label>
+                                <input type="number" step="1" min="0" class="form-control" id="fre_r2s">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1">Transit</label>
+                                <input type="number" step="1" min="0" class="form-control" id="fre_transit">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1">MSL Manual</label>
+                                <input type="text" maxlength="4" class="form-control" id="fre_smsl">
+                            </div>
+
+                            {{-- Product Master (CP / CBM live on product_master.Values) --}}
+                            <div class="col-12 mt-3">
+                                <h6 class="text-muted small text-uppercase mb-2">Product Master</h6>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1">CP</label>
+                                <input type="number" step="0.01" class="form-control" id="fre_cp">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1">CBM</label>
+                                <input type="number" step="0.0001" class="form-control" id="fre_cbm">
+                            </div>
+
+                            {{-- Workflow --}}
+                            <div class="col-12 mt-3">
+                                <h6 class="text-muted small text-uppercase mb-2">Workflow</h6>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1">Stage</label>
+                                <select class="form-select" id="fre_stage">
+                                    <option value="">— None —</option>
+                                    <option value="appr_req">Approval Required</option>
+                                    <option value="mip">MIP</option>
+                                    <option value="r2s">R2S</option>
+                                    <option value="transit">Transit</option>
+                                    <option value="to_order_analysis">To Order Analysis</option>
+                                    <option value="all_good">All Good</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1">NR</label>
+                                <select class="form-select" id="fre_nr">
+                                    <option value="">— None —</option>
+                                    <option value="REQ">REQ</option>
+                                    <option value="NR">NR</option>
+                                    <option value="LATER">LATER</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1">Date of Appr</label>
+                                <input type="date" class="form-control" id="fre_dateappr">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1">REQ</label>
+                                <input type="text" maxlength="20" class="form-control" id="fre_req">
+                            </div>
+
+                            {{-- Links --}}
+                            <div class="col-12 mt-3">
+                                <h6 class="text-muted small text-uppercase mb-2">Links</h6>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1">Comparison Link (Clink)</label>
+                                <input type="url" class="form-control" id="fre_clink" placeholder="https://...">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1">Order Link (Olink)</label>
+                                <input type="url" class="form-control" id="fre_olink" placeholder="https://...">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1">RFQ Form Link</label>
+                                <input type="url" class="form-control" id="fre_rfq_form" placeholder="https://...">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1">RFQ Report</label>
+                                <input type="url" class="form-control" id="fre_rfq_report" placeholder="https://...">
+                            </div>
+
+                            {{-- Misc --}}
+                            <div class="col-12 mt-3">
+                                <h6 class="text-muted small text-uppercase mb-2">Other</h6>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1">Hide</label>
+                                <select class="form-select" id="fre_hide">
+                                    <option value="">— No change —</option>
+                                    <option value="1">Hidden (1)</option>
+                                    <option value="0">Visible (0)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-9">
+                                <label class="form-label small mb-1">Notes</label>
+                                <textarea class="form-control" id="fre_notes" rows="2"
+                                    placeholder="Internal notes" style="resize:vertical;"></textarea>
+                            </div>
+                        </div>
+
+                        <div id="forecastRowEditStatus" class="small mt-3"></div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="forecastRowEditSaveBtn">
+                        <i class="fas fa-save me-2"></i> Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="scouthProductsModal" tabindex="-1">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
@@ -892,6 +1096,233 @@
                 onFail();
             });
         }
+
+        /** Promise wrapper around updateForecastField so the per-row Edit modal can
+         *  fire many column updates in parallel and await them all before closing. */
+        function updateForecastFieldPromise(payload) {
+            return new Promise(function(resolve) {
+                $.post('/update-forecast-data', {
+                    ...payload,
+                    _token: $('meta[name="csrf-token"]').attr('content')
+                }).done(function(res) {
+                    if (res && res.success) {
+                        resolve({ ok: true, payload: payload, message: res.message || '' });
+                    } else {
+                        resolve({ ok: false, payload: payload, message: (res && res.message) || 'Not saved' });
+                    }
+                }).fail(function(err) {
+                    resolve({ ok: false, payload: payload, message: (err && err.statusText) || 'AJAX failed' });
+                });
+            });
+        }
+
+        // --------------------------------------------------------------------
+        // Per-row "Edit" modal: opens with the current row's values, lets the
+        // user change any field on that row, and on Save fans the changed
+        // fields out to the same /update-forecast-data endpoint that the
+        // inline cell editors already use. Reads the current row, posts only
+        // the diff (so unchanged fields don't churn the DB), then reloads the
+        // table so derived/computed columns (to_order, msl_sp, etc.) refresh.
+        // --------------------------------------------------------------------
+        let forecastRowEditState = {
+            row: null,
+            original: {},
+        };
+
+        function forecastRowGetField(d, ...keys) {
+            for (const k of keys) {
+                if (d == null) continue;
+                if (Object.prototype.hasOwnProperty.call(d, k)) {
+                    const v = d[k];
+                    if (v !== undefined && v !== null) return v;
+                }
+            }
+            return '';
+        }
+
+        function forecastRowToYmd(value) {
+            if (!value) return '';
+            const s = String(value).trim();
+            if (!s) return '';
+            // Already ISO yyyy-mm-dd
+            if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+            const d = new Date(s);
+            if (isNaN(d.getTime())) return '';
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
+
+        function openForecastEditModal(row) {
+            const d = (row && row.getData()) || {};
+            if (d.is_parent || d.isParent) return;
+
+            forecastRowEditState.row = row;
+
+            const sku    = String(forecastRowGetField(d, 'SKU', 'sku') || '').trim();
+            const parent = String(forecastRowGetField(d, 'Parent', 'parent') || '').trim();
+
+            // Row data values used to pre-fill the modal. Try several known field
+            // aliases so this works against whichever shape the controller's
+            // buildForecastAnalysisData() emits.
+            const original = {
+                moq:        forecastRowGetField(d, 'MOQ', 'Approved QTY', 'approved_qty'),
+                order:      forecastRowGetField(d, 'to_order', 'order', 'two_order_qty'),
+                mip:        forecastRowGetField(d, 'order_given', 'Order Given'),
+                r2s:        forecastRowGetField(d, 'readyToShipQty', 'ready_to_ship', 'r2s'),
+                transit:    forecastRowGetField(d, 'transit', 'Transit'),
+                s_msl:      forecastRowGetField(d, 's_msl', 's-msl', 'S-MSL'),
+                cp:         forecastRowGetField(d, 'CP', 'cp', 'LP'),
+                cbm:        forecastRowGetField(d, 'CBM', 'cbm'),
+                stage:      String(forecastRowGetField(d, 'stage', 'Stage') || '').trim().toLowerCase(),
+                // Mirror the table cell's default: empty / invalid -> 'REQ'. This way the
+                // modal opens with the same value the user already sees in the NR column,
+                // and the diff logic won't no-op when the stored value is empty but the
+                // user "confirms" REQ from the dropdown.
+                nr: (function() {
+                    const raw = String(forecastRowGetField(d, 'nr', 'NR') || '').trim().toUpperCase();
+                    if (raw === 'REQ' || raw === 'NR' || raw === 'LATER') return raw;
+                    return 'REQ';
+                })(),
+                date_appr:  forecastRowToYmd(forecastRowGetField(d, 'date_apprvl', 'Date of Appr')),
+                req:        forecastRowGetField(d, 'req', 'REQ'),
+                clink:      forecastRowGetField(d, 'Clink', 'clink'),
+                olink:      forecastRowGetField(d, 'Olink', 'olink'),
+                rfq_form:   forecastRowGetField(d, 'rfq_form_link'),
+                rfq_report: forecastRowGetField(d, 'rfq_report'),
+                hide:       (function(v) {
+                    if (v === null || v === undefined || v === '') return '';
+                    const n = Number(v);
+                    if (!isNaN(n)) return n ? '1' : '0';
+                    return String(v).toLowerCase() === 'true' ? '1' : '0';
+                })(forecastRowGetField(d, 'hide', 'Hide')),
+                notes:      forecastRowGetField(d, 'notes', 'Notes'),
+            };
+            forecastRowEditState.original = original;
+
+            // Pre-fill form
+            $('#fre_sku').val(sku);
+            $('#fre_parent').val(parent);
+            $('#forecastRowEditSubtitle').text(sku + (parent ? '  ·  ' + parent : ''));
+
+            $('#fre_moq').val(original.moq);
+            $('#fre_order').val(original.order);
+            $('#fre_mip').val(original.mip);
+            $('#fre_r2s').val(original.r2s);
+            $('#fre_transit').val(original.transit);
+            $('#fre_smsl').val(original.s_msl);
+            $('#fre_cp').val(original.cp);
+            $('#fre_cbm').val(original.cbm);
+            $('#fre_stage').val(original.stage);
+            $('#fre_nr').val(original.nr);
+            $('#fre_dateappr').val(original.date_appr);
+            $('#fre_req').val(original.req);
+            $('#fre_clink').val(original.clink);
+            $('#fre_olink').val(original.olink);
+            $('#fre_rfq_form').val(original.rfq_form);
+            $('#fre_rfq_report').val(original.rfq_report);
+            $('#fre_hide').val(original.hide);
+            $('#fre_notes').val(original.notes);
+            $('#forecastRowEditStatus').empty();
+
+            const modalEl = document.getElementById('forecastRowEditModal');
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+        }
+
+        // Treat empty/null/undefined as equal so re-saving a never-set field doesn't fire.
+        function forecastRowValChanged(prev, next) {
+            const a = (prev === null || prev === undefined) ? '' : String(prev).trim();
+            const b = (next === null || next === undefined) ? '' : String(next).trim();
+            return a !== b;
+        }
+
+        $(document).on('click', '#forecastRowEditSaveBtn', function() {
+            const row = forecastRowEditState.row;
+            if (!row) return;
+            const $btn = $(this);
+            const $status = $('#forecastRowEditStatus');
+            const sku = $('#fre_sku').val();
+            const parent = $('#fre_parent').val();
+            if (!sku) {
+                $status.html('<span class="text-danger">Missing SKU — cannot save.</span>');
+                return;
+            }
+
+            // Read current modal values, diff against the snapshot taken when the
+            // modal opened, and build one POST per changed column. Each column
+            // posts to /update-forecast-data so all the existing server-side
+            // validation, normalisation (NR uppercased, Stage lowercased, etc.)
+            // and side-effects (e.g. Stage -> stage-dependent table updates)
+            // run identically to inline editing.
+            const fieldDefs = [
+                { id: 'fre_moq',         column: 'MOQ',           key: 'moq' },
+                { id: 'fre_order',       column: 'ORDER',         key: 'order' },
+                { id: 'fre_mip',         column: 'MIP',           key: 'mip' },
+                { id: 'fre_r2s',         column: 'R2S',           key: 'r2s' },
+                { id: 'fre_transit',     column: 'Transit',       key: 'transit' },
+                { id: 'fre_smsl',        column: 'S-MSL',         key: 's_msl' },
+                { id: 'fre_cp',          column: 'CP',            key: 'cp' },
+                { id: 'fre_cbm',         column: 'CBM',           key: 'cbm' },
+                { id: 'fre_stage',       column: 'Stage',         key: 'stage' },
+                { id: 'fre_nr',          column: 'NR',            key: 'nr' },
+                { id: 'fre_dateappr',    column: 'Date of Appr',  key: 'date_appr' },
+                { id: 'fre_req',         column: 'REQ',           key: 'req' },
+                { id: 'fre_clink',       column: 'Clink',         key: 'clink' },
+                { id: 'fre_olink',       column: 'Olink',         key: 'olink' },
+                { id: 'fre_rfq_form',    column: 'rfq_form_link', key: 'rfq_form' },
+                { id: 'fre_rfq_report', column: 'rfq_report',    key: 'rfq_report' },
+                { id: 'fre_hide',        column: 'Hide',          key: 'hide' },
+                { id: 'fre_notes',       column: 'Notes',         key: 'notes' },
+            ];
+
+            const original = forecastRowEditState.original || {};
+            const changes = [];
+            fieldDefs.forEach(function(f) {
+                let val = $('#' + f.id).val();
+                if (val === undefined || val === null) val = '';
+                if (forecastRowValChanged(original[f.key], val)) {
+                    changes.push({ sku: sku, parent: parent, column: f.column, value: val });
+                }
+            });
+
+            if (changes.length === 0) {
+                $status.html('<span class="text-muted">No changes to save.</span>');
+                return;
+            }
+
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Saving…');
+            $status.html('<span class="text-muted">Saving ' + changes.length + ' field(s)…</span>');
+
+            Promise.all(changes.map(updateForecastFieldPromise)).then(function(results) {
+                const failed = results.filter(function(r) { return !r.ok; });
+                const ok = results.length - failed.length;
+
+                if (failed.length === 0) {
+                    $status.html('<span class="text-success">All ' + ok + ' field(s) saved.</span>');
+                    // Refresh the table so derived columns (to_order, msl, etc.) recompute
+                    // from the newly-saved underlying tables, then close the modal.
+                    setTimeout(function() {
+                        const modalEl = document.getElementById('forecastRowEditModal');
+                        const modal = bootstrap.Modal.getInstance(modalEl);
+                        if (modal) modal.hide();
+                        try { table.replaceData(); } catch (e) { /* ignore */ }
+                    }, 500);
+                } else {
+                    const lines = failed.map(function(r) {
+                        return '<li><strong>' + r.payload.column + ':</strong> ' + (r.message || 'failed') + '</li>';
+                    }).join('');
+                    $status.html(
+                        '<div class="text-warning">' +
+                        ok + ' saved, ' + failed.length + ' failed:' +
+                        '<ul class="mb-0 small">' + lines + '</ul></div>'
+                    );
+                }
+            }).finally(function() {
+                $btn.prop('disabled', false).html('<i class="fas fa-save me-2"></i> Save Changes');
+            });
+        });
         
         /** DIL % display: text color only (red / dark green / magenta). */
         const getDilTextColor = (ratio) => {
@@ -935,6 +1366,30 @@
             const data = (typeof row.getData === 'function') ? row.getData() : (row || {});
             const sku = (data.SKU || '').toString().toLowerCase();
             return sku.indexOf('parent') === -1;
+        }
+
+        // ── President-only Archive / Restore (selection state lives outside Tabulator
+        //    so it survives re-renders, pagination and filter changes) ─────────────
+        // Whether the current user is the president - emitted by Blade from
+        // Auth::user()->email so the Archive button is also hidden client-side if
+        // the request somehow falls through. The actual security check is the
+        // exact-email guard on the controller.
+        const FORECAST_IS_PRESIDENT = @json($__forecastIsPresident ?? false);
+        // Selected (sku, parent) pairs as a Set keyed by 'sku||parent'. Set is used
+        // (rather than an array) so checkbox toggles are O(1) and we can quickly
+        // figure out how many rows are picked.
+        const forecastArchiveSelection = new Set();
+
+        function forecastArchiveKey(sku, parent) {
+            return String(sku || '').trim() + '||' + String(parent || '').trim();
+        }
+
+        function forecastArchiveUpdateButton() {
+            const count = forecastArchiveSelection.size;
+            const $btn = $('#archive-selected-btn');
+            const $cnt = $('#archive-selected-count');
+            if ($cnt.length) $cnt.text(count);
+            if ($btn.length) $btn.prop('disabled', count === 0);
         }
         function updateOrderColumnHeader(count) {
             currentOrderPositiveCount = Number.isFinite(count) ? count : 0;
@@ -1092,6 +1547,35 @@
                 }
             },
             columns: [
+                // President-only: row picker for the Archive workflow. Spread in an
+                // empty list when the user isn't the president, so no column is added
+                // and the visual layout for everyone else is unchanged.
+                ...(FORECAST_IS_PRESIDENT ? [{
+                    title: '<input type="checkbox" id="forecast-archive-select-all" title="Select all rows on this page">',
+                    field: '_archive_select',
+                    headerSort: false,
+                    download: false,
+                    width: 36,
+                    minWidth: 32,
+                    maxWidth: 40,
+                    widthGrow: 0,
+                    hozAlign: 'center',
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '';
+                        const sku = String(d.SKU || '').trim();
+                        const parent = String(d.Parent || '').trim();
+                        const key = forecastArchiveKey(sku, parent);
+                        const checked = forecastArchiveSelection.has(key) ? 'checked' : '';
+                        return '<input type="checkbox" class="forecast-archive-row-cb" data-sku="' +
+                            sku.replace(/"/g, '&quot;') + '" data-parent="' +
+                            parent.replace(/"/g, '&quot;') + '" ' + checked + '>';
+                    },
+                    cellClick: function(e, cell) {
+                        // Stop event bubbling so the surrounding row click doesn't fire.
+                        e.stopPropagation();
+                    }
+                }] : []),
                 {
                     title: "#",
                     field: "Image",
@@ -1301,8 +1785,14 @@
 
                         if (!isNaN(l30) && !isNaN(inv) && inv !== 0) {
                             const dilDecimal = (l30 / inv);
+                            const percent = Math.round(dilDecimal * 100);
+                            // Pink range (>= 50%) gets the badge/pill look; other ranges
+                            // keep the previous coloured-text styling.
+                            if (percent >= 50) {
+                                return `<div class="text-center"><span class="forecast-dil-pct pink-pct-badge">${percent}%</span></div>`;
+                            }
                             const col = getDilTextColor(dilDecimal);
-                            return `<div class="text-center"><span class="forecast-dil-pct" style="color:${col};">${Math.round(dilDecimal * 100)}%</span></div>`;
+                            return `<div class="text-center"><span class="forecast-dil-pct" style="color:${col};">${percent}%</span></div>`;
                         }
                         return `<div class="text-center"><span class="forecast-dil-pct" style="color:#b71c1c;">0%</span></div>`;
                     }
@@ -2386,9 +2876,13 @@
                             return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
                         }
                         const n = Math.round(parseFloat(v));
+                        // Pink range (>100%) uses the shared pill/badge styling. Other
+                        // ranges keep the previous coloured-text styling.
+                        if (n > 100) {
+                            return `<span class="pink-pct-badge" title="Gross ROI % — red &lt;50, green 50–100, magenta &gt;100">${n}%</span>`;
+                        }
                         let col = '#1b5e20';
                         if (n < 50) col = '#b71c1c';
-                        else if (n > 100) col = '#c2185b';
                         return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="Gross ROI % — red &lt;50, green 50–100, magenta &gt;100">${n}%</span>`;
                     }
                 },
@@ -2763,6 +3257,30 @@
                         if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
                         const yes = String(cell.getValue() || 'No').trim().toUpperCase() === 'YES';
                         return `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background-color:${yes ? '#28a745' : '#dc3545'};"></span>`;
+                    }
+                },
+                {
+                    title: "Edit",
+                    field: "_edit_row",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 56,
+                    minWidth: 50,
+                    maxWidth: 64,
+                    widthGrow: 0,
+                    download: false,
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        return '<button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 forecast-edit-row-btn" title="Edit row"><i class="mdi mdi-pencil"></i></button>';
+                    },
+                    cellClick: function(e, cell) {
+                        if (!e.target.closest('.forecast-edit-row-btn')) return;
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return;
+                        openForecastEditModal(cell.getRow());
                     }
                 },
             ],
@@ -3630,6 +4148,128 @@
             if (!btn) return;
             e.preventDefault();
             clearAllForecastFilters();
+        });
+
+        // ── Archive selection wiring (president-only). Handlers are installed for
+        //    every user but only do work when the checkbox column actually exists
+        //    in the DOM, which is controlled by FORECAST_IS_PRESIDENT in the
+        //    columns array above. ────────────────────────────────────────────────
+        $(document).on('change', '.forecast-archive-row-cb', function() {
+            const sku = $(this).attr('data-sku') || '';
+            const parent = $(this).attr('data-parent') || '';
+            const key = forecastArchiveKey(sku, parent);
+            if ($(this).is(':checked')) {
+                forecastArchiveSelection.add(key);
+            } else {
+                forecastArchiveSelection.delete(key);
+                $('#forecast-archive-select-all').prop('checked', false);
+            }
+            forecastArchiveUpdateButton();
+        });
+
+        // "Select all" toggles every selectable (non-parent, currently rendered) row.
+        // Operates on table.getRows('active') so it follows the active filters.
+        $(document).on('change', '#forecast-archive-select-all', function() {
+            if (!table) return;
+            const turnOn = $(this).is(':checked');
+            const rows = (typeof table.getRows === 'function') ? table.getRows('active') : [];
+            rows.forEach(function(r) {
+                const d = r.getData() || {};
+                if (d.is_parent || d.isParent) return;
+                const sku = String(d.SKU || '').trim();
+                const parent = String(d.Parent || '').trim();
+                const key = forecastArchiveKey(sku, parent);
+                if (turnOn) forecastArchiveSelection.add(key);
+                else forecastArchiveSelection.delete(key);
+            });
+            try { table.redraw(true); } catch (e) { /* ignore */ }
+            forecastArchiveUpdateButton();
+        });
+
+        $(document).on('click', '#archive-selected-btn', function() {
+            if (!FORECAST_IS_PRESIDENT) return;
+            if (forecastArchiveSelection.size === 0) return;
+
+            // Build a map of selected (sku, parent) -> row data snapshot so the
+            // archive captures the row's currently-displayed state. The forecast
+            // page's row data can come from joined sources (not just
+            // forecast_analysis), so without a snapshot the Restore page would
+            // show blank Stage / NR / Notes for rows that weren't already in
+            // forecast_analysis with those fields filled.
+            const selectedKeys = new Set(forecastArchiveSelection);
+            const itemsBySku = new Map();
+            (table.getRows() || []).forEach(function(r) {
+                const d = r.getData() || {};
+                if (d.is_parent || d.isParent) return;
+                const sku = String(d.SKU || '').trim();
+                const parent = String(d.Parent || '').trim();
+                const key = forecastArchiveKey(sku, parent);
+                if (!selectedKeys.has(key)) return;
+                if (itemsBySku.has(key)) return;
+                itemsBySku.set(key, {
+                    sku: sku,
+                    parent: parent,
+                    // String-ish fields — only sent when they have a value
+                    stage:         d.stage || d.Stage || '',
+                    nr:            d.nr || d.NR || '',
+                    req:           d.req || d.REQ || '',
+                    notes:         d.notes || d.Notes || '',
+                    clink:         d.Clink || d.clink || '',
+                    olink:         d.Olink || d.olink || '',
+                    rfq_form_link: d.rfq_form_link || '',
+                    rfq_report:    d.rfq_report || '',
+                    date_apprvl:   d.date_apprvl || d['Date of Appr'] || '',
+                    // Numeric fields — the backend only takes is_numeric values
+                    s_msl:         (d.s_msl ?? d['s-msl'] ?? d['S-MSL'] ?? ''),
+                    approved_qty:  (d.MOQ ?? d['Approved QTY'] ?? d.approved_qty ?? ''),
+                    order_given:   (d.order_given ?? d['Order Given'] ?? ''),
+                    transit:       (d.transit ?? d.Transit ?? ''),
+                });
+            });
+            // Fall back to bare sku/parent for any selected key whose row wasn't
+            // found (e.g. row was filtered out between selection and click).
+            const items = Array.from(selectedKeys).map(function(key) {
+                if (itemsBySku.has(key)) return itemsBySku.get(key);
+                const parts = key.split('||');
+                return { sku: parts[0] || '', parent: parts[1] || '' };
+            });
+            if (!confirm('Archive ' + items.length + ' row(s)? They will be hidden from this view and listed on the Restore page.')) {
+                return;
+            }
+
+            const $btn = $(this);
+            const prevHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Archiving…');
+
+            $.ajax({
+                url: '{{ route('forecast.analysis.archive') }}',
+                method: 'POST',
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    items: items,
+                },
+                success: function(res) {
+                    if (res && res.success) {
+                        forecastArchiveSelection.clear();
+                        $('#forecast-archive-select-all').prop('checked', false);
+                        forecastArchiveUpdateButton();
+                        try { table.replaceData(); } catch (e) { /* ignore */ }
+                    } else {
+                        alert((res && res.message) || 'Failed to archive.');
+                    }
+                },
+                error: function(xhr) {
+                    if (xhr && xhr.status === 403) {
+                        alert('You are not authorized to archive rows.');
+                    } else {
+                        alert('Failed to archive (network or server error).');
+                    }
+                },
+                complete: function() {
+                    $btn.html(prevHtml);
+                    forecastArchiveUpdateButton(); // re-evaluates disabled state
+                }
+            });
         });
 
         function updateTopRowCounter() {

@@ -914,9 +914,16 @@ class TaskController extends Controller
         $visibility = $this->describeTaskSummaryVisibility($viewer, $visibleIds, count($rows));
         $canEditTags = $this->canEditOrgTags($viewer);
 
+        // Permission flags consumed by the Role-column dropdown — see
+        // canChangeOrgLevelOf() for the full rule.
+        $orgLevelControl = [
+            'can_edit_any' => $canEditTags, // admin / director / shobha
+            'is_manager' => strtolower((string) ($viewer->org_level ?? '')) === 'mgr',
+        ];
+
         return view(
             'tasks.task-summary',
-            compact('rows', 'taskDashboardStats', 'orgGraph', 'visibility', 'canEditTags')
+            compact('rows', 'taskDashboardStats', 'orgGraph', 'visibility', 'canEditTags', 'orgLevelControl')
         );
     }
 
@@ -4077,6 +4084,192 @@ class TaskController extends Controller
     }
 
     /**
+     * Ask AI to suggest a single new R&R item for a designation, aware of
+     * the items already defined so it doesn't duplicate. Used by the
+     * "Ask AI" button next to "Add" in the R&R modal.
+     */
+    public function suggestDesignationRRItem(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'designation' => 'required|string|max:191',
+            'hint' => 'nullable|string|max:500', // optional draft text from the input box
+        ]);
+
+        $designation = trim($validated['designation']);
+        $hint = isset($validated['hint']) ? trim((string) $validated['hint']) : '';
+        if ($designation === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Designation is required.',
+            ], 422);
+        }
+
+        $existingTitles = DesignationRrItem::where('designation', $designation)
+            ->orderBy('sort_order')->orderBy('id')
+            ->pluck('title')
+            ->map(fn ($t) => trim((string) $t))
+            ->filter()
+            ->values()
+            ->all();
+
+        $result = $this->suggestOneRRViaOpenAi($designation, $existingTitles, $hint);
+        $suggestion = $result['suggestion'] ?? null;
+
+        if (empty($suggestion) || empty(trim((string) ($suggestion['title'] ?? '')))) {
+            $reason = $result['error'] ?? null;
+            $msg = 'AI could not generate a new responsibility. Try again or add one manually.';
+            if ($reason && (config('app.debug') || app()->environment('local'))) {
+                $msg .= ' (' . $reason . ')';
+            }
+            return response()->json([
+                'success' => false,
+                'message' => $msg,
+                'debug' => app()->environment('local') ? $reason : null,
+            ], 502);
+        }
+
+        $createdById = optional(Auth::user())->id;
+        $nextOrder = (int) DesignationRrItem::where('designation', $designation)->max('sort_order') + 1;
+
+        $item = DesignationRrItem::create([
+            'designation' => $designation,
+            'title' => mb_substr(trim((string) $suggestion['title']), 0, 500),
+            'description' => isset($suggestion['description']) ? trim((string) $suggestion['description']) : null,
+            'sort_order' => $nextOrder,
+            'source' => 'ai',
+            'created_by' => $createdById,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'item' => [
+                'id' => $item->id,
+                'title' => $item->title,
+                'description' => $item->description,
+                'sort_order' => $item->sort_order,
+                'source' => $item->source,
+                'status' => UserRrProgress::STATUS_PENDING,
+                'note' => null,
+                'done_at' => null,
+            ],
+        ]);
+    }
+
+    /**
+     * Ask OpenAI for ONE additional, non-duplicate R&R bullet for a designation.
+     *
+     * The optional $hint is treated as the user's draft / intent — if
+     * provided, AI is instructed to refine it into a proper bullet (so
+     * "Ask AI" works as "refine what I just typed" when the box has text).
+     *
+     * @param  array<int,string>  $existingTitles
+     * @return array{suggestion: array{title:string, description?:string|null}|null, error: string|null}
+     */
+    protected function suggestOneRRViaOpenAi(string $designation, array $existingTitles, string $hint = ''): array
+    {
+        $existingList = empty($existingTitles)
+            ? '(none yet)'
+            : implode("\n", array_map(fn ($t) => '- ' . $t, $existingTitles));
+
+        $system = 'You are an HR + operations expert. Given a job designation, the Roles & '
+            . 'Responsibilities already defined for it, and (optionally) the user\'s draft text, '
+            . 'produce ONE R&R bullet that is: (a) action-oriented (start with a verb), '
+            . '(b) specific and trackable so a manager can mark it Done, (c) NOT a duplicate or '
+            . 'paraphrase of any existing bullet. If the user gave a draft, REFINE it into a clean '
+            . 'bullet rather than discarding the intent. Return ONLY valid JSON: '
+            . '{"item":{"title":"string (<=120 chars)","description":"string (<=240 chars, optional context)"}}';
+
+        $userMsg = "Designation: {$designation}\nExisting R&R bullets:\n{$existingList}";
+        if ($hint !== '') {
+            $userMsg .= "\n\nUser's draft text to refine into one R&R bullet:\n{$hint}";
+        } else {
+            $userMsg .= "\n\nSuggest one additional R&R bullet.";
+        }
+
+        $ai = $this->callAiJson($system, $userMsg, 60, 0.4);
+        if ($ai['text'] === null) {
+            return ['suggestion' => null, 'error' => $ai['error'] ?? 'AI call failed.'];
+        }
+
+        $text = $ai['text'];
+        $decoded = json_decode($text, true);
+        if (! is_array($decoded)) {
+            // As a final fallback, treat the raw text as the title.
+            $fallbackTitle = mb_substr(trim($text), 0, 120);
+            if ($fallbackTitle !== '') {
+                return [
+                    'suggestion' => ['title' => $fallbackTitle, 'description' => null],
+                    'error' => null,
+                ];
+            }
+            \Log::warning('R&R suggest: AI returned non-JSON', ['text' => $text]);
+            return ['suggestion' => null, 'error' => 'AI returned non-JSON.'];
+        }
+
+        // Accept many shapes — the model occasionally wraps the bullet differently.
+        $row = $decoded['item']
+            ?? $decoded['responsibility']
+            ?? $decoded['result']
+            ?? (isset($decoded['items'][0]) && is_array($decoded['items'][0]) ? $decoded['items'][0] : null)
+            ?? $decoded;
+        if (! is_array($row)) {
+            return ['suggestion' => null, 'error' => 'AI response was the wrong shape.'];
+        }
+
+        $title = trim((string) (
+            $row['title']
+                ?? $row['name']
+                ?? $row['responsibility']
+                ?? $row['bullet']
+                ?? $row['text']
+                ?? ''
+        ));
+        if ($title === '') {
+            return ['suggestion' => null, 'error' => 'AI did not return a title.'];
+        }
+        return [
+            'suggestion' => [
+                'title' => $title,
+                'description' => isset($row['description']) ? trim((string) $row['description']) : null,
+            ],
+            'error' => null,
+        ];
+    }
+
+    /**
+     * Edit a single R&R item (title and/or description).  Used by the
+     * inline-edit pencil in the R&R modal.
+     */
+    public function updateDesignationRRItem(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => 'nullable|string|max:500',
+            'description' => 'nullable|string|max:2000',
+        ]);
+
+        $item = DesignationRrItem::findOrFail($id);
+
+        if (array_key_exists('title', $validated) && $validated['title'] !== null && trim($validated['title']) !== '') {
+            $item->title = mb_substr(trim($validated['title']), 0, 500);
+        }
+        if (array_key_exists('description', $validated)) {
+            $item->description = $validated['description'] !== null
+                ? trim($validated['description'])
+                : null;
+        }
+        $item->save();
+
+        return response()->json([
+            'success' => true,
+            'item' => [
+                'id' => $item->id,
+                'title' => $item->title,
+                'description' => $item->description,
+            ],
+        ]);
+    }
+
+    /**
      * Delete an R&R item from a designation. Cascades user progress rows.
      */
     public function deleteDesignationRRItem(int $id): JsonResponse
@@ -4159,92 +4352,185 @@ class TaskController extends Controller
     }
 
     /**
-     * Call OpenAI chat completions for a JSON list of R&R bullets tailored
-     * to the given designation. Returns an array of ['title' => ..., 'description' => ...]
-     * or [] when the call fails for any reason (no key, network, bad JSON).
+     * Call a JSON-returning LLM. Tries OpenAI first (gpt-4o-mini class),
+     * and on ANY failure (missing key, 401, network, empty body) falls back
+     * to Anthropic Claude. Returns the raw text the model produced (still
+     * needs JSON parsing by the caller).
+     *
+     * Strips ```json fences automatically since Claude often wraps its
+     * answers in markdown even when asked not to.
+     *
+     * @return array{text: string|null, error: string|null, provider: string|null}
+     */
+    protected function callAiJson(string $system, string $userMsg, int $timeoutSeconds = 60, float $temperature = 0.4): array
+    {
+        $stripFences = static function (string $t): string {
+            $t = trim($t);
+            $t = preg_replace('/^```(?:json)?\s*/i', '', $t) ?? $t;
+            $t = preg_replace('/\s*```\s*$/i', '', $t) ?? $t;
+            return trim($t);
+        };
+
+        // ---------- Try OpenAI first ----------
+        $lastError = null;
+        $openAiKey = config('services.openai.key');
+        if (is_string($openAiKey) && $openAiKey !== '') {
+            $headers = OpenAiRequest::authHeaders();
+            $model = (string) config('services.openai.title_master_stack_model', 'gpt-4o-mini');
+            try {
+                $response = Http::withHeaders($headers)
+                    ->timeout($timeoutSeconds)
+                    ->post('https://api.openai.com/v1/chat/completions', [
+                        'model' => $model,
+                        'temperature' => $temperature,
+                        'response_format' => ['type' => 'json_object'],
+                        'messages' => [
+                            ['role' => 'system', 'content' => $system],
+                            ['role' => 'user', 'content' => $userMsg],
+                        ],
+                    ]);
+                if ($response->successful()) {
+                    $text = (string) ($response->json('choices.0.message.content') ?? '');
+                    $text = $stripFences($text);
+                    if ($text !== '') {
+                        return ['text' => $text, 'error' => null, 'provider' => 'openai'];
+                    }
+                    $lastError = 'OpenAI returned an empty response.';
+                } else {
+                    $msg = (string) ($response->json('error.message') ?? '');
+                    $lastError = 'OpenAI ' . $response->status() . ($msg !== '' ? ': ' . $msg : '');
+                    \Log::warning('callAiJson: OpenAI failed, will try Claude', [
+                        'status' => $response->status(),
+                        'error' => $msg,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                $lastError = 'OpenAI exception: ' . $e->getMessage();
+                \Log::warning('callAiJson: OpenAI exception, will try Claude', ['msg' => $e->getMessage()]);
+            }
+        } else {
+            $lastError = 'OpenAI key not configured.';
+        }
+
+        // ---------- Fall back to Claude ----------
+        $claudeKey = config('services.anthropic.key');
+        if (! is_string($claudeKey) || $claudeKey === '') {
+            return [
+                'text' => null,
+                'error' => ($lastError ?: 'No AI provider configured.') . ' (Claude key also missing)',
+                'provider' => null,
+            ];
+        }
+        $claudeModel = (string) config('services.anthropic.model', 'claude-haiku-4-5-20251001');
+        $version = (string) config('services.anthropic.version', '2023-06-01');
+        try {
+            $response = Http::withHeaders([
+                    'x-api-key' => $claudeKey,
+                    'anthropic-version' => $version,
+                    'content-type' => 'application/json',
+                ])
+                ->timeout($timeoutSeconds)
+                ->post('https://api.anthropic.com/v1/messages', [
+                    'model' => $claudeModel,
+                    'max_tokens' => 2048,
+                    'temperature' => $temperature,
+                    // Reinforce JSON-only on Claude (it often wraps in fences).
+                    'system' => $system . "\n\nIMPORTANT: Return ONLY a single valid JSON object. No prose, no preamble, no markdown code fences.",
+                    'messages' => [
+                        ['role' => 'user', 'content' => $userMsg],
+                    ],
+                ]);
+            if (! $response->successful()) {
+                $err = (string) ($response->json('error.message') ?? '');
+                $err = $err !== '' ? $err : ('HTTP ' . $response->status());
+                \Log::warning('callAiJson: Claude failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                return [
+                    'text' => null,
+                    'error' => ($lastError ? $lastError . ' · ' : '') . 'Claude error: ' . $err,
+                    'provider' => 'claude',
+                ];
+            }
+            $text = '';
+            foreach ((array) $response->json('content', []) as $block) {
+                if (is_array($block) && (($block['type'] ?? '') === 'text') && isset($block['text'])) {
+                    $text .= (string) $block['text'];
+                }
+            }
+            $text = $stripFences($text);
+            if ($text === '') {
+                return [
+                    'text' => null,
+                    'error' => ($lastError ? $lastError . ' · ' : '') . 'Claude returned an empty response.',
+                    'provider' => 'claude',
+                ];
+            }
+            return ['text' => $text, 'error' => null, 'provider' => 'claude'];
+        } catch (\Throwable $e) {
+            \Log::error('callAiJson: Claude call failed', ['msg' => $e->getMessage()]);
+            return [
+                'text' => null,
+                'error' => ($lastError ? $lastError . ' · ' : '') . 'Claude network error: ' . $e->getMessage(),
+                'provider' => 'claude',
+            ];
+        }
+    }
+
+    /**
+     * Generate the initial R&R list for a designation. Uses {@see callAiJson()}
+     * which prefers OpenAI but transparently falls back to Claude.
      *
      * @return array<int, array{title: string, description?: string|null}>
      */
     protected function generateRRViaOpenAi(string $designation): array
     {
-        $headers = OpenAiRequest::authHeaders();
-        if (empty($headers)) {
-            \Log::warning('Designation R&R: OpenAI key missing, falling back to starter set.');
-            return [];
-        }
-
-        $model = (string) config('services.openai.title_master_stack_model', 'gpt-4o-mini');
-
         $system = 'You are an HR + operations expert. Given a job designation, produce a concise, '
             . 'practical list of 8 to 12 day-to-day Roles & Responsibilities. Each item must be '
             . 'action-oriented (start with a verb), specific to the role, and trackable so a manager '
             . 'can mark it Done. Return ONLY valid JSON with this exact shape: '
             . '{"items":[{"title":"string (<=120 chars)","description":"string (<=240 chars, optional context)"}]}';
 
-        $user = "Designation: {$designation}\nGenerate the R&R list for this designation.";
+        $userMsg = "Designation: {$designation}\nGenerate the R&R list for this designation.";
 
-        try {
-            $response = Http::withHeaders($headers)
-                ->timeout(60)
-                ->post('https://api.openai.com/v1/chat/completions', [
-                    'model' => $model,
-                    'temperature' => 0.3,
-                    'response_format' => ['type' => 'json_object'],
-                    'messages' => [
-                        ['role' => 'system', 'content' => $system],
-                        ['role' => 'user', 'content' => $user],
-                    ],
-                ]);
-
-            if (! $response->successful()) {
-                \Log::warning('Designation R&R: OpenAI HTTP error', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                ]);
-                return [];
-            }
-
-            $text = (string) ($response->json('choices.0.message.content') ?? '');
-            $text = trim($text);
-            // Defensive: strip code fences if model ignored response_format.
-            $text = preg_replace('/^```(?:json)?\s*/i', '', $text);
-            $text = preg_replace('/\s*```$/', '', $text);
-
-            $decoded = json_decode($text, true);
-            if (! is_array($decoded)) {
-                \Log::warning('Designation R&R: OpenAI returned non-JSON', ['text' => $text]);
-                return [];
-            }
-
-            $items = $decoded['items'] ?? $decoded;
-            if (! is_array($items)) {
-                return [];
-            }
-
-            $clean = [];
-            foreach ($items as $row) {
-                if (is_string($row)) {
-                    $clean[] = ['title' => $row, 'description' => null];
-                    continue;
-                }
-                if (! is_array($row)) {
-                    continue;
-                }
-                $title = trim((string) ($row['title'] ?? $row['name'] ?? $row['responsibility'] ?? ''));
-                if ($title === '') {
-                    continue;
-                }
-                $clean[] = [
-                    'title' => $title,
-                    'description' => isset($row['description']) ? trim((string) $row['description']) : null,
-                ];
-            }
-
-            return $clean;
-        } catch (\Throwable $e) {
-            \Log::error('Designation R&R: OpenAI call failed', ['message' => $e->getMessage()]);
+        $ai = $this->callAiJson($system, $userMsg, 60, 0.3);
+        if ($ai['text'] === null) {
+            \Log::warning('Designation R&R: AI call failed', ['error' => $ai['error']]);
             return [];
         }
+
+        $decoded = json_decode($ai['text'], true);
+        if (! is_array($decoded)) {
+            \Log::warning('Designation R&R: AI returned non-JSON', ['text' => $ai['text']]);
+            return [];
+        }
+
+        $items = $decoded['items'] ?? $decoded;
+        if (! is_array($items)) {
+            return [];
+        }
+
+        $clean = [];
+        foreach ($items as $row) {
+            if (is_string($row)) {
+                $clean[] = ['title' => $row, 'description' => null];
+                continue;
+            }
+            if (! is_array($row)) {
+                continue;
+            }
+            $title = trim((string) ($row['title'] ?? $row['name'] ?? $row['responsibility'] ?? ''));
+            if ($title === '') {
+                continue;
+            }
+            $clean[] = [
+                'title' => $title,
+                'description' => isset($row['description']) ? trim((string) $row['description']) : null,
+            ];
+        }
+
+        return $clean;
     }
 
     /**
@@ -4554,6 +4840,128 @@ class TaskController extends Controller
     }
 
     /**
+     * Ask AI to suggest a single new CL R&R checkpoint for one R&R item,
+     * aware of the checkpoints already attached so it doesn't duplicate
+     * existing ones.
+     */
+    public function suggestDesignationChecklistItem(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'designation_rr_item_id' => 'required|integer|exists:designation_rr_items,id',
+        ]);
+
+        $itemId = (int) $validated['designation_rr_item_id'];
+        $item = DesignationRrItem::findOrFail($itemId);
+
+        $existingTitles = DesignationRrCheckpoint::where('designation_rr_item_id', $itemId)
+            ->orderBy('sort_order')->orderBy('id')
+            ->pluck('title')
+            ->map(fn ($t) => trim((string) $t))
+            ->filter()
+            ->values()
+            ->all();
+
+        $suggestion = $this->suggestOneCheckpointViaOpenAi(
+            $item->designation,
+            $item->title,
+            $item->description,
+            $existingTitles
+        );
+
+        if (empty($suggestion) || empty(trim((string) ($suggestion['title'] ?? '')))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'AI could not generate a new checkpoint. Try again or add one manually.',
+            ], 502);
+        }
+
+        $weight = (int) ($suggestion['weightage'] ?? 1);
+        $weight = max(1, min(10, $weight));
+        $nextOrder = (int) DesignationRrCheckpoint::where('designation_rr_item_id', $itemId)->max('sort_order') + 1;
+
+        $cp = DesignationRrCheckpoint::create([
+            'designation_rr_item_id' => $itemId,
+            'title' => mb_substr(trim((string) $suggestion['title']), 0, 500),
+            'description' => isset($suggestion['description']) ? trim((string) $suggestion['description']) : null,
+            'weightage' => $weight,
+            'sort_order' => $nextOrder,
+            'source' => 'ai',
+            'created_by' => optional(Auth::user())->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'checkpoint' => [
+                'id' => $cp->id,
+                'designation_rr_item_id' => $cp->designation_rr_item_id,
+                'title' => $cp->title,
+                'description' => $cp->description,
+                'weightage' => $cp->weightage,
+                'sort_order' => $cp->sort_order,
+                'source' => $cp->source,
+                'checked' => false,
+                'note' => null,
+                'checked_at' => null,
+            ],
+        ]);
+    }
+
+    /**
+     * Ask OpenAI for ONE additional, non-duplicate checkpoint under a CL R&R item.
+     *
+     * @param  array<int,string>  $existingTitles
+     * @return array{title:string, description?:string|null, weightage?:int}|null
+     */
+    protected function suggestOneCheckpointViaOpenAi(string $designation, string $rrTitle, ?string $rrDescription, array $existingTitles): ?array
+    {
+        $existingList = empty($existingTitles)
+            ? '(none yet)'
+            : implode("\n - ", array_map(fn ($t) => '- ' . $t, $existingTitles));
+
+        $system = 'You build evaluation checklists. Given a job designation, one Roles & Responsibilities '
+            . 'item, and the checkpoints already attached to that item, suggest ONE additional checkpoint '
+            . 'that is: (a) action-oriented (start with a verb), (b) unambiguous and individually verifiable, '
+            . '(c) NOT a duplicate or paraphrase of any existing checkpoint, (d) sized so a manager can tick '
+            . 'it off. Assign a weightage 1–10 reflecting relative importance (10 = critical, 1 = nice-to-have). '
+            . 'Return ONLY valid JSON: '
+            . '{"checkpoint":{"title":"string (<=140 chars)","description":"string (<=200 chars, optional)","weightage":1-10}}';
+
+        $userMsg = "Designation: {$designation}\nR&R item: {$rrTitle}";
+        if ($rrDescription) {
+            $userMsg .= "\nR&R description: {$rrDescription}";
+        }
+        $userMsg .= "\nExisting checkpoints:\n{$existingList}\n\nSuggest one additional checkpoint.";
+
+        $ai = $this->callAiJson($system, $userMsg, 60, 0.4);
+        if ($ai['text'] === null) {
+            \Log::warning('CL R&R suggest: AI call failed', ['error' => $ai['error']]);
+            return null;
+        }
+
+        $decoded = json_decode($ai['text'], true);
+        if (! is_array($decoded)) {
+            \Log::warning('CL R&R suggest: AI returned non-JSON', ['text' => $ai['text']]);
+            return null;
+        }
+
+        // Accept several response shapes: {checkpoint:{...}}, {item:{...}}, or the bare object.
+        $row = $decoded['checkpoint'] ?? $decoded['item'] ?? $decoded;
+        if (! is_array($row)) {
+            return null;
+        }
+
+        $title = trim((string) ($row['title'] ?? $row['name'] ?? $row['checkpoint'] ?? ''));
+        if ($title === '') {
+            return null;
+        }
+        return [
+            'title' => $title,
+            'description' => isset($row['description']) ? trim((string) $row['description']) : null,
+            'weightage' => isset($row['weightage']) ? (int) $row['weightage'] : 1,
+        ];
+    }
+
+    /**
      * Delete a CL R&R checkpoint. Cascades user check progress.
      */
     public function deleteDesignationChecklistItem(int $id): JsonResponse
@@ -4644,14 +5052,6 @@ class TaskController extends Controller
      */
     protected function generateChecklistViaOpenAi(string $designation, string $rrTitle, ?string $rrDescription = null): array
     {
-        $headers = OpenAiRequest::authHeaders();
-        if (empty($headers)) {
-            \Log::warning('CL R&R: OpenAI key missing, falling back to starter set.');
-            return [];
-        }
-
-        $model = (string) config('services.openai.title_master_stack_model', 'gpt-4o-mini');
-
         $system = 'You build evaluation checklists. Given a job designation and ONE Roles & Responsibilities '
             . 'item, produce 4 to 8 concrete, observable checkpoints a manager can tick off to confirm the '
             . 'person is meeting the responsibility. Each checkpoint must be action-oriented (start with a verb), '
@@ -4666,66 +5066,43 @@ class TaskController extends Controller
         }
         $userMsg .= "\nGenerate the evaluation checklist.";
 
-        try {
-            $response = Http::withHeaders($headers)
-                ->timeout(60)
-                ->post('https://api.openai.com/v1/chat/completions', [
-                    'model' => $model,
-                    'temperature' => 0.3,
-                    'response_format' => ['type' => 'json_object'],
-                    'messages' => [
-                        ['role' => 'system', 'content' => $system],
-                        ['role' => 'user', 'content' => $userMsg],
-                    ],
-                ]);
-
-            if (! $response->successful()) {
-                \Log::warning('CL R&R: OpenAI HTTP error', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                ]);
-                return [];
-            }
-
-            $text = trim((string) ($response->json('choices.0.message.content') ?? ''));
-            $text = preg_replace('/^```(?:json)?\s*/i', '', $text);
-            $text = preg_replace('/\s*```$/', '', $text);
-
-            $decoded = json_decode($text, true);
-            if (! is_array($decoded)) {
-                \Log::warning('CL R&R: OpenAI returned non-JSON', ['text' => $text]);
-                return [];
-            }
-
-            $rows = $decoded['checkpoints'] ?? $decoded;
-            if (! is_array($rows)) {
-                return [];
-            }
-
-            $clean = [];
-            foreach ($rows as $row) {
-                if (is_string($row)) {
-                    $clean[] = ['title' => $row, 'weightage' => 1];
-                    continue;
-                }
-                if (! is_array($row)) {
-                    continue;
-                }
-                $title = trim((string) ($row['title'] ?? $row['name'] ?? $row['checkpoint'] ?? ''));
-                if ($title === '') {
-                    continue;
-                }
-                $clean[] = [
-                    'title' => $title,
-                    'description' => isset($row['description']) ? trim((string) $row['description']) : null,
-                    'weightage' => isset($row['weightage']) ? (int) $row['weightage'] : 1,
-                ];
-            }
-            return $clean;
-        } catch (\Throwable $e) {
-            \Log::error('CL R&R: OpenAI call failed', ['message' => $e->getMessage()]);
+        $ai = $this->callAiJson($system, $userMsg, 60, 0.3);
+        if ($ai['text'] === null) {
+            \Log::warning('CL R&R: AI call failed', ['error' => $ai['error']]);
             return [];
         }
+
+        $decoded = json_decode($ai['text'], true);
+        if (! is_array($decoded)) {
+            \Log::warning('CL R&R: AI returned non-JSON', ['text' => $ai['text']]);
+            return [];
+        }
+
+        $rows = $decoded['checkpoints'] ?? $decoded;
+        if (! is_array($rows)) {
+            return [];
+        }
+
+        $clean = [];
+        foreach ($rows as $row) {
+            if (is_string($row)) {
+                $clean[] = ['title' => $row, 'weightage' => 1];
+                continue;
+            }
+            if (! is_array($row)) {
+                continue;
+            }
+            $title = trim((string) ($row['title'] ?? $row['name'] ?? $row['checkpoint'] ?? ''));
+            if ($title === '') {
+                continue;
+            }
+            $clean[] = [
+                'title' => $title,
+                'description' => isset($row['description']) ? trim((string) $row['description']) : null,
+                'weightage' => isset($row['weightage']) ? (int) $row['weightage'] : 1,
+            ];
+        }
+        return $clean;
     }
 
     /**
@@ -5026,14 +5403,6 @@ class TaskController extends Controller
      */
     protected function generateGeneralChecklistViaOpenAi(): array
     {
-        $headers = OpenAiRequest::authHeaders();
-        if (empty($headers)) {
-            \Log::warning('CL Gen: OpenAI key missing, falling back to starter set.');
-            return [];
-        }
-
-        $model = (string) config('services.openai.title_master_stack_model', 'gpt-4o-mini');
-
         $system = 'You are a performance / HR expert. Produce a single comprehensive evaluation checklist '
             . 'that applies to EVERY team member regardless of designation. Cover at minimum: Attendance & '
             . 'Punctuality, Communication, Helpfulness to colleagues/seniors/juniors, ETC vs ATC accuracy '
@@ -5047,67 +5416,44 @@ class TaskController extends Controller
 
         $userMsg = 'Generate the global team-wide evaluation checklist now.';
 
-        try {
-            $response = Http::withHeaders($headers)
-                ->timeout(90)
-                ->post('https://api.openai.com/v1/chat/completions', [
-                    'model' => $model,
-                    'temperature' => 0.3,
-                    'response_format' => ['type' => 'json_object'],
-                    'messages' => [
-                        ['role' => 'system', 'content' => $system],
-                        ['role' => 'user', 'content' => $userMsg],
-                    ],
-                ]);
-
-            if (! $response->successful()) {
-                \Log::warning('CL Gen: OpenAI HTTP error', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                ]);
-                return [];
-            }
-
-            $text = trim((string) ($response->json('choices.0.message.content') ?? ''));
-            $text = preg_replace('/^```(?:json)?\s*/i', '', $text);
-            $text = preg_replace('/\s*```$/', '', $text);
-
-            $decoded = json_decode($text, true);
-            if (! is_array($decoded)) {
-                \Log::warning('CL Gen: OpenAI returned non-JSON', ['text' => $text]);
-                return [];
-            }
-
-            $rows = $decoded['items'] ?? $decoded;
-            if (! is_array($rows)) {
-                return [];
-            }
-
-            $clean = [];
-            foreach ($rows as $row) {
-                if (is_string($row)) {
-                    $clean[] = ['title' => $row, 'weightage' => 1, 'category' => null];
-                    continue;
-                }
-                if (! is_array($row)) {
-                    continue;
-                }
-                $title = trim((string) ($row['title'] ?? $row['name'] ?? ''));
-                if ($title === '') {
-                    continue;
-                }
-                $clean[] = [
-                    'title' => $title,
-                    'category' => isset($row['category']) ? trim((string) $row['category']) : null,
-                    'description' => isset($row['description']) ? trim((string) $row['description']) : null,
-                    'weightage' => isset($row['weightage']) ? (int) $row['weightage'] : 1,
-                ];
-            }
-            return $clean;
-        } catch (\Throwable $e) {
-            \Log::error('CL Gen: OpenAI call failed', ['message' => $e->getMessage()]);
+        $ai = $this->callAiJson($system, $userMsg, 90, 0.3);
+        if ($ai['text'] === null) {
+            \Log::warning('CL Gen: AI call failed', ['error' => $ai['error']]);
             return [];
         }
+
+        $decoded = json_decode($ai['text'], true);
+        if (! is_array($decoded)) {
+            \Log::warning('CL Gen: AI returned non-JSON', ['text' => $ai['text']]);
+            return [];
+        }
+
+        $rows = $decoded['items'] ?? $decoded;
+        if (! is_array($rows)) {
+            return [];
+        }
+
+        $clean = [];
+        foreach ($rows as $row) {
+            if (is_string($row)) {
+                $clean[] = ['title' => $row, 'weightage' => 1, 'category' => null];
+                continue;
+            }
+            if (! is_array($row)) {
+                continue;
+            }
+            $title = trim((string) ($row['title'] ?? $row['name'] ?? ''));
+            if ($title === '') {
+                continue;
+            }
+            $clean[] = [
+                'title' => $title,
+                'category' => isset($row['category']) ? trim((string) $row['category']) : null,
+                'description' => isset($row['description']) ? trim((string) $row['description']) : null,
+                'weightage' => isset($row['weightage']) ? (int) $row['weightage'] : 1,
+            ];
+        }
+        return $clean;
     }
 
     /**
@@ -5647,14 +5993,6 @@ class TaskController extends Controller
      */
     protected function generateMgrChecklistViaOpenAi(string $designation): array
     {
-        $headers = OpenAiRequest::authHeaders();
-        if (empty($headers)) {
-            \Log::warning('CL Mgr: OpenAI key missing, falling back to starter set.');
-            return [];
-        }
-
-        $model = (string) config('services.openai.title_master_stack_model', 'gpt-4o-mini');
-
         $system = 'You are an HR / operations expert. Given a MANAGER / SENIOR designation, produce a '
             . 'practical leadership checklist a reporting manager can tick off to confirm the senior is '
             . 'doing their leadership duties. Cover at minimum: training & onboarding juniors, auditing '
@@ -5667,67 +6005,44 @@ class TaskController extends Controller
 
         $userMsg = "Designation: {$designation}\nGenerate the manager-level checklist for this designation.";
 
-        try {
-            $response = Http::withHeaders($headers)
-                ->timeout(90)
-                ->post('https://api.openai.com/v1/chat/completions', [
-                    'model' => $model,
-                    'temperature' => 0.3,
-                    'response_format' => ['type' => 'json_object'],
-                    'messages' => [
-                        ['role' => 'system', 'content' => $system],
-                        ['role' => 'user', 'content' => $userMsg],
-                    ],
-                ]);
-
-            if (! $response->successful()) {
-                \Log::warning('CL Mgr: OpenAI HTTP error', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                ]);
-                return [];
-            }
-
-            $text = trim((string) ($response->json('choices.0.message.content') ?? ''));
-            $text = preg_replace('/^```(?:json)?\s*/i', '', $text);
-            $text = preg_replace('/\s*```$/', '', $text);
-
-            $decoded = json_decode($text, true);
-            if (! is_array($decoded)) {
-                \Log::warning('CL Mgr: OpenAI returned non-JSON', ['text' => $text]);
-                return [];
-            }
-
-            $rows = $decoded['items'] ?? $decoded;
-            if (! is_array($rows)) {
-                return [];
-            }
-
-            $clean = [];
-            foreach ($rows as $row) {
-                if (is_string($row)) {
-                    $clean[] = ['title' => $row, 'weightage' => 1, 'category' => null];
-                    continue;
-                }
-                if (! is_array($row)) {
-                    continue;
-                }
-                $title = trim((string) ($row['title'] ?? $row['name'] ?? ''));
-                if ($title === '') {
-                    continue;
-                }
-                $clean[] = [
-                    'title' => $title,
-                    'category' => isset($row['category']) ? trim((string) $row['category']) : null,
-                    'description' => isset($row['description']) ? trim((string) $row['description']) : null,
-                    'weightage' => isset($row['weightage']) ? (int) $row['weightage'] : 1,
-                ];
-            }
-            return $clean;
-        } catch (\Throwable $e) {
-            \Log::error('CL Mgr: OpenAI call failed', ['message' => $e->getMessage()]);
+        $ai = $this->callAiJson($system, $userMsg, 90, 0.3);
+        if ($ai['text'] === null) {
+            \Log::warning('CL Mgr: AI call failed', ['error' => $ai['error']]);
             return [];
         }
+
+        $decoded = json_decode($ai['text'], true);
+        if (! is_array($decoded)) {
+            \Log::warning('CL Mgr: AI returned non-JSON', ['text' => $ai['text']]);
+            return [];
+        }
+
+        $rows = $decoded['items'] ?? $decoded;
+        if (! is_array($rows)) {
+            return [];
+        }
+
+        $clean = [];
+        foreach ($rows as $row) {
+            if (is_string($row)) {
+                $clean[] = ['title' => $row, 'weightage' => 1, 'category' => null];
+                continue;
+            }
+            if (! is_array($row)) {
+                continue;
+            }
+            $title = trim((string) ($row['title'] ?? $row['name'] ?? ''));
+            if ($title === '') {
+                continue;
+            }
+            $clean[] = [
+                'title' => $title,
+                'category' => isset($row['category']) ? trim((string) $row['category']) : null,
+                'description' => isset($row['description']) ? trim((string) $row['description']) : null,
+                'weightage' => isset($row['weightage']) ? (int) $row['weightage'] : 1,
+            ];
+        }
+        return $clean;
     }
 
     /**
@@ -5987,6 +6302,13 @@ class TaskController extends Controller
      * Update the user's organisational level (Task Summary "Role" column).
      *
      * Allowed values: 'mgr' | 'director' | 'exec' | null (cleared).
+     *
+     * Permission rules:
+     *  - Admin / Director / Shobha → can edit anyone, any value.
+     *  - Manager (org_level=mgr)   → can edit only users whose current role
+     *                                is Exec or empty, and can only set the
+     *                                new value to Exec or empty.
+     *  - Executive / no role       → cannot edit (returns 403).
      */
     public function updateUserOrgLevel(Request $request): JsonResponse
     {
@@ -5995,8 +6317,18 @@ class TaskController extends Controller
             'org_level' => ['nullable', 'string', Rule::in(['mgr', 'director', 'exec'])],
         ]);
 
+        $viewer = Auth::user();
         $user = User::findOrFail($validated['user_id']);
-        $user->org_level = $validated['org_level'] ?? null;
+        $newLevel = $validated['org_level'] ?? null;
+
+        if (! $this->canChangeOrgLevelOf($viewer, $user, $newLevel)) {
+            return response()->json([
+                'success' => false,
+                'message' => $this->orgLevelDenialReason($viewer, $user, $newLevel),
+            ], 403);
+        }
+
+        $user->org_level = $newLevel;
         $user->save();
 
         return response()->json([
@@ -6006,6 +6338,55 @@ class TaskController extends Controller
                 'org_level' => $user->org_level,
             ],
         ]);
+    }
+
+    /**
+     * Can $viewer set $target's org_level to $newLevel? See updateUserOrgLevel
+     * for the permission matrix.
+     */
+    protected function canChangeOrgLevelOf(?User $viewer, User $target, ?string $newLevel): bool
+    {
+        if (! $viewer) {
+            return false;
+        }
+
+        // Anyone in the "edit any tag" set (admin / director / shobha) can
+        // also reassign org_level on any user, to any value.
+        if ($this->canEditOrgTags($viewer)) {
+            return true;
+        }
+
+        $viewerLevel = strtolower((string) ($viewer->org_level ?? ''));
+        if ($viewerLevel === 'mgr') {
+            $targetLevel = strtolower((string) ($target->org_level ?? ''));
+            $newLevelL = strtolower((string) ($newLevel ?? ''));
+            $targetIsExecOrNone = $targetLevel === 'exec' || $targetLevel === '';
+            $newIsExecOrNone = $newLevelL === 'exec' || $newLevelL === '';
+            return $targetIsExecOrNone && $newIsExecOrNone;
+        }
+
+        // Exec / no role → not allowed.
+        return false;
+    }
+
+    /** Human-friendly reason returned to the UI when a role change is denied. */
+    protected function orgLevelDenialReason(?User $viewer, User $target, ?string $newLevel): string
+    {
+        if (! $viewer) {
+            return 'Sign in to change roles.';
+        }
+        $viewerLevel = strtolower((string) ($viewer->org_level ?? ''));
+        if ($viewerLevel === 'mgr') {
+            $targetLevel = strtolower((string) ($target->org_level ?? ''));
+            $newLevelL = strtolower((string) ($newLevel ?? ''));
+            if (! ($targetLevel === 'exec' || $targetLevel === '')) {
+                return 'Managers can only change Executives. Ask a Director to change ' . ($target->name ?? 'this user') . '.';
+            }
+            if (! ($newLevelL === 'exec' || $newLevelL === '')) {
+                return 'Managers can only assign the Executive level. Ask a Director to promote ' . ($target->name ?? 'this user') . '.';
+            }
+        }
+        return 'You are not allowed to change this user\'s role.';
     }
 
     /**

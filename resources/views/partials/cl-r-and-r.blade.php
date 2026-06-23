@@ -233,16 +233,42 @@
         font-size: 0.78rem;
         padding: 0.2rem 0.45rem;
     }
-    #ts-clrr-item-list .clrr-add-btn {
+    #ts-clrr-item-list .clrr-add-btn,
+    #ts-clrr-item-list .clrr-ai-suggest-btn {
         font-size: 0.75rem;
         padding: 0.2rem 0.55rem;
-        background: #0e7490;
-        color: #fff;
         border: none;
         border-radius: 6px;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.15s ease, color 0.15s ease;
+    }
+    #ts-clrr-item-list .clrr-add-btn {
+        background: #0e7490;
+        color: #fff;
     }
     #ts-clrr-item-list .clrr-add-btn:hover {
         background: #155e75;
+    }
+    #ts-clrr-item-list .clrr-ai-suggest-btn {
+        background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+        color: #fff;
+        box-shadow: 0 1px 3px rgba(109, 40, 217, 0.35);
+    }
+    #ts-clrr-item-list .clrr-ai-suggest-btn:hover:not(:disabled) {
+        background: linear-gradient(135deg, #5b21b6, #6d28d9);
+    }
+    #ts-clrr-item-list .clrr-ai-suggest-btn:disabled {
+        opacity: 0.7;
+        cursor: progress;
+    }
+    #ts-clrr-item-list .clrr-ai-suggest-btn .spin {
+        display: inline-block;
+        animation: clrr-spin 0.9s linear infinite;
+    }
+    @keyframes clrr-spin {
+        from { transform: rotate(0deg); }
+        to   { transform: rotate(360deg); }
     }
     #ts-clrr-empty,
     #ts-clrr-needs-rr {

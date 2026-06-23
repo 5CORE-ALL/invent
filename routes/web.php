@@ -4002,6 +4002,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/forecast-analysis/get-sku-quantity', action: [ForecastAnalysisController::class, 'getSkuQuantity'])->name('forecast.analysis.get.sku.quantity');
     Route::get('/forecast.analysis/get-r2s-data-for-export', action: [ForecastAnalysisController::class, 'getR2sDataForExport'])->name('forecast.analysis.get.r2s.export');
 
+    // Forecast Analysis archive / restore (server-side enforces president@5core.com only).
+    Route::post('/forecast.analysis/archive', [ForecastAnalysisController::class, 'archiveRows'])->name('forecast.analysis.archive');
+    Route::post('/forecast.analysis/restore', [ForecastAnalysisController::class, 'restoreRows'])->name('forecast.analysis.restore');
+    Route::get('/forecast.analysis/archived', [ForecastAnalysisController::class, 'archivedForecastView'])->name('forecast.analysis.archived');
+    Route::get('/forecast.analysis/archived/data', [ForecastAnalysisController::class, 'archivedForecastData'])->name('forecast.analysis.archived.data');
+
     // ebay lqs cvr
     Route::get('/ebaycvrLQS.master', action: [EbayCvrLqsController::class, 'cvrLQSMaster'])->name('ebaycvrLQS.master');
     Route::get('/ebaycvrLQS/view-data', [EbayCvrLqsController::class, 'getViewEbayCvrData'])->name('ebaycvrLQS.viewData');
@@ -5861,12 +5867,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tasks/designation-rr', [\App\Http\Controllers\TaskController::class, 'getDesignationRR'])->name('tasks.designationRR.get');
     Route::post('/tasks/designation-rr/generate', [\App\Http\Controllers\TaskController::class, 'generateDesignationRR'])->name('tasks.designationRR.generate');
     Route::post('/tasks/designation-rr/items', [\App\Http\Controllers\TaskController::class, 'addDesignationRRItem'])->name('tasks.designationRR.add');
+    Route::post('/tasks/designation-rr/suggest', [\App\Http\Controllers\TaskController::class, 'suggestDesignationRRItem'])->name('tasks.designationRR.suggest');
+    Route::patch('/tasks/designation-rr/items/{id}', [\App\Http\Controllers\TaskController::class, 'updateDesignationRRItem'])->whereNumber('id')->name('tasks.designationRR.update');
     Route::delete('/tasks/designation-rr/items/{id}', [\App\Http\Controllers\TaskController::class, 'deleteDesignationRRItem'])->whereNumber('id')->name('tasks.designationRR.delete');
     Route::post('/tasks/designation-rr/progress', [\App\Http\Controllers\TaskController::class, 'updateUserRRProgress'])->name('tasks.designationRR.progress');
     // CL R&R — Checklist of checkpoints under each R&R item (per designation)
     Route::get('/tasks/designation-rr/checklist', [\App\Http\Controllers\TaskController::class, 'getDesignationChecklist'])->name('tasks.designationRR.checklist.get');
     Route::post('/tasks/designation-rr/checklist/generate', [\App\Http\Controllers\TaskController::class, 'generateDesignationChecklist'])->name('tasks.designationRR.checklist.generate');
     Route::post('/tasks/designation-rr/checklist/items', [\App\Http\Controllers\TaskController::class, 'addDesignationChecklistItem'])->name('tasks.designationRR.checklist.add');
+    Route::post('/tasks/designation-rr/checklist/suggest', [\App\Http\Controllers\TaskController::class, 'suggestDesignationChecklistItem'])->name('tasks.designationRR.checklist.suggest');
     Route::patch('/tasks/designation-rr/checklist/items/{id}', [\App\Http\Controllers\TaskController::class, 'updateDesignationChecklistItem'])->whereNumber('id')->name('tasks.designationRR.checklist.update');
     Route::delete('/tasks/designation-rr/checklist/items/{id}', [\App\Http\Controllers\TaskController::class, 'deleteDesignationChecklistItem'])->whereNumber('id')->name('tasks.designationRR.checklist.delete');
     Route::post('/tasks/designation-rr/checklist/progress', [\App\Http\Controllers\TaskController::class, 'toggleUserChecklistProgress'])->name('tasks.designationRR.checklist.progress');

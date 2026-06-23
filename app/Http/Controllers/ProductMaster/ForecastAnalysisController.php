@@ -1048,6 +1048,20 @@ class ForecastAnalysisController extends Controller
 
             $processedData = $this->buildForecastAnalysisData();
 
+            // Hide soft-archived rows from the main forecast view. Archive state lives
+            // on forecast_analysis.archived_at (see migration
+            // 2026_06_24_030000_add_archived_columns_to_forecast_analysis) and is
+            // managed by the president-only archive/restore endpoints below.
+            $archivedKeySet = $this->buildArchivedSkuParentKeySet();
+            if (!empty($archivedKeySet)) {
+                $processedData = collect($processedData)->reject(function ($item) use ($archivedKeySet) {
+                    $sku = strtolower(trim((string) ($item->SKU ?? $item->sku ?? '')));
+                    $parent = strtolower(trim((string) ($item->Parent ?? $item->parent ?? '')));
+                    return isset($archivedKeySet[$sku . '|' . $parent])
+                        || isset($archivedKeySet[$sku . '|']);
+                })->values()->all();
+            }
+
             $children = collect($processedData)->filter(fn($item) => !$item->is_parent);
 
             $totalMslC = $children->sum(fn($item) => floatval($item->{'MSL_C'} ?? 0));
@@ -1927,6 +1941,318 @@ class ForecastAnalysisController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Archive / Restore (president-only)
+    //
+    // Soft-archives a (sku, parent) pair on forecast_analysis by setting
+    // archived_at = now(). The main view (getViewForecastAnalysisData) filters
+    // these out. A dedicated restore page lists archived rows and lets the
+    // president clear archived_at to bring rows back.
+    //
+    // Authorization is an exact-email check against 'president@5core.com'.
+    // -----------------------------------------------------------------------
+
+    private const PRESIDENT_EMAIL = 'president@5core.com';
+
+    private function isPresidentUser(): bool
+    {
+        $email = strtolower(trim((string) optional(Auth::user())->email));
+        return $email === self::PRESIDENT_EMAIL;
+    }
+
+    /**
+     * Returns a map keyed by 'lowered_sku|lowered_parent' (and 'lowered_sku|' as a
+     * parent-agnostic fallback) of every (sku, parent) pair that is currently
+     * archived. Used by getViewForecastAnalysisData to exclude archived rows.
+     */
+    private function buildArchivedSkuParentKeySet(): array
+    {
+        $set = [];
+        try {
+            $rows = DB::table('forecast_analysis')
+                ->whereNotNull('archived_at')
+                ->get(['sku', 'parent']);
+            foreach ($rows as $row) {
+                $sku = strtolower(trim((string) ($row->sku ?? '')));
+                if ($sku === '') continue;
+                $parent = strtolower(trim((string) ($row->parent ?? '')));
+                $set[$sku . '|' . $parent] = true;
+                // Parent-agnostic fallback: if archived without a parent, still hide
+                // any same-SKU row even when its row in the main view carries a parent.
+                if ($parent === '') {
+                    $set[$sku . '|'] = true;
+                }
+            }
+        } catch (\Throwable $e) {
+            // If the migration hasn't run yet, just return an empty set so the
+            // main view keeps working.
+        }
+        return $set;
+    }
+
+    /**
+     * Archive a batch of (sku, parent) rows. Body shape:
+     *   { items: [ { sku, parent, stage?, nr?, req?, notes?, s_msl?, approved_qty?,
+     *               order_given?, transit?, clink?, olink?, rfq_form_link?,
+     *               rfq_report?, date_apprvl? }, ... ] }
+     *
+     * Upserts forecast_analysis. The optional snapshot fields are useful when the
+     * row's displayed Stage / NR / Notes / etc. were derived (not actually stored
+     * on forecast_analysis), so the Restore page can show what was archived.
+     *
+     * Overwrite policy:
+     *   - INSERT (no existing forecast_analysis row): write the full snapshot.
+     *   - UPDATE (existing row): each snapshot field that arrived non-empty
+     *     overwrites the existing column value. Snapshot fields the frontend
+     *     did NOT send (i.e. row data had them empty) are left alone, so the
+     *     stored value in forecast_analysis is preserved if the displayed value
+     *     for that field is genuinely blank.
+     */
+    public function archiveRows(Request $request)
+    {
+        if (!$this->isPresidentUser()) {
+            return response()->json(['success' => false, 'message' => 'Not authorized.'], 403);
+        }
+
+        $items = $request->input('items', []);
+        if (!is_array($items) || empty($items)) {
+            return response()->json(['success' => false, 'message' => 'No items provided.']);
+        }
+
+        $now = now();
+        $by = (string) (optional(Auth::user())->email ?? '');
+        $count = 0;
+
+        // Whitelisted snapshot fields (string + numeric variants of each get coerced).
+        $stringFields  = ['stage', 'nr', 'req', 'notes', 'clink', 'olink', 'rfq_form_link', 'rfq_report', 'date_apprvl'];
+        $numericFields = ['s_msl', 'approved_qty', 'order_given', 'transit'];
+
+        foreach ($items as $item) {
+            $sku = trim((string) ($item['sku'] ?? ''));
+            $parent = trim((string) ($item['parent'] ?? ''));
+            if ($sku === '') continue;
+
+            // Build the snapshot from the optional fields the frontend sent.
+            $snapshot = [];
+            foreach ($stringFields as $f) {
+                $v = trim((string) ($item[$f] ?? ''));
+                if ($v !== '') {
+                    if ($f === 'nr')    $v = strtoupper($v);
+                    if ($f === 'stage') $v = strtolower($v);
+                    $snapshot[$f] = $v;
+                }
+            }
+            foreach ($numericFields as $f) {
+                if (isset($item[$f]) && is_numeric($item[$f])) {
+                    $snapshot[$f] = (int) $item[$f];
+                }
+            }
+
+            $existing = DB::table('forecast_analysis')
+                ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
+                ->whereRaw('TRIM(LOWER(COALESCE(parent, ""))) = ?', [strtolower($parent)])
+                ->first();
+
+            if ($existing) {
+                // Any field that came through the snapshot (i.e. arrived non-empty
+                // from the frontend) overwrites the existing value. Snapshot fields
+                // that arrived empty/missing are not in $snapshot at all and are
+                // therefore preserved.
+                $update = array_merge($snapshot, [
+                    'archived_at' => $now,
+                    'archived_by' => $by,
+                    'updated_at'  => $now,
+                ]);
+                DB::table('forecast_analysis')->where('id', $existing->id)->update($update);
+            } else {
+                DB::table('forecast_analysis')->insert(array_merge($snapshot, [
+                    'sku'         => $sku,
+                    'parent'      => $parent !== '' ? $parent : null,
+                    'archived_at' => $now,
+                    'archived_by' => $by,
+                    'created_at'  => $now,
+                    'updated_at'  => $now,
+                ]));
+            }
+            $count++;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Archived ' . $count . ' row(s).',
+            'count'   => $count,
+        ]);
+    }
+
+    /**
+     * Restore a batch of archived rows by clearing archived_at / archived_by.
+     * Same body shape as archiveRows.
+     */
+    public function restoreRows(Request $request)
+    {
+        if (!$this->isPresidentUser()) {
+            return response()->json(['success' => false, 'message' => 'Not authorized.'], 403);
+        }
+
+        $items = $request->input('items', []);
+        if (!is_array($items) || empty($items)) {
+            return response()->json(['success' => false, 'message' => 'No items provided.']);
+        }
+
+        $count = 0;
+        foreach ($items as $item) {
+            $sku = trim((string) ($item['sku'] ?? ''));
+            $parent = trim((string) ($item['parent'] ?? ''));
+            if ($sku === '') continue;
+
+            $updated = (int) DB::table('forecast_analysis')
+                ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
+                ->whereRaw('TRIM(LOWER(COALESCE(parent, ""))) = ?', [strtolower($parent)])
+                ->whereNotNull('archived_at')
+                ->update([
+                    'archived_at' => null,
+                    'archived_by' => null,
+                    'updated_at'  => now(),
+                ]);
+            $count += $updated;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Restored ' . $count . ' row(s).',
+            'count'   => $count,
+        ]);
+    }
+
+    /**
+     * Render the president-only Restore page. The page shells out to
+     * archivedForecastData() via AJAX for its row list.
+     */
+    public function archivedForecastView(Request $request)
+    {
+        if (!$this->isPresidentUser()) {
+            abort(403);
+        }
+        return view('purchase-master.forecastAnalysisArchived');
+    }
+
+    /**
+     * JSON list of archived rows for the Restore page table.
+     *
+     * Each row is enriched with light joins so the president can identify what
+     * they're restoring without us running the (heavy) full buildForecastAnalysisData
+     * pipeline: image, current INV from Shopify, supplier list per parent, and the
+     * CP/CBM/MOQ that live on product_master.Values.
+     */
+    public function archivedForecastData(Request $request)
+    {
+        if (!$this->isPresidentUser()) {
+            return response()->json(['success' => false, 'data' => [], 'message' => 'Not authorized.'], 403);
+        }
+
+        $archived = DB::table('forecast_analysis')
+            ->whereNotNull('archived_at')
+            ->orderByDesc('archived_at')
+            ->get([
+                'id', 'sku', 'parent', 'archived_at', 'archived_by',
+                's_msl', 'approved_qty', 'nr', 'req', 'stage', 'notes', 'updated_at',
+                'clink', 'olink', 'rfq_form_link', 'rfq_report', 'date_apprvl',
+                'order_given', 'transit',
+            ]);
+
+        if ($archived->isEmpty()) {
+            return response()->json(['success' => true, 'data' => [], 'count' => 0]);
+        }
+
+        // Build lookup keys (lower-trimmed sku) for the single-pass joins below.
+        $skuKeys = $archived->map(function ($r) {
+            return strtolower(trim((string) $r->sku));
+        })->filter()->values()->all();
+        $skuKeysUnique = array_unique($skuKeys);
+
+        // product_master: image + CP/CBM/MOQ from Values JSON
+        $productMaster = DB::table('product_master')
+            ->whereNull('deleted_at')
+            ->get(['sku', 'parent', 'Values'])
+            ->keyBy(function ($p) {
+                return strtolower(trim((string) $p->sku));
+            });
+
+        // shopify_skus: image fallback + current INV
+        $shopify = DB::table('shopify_skus')
+            ->whereIn(DB::raw('LOWER(TRIM(sku))'), $skuKeysUnique)
+            ->get(['sku', 'image_src', 'inv'])
+            ->keyBy(function ($s) {
+                return strtolower(trim((string) $s->sku));
+            });
+
+        // supplier names per parent (suppliers.parent is a comma-delimited list of parents)
+        $supplierByParent = [];
+        $parents = $archived->pluck('parent')->filter()->map(function ($p) {
+            return trim((string) $p);
+        })->unique()->values()->all();
+        if (!empty($parents)) {
+            $supplierRows = DB::table('suppliers')->get(['name', 'parent']);
+            foreach ($supplierRows as $sup) {
+                $list = array_filter(array_map('trim', explode(',', (string) ($sup->parent ?? ''))));
+                foreach ($list as $p) {
+                    if (in_array($p, $parents, true)) {
+                        $supplierByParent[$p][] = (string) $sup->name;
+                    }
+                }
+            }
+        }
+
+        $data = $archived->map(function ($r) use ($productMaster, $shopify, $supplierByParent) {
+            $key = strtolower(trim((string) $r->sku));
+            $pm = $productMaster[$key] ?? null;
+            $values = [];
+            if ($pm && $pm->Values) {
+                $values = is_array($pm->Values) ? $pm->Values : (json_decode($pm->Values, true) ?? []);
+            }
+            $sh = $shopify[$key] ?? null;
+            $imageFromShopify = $sh ? ($sh->image_src ?? null) : null;
+            $imageFromPm = $values['image_path'] ?? null;
+
+            $parentName = (string) ($r->parent ?? '');
+            $suppliers = isset($supplierByParent[$parentName]) ? array_unique($supplierByParent[$parentName]) : [];
+
+            return (object) [
+                'id'           => $r->id,
+                'sku'          => $r->sku,
+                'parent'       => $r->parent,
+                'image'        => $imageFromShopify ?: $imageFromPm,
+                'inv'          => $sh ? (int) ($sh->inv ?? 0) : 0,
+                'cp'           => $values['cp'] ?? '',
+                'cbm'          => $values['cbm'] ?? '',
+                'moq'          => $r->approved_qty,    // mirror what the main view shows for MOQ
+                'approved_qty' => $r->approved_qty,
+                's_msl'        => $r->s_msl,
+                'nr'           => $r->nr,
+                'req'          => $r->req,
+                'stage'        => $r->stage,
+                'notes'        => $r->notes,
+                'clink'        => $r->clink,
+                'olink'        => $r->olink,
+                'rfq_form_link'=> $r->rfq_form_link,
+                'rfq_report'   => $r->rfq_report,
+                'date_apprvl'  => $r->date_apprvl,
+                'order_given'  => $r->order_given,
+                'transit'      => $r->transit,
+                'suppliers'    => implode(', ', $suppliers),
+                'archived_at'  => $r->archived_at,
+                'archived_by'  => $r->archived_by,
+                'updated_at'   => $r->updated_at,
+            ];
+        })->values();
+
+        return response()->json([
+            'success' => true,
+            'data'    => $data,
+            'count'   => $data->count(),
+        ]);
     }
 
 }

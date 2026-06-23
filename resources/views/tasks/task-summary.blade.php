@@ -239,9 +239,8 @@
             white-space: nowrap;
         }
         .task-summary-search-wrap {
-            max-width: 420px;
-            margin-left: auto;
-            margin-right: auto;
+            min-width: 220px;
+            max-width: 560px;
         }
         .task-summary-search-wrap .input-group-text {
             background: #f8fafc;
@@ -251,6 +250,17 @@
         .task-summary-search-wrap .form-control:focus {
             border-color: #94a3b8;
             box-shadow: 0 0 0 0.15rem rgba(100, 116, 139, 0.15);
+        }
+        /* Single-row top bar — wraps gracefully on small screens */
+        .task-summary-topbar {
+            row-gap: 0.4rem;
+        }
+        @media (max-width: 575.98px) {
+            .task-summary-topbar .task-summary-topbar-left,
+            .task-summary-topbar .task-summary-topbar-right,
+            .task-summary-topbar .task-summary-search-wrap {
+                flex: 1 1 100%;
+            }
         }
         .task-summary-th-sort {
             cursor: pointer;
@@ -623,15 +633,15 @@
                     @if (!empty($rows) && count($rows))
                         <div class="task-summary-analytics">
                             <div class="task-summary-analytics-badges">
+                                <button type="button" class="task-summary-analytics-badge" data-ts-metric="assigned" data-ts-title="Members Analytics" title="Active members with at least one assignee task" aria-label="Open members chart">
+                                    <div class="task-summary-analytics-badge-label">Members</div>
+                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-assigned">{{ number_format($taskDashboardStats['assigned_members']) }}</div>
+                                    <i class="ri-team-line" aria-hidden="true"></i>
+                                </button>
                                 <button type="button" class="task-summary-analytics-badge" data-ts-metric="total" data-ts-title="Total Task Analytics" aria-label="Open total tasks chart">
                                     <div class="task-summary-analytics-badge-label">Total tasks</div>
                                     <div class="task-summary-analytics-badge-value" id="ts-analytics-val-total">{{ number_format($taskDashboardStats['total_tasks']) }}</div>
                                     <i class="ri-line-chart-line" aria-hidden="true"></i>
-                                </button>
-                                <button type="button" class="task-summary-analytics-badge" data-ts-metric="assigned" data-ts-title="Assigned Task Analytics" title="Active members with at least one assignee task" aria-label="Open assigned chart">
-                                    <div class="task-summary-analytics-badge-label">Assigned (members)</div>
-                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-assigned">{{ number_format($taskDashboardStats['assigned_members']) }}</div>
-                                    <i class="ri-team-line" aria-hidden="true"></i>
                                 </button>
                                 <button type="button" class="task-summary-analytics-badge" data-ts-metric="overdue" data-ts-title="Overdue Analytics" aria-label="Open overdue chart">
                                     <div class="task-summary-analytics-badge-label">Overdue</div>
@@ -651,22 +661,9 @@
                             </div>
                            
                         </div>
-                        <div class="task-summary-search-wrap mb-3">
-                            <label for="task-summary-search" class="visually-hidden">Search team members</label>
-                            <div class="input-group">
-                                <span class="input-group-text" aria-hidden="true"><i class="ri-search-line"></i></span>
-                                <input type="search"
-                                       class="form-control"
-                                       id="task-summary-search"
-                                       placeholder="Search by name or designation…"
-                                       autocomplete="off"
-                                       spellcheck="false" />
-                            </div>
-                        </div>
-                        
-                        <!-- Top-bar controls: Hierarchy toggle + Avatar size -->
-                        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-                            <div class="d-flex flex-wrap align-items-center gap-2">
+                        {{-- Single-row top controls: Group toggle · Search (flex grow) · Avatar size --}}
+                        <div class="task-summary-topbar d-flex flex-wrap align-items-center mb-3 gap-2">
+                            <div class="d-flex flex-wrap align-items-center gap-2 task-summary-topbar-left">
                                 <div class="task-summary-group-toggle-wrap">
                                     <div class="form-check form-switch m-0">
                                         <input class="form-check-input" type="checkbox" role="switch" id="task-summary-group-toggle" />
@@ -684,12 +681,24 @@
                                     </button>
                                 </div>
                             </div>
-                            <div class="d-flex align-items-center gap-2">
-                                <span class="text-muted small">Avatar Size:</span>
+                            <div class="task-summary-search-wrap flex-grow-1 m-0">
+                                <label for="task-summary-search" class="visually-hidden">Search team members</label>
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text" aria-hidden="true"><i class="ri-search-line"></i></span>
+                                    <input type="search"
+                                           class="form-control"
+                                           id="task-summary-search"
+                                           placeholder="Search by name or designation…"
+                                           autocomplete="off"
+                                           spellcheck="false" />
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center gap-1 task-summary-topbar-right">
+                                <span class="text-muted small d-none d-md-inline">Avatar:</span>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="adjustAvatarSize(-5)" title="Decrease size">
                                     <i class="mdi mdi-minus"></i>
                                 </button>
-                                <span id="avatar-size-display" class="badge bg-light text-dark" style="min-width: 45px;">30px</span>
+                                <span id="avatar-size-display" class="badge bg-light text-dark" style="min-width: 42px;">30px</span>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="adjustAvatarSize(5)" title="Increase size">
                                     <i class="mdi mdi-plus"></i>
                                 </button>
@@ -825,16 +834,38 @@
                                             @php
                                                 $roleUserId = (int) ($row['user_id'] ?? 0);
                                                 $roleLevel = strtolower((string) ($row['org_level'] ?? ''));
+                                                // Tags dot is hidden when no user record exists for the row.
                                                 $roleDisabled = $roleUserId === 0;
+                                                $orgCtrl = $orgLevelControl ?? ['can_edit_any' => false, 'is_manager' => false];
+                                                $canEditAnyRole = (bool) ($orgCtrl['can_edit_any'] ?? false);
+                                                $viewerIsManager = (bool) ($orgCtrl['is_manager'] ?? false);
+                                                // Manager: can only edit rows whose current role is Exec or empty.
+                                                $managerCanEditThisRow = $viewerIsManager
+                                                    && ($roleLevel === '' || $roleLevel === 'exec');
+                                                $roleSelectEnabled = $roleUserId !== 0
+                                                    && ($canEditAnyRole || $managerCanEditThisRow);
+                                                if ($canEditAnyRole) {
+                                                    $roleDisabledTitle = '';
+                                                } elseif ($viewerIsManager) {
+                                                    $roleDisabledTitle = $managerCanEditThisRow
+                                                        ? 'Managers can only assign — / Exec.'
+                                                        : 'Managers can only change Executive (or unassigned) users. Ask a Director.';
+                                                } else {
+                                                    $roleDisabledTitle = 'Only Directors (or admins) can change roles.';
+                                                }
                                             @endphp
                                             <select class="form-select form-select-sm task-summary-role-select"
                                                     data-user-id="{{ $roleUserId }}"
                                                     data-user-name="{{ e($row['team_member']) }}"
                                                     aria-label="Org role for {{ e($row['team_member']) }}"
-                                                    @if($roleDisabled) disabled @endif>
+                                                    @if(! $roleSelectEnabled) disabled title="{{ $roleDisabledTitle }}" @endif>
                                                 <option value="" @selected($roleLevel === '')>—</option>
-                                                <option value="mgr" @selected($roleLevel === 'mgr')>Mgr</option>
-                                                <option value="director" @selected($roleLevel === 'director')>Director</option>
+                                                @if($canEditAnyRole || $roleLevel === 'mgr' || ! $viewerIsManager)
+                                                    <option value="mgr" @selected($roleLevel === 'mgr')>Mgr</option>
+                                                @endif
+                                                @if($canEditAnyRole || $roleLevel === 'director' || ! $viewerIsManager)
+                                                    <option value="director" @selected($roleLevel === 'director')>Director</option>
+                                                @endif
                                                 <option value="exec" @selected($roleLevel === 'exec')>Exec</option>
                                             </select>
                                             @if ($canEditTags ?? false)
@@ -2463,6 +2494,8 @@
                 get: @json(route('tasks.designationRR.get')),
                 generate: @json(route('tasks.designationRR.generate')),
                 add: @json(route('tasks.designationRR.add')),
+                suggest: @json(route('tasks.designationRR.suggest')),
+                updateBase: @json(url('/tasks/designation-rr/items')),
                 deleteBase: @json(url('/tasks/designation-rr/items')),
                 progress: @json(route('tasks.designationRR.progress'))
             };
@@ -2599,54 +2632,140 @@
                 if (!list) return;
                 list.innerHTML = '';
                 items.forEach(function (item) {
-                    var wrap = document.createElement('div');
-                    wrap.className = 'rr-item d-flex align-items-start gap-2';
-                    wrap.setAttribute('data-item-id', item.id);
-                    wrap.setAttribute('data-status', item.status || 'pending');
-
-                    var titleCol = document.createElement('div');
-                    titleCol.className = 'flex-grow-1 min-w-0';
-                    var titleHtml = '<div class="rr-item-title">' + escapeHtml(item.title)
-                        + '<span class="rr-source-badge ' + (item.source === 'manual' ? 'is-manual' : '') + '">'
-                        + (item.source === 'ai' ? 'AI' : 'Manual')
-                        + '</span></div>';
-                    if (item.description) {
-                        titleHtml += '<div class="rr-item-desc">' + escapeHtml(item.description) + '</div>';
-                    }
-                    titleCol.innerHTML = titleHtml;
-
-                    var actionsCol = document.createElement('div');
-                    actionsCol.className = 'd-flex align-items-center gap-2 flex-shrink-0';
-
-                    var sel = document.createElement('select');
-                    sel.className = 'form-select form-select-sm rr-status-select';
-                    sel.setAttribute('data-action', 'status');
-                    [
-                        { v: 'pending', l: 'Pending' },
-                        { v: 'in_progress', l: 'In progress' },
-                        { v: 'done', l: 'Done' }
-                    ].forEach(function (opt) {
-                        var o = document.createElement('option');
-                        o.value = opt.v;
-                        o.textContent = opt.l;
-                        if ((item.status || 'pending') === opt.v) o.selected = true;
-                        sel.appendChild(o);
-                    });
-                    actionsCol.appendChild(sel);
-
-                    var del = document.createElement('button');
-                    del.type = 'button';
-                    del.className = 'rr-delete-btn';
-                    del.setAttribute('data-action', 'delete');
-                    del.setAttribute('title', 'Remove this item');
-                    del.setAttribute('aria-label', 'Remove ' + (item.title || 'item'));
-                    del.innerHTML = '<i class="ri-delete-bin-line"></i>';
-                    actionsCol.appendChild(del);
-
-                    wrap.appendChild(titleCol);
-                    wrap.appendChild(actionsCol);
-                    list.appendChild(wrap);
+                    list.appendChild(buildItemNode(item));
                 });
+            }
+
+            function buildItemNode(item) {
+                var wrap = document.createElement('div');
+                wrap.className = 'rr-item d-flex align-items-start gap-2';
+                wrap.setAttribute('data-item-id', item.id);
+
+                var titleCol = document.createElement('div');
+                titleCol.className = 'flex-grow-1 min-w-0';
+                var srcBadge = '<span class="rr-source-badge ' + (item.source === 'manual' ? 'is-manual' : '') + '">'
+                    + (item.source === 'ai' ? 'AI' : 'Manual') + '</span>';
+                var titleHtml = '<div class="rr-item-title" data-role="title">' + escapeHtml(item.title) + srcBadge + '</div>';
+                if (item.description) {
+                    titleHtml += '<div class="rr-item-desc" data-role="desc">' + escapeHtml(item.description) + '</div>';
+                }
+                titleCol.innerHTML = titleHtml;
+
+                var actionsCol = document.createElement('div');
+                actionsCol.className = 'd-flex align-items-center gap-1 flex-shrink-0';
+
+                var edit = document.createElement('button');
+                edit.type = 'button';
+                edit.className = 'rr-edit-btn';
+                edit.setAttribute('data-action', 'edit');
+                edit.setAttribute('title', 'Edit this responsibility');
+                edit.setAttribute('aria-label', 'Edit ' + (item.title || 'item'));
+                edit.innerHTML = '<i class="ri-pencil-line"></i>';
+                actionsCol.appendChild(edit);
+
+                var del = document.createElement('button');
+                del.type = 'button';
+                del.className = 'rr-delete-btn';
+                del.setAttribute('data-action', 'delete');
+                del.setAttribute('title', 'Remove this item');
+                del.setAttribute('aria-label', 'Remove ' + (item.title || 'item'));
+                del.innerHTML = '<i class="ri-delete-bin-line"></i>';
+                actionsCol.appendChild(del);
+
+                wrap.appendChild(titleCol);
+                wrap.appendChild(actionsCol);
+                return wrap;
+            }
+
+            function enterEditMode(row) {
+                if (!row || row.classList.contains('is-editing')) return;
+                var itemId = row.getAttribute('data-item-id');
+                var item = state.items.find(function (i) { return String(i.id) === String(itemId); });
+                if (!item) return;
+                row.classList.add('is-editing');
+
+                var titleCol = row.querySelector('.flex-grow-1');
+                if (!titleCol) return;
+                titleCol.dataset.originalHtml = titleCol.innerHTML;
+
+                var srcBadge = '<span class="rr-source-badge ' + (item.source === 'manual' ? 'is-manual' : '') + '">'
+                    + (item.source === 'ai' ? 'AI' : 'Manual') + '</span>';
+                titleCol.innerHTML =
+                    '<div class="rr-edit-form">'
+                    + '<div class="d-flex align-items-center gap-2 mb-1">'
+                    +   '<input type="text" class="form-control form-control-sm rr-edit-title" maxlength="500" value="' + escapeHtml(item.title) + '" />'
+                    +   srcBadge
+                    + '</div>'
+                    + '<textarea class="form-control form-control-sm rr-edit-desc" rows="2" maxlength="2000" placeholder="Optional description…">' + escapeHtml(item.description || '') + '</textarea>'
+                    + '<div class="mt-1 d-flex gap-1 justify-content-end">'
+                    +   '<button type="button" class="btn btn-sm btn-light" data-action="edit-cancel"><i class="ri-close-line"></i> Cancel</button>'
+                    +   '<button type="button" class="btn btn-sm btn-primary rr-edit-save-btn" data-action="edit-save" style="background:#6d28d9;border-color:#6d28d9;"><i class="ri-check-line"></i> Save</button>'
+                    + '</div>'
+                    + '</div>';
+
+                // Swap the action buttons for a single visual hint while editing.
+                var actions = row.querySelector('.flex-shrink-0');
+                if (actions) actions.style.display = 'none';
+
+                var input = titleCol.querySelector('.rr-edit-title');
+                if (input) {
+                    input.focus();
+                    input.select();
+                }
+            }
+
+            function exitEditMode(row, item) {
+                if (!row) return;
+                row.classList.remove('is-editing');
+                var titleCol = row.querySelector('.flex-grow-1');
+                if (!titleCol) return;
+
+                if (item) {
+                    var srcBadge = '<span class="rr-source-badge ' + (item.source === 'manual' ? 'is-manual' : '') + '">'
+                        + (item.source === 'ai' ? 'AI' : 'Manual') + '</span>';
+                    var html = '<div class="rr-item-title" data-role="title">' + escapeHtml(item.title) + srcBadge + '</div>';
+                    if (item.description) {
+                        html += '<div class="rr-item-desc" data-role="desc">' + escapeHtml(item.description) + '</div>';
+                    }
+                    titleCol.innerHTML = html;
+                } else if (titleCol.dataset.originalHtml) {
+                    titleCol.innerHTML = titleCol.dataset.originalHtml;
+                }
+                delete titleCol.dataset.originalHtml;
+
+                var actions = row.querySelector('.flex-shrink-0');
+                if (actions) actions.style.display = '';
+            }
+
+            function saveItem(row) {
+                var itemId = row.getAttribute('data-item-id');
+                var item = state.items.find(function (i) { return String(i.id) === String(itemId); });
+                if (!item) return;
+                var titleInput = row.querySelector('.rr-edit-title');
+                var descInput = row.querySelector('.rr-edit-desc');
+                var newTitle = titleInput ? titleInput.value.trim() : '';
+                var newDesc = descInput ? descInput.value.trim() : '';
+                if (!newTitle) {
+                    showError('Title cannot be empty.');
+                    return;
+                }
+                clearError();
+                var saveBtn = row.querySelector('.rr-edit-save-btn');
+                if (saveBtn) saveBtn.disabled = true;
+                postJson(endpoints.updateBase + '/' + encodeURIComponent(itemId), {
+                    title: newTitle,
+                    description: newDesc === '' ? null : newDesc
+                }, 'PATCH')
+                    .then(function (data) {
+                        if (saveBtn) saveBtn.disabled = false;
+                        item.title = (data.item && data.item.title) || newTitle;
+                        item.description = (data.item && (data.item.description !== undefined)) ? data.item.description : (newDesc === '' ? null : newDesc);
+                        exitEditMode(row, item);
+                    })
+                    .catch(function (err) {
+                        if (saveBtn) saveBtn.disabled = false;
+                        showError(err.message || 'Could not save changes.');
+                    });
             }
 
             function applyState(data) {
@@ -2771,6 +2890,44 @@
                     });
             }
 
+            function suggestItem() {
+                if (!state.designation) {
+                    showError('Designation is required.');
+                    return;
+                }
+                var btn = el('ts-rr-ai-suggest-btn');
+                var titleInput = el('ts-rr-add-title');
+                var hint = (titleInput && titleInput.value || '').trim();
+                var originalHtml = btn ? btn.innerHTML : '';
+                if (btn) {
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="ri-loader-4-line spin"></i> Thinking…';
+                }
+                clearError();
+                var payload = { designation: state.designation };
+                if (hint !== '') payload.hint = hint;
+                postJson(endpoints.suggest, payload)
+                    .then(function (data) {
+                        if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
+                        if (data.item) {
+                            // Clear the draft text only after a successful refinement.
+                            if (titleInput) titleInput.value = '';
+                            state.items.push(data.item);
+                            renderItems(state.items);
+                            renderProgress(state.items);
+                            // If we were in the empty state (no items yet), flip to content.
+                            showOnly('content');
+                            var regen = el('ts-rr-regenerate-btn');
+                            if (regen) regen.style.display = 'none';
+                        }
+                    })
+                    .catch(function (err) {
+                        if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
+                        showError(err.message || 'AI could not suggest a responsibility.');
+                        // Leave the draft text intact so the user can try again or click +Add.
+                    });
+            }
+
             function deleteItem(itemId, rowEl) {
                 if (!itemId) return;
                 if (!window.confirm('Remove this responsibility from the designation? This affects every user with this designation.')) {
@@ -2791,30 +2948,9 @@
                     });
             }
 
-            function updateStatus(itemId, status, rowEl) {
-                if (!state.userId) {
-                    showError('Cannot save progress: user is missing.');
-                    return;
-                }
-                clearError();
-                postJson(endpoints.progress, {
-                    user_id: state.userId,
-                    designation_rr_item_id: parseInt(itemId, 10),
-                    status: status
-                })
-                    .then(function () {
-                        var found = state.items.find(function (i) { return String(i.id) === String(itemId); });
-                        if (found) {
-                            found.status = status;
-                            found.done_at = status === 'done' ? new Date().toISOString() : null;
-                        }
-                        if (rowEl) rowEl.setAttribute('data-status', status);
-                        renderProgress(state.items);
-                    })
-                    .catch(function (err) {
-                        showError(err.message || 'Could not save status.');
-                    });
-            }
+            // Status-per-user has been removed from the R&R modal. Items
+            // are now just editable text rows (edit / delete), so no
+            // per-user progress update is needed here.
 
             // Single delegated click handler on document — works regardless of
             // when the magnifying-glass button is added to the DOM.
@@ -2858,6 +2994,11 @@
                     addItem();
                     return;
                 }
+                if (target.closest('#ts-rr-ai-suggest-btn')) {
+                    e.preventDefault();
+                    suggestItem();
+                    return;
+                }
                 var del = target.closest('#ts-rr-item-list button[data-action="delete"]');
                 if (del) {
                     e.preventDefault();
@@ -2865,24 +3006,51 @@
                     if (rowD) deleteItem(rowD.getAttribute('data-item-id'), rowD);
                     return;
                 }
+                var editBtn = target.closest('#ts-rr-item-list button[data-action="edit"]');
+                if (editBtn) {
+                    e.preventDefault();
+                    var rowE = editBtn.closest('.rr-item');
+                    if (rowE) enterEditMode(rowE);
+                    return;
+                }
+                var saveBtn = target.closest('#ts-rr-item-list button[data-action="edit-save"]');
+                if (saveBtn) {
+                    e.preventDefault();
+                    var rowS = saveBtn.closest('.rr-item');
+                    if (rowS) saveItem(rowS);
+                    return;
+                }
+                var cancelBtn = target.closest('#ts-rr-item-list button[data-action="edit-cancel"]');
+                if (cancelBtn) {
+                    e.preventDefault();
+                    var rowC = cancelBtn.closest('.rr-item');
+                    if (rowC) exitEditMode(rowC, null);
+                    return;
+                }
             });
 
-            // Status select change is delegated on document too.
-            document.addEventListener('change', function (e) {
-                var sel = e.target && e.target.closest && e.target.closest('#ts-rr-item-list select[data-action="status"]');
-                if (!sel) return;
-                var row = sel.closest('.rr-item');
-                if (!row) return;
-                updateStatus(row.getAttribute('data-item-id'), sel.value, row);
-            });
-
-            // Enter key on add-title input submits the item.
+            // Enter key on add-title input submits the item; inline-edit
+            // Enter saves, Escape cancels.
             document.addEventListener('keydown', function (e) {
-                if (e.key !== 'Enter') return;
                 var t = e.target;
-                if (t && t.id === 'ts-rr-add-title') {
+                if (!t) return;
+                if (e.key === 'Enter' && t.id === 'ts-rr-add-title') {
                     e.preventDefault();
                     addItem();
+                    return;
+                }
+                if (e.key === 'Enter' && t.classList && t.classList.contains('rr-edit-title')) {
+                    e.preventDefault();
+                    var row = t.closest('.rr-item');
+                    if (row) saveItem(row);
+                    return;
+                }
+                if (e.key === 'Escape' && (
+                    (t.classList && (t.classList.contains('rr-edit-title') || t.classList.contains('rr-edit-desc')))
+                )) {
+                    e.preventDefault();
+                    var rowE = t.closest('.rr-item');
+                    if (rowE) exitEditMode(rowE, null);
                 }
             });
         })();
@@ -2900,6 +3068,7 @@
                 get: @json(route('tasks.designationRR.checklist.get')),
                 generate: @json(route('tasks.designationRR.checklist.generate')),
                 add: @json(route('tasks.designationRR.checklist.add')),
+                suggest: @json(route('tasks.designationRR.checklist.suggest')),
                 updateBase: @json(url('/tasks/designation-rr/checklist/items')),
                 deleteBase: @json(url('/tasks/designation-rr/checklist/items')),
                 progress: @json(route('tasks.designationRR.checklist.progress'))
@@ -3115,7 +3284,10 @@
                     addRow.innerHTML =
                         '<input type="text" class="form-control form-control-sm clrr-add-input" placeholder="Add a checkpoint…" maxlength="500" />'
                         + '<input type="number" class="form-control form-control-sm clrr-weight-input" min="1" max="10" step="1" value="1" title="Weightage (1–10)" />'
-                        + '<button type="button" class="clrr-add-btn" data-action="add"><i class="ri-add-line"></i> Add</button>';
+                        + '<button type="button" class="clrr-add-btn" data-action="add" title="Add the typed checkpoint manually"><i class="ri-add-line"></i> Add</button>'
+                        + '<button type="button" class="clrr-ai-suggest-btn" data-action="suggest-ai" title="Ask AI to suggest a new checkpoint contextual to this R&R">'
+                        +     '<i class="ri-sparkling-line"></i> Ask AI'
+                        + '</button>';
                     card.appendChild(addRow);
 
                     list.appendChild(card);
@@ -3325,6 +3497,7 @@
                     weightage: weight
                 })
                     .then(function (data) {
+                        if (addInput) addInput.value = '';
                         var item = state.items.find(function (i) { return i.id === itemId; });
                         if (item) {
                             item.checkpoints.push(data.checkpoint);
@@ -3335,6 +3508,32 @@
                     })
                     .catch(function (err) {
                         showError(err.message || 'Could not add checkpoint.');
+                    });
+            }
+
+            function suggestCheckpointFromCard(card, btn) {
+                var itemId = parseInt(card.getAttribute('data-item-id'), 10);
+                if (!itemId) return;
+                clearError();
+                var originalHtml = btn ? btn.innerHTML : '';
+                if (btn) {
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="ri-loader-4-line spin"></i> Thinking…';
+                }
+                postJson(endpoints.suggest, { designation_rr_item_id: itemId })
+                    .then(function (data) {
+                        if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
+                        var item = state.items.find(function (i) { return i.id === itemId; });
+                        if (item && data.checkpoint) {
+                            item.checkpoints.push(data.checkpoint);
+                            recomputeScores();
+                            renderItems();
+                            renderOverall();
+                        }
+                    })
+                    .catch(function (err) {
+                        if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
+                        showError(err.message || 'AI could not suggest a checkpoint.');
                     });
             }
 
@@ -3392,6 +3591,13 @@
                     e.preventDefault();
                     var addCard = addBtn.closest('.clrr-item-card');
                     if (addCard) addCheckpointFromCard(addCard);
+                    return;
+                }
+                var suggestBtn = target.closest('button[data-action="suggest-ai"]');
+                if (suggestBtn && suggestBtn.closest('#ts-clrr-item-list')) {
+                    e.preventDefault();
+                    var suggestCard = suggestBtn.closest('.clrr-item-card');
+                    if (suggestCard) suggestCheckpointFromCard(suggestCard, suggestBtn);
                     return;
                 }
                 var delBtn = target.closest('#ts-clrr-item-list button[data-action="delete"]');
