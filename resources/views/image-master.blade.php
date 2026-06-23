@@ -119,6 +119,9 @@
                             <div class="small fw-semibold flex-grow-1" id="pushProgressTitle">Pushing...</div>
                             <button type="button" class="btn-close btn-sm" id="pushProgressClose" style="font-size:10px;" onclick="document.getElementById('pushProgressBox').style.display='none'"></button>
                         </div>
+                        <div class="progress mt-2" id="pushProgressBarWrap" style="height:16px;display:none;">
+                            <div id="pushProgressBar" class="progress-bar bg-info" role="progressbar" style="width:0%;font-size:10px;line-height:16px;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
                         <div class="small mt-2" id="pushProgressDetails" style="max-height:200px;overflow-y:auto;white-space:pre-wrap;"></div>
                     </div>
                     <div id="rainbow-loader" class="text-center py-4" style="display:none;">
@@ -391,9 +394,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const total = Number(job.total ?? 0);
         const detail = total > 0 ? `${title} (${idx}/${total})` : title;
         setPushProgress(true, detail, lines.join(''), false);
+        setPushProgressBar(idx, total);
     }
 
     async function queueImagePushAndWait(payload, onProgress) {
+        setPushProgressBar(0, 0); // indeterminate until the job reports a total
         const res = await fetch('/image-master/push', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
@@ -406,6 +411,7 @@ document.addEventListener('DOMContentLoaded', () => {
             throw new Error(res.ok ? 'Invalid server response' : `HTTP ${res.status}${rawText ? ': ' + rawText.slice(0, 200) : ''}`);
         }
         if (j.dry_run || j.queued === false) {
+            setPushProgressBar(1, 1, j?.success === false);
             return { res, j };
         }
         if (res.status === 409 && isImagePushJobActive(j?.job?.status)) {
@@ -418,6 +424,8 @@ document.addEventListener('DOMContentLoaded', () => {
             j = await fetchImagePushJobStatus();
             if (onProgress) onProgress(j);
         }
+        const ft = Number(j?.job?.total ?? 0);
+        setPushProgressBar(ft > 0 ? ft : 1, ft > 0 ? ft : 1, j?.success === false);
         return { res: { ok: j.success !== false, status: j.success ? 200 : 422 }, j };
     }
 
@@ -432,6 +440,29 @@ document.addEventListener('DOMContentLoaded', () => {
         el.addEventListener('hidden.bs.toast', () => el.remove());
     }
 
+    // Visual progress bar inside the push box. total<=0 => indeterminate "Queued…" bar.
+    function setPushProgressBar(done, total, hasError = false) {
+        const wrap = document.getElementById('pushProgressBarWrap');
+        const bar = document.getElementById('pushProgressBar');
+        if (!wrap || !bar) return;
+        wrap.style.display = '';
+        const t = Number(total) || 0;
+        if (t <= 0) {
+            bar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-info';
+            bar.style.width = '100%';
+            bar.textContent = 'Queued…';
+            bar.setAttribute('aria-valuenow', '0');
+            return;
+        }
+        const d = Math.max(0, Math.min(Number(done) || 0, t));
+        const pct = Math.round((d / t) * 100);
+        const finished = d >= t;
+        bar.className = 'progress-bar ' + (hasError ? 'bg-danger' : (finished ? 'bg-success' : 'bg-info progress-bar-striped progress-bar-animated'));
+        bar.style.width = pct + '%';
+        bar.textContent = `${d}/${t} (${pct}%)`;
+        bar.setAttribute('aria-valuenow', String(pct));
+    }
+
     function setPushProgress(visible, title = '', detailsHtml = '', hasError = false) {
         const box = document.getElementById('pushProgressBox');
         const t = document.getElementById('pushProgressTitle');
@@ -444,6 +475,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (spinner) spinner.style.display = visible && !hasError ? 'inline-block' : 'none';
         box.className = 'alert mt-3 py-2 px-3' + (hasError ? ' alert-danger' : ' alert-info');
         box.style.wordBreak = 'break-word';
+        if (!visible) {
+            const wrap = document.getElementById('pushProgressBarWrap');
+            const bar = document.getElementById('pushProgressBar');
+            if (wrap) wrap.style.display = 'none';
+            if (bar) { bar.style.width = '0%'; bar.textContent = ''; bar.className = 'progress-bar bg-info'; }
+        }
     }
 
     function confirmEbay3Push(mps) {
