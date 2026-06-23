@@ -319,7 +319,7 @@
         if (!fromItem) return null;
         return parseFloat(fromItem.INV) || 0;
     }
-    
+
     // Toast notification (optional delay in ms; default 5000)
     function showToast(message, type = 'info', delayMs = 5000) {
         const toastContainer = document.querySelector('.toast-container');
@@ -813,6 +813,7 @@
                 $row.find('.from-sold-display').val('');
                 $row.find('.from-qty-input').val('');
                 $row.find('.from-dil-percent').attr('class', 'from-dil-percent').text('-');
+                $row.find('.to-qty-display').val('');
                 // Also drop any user-edited FROM Qty memory for this row
                 delete customFromQty[toSku];
             }
@@ -850,7 +851,14 @@
             calculateToQty($row);
         });
         
-        // FROM Qty input change handler
+        // FROM Qty 'input' fires on every keystroke. Keep it lightweight: update the
+        // customFromQty memory and refresh the dependent TO Qty cell.
+        //
+        // IMPORTANT: do NOT trigger reapplyHideFilterDebounced here. Reapply ends with
+        // setSort, which causes Tabulator to re-render the cell and destroy/recreate
+        // the <input> element - which loses focus and makes the field feel like
+        // "editing isn't working" mid-type. Hide / sort updates are deferred to the
+        // 'change' event below (which fires when the input loses focus or on Enter).
         $(document).on('input', '.from-qty-input', function() {
             const $row = $(this).closest('.tabulator-row');
             const row = table.getRow($row[0]);
@@ -864,18 +872,33 @@
                 }
             }
             calculateToQty($row);
-            // FROM Qty changed - re-evaluate Hide filter (a 0 may now hide this row).
+        });
+
+        // FROM Qty 'change' fires after the user is done editing (blur or Enter).
+        // Re-evaluate Hide rules and the priority sort here, when re-rendering the
+        // cell can no longer interrupt anyone's typing.
+        $(document).on('change', '.from-qty-input', function() {
             reapplyHideFilterDebounced();
         });
         
-        // Calculate TO Qty based on FROM Qty × Ratio
+        // Keep TO Qty in sync with the current FROM Qty + Ratio.
+        // TO Qty is what the destination SKU receives when the FROM Qty is transferred
+        // at the given ratio. Convention: N:M = "N of FROM equals M of TO", so
+        // TO = FROM * (M / N). Examples:
+        //   1:1 -> TO = FROM
+        //   1:2 -> TO = FROM * 2
+        //   2:1 -> TO = FROM / 2 (8 -> 4)
+        //   1:4 -> TO = FROM * 4
+        //   4:1 -> TO = FROM / 4
         function calculateToQty($row) {
-            const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
+            const fromQtyRaw = parseFloat($row.find('.from-qty-input').val()) || 0;
             const ratio = $row.find('.ratio-select').val() || '1:1';
-            
-            if (fromQty > 0) {
-                const ratioParts = ratio.split(':');
-                const toQty = Math.round(fromQty * (parseFloat(ratioParts[1]) / parseFloat(ratioParts[0])));
+            const ratioParts = ratio.split(':');
+            const ratioFrom = parseFloat(ratioParts[0]);
+            const ratioTo   = parseFloat(ratioParts[1]);
+
+            if (fromQtyRaw > 0 && ratioFrom > 0 && !isNaN(ratioTo)) {
+                const toQty = Math.round(fromQtyRaw * (ratioTo / ratioFrom));
                 $row.find('.to-qty-display').val(toQty);
             } else {
                 $row.find('.to-qty-display').val('');
@@ -904,12 +927,15 @@
             const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
             const ratio = $row.find('.ratio-select').val() || '1:1';
 
-            // Recompute TO Qty from the *current* FROM Qty + Ratio instead of trusting the
+            // Recompute TO Qty from the *current* FROM Qty + Ratio rather than trusting the
             // DOM value. The displayed TO Qty input is readonly, but renderComplete-driven
             // restore events can leave the FROM Qty input and the TO Qty display momentarily
             // out of sync (FROM Qty was being clobbered while TO Qty kept the older value),
             // which previously caused the source to be over-deducted vs what the receiver got.
             // Deriving TO Qty here guarantees both sides of the transfer always agree.
+            //
+            // Must use the same N:M = "N FROM per M TO" convention as calculateToQty above
+            // (TO = FROM * ratioTo / ratioFrom).
             const ratioParts = ratio.split(':');
             const ratioFrom = parseFloat(ratioParts[0]);
             const ratioTo = parseFloat(ratioParts[1]);
@@ -917,46 +943,46 @@
             if (fromQty > 0 && ratioFrom > 0 && !isNaN(ratioTo)) {
                 toQty = Math.round(fromQty * (ratioTo / ratioFrom));
             }
-            // Reflect the trusted value back to the readonly TO Qty field so what the user
-            // sees matches what gets submitted.
+            // Reflect the trusted value back to the read-only TO Qty cell so what the
+            // user sees matches what gets submitted.
             $row.find('.to-qty-display').val(toQty || '');
-            
+
             // Validation
             if (!fromSku) {
                 showToast('Please select a FROM SKU', 'error');
                 return;
             }
-            
+
             if (fromQty <= 0) {
                 showToast('FROM Qty must be greater than 0', 'error');
                 return;
             }
-            
+
             if (toQty <= 0) {
                 showToast('TO Qty must be greater than 0', 'error');
                 return;
             }
-            
+
             // Get FROM SKU data
             const fromItem = allTableData.find(function(i) { return i.SKU === fromSku; });
             const fromInv = fromItem ? (parseInt(fromItem.INV) || 0) : 0;
             const fromDil = fromItem ? (parseFloat(fromItem.DIL) || 0) : 0;
-            
+
             if (fromQty > fromInv) {
                 showToast('Insufficient inventory for ' + fromSku + '. Available: ' + fromInv, 'error');
                 return;
             }
-            
+
             // Prepare transfer data
             // Backend: to_sku = destination, from_sku = source (SWAPPING SKUs!)
             // UI: FROM SKU (source), TO SKU (destination)
-            // Transfer: Deduct FROM Qty from FROM SKU, Add TO Qty to TO SKU
+            // Transfer: Deduct FROM Qty from FROM SKU, Add TO Qty (= FROM Qty * Ratio) to TO SKU
             const transferData = {
                 to_sku: toSku,             // TO SKU (destination - add TO here)
                 to_parent_name: toParent,
                 to_available_qty: toInv,
                 to_dil_percent: toDil * 100,
-                to_adjust_qty: toQty,      // Add TO Qty
+                to_adjust_qty: toQty,      // Add TO Qty (= FROM Qty * ratioTo/ratioFrom)
                 from_sku: fromSku,         // FROM SKU (source - deduct FROM here)
                 from_parent_name: fromParent,
                 from_available_qty: fromInv,
