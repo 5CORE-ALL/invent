@@ -1054,6 +1054,10 @@ class ReverbApiService
             }
         }
 
+        // Guard: Reverb's image fetcher rejects URLs with unencoded characters (e.g. spaces in a
+        // self-hosted "FEATURE IMG_x.jpg" path), which silently drops that photo. Percent-encode
+        // each path segment so Reverb always receives a fetchable URL.
+        $normalized = array_map(fn ($u) => $this->encodeReverbImageUrlPath($u), $normalized);
         $normalized = array_values(array_unique($normalized));
 
         foreach ($normalized as $u) {
@@ -1093,6 +1097,32 @@ class ReverbApiService
         }
 
         return (bool) preg_match('/^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/', $host);
+    }
+
+    /**
+     * Percent-encode each path segment of a URL so it is safe for Reverb's image fetcher, without
+     * double-encoding already-encoded segments (decode then re-encode). Scheme, host, port and
+     * query are preserved. Clean URLs (e.g. Shopify CDN) are returned unchanged.
+     */
+    private function encodeReverbImageUrlPath(string $url): string
+    {
+        $parts = parse_url($url);
+        if ($parts === false || empty($parts['host'])) {
+            return $url;
+        }
+        $path = $parts['path'] ?? '';
+        if ($path !== '') {
+            $path = implode('/', array_map(
+                fn ($seg) => rawurlencode(rawurldecode($seg)),
+                explode('/', $path)
+            ));
+        }
+
+        return ($parts['scheme'] ?? 'https').'://'
+            .$parts['host']
+            .(isset($parts['port']) ? ':'.$parts['port'] : '')
+            .$path
+            .(isset($parts['query']) ? '?'.$parts['query'] : '');
     }
 
     private function extractPublicDiskRelativePathFromUrl(string $url): ?string
