@@ -572,7 +572,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!raw || typeof raw !== 'object') return out;
         MARKETPLACES.forEach(mp => {
             if (raw[mp] != null && raw[mp] !== '') {
-                out[mp] = Math.max(0, Math.min(11, parseInt(raw[mp], 10) || 0));
+                out[mp] = Math.max(0, Math.min(PM_MAX_IMAGES - 1, parseInt(raw[mp], 10) || 0));
             }
         });
         return out;
@@ -940,7 +940,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const sku = document.getElementById('modalSku').value;
         if (!pendingFiles.length) return true;
         if (modalUrls.length >= PM_MAX_IMAGES) {
-            toast(`Maximum ${PM_MAX_IMAGES} images already added`, false);
+            toast(`You already have the maximum of ${PM_MAX_IMAGES} images. Remove some before adding more.`, false);
+            return false;
+        }
+
+        // Enforce the image cap: if the selection would exceed it, add NOTHING and let the user
+        // remove the extra files (or existing images) and try again — no silent partial add.
+        const allowed = PM_MAX_IMAGES - modalUrls.length;
+        if (pendingFiles.length > allowed) {
+            toast(`Image limit is ${PM_MAX_IMAGES}. You already have ${modalUrls.length}, so only ${allowed} more can be added. You selected ${pendingFiles.length} — please remove ${pendingFiles.length - allowed} and try again.`, false);
             return false;
         }
 
@@ -955,7 +963,6 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const fd = new FormData();
             fd.append('sku', sku);
-            const allowed = PM_MAX_IMAGES - modalUrls.length;
             pendingFiles.slice(0, allowed).forEach(f => fd.append('files[]', f));
 
             const r = await fetch('/image-master/upload', {
@@ -1169,7 +1176,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 toast(`Pushed to ${okCount} marketplace(s).${metricsFailCount ? ` ${metricsFailCount} metrics save failed.` : ''}`, !metricsFailCount);
                 loadData();
                 if (editModal) editModal.hide();
-                setTimeout(() => setPushProgress(false, '', ''), 5000);
+                // Progress stays visible until the user closes it (the ✕ on the progress box).
             } else {
                 toast(`Push completed with failures (${failCount}). See error details below.`, false);
                 loadData();
@@ -1209,7 +1216,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const ok = !!(rowRes && rowRes.success);
             const msg = ok ? (rowRes?.message || j.message || 'Updated') : pushFailureMessage(j, mp, res.status);
             setPushProgress(true, `Push finished: ${ok ? '1 success' : '1 failed'}`, `1/1 ${LABELS[mp]}: ${ok ? '✓ OK' : '✗ Failed'} — ${esc(msg)}`, !ok);
-            if (ok) { toast(LABELS[mp]+' pushed'); loadData(); setTimeout(() => setPushProgress(false,'',''), 5000); }
+            if (ok) { toast(LABELS[mp]+' pushed'); loadData(); }
             else toast(msg, false);
         }).catch(e => {
             setPushProgress(true, 'Push finished: 1 failed', `1/1 ${LABELS[mp]}: ✗ Failed — ${esc(e.message || 'Request failed')}`, true);
@@ -1354,7 +1361,7 @@ document.addEventListener('DOMContentLoaded', () => {
         );
         toast(`Bulk push done: ${okSkus} ok, ${failSkus} failed`, !hasError);
         loadData();
-        if (!hasError) setTimeout(() => setPushProgress(false, '', ''), 8000);
+        // Progress stays visible until the user closes it (the ✕ on the progress box).
     }
 
     document.getElementById('pushAllBtn')?.addEventListener('click', () => bulkPushAll());
