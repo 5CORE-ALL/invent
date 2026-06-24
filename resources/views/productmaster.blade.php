@@ -4593,20 +4593,22 @@
                 return defaultHiddenColumns;
             }
 
-            // Update Excel export function to exclude hidden columns
+            // Excel export: always include EVERY column (weight, dimensions, etc.)
+            // even if they are hidden in the UI, so users don't have to fill them
+            // in manually before re-importing.
             function setupExcelExport() {
                 const downloadExcelBtn = document.getElementById('downloadExcel');
                 if (downloadExcelBtn) {
                     downloadExcelBtn.addEventListener('click', function() {
-                    const hiddenColumns = getUserHiddenColumns();
                     const allColumns = [
                         "Parent", "SKU", "UPC", "Inventory", "OV L30", "DIL", "STATUS", "Unit", "LP", "CP$",
                         "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "Length", "Width", "Height",
                         "CBM", "Image", "Url", "Verified", "DC", "Pcs/Box", "B", "H1", "Weight", "MSRP", "MAP"
                     ];
 
-                    // Filter out hidden columns
-                    const visibleColumns = allColumns.filter(col => !hiddenColumns.includes(col));
+                    // Export every column regardless of UI visibility so the file
+                    // round-trips cleanly through the bulk-update import flow.
+                    const visibleColumns = allColumns;
 
                     // Column definitions with their data keys
                     const columnDefs = {
