@@ -203,6 +203,40 @@
                         title="Push every currently-visible row that has a SPRICE live to Newegg (chunked)">
                         <i class="fas fa-cloud-upload-alt"></i> Push All SPRICE
                     </button>
+
+                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
+                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / factor   (factor = per-row 'factor' field, default 0.80) --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-roi-controls"
+                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / factor on every selected row (back-solves so SROI column equals the target)">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target ROI%:
+                        </label>
+                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / factor for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
+                         Formula: sprice = (LP + Ship) / (factor − GPFT%/100). Target GPFT% must be < factor*100. --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-gpft-controls"
+                        title="Target GPFT% — sets S PRC = (LP + Ship) / (factor − Target GPFT%/100) on every selected row">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target GPFT%:
+                        </label>
+                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Newegg take-home factor (typically < 80%).">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP + Ship) / (factor − Target GPFT%/100) for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
                 </div>
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
@@ -946,6 +980,138 @@
             $('#discount-percentage-input').on('keypress', function(e) { if (e.which === 13) applyDiscount(); });
             $('#clear-sprice-btn').on('click', clearSpriceForSelected);
             $('#push-newegg-btn').on('click', pushSelectedToNewegg);
+
+            // --- Target ROI% / Target GPFT% bulk apply --------------------------------
+            // Back-solves SPRICE so the resulting SROI / SGPFT columns match the target.
+            // Uses each row's server-supplied take-home `factor` (≈ 0.80 by default).
+            // After the optimistic row update, the same /newegg-pricing-save-sprice-bulk
+            // endpoint that the regular Apply / Clear flow uses reconciles the values
+            // server-side. Rounding is plain 2-decimal — no .99 / .49 retail snapping —
+            // because retail snapping would shift the achieved SROI / SGPFT away from
+            // the target the user just typed.
+            $('#apply-target-roi-btn').on('click', function () {
+                const rawInput = $('#target-roi-input').val();
+                const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                if (rawInput === '' || rawInput == null) {
+                    showToast('Please enter a Target ROI%', 'error');
+                    return;
+                }
+                if (!isFinite(targetRoiPct)) {
+                    showToast('Target ROI% must be a number', 'error');
+                    return;
+                }
+                if (selectedSkus.size === 0) {
+                    showToast('Please select at least one SKU first (turn on Decrease / Increase / Same Price to reveal checkboxes)', 'error');
+                    return;
+                }
+
+                const roiMultiplier = 1 + (targetRoiPct / 100);
+                const updates = [];
+                let updatedCount = 0;
+                let skippedNoLp = 0;
+
+                selectedSkus.forEach(sku => {
+                    const rows = table.searchRows('sku', '=', sku);
+                    if (rows.length === 0) return;
+                    const row = rows[0];
+                    const d   = row.getData();
+                    const lp  = parseFloat(d.lp) || 0;
+                    if (lp <= 0) { skippedNoLp++; return; }
+                    const ship   = parseFloat(d.ship)   || 0;
+                    const factor = parseFloat(d.factor) || 0.80;
+                    const candidate = (lp * roiMultiplier + ship) / factor;
+                    const newSprice = +candidate.toFixed(2);
+                    if (!isFinite(newSprice) || newSprice <= 0) return;
+
+                    const profit = (newSprice * factor) - lp - ship;
+                    const spft = newSprice > 0 ? Math.round((profit / newSprice) * 100 * 10) / 10 : 0;
+                    const sroi = lp > 0 ? Math.round((profit / lp) * 100) : 0;
+
+                    row.update({ sprice: newSprice, spft: spft, sroi: sroi });
+                    updates.push({ sku: sku, sprice: newSprice });
+                    updatedCount++;
+                });
+
+                if (updates.length === 0) {
+                    showToast('No selected rows have a usable LP > 0', 'warning');
+                    return;
+                }
+
+                saveSpriceUpdates(updates);
+                const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
+                showToast(`Target ROI ${targetRoiPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
+            });
+
+            $('#apply-target-gpft-btn').on('click', function () {
+                const rawInput = $('#target-gpft-input').val();
+                const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                if (rawInput === '' || rawInput == null) {
+                    showToast('Please enter a Target GPFT%', 'error');
+                    return;
+                }
+                if (!isFinite(targetGpftPct)) {
+                    showToast('Target GPFT% must be a number', 'error');
+                    return;
+                }
+                if (selectedSkus.size === 0) {
+                    showToast('Please select at least one SKU first (turn on Decrease / Increase / Same Price to reveal checkboxes)', 'error');
+                    return;
+                }
+
+                const targetFraction = targetGpftPct / 100;
+                const updates = [];
+                let updatedCount = 0;
+                let skippedNoLp = 0;
+                const skippedHighGpft = [];
+
+                selectedSkus.forEach(sku => {
+                    const rows = table.searchRows('sku', '=', sku);
+                    if (rows.length === 0) return;
+                    const row = rows[0];
+                    const d   = row.getData();
+                    const lp  = parseFloat(d.lp) || 0;
+                    if (lp <= 0) { skippedNoLp++; return; }
+                    const ship   = parseFloat(d.ship)   || 0;
+                    const factor = parseFloat(d.factor) || 0.80;
+                    const denom  = factor - targetFraction;
+                    if (denom <= 0) { skippedHighGpft.push(sku); return; }
+                    const candidate = (lp + ship) / denom;
+                    const newSprice = +candidate.toFixed(2);
+                    if (!isFinite(newSprice) || newSprice <= 0) return;
+
+                    const profit = (newSprice * factor) - lp - ship;
+                    const spft = newSprice > 0 ? Math.round((profit / newSprice) * 100 * 10) / 10 : 0;
+                    const sroi = lp > 0 ? Math.round((profit / lp) * 100) : 0;
+
+                    row.update({ sprice: newSprice, spft: spft, sroi: sroi });
+                    updates.push({ sku: sku, sprice: newSprice });
+                    updatedCount++;
+                });
+
+                if (updates.length === 0) {
+                    if (skippedHighGpft.length > 0) {
+                        showToast(`Target GPFT% ${targetGpftPct}% is too high — must be less than each row's take-home factor (e.g. < 80%).`, 'error');
+                    } else {
+                        showToast('No selected rows have a usable LP > 0', 'warning');
+                    }
+                    return;
+                }
+
+                saveSpriceUpdates(updates);
+                let note = '';
+                if (skippedNoLp > 0)        note += ` (${skippedNoLp} skipped — no LP)`;
+                if (skippedHighGpft.length) note += ` (${skippedHighGpft.length} skipped — target ≥ factor)`;
+                showToast(`Target GPFT ${targetGpftPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
+            });
+
+            $('#target-roi-input').on('keypress', function(e) {
+                if (e.which === 13) $('#apply-target-roi-btn').click();
+            });
+            $('#target-gpft-input').on('keypress', function(e) {
+                if (e.which === 13) $('#apply-target-gpft-btn').click();
+            });
 
             // Compute and apply Increase / Decrease / Same Price to the selected SKUs.
             function applyDiscount() {

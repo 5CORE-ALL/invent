@@ -397,6 +397,40 @@
                     <button id="push-to-doba-btn" class="btn btn-sm btn-primary" style="display: none;">
                         <i class="fas fa-upload"></i> Push to Doba
                     </button>
+
+                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
+                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin  (margin = 0.95 for Doba) --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-roi-controls"
+                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 on every selected row (back-solves so SROI column equals the target)">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target ROI%:
+                        </label>
+                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
+                         Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-gpft-controls"
+                        title="Target GPFT% — sets S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) on every selected row">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target GPFT%:
+                        </label>
+                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Doba take-home margin (< 95%).">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
                 </div>
 
                 {{-- Row 3: summary KPIs (/aliexpress-pricing style) --}}
@@ -1034,6 +1068,182 @@
                 if (e.which === 13) {
                     $('#apply-discount-btn').click();
                 }
+            });
+
+            /*
+             * Target ROI% bulk apply (Doba, margin = 0.95)
+             * --------------------------------------------
+             * Back-solves SPRICE for every selected row so SROI = Target ROI%:
+             *     SROI = ((sprice * 0.95 − ship − lp) / lp) * 100
+             *   → sprice = (lp * (1 + ROI%/100) + ship) / 0.95
+             * Self Pick price = sprice − ship (mirrors Doba's existing applyDiscount
+             * flow). Sequential AJAX matches the page's existing per-SKU save loop
+             * so apply_status icons (clock → tick / cross) work the same way.
+             */
+            $('#apply-target-roi-btn').on('click', function () {
+                const rawInput = $('#target-roi-input').val();
+                const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                if (rawInput === '' || rawInput == null) {
+                    showToast('danger', 'Please enter a Target ROI%');
+                    return;
+                }
+                if (!isFinite(targetRoiPct)) {
+                    showToast('danger', 'Target ROI% must be a number');
+                    return;
+                }
+                if (selectedSkus.size === 0) {
+                    showToast('danger', 'Please select at least one SKU first');
+                    return;
+                }
+
+                applyTargetBackSolve(function (rowData) {
+                    const lp = parseFloat(rowData.LP_productmaster) || 0;
+                    if (lp <= 0) return null;
+                    const ship = parseFloat(rowData.Ship_productmaster) || 0;
+                    const candidate = (lp * (1 + targetRoiPct / 100) + ship) / 0.95;
+                    const newPrice = +candidate.toFixed(2);
+                    if (!isFinite(newPrice) || newPrice <= 0) return null;
+                    return { newPrice: newPrice, lp: lp, ship: ship };
+                }, `Target ROI ${targetRoiPct}%`);
+            });
+
+            /*
+             * Target GPFT% bulk apply (Doba, margin = 0.95)
+             * ---------------------------------------------
+             * Back-solves so SGPFT = Target GPFT%:
+             *     SGPFT = ((sprice * 0.95 − ship − lp) / sprice) * 100
+             *   → sprice = (lp + ship) / (0.95 − GPFT%/100)
+             * Constraint: (0.95 − target/100) must be > 0, i.e. target < 95.
+             */
+            $('#apply-target-gpft-btn').on('click', function () {
+                const rawInput = $('#target-gpft-input').val();
+                const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                if (rawInput === '' || rawInput == null) {
+                    showToast('danger', 'Please enter a Target GPFT%');
+                    return;
+                }
+                if (!isFinite(targetGpftPct)) {
+                    showToast('danger', 'Target GPFT% must be a number');
+                    return;
+                }
+                if (selectedSkus.size === 0) {
+                    showToast('danger', 'Please select at least one SKU first');
+                    return;
+                }
+
+                const denom = 0.95 - targetGpftPct / 100;
+                if (denom <= 0) {
+                    showToast('danger', `Target GPFT% ${targetGpftPct}% is too high — must be < 95% (Doba take-home).`);
+                    return;
+                }
+
+                applyTargetBackSolve(function (rowData) {
+                    const lp = parseFloat(rowData.LP_productmaster) || 0;
+                    if (lp <= 0) return null;
+                    const ship = parseFloat(rowData.Ship_productmaster) || 0;
+                    const candidate = (lp + ship) / denom;
+                    const newPrice = +candidate.toFixed(2);
+                    if (!isFinite(newPrice) || newPrice <= 0) return null;
+                    return { newPrice: newPrice, lp: lp, ship: ship };
+                }, `Target GPFT ${targetGpftPct}%`);
+            });
+
+            // Shared back-solve runner. Mirrors the existing applyDiscount per-SKU
+            // sequential AJAX flow (clock → tick / cross via apply_status) so the
+            // user sees the same per-row feedback as Decrease / Increase / Same Price.
+            function applyTargetBackSolve(computeFn, labelPrefix) {
+                const skusToProcess = Array.from(selectedSkus);
+                let currentIndex  = 0;
+                let successCount  = 0;
+                let errorCount    = 0;
+                let skippedNoLp   = 0;
+
+                function processNext() {
+                    if (currentIndex >= skusToProcess.length) {
+                        if (successCount > 0) {
+                            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
+                            showToast('success', `${labelPrefix} applied to ${successCount} SKU(s)${note}`);
+                        }
+                        if (errorCount > 0) {
+                            showToast('warning', `${errorCount} SKU(s) could not be updated`);
+                        }
+                        if (typeof updatePushButtonVisibility === 'function') updatePushButtonVisibility();
+                        return;
+                    }
+
+                    const sku = skusToProcess[currentIndex];
+                    let row = null;
+                    table.getRows().forEach(r => {
+                        if (r.getData()['(Child) sku'] === sku) row = r;
+                    });
+
+                    if (!row || row.getData().is_parent) {
+                        errorCount++;
+                        currentIndex++;
+                        setTimeout(processNext, 20);
+                        return;
+                    }
+
+                    const rowData = row.getData();
+                    const computed = computeFn(rowData);
+                    if (!computed) {
+                        // computeFn returned null (no LP or invalid sprice)
+                        skippedNoLp++;
+                        currentIndex++;
+                        setTimeout(processNext, 20);
+                        return;
+                    }
+
+                    const { newPrice, lp, ship } = computed;
+                    const selfPickValue = parseFloat(Math.max(0, newPrice - ship).toFixed(2));
+                    const spftValue = newPrice > 0 ? ((newPrice * 0.95) - ship - lp) / newPrice * 100 : 0;
+                    const sroiValue = lp > 0       ? ((newPrice * 0.95) - ship - lp) / lp * 100       : 0;
+
+                    row.update({ apply_status: 'applying' });
+
+                    $.ajax({
+                        url: '/doba/save-sprice',
+                        method: 'POST',
+                        data: {
+                            _token: $('meta[name="csrf-token"]').attr('content'),
+                            sku: sku,
+                            sprice: newPrice,
+                            spft_percent: spftValue.toFixed(2),
+                            sroi_percent: sroiValue.toFixed(2),
+                            s_self_pick: selfPickValue
+                        },
+                        success: function () {
+                            row.update({
+                                sprice: newPrice,
+                                s_self_pick: selfPickValue,
+                                spft: spftValue,
+                                sroi: sroiValue,
+                                apply_status: 'applied'
+                            });
+                            successCount++;
+                            currentIndex++;
+                            setTimeout(processNext, 60);
+                        },
+                        error: function (xhr) {
+                            console.error('Target back-solve save error:', sku, xhr.responseText);
+                            row.update({ apply_status: 'error' });
+                            errorCount++;
+                            currentIndex++;
+                            setTimeout(processNext, 60);
+                        }
+                    });
+                }
+
+                processNext();
+            }
+
+            $('#target-roi-input').on('keypress', function (e) {
+                if (e.which === 13) $('#apply-target-roi-btn').click();
+            });
+            $('#target-gpft-input').on('keypress', function (e) {
+                if (e.which === 13) $('#apply-target-gpft-btn').click();
             });
 
             // Clear SPRICE button handler

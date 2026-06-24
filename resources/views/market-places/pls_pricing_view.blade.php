@@ -107,6 +107,42 @@
                         <i class="fas fa-exchange-alt"></i> Price %
                     </button>
 
+                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
+                         PLS server-side SGPFT / SROI formula (PlsController::savePlsSprice lines 865-871) treats
+                         take-home as 100% — i.e. `(sprice − lp − ship) / sprice`, no margin factor — so the
+                         back-solve omits the margin too. Formula: sprice = LP × (1 + ROI%/100) + Ship --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="pls-target-roi-controls"
+                        title="Target ROI% — sets S PRC = LP × (1 + Target ROI%/100) + Ship on every selected row (back-solves so SROI column equals the target)">
+                        <label for="pls-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target ROI%:
+                        </label>
+                        <input type="number" id="pls-target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
+                        <button id="pls-apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = LP × (1 + Target ROI%/100) + Ship for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
+                         Formula: sprice = (LP + Ship) / (1 − GPFT%/100). Target GPFT% must be < 100. --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="pls-target-gpft-controls"
+                        title="Target GPFT% — sets S PRC = (LP + Ship) / (1 − Target GPFT%/100) on every selected row">
+                        <label for="pls-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target GPFT%:
+                        </label>
+                        <input type="number" id="pls-target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than 100% (PLS take-home).">
+                        <button id="pls-apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP + Ship) / (1 − Target GPFT%/100) for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
+
                     <button id="pls-sugg-amz-prc-btn" type="button" class="btn btn-sm btn-warning">
                         <i class="fab fa-amazon"></i> Sugg Amz Prc
                     </button>
@@ -1520,6 +1556,131 @@
         $('#pls-apply-discount-btn').on('click', function() { plsApplyDiscount(); });
         $('#pls-discount-input').on('keypress', function(e) {
             if (e.which === 13) plsApplyDiscount();
+        });
+
+        /*
+         * Target ROI% / Target GPFT% bulk apply (PLS, no margin factor)
+         * -------------------------------------------------------------
+         * Back-solves SPRICE so the resulting SROI / SGPFT column matches the entered
+         * target. PLS's server-side SGPFT / SROI formulas (PlsController::savePlsSprice
+         * lines 865-871) and the matching client-side computations (plsApplyDiscount
+         * lines 1640-1641 of the original file) treat take-home as 100% — they're:
+         *     SGPFT% = ((sprice − lp − ship) / sprice) * 100
+         *     SROI%  = ((sprice − lp − ship) / lp)     * 100
+         *   → sprice = lp * (1 + ROI%/100)  + ship
+         *   → sprice = (lp + ship) / (1 − GPFT%/100)   (target < 100 required)
+         * Each save goes through the existing plsSaveSpriceWithRetry() Promise pipeline
+         * so the row gets the server-returned sgpft / sroi values automatically.
+         * Plain 2-decimal rounding — no .99 / .49 retail snapping — because snapping
+         * would shift the achieved SROI / SGPFT off the user-typed target.
+         */
+        function plsApplyTargetBackSolve(computeFn, labelPrefix) {
+            if (plsSelectedSkus.size === 0) {
+                showToast('Please select at least one SKU first (turn on Price % to reveal checkboxes)', 'error');
+                return;
+            }
+
+            const allData = table.getData('all');
+            const tasks   = [];
+            let skippedNoLp = 0;
+            let skippedHigh = 0;
+
+            allData.forEach(function (row) {
+                if (row.parent && String(row.parent).toUpperCase().startsWith('PARENT')) return;
+                const sku = row.sku;
+                if (!sku || !plsSelectedSkus.has(sku)) return;
+
+                const lp = parseFloat(row.lp) || 0;
+                if (lp <= 0) { skippedNoLp++; return; }
+                const ship = parseFloat(row.ship) || 0;
+
+                const computed = computeFn(lp, ship);
+                if (computed == null) { skippedHigh++; return; }
+                const newSprice = +computed.toFixed(2);
+                if (!isFinite(newSprice) || newSprice <= 0) return;
+
+                const tableRow = table.getRows().find(function (r) { return r.getData().sku === sku; });
+                if (!tableRow) return;
+                const originalSprice = parseFloat(row.sprice) || 0;
+                tableRow.update({ sprice: newSprice });
+
+                tasks.push({ sku: sku, newSprice: newSprice, tableRow: tableRow, originalSprice: originalSprice });
+            });
+
+            if (tasks.length === 0) {
+                if (skippedHigh > 0) {
+                    showToast(labelPrefix + ' too high — must be less than 100% (PLS take-home).', 'error');
+                } else {
+                    showToast('No selected rows have a usable LP > 0', 'warning');
+                }
+                return;
+            }
+
+            let okCount  = 0;
+            let errCount = 0;
+            const total  = tasks.length;
+
+            tasks.forEach(function (t) {
+                plsSaveSpriceWithRetry(t.sku, t.newSprice, t.tableRow)
+                    .then(function () {
+                        okCount++;
+                        if (okCount + errCount === total) {
+                            let note = '';
+                            if (skippedNoLp > 0) note += ' (' + skippedNoLp + ' skipped — no LP)';
+                            if (skippedHigh > 0) note += ' (' + skippedHigh + ' skipped — target ≥ 100%)';
+                            if (errCount === 0) {
+                                showToast(labelPrefix + ' applied to ' + okCount + ' SKU(s)' + note, 'success');
+                            } else {
+                                showToast(labelPrefix + ' applied to ' + okCount + ' SKU(s), ' + errCount + ' failed' + note, 'error');
+                            }
+                        }
+                    })
+                    .catch(function () {
+                        errCount++;
+                        if (t.tableRow) t.tableRow.update({ sprice: t.originalSprice });
+                        if (okCount + errCount === total) {
+                            let note = '';
+                            if (skippedNoLp > 0) note += ' (' + skippedNoLp + ' skipped — no LP)';
+                            if (skippedHigh > 0) note += ' (' + skippedHigh + ' skipped — target ≥ 100%)';
+                            showToast(labelPrefix + ' applied to ' + okCount + ' SKU(s), ' + errCount + ' failed' + note, 'error');
+                        }
+                    });
+            });
+        }
+
+        $('#pls-apply-target-roi-btn').on('click', function () {
+            const rawInput = $('#pls-target-roi-input').val();
+            const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
+
+            if (rawInput === '' || rawInput == null) { showToast('Please enter a Target ROI%', 'error'); return; }
+            if (!isFinite(targetRoiPct))             { showToast('Target ROI% must be a number', 'error'); return; }
+
+            const roiMultiplier = 1 + (targetRoiPct / 100);
+            plsApplyTargetBackSolve(function (lp, ship) {
+                return (lp * roiMultiplier) + ship;
+            }, 'Target ROI ' + targetRoiPct + '%');
+        });
+
+        $('#pls-apply-target-gpft-btn').on('click', function () {
+            const rawInput = $('#pls-target-gpft-input').val();
+            const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
+
+            if (rawInput === '' || rawInput == null) { showToast('Please enter a Target GPFT%', 'error'); return; }
+            if (!isFinite(targetGpftPct))            { showToast('Target GPFT% must be a number', 'error'); return; }
+
+            const targetFraction = targetGpftPct / 100;
+            plsApplyTargetBackSolve(function (lp, ship) {
+                const denom = 1 - targetFraction;
+                if (denom <= 0) return null; // signals "target ≥ 100%" skip
+                return (lp + ship) / denom;
+            }, 'Target GPFT ' + targetGpftPct + '%');
+        });
+
+        $('#pls-target-roi-input').on('keypress', function (e) {
+            if (e.which === 13) $('#pls-apply-target-roi-btn').click();
+        });
+        $('#pls-target-gpft-input').on('keypress', function (e) {
+            if (e.which === 13) $('#pls-apply-target-gpft-btn').click();
         });
 
         // Clear SPRICE for selected SKUs

@@ -292,6 +292,40 @@
                         <i class="fas fa-exchange-alt"></i> Price Mode
                     </button>
 
+                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
+                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = per-row `percentage`, default {{ rtrim(rtrim(number_format((float) ($tiendamiaPercentage ?? 80), 2, '.', ''), '0'), '.') }}%) --}}
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
+                        id="target-roi-controls"
+                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (back-solves so SROI column equals the target)">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target ROI%:
+                        </label>
+                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
+                         Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
+                        id="target-gpft-controls"
+                        title="Target GPFT% — sets S PRC = (LP + Ship) / (margin − Target GPFT%/100) on every selected row">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target GPFT%:
+                        </label>
+                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than each row's take-home margin.">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP + Ship) / (margin − Target GPFT%/100) for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
+
                     <button type="button" id="toggle-utilized-columns-btn" class="btn btn-sm btn-secondary">
                         <i class="fa fa-filter"></i> Show Key Columns
                     </button>
@@ -1064,6 +1098,115 @@
             // Clear SPRICE button
             $('#clear-sprice-btn').on('click', function() {
                 clearSpriceForSelected();
+            });
+
+            /*
+             * Target ROI% / Target GPFT% bulk apply (Tiendamia, margin = per-row `percentage` or DEFAULT_TIENDAMIA_MARGIN_FACTOR)
+             * --------------------------------------------------------------------------------------------------------------------
+             * Back-solves SPRICE so the resulting SROI / SGPFT column matches the entered target.
+             * Tiendamia's SGPFT / SROI formulas (used in applyDiscount and elsewhere on the page)
+             * include shipping:
+             *     SGPFT% = ((sprice * margin − ship − lp) / sprice) * 100
+             *     SROI%  = ((sprice * margin − ship − lp) / lp)     * 100
+             *   → sprice = (lp * (1 + ROI%/100) + ship) / margin
+             *   → sprice = (lp + ship) / (margin − GPFT%/100)
+             * Optimistic SGPFT / SPFT / SROI written client-side using getRowMarginFactor(rowData),
+             * then the existing /tiendamia-save-sprice endpoint reconciles them server-side via the
+             * shared saveSpriceUpdates() helper. Plain 2-decimal rounding — no .99 / .49 retail
+             * snapping — because snapping would shift the achieved SROI / SGPFT off the user-typed target.
+             */
+            function tiendamiaApplyTargetBackSolve(computeFn, labelPrefix) {
+                if (selectedSkus.size === 0) {
+                    showToast('Please select at least one SKU first (turn on Price Mode to reveal checkboxes)', 'error');
+                    return;
+                }
+
+                const updates     = [];
+                let updatedCount  = 0;
+                let skippedNoLp   = 0;
+                const skippedHigh = [];
+
+                selectedSkus.forEach(sku => {
+                    const rows = table.searchRows('(Child) sku', '=', sku);
+                    if (!rows.length) return;
+                    const row     = rows[0];
+                    const rowData = row.getData();
+                    if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return;
+
+                    const lp = parseFloat(rowData['LP_productmaster']) || 0;
+                    if (lp <= 0) { skippedNoLp++; return; }
+                    const ship   = parseFloat(rowData['Ship_productmaster']) || 0;
+                    const margin = getRowMarginFactor(rowData);
+
+                    const computed = computeFn(lp, ship, margin);
+                    if (computed == null) { skippedHigh.push(sku); return; }
+                    const newSprice = +computed.toFixed(2);
+                    if (!isFinite(newSprice) || newSprice <= 0) return;
+
+                    const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
+                    const spft  = sgpft;
+                    const sroi  = lp > 0       ? Math.round(((newSprice * margin - lp - ship) / lp)     * 100 * 100) / 100 : 0;
+
+                    row.update({
+                        SPRICE: newSprice,
+                        SGPFT: sgpft,
+                        SPFT: spft,
+                        SROI: sroi,
+                        has_custom_sprice: true
+                    });
+                    updates.push({ sku: sku, sprice: newSprice });
+                    updatedCount++;
+                });
+
+                if (updates.length === 0) {
+                    if (skippedHigh.length > 0) {
+                        showToast(`${labelPrefix} too high — must be less than each row's take-home margin.`, 'error');
+                    } else {
+                        showToast('No selected rows have a usable LP > 0', 'warning');
+                    }
+                    return;
+                }
+
+                saveSpriceUpdates(updates);
+                let note = '';
+                if (skippedNoLp > 0)    note += ` (${skippedNoLp} skipped — no LP)`;
+                if (skippedHigh.length) note += ` (${skippedHigh.length} skipped — target ≥ margin)`;
+                showToast(`${labelPrefix} applied to ${updatedCount} SKU(s)${note}`, 'success');
+            }
+
+            $('#apply-target-roi-btn').on('click', function () {
+                const rawInput = $('#target-roi-input').val();
+                const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                if (rawInput === '' || rawInput == null) { showToast('Please enter a Target ROI%', 'error'); return; }
+                if (!isFinite(targetRoiPct))             { showToast('Target ROI% must be a number', 'error'); return; }
+
+                const roiMultiplier = 1 + (targetRoiPct / 100);
+                tiendamiaApplyTargetBackSolve(function (lp, ship, margin) {
+                    return (lp * roiMultiplier + ship) / margin;
+                }, `Target ROI ${targetRoiPct}%`);
+            });
+
+            $('#apply-target-gpft-btn').on('click', function () {
+                const rawInput = $('#target-gpft-input').val();
+                const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                if (rawInput === '' || rawInput == null) { showToast('Please enter a Target GPFT%', 'error'); return; }
+                if (!isFinite(targetGpftPct))            { showToast('Target GPFT% must be a number', 'error'); return; }
+
+                const targetFraction = targetGpftPct / 100;
+                tiendamiaApplyTargetBackSolve(function (lp, ship, margin) {
+                    const denom = margin - targetFraction;
+                    if (denom <= 0) return null; // signals "target ≥ margin" skip
+                    return (lp + ship) / denom;
+                }, `Target GPFT ${targetGpftPct}%`);
+            });
+
+            $('#target-roi-input').on('keypress', function (e) {
+                if (e.which === 13) $('#apply-target-roi-btn').click();
+            });
+            $('#target-gpft-input').on('keypress', function (e) {
+                if (e.which === 13) $('#apply-target-gpft-btn').click();
             });
 
             // 0 Sold badge click handler (same mutual exclusivity as ebay2-tabulator-view)

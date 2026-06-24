@@ -61,6 +61,41 @@
                         <span id="adjust-selected-count" class="text-muted small"></span>
                     </div>
 
+                    {{-- Target ROI% bulk control — back-solves S Price for selected rows so SROI = Target ROI%.
+                         Mercari W/O Ship's SPFT / SROI do NOT include shipping (matches the inline cellEdited handler
+                         and the Apply % button below). Formula: sprice = LP × (1 + ROI%/100) / factor --}}
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
+                        id="target-roi-controls"
+                        title="Target ROI% — sets S Price = LP × (1 + Target ROI%/100) / factor on every selected row (back-solves so SROI column equals the target)">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target ROI%:
+                        </label>
+                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply S Price'">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S Price = LP × (1 + Target ROI%/100) / factor for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S Price
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves S Price for selected rows so SPFT = Target GPFT%.
+                         Formula: sprice = LP / (factor − GPFT%/100). Target GPFT% must be < factor*100. --}}
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
+                        id="target-gpft-controls"
+                        title="Target GPFT% — sets S Price = LP / (factor − Target GPFT%/100) on every selected row (back-solves so SPFT column equals the target)">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target GPFT%:
+                        </label>
+                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply S Price'. Must be less than each row's take-home factor.">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S Price = LP / (factor − Target GPFT%/100) for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S Price
+                        </button>
+                    </div>
+
                     <span class="badge bg-success fs-6 p-2" id="avg-pft-badge" style="color: #fff; font-weight: bold;">PFT: 0%</span>
                     <span class="badge bg-primary fs-6 p-2" id="avg-roi-badge" style="color: #fff; font-weight: bold;">ROI: 0%</span>
                     <span class="badge bg-secondary fs-6 p-2" id="missing-l-badge" style="color: #fff; font-weight: bold; cursor: pointer;" title="Click to filter: Price = 0 and NR/REQ = REQ">Missing L: 0</span>
@@ -479,6 +514,122 @@
                         });
                         saveMercariStatus(d.sku, { sprice: newPrice });
                     });
+                });
+            }
+
+            /*
+             * Target ROI% / Target GPFT% bulk apply (Mercari W/O Ship, margin = per-row `factor`, default 1)
+             * ----------------------------------------------------------------------------------------------
+             * Back-solves S Price so the resulting SROI / SPFT column matches the entered target.
+             * Mercari W/O Ship's SPFT / SROI formulas (used in the inline cellEdited handler and
+             * the Apply % / Same Price button above) do NOT include shipping:
+             *     SPFT% = ((sprice * factor − lp) / sprice) * 100
+             *     SROI% = ((sprice * factor − lp) / lp)     * 100
+             *   → sprice = lp * (1 + ROI%/100) / factor
+             *   → sprice = lp / (factor − GPFT%/100)
+             * Selection uses Tabulator's native getSelectedRows() (matches the existing Apply %
+             * flow). Each row is persisted via saveMercariStatus(sku, { sprice }) so the same
+             * /mercari-without-ship-tabulator/save-status endpoint stores the new S Price.
+             * Plain 2-decimal rounding — no .99 / .49 retail snapping — because snapping would
+             * shift the achieved SROI / SPFT off the user-typed target.
+             */
+            function applyMercariWoShipTargetBackSolve(computeFn, labelPrefix) {
+                const selectedRows = table.getSelectedRows();
+                if (selectedRows.length === 0) {
+                    alert('Please select at least one row first (turn on Price % to reveal checkboxes).');
+                    return;
+                }
+
+                let updatedCount  = 0;
+                let skippedNoLp   = 0;
+                let skippedHigh   = 0;
+
+                selectedRows.forEach(function (row) {
+                    const d  = row.getData();
+                    const lp = parseFloat(d.lp) || 0;
+                    if (lp <= 0) { skippedNoLp++; return; }
+                    const factor = parseFloat(d.factor) || 1;
+
+                    const computed = computeFn(lp, factor);
+                    if (computed == null) { skippedHigh++; return; }
+                    const newPrice = +computed.toFixed(2);
+                    if (!isFinite(newPrice) || newPrice <= 0) return;
+
+                    const spft = newPrice > 0 ? ((newPrice * factor - lp) / newPrice) * 100 : 0;
+                    const sroi = lp > 0       ? ((newPrice * factor - lp) / lp)     * 100 : 0;
+
+                    row.update({
+                        sprice: newPrice,
+                        SPFT: Math.round(spft * 100) / 100,
+                        SROI: Math.round(sroi * 100) / 100
+                    });
+                    saveMercariStatus(d.sku, { sprice: newPrice });
+                    updatedCount++;
+                });
+
+                if (updatedCount === 0) {
+                    if (skippedHigh > 0) {
+                        alert(labelPrefix + ' too high — must be less than each row\'s take-home factor.');
+                    } else {
+                        alert('No selected rows have a usable LP > 0.');
+                    }
+                    return;
+                }
+
+                let note = '';
+                if (skippedNoLp > 0) note += ' (' + skippedNoLp + ' skipped — no LP)';
+                if (skippedHigh > 0) note += ' (' + skippedHigh + ' skipped — target ≥ factor)';
+                if (window.toastr) {
+                    toastr.success(labelPrefix + ' applied to ' + updatedCount + ' SKU(s)' + note);
+                } else {
+                    console.info(labelPrefix + ' applied to ' + updatedCount + ' SKU(s)' + note);
+                }
+            }
+
+            const applyTargetRoiBtn = document.getElementById('apply-target-roi-btn');
+            if (applyTargetRoiBtn) {
+                applyTargetRoiBtn.addEventListener('click', function () {
+                    const rawInput = document.getElementById('target-roi-input').value;
+                    const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                    if (rawInput === '' || rawInput == null) { alert('Please enter a Target ROI%.'); return; }
+                    if (!isFinite(targetRoiPct))             { alert('Target ROI% must be a number.'); return; }
+
+                    const roiMultiplier = 1 + (targetRoiPct / 100);
+                    applyMercariWoShipTargetBackSolve(function (lp, factor) {
+                        return (lp * roiMultiplier) / factor;
+                    }, 'Target ROI ' + targetRoiPct + '%');
+                });
+            }
+
+            const applyTargetGpftBtn = document.getElementById('apply-target-gpft-btn');
+            if (applyTargetGpftBtn) {
+                applyTargetGpftBtn.addEventListener('click', function () {
+                    const rawInput = document.getElementById('target-gpft-input').value;
+                    const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                    if (rawInput === '' || rawInput == null) { alert('Please enter a Target GPFT%.'); return; }
+                    if (!isFinite(targetGpftPct))            { alert('Target GPFT% must be a number.'); return; }
+
+                    const targetFraction = targetGpftPct / 100;
+                    applyMercariWoShipTargetBackSolve(function (lp, factor) {
+                        const denom = factor - targetFraction;
+                        if (denom <= 0) return null; // signals "target ≥ factor" skip
+                        return lp / denom;
+                    }, 'Target GPFT ' + targetGpftPct + '%');
+                });
+            }
+
+            const targetRoiInput = document.getElementById('target-roi-input');
+            if (targetRoiInput) {
+                targetRoiInput.addEventListener('keypress', function (e) {
+                    if (e.which === 13 || e.keyCode === 13) applyTargetRoiBtn && applyTargetRoiBtn.click();
+                });
+            }
+            const targetGpftInput = document.getElementById('target-gpft-input');
+            if (targetGpftInput) {
+                targetGpftInput.addEventListener('keypress', function (e) {
+                    if (e.which === 13 || e.keyCode === 13) applyTargetGpftBtn && applyTargetGpftBtn.click();
                 });
             }
 

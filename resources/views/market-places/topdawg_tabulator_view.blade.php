@@ -72,6 +72,40 @@
                     <button id="same-price-btn" class="btn btn-sm btn-info" title="Apply ONE price (entered in the box) to every selected SKU">
                         <i class="fas fa-equals"></i> Same Price Mode
                     </button>
+
+                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
+                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = $topdawgPercentage / 100, default 0.95) --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-roi-controls"
+                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / {{ $topdawgPercentage ?? 95 }}% on every selected row (back-solves so SROI column equals the target)">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target ROI%:
+                        </label>
+                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / {{ $topdawgPercentage ?? 95 }}% for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
+                         Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-gpft-controls"
+                        title="Target GPFT% — sets S PRC = (LP + Ship) / ({{ $topdawgPercentage ?? 95 }}% − Target GPFT%/100) on every selected row">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target GPFT%:
+                        </label>
+                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the TopDawg take-home margin ({{ $topdawgPercentage ?? 95 }}%).">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP + Ship) / ({{ $topdawgPercentage ?? 95 }}% − Target GPFT%/100) for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
                 </div>
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary ({{ $topdawgPercentage ?? 95 }}% Margin)</h6>
@@ -729,6 +763,140 @@
             if (e.which === 13) tdApplyDiscount();
         });
         $('#clear-sprice-btn').on('click', tdClearSpriceForSelected);
+
+        /*
+         * Target ROI% / Target GPFT% bulk apply (TopDawg, margin = TD_PERCENTAGE)
+         * ----------------------------------------------------------------------
+         * Back-solves SPRICE so the resulting SROI / SGPFT column matches the entered
+         * target. TopDawg's SGPFT / SROI formulas include shipping (matches
+         * TopDawgPricingController::getViewTopDawgTabularData lines 187-188 and
+         * tdApplyDiscount above):
+         *     SROI%  = ((sprice * TD_PERCENTAGE − lp − ship) / lp)     * 100
+         *           → sprice = (lp * (1 + ROI%/100) + ship) / TD_PERCENTAGE
+         *     SGPFT% = ((sprice * TD_PERCENTAGE − lp − ship) / sprice) * 100
+         *           → sprice = (lp + ship) / (TD_PERCENTAGE − GPFT%/100)
+         * Optimistic SGPFT / SROI written client-side, then the existing
+         * /topdawg-save-sprice endpoint reconciles them server-side. Plain 2-decimal
+         * rounding — no .99 snapping — because snapping would shift the achieved
+         * SROI / SGPFT off the user-typed target.
+         */
+        $('#apply-target-roi-btn').on('click', function () {
+            const rawInput = $('#target-roi-input').val();
+            const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
+
+            if (rawInput === '' || rawInput == null) {
+                tdShowToast('Please enter a Target ROI%', 'error');
+                return;
+            }
+            if (!isFinite(targetRoiPct)) {
+                tdShowToast('Target ROI% must be a number', 'error');
+                return;
+            }
+            if (tdSelectedSkus.size === 0) {
+                tdShowToast('Please select at least one SKU first (turn on Decrease / Increase / Same Price to reveal checkboxes)', 'error');
+                return;
+            }
+
+            const roiMultiplier = 1 + (targetRoiPct / 100);
+            const updates = [];
+            let updatedCount = 0;
+            let skippedNoLp  = 0;
+
+            table.getRows('active').forEach(function (row) {
+                const d = row.getData();
+                const sku = d && d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
+                if (!sku || !tdSelectedSkus.has(sku)) return;
+
+                const lp = parseFloat(d.LP_productmaster) || 0;
+                if (lp <= 0) { skippedNoLp++; return; }
+                const ship = parseFloat(d.Ship_productmaster) || 0;
+
+                const candidate = (lp * roiMultiplier + ship) / TD_PERCENTAGE;
+                const newSprice = +candidate.toFixed(2);
+                if (!isFinite(newSprice) || newSprice <= 0) return;
+
+                const sgpft = newSprice > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp - ship) / newSprice) * 100) : 0;
+                const sroi  = lp > 0       ? Math.round(((newSprice * TD_PERCENTAGE - lp - ship) / lp)     * 100) : 0;
+
+                row.update({ SPRICE: newSprice, SGPFT: sgpft, SROI: sroi });
+                updates.push({ sku: sku, sprice: newSprice });
+                updatedCount++;
+            });
+
+            if (!updates.length) {
+                tdShowToast('No selected rows have a usable LP > 0', 'warning');
+                return;
+            }
+
+            tdSaveSpriceUpdates(updates);
+            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
+            tdShowToast(`Target ROI ${targetRoiPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
+        });
+
+        $('#apply-target-gpft-btn').on('click', function () {
+            const rawInput = $('#target-gpft-input').val();
+            const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
+
+            if (rawInput === '' || rawInput == null) {
+                tdShowToast('Please enter a Target GPFT%', 'error');
+                return;
+            }
+            if (!isFinite(targetGpftPct)) {
+                tdShowToast('Target GPFT% must be a number', 'error');
+                return;
+            }
+            if (tdSelectedSkus.size === 0) {
+                tdShowToast('Please select at least one SKU first (turn on Decrease / Increase / Same Price to reveal checkboxes)', 'error');
+                return;
+            }
+
+            const denom = TD_PERCENTAGE - (targetGpftPct / 100);
+            if (denom <= 0) {
+                tdShowToast(`Target GPFT% ${targetGpftPct}% is too high — must be < ${(TD_PERCENTAGE * 100).toFixed(0)}% (TopDawg take-home).`, 'error');
+                return;
+            }
+
+            const updates = [];
+            let updatedCount = 0;
+            let skippedNoLp  = 0;
+
+            table.getRows('active').forEach(function (row) {
+                const d = row.getData();
+                const sku = d && d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
+                if (!sku || !tdSelectedSkus.has(sku)) return;
+
+                const lp = parseFloat(d.LP_productmaster) || 0;
+                if (lp <= 0) { skippedNoLp++; return; }
+                const ship = parseFloat(d.Ship_productmaster) || 0;
+
+                const candidate = (lp + ship) / denom;
+                const newSprice = +candidate.toFixed(2);
+                if (!isFinite(newSprice) || newSprice <= 0) return;
+
+                const sgpft = newSprice > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp - ship) / newSprice) * 100) : 0;
+                const sroi  = lp > 0       ? Math.round(((newSprice * TD_PERCENTAGE - lp - ship) / lp)     * 100) : 0;
+
+                row.update({ SPRICE: newSprice, SGPFT: sgpft, SROI: sroi });
+                updates.push({ sku: sku, sprice: newSprice });
+                updatedCount++;
+            });
+
+            if (!updates.length) {
+                tdShowToast('No selected rows have a usable LP > 0', 'warning');
+                return;
+            }
+
+            tdSaveSpriceUpdates(updates);
+            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
+            tdShowToast(`Target GPFT ${targetGpftPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
+        });
+
+        $('#target-roi-input').on('keypress', function (e) {
+            if (e.which === 13) $('#apply-target-roi-btn').click();
+        });
+        $('#target-gpft-input').on('keypress', function (e) {
+            if (e.which === 13) $('#apply-target-gpft-btn').click();
+        });
 
         table.on('renderComplete', tdUpdateSelectAllHeaderCheckbox);
 
