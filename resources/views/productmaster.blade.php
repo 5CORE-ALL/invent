@@ -1087,7 +1087,7 @@
                                                         <option value="active">🟢 Active</option>
                                                         <option value="inactive">🔴 Inactive</option>
                                                         <option value="DC">🔴 DC</option>
-                                                        <option value="upcoming">🟡 Upcoming</option>
+                                                        <option value="upcoming">🟡 Coming</option>
                                                         <option value="2BDC">🔵 2BDC</option>
                                                     </select>
                                                     <div class="invalid-feedback"></div>
@@ -3395,7 +3395,7 @@
                             </button>
                             <button type="button" class="pm-status-filter-item" data-value="upcoming" role="option">
                                 <span class="pm-status-marble pm-status-marble--upcoming"></span>
-                                <span>Upcoming</span>
+                                <span>Coming</span>
                             </button>
                             <button type="button" class="pm-status-filter-item" data-value="2BDC" role="option">
                                 <span class="pm-status-marble pm-status-marble--2bdc"></span>
@@ -3541,7 +3541,7 @@
                     <span class="status-badge-item bg-active">Active ${statusCounts.active}</span>
                     <span class="status-badge-item bg-inactive">Inactive ${statusCounts.inactive}</span>
                     <span class="status-badge-item bg-dc">DC ${statusCounts.DC}</span>
-                    <span class="status-badge-item bg-upcoming">Upcoming ${statusCounts.upcoming}</span>
+                    <span class="status-badge-item bg-upcoming">Coming ${statusCounts.upcoming}</span>
                     <span class="status-badge-item bg-2bdc">2BDC ${statusCounts['2BDC']}</span>
                     <span id="zeroInvBadge" class="status-badge-item bg-zero-inv" title="Click to filter 0 inventory items">0 Inv Count ${statusCounts.zeroInv}</span>
                 `;
@@ -3582,7 +3582,7 @@
                     active: 'Active',
                     inactive: 'Inactive',
                     DC: 'DC',
-                    upcoming: 'Upcoming',
+                    upcoming: 'Coming',
                     '2BDC': '2BDC'
                 };
             }
@@ -3594,7 +3594,7 @@
                 const upper = s.toUpperCase();
                 if (lower === 'active') return 'Active';
                 if (lower === 'inactive') return 'Inactive';
-                if (lower === 'upcoming') return 'Upcoming';
+                if (lower === 'upcoming') return 'Coming';
                 if (upper === 'DC') return 'DC';
                 if (upper === '2BDC') return '2BDC';
                 return s;
@@ -6394,7 +6394,7 @@
                                 <option value="active">🟢 Active</option>
                                 <option value="inactive">🔴 Inactive</option>
                                 <option value="DC">🔴 DC</option>
-                                <option value="upcoming">🟡 Upcoming</option>
+                                <option value="upcoming">🟡 Coming</option>
                                 <option value="2BDC">🔵 2BDC</option>
                             </select>
                             `;
@@ -6972,7 +6972,7 @@
                                 <option value="active">Active</option>
                                 <option value="inactive">Inactive</option>
                                 <option value="DC">DC</option>
-                                <option value="upcoming">Upcoming</option>
+                                <option value="upcoming">Coming</option>
                                 <option value="2BDC">2BDC</option>
                             </select>
                         </div>
