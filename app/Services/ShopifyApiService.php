@@ -827,6 +827,19 @@ class ShopifyApiService
                 return ['success' => false, 'message' => 'Product ID missing.'];
             }
 
+            // ── GraphQL fast path: attach ALL images in a single request, avoiding the REST
+            //    ~2-calls/second limit that drops images under load. Only when every URL is public
+            //    (CDN/remote); local-file URLs fall through to the REST base64 path below.
+            if ($urls !== [] && $this->allUrlsArePublic($urls)) {
+                $gqlResult = $this->attachProductImagesViaGraphql($domain, $token, (string) $productId, $urls, $mode);
+                if ($gqlResult['success'] ?? false) {
+                    return $gqlResult;
+                }
+                Log::warning('Shopify GraphQL image attach failed; falling back to REST', [
+                    'sku' => $trim, 'error' => $gqlResult['message'] ?? 'unknown',
+                ]);
+            }
+
             $imagesBase = "https://{$domain}/admin/api/2024-01/products/{$productId}/images";
             $headers    = ['X-Shopify-Access-Token' => $token, 'Content-Type' => 'application/json'];
 
@@ -1124,6 +1137,97 @@ class ShopifyApiService
         } catch (\Throwable) {
             return $bytes;
         }
+    }
+
+    /**
+     * True when every URL is a public http(s) URL (CDN/remote) — i.e. none are self-hosted local
+     * storage URLs. Only then can Shopify fetch them via GraphQL productCreateMedia.
+     *
+     * @param  list<string>  $urls
+     */
+    private function allUrlsArePublic(array $urls): bool
+    {
+        foreach ($urls as $u) {
+            if ($this->isLocalStorageUrl($u) || ! parse_url($u, PHP_URL_HOST)) {
+                return false;
+            }
+        }
+
+        return $urls !== [];
+    }
+
+    /**
+     * Attach product images via the GraphQL Admin API in a single request (productCreateMedia),
+     * instead of one REST POST per image. GraphQL uses a separate, more generous cost-based rate
+     * limit, so a bulk image push no longer competes for the REST ~2-calls/second budget (which
+     * was silently dropping images under load). For replace mode, old media are removed in one
+     * productDeleteMedia call and the new media are reordered so urls[0] is the main image.
+     *
+     * @param  list<string>  $urls  public image URLs, main image first
+     * @return array{success: bool, message: string, uploaded?: int, deleted?: int}
+     */
+    private function attachProductImagesViaGraphql(string $domain, string $token, string $productId, array $urls, string $mode): array
+    {
+        $version = config('services.shopify.api_version', '2025-01');
+        $gql     = "https://{$domain}/admin/api/{$version}/graphql.json";
+        $headers = ['X-Shopify-Access-Token' => $token, 'Content-Type' => 'application/json'];
+        $pgid    = 'gid://shopify/Product/'.$productId;
+
+        $post = fn (string $query, array $vars) => $this->retryOnRateLimit(fn () => Http::withHeaders($headers)
+            ->timeout(60)->post($gql, ['query' => $query, 'variables' => $vars]));
+
+        // 1. Existing media ids (to remove on replace).
+        $oldMediaIds = [];
+        if ($mode === 'replace') {
+            $lr = $post('query($id:ID!){product(id:$id){media(first:100){nodes{id}}}}', ['id' => $pgid]);
+            $oldMediaIds = array_values(array_filter(array_map(
+                fn ($n) => $n['id'] ?? null,
+                $lr->json('data.product.media.nodes') ?: []
+            )));
+        }
+
+        // 2. Create all new media in ONE request (creation order = array order).
+        $media = array_map(fn ($u) => ['originalSource' => $u, 'mediaContentType' => 'IMAGE'], $urls);
+        $cq = 'mutation($pid:ID!,$media:[CreateMediaInput!]!){productCreateMedia(productId:$pid,media:$media){media{id} mediaUserErrors{field message}}}';
+        $cr = $post($cq, ['pid' => $pgid, 'media' => $media]);
+        $createdIds = array_values(array_filter(array_map(
+            fn ($m) => $m['id'] ?? null,
+            $cr->json('data.productCreateMedia.media') ?: []
+        )));
+        if ($createdIds === []) {
+            $errs = $cr->json('data.productCreateMedia.mediaUserErrors') ?: ($cr->json('errors') ?: $cr->body());
+
+            return ['success' => false, 'message' => 'productCreateMedia failed: '.json_encode($errs)];
+        }
+
+        // 3. Remove old media in ONE request (replace).
+        $deleted = 0;
+        if ($mode === 'replace' && $oldMediaIds !== []) {
+            $dq = 'mutation($pid:ID!,$ids:[ID!]!){productDeleteMedia(productId:$pid,mediaIds:$ids){deletedMediaIds mediaUserErrors{message}}}';
+            $dr = $post($dq, ['pid' => $pgid, 'ids' => $oldMediaIds]);
+            $deleted = count($dr->json('data.productDeleteMedia.deletedMediaIds') ?: []);
+        }
+
+        // 4. Order the new media so urls[0] is the main image.
+        if (count($createdIds) > 1) {
+            $moves = [];
+            foreach ($createdIds as $i => $mid) {
+                $moves[] = ['id' => $mid, 'newPosition' => (string) $i];
+            }
+            $post(
+                'mutation($id:ID!,$moves:[MoveInput!]!){productReorderMedia(id:$id,moves:$moves){job{id} mediaUserErrors{message}}}',
+                ['id' => $pgid, 'moves' => $moves]
+            );
+        }
+
+        $action = $mode === 'replace' ? 'Replaced with' : 'Added';
+
+        return [
+            'success'  => true,
+            'message'  => "{$action} ".count($createdIds)." image(s) on Shopify in one request".($deleted ? " ({$deleted} old removed)" : '').'.',
+            'uploaded' => count($createdIds),
+            'deleted'  => $deleted,
+        ];
     }
 
     /**
