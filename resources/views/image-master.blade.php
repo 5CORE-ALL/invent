@@ -88,6 +88,17 @@
                         <span class="text-muted small" id="rowCountBadge">0 products</span>
                         <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
                     </div>
+                    <div id="pushProgressBox" class="alert alert-info mb-3 py-2 px-3" style="display:none;word-break:break-word;">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="spinner-border spinner-border-sm text-primary" id="pushSpinner" role="status"></div>
+                            <div class="small fw-semibold flex-grow-1" id="pushProgressTitle">Pushing...</div>
+                            <button type="button" class="btn-close btn-sm" id="pushProgressClose" style="font-size:10px;" onclick="document.getElementById('pushProgressBox').style.display='none'"></button>
+                        </div>
+                        <div class="progress mt-2" id="pushProgressBarWrap" style="height:16px;display:none;">
+                            <div id="pushProgressBar" class="progress-bar bg-info" role="progressbar" style="width:0%;font-size:10px;line-height:16px;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                        <div class="small mt-2" id="pushProgressDetails" style="max-height:200px;overflow-y:auto;white-space:pre-wrap;"></div>
+                    </div>
                     <div class="table-responsive">
                         <table id="im-master-table" class="table w-100">
                             <thead>
@@ -112,17 +123,6 @@
                             </thead>
                             <tbody id="table-body"></tbody>
                         </table>
-                    </div>
-                    <div id="pushProgressBox" class="alert alert-info mt-3 py-2 px-3" style="display:none;word-break:break-word;">
-                        <div class="d-flex align-items-center gap-2">
-                            <div class="spinner-border spinner-border-sm text-primary" id="pushSpinner" role="status"></div>
-                            <div class="small fw-semibold flex-grow-1" id="pushProgressTitle">Pushing...</div>
-                            <button type="button" class="btn-close btn-sm" id="pushProgressClose" style="font-size:10px;" onclick="document.getElementById('pushProgressBox').style.display='none'"></button>
-                        </div>
-                        <div class="progress mt-2" id="pushProgressBarWrap" style="height:16px;display:none;">
-                            <div id="pushProgressBar" class="progress-bar bg-info" role="progressbar" style="width:0%;font-size:10px;line-height:16px;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
-                        </div>
-                        <div class="small mt-2" id="pushProgressDetails" style="max-height:200px;overflow-y:auto;white-space:pre-wrap;"></div>
                     </div>
                     <div id="rainbow-loader" class="text-center py-4" style="display:none;">
                         <div class="spinner-border text-primary"></div>
@@ -395,6 +395,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const detail = total > 0 ? `${title} (${idx}/${total})` : title;
         setPushProgress(true, detail, lines.join(''), false);
         setPushProgressBar(idx, total);
+    }
+
+    // On page load / refresh: if a background image push is still running, re-show its progress
+    // and keep polling until it finishes — so refreshing the page doesn't lose the progress view.
+    async function resumeImagePushProgress() {
+        try {
+            let j = await fetchImagePushJobStatus();
+            if (!isImagePushJobActive(j?.job?.status)) return;
+            renderImagePushJobProgress(j, 'Image push in progress…');
+            while (isImagePushJobActive(j?.job?.status)) {
+                await sleepMs(2500);
+                j = await fetchImagePushJobStatus();
+                renderImagePushJobProgress(j);
+            }
+            renderImagePushJobProgress(j); // final state; box stays until the user closes it
+        } catch (_) { /* ignore */ }
     }
 
     async function queueImagePushAndWait(payload, onProgress) {
@@ -1624,6 +1640,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     loadData();
     pollShopifyPullStatus();
+    resumeImagePushProgress();
 });
 </script>
 @endsection
