@@ -88,6 +88,17 @@
                         <span class="text-muted small" id="rowCountBadge">0 products</span>
                         <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
                     </div>
+                    <div id="pushProgressBox" class="alert alert-info mb-3 py-2 px-3" style="display:none;word-break:break-word;">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="spinner-border spinner-border-sm text-primary" id="pushSpinner" role="status"></div>
+                            <div class="small fw-semibold flex-grow-1" id="pushProgressTitle">Pushing...</div>
+                            <button type="button" class="btn-close btn-sm" id="pushProgressClose" style="font-size:10px;" onclick="document.getElementById('pushProgressBox').style.display='none'"></button>
+                        </div>
+                        <div class="progress mt-2" id="pushProgressBarWrap" style="height:16px;display:none;">
+                            <div id="pushProgressBar" class="progress-bar bg-info" role="progressbar" style="width:0%;font-size:10px;line-height:16px;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                        <div class="small mt-2" id="pushProgressDetails" style="max-height:200px;overflow-y:auto;white-space:pre-wrap;"></div>
+                    </div>
                     <div class="table-responsive">
                         <table id="im-master-table" class="table w-100">
                             <thead>
@@ -112,17 +123,6 @@
                             </thead>
                             <tbody id="table-body"></tbody>
                         </table>
-                    </div>
-                    <div id="pushProgressBox" class="alert alert-info mt-3 py-2 px-3" style="display:none;word-break:break-word;">
-                        <div class="d-flex align-items-center gap-2">
-                            <div class="spinner-border spinner-border-sm text-primary" id="pushSpinner" role="status"></div>
-                            <div class="small fw-semibold flex-grow-1" id="pushProgressTitle">Pushing...</div>
-                            <button type="button" class="btn-close btn-sm" id="pushProgressClose" style="font-size:10px;" onclick="document.getElementById('pushProgressBox').style.display='none'"></button>
-                        </div>
-                        <div class="progress mt-2" id="pushProgressBarWrap" style="height:16px;display:none;">
-                            <div id="pushProgressBar" class="progress-bar bg-info" role="progressbar" style="width:0%;font-size:10px;line-height:16px;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
-                        </div>
-                        <div class="small mt-2" id="pushProgressDetails" style="max-height:200px;overflow-y:auto;white-space:pre-wrap;"></div>
                     </div>
                     <div id="rainbow-loader" class="text-center py-4" style="display:none;">
                         <div class="spinner-border text-primary"></div>
@@ -393,8 +393,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const idx = Number(job.current_index ?? 0);
         const total = Number(job.total ?? 0);
         const detail = total > 0 ? `${title} (${idx}/${total})` : title;
-        setPushProgress(true, detail, lines.join(''), false);
+        // Spinner spins only while the job is actually running (so the final render stops it).
+        setPushProgress(true, detail, lines.join(''), false, isImagePushJobActive(job.status));
         setPushProgressBar(idx, total);
+    }
+
+    // On page load / refresh: if a background image push is still running, re-show its progress
+    // and keep polling until it finishes — so refreshing the page doesn't lose the progress view.
+    async function resumeImagePushProgress() {
+        try {
+            let j = await fetchImagePushJobStatus();
+            if (!isImagePushJobActive(j?.job?.status)) return;
+            renderImagePushJobProgress(j, 'Image push in progress…');
+            while (isImagePushJobActive(j?.job?.status)) {
+                await sleepMs(2500);
+                j = await fetchImagePushJobStatus();
+                renderImagePushJobProgress(j);
+            }
+            renderImagePushJobProgress(j); // final state; box stays until the user closes it
+        } catch (_) { /* ignore */ }
     }
 
     async function queueImagePushAndWait(payload, onProgress) {
@@ -463,7 +480,7 @@ document.addEventListener('DOMContentLoaded', () => {
         bar.setAttribute('aria-valuenow', String(pct));
     }
 
-    function setPushProgress(visible, title = '', detailsHtml = '', hasError = false) {
+    function setPushProgress(visible, title = '', detailsHtml = '', hasError = false, busy = false) {
         const box = document.getElementById('pushProgressBox');
         const t = document.getElementById('pushProgressTitle');
         const d = document.getElementById('pushProgressDetails');
@@ -472,8 +489,9 @@ document.addEventListener('DOMContentLoaded', () => {
         box.style.display = visible ? 'block' : 'none';
         if (title) t.textContent = title;
         d.innerHTML = detailsHtml || '';
-        if (spinner) spinner.style.display = visible && !hasError ? 'inline-block' : 'none';
-        box.className = 'alert mt-3 py-2 px-3' + (hasError ? ' alert-danger' : ' alert-info');
+        // Spinner only spins while a push is actively in progress (busy), not when finished.
+        if (spinner) spinner.style.display = visible && busy && !hasError ? 'inline-block' : 'none';
+        box.className = 'alert mb-3 py-2 px-3' + (hasError ? ' alert-danger' : ' alert-info');
         box.style.wordBreak = 'break-word';
         if (!visible) {
             const wrap = document.getElementById('pushProgressBarWrap');
@@ -572,7 +590,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!raw || typeof raw !== 'object') return out;
         MARKETPLACES.forEach(mp => {
             if (raw[mp] != null && raw[mp] !== '') {
-                out[mp] = Math.max(0, Math.min(11, parseInt(raw[mp], 10) || 0));
+                out[mp] = Math.max(0, Math.min(PM_MAX_IMAGES - 1, parseInt(raw[mp], 10) || 0));
             }
         });
         return out;
@@ -940,7 +958,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const sku = document.getElementById('modalSku').value;
         if (!pendingFiles.length) return true;
         if (modalUrls.length >= PM_MAX_IMAGES) {
-            toast(`Maximum ${PM_MAX_IMAGES} images already added`, false);
+            toast(`You already have the maximum of ${PM_MAX_IMAGES} images. Remove some before adding more.`, false);
+            return false;
+        }
+
+        // Enforce the image cap: if the selection would exceed it, add NOTHING and let the user
+        // remove the extra files (or existing images) and try again — no silent partial add.
+        const allowed = PM_MAX_IMAGES - modalUrls.length;
+        if (pendingFiles.length > allowed) {
+            toast(`Image limit is ${PM_MAX_IMAGES}. You already have ${modalUrls.length}, so only ${allowed} more can be added. You selected ${pendingFiles.length} — please remove ${pendingFiles.length - allowed} and try again.`, false);
             return false;
         }
 
@@ -955,7 +981,6 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const fd = new FormData();
             fd.append('sku', sku);
-            const allowed = PM_MAX_IMAGES - modalUrls.length;
             pendingFiles.slice(0, allowed).forEach(f => fd.append('files[]', f));
 
             const r = await fetch('/image-master/upload', {
@@ -1139,7 +1164,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let okCount = 0, failCount = 0, metricsFailCount = 0;
         const updates = checks.map(mp => ({ marketplace: mp, images: imagesToPush }));
         try {
-            setPushProgress(true, `Queuing push for ${checks.length} marketplace(s)…`, '');
+            setPushProgress(true, `Queuing push for ${checks.length} marketplace(s)…`, '', false, true);
             const { res, j } = await queueImagePushAndWait({
                 sku,
                 mode,
@@ -1169,7 +1194,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 toast(`Pushed to ${okCount} marketplace(s).${metricsFailCount ? ` ${metricsFailCount} metrics save failed.` : ''}`, !metricsFailCount);
                 loadData();
                 if (editModal) editModal.hide();
-                setTimeout(() => setPushProgress(false, '', ''), 5000);
+                // Progress stays visible until the user closes it (the ✕ on the progress box).
             } else {
                 toast(`Push completed with failures (${failCount}). See error details below.`, false);
                 loadData();
@@ -1197,7 +1222,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const mainIdx = mainImageIndexFor(mp, row);
         const mainLabel = mainImageLabelFor(mp, mainIdx);
         if (!window.confirm(`Push ${urls.length} image(s) for ${sku} to ${LABELS[mp]}?\n\nMain image for this platform: ${mainLabel} (sent first).\nThis will replace existing marketplace images.`)) return;
-        setPushProgress(true, `Queuing ${LABELS[mp]} push…`, '');
+        setPushProgress(true, `Queuing ${LABELS[mp]} push…`, '', false, true);
         queueImagePushAndWait({
             sku,
             mode: 'replace',
@@ -1209,7 +1234,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const ok = !!(rowRes && rowRes.success);
             const msg = ok ? (rowRes?.message || j.message || 'Updated') : pushFailureMessage(j, mp, res.status);
             setPushProgress(true, `Push finished: ${ok ? '1 success' : '1 failed'}`, `1/1 ${LABELS[mp]}: ${ok ? '✓ OK' : '✗ Failed'} — ${esc(msg)}`, !ok);
-            if (ok) { toast(LABELS[mp]+' pushed'); loadData(); setTimeout(() => setPushProgress(false,'',''), 5000); }
+            if (ok) { toast(LABELS[mp]+' pushed'); loadData(); }
             else toast(msg, false);
         }).catch(e => {
             setPushProgress(true, 'Push finished: 1 failed', `1/1 ${LABELS[mp]}: ✗ Failed — ${esc(e.message || 'Request failed')}`, true);
@@ -1311,7 +1336,9 @@ document.addEventListener('DOMContentLoaded', () => {
             setPushProgress(
                 true,
                 `Bulk push ${i + 1}/${rows.length}: queuing ${sku}… (${mpCount} marketplaces)`,
-                progress.slice(-40).join('<br>')
+                progress.slice(-40).join('<br>'),
+                false,
+                true
             );
 
             try {
@@ -1354,7 +1381,7 @@ document.addEventListener('DOMContentLoaded', () => {
         );
         toast(`Bulk push done: ${okSkus} ok, ${failSkus} failed`, !hasError);
         loadData();
-        if (!hasError) setTimeout(() => setPushProgress(false, '', ''), 8000);
+        // Progress stays visible until the user closes it (the ✕ on the progress box).
     }
 
     document.getElementById('pushAllBtn')?.addEventListener('click', () => bulkPushAll());
@@ -1617,6 +1644,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     loadData();
     pollShopifyPullStatus();
+    resumeImagePushProgress();
 });
 </script>
 @endsection

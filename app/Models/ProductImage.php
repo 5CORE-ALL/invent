@@ -12,6 +12,8 @@ class ProductImage extends Model
     protected $fillable = [
         'sku',
         'image_path',
+        'cdn_url',
+        'cdn_file_id',
         'original_name',
         'file_size',
         'mime_type',
