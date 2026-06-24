@@ -96,6 +96,40 @@
                         </button>
                     </div>
 
+                    {{-- GPFT% slab filter (matches GPFT slabs on other pricing pages: amazon / shopify-b2c / etc.) --}}
+                    <select id="gpft-filter" class="form-select form-select-sm" style="width: 120px;"
+                        title="Filter rows by PFT% (gross profit margin)">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative (&lt;0%)</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40-50">40-50%</option>
+                        <option value="50plus">Above 50%</option>
+                    </select>
+
+                    {{-- ROI% slab filter (matches ROI slabs on other pricing pages) --}}
+                    <select id="roi-filter" class="form-select form-select-sm" style="width: 120px;"
+                        title="Filter rows by ROI%">
+                        <option value="all">ROI%</option>
+                        <option value="lt40">&lt; 40%</option>
+                        <option value="40-75">40–75%</option>
+                        <option value="75-125">75–125%</option>
+                        <option value="gt125">125%+</option>
+                    </select>
+
+                    {{-- DIL% slab filter — same color thresholds the Dil column already uses
+                         (<16.66 red, 16.66–25 yellow, 25–50 green, ≥50 pink). DIL = L30 / INV × 100. --}}
+                    <select id="dil-filter" class="form-select form-select-sm" style="width: 120px;"
+                        title="Filter rows by Dil% color band (L30 / INV × 100)">
+                        <option value="all">DIL%</option>
+                        <option value="red">Red (&lt;16.7%)</option>
+                        <option value="yellow">Yellow (16.7–25%)</option>
+                        <option value="green">Green (25–50%)</option>
+                        <option value="pink">Pink (50%+)</option>
+                    </select>
+
                     <span class="badge bg-success fs-6 p-2" id="avg-pft-badge" style="color: #fff; font-weight: bold;">PFT: 0%</span>
                     <span class="badge bg-primary fs-6 p-2" id="avg-roi-badge" style="color: #fff; font-weight: bold;">ROI: 0%</span>
                     <span class="badge bg-secondary fs-6 p-2" id="missing-l-badge" style="color: #fff; font-weight: bold; cursor: pointer;" title="Click to filter: Price = 0 and NR/REQ = REQ">Missing L: 0</span>
@@ -429,18 +463,19 @@
             const searchInput = document.getElementById('sku-search');
             if (searchInput) {
                 searchInput.addEventListener('keyup', function() {
-                    const value = (this.value || '').trim().toLowerCase();
-                    if (value) {
-                        table.setFilter(function(row) {
-                            const sku = String(row.sku || '').toLowerCase();
-                            const parent = String(row.Parent || '').toLowerCase();
-                            return sku.indexOf(value) !== -1 || parent.indexOf(value) !== -1;
-                        });
-                    } else {
-                        table.clearFilter();
-                    }
+                    applyAllFilters();
                 });
             }
+
+            // GPFT% / ROI% / DIL% slab dropdown change handlers — all funnel into the
+            // single combined applyAllFilters() so the three slab selects stack with
+            // the SKU search and the Missing-L badge instead of overwriting each other.
+            const gpftFilterEl = document.getElementById('gpft-filter');
+            if (gpftFilterEl) gpftFilterEl.addEventListener('change', applyAllFilters);
+            const roiFilterEl = document.getElementById('roi-filter');
+            if (roiFilterEl) roiFilterEl.addEventListener('change', applyAllFilters);
+            const dilFilterEl = document.getElementById('dil-filter');
+            if (dilFilterEl) dilFilterEl.addEventListener('change', applyAllFilters);
 
             // Price % toggle — cycle Off → Decrease → Increase → Same Price → Off
             const priceModeBtn = document.getElementById('price-mode-btn');
@@ -636,26 +671,94 @@
                 });
             }
 
-            // Missing L badge — click to filter
+            // Missing L badge — click to toggle Missing-L filter (composes with other filters)
             const missingLBadge = document.getElementById('missing-l-badge');
             if (missingLBadge) {
                 missingLBadge.addEventListener('click', function() {
                     missingLFilterActive = !missingLFilterActive;
                     const mCol = table.getColumn('missing_l');
                     if (missingLFilterActive) {
-                        table.setFilter(missingLFilter);
                         if (mCol) mCol.show();
                         missingLBadge.classList.remove('bg-secondary');
                         missingLBadge.classList.add('bg-dark');
                     } else {
-                        table.clearFilter();
                         if (mCol) mCol.hide();
                         missingLBadge.classList.remove('bg-dark');
                         missingLBadge.classList.add('bg-secondary');
                     }
+                    applyAllFilters();
                 });
             }
         });
+
+        /*
+         * Unified filter pipeline — composes SKU search + Missing-L + GPFT% + ROI% + DIL%
+         * so the filters stack instead of overwriting each other. Tabulator's setFilter
+         * replaces any prior filter, so we build one combined predicate and pass it in.
+         */
+        function applyAllFilters() {
+            if (typeof table === 'undefined' || !table || !table.setFilter) return;
+
+            const searchEl = document.getElementById('sku-search');
+            const skuSearch = (searchEl ? (searchEl.value || '') : '').trim().toLowerCase();
+
+            const gpftEl = document.getElementById('gpft-filter');
+            const gpftFilter = gpftEl ? gpftEl.value : 'all';
+
+            const roiEl = document.getElementById('roi-filter');
+            const roiFilter = roiEl ? roiEl.value : 'all';
+
+            const dilEl = document.getElementById('dil-filter');
+            const dilFilter = dilEl ? dilEl.value : 'all';
+
+            table.setFilter(function(row) {
+                // SKU / Parent search
+                if (skuSearch) {
+                    const sku = String(row.sku || '').toLowerCase();
+                    const parent = String(row.Parent || '').toLowerCase();
+                    if (sku.indexOf(skuSearch) === -1 && parent.indexOf(skuSearch) === -1) return false;
+                }
+
+                // Missing L (price = 0 and NR/REQ = REQ)
+                if (missingLFilterActive) {
+                    if (!missingLFilter(row)) return false;
+                }
+
+                // GPFT% (uses the PFT column)
+                if (gpftFilter && gpftFilter !== 'all') {
+                    const gpft = parseFloat(row.PFT) || 0;
+                    if (gpftFilter === 'negative' && !(gpft < 0)) return false;
+                    if (gpftFilter === '0-10'    && !(gpft >= 0 && gpft < 10))   return false;
+                    if (gpftFilter === '10-20'   && !(gpft >= 10 && gpft < 20))  return false;
+                    if (gpftFilter === '20-30'   && !(gpft >= 20 && gpft < 30))  return false;
+                    if (gpftFilter === '30-40'   && !(gpft >= 30 && gpft < 40))  return false;
+                    if (gpftFilter === '40-50'   && !(gpft >= 40 && gpft < 50))  return false;
+                    if (gpftFilter === '50plus'  && !(gpft >= 50))               return false;
+                }
+
+                // ROI%
+                if (roiFilter && roiFilter !== 'all') {
+                    const roiVal = parseFloat(row.ROI) || 0;
+                    if (roiFilter === 'lt40'    && !(roiVal < 40))                return false;
+                    if (roiFilter === '40-75'   && !(roiVal >= 40 && roiVal < 75))  return false;
+                    if (roiFilter === '75-125'  && !(roiVal >= 75 && roiVal < 125)) return false;
+                    if (roiFilter === 'gt125'   && !(roiVal >= 125))               return false;
+                }
+
+                // DIL% (computed: L30 / INV * 100, same buckets as Dil column formatter)
+                if (dilFilter && dilFilter !== 'all') {
+                    const inv = parseFloat(row.INV) || 0;
+                    const l30 = parseFloat(row.L30) || 0;
+                    const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+                    if (dilFilter === 'red'    && !(dil < 16.66))                return false;
+                    if (dilFilter === 'yellow' && !(dil >= 16.66 && dil < 25))   return false;
+                    if (dilFilter === 'green'  && !(dil >= 25 && dil < 50))      return false;
+                    if (dilFilter === 'pink'   && !(dil >= 50))                  return false;
+                }
+
+                return true;
+            });
+        }
 
         // Round to retail pricing (same as ebay-tabulator-view)
         function roundToRetailPrice(price) {
