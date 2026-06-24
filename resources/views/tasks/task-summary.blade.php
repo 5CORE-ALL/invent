@@ -45,7 +45,7 @@
             vertical-align: middle;
         }
         :root {
-            --avatar-size: 30px;
+            --avatar-size: 35px;
         }
         .task-summary-avatar {
             width: var(--avatar-size);
@@ -99,6 +99,39 @@
             color: #dc2626 !important;
             font-weight: 700;
             background-color: #fef2f2;
+        }
+        /* TAT colour scale —
+             ≥ 3 days   → red text
+             1 ≤ x < 3  → green text
+             < 1 day    → pink background (a bit too short / suspicious) */
+        .task-summary-tat-high {
+            color: #dc2626 !important;
+            font-weight: 700;
+        }
+        .task-summary-tat-mid {
+            color: #15803d !important;
+            font-weight: 700;
+        }
+        .task-summary-tat-low {
+            background-color: #fce7f3 !important;
+            color: #831843 !important;
+            font-weight: 600;
+        }
+        /* "A Task H" column hidden by request — kept in markup so sort key
+           stays addressable from JS; remove these rules to bring it back. */
+        .task-summary-table th.task-summary-col-a-task-h,
+        .task-summary-table td.task-summary-col-a-task-h {
+            display: none !important;
+        }
+        /* Highlight rows where the team member is a Manager. The rule is on
+           [data-sort-org_level="mgr"] so it works in both flat and grouped
+           views, and uses !important so it wins over .table-striped's
+           alternating cell colour. */
+        .task-summary-table tbody tr.task-summary-row[data-sort-org_level="mgr"] > td {
+            background-color: #fef9c3 !important;
+        }
+        .task-summary-table.table-hover tbody tr.task-summary-row[data-sort-org_level="mgr"]:hover > td {
+            background-color: #fde68a !important;
         }
         .task-summary-col-done {
             color: #15803d !important;
@@ -275,14 +308,8 @@
             color: #0f172a;
         }
         .task-summary-sort-icon {
-            font-size: 0.95em;
-            opacity: 0.45;
-            vertical-align: -0.1em;
-            margin-left: 0.15rem;
-        }
-        .task-summary-th-sort.is-sorted .task-summary-sort-icon {
-            opacity: 1;
-            color: #0d9488;
+            /* Icon hidden by request — column headers stay clickable for sort. */
+            display: none !important;
         }
 
         /* Interactive analytics (frontend-only, visible rows) */
@@ -494,6 +521,37 @@
         .task-summary-group-header[data-collapsed="true"] .task-summary-group-chevron {
             transform: rotate(-90deg);
         }
+        /* "Focus on this group" button — same footprint as the chevron */
+        .task-summary-group-header .task-summary-group-focus {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.4rem;
+            height: 1.4rem;
+            border-radius: 50%;
+            background: rgba(15, 23, 42, 0.06);
+            color: inherit;
+            border: none;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background 0.15s ease, transform 0.15s ease;
+            flex-shrink: 0;
+            margin-right: 0.1rem;
+        }
+        .task-summary-group-header .task-summary-group-focus:hover {
+            background: rgba(15, 23, 42, 0.18);
+            transform: scale(1.1);
+        }
+        /* Highlight the currently-focused group's button so the user knows
+           a second click will restore the full view. */
+        .task-summary-group-header.is-focused .task-summary-group-focus {
+            background: #1d4ed8;
+            color: #fff;
+            box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.25);
+        }
+        .task-summary-group-header.is-focused .task-summary-group-focus:hover {
+            background: #1e40af;
+        }
         .task-summary-group-header .task-summary-group-label {
             font-size: 0.72rem;
             text-transform: uppercase;
@@ -672,6 +730,14 @@
                                         </label>
                                     </div>
                                 </div>
+                                <div class="task-summary-group-toggle-wrap">
+                                    <div class="form-check form-switch m-0">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="task-summary-juniors-only-toggle" />
+                                        <label class="form-check-label" for="task-summary-juniors-only-toggle" title="Show only members who have juniors tagged under them (plus those juniors)">
+                                            <i class="ri-user-shared-line me-1"></i>Only with juniors
+                                        </label>
+                                    </div>
+                                </div>
                                 <div class="task-summary-group-collapse-actions d-none" id="task-summary-group-collapse-actions">
                                     <button type="button" class="btn" data-action="expand-all" title="Expand every group">
                                         <i class="ri-arrow-down-s-line"></i> Expand all
@@ -693,12 +759,13 @@
                                            spellcheck="false" />
                                 </div>
                             </div>
-                            <div class="d-flex align-items-center gap-1 task-summary-topbar-right">
+                            {{-- Avatar size controls hidden by request (fixed at 35px) --}}
+                            <div class="d-none task-summary-topbar-right">
                                 <span class="text-muted small d-none d-md-inline">Avatar:</span>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="adjustAvatarSize(-5)" title="Decrease size">
                                     <i class="mdi mdi-minus"></i>
                                 </button>
-                                <span id="avatar-size-display" class="badge bg-light text-dark" style="min-width: 42px;">30px</span>
+                                <span id="avatar-size-display" class="badge bg-light text-dark" style="min-width: 42px;">35px</span>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="adjustAvatarSize(5)" title="Increase size">
                                     <i class="mdi mdi-plus"></i>
                                 </button>
@@ -712,11 +779,14 @@
                         <table class="table table-hover table-striped table-bordered mb-0 task-summary-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th scope="col" class="task-summary-th-sort task-summary-col-member" data-sort-key="member" data-sort-type="text" title="Sort by team member" role="button" tabindex="0">
-                                        Team Member <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    <th scope="col" class="task-summary-th-sort task-summary-col-member" data-sort-key="member" data-sort-type="text" title="Member — sort by team member name" role="button" tabindex="0">
+                                        Member <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="member" data-sort-type="text" title="Sort by team member" role="button" tabindex="0">
-                                        Image <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    <th scope="col" title="TM — open this member's task panel (badge colour reflects their org level)">
+                                        TM
+                                    </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="member" data-sort-type="text" title="Team — sort by team member" role="button" tabindex="0">
+                                        Team <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="designation" data-sort-type="text" title="Sort by designation" role="button" tabindex="0">
                                         Designation <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
@@ -739,34 +809,37 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="task" data-sort-type="number" title="Sort by assignee task count" role="button" tabindex="0">
                                         Task <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="l30_hrs" data-sort-type="number" title="Sort by current month work hours from Team Logger ({{ \Carbon\Carbon::now()->format('M Y') }})" role="button" tabindex="0">
-                                        L30 Hrs <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="l30_hrs" data-sort-type="number" title="Attendance — current month work hours from Team Logger ({{ \Carbon\Carbon::now()->format('M Y') }})" role="button" tabindex="0">
+                                        ATT <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="assignor_task" data-sort-type="number" title="Sort by assignor task count" role="button" tabindex="0">
-                                        Assignor task <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="assignor_task" data-sort-type="number" title="Task Given — sort by tasks this member has assigned to others" role="button" tabindex="0">
+                                        Task-G <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="done" data-sort-type="number" title="Sort by done count" role="button" tabindex="0">
                                         Done <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="overdue" data-sort-type="number" title="Sort by overdue count" role="button" tabindex="0">
-                                        Overdue <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="overdue" data-sort-type="number" title="Overdue — number of overdue tasks (sortable)" role="button" tabindex="0">
+                                        O-Due <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="tat_l30" data-sort-type="float" title="Sort by average L30 TAT (days from task start to completion, last 30 days)" role="button" tabindex="0">
-                                        L30 TAT <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="tat_l30" data-sort-type="float" title="TAT — average Turn-Around Time in days (task start → completion) over the last 30 days" role="button" tabindex="0">
+                                        TAT <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="missed_l30" data-sort-type="number" title="Sort by L30 missed tasks (is_missed = true, last 30 days)" role="button" tabindex="0">
-                                        Missed <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="missed_l30" data-sort-type="number" title="Miss — L30 missed tasks (is_missed = true, last 30 days)" role="button" tabindex="0">
+                                        Miss <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="a_task" data-sort-type="number" title="Sort by A Task count" role="button" tabindex="0">
                                         A Task <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="a_task_h" data-sort-type="number" title="Sort by automated task ETC hours (rounded)" role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort task-summary-col-a-task-h" data-sort-key="a_task_h" data-sort-type="number" title="Sort by automated task ETC hours (rounded)" role="button" tabindex="0">
                                         A Task H <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="need_approval" data-sort-type="number" title="Sort by Need Approval count" role="button" tabindex="0">
-                                        Need Approval <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="need_approval" data-sort-type="number" title="Appr — number of tasks pending approval (status = Need Approval)" role="button" tabindex="0">
+                                        APPR <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" title="View KPI details">
+                                    <th scope="col" title="Summary — open the team-member dashboard (own metrics + tagged juniors)">
+                                        Summ
+                                    </th>
+                                    <th scope="col" title="KPI — open the badges modal (tagged badges for this team member)">
                                         KPI
                                     </th>
                                 </tr>
@@ -798,21 +871,16 @@
                                         data-sort-a_task_h="{{ (int) ($row['a_task_h'] ?? 0) }}"
                                         data-sort-need_approval="{{ (int) ($row['need_approval'] ?? 0) }}"
                                         data-sort-done="{{ (int) ($row['done'] ?? 0) }}">
+                                        @php
+                                            $tmLevel = strtolower((string) ($row['org_level'] ?? ''));
+                                            $tmBadgeMod = $tmLevel === 'director'
+                                                ? 'task-summary-tm-badge-director'
+                                                : ($tmLevel === 'mgr'
+                                                    ? 'task-summary-tm-badge-mgr'
+                                                    : ($tmLevel === 'exec' ? 'task-summary-tm-badge-exec' : ''));
+                                        @endphp
                                         <td class="task-summary-col-member">
-                                            @php
-                                                $tmLevel = strtolower((string) ($row['org_level'] ?? ''));
-                                                $tmBadgeMod = $tmLevel === 'director'
-                                                    ? 'task-summary-tm-badge-director'
-                                                    : ($tmLevel === 'mgr'
-                                                        ? 'task-summary-tm-badge-mgr'
-                                                        : ($tmLevel === 'exec' ? 'task-summary-tm-badge-exec' : ''));
-                                            @endphp
                                             <span class="task-summary-member-cell-inner">
-                                                <button type="button"
-                                                        class="task-summary-tm-badge task-summary-user-tasks-dot {{ $tmBadgeMod }}"
-                                                        data-user-name="{{ e($row['team_member']) }}"
-                                                        title="View tasks panel for {{ e($row['team_member']) }}"
-                                                        aria-label="View tasks panel for {{ e($row['team_member']) }}">TM</button>
                                                 <span class="task-summary-member-name">{{ $row['team_member'] }}</span>
                                                 <button type="button"
                                                         class="task-summary-tm-profile-btn"
@@ -824,12 +892,32 @@
                                                 </button>
                                             </span>
                                         </td>
+                                        <td class="task-summary-col-tm text-center">
+                                            <button type="button"
+                                                    class="task-summary-tm-badge task-summary-user-tasks-dot {{ $tmBadgeMod }}"
+                                                    data-user-name="{{ e($row['team_member']) }}"
+                                                    title="View tasks panel for {{ e($row['team_member']) }}"
+                                                    aria-label="View tasks panel for {{ e($row['team_member']) }}">TM</button>
+                                        </td>
                                         <td class="task-summary-avatar-cell">
                                             <span class="task-summary-avatar-wrap">
                                                 <img src="{{ $avatarUrl }}" alt="" class="task-summary-avatar" loading="lazy" />
                                             </span>
                                         </td>
-                                        <td>{{ $row['designation'] ?: '—' }}</td>
+                                        @php
+                                            // Compact display: "Manager" → "Mgr", "Executive" → "Exc".
+                                            // Whole-word match so "Management" / "Execution" are not affected.
+                                            // Full original is still kept in the cell title for hover.
+                                            $designationFull = (string) ($row['designation'] ?? '');
+                                            $designationCompact = $designationFull === ''
+                                                ? '—'
+                                                : preg_replace_callback(
+                                                    '/\b(Manager|Executive)\b/i',
+                                                    fn ($m) => strtolower($m[1]) === 'manager' ? 'Mgr' : 'Exc',
+                                                    $designationFull
+                                                );
+                                        @endphp
+                                        <td @if($designationFull !== '' && $designationCompact !== $designationFull) title="{{ e($designationFull) }}" @endif>{{ $designationCompact }}</td>
                                         <td class="task-summary-role-cell text-center">
                                             @php
                                                 $roleUserId = (int) ($row['user_id'] ?? 0);
@@ -883,25 +971,45 @@
                                             @php
                                                 $rrDesignation = trim((string) ($row['designation'] ?? ''));
                                                 $rrUserId = (int) ($row['user_id'] ?? 0);
-                                                $rrDisabled = $rrDesignation === '' || $rrUserId === 0;
+                                                $rrCanManage = (bool) ($row['can_manage'] ?? false);
+                                                // Locked because the viewer (a manager) doesn't have permission
+                                                // to mutate data for this row (target is another mgr/director).
+                                                $rrPermissionLocked = ! $rrCanManage;
+                                                $rrDisabled = $rrDesignation === '' || $rrUserId === 0 || $rrPermissionLocked;
+                                                if ($rrDesignation === '' || $rrUserId === 0) {
+                                                    $rrLockedTitle = 'Set a designation on this user to view R&R';
+                                                } elseif ($rrPermissionLocked) {
+                                                    $rrLockedTitle = 'Managers can only manage their tagged juniors or Executives.';
+                                                } else {
+                                                    $rrLockedTitle = 'View R&R for ' . e($rrDesignation);
+                                                }
                                             @endphp
                                             <button type="button"
                                                     class="rr-search-icon-btn task-summary-rr-btn"
                                                     data-user-id="{{ $rrUserId }}"
                                                     data-user-name="{{ e($row['team_member']) }}"
                                                     data-designation="{{ e($rrDesignation) }}"
-                                                    @if($rrDisabled) disabled title="Set a designation on this user to view R&R" @else title="View R&R for {{ e($rrDesignation) }}" @endif
+                                                    @if($rrDisabled) disabled @endif
+                                                    title="{{ $rrLockedTitle }}"
                                                     aria-label="Open R&R for {{ e($row['team_member']) }}">
                                                 <i class="ri-search-eye-line" style="font-size:1.15rem;" aria-hidden="true"></i>
                                             </button>
                                         </td>
                                         <td class="task-summary-clrr-cell text-center">
+                                            @php
+                                                $clrrLockedTitle = $rrPermissionLocked
+                                                    ? 'Managers can only manage their tagged juniors or Executives.'
+                                                    : (($rrDesignation === '' || $rrUserId === 0)
+                                                        ? 'Set a designation on this user to view CL R&R'
+                                                        : 'View CL R&R checklist & score for ' . e($rrDesignation));
+                                            @endphp
                                             <button type="button"
                                                     class="clrr-search-icon-btn task-summary-clrr-btn"
                                                     data-user-id="{{ $rrUserId }}"
                                                     data-user-name="{{ e($row['team_member']) }}"
                                                     data-designation="{{ e($rrDesignation) }}"
-                                                    @if($rrDisabled) disabled title="Set a designation on this user to view CL R&R" @else title="View CL R&R checklist & score for {{ e($rrDesignation) }}" @endif
+                                                    @if($rrDisabled) disabled @endif
+                                                    title="{{ $clrrLockedTitle }}"
                                                     aria-label="Open CL R&R for {{ e($row['team_member']) }}">
                                                 <i class="ri-search-eye-line" style="font-size:1.15rem;" aria-hidden="true"></i>
                                             </button>
@@ -920,12 +1028,20 @@
                                             @endunless
                                         </td>
                                         <td class="task-summary-clmgr-cell text-center">
+                                            @php
+                                                $clmgrLockedTitle = $rrPermissionLocked
+                                                    ? 'Managers can only manage their tagged juniors or Executives.'
+                                                    : (($rrDesignation === '' || $rrUserId === 0)
+                                                        ? 'Set a designation on this user to view CL Mgr'
+                                                        : 'View Manager checklist & combined score for ' . e($row['team_member']));
+                                            @endphp
                                             <button type="button"
                                                     class="clmgr-search-icon-btn task-summary-clmgr-btn"
                                                     data-user-id="{{ $rrUserId }}"
                                                     data-user-name="{{ e($row['team_member']) }}"
                                                     data-designation="{{ e($rrDesignation) }}"
-                                                    @if($rrDisabled) disabled title="Set a designation on this user to view CL Mgr" @else title="View Manager checklist & combined score for {{ e($row['team_member']) }}" @endif
+                                                    @if($rrDisabled) disabled @endif
+                                                    title="{{ $clmgrLockedTitle }}"
                                                     aria-label="Open CL Mgr for {{ e($row['team_member']) }}">
                                                 <i class="ri-search-eye-line" style="font-size:1.15rem;" aria-hidden="true"></i>
                                             </button>
@@ -944,11 +1060,22 @@
                                             @endunless
                                         </td>
                                         <td class="task-summary-clgen-cell text-center">
+                                            @php
+                                                $clgenDisabled = $rrUserId === 0 || $rrPermissionLocked;
+                                                if ($rrUserId === 0) {
+                                                    $clgenTitle = 'No user record found for this row';
+                                                } elseif ($rrPermissionLocked) {
+                                                    $clgenTitle = 'Managers can only manage their tagged juniors or Executives.';
+                                                } else {
+                                                    $clgenTitle = 'View General Checklist & score for ' . e($row['team_member']);
+                                                }
+                                            @endphp
                                             <button type="button"
                                                     class="clgen-search-icon-btn task-summary-clgen-btn"
                                                     data-user-id="{{ $rrUserId }}"
                                                     data-user-name="{{ e($row['team_member']) }}"
-                                                    @if($rrUserId === 0) disabled title="No user record found for this row" @else title="View General Checklist & score for {{ e($row['team_member']) }}" @endif
+                                                    @if($clgenDisabled) disabled @endif
+                                                    title="{{ $clgenTitle }}"
                                                     aria-label="Open General Checklist for {{ e($row['team_member']) }}">
                                                 <i class="ri-search-eye-line" style="font-size:1.15rem;" aria-hidden="true"></i>
                                             </button>
@@ -977,17 +1104,35 @@
                                         <td class="task-summary-num">{{ $row['assignor_task'] }}</td>
                                         <td class="task-summary-num task-summary-col-done">{{ $row['done'] }}</td>
                                         <td class="task-summary-num task-summary-col-overdue">{{ $row['overdue'] }}</td>
-                                        <td class="task-summary-num"
-                                            @if(($row['tat_l30_days'] ?? null) !== null) title="Avg TAT over last 30 days · based on {{ (int) ($row['tat_l30_count'] ?? 0) }} completed task{{ ((int) ($row['tat_l30_count'] ?? 0) === 1) ? '' : 's' }}" @else title="No tasks completed in the last 30 days" @endif>
-                                            @php $tat = $row['tat_l30_days'] ?? null; @endphp
-                                            {{ $tat !== null ? number_format((float) $tat, 1) . 'd' : '—' }}
+                                        @php
+                                            $tat = $row['tat_l30_days'] ?? null;
+                                            $tatClass = '';
+                                            $tatDisplay = '—';
+                                            if ($tat !== null) {
+                                                $tatVal = (float) $tat;
+                                                // > 2 days is shown as a rounded integer; anything ≤ 2 keeps one decimal.
+                                                $tatDisplay = ($tatVal > 2)
+                                                    ? ((string) (int) round($tatVal)) . 'd'
+                                                    : number_format($tatVal, 1) . 'd';
+                                                if ($tatVal >= 3) {
+                                                    $tatClass = 'task-summary-tat-high';   // red text
+                                                } elseif ($tatVal < 1) {
+                                                    $tatClass = 'task-summary-tat-low';    // pink bg
+                                                } else {
+                                                    $tatClass = 'task-summary-tat-mid';    // 1 ≤ x < 3 → green text
+                                                }
+                                            }
+                                        @endphp
+                                        <td class="task-summary-num {{ $tatClass }}"
+                                            @if($tat !== null) title="Avg TAT over last 30 days · based on {{ (int) ($row['tat_l30_count'] ?? 0) }} completed task{{ ((int) ($row['tat_l30_count'] ?? 0) === 1) ? '' : 's' }} · raw {{ number_format((float) $tat, 1) }}d" @else title="No tasks completed in the last 30 days" @endif>
+                                            {{ $tatDisplay }}
                                         </td>
                                         <td class="task-summary-num task-summary-col-missed"
                                             title="Missed tasks in the last 30 days (is_missed = true · by start_date)">
                                             {{ (int) ($row['missed_l30'] ?? 0) }}
                                         </td>
                                         <td class="task-summary-num">{{ $row['a_task'] }}</td>
-                                        <td class="task-summary-num" title="Total ETC hours (assignee) for automated tasks, rounded">{{ (int) ($row['a_task_h'] ?? 0) }}</td>
+                                        <td class="task-summary-num task-summary-col-a-task-h" title="Total ETC hours (assignee) for automated tasks, rounded">{{ (int) ($row['a_task_h'] ?? 0) }}</td>
                                         <td class="task-summary-num">{{ $row['need_approval'] }}</td>
                                         <td>
                                             @php
@@ -1009,10 +1154,21 @@
                                                 <i class="ri-search-eye-line" style="font-size:1.15rem;" aria-hidden="true"></i>
                                             </button>
                                         </td>
+                                        <td class="task-summary-kpi-badges-cell text-center">
+                                            <button type="button"
+                                                    class="kpi-badges-search-icon-btn task-summary-kpi-badges-btn"
+                                                    data-user-id="{{ (int) ($row['user_id'] ?? 0) }}"
+                                                    data-user-name="{{ e($row['team_member']) }}"
+                                                    data-designation="{{ e($row['designation'] ?? '') }}"
+                                                    @if((int) ($row['user_id'] ?? 0) === 0) disabled title="No user record found for this row" @else title="View KPI badges tagged on {{ e($row['team_member']) }}" @endif
+                                                    aria-label="Open KPI badges for {{ e($row['team_member']) }}">
+                                                <i class="ri-search-eye-line" style="font-size:1.15rem;" aria-hidden="true"></i>
+                                            </button>
+                                        </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="19" class="text-center text-muted py-4">
+                                        <td colspan="21" class="text-center text-muted py-4">
                                             @if (($visibility['scope'] ?? 'all') !== 'all')
                                                 No team members visible to you. Ask an admin to update your Role (Mgr/Director) or tag juniors under you.
                                             @else
@@ -1023,7 +1179,7 @@
                                 @endforelse
                                 @if (!empty($rows) && count($rows))
                                     <tr id="task-summary-filter-empty" class="d-none">
-                                        <td colspan="19" class="text-center text-muted py-4">No matching team members.</td>
+                                        <td colspan="21" class="text-center text-muted py-4">No matching team members.</td>
                                     </tr>
                                 @endif
                             </tbody>
@@ -1046,6 +1202,7 @@
     @include('partials.user-dashboard')
     @include('partials.score-history')
     @include('partials.team-member-profile')
+    @include('partials.user-badges')
 
     <div class="modal fade" id="taskSummaryAnalyticsModal" tabindex="-1" aria-labelledby="taskSummaryAnalyticsModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-fullscreen-sm-down modal-dialog-scrollable">
@@ -1586,7 +1743,49 @@
                 if (emptyRow) {
                     emptyRow.classList.toggle('d-none', !(q && shown === 0));
                 }
+                recomputeAnalyticsBadges();
             }
+
+            // Recompute the top-bar analytics badges (Members / Total tasks /
+            // Overdue / Approval pending / Done) from whatever rows are
+            // currently visible — respects both the search filter and the
+            // hierarchy-collapse "task-summary-row-collapsed-hidden" class.
+            function recomputeAnalyticsBadges() {
+                var rows = tbody.querySelectorAll(
+                    'tr.task-summary-row'
+                    + ':not(.d-none)'
+                    + ':not(.task-summary-row-collapsed-hidden)'
+                    + ':not(.task-summary-row-juniors-hidden)'
+                    + ':not(.task-summary-row-orphan-hidden)'
+                );
+                var sum = { task: 0, overdue: 0, done: 0, approval: 0, members: 0 };
+                rows.forEach(function (tr) {
+                    var taskN = parseInt(tr.getAttribute('data-sort-task'), 10) || 0;
+                    sum.task += taskN;
+                    sum.overdue += parseInt(tr.getAttribute('data-sort-overdue'), 10) || 0;
+                    sum.done += parseInt(tr.getAttribute('data-sort-done'), 10) || 0;
+                    sum.approval += parseInt(tr.getAttribute('data-sort-need_approval'), 10) || 0;
+                    if (taskN > 0) sum.members += 1;
+                });
+                var fmt = function (n) {
+                    try { return Number(n || 0).toLocaleString(); }
+                    catch (e) { return String(n || 0); }
+                };
+                var pairs = {
+                    'ts-analytics-val-total': sum.task,
+                    'ts-analytics-val-assigned': sum.members,
+                    'ts-analytics-val-overdue': sum.overdue,
+                    'ts-analytics-val-approval': sum.approval,
+                    'ts-analytics-val-done': sum.done
+                };
+                Object.keys(pairs).forEach(function (id) {
+                    var node = document.getElementById(id);
+                    if (node) node.textContent = fmt(pairs[id]);
+                });
+            }
+            // Expose so other modules (hierarchy collapse, role-change re-render)
+            // can ping it after they change row visibility.
+            window.taskSummaryRecomputeBadges = recomputeAnalyticsBadges;
 
             if (input) {
                 input.addEventListener('input', runFilter);
@@ -2051,6 +2250,11 @@
             sortState.dir = 'desc';
             updateHeaderIcons('task', 'desc');
             applySort();
+
+            // Sync the analytics badges to the initial visible row set so
+            // viewers with scoped visibility (manager/exec) see their own
+            // numbers, not the org-wide ones from the server template.
+            recomputeAnalyticsBadges();
         })();
 
         // -------------------------------------------------------------------
@@ -2126,10 +2330,21 @@
                     return memberName(a).localeCompare(memberName(b), undefined, { sensitivity: 'base' });
                 };
 
-                var directors = rows.filter(function (tr) { return orgLevelOf(tr) === 'director'; }).sort(byName);
+                // Only show a Director / standalone-Mgr as its own group
+                // when they actually have juniors tagged under them. Anyone
+                // empty falls through to the "Others" bucket at the bottom
+                // (kept the visited[] map untouched so the fall-through
+                // works automatically).
+                var hasAnyJunior = function (tr) {
+                    var id = parseInt(tr.getAttribute('data-user-id'), 10);
+                    return id && juniorsOf[id] && juniorsOf[id].length > 0;
+                };
+                var directors = rows.filter(function (tr) {
+                    return orgLevelOf(tr) === 'director' && hasAnyJunior(tr);
+                }).sort(byName);
                 var standaloneMgrs = rows.filter(function (tr) {
                     var id = parseInt(tr.getAttribute('data-user-id'), 10);
-                    return orgLevelOf(tr) === 'mgr' && !hasManager[id];
+                    return orgLevelOf(tr) === 'mgr' && !hasManager[id] && hasAnyJunior(tr);
                 }).sort(byName);
 
                 var visited = {}; // user_id → true (to avoid infinite cycles)
@@ -2191,17 +2406,12 @@
                 });
 
                 // Anyone left without a group → "Others".
-                var others = rows.filter(function (tr) {
-                    var id = parseInt(tr.getAttribute('data-user-id'), 10);
-                    return !visited[id];
-                }).sort(byName);
-                if (others.length > 0) {
-                    groups.push({
-                        kind: 'others',
-                        depth: 0,
-                        children: others.map(function (tr) { return { kind: 'leaf', row: tr, depth: 1 }; })
-                    });
-                }
+                // "Others" bucket intentionally omitted — hierarchy view
+                // now shows ONLY real teams (Directors and Managers who
+                // actually have juniors tagged under them). Users not
+                // attached to a team are simply hidden in this view.
+                // (Toggle off "Group by hierarchy" to see everyone in the
+                // flat sortable list.)
                 return groups;
             }
 
@@ -2219,11 +2429,15 @@
                 tr.setAttribute('data-level', level); // 'director' | 'mgr' | 'others'
                 tr.setAttribute('data-collapsed', 'false');
                 var td = document.createElement('td');
-                td.setAttribute('colspan', '19');
+                td.setAttribute('colspan', '21');
                 td.innerHTML =
                     '<div class="task-summary-group-header-inner">'
                     + '<button type="button" class="task-summary-group-chevron" data-action="toggle-group" aria-label="Toggle group">'
                     + '<i class="ri-arrow-down-s-line"></i></button>'
+                    + '<button type="button" class="task-summary-group-focus" data-action="focus-group" '
+                    +    'title="Focus on this group — collapse everyone else" '
+                    +    'aria-label="Focus on this group, collapse all others">'
+                    + '<i class="ri-focus-3-line"></i></button>'
                     + '<span class="task-summary-group-label">' + escapeHtml(labelText) + '</span>'
                     + '<span class="task-summary-group-name">' + escapeHtml(name) + '</span>'
                     + '<span class="task-summary-group-meta">' + escapeHtml(meta) + '</span>'
@@ -2337,6 +2551,20 @@
                     h.remove();
                 });
 
+                // Track which rows are placed in a group so we can hide
+                // anything orphaned (used to land in the now-removed
+                // "Others" bucket — empty Directors / Mgrs / unassigned).
+                var placedRows = [];
+                Object.keys(out.rowsInGroup).forEach(function (gid) {
+                    (out.rowsInGroup[gid] || []).forEach(function (tr) { placedRows.push(tr); });
+                });
+                var placedSet = new WeakSet ? new WeakSet(placedRows) : null;
+                var placedFlag = {}; // fallback for envs without WeakSet
+                placedRows.forEach(function (tr) {
+                    var id = parseInt(tr.getAttribute('data-user-id'), 10) || 0;
+                    if (id) placedFlag[id] = true;
+                });
+
                 // Append in order: header → its rows; header → its rows; …
                 out.headers.forEach(function (h) {
                     var hr = makeHeaderTr(h.id, h.type, h.label, h.name, h.meta);
@@ -2349,18 +2577,37 @@
                     });
                 });
 
+                // Hide every row that didn't get placed in a group (the
+                // ex-"Others" pool). Also strip stale grouping attributes.
+                getDataRows().forEach(function (tr) {
+                    var isPlaced = placedSet
+                        ? placedSet.has(tr)
+                        : !!placedFlag[parseInt(tr.getAttribute('data-user-id'), 10) || 0];
+                    if (isPlaced) {
+                        tr.classList.remove('task-summary-row-orphan-hidden');
+                    } else {
+                        tr.classList.add('task-summary-row-orphan-hidden');
+                        tr.removeAttribute('data-depth');
+                        tr.removeAttribute('data-group-id');
+                    }
+                });
+
                 if (emptyRow) tbody.appendChild(emptyRow);
                 refreshHeaderVisibility();
             }
 
             // Hide a header row if every row inside it is currently hidden
-            // (by either the search filter or a collapsed parent).
+            // by ANY visibility source (search, collapse, juniors-only filter).
             function refreshHeaderVisibility() {
                 var headers = tbody.querySelectorAll('tr.task-summary-group-header');
                 headers.forEach(function (h) {
                     var gid = h.getAttribute('data-group-id');
                     var visible = tbody.querySelectorAll(
-                        'tr.task-summary-row[data-group-id="' + gid + '"]:not(.d-none):not(.task-summary-row-collapsed-hidden)'
+                        'tr.task-summary-row[data-group-id="' + gid + '"]'
+                        + ':not(.d-none)'
+                        + ':not(.task-summary-row-collapsed-hidden)'
+                        + ':not(.task-summary-row-juniors-hidden)'
+                        + ':not(.task-summary-row-orphan-hidden)'
                     ).length;
                     h.classList.toggle('d-none', visible === 0);
                 });
@@ -2399,12 +2646,15 @@
                 Array.prototype.slice.call(tbody.querySelectorAll('tr.task-summary-group-header')).forEach(function (h) {
                     h.remove();
                 });
-                // Restore original flat order.
+                // Restore original flat order — also strip both
+                // hierarchy-only hide classes so the flat list shows
+                // everyone again (including ex-"Others" rows).
                 var rows = getDataRows();
                 rows.forEach(function (tr) {
                     tr.removeAttribute('data-depth');
                     tr.removeAttribute('data-group-id');
                     tr.classList.remove('task-summary-row-collapsed-hidden');
+                    tr.classList.remove('task-summary-row-orphan-hidden');
                 });
                 rows.sort(function (a, b) {
                     var ai = parseInt(a.getAttribute('data-original-index'), 10) || 0;
@@ -2431,12 +2681,14 @@
                         var collapse = act === 'collapse-all';
                         collapsedGroups[gid] = collapse;
                         h.setAttribute('data-collapsed', collapse ? 'true' : 'false');
+                        h.classList.remove('is-focused');
                         tbody.querySelectorAll('tr.task-summary-row[data-group-id="' + gid + '"]').forEach(function (tr) {
                             tr.classList.toggle('task-summary-row-collapsed-hidden', collapse);
                         });
                         // For collapse-all, also visually collapse nested mgr headers under directors.
                         if (collapse) h.classList.remove('d-none'); // keep header itself visible
                     });
+                    focusedGroupId = null;
                     refreshHeaderVisibility();
                 });
             }
@@ -2458,6 +2710,102 @@
                 refreshHeaderVisibility();
             });
 
+            // Tracks which group (if any) is currently focused; clicking
+            // the focus button on that same group again returns the table
+            // to its normal expanded state.
+            var focusedGroupId = null;
+
+            // Expand every group / clear the focus state.
+            function unfocusAllGroups() {
+                var headers = Array.prototype.slice.call(
+                    tbody.querySelectorAll('tr.task-summary-group-header')
+                );
+                headers.forEach(function (h) {
+                    var gid = h.getAttribute('data-group-id');
+                    h.setAttribute('data-collapsed', 'false');
+                    h.classList.remove('is-focused');
+                    h.classList.remove('d-none');
+                    collapsedGroups[gid] = false;
+                    tbody.querySelectorAll('tr.task-summary-row[data-group-id="' + gid + '"]').forEach(function (tr) {
+                        tr.classList.remove('task-summary-row-collapsed-hidden');
+                    });
+                    var fbtn = h.querySelector('button.task-summary-group-focus');
+                    if (fbtn) {
+                        fbtn.setAttribute('title', 'Focus on this group — collapse everyone else');
+                    }
+                });
+                focusedGroupId = null;
+                refreshHeaderVisibility();
+            }
+
+            // "Focus on this group" — collapse every other group and keep
+            // only this one (plus any nested mgr sub-groups under a director)
+            // expanded. Walks the header order so we don't need server hints.
+            // Toggle: clicking the focus button on the already-focused group
+            // restores the full hierarchy.
+            function focusGroup(targetHeader) {
+                var targetGid = targetHeader.getAttribute('data-group-id');
+
+                // Second click on the same group → unfocus.
+                if (focusedGroupId === targetGid) {
+                    unfocusAllGroups();
+                    return;
+                }
+
+                var headers = Array.prototype.slice.call(
+                    tbody.querySelectorAll('tr.task-summary-group-header')
+                );
+                var targetLvl = targetHeader.getAttribute('data-level');
+                var keep = {};
+                keep[targetGid] = true;
+
+                // If this is a director, also keep every header that appears
+                // between it and the next top-level group (those are the
+                // director's own Manager sub-groups).
+                if (targetLvl === 'director') {
+                    var idx = headers.indexOf(targetHeader);
+                    for (var i = idx + 1; i < headers.length; i++) {
+                        var nLvl = headers[i].getAttribute('data-level');
+                        if (nLvl === 'director' || nLvl === 'others') break;
+                        keep[headers[i].getAttribute('data-group-id')] = true;
+                    }
+                }
+
+                headers.forEach(function (h) {
+                    var gid = h.getAttribute('data-group-id');
+                    var shouldCollapse = !keep[gid];
+                    var isFocused = gid === targetGid;
+                    h.setAttribute('data-collapsed', shouldCollapse ? 'true' : 'false');
+                    h.classList.toggle('is-focused', isFocused);
+                    collapsedGroups[gid] = shouldCollapse;
+                    h.classList.remove('d-none');
+                    tbody.querySelectorAll('tr.task-summary-row[data-group-id="' + gid + '"]').forEach(function (tr) {
+                        tr.classList.toggle('task-summary-row-collapsed-hidden', shouldCollapse);
+                    });
+                    var fbtn = h.querySelector('button.task-summary-group-focus');
+                    if (fbtn) {
+                        fbtn.setAttribute(
+                            'title',
+                            isFocused
+                                ? 'Click again to restore the full hierarchy'
+                                : 'Focus on this group — collapse everyone else'
+                        );
+                    }
+                });
+                focusedGroupId = targetGid;
+                refreshHeaderVisibility();
+            }
+
+            // Delegated click for the new "Focus on this group" button.
+            tbody.addEventListener('click', function (e) {
+                var btn = e.target && e.target.closest && e.target.closest('button.task-summary-group-focus');
+                if (!btn) return;
+                e.preventDefault();
+                var h = btn.closest('tr.task-summary-group-header');
+                if (!h) return;
+                focusGroup(h);
+            });
+
             // Re-run header visibility whenever the search input filters rows.
             if (searchInput) {
                 searchInput.addEventListener('input', function () {
@@ -2468,16 +2816,90 @@
                 });
             }
 
+            // After every collapse / expand operation, refresh the analytics
+            // badges so they reflect only the rows currently shown on screen.
+            function pingBadges() {
+                if (window.taskSummaryRecomputeBadges) window.taskSummaryRecomputeBadges();
+            }
+            tbody.addEventListener('click', function (e) {
+                var tgt = e.target;
+                if (!tgt || !tgt.closest) return;
+                if (tgt.closest('button.task-summary-group-chevron')
+                    || tgt.closest('button.task-summary-group-focus')) {
+                    // setTimeout to run AFTER the existing handler toggles classes.
+                    setTimeout(pingBadges, 0);
+                }
+            });
+            if (collapseActions) {
+                collapseActions.addEventListener('click', function (e) {
+                    if (e.target && e.target.closest && e.target.closest('button[data-action]')) {
+                        setTimeout(pingBadges, 0);
+                    }
+                });
+            }
+            toggle.addEventListener('change', function () {
+                setTimeout(pingBadges, 0);
+            });
+
+            // ---------------- "Only with juniors" filter ----------------
+            var juniorsOnlyToggle = document.getElementById('task-summary-juniors-only-toggle');
+
+            // Build a Set of user_ids to KEEP when the filter is on:
+            //   - every user that has at least one tagged junior, PLUS
+            //   - every user that is a junior of one of the above.
+            function buildJuniorsOnlyKeepSet() {
+                var keep = {};
+                Object.keys(juniorsOf).forEach(function (mid) {
+                    var midN = parseInt(mid, 10);
+                    if (!midN) return;
+                    keep[midN] = true;
+                    (juniorsOf[midN] || []).forEach(function (jid) {
+                        if (jid) keep[parseInt(jid, 10)] = true;
+                    });
+                });
+                return keep;
+            }
+
+            function applyJuniorsOnlyFilter(enabled) {
+                var keep = enabled ? buildJuniorsOnlyKeepSet() : null;
+                getDataRows().forEach(function (tr) {
+                    var id = parseInt(tr.getAttribute('data-user-id'), 10) || 0;
+                    var shouldHide = enabled && !keep[id];
+                    tr.classList.toggle('task-summary-row-juniors-hidden', shouldHide);
+                });
+                refreshHeaderVisibility();
+                pingBadges();
+            }
+
+            if (juniorsOnlyToggle) {
+                juniorsOnlyToggle.addEventListener('change', function () {
+                    applyJuniorsOnlyFilter(!!juniorsOnlyToggle.checked);
+                });
+            }
+
             // Allow other modules (e.g. Role dropdown) to ask for a refresh
             // after they mutate org_level for any row.
             window.taskSummaryHierarchy = {
-                rebuildIfActive: function () { if (isHierarchyActive()) renderGroupedView(); }
+                rebuildIfActive: function () {
+                    if (isHierarchyActive()) renderGroupedView();
+                    // Re-apply juniors-only filter so newly-rendered headers honor it.
+                    if (juniorsOnlyToggle && juniorsOnlyToggle.checked) {
+                        applyJuniorsOnlyFilter(true);
+                    }
+                    pingBadges();
+                },
+                refreshHeaders: refreshHeaderVisibility
             };
 
-            // Hide collapsed rows via a single CSS rule injected here to keep
-            // the existing .d-none semantics separate from collapse state.
+            // Hide collapsed rows + juniors-only-hidden rows via dedicated
+            // classes so each filter source is independent.
             var styleNode = document.createElement('style');
-            styleNode.textContent = '.task-summary-table tbody tr.task-summary-row-collapsed-hidden { display: none !important; }';
+            styleNode.textContent =
+                '.task-summary-table tbody tr.task-summary-row-collapsed-hidden,'
+                + ' .task-summary-table tbody tr.task-summary-row-juniors-hidden,'
+                + ' .task-summary-table tbody tr.task-summary-row-orphan-hidden {'
+                + ' display: none !important;'
+                + ' }';
             document.head.appendChild(styleNode);
         })();
 
@@ -5160,15 +5582,14 @@
                     : (Number(m.tat_l30_days).toFixed(1) + 'd');
                 var html = ''
                     + renderMetricTile('Task', m.task || 0)
-                    + renderMetricTile('L30 Hrs', l30)
-                    + renderMetricTile('Assignor', m.assignor_task || 0)
+                    + renderMetricTile('ATT', l30)
+                    + renderMetricTile('Task-G', m.assignor_task || 0)
                     + renderMetricTile('Done', m.done || 0, 'is-done')
-                    + renderMetricTile('Overdue', m.overdue || 0, 'is-overdue')
-                    + renderMetricTile('L30 TAT', tat)
-                    + renderMetricTile('L30 Missed', m.missed_l30 || 0, 'is-overdue')
+                    + renderMetricTile('O-Due', m.overdue || 0, 'is-overdue')
+                    + renderMetricTile('TAT', tat)
+                    + renderMetricTile('Miss', m.missed_l30 || 0, 'is-overdue')
                     + renderMetricTile('A Task', m.a_task || 0)
-                    + renderMetricTile('A Task H', m.a_task_h || 0)
-                    + renderMetricTile('Need Appr.', m.need_approval || 0);
+                    + renderMetricTile('Appr', m.need_approval || 0);
                 return html;
             }
 
@@ -5605,13 +6026,13 @@
                 var tat = (m.tat_l30_days === null || m.tat_l30_days === undefined) ? '—' : (Number(m.tat_l30_days).toFixed(1) + 'd');
                 return ''
                     + renderTile('Task', m.task || 0)
-                    + renderTile('L30 Hrs', l30)
-                    + renderTile('Assignor', m.assignor_task || 0)
+                    + renderTile('ATT', l30)
+                    + renderTile('Task-G', m.assignor_task || 0)
                     + renderTile('Done', m.done || 0, 'is-done')
-                    + renderTile('Overdue', m.overdue || 0, 'is-overdue')
-                    + renderTile('L30 TAT', tat)
-                    + renderTile('L30 Missed', m.missed_l30 || 0, 'is-overdue')
-                    + renderTile('Need Appr.', m.need_approval || 0);
+                    + renderTile('O-Due', m.overdue || 0, 'is-overdue')
+                    + renderTile('TAT', tat)
+                    + renderTile('Miss', m.missed_l30 || 0, 'is-overdue')
+                    + renderTile('Appr', m.need_approval || 0);
             }
 
             function renderPersonRow(p) {
@@ -5772,30 +6193,434 @@
             window.taskSummaryTmProfile = { open: open };
         })();
 
-        // Avatar size adjustment functions
-        let currentAvatarSize = parseInt(localStorage.getItem('avatarSize')) || 30;
-        
-        // Apply saved size on page load
+        // -------------------------------------------------------------------
+        // KPI Badges modal (KPI column magnifier)
+        // -------------------------------------------------------------------
+        (function () {
+            var csrfToken = (function () {
+                var meta = document.querySelector('meta[name="csrf-token"]');
+                return meta ? meta.getAttribute('content') : '';
+            })();
+
+            var endpoints = {
+                get: @json(route('tasks.userBadges.get')),
+                award: @json(route('tasks.userBadges.award')),
+                remove: @json(route('tasks.userBadges.remove')),
+                create: @json(route('tasks.badges.create')),
+                deleteBase: @json(url('/tasks/badges'))
+            };
+
+            var state = {
+                userId: null,
+                userName: '',
+                designation: '',
+                canAward: false,
+                canManagePool: false,
+                awards: [],
+                available: []
+            };
+
+            function el(id) { return document.getElementById(id); }
+            function getModalEl() { return document.getElementById('taskSummaryUserBadgesModal'); }
+            function getBsModal() {
+                var m = getModalEl();
+                if (!m) return null;
+                if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    return bootstrap.Modal.getOrCreateInstance(m);
+                }
+                return null;
+            }
+            function fallbackShow(modalEl) {
+                modalEl.classList.add('show');
+                modalEl.style.display = 'block';
+                modalEl.removeAttribute('aria-hidden');
+                modalEl.setAttribute('aria-modal', 'true');
+                document.body.classList.add('modal-open');
+                if (!document.getElementById('ts-ub-fallback-backdrop')) {
+                    var bd = document.createElement('div');
+                    bd.id = 'ts-ub-fallback-backdrop';
+                    bd.className = 'modal-backdrop fade show';
+                    document.body.appendChild(bd);
+                    bd.addEventListener('click', function () { fallbackHide(modalEl); });
+                }
+                modalEl.querySelectorAll('[data-bs-dismiss="modal"]').forEach(function (b) {
+                    b.addEventListener('click', function () { fallbackHide(modalEl); }, { once: true });
+                });
+            }
+            function fallbackHide(modalEl) {
+                modalEl.classList.remove('show');
+                modalEl.style.display = 'none';
+                modalEl.setAttribute('aria-hidden', 'true');
+                modalEl.removeAttribute('aria-modal');
+                document.body.classList.remove('modal-open');
+                var bd = document.getElementById('ts-ub-fallback-backdrop');
+                if (bd) bd.remove();
+            }
+            function showModal() {
+                var m = getModalEl();
+                if (!m) {
+                    console.error('[UserBadges] taskSummaryUserBadgesModal not found');
+                    return;
+                }
+                var bs = getBsModal();
+                if (bs) bs.show(); else fallbackShow(m);
+            }
+
+            function escapeHtml(s) {
+                return String(s == null ? '' : s)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+            }
+            function showError(msg) {
+                var n = el('ts-ub-error');
+                if (!n) return;
+                n.textContent = msg || 'Something went wrong.';
+                n.classList.remove('d-none');
+            }
+            function clearError() {
+                var n = el('ts-ub-error');
+                if (n) { n.classList.add('d-none'); n.textContent = ''; }
+            }
+
+            function pickContrastText(/* unused — chips are always white on coloured bg */) {
+                return '#fff';
+            }
+
+            function renderAwardChip(a) {
+                var color = a.color || '#0d9488';
+                var label = (a.name || '—');
+                var noteTitle = a.note ? (label + ' — ' + a.note + (a.awarded_by ? ' (by ' + a.awarded_by + ')' : '')) : label;
+                var html = '<span class="ub-chip" style="background:' + escapeHtml(color) + ';color:' + pickContrastText() + ';" data-award-id="' + a.award_id + '" data-badge-id="' + a.badge_id + '" title="' + escapeHtml(noteTitle) + '">'
+                    + '<i class="' + escapeHtml(a.icon || 'ri-medal-line') + '"></i>'
+                    + '<span>' + escapeHtml(label) + '</span>';
+                if (state.canAward) {
+                    html += '<button type="button" class="ub-chip-remove" data-action="remove-award" aria-label="Remove ' + escapeHtml(label) + '">&times;</button>';
+                }
+                html += '</span>';
+                return html;
+            }
+
+            function renderPoolChip(b) {
+                var color = b.color || '#0d9488';
+                var title = b.description ? (b.name + ' — ' + b.description) : b.name;
+                var disabled = state.canAward ? '' : 'disabled';
+                return '<button type="button" class="ub-pool-chip ' + (state.canAward ? '' : 'is-disabled') + '" '
+                    + 'style="border:1.5px solid ' + escapeHtml(color) + ';color:' + escapeHtml(color) + ';" '
+                    + 'data-badge-id="' + b.id + '" data-action="award-from-pool" ' + disabled + ' '
+                    + 'title="' + escapeHtml(title) + '">'
+                    + '<i class="' + escapeHtml(b.icon || 'ri-medal-line') + '"></i>'
+                    + '<span>' + escapeHtml(b.name) + '</span>'
+                    + '</button>';
+            }
+
+            function updateCount() {
+                var c = el('ts-ub-modal-count');
+                if (c) {
+                    var n = state.awards.length;
+                    c.textContent = n > 0 ? '· ' + n + ' tagged' : '';
+                }
+                // Sync row count badge if present.
+                var rowBtn = document.querySelector('.task-summary-kpi-badges-btn[data-user-id="' + state.userId + '"]');
+                if (rowBtn) {
+                    var n2 = state.awards.length;
+                    rowBtn.setAttribute('data-badge-count', String(n2));
+                }
+            }
+
+            function render() {
+                var awardedWrap = el('ts-ub-awarded');
+                var poolWrap = el('ts-ub-pool');
+                var empty = el('ts-ub-empty');
+                var poolEmpty = el('ts-ub-pool-empty');
+                var createWrap = el('ts-ub-create-wrap');
+
+                if (awardedWrap) {
+                    if (state.awards.length === 0) {
+                        awardedWrap.innerHTML = '';
+                        if (empty) empty.classList.remove('d-none');
+                    } else {
+                        if (empty) empty.classList.add('d-none');
+                        awardedWrap.innerHTML = state.awards.map(renderAwardChip).join('');
+                    }
+                }
+                if (poolWrap) {
+                    if (state.available.length === 0) {
+                        poolWrap.innerHTML = '';
+                        if (poolEmpty) poolEmpty.classList.remove('d-none');
+                    } else {
+                        if (poolEmpty) poolEmpty.classList.add('d-none');
+                        poolWrap.innerHTML = state.available.map(renderPoolChip).join('');
+                    }
+                }
+                if (createWrap) {
+                    createWrap.classList.toggle('d-none', !state.canManagePool);
+                }
+                updateCount();
+            }
+
+            function postJson(url, body, method) {
+                return fetch(url, {
+                    method: method || 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': csrfToken
+                    },
+                    body: body ? JSON.stringify(body) : null
+                }).then(function (r) {
+                    return r.json().then(function (data) {
+                        if (!r.ok || data.success === false) {
+                            var msg = (data && data.message) ? data.message : 'Request failed (HTTP ' + r.status + ')';
+                            throw new Error(msg);
+                        }
+                        return data;
+                    });
+                });
+            }
+
+            function loadBadges() {
+                clearError();
+                var loading = el('ts-ub-loading');
+                var content = el('ts-ub-content');
+                if (loading) loading.classList.remove('d-none');
+                if (content) content.classList.add('d-none');
+                var url = endpoints.get + (endpoints.get.indexOf('?') >= 0 ? '&' : '?') + 'user_id=' + encodeURIComponent(state.userId);
+                fetch(url, {
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                    .then(function (r) {
+                        return r.json().then(function (data) {
+                            if (!r.ok || data.success === false) {
+                                var msg = (data && data.message) ? data.message : 'Could not load badges.';
+                                throw new Error(msg);
+                            }
+                            return data;
+                        });
+                    })
+                    .then(function (data) {
+                        if (loading) loading.classList.add('d-none');
+                        if (content) content.classList.remove('d-none');
+                        state.canAward = !!data.can_award;
+                        state.canManagePool = !!data.can_manage_pool;
+                        state.awards = Array.isArray(data.awards) ? data.awards : [];
+                        state.available = Array.isArray(data.available) ? data.available : [];
+                        render();
+                    })
+                    .catch(function (err) {
+                        if (loading) loading.classList.add('d-none');
+                        if (content) content.classList.remove('d-none');
+                        showError(err && err.message ? err.message : 'Failed to load badges.');
+                    });
+            }
+
+            function awardBadge(badgeId) {
+                if (!state.canAward) return;
+                clearError();
+                postJson(endpoints.award, {
+                    user_id: state.userId,
+                    badge_id: parseInt(badgeId, 10)
+                })
+                    .then(function (data) {
+                        if (!data.award) return;
+                        state.awards.unshift(data.award);
+                        state.available = state.available.filter(function (b) { return parseInt(b.id, 10) !== parseInt(badgeId, 10); });
+                        render();
+                    })
+                    .catch(function (err) {
+                        showError(err.message || 'Could not tag badge.');
+                    });
+            }
+
+            function removeBadge(badgeId) {
+                if (!state.canAward) return;
+                if (!window.confirm('Remove this badge from the user?')) return;
+                clearError();
+                postJson(endpoints.remove, {
+                    user_id: state.userId,
+                    badge_id: parseInt(badgeId, 10)
+                }, 'DELETE')
+                    .then(function () {
+                        var removed = state.awards.find(function (a) { return parseInt(a.badge_id, 10) === parseInt(badgeId, 10); });
+                        state.awards = state.awards.filter(function (a) { return parseInt(a.badge_id, 10) !== parseInt(badgeId, 10); });
+                        if (removed) {
+                            state.available.push({
+                                id: removed.badge_id,
+                                name: removed.name,
+                                icon: removed.icon,
+                                color: removed.color,
+                                description: removed.description
+                            });
+                            state.available.sort(function (a, b) {
+                                return String(a.name).localeCompare(String(b.name));
+                            });
+                        }
+                        render();
+                    })
+                    .catch(function (err) {
+                        showError(err.message || 'Could not remove badge.');
+                    });
+            }
+
+            function createBadge() {
+                var nameEl = el('ts-ub-create-name');
+                var iconEl = el('ts-ub-create-icon');
+                var colorEl = el('ts-ub-create-color');
+                var btn = el('ts-ub-create-btn');
+                var name = (nameEl && nameEl.value || '').trim();
+                if (!name) {
+                    showError('Enter a badge name first.');
+                    return;
+                }
+                var payload = {
+                    name: name,
+                    icon: (iconEl && iconEl.value || '').trim() || 'ri-medal-line',
+                    color: (colorEl && colorEl.value || '').trim() || '#b45309'
+                };
+                if (btn) btn.disabled = true;
+                clearError();
+                postJson(endpoints.create, payload)
+                    .then(function (data) {
+                        if (btn) btn.disabled = false;
+                        if (nameEl) nameEl.value = '';
+                        if (iconEl) iconEl.value = '';
+                        if (!data.badge) return;
+                        state.available.push(data.badge);
+                        state.available.sort(function (a, b) {
+                            return String(a.name).localeCompare(String(b.name));
+                        });
+                        render();
+                    })
+                    .catch(function (err) {
+                        if (btn) btn.disabled = false;
+                        showError(err.message || 'Could not create badge.');
+                    });
+            }
+
+            function updateIconPreview() {
+                var iconEl = el('ts-ub-create-icon');
+                var colorEl = el('ts-ub-create-color');
+                var preview = el('ts-ub-create-icon-preview');
+                if (!preview) return;
+                var i = (iconEl && iconEl.value || '').trim() || 'ri-medal-line';
+                var c = (colorEl && colorEl.value || '').trim() || '#b45309';
+                preview.style.background = c;
+                preview.innerHTML = '<i class="' + escapeHtml(i) + '"></i>';
+            }
+
+            // Open from any KPI badges magnifier.
+            document.addEventListener('click', function (e) {
+                var target = e.target;
+                if (!target || !target.closest) return;
+
+                var openBtn = target.closest('.task-summary-kpi-badges-btn');
+                if (openBtn) {
+                    e.preventDefault();
+                    if (openBtn.disabled) return;
+                    state.userId = parseInt(openBtn.getAttribute('data-user-id'), 10) || null;
+                    state.userName = openBtn.getAttribute('data-user-name') || '';
+                    state.designation = (openBtn.getAttribute('data-designation') || '').trim();
+                    state.canAward = false;
+                    state.canManagePool = false;
+                    state.awards = [];
+                    state.available = [];
+                    var userLabel = el('ts-ub-modal-user');
+                    if (userLabel) userLabel.textContent = state.userName ? (state.userName + ' — KPI Badges') : 'KPI Badges';
+                    var desEl = el('ts-ub-modal-designation');
+                    if (desEl) desEl.innerHTML = state.designation ? ('<i class="ri-briefcase-line me-1"></i>' + escapeHtml(state.designation)) : '';
+                    var countEl = el('ts-ub-modal-count');
+                    if (countEl) countEl.textContent = '';
+                    render();
+                    clearError();
+                    showModal();
+                    loadBadges();
+                    return;
+                }
+
+                // Award from pool chip
+                var poolBtn = target.closest('button[data-action="award-from-pool"]');
+                if (poolBtn) {
+                    e.preventDefault();
+                    if (poolBtn.disabled) return;
+                    var bid = poolBtn.getAttribute('data-badge-id');
+                    if (bid) awardBadge(bid);
+                    return;
+                }
+
+                // Remove an awarded chip
+                var remBtn = target.closest('button[data-action="remove-award"]');
+                if (remBtn) {
+                    e.preventDefault();
+                    var chip = remBtn.closest('.ub-chip');
+                    var rmId = chip ? chip.getAttribute('data-badge-id') : null;
+                    if (rmId) removeBadge(rmId);
+                    return;
+                }
+
+                // Create new badge
+                if (target.closest('#ts-ub-create-btn')) {
+                    e.preventDefault();
+                    createBadge();
+                    return;
+                }
+            });
+
+            // Icon / colour preview live updates.
+            document.addEventListener('input', function (e) {
+                if (e.target && (e.target.id === 'ts-ub-create-icon' || e.target.id === 'ts-ub-create-color')) {
+                    updateIconPreview();
+                }
+            });
+            // Enter on name commits.
+            document.addEventListener('keydown', function (e) {
+                if (e.key !== 'Enter') return;
+                var t = e.target;
+                if (t && (t.id === 'ts-ub-create-name' || t.id === 'ts-ub-create-icon')) {
+                    e.preventDefault();
+                    createBadge();
+                }
+            });
+
+            window.taskSummaryUserBadges = {
+                open: function (userId, name) {
+                    state.userId = parseInt(userId, 10) || null;
+                    state.userName = name || '';
+                    if (!state.userId) return;
+                    var label = el('ts-ub-modal-user');
+                    if (label) label.textContent = (state.userName ? state.userName + ' — ' : '') + 'KPI Badges';
+                    state.awards = []; state.available = []; render(); clearError();
+                    showModal();
+                    loadBadges();
+                }
+            };
+        })();
+
+        // Avatar size — controls are hidden; size fixed at 35px regardless
+        // of any value previously persisted in localStorage.
+        const DEFAULT_AVATAR_SIZE = 35;
+        let currentAvatarSize = DEFAULT_AVATAR_SIZE;
+        try { localStorage.setItem('avatarSize', DEFAULT_AVATAR_SIZE); } catch (e) {}
         document.documentElement.style.setProperty('--avatar-size', currentAvatarSize + 'px');
-        if (document.getElementById('avatar-size-display')) {
-            document.getElementById('avatar-size-display').textContent = currentAvatarSize + 'px';
-        }
-        
+        var __avatarSizeDisplay = document.getElementById('avatar-size-display');
+        if (__avatarSizeDisplay) __avatarSizeDisplay.textContent = currentAvatarSize + 'px';
+
+        // The +/-/reset functions are still defined in case some external
+        // caller invokes them, but the buttons are hidden in the UI.
         function adjustAvatarSize(delta) {
-            currentAvatarSize += delta;
-            // Limit between 20px and 80px
-            currentAvatarSize = Math.max(20, Math.min(80, currentAvatarSize));
-            
+            currentAvatarSize = Math.max(20, Math.min(80, currentAvatarSize + delta));
             document.documentElement.style.setProperty('--avatar-size', currentAvatarSize + 'px');
-            document.getElementById('avatar-size-display').textContent = currentAvatarSize + 'px';
-            localStorage.setItem('avatarSize', currentAvatarSize);
+            var d = document.getElementById('avatar-size-display');
+            if (d) d.textContent = currentAvatarSize + 'px';
+            try { localStorage.setItem('avatarSize', currentAvatarSize); } catch (e) {}
         }
-        
         function resetAvatarSize() {
-            currentAvatarSize = 30;
-            document.documentElement.style.setProperty('--avatar-size', '30px');
-            document.getElementById('avatar-size-display').textContent = '30px';
-            localStorage.setItem('avatarSize', 30);
+            currentAvatarSize = DEFAULT_AVATAR_SIZE;
+            document.documentElement.style.setProperty('--avatar-size', currentAvatarSize + 'px');
+            var d = document.getElementById('avatar-size-display');
+            if (d) d.textContent = currentAvatarSize + 'px';
+            try { localStorage.setItem('avatarSize', currentAvatarSize); } catch (e) {}
         }
     </script>
 @endsection

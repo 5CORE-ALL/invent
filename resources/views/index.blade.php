@@ -1195,9 +1195,6 @@
             <span class="badge bg-success text-white fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('on.sea.transit') }}'" role="button">
                 <i class="fas fa-dollar-sign me-1"></i>Total Value: $<span id="on-sea-total-value">{{ number_format($onSeaTotalValue ?? 0, 2) }}</span>
             </span>
-            <span class="badge bg-danger text-white fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('on.sea.transit') }}'" role="button">
-                <i class="fas fa-exclamation-circle me-1"></i>Pending: $<span id="on-sea-pending-amount">{{ number_format($onSeaPendingAmount ?? 0, 2) }}</span>
-            </span>
         </div>
     </div>
 
@@ -1205,7 +1202,7 @@
     <div id="inventory-card" class="mt-2 mb-3 p-3 bg-white rounded shadow-sm border">
         <div class="d-flex align-items-center mb-2">
             <i class="fas fa-boxes text-primary me-2" style="font-size: 24px;"></i>
-            <h6 class="mb-0">Inventory</h6>
+            <h6 class="mb-0">Inventory &amp; Accounts</h6>
         </div>
         <div class="d-flex flex-wrap gap-2">
             <span class="badge bg-warning text-dark fs-6 p-2" style="font-weight: bold;" role="button">
@@ -1221,6 +1218,138 @@
                 <i class="fas fa-exclamation-circle me-1"></i>Pending: $<span id="inventory-pending-amount">0.00</span>
             </span>
         </div>
+    </div>
+
+    {{--
+        Department KPI Panels — visual cards for every operating department.
+        Same look & feel as the Inventory card above; each panel exposes four
+        zero-initialised badges (Members / Active / Completed / Pending) with
+        stable IDs so the backend can wire real counts in later. Two columns
+        on large screens collapse to one on mobile to keep things readable.
+    --}}
+    @php
+        $departmentPanels = [
+            ['title' => 'Advertisement Quantum & Quality', 'icon' => 'fa-bullhorn',         'slug' => 'ad-qq'],
+            ['title' => 'Shipping QQ',                     'icon' => 'fa-shipping-fast',    'slug' => 'shipping-qq'],
+            ['title' => 'Shipping Support QQ',             'icon' => 'fa-dolly-flatbed',    'slug' => 'shipping-support-qq'],
+            ['title' => 'Content Quantum & Quality',       'icon' => 'fa-file-alt',         'slug' => 'content-qq'],
+            ['title' => 'Listing Quantum & Quality',       'icon' => 'fa-list-alt',         'slug' => 'listing-qq'],
+            ['title' => 'Automation Software',             'icon' => 'fa-robot',            'slug' => 'automation-software'],
+            ['title' => 'Tech Support & Website',          'icon' => 'fa-laptop-code',      'slug' => 'tech-support'],
+            ['title' => 'Sr Manager Operations',           'icon' => 'fa-user-tie',         'slug' => 'sr-mgr-ops'],
+            ['title' => 'Marketing & Sales E-Com',         'icon' => 'fa-shopping-cart',    'slug' => 'ms-ecom'],
+            ['title' => 'Marketing & Sales Music Schools', 'icon' => 'fa-music',            'slug' => 'ms-music'],
+            ['title' => 'Marketing & Sales B2B',           'icon' => 'fa-handshake',        'slug' => 'ms-b2b'],
+            ['title' => 'Marketing & Sales Affiliate',     'icon' => 'fa-link',             'slug' => 'ms-affiliate'],
+            ['title' => 'Marketing & Sales Dropshipping',  'icon' => 'fa-dolly',            'slug' => 'ms-drop'],
+            ['title' => 'Customer Care Exec',              'icon' => 'fa-headset',          'slug' => 'cc-exec'],
+            ['title' => 'Customer Care Support',           'icon' => 'fa-life-ring',        'slug' => 'cc-support'],
+            ['title' => 'Warehouse Management',            'icon' => 'fa-warehouse',        'slug' => 'wh-mgmt'],
+            ['title' => 'Warehouse Support',               'icon' => 'fa-pallet',           'slug' => 'wh-support'],
+            ['title' => 'Management Operations',           'icon' => 'fa-tasks',            'slug' => 'mgmt-ops'],
+            ['title' => 'Ecom Executive 1',                'icon' => 'fa-user-cog',         'slug' => 'ecom-exec-1'],
+            ['title' => 'Ecom Executive 2',                'icon' => 'fa-user-cog',         'slug' => 'ecom-exec-2'],
+            ['title' => 'Ecom Executive 3',                'icon' => 'fa-user-cog',         'slug' => 'ecom-exec-3'],
+            ['title' => 'Pricing & Profits',               'icon' => 'fa-chart-line',       'slug' => 'pricing-profits'],
+            ['title' => 'Software Executive Support',      'icon' => 'fa-code',             'slug' => 'sw-exec-support'],
+            ['title' => 'Image Editor Optimiser',          'icon' => 'fa-image',            'slug' => 'image-editor'],
+            ['title' => 'Video Creator & Optimiser',       'icon' => 'fa-video',            'slug' => 'video-creator'],
+            ['title' => 'Sourcing & Purchase 1',           'icon' => 'fa-shopping-bag',     'slug' => 'sourcing-1'],
+            ['title' => 'Sourcing & Purchase 2',           'icon' => 'fa-shopping-bag',     'slug' => 'sourcing-2'],
+            ['title' => 'Sourcing and Purchase China',     'icon' => 'fa-globe-asia',       'slug' => 'sourcing-china'],
+            ['title' => 'Purchase Management',             'icon' => 'fa-cart-plus',        'slug' => 'purchase-mgmt'],
+            ['title' => 'Accounts',                        'icon' => 'fa-calculator',       'slug' => 'accounts'],
+            ['title' => 'HR',                              'icon' => 'fa-users',            'slug' => 'hr'],
+        ];
+    @endphp
+
+    <div class="mt-3 mb-2 ps-1 d-flex align-items-center">
+        <i class="fas fa-building text-secondary me-2"></i>
+        <h6 class="mb-0 text-muted text-uppercase" style="letter-spacing:.05em; font-size:.78rem;">
+            Department Panels
+        </h6>
+    </div>
+
+    <div class="row g-2 mb-3 department-panels-row">
+        @foreach ($departmentPanels as $dept)
+            {{-- Purchase Management gets the full Forecast Analysis "Row 3" value
+                 strip, so the dashboard mirrors the toolbar the purchase team
+                 lives in all day. Other departments keep the generic 4-badge
+                 KPI strip. The wider strip needs the full row width to read
+                 cleanly, so we override the column class for that one card. --}}
+            @php($isPurchaseMgmt = $dept['slug'] === 'purchase-mgmt')
+            <div class="{{ $isPurchaseMgmt ? 'col-12' : 'col-12 col-lg-6' }}">
+                <div id="dept-card-{{ $dept['slug'] }}" class="p-3 bg-white rounded shadow-sm border h-100">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="fas {{ $dept['icon'] }} text-primary me-2" style="font-size: 22px;"></i>
+                        <h6 class="mb-0">
+                            {{ $dept['title'] }}
+                            @if ($isPurchaseMgmt)
+                                <a href="{{ route('forecast.analysis') }}"
+                                   class="ms-2 small text-decoration-none"
+                                   title="Open Forecast Analysis">
+                                    <i class="fas fa-arrow-up-right-from-square"></i>
+                                </a>
+                            @endif
+                        </h6>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        @if ($isPurchaseMgmt)
+                            {{-- Mirrors forecastAnalysis.blade.php "Row 3: Value badges".
+                                 IDs are prefixed with `pm-` so they don't clash with the
+                                 originals on the Forecast Analysis page; the backend can
+                                 populate them on the dashboard whenever it's ready. --}}
+                            <span class="badge bg-success text-dark fs-6 p-2" style="font-weight: bold;" role="button" title="MSL × LP">
+                                MSL_LP: $<span id="pm-total-msl-lp">0.00</span>
+                            </span>
+                            <span class="badge bg-info text-dark fs-6 p-2" style="font-weight: bold;" role="button" title="MSL × AMZ price ÷ 4">
+                                MSL_SP: $<span id="pm-total-msl-sp">0</span>
+                            </span>
+                            <span class="badge bg-info text-dark fs-6 p-2" style="font-weight: bold;" role="button" title="INV Value">
+                                INV: $<span id="pm-total-inv">0</span>
+                            </span>
+                            <span class="badge bg-warning text-dark fs-6 p-2" style="font-weight: bold;" role="button" title="LP Value">
+                                LP: $<span id="pm-total-lp">0</span>
+                            </span>
+                            <span class="badge bg-warning text-dark fs-6 p-2" style="font-weight: bold;" role="button" title="2 Ord × CP">
+                                Ord: $<span id="pm-total-ord">0</span>
+                            </span>
+                            <span class="badge bg-secondary text-white fs-6 p-2" style="font-weight: bold;" role="button" title="Missing forecast.analysis">
+                                Missing: $<span id="pm-total-missing">0</span>
+                            </span>
+                            <span class="badge bg-warning text-dark fs-6 p-2" style="font-weight: bold;" role="button" title="MIP Value">
+                                MIP: $<span id="pm-total-mip">0</span>
+                            </span>
+                            <span class="badge bg-warning text-dark fs-6 p-2" style="font-weight: bold;" role="button" title="R2S Value">
+                                R2S: $<span id="pm-total-r2s">0</span>
+                            </span>
+                            <span class="badge bg-secondary text-white fs-6 p-2" style="font-weight: bold;" role="button" title="Transit Value">
+                                Trn: $<span id="pm-total-trn">0</span>
+                            </span>
+                            <span class="badge bg-info text-dark fs-6 p-2" style="font-weight: bold;" role="button" title="Total CBM — Σ (MSL × CBM/unit)">
+                                CBM: <span id="pm-total-cbm">0</span>
+                            </span>
+                            <span class="badge bg-danger text-white fs-6 p-2" style="font-weight: bold;" role="button" title="Child SKUs with INV ≤ 0">
+                                0: <span id="pm-zero-stock">0</span>
+                            </span>
+                        @else
+                            <span class="badge bg-warning text-dark fs-6 p-2" style="font-weight: bold;" role="button">
+                                <i class="fas fa-users me-1"></i>Members: <span id="dept-members-{{ $dept['slug'] }}">0</span>
+                            </span>
+                            <span class="badge bg-info text-white fs-6 p-2" style="font-weight: bold;" role="button">
+                                <i class="fas fa-tasks me-1"></i>Active: <span id="dept-active-{{ $dept['slug'] }}">0</span>
+                            </span>
+                            <span class="badge bg-success text-white fs-6 p-2" style="font-weight: bold;" role="button">
+                                <i class="fas fa-check-circle me-1"></i>Completed: <span id="dept-completed-{{ $dept['slug'] }}">0</span>
+                            </span>
+                            <span class="badge bg-danger text-white fs-6 p-2" style="font-weight: bold;" role="button">
+                                <i class="fas fa-clock me-1"></i>Pending: <span id="dept-pending-{{ $dept['slug'] }}">0</span>
+                            </span>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        @endforeach
     </div>
 
     <div class="row g-2 dashboard-charts-row align-items-stretch mb-1">

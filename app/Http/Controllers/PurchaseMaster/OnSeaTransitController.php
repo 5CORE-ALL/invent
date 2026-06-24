@@ -23,7 +23,7 @@ class OnSeaTransitController extends Controller
             }
         }
 
-        $onSeaTransitData = OnSeaTransit::all()->map(function ($item) use ($chinaLoads) {
+        $onSeaTransitData = OnSeaTransit::whereNull('archived_at')->get()->map(function ($item) use ($chinaLoads) {
             $chinaLoad = $chinaLoads->firstWhere('container_sl_no', $item->container_sl_no);
             $invoiceValue = $item->invoice_value ?? 0;
             $paid = $item->paid ?? 0;
@@ -49,28 +49,42 @@ class OnSeaTransitController extends Controller
                 'remarks' => $item->remarks,
                 'status' => $item->status,
                 'invoice_value' => $item->invoice_value,
+                'freight' => $item->freight,
                 'paid' => $item->paid,
                 'balance' => $balance,
                 'details' => $item->details,
             ];
         });
         
-        $totalCount = OnSeaTransit::count();
-        $arrivedCount = OnSeaTransit::where('status', 'Arrived')->count();
-        $planningCount = OnSeaTransit::where('status', 'Planning')->count();
+        // All count/sum aggregates must ignore archived rows so the badges
+        // stay in sync with the visible table (whereNull('archived_at')).
+        $activeBase = fn () => OnSeaTransit::whereNull('archived_at');
+
+        $totalCount = $activeBase()->count();
+        $arrivedCount = $activeBase()->where('status', 'Arrived')->count();
+        $planningCount = $activeBase()->where('status', 'Planning')->count();
         $remainingCount = $totalCount - ($arrivedCount + $planningCount);
-        
+
         // Calculate total invoice value for filtered containers (all except Arrived and Planning)
-        $totalInvoiceValue = OnSeaTransit::where(function($query) {
+        $totalInvoiceValue = $activeBase()->where(function ($query) {
             $query->whereNull('status')
                   ->orWhereNotIn('status', ['Arrived', 'Planning']);
         })->sum('invoice_value');
-        
+
         // Calculate total pending amount (balance) for filtered containers
-        $totalPendingAmount = OnSeaTransit::where(function($query) {
+        $totalPendingAmount = $activeBase()->where(function ($query) {
             $query->whereNull('status')
                   ->orWhereNotIn('status', ['Arrived', 'Planning']);
         })->sum('balance');
+
+        // "Value" badge — sum of the table's Value column (invoice_value) for
+        // every row the user actually sees. The Tabulator front-end filters
+        // out only 'Arrived' rows (see updateBadgeCounts), so we mirror that
+        // here for the initial paint; the JS recomputes after any inline edit.
+        $totalColumnValue = $activeBase()->where(function ($query) {
+            $query->whereNull('status')
+                  ->orWhere('status', '!=', 'Arrived');
+        })->sum('invoice_value');
 
         $chinaLoadMap = $chinaLoads->keyBy('container_sl_no')->map(function ($load) {
             return [
@@ -90,6 +104,7 @@ class OnSeaTransitController extends Controller
             'remainingCount' => $remainingCount,
             'totalInvoiceValue' => $totalInvoiceValue,
             'totalPendingAmount' => $totalPendingAmount,
+            'totalColumnValue' => $totalColumnValue,
         ]);
     }
 
@@ -178,6 +193,101 @@ class OnSeaTransitController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Value synced successfully'
+        ]);
+    }
+
+    /**
+     * Archive a row from the On Sea Transit board.  Sets `archived_at = now()`
+     * so the row stops appearing in the main view but stays in the DB.
+     * Looked up by `id` (preferred) with a `container_sl_no` fallback.
+     */
+    public function archive(Request $request)
+    {
+        $id = $request->input('id');
+        $containerSlNo = $request->input('container_sl_no');
+
+        $record = $id
+            ? OnSeaTransit::find($id)
+            : ($containerSlNo ? OnSeaTransit::where('container_sl_no', $containerSlNo)->first() : null);
+
+        if (!$record) {
+            return response()->json(['success' => false, 'message' => 'Row not found'], 404);
+        }
+
+        $record->archived_at = now();
+        $record->save();
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Restore a previously archived row.  Symmetric to archive() — clears
+     * archived_at so the row reappears on the board.
+     */
+    public function restore(Request $request)
+    {
+        $id = $request->input('id');
+        $containerSlNo = $request->input('container_sl_no');
+
+        $record = $id
+            ? OnSeaTransit::find($id)
+            : ($containerSlNo ? OnSeaTransit::where('container_sl_no', $containerSlNo)->first() : null);
+
+        if (!$record) {
+            return response()->json(['success' => false, 'message' => 'Row not found'], 404);
+        }
+
+        $record->archived_at = null;
+        $record->save();
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Bulk-update every editable field on a single row in one DB round-trip.
+     * Powers the "Edit" pencil button in the Action column, which lets the
+     * user fix every column at once instead of clicking each cell.
+     *
+     * Only fields present in the request body are touched, so partial edits
+     * (e.g. just changing remarks + freight) leave the rest intact. Balance
+     * is recomputed from invoice_value/paid the same way inlineUpdateOrCreate
+     * does it, keeping the Due column honest.
+     */
+    public function updateRow(Request $request)
+    {
+        $containerSlNo = $request->input('container_sl_no');
+        if (!$containerSlNo) {
+            return response()->json(['success' => false, 'message' => 'container_sl_no is required'], 422);
+        }
+
+        $record = OnSeaTransit::firstOrNew(['container_sl_no' => $containerSlNo]);
+
+        $editable = [
+            'bl_check', 'bl_link', 'isf', 'isf_usa_agent', 'etd', 'eta_port',
+            'port_arrival', 'eta_date_ohio', 'duty_calcu', 'invoice_send_to_dominic',
+            'arrival_notice_email', 'remarks', 'invoice_value', 'freight', 'paid',
+            'details', 'status',
+        ];
+
+        foreach ($editable as $field) {
+            if ($request->has($field)) {
+                $value = $request->input($field);
+                // Coerce empty strings to null so DECIMAL/DATE columns stay clean.
+                $record->{$field} = ($value === '' ? null : $value);
+            }
+        }
+
+        // Keep balance derived (matches inlineUpdateOrCreate's behaviour).
+        $invoiceValue = $record->invoice_value ?? 0;
+        $paid = $record->paid ?? 0;
+        $record->balance = $invoiceValue - $paid;
+
+        $record->save();
+
+        return response()->json([
+            'success' => true,
+            'balance' => $record->balance,
+            'record'  => $record->only(array_merge($editable, ['id', 'container_sl_no', 'balance'])),
         ]);
     }
 }

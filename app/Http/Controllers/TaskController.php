@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Badge;
 use App\Models\DesignationMgrCheckpoint;
 use App\Models\DesignationRrCheckpoint;
 use App\Models\DesignationRrItem;
@@ -10,6 +11,7 @@ use App\Models\ManagerJunior;
 use App\Models\PerformanceReview;
 use App\Models\Task;
 use App\Models\User;
+use App\Models\UserBadge;
 use App\Models\UserGeneralChecklistProgress;
 use App\Models\UserMgrCheckpointProgress;
 use App\Models\UserRR;
@@ -587,6 +589,23 @@ class TaskController extends Controller
             $members->pluck('designation')->filter()->unique()->values()->all()
         );
 
+        // Pre-compute who the current viewer is allowed to mutate (their tagged
+        // juniors, plus rule-based members). Pulled in one query to avoid an
+        // N+1 over canManageRow() per row.
+        $viewerForPerm = Auth::user();
+        $viewerIsFullAccess = $this->canEditOrgTags($viewerForPerm);
+        $viewerIsManager = $viewerForPerm
+            && strtolower((string) ($viewerForPerm->org_level ?? '')) === 'mgr';
+        $viewerJuniorIds = [];
+        if ($viewerIsManager) {
+            $viewerJuniorIds = array_flip(
+                ManagerJunior::where('manager_user_id', $viewerForPerm->id)
+                    ->pluck('junior_user_id')
+                    ->map(fn ($v) => (int) $v)
+                    ->all()
+            );
+        }
+
         // Fetch TeamLogger data for current month
         $teamLoggerData = [];
         try {
@@ -611,6 +630,19 @@ class TaskController extends Controller
             $tatCount = (int) $counts['tat_count'];
             $tatAvgDays = $tatCount > 0 ? round($counts['tat_sum_days'] / $tatCount, 1) : null;
 
+            // Resolve can_manage in PHP using the prefetched index, so a 50-
+            // row table doesn't issue 50 extra junior lookups.
+            $canManage = false;
+            if ($viewerIsFullAccess) {
+                $canManage = true;
+            } elseif ($viewerForPerm && (int) $viewerForPerm->id === (int) $member->id) {
+                $canManage = true; // Own row.
+            } elseif ($viewerIsManager) {
+                $memberLevel = strtolower((string) ($member->org_level ?? ''));
+                $canManage = $memberLevel === 'exec' || $memberLevel === ''
+                    || isset($viewerJuniorIds[(int) $member->id]);
+            }
+
             $rows[] = [
                 'user_id' => $member->id,
                 'team_member' => $member->name,
@@ -628,6 +660,7 @@ class TaskController extends Controller
                 'score_clrr' => (int) ($scoresByUser[$member->id]['clrr'] ?? 0),
                 'score_clmgr' => (int) ($scoresByUser[$member->id]['clmgr'] ?? 0),
                 'score_clgen' => (int) ($scoresByUser[$member->id]['clgen'] ?? 0),
+                'can_manage' => $canManage,
                 'a_task' => $counts['a_task'],
                 'a_task_h' => (int) round($counts['a_task_h'] / 60),
                 'need_approval' => $counts['need_approval'],
@@ -4319,6 +4352,14 @@ class TaskController extends Controller
             'note' => 'nullable|string|max:2000',
         ]);
 
+        $target = User::find($validated['user_id']);
+        if (! $this->canManageRow(Auth::user(), $target)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to change R&R progress for this user.',
+            ], 403);
+        }
+
         $payload = [];
         if (array_key_exists('status', $validated) && $validated['status'] !== null) {
             $payload['status'] = $validated['status'];
@@ -5013,6 +5054,14 @@ class TaskController extends Controller
             'note' => 'nullable|string|max:2000',
         ]);
 
+        $target = User::find($validated['user_id']);
+        if (! $this->canManageRow(Auth::user(), $target)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to change CL R&R for this user.',
+            ], 403);
+        }
+
         $progress = UserRrCheckpointProgress::updateOrCreate(
             [
                 'user_id' => $validated['user_id'],
@@ -5363,6 +5412,14 @@ class TaskController extends Controller
             'checked' => 'required|boolean',
             'note' => 'nullable|string|max:2000',
         ]);
+
+        $target = User::find($validated['user_id']);
+        if (! $this->canManageRow(Auth::user(), $target)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to change CL Gen for this user.',
+            ], 403);
+        }
 
         $progress = UserGeneralChecklistProgress::updateOrCreate(
             [
@@ -5901,6 +5958,14 @@ class TaskController extends Controller
             'note' => 'nullable|string|max:2000',
         ]);
 
+        $target = User::find($validated['user_id']);
+        if (! $this->canManageRow(Auth::user(), $target)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to change CL Mgr for this user.',
+            ], 403);
+        }
+
         $progress = UserMgrCheckpointProgress::updateOrCreate(
             [
                 'user_id' => $validated['user_id'],
@@ -6341,6 +6406,40 @@ class TaskController extends Controller
     }
 
     /**
+     * Can $viewer mutate per-user data for $target?
+     *
+     * Rules (matches the "manager can only manage juniors or execs"
+     * business rule from the Task Summary):
+     *  - Admin / Director / Shobha → yes.
+     *  - $viewer === $target        → yes (own row).
+     *  - Manager → yes if target is their junior (manager_juniors pivot)
+     *                  OR target's org_level is Exec or empty.
+     *  - Anyone else → no.
+     */
+    protected function canManageRow(?User $viewer, User $target): bool
+    {
+        if (! $viewer) {
+            return false;
+        }
+        if ($this->canEditOrgTags($viewer)) {
+            return true;
+        }
+        if ((int) $viewer->id === (int) $target->id) {
+            return true;
+        }
+        if (strtolower((string) ($viewer->org_level ?? '')) === 'mgr') {
+            $targetLevel = strtolower((string) ($target->org_level ?? ''));
+            if ($targetLevel === 'exec' || $targetLevel === '') {
+                return true;
+            }
+            return ManagerJunior::where('manager_user_id', $viewer->id)
+                ->where('junior_user_id', $target->id)
+                ->exists();
+        }
+        return false;
+    }
+
+    /**
      * Can $viewer set $target's org_level to $newLevel? See updateUserOrgLevel
      * for the permission matrix.
      */
@@ -6349,23 +6448,21 @@ class TaskController extends Controller
         if (! $viewer) {
             return false;
         }
-
-        // Anyone in the "edit any tag" set (admin / director / shobha) can
-        // also reassign org_level on any user, to any value.
         if ($this->canEditOrgTags($viewer)) {
             return true;
         }
 
         $viewerLevel = strtolower((string) ($viewer->org_level ?? ''));
         if ($viewerLevel === 'mgr') {
-            $targetLevel = strtolower((string) ($target->org_level ?? ''));
+            // Row gating: must be either an Exec/no-role OR an assigned junior.
+            if (! $this->canManageRow($viewer, $target)) {
+                return false;
+            }
+            // Value gating: managers can only set the new value to Exec / empty.
             $newLevelL = strtolower((string) ($newLevel ?? ''));
-            $targetIsExecOrNone = $targetLevel === 'exec' || $targetLevel === '';
-            $newIsExecOrNone = $newLevelL === 'exec' || $newLevelL === '';
-            return $targetIsExecOrNone && $newIsExecOrNone;
+            return $newLevelL === 'exec' || $newLevelL === '';
         }
 
-        // Exec / no role → not allowed.
         return false;
     }
 
@@ -6377,13 +6474,14 @@ class TaskController extends Controller
         }
         $viewerLevel = strtolower((string) ($viewer->org_level ?? ''));
         if ($viewerLevel === 'mgr') {
-            $targetLevel = strtolower((string) ($target->org_level ?? ''));
-            $newLevelL = strtolower((string) ($newLevel ?? ''));
-            if (! ($targetLevel === 'exec' || $targetLevel === '')) {
-                return 'Managers can only change Executives. Ask a Director to change ' . ($target->name ?? 'this user') . '.';
+            if (! $this->canManageRow($viewer, $target)) {
+                return 'Managers can only change roles for their tagged juniors or Executives. Ask a Director to change '
+                    . ($target->name ?? 'this user') . '.';
             }
+            $newLevelL = strtolower((string) ($newLevel ?? ''));
             if (! ($newLevelL === 'exec' || $newLevelL === '')) {
-                return 'Managers can only assign the Executive level. Ask a Director to promote ' . ($target->name ?? 'this user') . '.';
+                return 'Managers can only assign the Executive level. Ask a Director to promote '
+                    . ($target->name ?? 'this user') . '.';
             }
         }
         return 'You are not allowed to change this user\'s role.';
@@ -6449,6 +6547,219 @@ class TaskController extends Controller
                 ];
             })->values(),
         ]);
+    }
+
+    /**
+     * ---------------------------------------------------------------------
+     * KPI Badges — pool + per-user awards
+     * ---------------------------------------------------------------------
+     *
+     * Powers the Task Summary "KPI" column magnifier. Returns the badges
+     * currently tagged on the target user + the full available pool so the
+     * modal can render both lists.
+     *
+     * Permissions:
+     *  - Viewing is allowed to anyone who can see the row (already gated
+     *    by getTaskSummaryVisibleUserIds()).
+     *  - Awarding / removing is gated by canManageRow() — admin / director /
+     *    shobha can do it for anyone; manager only for juniors and execs.
+     *  - Creating / deleting badge types in the pool is gated by
+     *    canEditOrgTags() (admin / director / shobha only).
+     */
+    public function getUserBadges(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+        ]);
+
+        $viewer = Auth::user();
+        $visible = $this->getTaskSummaryVisibleUserIds($viewer);
+        if ($visible !== null && ! in_array((int) $validated['user_id'], $visible, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have access to this user.',
+            ], 403);
+        }
+
+        $user = User::find($validated['user_id']);
+        if (! $user) {
+            return response()->json(['success' => false, 'message' => 'User not found.'], 404);
+        }
+
+        $awards = UserBadge::query()
+            ->where('user_id', $user->id)
+            ->with(['badge', 'awardedBy:id,name'])
+            ->orderByDesc('awarded_at')
+            ->get();
+
+        $pool = Badge::query()->orderBy('name')->get();
+        $assignedIds = $awards->pluck('badge_id')->all();
+        $availablePool = $pool->reject(fn ($b) => in_array($b->id, $assignedIds, true))->values();
+
+        return response()->json([
+            'success' => true,
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'designation' => $user->designation,
+            ],
+            'can_award' => $this->canManageRow($viewer, $user),
+            'can_manage_pool' => $this->canEditOrgTags($viewer),
+            'awards' => $awards->map(function (UserBadge $a) {
+                $b = $a->badge;
+                return [
+                    'award_id' => $a->id,
+                    'badge_id' => $a->badge_id,
+                    'name' => $b ? $b->name : '—',
+                    'icon' => $b ? $b->icon : 'ri-medal-line',
+                    'color' => $b ? $b->color : '#0d9488',
+                    'description' => $b ? $b->description : null,
+                    'note' => $a->note,
+                    'awarded_at' => $a->awarded_at ? $a->awarded_at->toDateTimeString() : null,
+                    'awarded_by' => optional($a->awardedBy)->name,
+                ];
+            })->values(),
+            'available' => $availablePool->map(function (Badge $b) {
+                return [
+                    'id' => $b->id,
+                    'name' => $b->name,
+                    'icon' => $b->icon,
+                    'color' => $b->color,
+                    'description' => $b->description,
+                ];
+            })->values(),
+        ]);
+    }
+
+    /** Tag an existing badge on a user (idempotent). */
+    public function awardUserBadge(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'badge_id' => 'required|integer|exists:badges,id',
+            'note' => 'nullable|string|max:500',
+        ]);
+
+        $viewer = Auth::user();
+        $target = User::find($validated['user_id']);
+        if (! $this->canManageRow($viewer, $target)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to award badges to this user.',
+            ], 403);
+        }
+
+        $award = UserBadge::firstOrCreate(
+            [
+                'user_id' => $validated['user_id'],
+                'badge_id' => $validated['badge_id'],
+            ],
+            [
+                'note' => $validated['note'] ?? null,
+                'awarded_by_user_id' => optional($viewer)->id,
+                'awarded_at' => now(),
+            ]
+        );
+
+        // If it already existed, refresh the note if a new one was provided.
+        if (! $award->wasRecentlyCreated && array_key_exists('note', $validated)) {
+            $award->note = $validated['note'];
+            $award->save();
+        }
+
+        $badge = Badge::find($validated['badge_id']);
+        return response()->json([
+            'success' => true,
+            'award' => [
+                'award_id' => $award->id,
+                'badge_id' => $award->badge_id,
+                'name' => $badge ? $badge->name : '—',
+                'icon' => $badge ? $badge->icon : 'ri-medal-line',
+                'color' => $badge ? $badge->color : '#0d9488',
+                'description' => $badge ? $badge->description : null,
+                'note' => $award->note,
+                'awarded_at' => $award->awarded_at ? $award->awarded_at->toDateTimeString() : null,
+                'awarded_by' => optional($viewer)->name,
+            ],
+        ]);
+    }
+
+    /** Remove a badge from a user. */
+    public function removeUserBadge(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'badge_id' => 'required|integer|exists:badges,id',
+        ]);
+
+        $viewer = Auth::user();
+        $target = User::find($validated['user_id']);
+        if (! $this->canManageRow($viewer, $target)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to remove badges from this user.',
+            ], 403);
+        }
+
+        UserBadge::where('user_id', $validated['user_id'])
+            ->where('badge_id', $validated['badge_id'])
+            ->delete();
+
+        return response()->json(['success' => true]);
+    }
+
+    /** Create a new badge in the pool (admin / director / shobha only). */
+    public function createBadge(Request $request): JsonResponse
+    {
+        $viewer = Auth::user();
+        if (! $this->canEditOrgTags($viewer)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only Directors / admins can create new badges.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:80|unique:badges,name',
+            'icon' => 'nullable|string|max:60',
+            'color' => 'nullable|string|max:16',
+            'description' => 'nullable|string|max:500',
+        ]);
+
+        $b = Badge::create([
+            'name' => trim($validated['name']),
+            'icon' => ! empty($validated['icon']) ? trim($validated['icon']) : 'ri-medal-line',
+            'color' => ! empty($validated['color']) ? trim($validated['color']) : '#0d9488',
+            'description' => isset($validated['description']) ? trim($validated['description']) : null,
+            'created_by' => optional($viewer)->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'badge' => [
+                'id' => $b->id,
+                'name' => $b->name,
+                'icon' => $b->icon,
+                'color' => $b->color,
+                'description' => $b->description,
+            ],
+        ]);
+    }
+
+    /** Delete a badge from the pool (cascades all awards). Director-only. */
+    public function deleteBadge(int $id): JsonResponse
+    {
+        $viewer = Auth::user();
+        if (! $this->canEditOrgTags($viewer)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only Directors / admins can delete badges.',
+            ], 403);
+        }
+        $b = Badge::findOrFail($id);
+        $b->delete();
+        return response()->json(['success' => true]);
     }
 
     protected function fallbackMgrChecklistStarterSet(): array

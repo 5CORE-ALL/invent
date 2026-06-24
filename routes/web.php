@@ -4236,6 +4236,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/on-sea-transit/inline-update-or-create', [OnSeaTransitController::class, 'inlineUpdateOrCreate']);
     Route::post('/on-sea-transit/sync-value', [OnSeaTransitController::class, 'syncValue']);
     Route::get('/on-sea-transit/details-history/{id}', [OnSeaTransitController::class, 'getDetailsHistory']);
+    Route::post('/on-sea-transit/archive', [OnSeaTransitController::class, 'archive'])->name('on.sea.transit.archive');
+    Route::post('/on-sea-transit/restore', [OnSeaTransitController::class, 'restore'])->name('on.sea.transit.restore');
+    Route::post('/on-sea-transit/update-row', [OnSeaTransitController::class, 'updateRow'])->name('on.sea.transit.update-row');
 
     // On Road Transit
     Route::get('/on-road-transit', [OnRoadTransitController::class, 'index'])->name('on.road.transit');
@@ -5900,6 +5903,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tasks/mgr-tags', [\App\Http\Controllers\TaskController::class, 'getManagerJuniorsForTags'])->name('tasks.mgrTags.get');
     Route::get('/tasks/user-dashboard', [\App\Http\Controllers\TaskController::class, 'getUserDashboard'])->name('tasks.userDashboard.get');
     Route::get('/tasks/user-score-history', [\App\Http\Controllers\TaskController::class, 'getUserScoreHistory'])->name('tasks.userScoreHistory.get');
+    // KPI Badges — pool + per-user awards (Task Summary "KPI" column)
+    Route::get('/tasks/user-badges', [\App\Http\Controllers\TaskController::class, 'getUserBadges'])->name('tasks.userBadges.get');
+    Route::post('/tasks/user-badges/award', [\App\Http\Controllers\TaskController::class, 'awardUserBadge'])->name('tasks.userBadges.award');
+    Route::delete('/tasks/user-badges/award', [\App\Http\Controllers\TaskController::class, 'removeUserBadge'])->name('tasks.userBadges.remove');
+    Route::post('/tasks/badges', [\App\Http\Controllers\TaskController::class, 'createBadge'])->name('tasks.badges.create');
+    Route::delete('/tasks/badges/{id}', [\App\Http\Controllers\TaskController::class, 'deleteBadge'])->whereNumber('id')->name('tasks.badges.delete');
     Route::post('/tasks/upload-image', [\App\Http\Controllers\TaskController::class, 'uploadImage'])->name('tasks.uploadImage');
     Route::get('/tasks/training-video', [\App\Http\Controllers\TaskController::class, 'getTrainingVideo'])->name('tasks.trainingVideo.get');
     Route::post('/tasks/training-video', [\App\Http\Controllers\TaskController::class, 'saveTrainingVideo'])->name('tasks.trainingVideo.save');

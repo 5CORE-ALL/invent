@@ -235,7 +235,13 @@
                             <i class="fas fa-dollar-sign me-2"></i>$<span id="totalValueBadge">{{ number_format($totalInvoiceValue, 0) }}</span>
                         </span>
                         <span class="badge bg-danger text-white" style="font-size: 1.1rem; padding: 0.75rem 1.25rem; flex: 1; min-width: 150px;">
-                            <i class="fas fa-exclamation-circle me-2"></i>Pending: $<span id="totalPendingBadge">{{ number_format($totalPendingAmount ?? 0, 0) }}</span>
+                            <i class="fas fa-exclamation-circle me-2"></i>Due: $<span id="totalPendingBadge">{{ number_format($totalPendingAmount ?? 0, 0) }}</span>
+                        </span>
+                        {{-- "Value" badge — total of the table's Value column
+                             (invoice_value) across every visible row (Arrived
+                             excluded, same filter as the Tabulator view). --}}
+                        <span class="badge text-white" style="font-size: 1.1rem; padding: 0.75rem 1.25rem; flex: 1; min-width: 150px; background-color: #6366f1;">
+                            <i class="fas fa-coins me-2"></i>Value: $<span id="totalColumnValueBadge">{{ number_format($totalColumnValue ?? 0, 0) }}</span>
                         </span>
                     </div>
                     
@@ -355,6 +361,150 @@
   </div>
 </div>
 
+{{--
+    Row-level "Edit All Columns" modal opened by the Action column pencil
+    button.  Pre-populated from the Tabulator row data; submit POSTs the
+    whole form to /on-sea-transit/update-row which writes only the fields
+    that are present (so leaving a field untouched still works).
+--}}
+<div class="modal fade" id="ostEditRowModal" tabindex="-1" aria-labelledby="ostEditRowModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="ostEditRowModalLabel">
+          <i class="fas fa-pen me-2"></i>Edit row — <span id="ostEditRowSlLabel">—</span>
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="ostEditRowForm" class="row g-3">
+          <input type="hidden" name="id" id="ostEditRowId">
+          <input type="hidden" name="container_sl_no" id="ostEditRowContainerSlNo">
+
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Container SL No.</label>
+            <input type="text" class="form-control" id="ostEditRowContainerSlNoDisplay" disabled>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Status</label>
+            <select name="status" class="form-select">
+              <option value="">—</option>
+              <option value="Planning">Pre-Load</option>
+              <option value="On Sea">On Sea</option>
+              <option value="Landed">Landed</option>
+              <option value="Arrived">Arrived</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">BL check</label>
+            <select name="bl_check" class="form-select">
+              <option value="">—</option>
+              <option value="Pending">Pending</option>
+              <option value="Verified">Verified</option>
+            </select>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">BL link</label>
+            <input type="url" name="bl_link" class="form-control" placeholder="https://…">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">ISF</label>
+            <select name="isf" class="form-select">
+              <option value="">—</option>
+              <option value="China Done">China Done</option>
+              <option value="USA Done">USA Done</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">ISF (USA agent)</label>
+            <select name="isf_usa_agent" class="form-select">
+              <option value="">—</option>
+              <option value="Pending">Pending</option>
+              <option value="Done">Done</option>
+            </select>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">ETD</label>
+            <input type="date" name="etd" class="form-control">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">ETA Port</label>
+            <input type="date" name="eta_port" class="form-control">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Port Arrival</label>
+            <input type="date" name="port_arrival" class="form-control">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">ETA Ohio</label>
+            <input type="date" name="eta_date_ohio" class="form-control">
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Duty</label>
+            <select name="duty_calcu" class="form-select">
+              <option value="">—</option>
+              <option value="Pending">Pending</option>
+              <option value="Done">Done</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Invoice → Dominic</label>
+            <select name="invoice_send_to_dominic" class="form-select">
+              <option value="">—</option>
+              <option value="Pending">Pending</option>
+              <option value="Done">Done</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Arrival Notice</label>
+            <select name="arrival_notice_email" class="form-select">
+              <option value="">—</option>
+              <option value="Pending">Pending</option>
+              <option value="Done">Done</option>
+            </select>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Value ($)</label>
+            <input type="number" name="invoice_value" step="0.01" min="0" class="form-control">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Freight ($)</label>
+            <input type="number" name="freight" step="0.01" min="0" class="form-control">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Paid ($)</label>
+            <input type="number" name="paid" step="0.01" min="0" class="form-control">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Due ($)</label>
+            <input type="number" id="ostEditRowBalanceDisplay" class="form-control" disabled>
+            <small class="text-muted">Auto-calculated (Value − Paid)</small>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Remarks</label>
+            <textarea name="remarks" rows="3" class="form-control"></textarea>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Details</label>
+            <textarea name="details" rows="3" class="form-control"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="ostEditRowSaveBtn">
+          <i class="fas fa-save me-1"></i>Save changes
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 @endsection
 @section('script')
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -397,9 +547,16 @@ document.addEventListener('DOMContentLoaded', function () {
         const totalPendingAmount = visibleData
             .filter(item => item.status !== 'Planning' && item.status !== null && item.status !== '')
             .reduce((sum, item) => sum + (parseFloat(item.balance) || 0), 0);
-        
+
+        // "Value" badge — sum of every visible row's invoice_value (Arrived is
+        // already filtered out of visibleData above, so this matches what the
+        // user actually sees in the Value column at the row level).
+        const totalColumnValue = visibleData
+            .reduce((sum, item) => sum + (parseFloat(item.invoice_value) || 0), 0);
+
         console.log('Total Invoice Value:', totalInvoiceValue);
         console.log('Total Pending Amount:', totalPendingAmount);
+        console.log('Total Column Value:', totalColumnValue);
         
         const planningBadge = document.querySelector('.badge.bg-warning');
         if (planningBadge) {
@@ -429,6 +586,11 @@ document.addEventListener('DOMContentLoaded', function () {
         const totalPendingBadge = document.getElementById('totalPendingBadge');
         if (totalPendingBadge) {
             totalPendingBadge.textContent = Math.round(totalPendingAmount).toLocaleString();
+        }
+
+        const totalColumnValueBadge = document.getElementById('totalColumnValueBadge');
+        if (totalColumnValueBadge) {
+            totalColumnValueBadge.textContent = Math.round(totalColumnValue).toLocaleString();
         }
     }
     
@@ -966,9 +1128,62 @@ document.addEventListener('DOMContentLoaded', function () {
                     return `<div class="text-center text-muted">-</div>`;
                 }
             },
-            { 
-                title: "Pending", 
-                field: "balance", 
+            {
+                /* Freight cost per container. Same look/feel as the Value
+                   column (green badge), but editable inline — typing a new
+                   number posts to /on-sea-transit/inline-update-or-create
+                   under the `freight` column, which Eloquent persists via
+                   the `freight` fillable. Empty cells render a muted dash. */
+                title: "Freight",
+                field: "freight",
+                headerSort: false,
+                minWidth: 110,
+                editor: "input",
+                formatter: function(cell) {
+                    const raw = cell.getValue();
+                    const value = parseFloat(raw);
+                    const rounded = isNaN(value) ? 0 : Math.round(value);
+                    if (rounded > 0) {
+                        return `
+                            <div class="d-flex justify-content-center align-items-center">
+                                <span class="badge bg-info text-white fw-bold" style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">
+                                    $${rounded.toLocaleString()}
+                                </span>
+                            </div>`;
+                    }
+                    return `<div class="text-center text-muted">-</div>`;
+                },
+                cellEdited: function(cell) {
+                    const newValue = cell.getValue();
+                    const rowData = cell.getRow().getData();
+
+                    fetch('/on-sea-transit/inline-update-or-create', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({
+                            container_sl_no: rowData.container_sl_no,
+                            column: 'freight',
+                            value: newValue
+                        })
+                    }).then(response => response.json())
+                    .then(data => {
+                        if (!data || data.success === false) {
+                            alert('Failed to save Freight');
+                            return;
+                        }
+                        const dataIndex = tableData.findIndex(item => item.container_sl_no === rowData.container_sl_no);
+                        if (dataIndex !== -1) {
+                            tableData[dataIndex].freight = newValue;
+                        }
+                    }).catch(() => alert('Failed to save Freight'));
+                }
+            },
+            {
+                title: "Due",
+                field: "balance",
                 headerSort: false,
                 minWidth: 100,
                 formatter: function(cell) {
@@ -1058,6 +1273,46 @@ document.addEventListener('DOMContentLoaded', function () {
                         `;
                     }
                 },
+            },
+            {
+                /* Action column — one place to do row-wide things:
+                     • Edit: opens an "all columns" modal pre-filled with the
+                       row's current values, so the user doesn't have to click
+                       each cell individually.
+                     • Archive: soft-hides the row from the board (controller
+                       writes archived_at = now()) after a confirm.
+                   Both buttons read the row id / container_sl_no from the
+                   data attributes; the click handlers live in the JS block
+                   further down the file. */
+                title: "Action",
+                field: "_action",
+                headerSort: false,
+                hozAlign: "center",
+                minWidth: 110,
+                frozen: false,
+                formatter: function(cell) {
+                    const rowData = cell.getRow().getData();
+                    const id  = rowData.id ?? '';
+                    const sl  = rowData.container_sl_no ?? '';
+                    return `
+                        <div class="d-flex justify-content-center align-items-center gap-1">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-primary ost-edit-btn"
+                                    data-id="${id}"
+                                    data-sl="${sl}"
+                                    title="Edit all columns for container ${sl}">
+                                <i class="fas fa-pen"></i>
+                            </button>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-danger ost-archive-btn"
+                                    data-id="${id}"
+                                    data-sl="${sl}"
+                                    title="Archive this row">
+                                <i class="fas fa-box-archive"></i>
+                            </button>
+                        </div>
+                    `;
+                }
             }
         ],
     });
@@ -1065,6 +1320,151 @@ document.addEventListener('DOMContentLoaded', function () {
     // Initialize badge counts on page load
     console.log('Table Data:', tableData);
     updateBadgeCounts();
+
+    /* ──────────────────────────────────────────────────────────────────────
+       Action column wiring — Edit (pencil) & Archive (box) buttons.
+       Uses event delegation off the table container so newly-rendered rows
+       (after pagination, filter, etc.) keep working without rebinding.
+       ────────────────────────────────────────────────────────────────────── */
+    const ostCsrf       = '{{ csrf_token() }}';
+    const ostArchiveUrl = '{{ route('on.sea.transit.archive') }}';
+    const ostUpdateUrl  = '{{ route('on.sea.transit.update-row') }}';
+    const ostEditModalEl = document.getElementById('ostEditRowModal');
+    const ostEditModal   = ostEditModalEl ? new bootstrap.Modal(ostEditModalEl) : null;
+    const ostEditForm    = document.getElementById('ostEditRowForm');
+
+    function ostFormatDateForInput(raw) {
+        if (!raw) return '';
+        // Accept either "YYYY-MM-DD …" or full datetime — take the date prefix.
+        const str = String(raw);
+        return str.length >= 10 ? str.substring(0, 10) : '';
+    }
+
+    function ostOpenEditModal(rowData) {
+        if (!ostEditModal) return;
+        document.getElementById('ostEditRowId').value                  = rowData.id ?? '';
+        document.getElementById('ostEditRowContainerSlNo').value       = rowData.container_sl_no ?? '';
+        document.getElementById('ostEditRowContainerSlNoDisplay').value= rowData.container_sl_no ?? '';
+        document.getElementById('ostEditRowSlLabel').textContent       = rowData.container_sl_no ?? '—';
+
+        // Populate every form field that has a matching `name="<column>"`.
+        const fieldMap = {
+            status: rowData.status,
+            bl_check: rowData.bl_check,
+            bl_link: rowData.bl_link,
+            isf: rowData.isf,
+            isf_usa_agent: rowData.isf_usa_agent,
+            etd: ostFormatDateForInput(rowData.etd),
+            eta_port: ostFormatDateForInput(rowData.eta_port),
+            port_arrival: ostFormatDateForInput(rowData.port_arrival),
+            eta_date_ohio: ostFormatDateForInput(rowData.eta_date_ohio),
+            duty_calcu: rowData.duty_calcu,
+            invoice_send_to_dominic: rowData.invoice_send_to_dominic,
+            arrival_notice_email: rowData.arrival_notice_email,
+            invoice_value: rowData.invoice_value ?? '',
+            freight: rowData.freight ?? '',
+            paid: rowData.paid ?? '',
+            remarks: rowData.remarks ?? '',
+            details: rowData.details ?? ''
+        };
+        for (const [name, val] of Object.entries(fieldMap)) {
+            const el = ostEditForm.querySelector(`[name="${name}"]`);
+            if (el) el.value = val ?? '';
+        }
+        const balance = (parseFloat(rowData.invoice_value) || 0) - (parseFloat(rowData.paid) || 0);
+        document.getElementById('ostEditRowBalanceDisplay').value = balance.toFixed(2);
+
+        ostEditModal.show();
+    }
+
+    // Recompute Due on the fly while editing Value / Paid in the modal.
+    ostEditForm.addEventListener('input', function(e) {
+        if (e.target.name === 'invoice_value' || e.target.name === 'paid') {
+            const iv = parseFloat(ostEditForm.querySelector('[name="invoice_value"]').value) || 0;
+            const pd = parseFloat(ostEditForm.querySelector('[name="paid"]').value) || 0;
+            document.getElementById('ostEditRowBalanceDisplay').value = (iv - pd).toFixed(2);
+        }
+    });
+
+    document.getElementById('ostEditRowSaveBtn').addEventListener('click', function () {
+        const sl = document.getElementById('ostEditRowContainerSlNo').value;
+        if (!sl) return;
+        const formData = new FormData(ostEditForm);
+        const payload = {};
+        formData.forEach((val, key) => { payload[key] = val; });
+
+        fetch(ostUpdateUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': ostCsrf,
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(resp => {
+            if (!resp || resp.success === false) {
+                alert(resp && resp.message ? resp.message : 'Failed to save row');
+                return;
+            }
+            // Merge fresh values back into tableData and refresh the row in-place.
+            const idx = tableData.findIndex(r => r.container_sl_no === sl);
+            if (idx !== -1) {
+                Object.assign(tableData[idx], payload, { balance: resp.balance ?? tableData[idx].balance });
+                const row = table.getRows().find(rr => rr.getData().container_sl_no === sl);
+                if (row) row.update(tableData[idx]);
+            }
+            updateBadgeCounts();
+            ostEditModal.hide();
+        })
+        .catch(() => alert('Failed to save row'));
+    });
+
+    // Delegated click handler — works for both Edit and Archive icons.
+    document.getElementById('on-sea-transit-table').addEventListener('click', function (e) {
+        const editBtn    = e.target.closest('.ost-edit-btn');
+        const archiveBtn = e.target.closest('.ost-archive-btn');
+        if (!editBtn && !archiveBtn) return;
+
+        const btn  = editBtn || archiveBtn;
+        const sl   = btn.getAttribute('data-sl');
+        const id   = btn.getAttribute('data-id');
+        const rowData = tableData.find(r => String(r.container_sl_no) === String(sl));
+        if (!rowData) return;
+
+        if (editBtn) {
+            ostOpenEditModal(rowData);
+            return;
+        }
+
+        // Archive flow — confirm, post, then drop the row out of the table.
+        if (!confirm(`Archive container ${sl}? It will disappear from this board (still in the database).`)) {
+            return;
+        }
+        fetch(ostArchiveUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': ostCsrf,
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ id: id, container_sl_no: sl })
+        })
+        .then(r => r.json())
+        .then(resp => {
+            if (!resp || resp.success === false) {
+                alert(resp && resp.message ? resp.message : 'Failed to archive');
+                return;
+            }
+            const idx = tableData.findIndex(r => String(r.container_sl_no) === String(sl));
+            if (idx !== -1) tableData.splice(idx, 1);
+            const row = table.getRows().find(rr => String(rr.getData().container_sl_no) === String(sl));
+            if (row) row.delete();
+            updateBadgeCounts();
+        })
+        .catch(() => alert('Failed to archive'));
+    });
     
     // Copy to clipboard function
     window.copyToClipboard = function(text, button) {
