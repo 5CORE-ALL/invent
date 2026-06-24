@@ -781,8 +781,18 @@ class OutgoingController extends Controller
         }
 
         $warehouseId = (int) ($opts['warehouse_id'] ?? 0);
-        if ($warehouseId <= 0 || ! Warehouse::where('id', $warehouseId)->exists()) {
-            return ['success' => false, 'inventory_id' => null, 'error' => 'A valid warehouse is required.'];
+        // Accept soft-deleted warehouses too: the `Warehouse` model uses
+        // SoftDeletes, so an issue created/edited while the warehouse was
+        // still active would silently fail to deduct Shopify inventory once
+        // someone soft-deletes that warehouse (often the result of merging
+        // duplicate "Main Godown" rows). The Shopify adjustment doesn't
+        // depend on the warehouse record itself — only the `inventories`
+        // row references it for /outgoing-view filtering, which is fine
+        // even for archived warehouses. We use a raw DB query here so the
+        // SoftDeletes scope is bypassed in one place rather than scattering
+        // `withTrashed()` calls throughout the codebase.
+        if ($warehouseId <= 0 || ! DB::table('warehouses')->where('id', $warehouseId)->exists()) {
+            return ['success' => false, 'inventory_id' => null, 'error' => 'A valid warehouse is required (id ' . $warehouseId . ' not found).'];
         }
 
         $reason = trim((string) ($opts['reason'] ?? 'Replacement (All Issues)'));

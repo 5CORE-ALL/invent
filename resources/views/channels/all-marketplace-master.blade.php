@@ -1454,7 +1454,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = Math.round(parseNumber(cell.getValue()));
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
@@ -1507,7 +1507,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
@@ -1988,6 +1988,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
+                        visible: false,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const l30Sales = parseNumber(rowData['L30 Sales'] || 0);
@@ -3683,13 +3684,23 @@
                     });
             }
 
+            // Fields that are permanently hidden in the UI but still drive calculations
+            // (e.g. Growth uses L-60 Sales; NP$ is derived from L30 Sales × N PFT).
+            const PERMANENTLY_HIDDEN_FIELDS = ['L-60 Sales', 'L60 Orders', 'NP$'];
+
             function applyColumnVisibility() {
-                if (!table || !savedColumnVisibility || !Object.keys(savedColumnVisibility).length) return;
-                table.getColumns().forEach(col => {
-                    const def = col.getDefinition();
-                    if (!def.field) return;
-                    if (savedColumnVisibility[def.field] === false) col.hide();
-                    else if (savedColumnVisibility[def.field] === true) col.show();
+                if (!table) return;
+                if (savedColumnVisibility && Object.keys(savedColumnVisibility).length) {
+                    table.getColumns().forEach(col => {
+                        const def = col.getDefinition();
+                        if (!def.field) return;
+                        if (savedColumnVisibility[def.field] === false) col.hide();
+                        else if (savedColumnVisibility[def.field] === true) col.show();
+                    });
+                }
+                PERMANENTLY_HIDDEN_FIELDS.forEach(field => {
+                    const c = table.getColumn(field);
+                    if (c) c.hide();
                 });
             }
 
@@ -3730,6 +3741,7 @@
                     const def = col.getDefinition();
                     const field = def.field;
                     if (!field) return;
+                    if (PERMANENTLY_HIDDEN_FIELDS.indexOf(field) !== -1) return;
 
                     const isVisible = col.isVisible();
                     const li = document.createElement("li");
@@ -3782,6 +3794,10 @@
                 });
                 const mapColShowAll = table.getColumn('Map');
                 if (mapColShowAll) mapColShowAll.hide();
+                PERMANENTLY_HIDDEN_FIELDS.forEach(field => {
+                    const c = table.getColumn(field);
+                    if (c) c.hide();
+                });
                 buildColumnDropdown();
             });
 
@@ -3804,7 +3820,7 @@
                 'all': 'ALL', // Show all columns
                 'ads': ['L30 Sales', 'Total Ad Spend', 'Total Views', 'CVR', 'KW Spent', 'PT Spent', 'HL Spent', 'PMT Spent', 'KW ACOS', 'PT ACOS', 'HL ACOS', 'PMT ACOS', 'Shopping Spent', 'SERP Spent', 'clicks', 'KW Clicks', 'PT Clicks', 'HL Clicks', 'PMT Clicks', 'Shopping Clicks', 'SERP Clicks', 'Ad Sales', 'KW Sales', 'PT Sales', 'HL Sales', 'PMT Sales', 'Shopping Sales', 'SERP Sales', 'ad_sold', 'KW Sold', 'PT Sold', 'HL Sold', 'PMT Sold', 'Shopping Sold', 'SERP Sold', 'ACOS', 'Shopping ACOS', 'SERP ACOS', 'Ads CVR', 'KW CVR', 'PT CVR', 'HL CVR', 'PMT CVR', 'Shopping CVR', 'SERP CVR', 'TAcos %', 'Missing Ads'],
                 'inv': ['Avl', 'Res', 'Inb', 'Unf', 'Wrk', 'Total Inv', 'Allocated'],
-                'margins': ['G PFT%', 'G ROI%', 'NP$', 'N PFT%', 'N ROI%', 'COGS', 'Total Ad Spend', 'TAcos %', '_gross_pft'],
+                'margins': ['G PFT%', 'G ROI%', 'N PFT%', 'N ROI%', 'COGS', 'Total Ad Spend', 'TAcos %', '_gross_pft'],
                 'movement': ['L30 Sales', 'Growth %', 'Y Sales', 'L30 Orders', 'Qty items', 'Velocity'],
                 'returns': ['Return Rate', 'Return Units', 'Return Value'],
                 'ah': ['AH Score', 'Policy Violations', 'Customer Complaints', 'Shipping Health', 'CC Health', 'Returns %', 'A2Z Claims', 'Ratings & Reviews', 'Seller Rating & Reviews'],
@@ -3832,7 +3848,7 @@
                 if (section === 'all') {
                     $('#type-filter').val('all');
                     applyMasterFilters();
-                    // Show all columns (Map stays hidden — use Columns menu to show)
+                    // Show all columns (Map and permanently hidden cols stay hidden)
                     table.getColumns().forEach(col => {
                         if (col.getField() !== 'Channel ') { // Keep channel column always visible
                             col.show();
@@ -3840,6 +3856,10 @@
                     });
                     const mapColAll = table.getColumn('Map');
                     if (mapColAll) mapColAll.hide();
+                    PERMANENTLY_HIDDEN_FIELDS.forEach(field => {
+                        const c = table.getColumn(field);
+                        if (c) c.hide();
+                    });
                     console.log('✓ All columns visible');
                 } else {
                     // Column section: show/hide column groups

@@ -11,5 +11,5 @@ class VideoAdsHookOption extends Model
 
     protected $table = 'video_ads_hook_options';
 
-    protected $fillable = ['name'];
+    protected $fillable = ['name', 'hook', 'link'];
 }

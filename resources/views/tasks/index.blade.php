@@ -2142,6 +2142,59 @@
     </div>
 </div>
 
+<!-- Done Note View Modal — read-only display of the completion report
+     submitted via the "Mark Task as Done" flow. Triggered by the eye
+     icon in the DONE NOTE column of the Task Manager grid. The modal
+     surfaces the current task status (so the user can confirm it is
+     "Done"), assignee identity, ATC, completion timestamp, the report
+     body, and any optional reference link — all without offering any
+     editing affordances. -->
+<div class="modal fade" id="doneNoteViewModal" tabindex="-1" aria-labelledby="doneNoteViewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">
+                <h5 class="modal-title" id="doneNoteViewModalLabel">
+                    <i class="mdi mdi-clipboard-check-outline me-2"></i>Submission — Done Note
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <table class="table table-borderless align-middle mb-3">
+                    <tr>
+                        <th width="170" style="color: #6c757d; font-weight: 600;">Status:</th>
+                        <td id="done-note-status-cell"></td>
+                    </tr>
+                    <tr>
+                        <th style="color: #6c757d; font-weight: 600; vertical-align: top;">Task:</th>
+                        <td id="done-note-task-title" style="white-space: pre-wrap;"></td>
+                    </tr>
+                    <tr id="done-note-assignee-row">
+                        <th style="color: #6c757d; font-weight: 600;">Submitted by:</th>
+                        <td id="done-note-assignee"></td>
+                    </tr>
+                    <tr id="done-note-atc-row">
+                        <th style="color: #6c757d; font-weight: 600;">ATC (Actual time):</th>
+                        <td id="done-note-atc"></td>
+                    </tr>
+                    <tr id="done-note-completion-row">
+                        <th style="color: #6c757d; font-weight: 600;">Completed at:</th>
+                        <td id="done-note-completion-at"></td>
+                    </tr>
+                </table>
+                <h6 class="text-success mb-2"><i class="mdi mdi-text-box-check-outline me-1"></i>Completion report</h6>
+                <div id="done-note-report" class="p-3 rounded border" style="background: #f8f9fa; white-space: pre-wrap; font-size: 14px; line-height: 1.6; min-height: 80px; color: #212529;"></div>
+                <div id="done-note-ref-wrap" class="mt-3" style="display: none;">
+                    <h6 class="text-primary mb-2"><i class="mdi mdi-link-variant me-1"></i>Reference link</h6>
+                    <div><a id="done-note-ref-link" href="#" target="_blank" rel="noopener" style="word-break: break-all;"></a></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Status Change Modal (for all other statuses) -->
 <div class="modal fade" id="statusChangeModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -3520,7 +3573,8 @@
                         sorter: "number"
                     });
                     
-                    // Column Order: GROUP, TASK, ASSIGNOR, ASSIGNEE, TID, ETC, ATC, L1, L2, SOP, Video, Form, Report, CL, PL, STATUS, P (Priority), IMAGE, ACTION
+                    // Column Order: GROUP, TASK, ASSIGNOR, ASSIGNEE, TID, ETC, ATC, L1, L2, SOP, Video, Form, Report, CL, PL, STATUS, DONE NOTE, P (Priority), IMAGE, ACTION
+                    // Note: "Report" (link6) = form report link; "DONE NOTE" = completion report submitted via Mark Done modal (read-only).
                     
                     // GROUP
                     cols.push({
@@ -3833,7 +3887,45 @@
                             `;
                         }
                     });
+
                     
+                    // DONE NOTE — read-only completion report submitted via the
+                    // "Mark Task as Done" modal. The cell renders a compact
+                    // view (eye) icon button only; clicking it opens the
+                    // #doneNoteViewModal which shows the full report, the
+                    // status badge (e.g. green "Done" pill), the assignee
+                    // who submitted, ATC, completion timestamp, and the
+                    // optional reference link. The cell is never editable
+                    // — the only way to change the value remains the Mark
+                    // as Done modal at submission time.
+                    cols.push({
+                        title: "DONE NOTE",
+                        titleFormatter: function() {
+                            return '<span style="font-weight:700;font-size:11px;color:#495057;">DONE NOTE</span>';
+                        },
+                        headerTooltip: "Completion report submitted when the task was marked Done. Click the eye to view (read-only).",
+                        field: "report",
+                        width: 92,
+                        minWidth: 72,
+                        widthGrow: 0,
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var raw = cell.getValue();
+                            var text = (raw == null) ? '' : String(raw).trim();
+                            var refLink = (row.reference_link == null) ? '' : String(row.reference_link).trim();
+                            if (!text && !refLink) {
+                                return '<span style="color: #adb5bd;">-</span>';
+                            }
+                            // Small read-only eye button. The click handler
+                            // (`.view-done-note`) wires it to the modal.
+                            var taskId = row.id != null ? String(row.id) : '';
+                            return '<button type="button" class="btn btn-sm btn-outline-success view-done-note" data-id="' + taskId + '" title="View completion report" style="padding: 2px 10px; line-height: 1; border-radius: 14px;">' +
+                                   '<i class="mdi mdi-eye-outline" style="font-size: 14px; vertical-align: middle;"></i></button>';
+                        }
+                    });
+
                     // P = Priority (colored dots; hover header for full name)
                     cols.push({
                         title: "P",
@@ -6078,6 +6170,123 @@
                     });
                 }
             });
+
+            // View Done Note — opens the read-only completion report modal.
+            // Triggered by the eye icon rendered inside the DONE NOTE column.
+            // Reads task data directly from the Tabulator row (already in
+            // memory) to avoid a network roundtrip; falls back to the JSON
+            // /tasks/{id} endpoint only when the row data isn't available
+            // (e.g. after a filter that hides the row).
+            $(document).on('click', '.view-done-note', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var taskId = $(this).data('id');
+                var row = (typeof table !== 'undefined' && table) ? table.getRow(taskId) : null;
+                var data = row ? row.getData() : null;
+                if (data) {
+                    renderDoneNoteModal(data);
+                } else {
+                    $.ajax({
+                        url: '/tasks/' + taskId,
+                        type: 'GET',
+                        success: function(resp) { renderDoneNoteModal(resp || {}); },
+                        error: function() { renderDoneNoteModal({}); }
+                    });
+                }
+            });
+
+            // Populate #doneNoteViewModal from a task payload and show it.
+            // The status badge mirrors the palette used by the STATUS column
+            // so a "Done" submission renders the same green pill the user
+            // already recognises in the grid.
+            function renderDoneNoteModal(d) {
+                var escapeHtml = function(s) {
+                    return String(s == null ? '' : s)
+                        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                };
+
+                var statusPalette = {
+                    'Todo':          { bg: '#0dcaf0', text: '#000' },
+                    'Working':       { bg: '#ffc107', text: '#000' },
+                    'Archived':      { bg: '#6c757d', text: '#fff' },
+                    'Done':          { bg: '#28a745', text: '#fff' },
+                    'Need Help':     { bg: '#fd7e14', text: '#000' },
+                    'Need Approval': { bg: '#6610f2', text: '#fff' },
+                    'Dependent':     { bg: '#d63384', text: '#fff' },
+                    'Approved':      { bg: '#20c997', text: '#000' },
+                    'Hold':          { bg: '#495057', text: '#fff' },
+                    'Rework':        { bg: '#f5576c', text: '#fff' }
+                };
+                var statusVal = d && d.status ? d.status : '-';
+                var pal = statusPalette[statusVal] || { bg: '#6c757d', text: '#fff' };
+                $('#done-note-status-cell').html(
+                    '<span style="background: ' + pal.bg + '; color: ' + pal.text +
+                    '; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; display: inline-block;">' +
+                    escapeHtml(statusVal) + '</span>'
+                );
+
+                // Task title — strip the "[Auto: DD-MMM-YY]" suffix that
+                // recurring automated tasks carry for consistency with how
+                // the grid renders titles.
+                var title = String(d && d.title || '')
+                    .replace(/\s*\[Auto:\s*\d{1,2}-[A-Za-z]{3}-\d{2}\]\s*$/i, '');
+                $('#done-note-task-title').text(title || '-');
+
+                // Assignee — name (designation) when available.
+                var aName = (d && d.assignee_name) ? d.assignee_name : '';
+                var aDesg = (d && d.assignee_designation) ? d.assignee_designation : '';
+                if (aName) {
+                    $('#done-note-assignee').text(aDesg ? (aName + ' (' + aDesg + ')') : aName);
+                    $('#done-note-assignee-row').show();
+                } else {
+                    $('#done-note-assignee-row').hide();
+                }
+
+                // ATC — minutes the assignee said they actually spent.
+                var atcRaw = d ? d.etc_done : null;
+                var atcNum = (atcRaw === null || atcRaw === undefined || atcRaw === '')
+                    ? NaN : Number(atcRaw);
+                if (!isNaN(atcNum) && atcNum > 0) {
+                    $('#done-note-atc').text(Math.round(atcNum) + ' min');
+                    $('#done-note-atc-row').show();
+                } else {
+                    $('#done-note-atc-row').hide();
+                }
+
+                // Completion timestamp — set server-side in
+                // applyTaskDoneEffects() the moment the status flips to Done.
+                var completedAt = d ? d.completion_date : '';
+                if (completedAt && String(completedAt).trim()) {
+                    $('#done-note-completion-at').text(String(completedAt).trim());
+                    $('#done-note-completion-row').show();
+                } else {
+                    $('#done-note-completion-row').hide();
+                }
+
+                // Report body (pre-wrap; renderer uses .text() so user
+                // content is never injected as HTML).
+                var report = (d && d.report != null) ? String(d.report).trim() : '';
+                if (report) {
+                    $('#done-note-report').text(report);
+                } else {
+                    $('#done-note-report').html(
+                        '<span style="color:#adb5bd; font-style: italic;">No report text submitted.</span>'
+                    );
+                }
+
+                // Reference link — clickable when present.
+                var refLink = (d && d.reference_link != null)
+                    ? String(d.reference_link).trim() : '';
+                if (refLink) {
+                    $('#done-note-ref-link').attr('href', refLink).text(refLink);
+                    $('#done-note-ref-wrap').show();
+                } else {
+                    $('#done-note-ref-wrap').hide();
+                }
+
+                $('#doneNoteViewModal').modal('show');
+            }
 
             // Edit Task
             $(document).on('click', '.edit-task', function() {

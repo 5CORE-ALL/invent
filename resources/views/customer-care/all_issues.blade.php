@@ -250,6 +250,79 @@
             border-radius: 4px;
         }
 
+        .cb-row-btn.cb-row-history {
+            color: #7c3aed;
+        }
+        .cb-row-btn.cb-row-history:hover {
+            color: #5b21b6;
+            background: rgba(124, 58, 237, 0.12);
+            border-radius: 4px;
+        }
+
+        /* Row history modal — compact table of history events for one issue. */
+        #rowHistoryModal .ai-history-table-wrap {
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            overflow: auto;
+            background: #fff;
+        }
+        #rowHistoryModal table.ai-history-table {
+            width: 100%;
+            margin-bottom: 0;
+            font-size: 0.78rem;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        #rowHistoryModal table.ai-history-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: #f8fafc;
+            color: #475569;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            font-size: 0.68rem;
+            padding: 0.45rem 0.55rem;
+            border-bottom: 1px solid #e5e7eb;
+            white-space: nowrap;
+        }
+        #rowHistoryModal table.ai-history-table tbody td {
+            padding: 0.45rem 0.55rem;
+            border-bottom: 1px solid #f1f5f9;
+            color: #111827;
+            vertical-align: top;
+            word-break: break-word;
+        }
+        #rowHistoryModal table.ai-history-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        #rowHistoryModal table.ai-history-table tbody td.empty {
+            color: #9ca3af;
+        }
+        #rowHistoryModal .ai-history-badge {
+            display: inline-block;
+            padding: 0.1rem 0.45rem;
+            border-radius: 999px;
+            font-size: 0.68rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        #rowHistoryModal .ai-history-badge.event-created  { background: #dcfce7; color: #166534; }
+        #rowHistoryModal .ai-history-badge.event-updated  { background: #dbeafe; color: #1e40af; }
+        #rowHistoryModal .ai-history-badge.event-archived { background: #fee2e2; color: #991b1b; }
+        #rowHistoryModal .ai-history-badge.event-default  { background: #f3f4f6; color: #374151; }
+        #rowHistoryModal .ai-history-empty {
+            text-align: center;
+            color: #6b7280;
+            padding: 1.5rem 1rem;
+            font-size: 0.9rem;
+        }
+        #rowHistoryModal .modal-dialog {
+            max-width: min(1100px, 96vw);
+        }
+
         /* Read-only "Details" modal grid */
         .ai-detail-section {
             border: 1px solid #e5e7eb;
@@ -623,6 +696,31 @@
                     {{-- Populated by openDetailsModal() in JS --}}
                 </div>
                 <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ── Row History Modal (audit-log for one issue + its dept-split siblings) ── --}}
+    <div class="modal fade" id="rowHistoryModal" tabindex="-1" aria-hidden="true" aria-labelledby="rowHistoryModalLabel">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="rowHistoryModalLabel">
+                        <i class="bi bi-clock-history me-2"></i>Issue history
+                        <span class="text-muted small ms-1" id="rowHistoryModalSubtitle"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="rowHistoryModalBody">
+                    <div class="ai-history-empty">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        <span class="ms-2">Loading history…</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <span class="text-muted small me-auto" id="rowHistoryModalCount"></span>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
@@ -1322,6 +1420,9 @@
             const recordsStoreUrl = @json(route('customer.care.dispatch.issues.list.store'));
             const recordsUpdateBaseUrl = @json(route('customer.care.dispatch.issues.list.index', [], false));
             const historyListUrl = @json(route('customer.care.dispatch.issues.history.index'));
+            // Per-row history endpoint. The trailing `{id}/history` segment is
+            // appended at call time so the URL stays a single source-of-truth.
+            const rowHistoryBaseUrl = @json(url('/customer-care/all-issues/issues'));
             const dropdownOptionsListUrl = @json(route('customer.care.dispatch.issues.dropdown.options.index'));
             const dropdownOptionsStoreUrl = @json(route('customer.care.dispatch.issues.dropdown.options.store'));
             const dropdownOptionsDeleteUrl = @json(route('customer.care.dispatch.issues.dropdown.options.delete'));
@@ -1689,6 +1790,17 @@
                     '</button>';
             };
 
+            // Row-wise History button rendered in the "History" column. Click
+            // handler lives in the table-level cellClick listener (filters by
+            // `_row_history` field) and opens the row-history modal, which
+            // fetches every audit-log entry for this issue + its dept-split
+            // siblings (rows sharing group_id + SKU).
+            const fmtRowHistory = function () {
+                return '<button type="button" class="cb-row-btn cb-row-history" title="View this issue\'s history" aria-label="View history">' +
+                    '<i class="bi bi-clock-history"></i>' +
+                    '</button>';
+            };
+
             // Build one "label : value" line for the read-only details modal.
             // `valueHtml` is inserted as raw HTML; pass already-escaped content
             // (or use buildDetailsRow with escapeHtml) — empty values render the
@@ -1919,6 +2031,147 @@
                 bootstrap.Modal.getOrCreateInstance(el).show();
             }
 
+            // Tag the history event with a colored badge. Falls back to a
+            // neutral grey pill for any event_type the backend hasn't been
+            // taught (e.g. future "reopened" events).
+            function rowHistoryBadge(eventType) {
+                const t = String(eventType || '').toLowerCase().trim();
+                let cls = 'event-default';
+                if (t === 'created') cls = 'event-created';
+                else if (t === 'updated') cls = 'event-updated';
+                else if (t === 'archived') cls = 'event-archived';
+                const label = t ? t.charAt(0).toUpperCase() + t.slice(1) : '—';
+                return '<span class="ai-history-badge ' + cls + '">' + escapeHtml(label) + '</span>';
+            }
+
+            // Render one `<td>`. Empty values render the grey "—" placeholder
+            // so the column stays a uniform width regardless of content.
+            function rowHistoryCell(raw) {
+                const t = String(raw ?? '').trim();
+                if (t === '') return '<td class="empty">—</td>';
+                return '<td>' + escapeHtml(t) + '</td>';
+            }
+
+            // Render the body of the row-history modal as a single compact
+            // table. Backend deduplicates "overwrite-with-same-data" revisions
+            // so each row here represents an actual change (or the initial
+            // create / final archive). Rows arrive newest-first.
+            function renderRowHistoryBody(rows) {
+                if (!Array.isArray(rows) || rows.length === 0) {
+                    return '<div class="ai-history-empty">No history found for this issue.</div>';
+                }
+
+                const headers = [
+                    'When', 'Event', 'Ref', 'By', 'Dept',
+                    'Issue?', 'Action', 'Root Cause', 'RC Fixed',
+                    'QTY', 'MKT', 'Tracking', 'Track R', 'Close Note',
+                ];
+                const thead =
+                    '<thead><tr>' +
+                    headers.map(function (h) { return '<th>' + escapeHtml(h) + '</th>'; }).join('') +
+                    '</tr></thead>';
+
+                const tbody = '<tbody>' + rows.map(function (r) {
+                    const ref = r.issue_ref || (r.orders_on_hold_issue_id != null ? String(r.orders_on_hold_issue_id) : '');
+                    const depts = (Array.isArray(r.departments) && r.departments.length)
+                        ? r.departments.join(', ')
+                        : (r.department || '');
+
+                    const action = String(r.action_1 || '').trim();
+                    const actionRemark = String(r.action_1_remark || '').trim();
+                    const actionDisplay = action
+                        ? (actionRemark ? action + ' — ' + actionRemark : action)
+                        : actionRemark;
+
+                    const rootCause = String(r.issue || '').trim();
+                    const rootCauseRemark = String(r.issue_remark || '').trim();
+                    const rootCauseDisplay = rootCause
+                        ? (rootCauseRemark ? rootCause + ' — ' + rootCauseRemark : rootCause)
+                        : rootCauseRemark;
+
+                    const ca = String(r.c_action_1 || '').trim();
+                    const car = String(r.c_action_1_remark || '').trim();
+                    const cActionDisplay = ca ? (car ? ca + ' — ' + car : ca) : car;
+
+                    const qty = (r.order_qty != null && r.order_qty !== '') ? r.order_qty : (r.qty || '');
+
+                    return '<tr>' +
+                        rowHistoryCell(r.logged_at_display) +
+                        '<td>' + rowHistoryBadge(r.event_type) + '</td>' +
+                        rowHistoryCell(ref) +
+                        rowHistoryCell(r.created_by) +
+                        rowHistoryCell(depts) +
+                        rowHistoryCell(r.what_happened) +
+                        rowHistoryCell(actionDisplay) +
+                        rowHistoryCell(rootCauseDisplay) +
+                        rowHistoryCell(cActionDisplay) +
+                        rowHistoryCell(qty) +
+                        rowHistoryCell(r.marketplace_1) +
+                        rowHistoryCell(r.tracking_number) +
+                        rowHistoryCell(r.replacement_tracking) +
+                        rowHistoryCell(r.close_note) +
+                        '</tr>';
+                }).join('') + '</tbody>';
+
+                return '<div class="ai-history-table-wrap"><table class="ai-history-table">' +
+                       thead + tbody + '</table></div>';
+            }
+
+            // Open the per-row history modal: build the subtitle from the row
+            // metadata, show a loader, then fetch the per-issue history from
+            // the backend and render it as a list of event cards.
+            async function openRowHistoryModal(rowData) {
+                if (!rowData || rowData.id == null) return;
+                const id = rowData.id;
+
+                const subtitleParts = [];
+                if (rowData.sku) subtitleParts.push(String(rowData.sku));
+                if (rowData.order_number) subtitleParts.push('Ord #' + String(rowData.order_number));
+                subtitleParts.push('Row #' + String(id));
+                const subEl = document.getElementById('rowHistoryModalSubtitle');
+                if (subEl) subEl.textContent = subtitleParts.join('  ·  ');
+
+                const body = document.getElementById('rowHistoryModalBody');
+                if (body) {
+                    body.innerHTML =
+                        '<div class="ai-history-empty">' +
+                        '<div class="spinner-border spinner-border-sm" role="status"></div>' +
+                        '<span class="ms-2">Loading history…</span>' +
+                        '</div>';
+                }
+                const countEl = document.getElementById('rowHistoryModalCount');
+                if (countEl) countEl.textContent = '';
+
+                const el = document.getElementById('rowHistoryModal');
+                if (el) bootstrap.Modal.getOrCreateInstance(el).show();
+
+                try {
+                    const res = await fetch(rowHistoryBaseUrl + '/' + encodeURIComponent(id) + '/history', {
+                        headers: getHeaders,
+                    });
+                    if (!res.ok) {
+                        throw new Error('HTTP ' + res.status);
+                    }
+                    const json = await res.json();
+                    const rows = Array.isArray(json?.data) ? json.data : [];
+                    const totalRaw = Number(json?.total_raw ?? rows.length);
+                    const hidden = Math.max(0, totalRaw - rows.length);
+                    if (body) body.innerHTML = renderRowHistoryBody(rows);
+                    if (countEl) {
+                        const base = rows.length === 1 ? '1 change' : (rows.length + ' changes');
+                        countEl.textContent = hidden > 0
+                            ? (base + '  ·  ' + hidden + ' duplicate ' + (hidden === 1 ? 'revision' : 'revisions') + ' hidden')
+                            : base;
+                    }
+                } catch (err) {
+                    if (body) {
+                        body.innerHTML = '<div class="ai-history-empty text-danger">' +
+                            'Failed to load history: ' + escapeHtml(String(err && err.message ? err.message : err)) +
+                            '</div>';
+                    }
+                }
+            }
+
             const fmtActions = function() {
                 let html =
                     '<div><button type="button" class="cb-row-btn cb-edit" title="Edit"><i class="bi bi-pencil-fill"></i></button>';
@@ -2020,6 +2273,17 @@
                     field: '_details',
                     width: 70,
                     formatter: fmtDetails,
+                    headerSort: false,
+                    hozAlign: 'center'
+                },
+                // Per-row History button. Opens a modal that lists every
+                // history event (created/updated/archived revisions) for this
+                // issue + its dept-split siblings (same group_id + SKU).
+                {
+                    title: 'History',
+                    field: '_row_history',
+                    width: 70,
+                    formatter: fmtRowHistory,
                     headerSort: false,
                     hozAlign: 'center'
                 },
@@ -2365,6 +2629,12 @@
                         openDetailsModal(cell.getRow().getData());
                         return;
                     }
+                    if (field === '_row_history') {
+                        const btn = e.target.closest('button');
+                        if (!btn) return;
+                        openRowHistoryModal(cell.getRow().getData());
+                        return;
+                    }
                     if (field !== '_actions') return;
                     const btn = e.target.closest('button');
                     if (!btn) return;
@@ -2436,6 +2706,7 @@
                     _ctn: 'Instr Pkg',
                     _actions: 'Close',
                     _details: 'Details',
+                    _row_history: 'History',
                     created_at_display: 'Created At'
                 };
                 menu.innerHTML = '';

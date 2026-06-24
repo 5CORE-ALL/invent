@@ -1830,6 +1830,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.issues.l30.issues');
     Route::get('/customer-care/all-issues/history', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'historyIndex'])
         ->name('customer.care.dispatch.issues.history.index');
+    // Per-row history endpoint backing the row-wise "History" button on the
+    // All Issues table. Returns every history event for this issue plus its
+    // dept-split siblings (rows sharing the same group_id + SKU).
+    Route::get('/customer-care/all-issues/issues/{id}/history', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'rowHistoryIndex'])
+        ->whereNumber('id')
+        ->name('customer.care.dispatch.issues.row.history');
     Route::post('/customer-care/all-issues/issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'store'])
         ->name('customer.care.dispatch.issues.list.store');
     Route::put('/customer-care/all-issues/issues/{id}', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'update'])
@@ -3390,6 +3396,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/video-ads-master/{id}/copy',            [\App\Http\Controllers\VideoAdsMasterController::class, 'copy'])->whereNumber('id')->name('video.ads.master.copy');
     Route::post('/video-ads-master/hook-options',         [\App\Http\Controllers\VideoAdsMasterController::class, 'storeHookOption'])->name('video.ads.master.hook.options.store');
     Route::get('/video-ads-master/sample-csv',            [\App\Http\Controllers\VideoAdsMasterController::class, 'sampleCsv'])->name('video.ads.master.sample.csv');
+    Route::get('/video-ads-master/export',                [\App\Http\Controllers\VideoAdsMasterController::class, 'export'])->name('video.ads.master.export');
     Route::post('/video-ads-master/import',               [\App\Http\Controllers\VideoAdsMasterController::class, 'import'])->name('video.ads.master.import');
 
     // FB Video Ads (video-for-ds)
