@@ -598,6 +598,7 @@ class ImageMasterController extends Controller
         $urls    = [];
         $records = [];
         $now     = now();
+        $shopify = app(ShopifyApiService::class);
 
         foreach ($request->file('files', []) as $file) {
             if (! $file) {
@@ -605,22 +606,60 @@ class ImageMasterController extends Controller
             }
 
             $originalName = $file->getClientOriginalName();
-            $extension    = strtolower($file->getClientOriginalExtension());
-            $baseName     = pathinfo($originalName, PATHINFO_FILENAME);
-            $uniqueName   = $baseName.'_'.uniqid().'.'.$extension;
+            $baseName     = preg_replace('/[^A-Za-z0-9._-]+/', '_', pathinfo($originalName, PATHINFO_FILENAME)) ?: 'image';
 
-            $path = $file->storeAs($folder, $uniqueName, 'public');
+            // Validate + normalize: enforce Shopify's 20-megapixel limit (downscale if over) so the
+            // image is accepted by every marketplace. Skip files that are not valid images.
+            $bytes = (string) @file_get_contents($file->getRealPath());
+            $bytes = $shopify->downscaleImageBytes($bytes);
+            $info  = $bytes !== '' ? @getimagesizefromstring($bytes) : false;
+            if ($info === false) {
+                Log::warning('Image Master upload: skipped invalid/unreadable image', ['sku' => $sku, 'file' => $originalName]);
+                continue;
+            }
+            $mime      = $info['mime'] ?: ($file->getClientMimeType() ?: 'image/jpeg');
+            $extByMime = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
+            $extension = $extByMime[strtolower($mime)] ?? (strtolower($file->getClientOriginalExtension()) ?: 'jpg');
+            $uniqueName = $baseName.'_'.uniqid().'.'.$extension;
+
+            // Keep a (normalized) local copy as a fallback, but the marketplace-facing URL must be a
+            // public CDN URL — a self-hosted /storage URL cannot be fetched by Reverb (and other
+            // URL-fetching marketplaces), which is why newly uploaded images failed to push.
+            $path = $folder.'/'.$uniqueName;
+            Storage::disk('public')->put($path, $bytes);
+            $localUrl = $this->normalizeStorageUrlsForImageMasterMetrics([asset('storage/'.$path)])[0] ?? asset('storage/'.$path);
+
+            $cdnUrl    = null;
+            $cdnFileId = null;
+            try {
+                $cdn = $shopify->uploadImageToShopifyCdn($bytes, $uniqueName, $mime);
+                if (($cdn['success'] ?? false) && ! empty($cdn['url'])) {
+                    $cdnUrl    = $cdn['url'];
+                    $cdnFileId = $cdn['file_id'] ?? null;
+                } else {
+                    Log::warning('Image Master upload: Shopify CDN upload failed; using local URL', [
+                        'sku' => $sku, 'file' => $originalName, 'error' => $cdn['message'] ?? 'unknown',
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Image Master upload: Shopify CDN upload threw; using local URL', [
+                    'sku' => $sku, 'file' => $originalName, 'error' => $e->getMessage(),
+                ]);
+            }
+
+            $url = $cdnUrl ?: $localUrl;
 
             $record = ProductImage::create([
                 'sku'           => $sku,
                 'image_path'    => $path,
+                'cdn_url'       => $cdnUrl,
+                'cdn_file_id'   => $cdnFileId,
                 'original_name' => $originalName,
-                'file_size'     => $file->getSize(),
-                'mime_type'     => $file->getClientMimeType(),
+                'file_size'     => strlen($bytes),
+                'mime_type'     => $mime,
                 'created_at'    => $now,
             ]);
 
-            $url     = $this->normalizeStorageUrlsForImageMasterMetrics([asset('storage/'.$path)])[0] ?? asset('storage/'.$path);
             $urls[]  = $url;
             $records[] = [
                 'id'    => $record->id,
@@ -670,7 +709,21 @@ class ImageMasterController extends Controller
             return response()->json(['success' => false, 'message' => 'Not found'], 404);
         }
 
-        Storage::disk('public')->delete($image->image_path);
+        // Remove the CDN copy too (by stored file id, or fall back to resolving from the URL).
+        $cdnRef = $image->cdn_file_id ?: $image->cdn_url;
+        if (! empty($cdnRef)) {
+            try {
+                if (! app(ShopifyApiService::class)->deleteCdnFile((string) $cdnRef)) {
+                    Log::warning('Image Master delete: CDN file not removed', ['id' => $id, 'cdn' => $cdnRef]);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Image Master delete: CDN delete threw', ['id' => $id, 'error' => $e->getMessage()]);
+            }
+        }
+
+        if (! empty($image->image_path)) {
+            Storage::disk('public')->delete($image->image_path);
+        }
         $image->delete();
 
         return response()->json(['success' => true]);

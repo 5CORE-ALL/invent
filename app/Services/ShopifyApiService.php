@@ -977,6 +977,200 @@ class ShopifyApiService
     }
 
     /**
+     * Upload raw image bytes to the Shopify Files CDN (GraphQL Files API) and return the public
+     * cdn.shopify.com URL. Image Master uploads use this so a new image becomes a marketplace-
+     * fetchable CDN URL (the same `/s/files/.../files/` bucket as existing product images) instead
+     * of a self-hosted /storage URL that Reverb and other URL-fetching marketplaces cannot fetch.
+     *
+     * @return array{success: bool, url?: string, message: string}
+     */
+    public function uploadImageToShopifyCdn(string $contents, string $filename, string $mimeType = 'image/jpeg'): array
+    {
+        try {
+            $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
+            $token  = config('services.shopify.access_token') ?: config('services.shopify.password');
+            if (! $domain || ! $token) {
+                return ['success' => false, 'message' => 'Shopify credentials not configured.'];
+            }
+            $domain   = rtrim(preg_replace('#^https?://#', '', $domain), '/');
+            $version  = config('services.shopify.api_version', '2025-01');
+            $gql      = "https://{$domain}/admin/api/{$version}/graphql.json";
+            $headers  = ['X-Shopify-Access-Token' => $token, 'Content-Type' => 'application/json'];
+
+            // Validation: enforce Shopify's 20-megapixel limit (downscale if over) and align the
+            // mime/filename to the actual (possibly re-encoded) bytes so the staged upload is valid.
+            $contents = $this->downscaleImageBytes($contents);
+            $info = @getimagesizefromstring($contents);
+            if ($info === false) {
+                return ['success' => false, 'message' => 'File is not a valid image.'];
+            }
+            $mimeType = $info['mime'] ?: ($mimeType ?: 'image/jpeg');
+            $filename = $this->sanitizeCdnFilename($filename, $mimeType);
+
+            // 1. Ask Shopify for a staged upload target.
+            $stagedQuery = 'mutation($input:[StagedUploadInput!]!){stagedUploadsCreate(input:$input){stagedTargets{url resourceUrl parameters{name value}} userErrors{field message}}}';
+            $stagedVars  = ['input' => [[
+                'filename'   => $filename,
+                'mimeType'   => $mimeType,
+                'resource'   => 'IMAGE',
+                'httpMethod' => 'POST',
+            ]]];
+            $sr     = $this->retryOnRateLimit(fn () => Http::withHeaders($headers)->timeout(40)
+                ->post($gql, ['query' => $stagedQuery, 'variables' => $stagedVars]));
+            $target = $sr->json('data.stagedUploadsCreate.stagedTargets.0');
+            $errs   = $sr->json('data.stagedUploadsCreate.userErrors') ?: [];
+            if (! is_array($target) || empty($target['url']) || $errs) {
+                return ['success' => false, 'message' => 'stagedUploadsCreate failed: '.json_encode($errs ?: $sr->json() ?: $sr->body())];
+            }
+
+            // 2. POST the bytes to the staged target — parameters first, file last (S3/GCS order).
+            $upload = Http::asMultipart()->timeout(120);
+            foreach (($target['parameters'] ?? []) as $param) {
+                $upload = $upload->attach((string) $param['name'], (string) $param['value']);
+            }
+            $upload = $upload->attach('file', $contents, $filename);
+            $ur     = $upload->post($target['url']);
+            if (! in_array($ur->status(), [200, 201, 204], true)) {
+                return ['success' => false, 'message' => 'Staged upload failed (HTTP '.$ur->status().'): '.mb_substr($ur->body(), 0, 300)];
+            }
+
+            // 3. Register the staged resource as a Shopify file.
+            $createQuery = 'mutation($files:[FileCreateInput!]!){fileCreate(files:$files){files{id fileStatus ... on MediaImage{image{url}}} userErrors{field message}}}';
+            $createVars  = ['files' => [['originalSource' => $target['resourceUrl'], 'contentType' => 'IMAGE']]];
+            $cr          = $this->retryOnRateLimit(fn () => Http::withHeaders($headers)->timeout(40)
+                ->post($gql, ['query' => $createQuery, 'variables' => $createVars]));
+            $file        = $cr->json('data.fileCreate.files.0');
+            $createErrs  = $cr->json('data.fileCreate.userErrors') ?: [];
+            if (! is_array($file) || $createErrs) {
+                return ['success' => false, 'message' => 'fileCreate failed: '.json_encode($createErrs ?: $cr->json() ?: $cr->body())];
+            }
+
+            $url    = $file['image']['url'] ?? null;
+            $fileId = $file['id'] ?? null;
+
+            // 4. Image processing is async — poll the node until the CDN URL is ready (throttle-aware).
+            for ($i = 0; $i < 20 && (! is_string($url) || $url === '') && $fileId; $i++) {
+                usleep(1_500_000);
+                $nodeQuery = 'query($id:ID!){node(id:$id){... on MediaImage{fileStatus image{url}}}}';
+                $nr        = $this->retryOnRateLimit(fn () => Http::withHeaders($headers)->timeout(30)
+                    ->post($gql, ['query' => $nodeQuery, 'variables' => ['id' => $fileId]]));
+                $url       = $nr->json('data.node.image.url');
+            }
+
+            if (! is_string($url) || $url === '') {
+                return ['success' => false, 'file_id' => $fileId, 'message' => 'Shopify accepted the file but did not return a CDN URL in time (still processing).'];
+            }
+
+            return ['success' => true, 'url' => $url, 'file_id' => $fileId, 'message' => 'Uploaded to Shopify CDN.'];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Make a filename safe for the Shopify Files CDN (no spaces/odd chars). When a mime type is
+     * given, the extension is derived from it (so a re-encoded image gets the right extension).
+     */
+    private function sanitizeCdnFilename(string $name, string $mime = ''): string
+    {
+        $name = basename(str_replace('\\', '/', $name));
+        $base = preg_replace('/[^A-Za-z0-9._-]+/', '_', pathinfo($name, PATHINFO_FILENAME) ?? '');
+        $base = trim((string) $base, '_');
+        if ($base === '') {
+            $base = 'image_'.substr(md5($name.microtime()), 0, 8);
+        }
+        $byMime = ['image/jpeg' => 'jpg', 'image/jpg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
+        $ext = $byMime[strtolower($mime)] ?? strtolower(preg_replace('/[^A-Za-z0-9]+/', '', pathinfo($name, PATHINFO_EXTENSION) ?? '') ?: 'jpg');
+
+        return $base.'.'.$ext;
+    }
+
+    /**
+     * Downscale image bytes to fit within Shopify's pixel limit (default 20 MP). Returns re-encoded
+     * JPEG bytes when a resize happens, otherwise the original bytes unchanged. No-op without GD.
+     */
+    public function downscaleImageBytes(string $bytes, float $maxMegapixels = 20.0): string
+    {
+        try {
+            if (! function_exists('imagecreatefromstring')) {
+                return $bytes;
+            }
+            $info = @getimagesizefromstring($bytes);
+            if ($info === false) {
+                return $bytes;
+            }
+            [$w, $h] = $info;
+            $maxPx = $maxMegapixels * 1_000_000;
+            if ($w < 1 || $h < 1 || ($w * $h) <= $maxPx) {
+                return $bytes;
+            }
+            $scale = sqrt($maxPx / ($w * $h)) * 0.98; // small margin under the hard limit
+            $nw = max(1, (int) floor($w * $scale));
+            $nh = max(1, (int) floor($h * $scale));
+            $src = @imagecreatefromstring($bytes);
+            if ($src === false) {
+                return $bytes;
+            }
+            $dst = imagecreatetruecolor($nw, $nh);
+            imagefill($dst, 0, 0, imagecolorallocate($dst, 255, 255, 255));
+            imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
+            ob_start();
+            imagejpeg($dst, null, 88);
+            $out = ob_get_clean();
+            imagedestroy($src);
+            imagedestroy($dst);
+
+            return ($out !== false && $out !== '') ? $out : $bytes;
+        } catch (\Throwable) {
+            return $bytes;
+        }
+    }
+
+    /**
+     * Delete a file from Shopify Files by its GID (gid://shopify/MediaImage/...) or its CDN URL.
+     */
+    public function deleteCdnFile(string $fileIdOrUrl): bool
+    {
+        try {
+            $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
+            $token  = config('services.shopify.access_token') ?: config('services.shopify.password');
+            if (! $domain || ! $token || trim($fileIdOrUrl) === '') {
+                return false;
+            }
+            $domain  = rtrim(preg_replace('#^https?://#', '', $domain), '/');
+            $version = config('services.shopify.api_version', '2025-01');
+            $gql     = "https://{$domain}/admin/api/{$version}/graphql.json";
+            $headers = ['X-Shopify-Access-Token' => $token, 'Content-Type' => 'application/json'];
+
+            $fileId = $fileIdOrUrl;
+            if (! str_starts_with($fileIdOrUrl, 'gid://')) {
+                // Resolve the GID from the CDN URL by matching recent files.
+                $q  = '{files(first:100,sortKey:CREATED_AT,reverse:true){edges{node{id ... on MediaImage{image{url}}}}}}';
+                $fr = $this->retryOnRateLimit(fn () => Http::withHeaders($headers)->timeout(30)->post($gql, ['query' => $q]));
+                $needle = strtok($fileIdOrUrl, '?');
+                $fileId = null;
+                foreach (($fr->json('data.files.edges') ?: []) as $e) {
+                    if (strtok((string) ($e['node']['image']['url'] ?? ''), '?') === $needle) {
+                        $fileId = $e['node']['id'];
+                        break;
+                    }
+                }
+                if (! $fileId) {
+                    return false;
+                }
+            }
+
+            $dq = 'mutation($ids:[ID!]!){fileDelete(fileIds:$ids){deletedFileIds userErrors{message}}}';
+            $dr = $this->retryOnRateLimit(fn () => Http::withHeaders($headers)->timeout(30)
+                ->post($gql, ['query' => $dq, 'variables' => ['ids' => [$fileId]]]));
+
+            return ! empty($dr->json('data.fileDelete.deletedFileIds'));
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
      * @param  list<string>  $images
      */
     private function saveImageUrlsToShopifyCatalog(string $store, string $identifier, array $images): bool
