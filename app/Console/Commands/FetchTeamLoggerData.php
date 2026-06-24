@@ -24,7 +24,11 @@ class FetchTeamLoggerData extends Command
                             {--no-cache : Disable caching}
                             {--save : Save fetched data to database}
                             {--fetch-months= : Fetch multiple months (e.g., "Jan 2026,Feb 2026,Mar 2026")}
-                            {--fetch-jan-to-current : Fetch all months from January 2026 to current month}';
+                            {--fetch-jan-to-current : Fetch all months from January 2026 to current month}
+                            {--day-wise : Persist day-wise data per user (uses --day or --from/--to)}
+                            {--day= : Single day to fetch in format Y-m-d (implies --day-wise)}
+                            {--from= : Day-wise range start in format Y-m-d (use with --to)}
+                            {--to= : Day-wise range end in format Y-m-d (use with --from)}';
 
     /**
      * The console command description.
@@ -64,7 +68,13 @@ class FetchTeamLoggerData extends Command
         try {
             $useCache = !$this->option('no-cache');
             $saveToDb = $this->option('save');
-            
+
+            // Day-wise ingestion: persist one row per user per day. Triggered
+            // either explicitly via --day-wise or implicitly by --day / --from.
+            if ($this->option('day-wise') || $this->option('day') || $this->option('from') || $this->option('to')) {
+                return $this->fetchDayWise($useCache);
+            }
+
             // Check if fetching Jan to current month
             if ($this->option('fetch-jan-to-current')) {
                 return $this->fetchJanToCurrentMonth($saveToDb);
@@ -312,6 +322,69 @@ class FetchTeamLoggerData extends Command
         
         if ($saveToDb) {
             $this->info("💾 All data saved to database");
+        }
+
+        return Command::SUCCESS;
+    }
+
+    /**
+     * Fetch day-wise data and persist one row per user per day to
+     * `team_logger_daily_hours`.
+     *
+     * Supports either a single --day=Y-m-d, or a --from/--to range. If no date
+     * is given, defaults to yesterday (the most recent complete day).
+     *
+     * @param  bool  $useCache
+     * @return int
+     */
+    private function fetchDayWise($useCache)
+    {
+        $day = $this->option('day');
+        $from = $this->option('from');
+        $to = $this->option('to');
+
+        // Resolve the inclusive [start, end] window we need to walk day by day.
+        if ($day) {
+            $start = $end = $day;
+        } elseif ($from && $to) {
+            $start = $from;
+            $end = $to;
+        } elseif ($from || $to) {
+            $this->error('❌ --from and --to must be provided together.');
+            return Command::FAILURE;
+        } elseif ($this->option('start-date') && $this->option('end-date')) {
+            $start = $this->option('start-date');
+            $end = $this->option('end-date');
+        } else {
+            $yesterday = Carbon::yesterday()->format('Y-m-d');
+            $this->warn("No date specified for --day-wise. Defaulting to yesterday: {$yesterday}");
+            $start = $end = $yesterday;
+        }
+
+        try {
+            $startParsed = Carbon::parse($start)->format('Y-m-d');
+            $endParsed = Carbon::parse($end)->format('Y-m-d');
+        } catch (\Throwable $e) {
+            $this->error('❌ Invalid date format. Use Y-m-d (e.g. 2026-06-24).');
+            return Command::FAILURE;
+        }
+
+        $this->info("📅 Day-wise fetch from {$startParsed} to {$endParsed} (inclusive)");
+        $this->newLine();
+
+        try {
+            $summary = $this->teamLoggerService->fetchAndStoreDayWise($startParsed, $endParsed, $useCache);
+        } catch (\Throwable $e) {
+            $this->error('❌ Day-wise fetch failed: '.$e->getMessage());
+            return Command::FAILURE;
+        }
+
+        $this->info("✅ Days processed: {$summary['days']}");
+        $this->info("   • Inserted: {$summary['inserted']} rows");
+        $this->info("   • Updated:  {$summary['updated']} rows");
+
+        if (!empty($summary['failed_days'])) {
+            $this->warn('⚠️  Days with no data / failures: '.implode(', ', $summary['failed_days']));
         }
 
         return Command::SUCCESS;

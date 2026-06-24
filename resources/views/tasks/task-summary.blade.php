@@ -2673,7 +2673,7 @@
             if (collapseActions) {
                 collapseActions.addEventListener('click', function (e) {
                     var btn = e.target && e.target.closest && e.target.closest('button[data-action]');
-                    if (!btn) return;
+                    if (!btn) return;₹1q1wq2
                     var act = btn.getAttribute('data-action');
                     var headers = tbody.querySelectorAll('tr.task-summary-group-header');
                     headers.forEach(function (h) {
@@ -2690,7 +2690,7 @@
                     });
                     focusedGroupId = null;
                     refreshHeaderVisibility();
-                });
+                });                                                                                                          
             }
 
             // Delegated click for individual group chevrons.

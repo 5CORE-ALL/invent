@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\TeamLoggerDailyHours;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -289,5 +290,96 @@ class TeamLoggerService
         $endTime = Carbon::parse($endDate)->addDay()->setTime(11, 59, 59)->utc()->getTimestamp() * 1000;
 
         return $this->callApi($startTime, $endTime);
+    }
+
+    /**
+     * Fetch hours for a single calendar day, indexed by employee email.
+     *
+     * The upstream `employee_summary_report` aggregates across whatever range we
+     * pass, so by passing the same date for start and end we get exactly one
+     * day's worth of data per employee.
+     *
+     * @param  string  $date  Y-m-d
+     * @return array<string, array{hours:int,total_hours:float,idle_hours:float,active_hours:float}>
+     */
+    public function fetchByDay($date, $useCache = true)
+    {
+        $day = Carbon::parse($date)->format('Y-m-d');
+
+        return $this->fetchByDateRange($day, $day, $useCache);
+    }
+
+    /**
+     * Fetch and persist day-wise hours for every employee returned by the API
+     * across an inclusive date range. One row per employee per day is written
+     * to `team_logger_daily_hours` via updateOrCreate, so re-runs are safe.
+     *
+     * Returns a summary of how many rows were inserted vs updated and which
+     * days could not be fetched.
+     *
+     * @param  string  $startDate  Y-m-d
+     * @param  string  $endDate    Y-m-d (inclusive)
+     * @return array{days:int, inserted:int, updated:int, failed_days:array<int,string>}
+     */
+    public function fetchAndStoreDayWise($startDate, $endDate, $useCache = false)
+    {
+        $start = Carbon::parse($startDate)->startOfDay();
+        $end = Carbon::parse($endDate)->startOfDay();
+
+        if ($end->lt($start)) {
+            throw new \InvalidArgumentException('End date must be on or after start date.');
+        }
+
+        $inserted = 0;
+        $updated = 0;
+        $failedDays = [];
+        $daysProcessed = 0;
+        $now = now();
+
+        for ($day = $start->copy(); $day->lte($end); $day->addDay()) {
+            $dayStr = $day->format('Y-m-d');
+
+            try {
+                // Disable the persistent cache by default for daily ingestion so
+                // we always reflect the latest upstream state in the DB.
+                $perDay = $this->fetchByDateRange($dayStr, $dayStr, $useCache);
+            } catch (\Throwable $e) {
+                Log::error("TeamLogger day-wise fetch failed for {$dayStr}: ".$e->getMessage());
+                $failedDays[] = $dayStr;
+                continue;
+            }
+
+            if (!is_array($perDay) || empty($perDay)) {
+                $failedDays[] = $dayStr;
+                continue;
+            }
+
+            foreach ($perDay as $email => $hours) {
+                $record = TeamLoggerDailyHours::updateOrCreate(
+                    [
+                        'employee_email' => $email,
+                        'work_date' => $dayStr,
+                    ],
+                    [
+                        'total_hours' => $hours['total_hours'] ?? 0,
+                        'idle_hours' => $hours['idle_hours'] ?? 0,
+                        'active_hours' => $hours['active_hours'] ?? 0,
+                        'productive_hours' => $hours['hours'] ?? 0,
+                        'fetched_at' => $now,
+                    ]
+                );
+
+                $record->wasRecentlyCreated ? $inserted++ : $updated++;
+            }
+
+            $daysProcessed++;
+        }
+
+        return [
+            'days' => $daysProcessed,
+            'inserted' => $inserted,
+            'updated' => $updated,
+            'failed_days' => $failedDays,
+        ];
     }
 }
