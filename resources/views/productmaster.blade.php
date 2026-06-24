@@ -4601,9 +4601,9 @@
                 if (downloadExcelBtn) {
                     downloadExcelBtn.addEventListener('click', function() {
                     const allColumns = [
-                        "Parent", "SKU", "UPC", "Inventory", "OV L30", "DIL", "STATUS", "Unit", "LP", "CP$",
+                        "Parent", "SKU", "Inventory", "OV L30", "DIL", "STATUS", "Unit", "LP", "CP$",
                         "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "Length", "Width", "Height",
-                        "CBM", "Image", "Url", "Verified", "DC", "Pcs/Box", "B", "H1", "Weight", "MSRP", "MAP"
+                        "CBM", "Image", "Url", "Verified", "DC", "Pcs/Box", "B", "H1", "Weight", "MSRP", "MAP", "UPC"
                     ];
 
                     // Export every column regardless of UI visibility so the file
