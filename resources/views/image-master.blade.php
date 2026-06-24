@@ -393,7 +393,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const idx = Number(job.current_index ?? 0);
         const total = Number(job.total ?? 0);
         const detail = total > 0 ? `${title} (${idx}/${total})` : title;
-        setPushProgress(true, detail, lines.join(''), false);
+        // Spinner spins only while the job is actually running (so the final render stops it).
+        setPushProgress(true, detail, lines.join(''), false, isImagePushJobActive(job.status));
         setPushProgressBar(idx, total);
     }
 
@@ -479,7 +480,7 @@ document.addEventListener('DOMContentLoaded', () => {
         bar.setAttribute('aria-valuenow', String(pct));
     }
 
-    function setPushProgress(visible, title = '', detailsHtml = '', hasError = false) {
+    function setPushProgress(visible, title = '', detailsHtml = '', hasError = false, busy = false) {
         const box = document.getElementById('pushProgressBox');
         const t = document.getElementById('pushProgressTitle');
         const d = document.getElementById('pushProgressDetails');
@@ -488,8 +489,9 @@ document.addEventListener('DOMContentLoaded', () => {
         box.style.display = visible ? 'block' : 'none';
         if (title) t.textContent = title;
         d.innerHTML = detailsHtml || '';
-        if (spinner) spinner.style.display = visible && !hasError ? 'inline-block' : 'none';
-        box.className = 'alert mt-3 py-2 px-3' + (hasError ? ' alert-danger' : ' alert-info');
+        // Spinner only spins while a push is actively in progress (busy), not when finished.
+        if (spinner) spinner.style.display = visible && busy && !hasError ? 'inline-block' : 'none';
+        box.className = 'alert mb-3 py-2 px-3' + (hasError ? ' alert-danger' : ' alert-info');
         box.style.wordBreak = 'break-word';
         if (!visible) {
             const wrap = document.getElementById('pushProgressBarWrap');
@@ -1162,7 +1164,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let okCount = 0, failCount = 0, metricsFailCount = 0;
         const updates = checks.map(mp => ({ marketplace: mp, images: imagesToPush }));
         try {
-            setPushProgress(true, `Queuing push for ${checks.length} marketplace(s)…`, '');
+            setPushProgress(true, `Queuing push for ${checks.length} marketplace(s)…`, '', false, true);
             const { res, j } = await queueImagePushAndWait({
                 sku,
                 mode,
@@ -1220,7 +1222,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const mainIdx = mainImageIndexFor(mp, row);
         const mainLabel = mainImageLabelFor(mp, mainIdx);
         if (!window.confirm(`Push ${urls.length} image(s) for ${sku} to ${LABELS[mp]}?\n\nMain image for this platform: ${mainLabel} (sent first).\nThis will replace existing marketplace images.`)) return;
-        setPushProgress(true, `Queuing ${LABELS[mp]} push…`, '');
+        setPushProgress(true, `Queuing ${LABELS[mp]} push…`, '', false, true);
         queueImagePushAndWait({
             sku,
             mode: 'replace',
@@ -1334,7 +1336,9 @@ document.addEventListener('DOMContentLoaded', () => {
             setPushProgress(
                 true,
                 `Bulk push ${i + 1}/${rows.length}: queuing ${sku}… (${mpCount} marketplaces)`,
-                progress.slice(-40).join('<br>')
+                progress.slice(-40).join('<br>'),
+                false,
+                true
             );
 
             try {
