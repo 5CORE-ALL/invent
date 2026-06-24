@@ -148,12 +148,6 @@ return [
         'company_id' => env('MACY_COMPANY_ID'),
     ],
 
-    'wayfair' => [
-        'client_id' => env('WAYFAIR_CLIENT_ID'),
-        'client_secret' => env('WAYFAIR_CLIENT_SECRET'),
-        'audience' => env('WAYFAIR_AUDIENCE'),
-    ],
-
     'google_ads' => [
         'developer_token' => env('GOOGLE_ADS_DEVELOPER_TOKEN'),
         'client_id' => env('GOOGLE_ADS_CLIENT_ID'),
@@ -431,7 +425,9 @@ return [
     'wayfair' => [
         'client_id' => env('WAYFAIR_CLIENT_ID'),
         'client_secret' => env('WAYFAIR_CLIENT_SECRET'),
-        'audience' => env('WAYFAIR_AUDIENCE'),
+        // Wayfair's OAuth tenant requires audience; default to the public API audience.
+        // Override with WAYFAIR_AUDIENCE only if Wayfair issues a different audience for your client.
+        'audience' => env('WAYFAIR_AUDIENCE', 'https://api.wayfair.com/'),
         'http_timeout' => (int) env('WAYFAIR_HTTP_TIMEOUT', 90),
         'connect_timeout' => (int) env('WAYFAIR_CONNECT_TIMEOUT', 30),
         'oauth_retries' => (int) env('WAYFAIR_OAUTH_RETRIES', 3),
