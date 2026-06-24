@@ -546,6 +546,8 @@ class ImageMasterController extends Controller
             'images.*' => 'nullable|string|max:2048',
             'main_by_marketplace' => 'nullable|array',
             'main_by_marketplace.*' => 'integer|min:0|max:'.(self::PM_MAX_IMAGES - 1),
+            'removed_urls' => 'nullable|array|max:100',
+            'removed_urls.*' => 'nullable|string|max:2048',
         ]);
         $sku = $this->normalizeSku($validated['sku']);
         $images = $this->normalizeStorageUrlsForImageMasterMetrics(
@@ -575,9 +577,13 @@ class ImageMasterController extends Controller
         try {
             $product->save();
 
+            // Clean up images the user removed in the modal — local file, DB row, and Shopify CDN
+            // file. Heavily guarded (see purgeRemovedSkuImages) so a kept image can never be deleted.
+            $purged = $this->purgeRemovedSkuImages($sku, $validated['removed_urls'] ?? [], $images);
+
             return response()->json([
                 'success' => true,
-                'message' => 'Product Master images saved.',
+                'message' => 'Product Master images saved.'.($purged > 0 ? " Removed {$purged} image(s)." : ''),
                 'image_main_by_marketplace' => $mainByMarketplace,
             ]);
         } catch (\Throwable $e) {
@@ -732,6 +738,94 @@ class ImageMasterController extends Controller
         $image->delete();
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Delete images the user removed in the modal (called from Save) — local file + DB row +
+     * Shopify CDN file. A wrong delete is unrecoverable, so EVERY condition must hold before
+     * deleting any row:
+     *   1. the product_images row belongs to THIS sku;
+     *   2. the row matches a URL the user actually removed (by cdn_url, or local file basename);
+     *   3. the row's image is NOT in the final saved set.
+     * Anything failing all three is skipped (logged), never deleted.
+     *
+     * @param  list<string>  $removedUrls  URLs the user removed this session
+     * @param  list<string>  $keptImages   the final saved image URLs (must never be deleted)
+     */
+    private function purgeRemovedSkuImages(string $sku, array $removedUrls, array $keptImages): int
+    {
+        $removedUrls = array_values(array_filter(array_map('trim', $removedUrls), fn ($s) => $s !== ''));
+        if ($removedUrls === [] || ! Schema::hasTable('product_images')) {
+            return 0;
+        }
+
+        $kept = [];
+        foreach ($keptImages as $u) {
+            $kept[strtok((string) $u, '?')] = true;
+        }
+        $removed = [];
+        foreach ($removedUrls as $u) {
+            $removed[strtok((string) $u, '?')] = true;
+        }
+
+        $deleted = 0;
+        foreach (ProductImage::where('sku', $sku)->get() as $img) {
+            $cdn  = $img->cdn_url ? strtok((string) $img->cdn_url, '?') : '';
+            $base = $img->image_path ? basename((string) $img->image_path) : '';
+
+            // (2) must match a removed URL (by cdn_url or local basename)
+            $matchesRemoved = ($cdn !== '' && isset($removed[$cdn]));
+            if (! $matchesRemoved && $base !== '') {
+                foreach (array_keys($removed) as $r) {
+                    if (str_contains($r, $base)) {
+                        $matchesRemoved = true;
+                        break;
+                    }
+                }
+            }
+            if (! $matchesRemoved) {
+                continue;
+            }
+
+            // (3) NEVER delete a row whose image is still in the saved/kept set
+            $stillKept = ($cdn !== '' && isset($kept[$cdn]));
+            if (! $stillKept && $base !== '') {
+                foreach (array_keys($kept) as $k) {
+                    if (str_contains($k, $base)) {
+                        $stillKept = true;
+                        break;
+                    }
+                }
+            }
+            if ($stillKept) {
+                Log::warning('Image Master purge: skipped (image still in saved set)', ['sku' => $sku, 'id' => $img->id]);
+                continue;
+            }
+
+            $cdnRef = $img->cdn_file_id ?: $img->cdn_url;
+            $cdnResult = 'none'; // none = no CDN ref to delete
+            if (! empty($cdnRef)) {
+                try {
+                    $cdnResult = app(ShopifyApiService::class)->deleteCdnFile((string) $cdnRef) ? 'deleted' : 'not_found';
+                } catch (\Throwable $e) {
+                    $cdnResult = 'error';
+                    Log::warning('Image Master purge: CDN delete threw', ['id' => $img->id, 'ref' => (string) $cdnRef, 'error' => $e->getMessage()]);
+                }
+                if ($cdnResult === 'not_found') {
+                    Log::warning('Image Master purge: CDN file NOT deleted (not found / no deletedFileIds)', ['id' => $img->id, 'ref' => (string) $cdnRef]);
+                }
+            }
+            if (! empty($img->image_path)) {
+                Storage::disk('public')->delete($img->image_path);
+            }
+            $imgId = $img->id;
+            $imgCdn = $img->cdn_url;
+            $img->delete();
+            $deleted++;
+            Log::info('Image Master purge: removed image', ['sku' => $sku, 'id' => $imgId, 'cdn' => $imgCdn, 'cdn_delete' => $cdnResult]);
+        }
+
+        return $deleted;
     }
 
     /**
