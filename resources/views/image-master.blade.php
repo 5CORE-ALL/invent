@@ -338,6 +338,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let shopifyPullSelectedSkus = null;
     let shopifyPullConfirmResolver = null;
     let modalUrls = [];
+    let knownImageUrls = []; // every image URL seen this modal session (loaded + uploaded/fetched), to detect removals on Save
     let modalMainByMp = {};
     let pendingFiles = [];
     let selectedUrls = new Set();   // URLs checked for push
@@ -711,6 +712,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('modalProductLabel').textContent = row.Parent || sku;
         storedImageMeta.clear();
         modalUrls = pmImageUrls(row);
+        knownImageUrls = [...modalUrls];
         modalMainByMp = normalizeMainByMarketplace(row.image_main_by_marketplace);
         renderSlots();
         // Reset the upload section
@@ -996,6 +998,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     storedImageMeta.set(img.url, { id: img.id, name: img.name });
                 });
                 modalUrls = modalUrls.concat(j.urls).slice(0, PM_MAX_IMAGES);
+                knownImageUrls = knownImageUrls.concat(j.urls);
                 renderSlots();
                 const count = j.urls.length;
                 msg.textContent   = `${count} image${count > 1 ? 's' : ''} uploaded successfully!`;
@@ -1029,6 +1032,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (j.success && j.images?.length) {
             const add = j.images.map(x => typeof x==='string'?x:(x.url||x.locator||'')).filter(Boolean);
             modalUrls = modalUrls.concat(add).slice(0, PM_MAX_IMAGES);
+            knownImageUrls = knownImageUrls.concat(add);
             renderSlots();
             toast('Amazon images loaded');
         } else toast(j.message || 'No Amazon images', false);
@@ -1040,6 +1044,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const j = await r.json();
         if (j.success && j.images?.length) {
             modalUrls = modalUrls.concat(j.images).slice(0, PM_MAX_IMAGES);
+            knownImageUrls = knownImageUrls.concat(j.images);
             renderSlots();
             toast('eBay images loaded');
         } else toast(j.message || 'No eBay images', false);
@@ -1064,10 +1069,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            // Images seen this session but no longer in the list = removed by the user. The server
+            // deletes only those (and only when they match a product_images row for THIS sku and are
+            // not in the saved set), so a kept image can never be deleted by mistake.
+            const removedUrls = knownImageUrls.filter(u => !modalUrls.includes(u));
+
             const r = await fetch('/image-master/save-pm', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                body: JSON.stringify({ sku, images: modalUrls, main_by_marketplace: mainByMarketplacePayload() }),
+                body: JSON.stringify({ sku, images: modalUrls, main_by_marketplace: mainByMarketplacePayload(), removed_urls: removedUrls }),
             });
             const j = await r.json();
             if (j.success) {
