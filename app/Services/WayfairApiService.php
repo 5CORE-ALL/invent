@@ -47,13 +47,22 @@ class WayfairApiService
      */
     public function getAccessTokenWithScope(?string $scope = null): string
     {
+        // Trim defensively – stray whitespace/newlines/quotes pasted into .env are a common
+        // cause of Wayfair returning {"error":"invalid_client"}.
+        $clientId = trim((string) config('services.wayfair.client_id'), " \t\n\r\0\x0B\"'");
+        $clientSecret = trim((string) config('services.wayfair.client_secret'), " \t\n\r\0\x0B\"'");
+
+        if ($clientId === '' || $clientSecret === '') {
+            throw new \Exception('Wayfair credentials missing: set WAYFAIR_CLIENT_ID and WAYFAIR_CLIENT_SECRET in .env (and run `php artisan config:clear`).');
+        }
+
         $payload = [
             'grant_type' => 'client_credentials',
-            'client_id' => config('services.wayfair.client_id'),
-            'client_secret' => config('services.wayfair.client_secret'),
+            'client_id' => $clientId,
+            'client_secret' => $clientSecret,
         ];
-        $audience = config('services.wayfair.audience');
-        if ($audience !== null && $audience !== '') {
+        $audience = trim((string) config('services.wayfair.audience'));
+        if ($audience !== '') {
             $payload['audience'] = $audience;
         }
         $scopeToUse = $scope ?? config('services.wayfair.catalog_scope');
@@ -66,7 +75,14 @@ class WayfairApiService
             ->post($this->authUrl, $payload);
 
         if ($response->failed()) {
-            throw new \Exception('Failed to authenticate with Wayfair API: ' . $response->body());
+            $body = $response->body();
+            $hint = '';
+            if (stripos($body, 'invalid_client') !== false) {
+                $hint = ' [Wayfair rejected the credentials. Verify WAYFAIR_CLIENT_ID / WAYFAIR_CLIENT_SECRET / WAYFAIR_AUDIENCE in production .env, '
+                    . 'check for stray whitespace or quotes, then run `php artisan config:clear`. '
+                    . 'If the secret was rotated in the Wayfair partner portal, update it here.]';
+            }
+            throw new \Exception('Failed to authenticate with Wayfair API: ' . $body . $hint);
         }
 
         return (string) $response->json('access_token');

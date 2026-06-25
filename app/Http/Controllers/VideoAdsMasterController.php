@@ -36,7 +36,10 @@ class VideoAdsMasterController extends Controller
             ->unique()
             ->values();
 
-        $hookOptions = VideoAdsHookOption::orderBy('name')->pluck('name');
+        // Return full hook objects (name + default hook message + default
+        // link) so the form can auto-fill the related fields when a hook is
+        // picked. See the JS findHook() helper.
+        $hookOptions = VideoAdsHookOption::orderBy('name')->get(['name', 'hook', 'link']);
 
         return response()->json([
             'success'      => true,
@@ -116,24 +119,86 @@ class VideoAdsMasterController extends Controller
     }
 
     /**
-     * Persist a new HOOK NAME option. Returns the canonical name back to the
-     * client so the new value flows straight into the dropdown.
+     * Persist a HOOK NAME option (create or update). Now accepts optional
+     * default `hook` (message) and `link` values which the form will use to
+     * auto-fill the corresponding row fields whenever that hook is picked.
+     *
+     * Behaviour:
+     *   - The `hook` / `link` fields are only updated when the request
+     *     actually sends them. That way the inline cell-create flow (which
+     *     posts just the name) doesn't wipe defaults set via the modal.
      */
     public function storeHookOption(Request $request)
     {
-        $request->validate(['name' => 'required|string|max:255']);
+        $data = $request->validate([
+            'name' => 'required|string|max:255',
+            'hook' => 'nullable|string',
+            'link' => 'nullable|string',
+        ]);
 
-        $name = trim($request->input('name'));
+        $name = trim($data['name']);
         if ($name === '') {
             return response()->json(['success' => false, 'message' => 'Name is empty.'], 422);
         }
 
         $option = VideoAdsHookOption::firstOrCreate(['name' => $name]);
 
+        // Only overwrite hook/link if the request actually carried them.
+        $dirty = false;
+        if ($request->has('hook')) { $option->hook = $data['hook'] ?? null; $dirty = true; }
+        if ($request->has('link')) { $option->link = $data['link'] ?? null; $dirty = true; }
+        if ($dirty) {
+            $option->save();
+        }
+
         return response()->json([
             'success' => true,
             'name'    => $option->name,
-            'options' => VideoAdsHookOption::orderBy('name')->pluck('name'),
+            'option'  => $option->only(['name', 'hook', 'link']),
+            'options' => VideoAdsHookOption::orderBy('name')->get(['name', 'hook', 'link']),
+        ]);
+    }
+
+    /**
+     * Stream every row of `video_ads_master` as a CSV file using the exact
+     * same headers as the import / sample-csv flow, so a user can
+     * export → edit in Excel → re-import without any column gymnastics.
+     *
+     * The `id` and timestamps are deliberately omitted so re-importing
+     * always creates new rows (the importer has no upsert key).
+     */
+    public function export()
+    {
+        $headers = ['target_type', 'name', 'channel', 'audience', 'hook_name', 'hook', 'link'];
+
+        $filename = 'video-ads-master-' . date('Ymd-His') . '.csv';
+
+        $callback = function () use ($headers) {
+            $out = fopen('php://output', 'w');
+            // BOM so Excel opens UTF-8 CSVs without mojibake.
+            fwrite($out, "\xEF\xBB\xBF");
+            fputcsv($out, $headers);
+
+            // Stream in chunks to keep memory flat even on large tables.
+            VideoAdsMaster::orderBy('id')->chunk(500, function ($rows) use ($out, $headers) {
+                foreach ($rows as $row) {
+                    fputcsv($out, [
+                        $row->target_type,
+                        $row->name,
+                        $row->channel,
+                        $row->audience,
+                        $row->hook_name,
+                        $row->hook,
+                        $row->link,
+                    ]);
+                }
+            });
+
+            fclose($out);
+        };
+
+        return response()->streamDownload($callback, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
 
@@ -174,17 +239,35 @@ class VideoAdsMasterController extends Controller
      *   - target_type is required on every row; must be sku / parent / group.
      *   - Empty optional cells become NULL.
      *   - Each row creates a new record (no upsert key — duplicates allowed).
+     *
+     * Validation note: Laravel's `mimes:csv,txt` rule checks the *guessed*
+     * MIME type, which is unreliable for CSVs in the wild (Excel saves as
+     * application/vnd.ms-excel, Numbers / curl as text/plain, etc.). We
+     * check the extension ourselves so every reasonable CSV gets through.
      */
     public function import(Request $request)
     {
         $request->validate([
-            'file' => 'required|file|mimes:csv,txt|max:5120',
+            'file' => 'required|file|max:5120',
         ]);
 
-        $path = $request->file('file')->getRealPath();
-        $handle = fopen($path, 'r');
+        $file = $request->file('file');
+        $ext  = strtolower((string) $file->getClientOriginalExtension());
+        if (!in_array($ext, ['csv', 'txt'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Only .csv or .txt files are supported (got '." . $ext . "').",
+            ], 422);
+        }
+
+        $path = $file->getRealPath();
+        if (!$path) {
+            return response()->json(['success' => false, 'message' => 'Uploaded file has no readable path.'], 422);
+        }
+
+        $handle = @fopen($path, 'r');
         if (!$handle) {
-            return response()->json(['success' => false, 'message' => 'Unable to read uploaded file.'], 422);
+            return response()->json(['success' => false, 'message' => 'Unable to open uploaded file.'], 422);
         }
 
         $expected = ['target_type', 'name', 'channel', 'audience', 'hook_name', 'hook', 'link'];
@@ -193,6 +276,12 @@ class VideoAdsMasterController extends Controller
         if (!$headers) {
             fclose($handle);
             return response()->json(['success' => false, 'message' => 'CSV is empty.'], 422);
+        }
+
+        // Strip UTF-8 BOM (the Export endpoint writes one, and Excel does too)
+        // from the very first header cell so it doesn't break header matching.
+        if (isset($headers[0])) {
+            $headers[0] = preg_replace('/^\xEF\xBB\xBF/u', '', (string) $headers[0]);
         }
 
         $headers = array_map(fn($h) => strtolower(trim((string) $h)), $headers);

@@ -585,6 +585,40 @@
                     <button type="button" class="btn btn-sm btn-success pricing-filter-item" data-bs-toggle="modal" data-bs-target="#exportModal">
                         <i class="fa fa-file-excel"></i> Export
                     </button>
+
+                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
+                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = row.percentage or 0.85 for eBay2) --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
+                        id="target-roi-controls"
+                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + eBay2 Ship) / margin on every selected row (back-solves so SROI column equals the target)">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target ROI%:
+                        </label>
+                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + eBay2 Ship) / margin for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
+                         Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
+                        id="target-gpft-controls"
+                        title="Target GPFT% — sets S PRC = (LP + eBay2 Ship) / (margin − Target GPFT%/100) on every selected row">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target GPFT%:
+                        </label>
+                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the eBay2 take-home margin (typically < 85%).">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP + eBay2 Ship) / (margin − Target GPFT%/100) for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
                 </div>
 
                 <!-- KW Ads Statistics (shown only when KW Ads is selected) -->
@@ -1616,6 +1650,146 @@
                 if (confirm('Are you sure you want to clear SPRICE for selected SKUs?')) {
                     clearSpriceForSelected();
                 }
+            });
+
+            /*
+             * Target ROI% / Target GPFT% bulk apply (eBay2, margin = row.percentage or 0.85)
+             * -----------------------------------------------------------------------------
+             * Back-solves SPRICE so the resulting SROI / SGPFT column matches the entered
+             * target. eBay2's server-side SGPFT formula (EbayTwoController::saveSpriceToDatabase
+             * line 1165) includes shipping:
+             *     SGPFT% = ((sprice * margin − ship − lp) / sprice) * 100
+             *     SROI%  = ((sprice * margin − ship − lp) / lp)     * 100   (same shape used elsewhere)
+             *   → sprice = (lp * (1 + ROI%/100)  + ship) / margin
+             *   → sprice = (lp + ship) / (margin − GPFT%/100)
+             * Each save goes through the existing saveSpriceWithRetry() Promise pipeline so
+             * SPRICE_STATUS (processing → saved / error) and the server-recomputed
+             * SGPFT / SPFT / SROI values stay in sync exactly like Decrease / Increase / Same Price.
+             * Rounding is plain 2-decimal — no .99 / .49 retail snapping — because snapping
+             * would shift the achieved SROI / SGPFT off the user-typed target.
+             * Ship field is `ebay2_ship` (per the table's column definition + the
+             * EbayTwoController saveSpriceToDatabase shipping lookup at line 1161).
+             */
+            function ebay2ApplyTargetBackSolve(computeFn, labelPrefix) {
+                if (selectedSkus.size === 0) {
+                    showToast('Please select at least one SKU first (turn on Price % mode to reveal checkboxes)', 'error');
+                    return;
+                }
+
+                const allData     = table.getData('all');
+                const targetSkus  = new Set(selectedSkus);
+                const tasks       = [];
+                let skippedNoLp   = 0;
+                const skippedHigh = [];
+
+                allData.forEach(row => {
+                    if (row.Parent && String(row.Parent).startsWith('PARENT')) return;
+                    const sku = row['(Child) sku'];
+                    if (!sku || !targetSkus.has(sku)) return;
+
+                    const lp = parseFloat(row['LP_productmaster']) || 0;
+                    if (lp <= 0) { skippedNoLp++; return; }
+                    const ship = parseFloat(row['ebay2_ship']) || 0;
+                    const marginRaw = parseFloat(row['percentage']);
+                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+
+                    const computed = computeFn(lp, ship, margin);
+                    if (computed == null) { skippedHigh.push(sku); return; }
+                    const newSprice = +computed.toFixed(2);
+                    if (!isFinite(newSprice) || newSprice <= 0) return;
+
+                    const tableRow = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
+                    if (!tableRow) return;
+                    tableRow.update({ SPRICE: newSprice, SPRICE_STATUS: 'processing' });
+
+                    tasks.push({ sku: sku, newSprice: newSprice, tableRow: tableRow });
+                });
+
+                if (tasks.length === 0) {
+                    if (skippedHigh.length > 0) {
+                        showToast(`${labelPrefix} too high — must be less than each row's take-home margin (typically < 85%).`, 'error');
+                    } else {
+                        showToast('No selected rows have a usable LP > 0', 'warning');
+                    }
+                    return;
+                }
+
+                let okCount = 0;
+                let errCount = 0;
+                const total = tasks.length;
+
+                tasks.forEach(t => {
+                    saveSpriceWithRetry(t.sku, t.newSprice, t.tableRow)
+                        .then(() => {
+                            okCount++;
+                            if (okCount + errCount === total) {
+                                let note = '';
+                                if (skippedNoLp > 0)       note += ` (${skippedNoLp} skipped — no LP)`;
+                                if (skippedHigh.length)    note += ` (${skippedHigh.length} skipped — target ≥ margin)`;
+                                if (errCount === 0) {
+                                    showToast(`${labelPrefix} applied to ${okCount} SKU(s)${note}`, 'success');
+                                } else {
+                                    showToast(`${labelPrefix} applied to ${okCount} SKU(s), ${errCount} failed${note}`, 'error');
+                                }
+                            }
+                        })
+                        .catch(() => {
+                            errCount++;
+                            if (okCount + errCount === total) {
+                                let note = '';
+                                if (skippedNoLp > 0)       note += ` (${skippedNoLp} skipped — no LP)`;
+                                if (skippedHigh.length)    note += ` (${skippedHigh.length} skipped — target ≥ margin)`;
+                                showToast(`${labelPrefix} applied to ${okCount} SKU(s), ${errCount} failed${note}`, 'error');
+                            }
+                        });
+                });
+            }
+
+            $('#apply-target-roi-btn').on('click', function () {
+                const rawInput = $('#target-roi-input').val();
+                const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                if (rawInput === '' || rawInput == null) {
+                    showToast('Please enter a Target ROI%', 'error');
+                    return;
+                }
+                if (!isFinite(targetRoiPct)) {
+                    showToast('Target ROI% must be a number', 'error');
+                    return;
+                }
+
+                const roiMultiplier = 1 + (targetRoiPct / 100);
+                ebay2ApplyTargetBackSolve(function (lp, ship, margin) {
+                    return (lp * roiMultiplier + ship) / margin;
+                }, `Target ROI ${targetRoiPct}%`);
+            });
+
+            $('#apply-target-gpft-btn').on('click', function () {
+                const rawInput = $('#target-gpft-input').val();
+                const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                if (rawInput === '' || rawInput == null) {
+                    showToast('Please enter a Target GPFT%', 'error');
+                    return;
+                }
+                if (!isFinite(targetGpftPct)) {
+                    showToast('Target GPFT% must be a number', 'error');
+                    return;
+                }
+
+                const targetFraction = targetGpftPct / 100;
+                ebay2ApplyTargetBackSolve(function (lp, ship, margin) {
+                    const denom = margin - targetFraction;
+                    if (denom <= 0) return null; // signals "target ≥ margin" skip
+                    return (lp + ship) / denom;
+                }, `Target GPFT ${targetGpftPct}%`);
+            });
+
+            $('#target-roi-input').on('keypress', function (e) {
+                if (e.which === 13) $('#apply-target-roi-btn').click();
+            });
+            $('#target-gpft-input').on('keypress', function (e) {
+                if (e.which === 13) $('#apply-target-gpft-btn').click();
             });
 
             // Badge filter click handlers - Work together with other filters

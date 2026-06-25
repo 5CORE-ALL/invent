@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Upcoming Container'])
+@extends('layouts.vertical', ['title' => 'Coming Container'])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -27,8 +27,8 @@
 @endsection
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Upcoming Container',
-        'sub_title' => 'Upcoming Container',
+        'page_title' => 'Coming Container',
+        'sub_title' => 'Coming Container',
     ])
 
     @if (Session::has('flash_message'))
@@ -93,7 +93,7 @@
                         </button>
                         <button id="add-new-row" class="btn btn-sm btn-success" data-bs-toggle="modal"
                             data-bs-target="#createUpComingContainer">
-                            <i class="fas fa-plus-circle me-1"></i>Upcoming Cont.
+                            <i class="fas fa-plus-circle me-1"></i>Coming Cont.
                         </button>
                     </div>
 
@@ -109,7 +109,7 @@
             <div class="modal-content border-0 shadow-lg">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title fw-bold text-black" id="createUpComingContainerLabel">
-                        <i class="fas fa-file-invoice me-2"></i> Create Upcoming Container
+                        <i class="fas fa-file-invoice me-2"></i> Create Coming Container
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
                         aria-label="Close"></button>
@@ -471,7 +471,7 @@
                 document.querySelector('select[name="payment_terms"]').value = rowData.payment_terms || '';
 
                 // Modal ka title change
-                document.getElementById("createUpComingContainerLabel").innerText = "Edit Upcoming Container";
+                document.getElementById("createUpComingContainerLabel").innerText = "Edit Coming Container";
 
                 // Modal open karo
                 let modal = new bootstrap.Modal(document.getElementById("createUpComingContainer"));

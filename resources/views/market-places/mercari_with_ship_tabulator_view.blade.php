@@ -61,6 +61,75 @@
                         <span id="adjust-selected-count" class="text-muted small"></span>
                     </div>
 
+                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
+                         Mercari W Ship's SPFT / SROI include shipping (matches inline cellEdited + applyBtn handler).
+                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / factor   (factor = per-row `factor`, default 1) --}}
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
+                        id="target-roi-controls"
+                        title="Target ROI% — sets S Price = (LP × (1 + Target ROI%/100) + Ship) / factor on every selected row (back-solves so SROI column equals the target)">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target ROI%:
+                        </label>
+                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply S Price'">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S Price = (LP × (1 + Target ROI%/100) + Ship) / factor for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S Price
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SPFT = Target GPFT%.
+                         Formula: sprice = (LP + Ship) / (factor − GPFT%/100). Target GPFT% must be < factor*100. --}}
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
+                        id="target-gpft-controls"
+                        title="Target GPFT% — sets S Price = (LP + Ship) / (factor − Target GPFT%/100) on every selected row (back-solves so SPFT column equals the target)">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target GPFT%:
+                        </label>
+                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply S Price'. Must be less than each row's take-home factor.">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S Price = (LP + Ship) / (factor − Target GPFT%/100) for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S Price
+                        </button>
+                    </div>
+
+                    {{-- GPFT% slab filter (matches GPFT slabs on other pricing pages: amazon / shopify-b2c / etc.) --}}
+                    <select id="gpft-filter" class="form-select form-select-sm" style="width: 120px;"
+                        title="Filter rows by PFT% (gross profit margin)">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative (&lt;0%)</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40-50">40-50%</option>
+                        <option value="50plus">Above 50%</option>
+                    </select>
+
+                    {{-- ROI% slab filter (matches ROI slabs on other pricing pages) --}}
+                    <select id="roi-filter" class="form-select form-select-sm" style="width: 120px;"
+                        title="Filter rows by ROI%">
+                        <option value="all">ROI%</option>
+                        <option value="lt40">&lt; 40%</option>
+                        <option value="40-75">40–75%</option>
+                        <option value="75-125">75–125%</option>
+                        <option value="gt125">125%+</option>
+                    </select>
+
+                    {{-- DIL% slab filter — same color thresholds the Dil column already uses
+                         (<16.66 red, 16.66–25 yellow, 25–50 green, ≥50 pink). DIL = L30 / INV × 100. --}}
+                    <select id="dil-filter" class="form-select form-select-sm" style="width: 120px;"
+                        title="Filter rows by Dil% color band (L30 / INV × 100)">
+                        <option value="all">DIL%</option>
+                        <option value="red">Red (&lt;16.7%)</option>
+                        <option value="yellow">Yellow (16.7–25%)</option>
+                        <option value="green">Green (25–50%)</option>
+                        <option value="pink">Pink (50%+)</option>
+                    </select>
+
                     <span class="badge bg-success fs-6 p-2" id="avg-pft-badge" style="color: #fff; font-weight: bold;">PFT: 0%</span>
                     <span class="badge bg-primary fs-6 p-2" id="avg-roi-badge" style="color: #fff; font-weight: bold;">ROI: 0%</span>
                     <span class="badge bg-secondary fs-6 p-2" id="missing-l-badge" style="color: #fff; font-weight: bold; cursor: pointer;" title="Click to filter: Price = 0 and NR/REQ = REQ">Missing L: 0</span>
@@ -394,18 +463,19 @@
             const searchInput = document.getElementById('sku-search');
             if (searchInput) {
                 searchInput.addEventListener('keyup', function() {
-                    const value = (this.value || '').trim().toLowerCase();
-                    if (value) {
-                        table.setFilter(function(row) {
-                            const sku = String(row.sku || '').toLowerCase();
-                            const parent = String(row.Parent || '').toLowerCase();
-                            return sku.indexOf(value) !== -1 || parent.indexOf(value) !== -1;
-                        });
-                    } else {
-                        table.clearFilter();
-                    }
+                    applyAllFilters();
                 });
             }
+
+            // GPFT% / ROI% / DIL% slab dropdown change handlers — all funnel into the
+            // single combined applyAllFilters() so the three slab selects stack with
+            // the SKU search and the Missing-L badge instead of overwriting each other.
+            const gpftFilterEl = document.getElementById('gpft-filter');
+            if (gpftFilterEl) gpftFilterEl.addEventListener('change', applyAllFilters);
+            const roiFilterEl = document.getElementById('roi-filter');
+            if (roiFilterEl) roiFilterEl.addEventListener('change', applyAllFilters);
+            const dilFilterEl = document.getElementById('dil-filter');
+            if (dilFilterEl) dilFilterEl.addEventListener('change', applyAllFilters);
 
             // Price % toggle — cycle Off → Decrease → Increase → Same Price → Off
             const priceModeBtn = document.getElementById('price-mode-btn');
@@ -484,26 +554,211 @@
                 });
             }
 
-            // Missing L badge — click to filter
+            /*
+             * Target ROI% / Target GPFT% bulk apply (Mercari w Ship, margin = per-row `factor`, default 1)
+             * --------------------------------------------------------------------------------------------
+             * Back-solves S Price so the resulting SROI / SPFT column matches the entered target.
+             * Mercari w Ship's SPFT / SROI formulas (used in the inline cellEdited handler and
+             * the Apply % / Same Price button above) INCLUDE shipping:
+             *     SPFT% = ((sprice * factor − lp − ship) / sprice) * 100
+             *     SROI% = ((sprice * factor − lp − ship) / lp)     * 100
+             *   → sprice = (lp * (1 + ROI%/100)  + ship) / factor
+             *   → sprice = (lp + ship) / (factor − GPFT%/100)
+             * Selection uses Tabulator's native getSelectedRows() (matches the existing
+             * Apply % flow). Each row is persisted via saveMercariStatus(sku, { sprice })
+             * so the same /mercari-with-ship-tabulator/save-status endpoint stores the new
+             * S Price. Plain 2-decimal rounding — no .99 / .49 retail snapping — because
+             * snapping would shift the achieved SROI / SPFT off the user-typed target.
+             */
+            function applyMercariWshipTargetBackSolve(computeFn, labelPrefix) {
+                const selectedRows = table.getSelectedRows();
+                if (selectedRows.length === 0) {
+                    alert('Please select at least one row first (turn on Price % to reveal checkboxes).');
+                    return;
+                }
+
+                let updatedCount  = 0;
+                let skippedNoLp   = 0;
+                let skippedHigh   = 0;
+
+                selectedRows.forEach(function (row) {
+                    const d  = row.getData();
+                    const lp = parseFloat(d.lp) || 0;
+                    if (lp <= 0) { skippedNoLp++; return; }
+                    const ship   = parseFloat(d.ship)   || 0;
+                    const factor = parseFloat(d.factor) || 1;
+
+                    const computed = computeFn(lp, ship, factor);
+                    if (computed == null) { skippedHigh++; return; }
+                    const newPrice = +computed.toFixed(2);
+                    if (!isFinite(newPrice) || newPrice <= 0) return;
+
+                    const spft = newPrice > 0 ? ((newPrice * factor - lp - ship) / newPrice) * 100 : 0;
+                    const sroi = lp > 0       ? ((newPrice * factor - lp - ship) / lp)     * 100 : 0;
+
+                    row.update({
+                        sprice: newPrice,
+                        SPFT: Math.round(spft * 100) / 100,
+                        SROI: Math.round(sroi * 100) / 100
+                    });
+                    saveMercariStatus(d.sku, { sprice: newPrice });
+                    updatedCount++;
+                });
+
+                if (updatedCount === 0) {
+                    if (skippedHigh > 0) {
+                        alert(labelPrefix + ' too high — must be less than each row\'s take-home factor.');
+                    } else {
+                        alert('No selected rows have a usable LP > 0.');
+                    }
+                    return;
+                }
+
+                let note = '';
+                if (skippedNoLp > 0) note += ' (' + skippedNoLp + ' skipped — no LP)';
+                if (skippedHigh > 0) note += ' (' + skippedHigh + ' skipped — target ≥ factor)';
+                if (window.toastr) {
+                    toastr.success(labelPrefix + ' applied to ' + updatedCount + ' SKU(s)' + note);
+                } else {
+                    console.info(labelPrefix + ' applied to ' + updatedCount + ' SKU(s)' + note);
+                }
+            }
+
+            const applyTargetRoiBtn = document.getElementById('apply-target-roi-btn');
+            if (applyTargetRoiBtn) {
+                applyTargetRoiBtn.addEventListener('click', function () {
+                    const rawInput = document.getElementById('target-roi-input').value;
+                    const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                    if (rawInput === '' || rawInput == null) { alert('Please enter a Target ROI%.'); return; }
+                    if (!isFinite(targetRoiPct))             { alert('Target ROI% must be a number.'); return; }
+
+                    const roiMultiplier = 1 + (targetRoiPct / 100);
+                    applyMercariWshipTargetBackSolve(function (lp, ship, factor) {
+                        return (lp * roiMultiplier + ship) / factor;
+                    }, 'Target ROI ' + targetRoiPct + '%');
+                });
+            }
+
+            const applyTargetGpftBtn = document.getElementById('apply-target-gpft-btn');
+            if (applyTargetGpftBtn) {
+                applyTargetGpftBtn.addEventListener('click', function () {
+                    const rawInput = document.getElementById('target-gpft-input').value;
+                    const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                    if (rawInput === '' || rawInput == null) { alert('Please enter a Target GPFT%.'); return; }
+                    if (!isFinite(targetGpftPct))            { alert('Target GPFT% must be a number.'); return; }
+
+                    const targetFraction = targetGpftPct / 100;
+                    applyMercariWshipTargetBackSolve(function (lp, ship, factor) {
+                        const denom = factor - targetFraction;
+                        if (denom <= 0) return null; // signals "target ≥ factor" skip
+                        return (lp + ship) / denom;
+                    }, 'Target GPFT ' + targetGpftPct + '%');
+                });
+            }
+
+            const targetRoiInput = document.getElementById('target-roi-input');
+            if (targetRoiInput) {
+                targetRoiInput.addEventListener('keypress', function (e) {
+                    if (e.which === 13 || e.keyCode === 13) applyTargetRoiBtn && applyTargetRoiBtn.click();
+                });
+            }
+            const targetGpftInput = document.getElementById('target-gpft-input');
+            if (targetGpftInput) {
+                targetGpftInput.addEventListener('keypress', function (e) {
+                    if (e.which === 13 || e.keyCode === 13) applyTargetGpftBtn && applyTargetGpftBtn.click();
+                });
+            }
+
+            // Missing L badge — click to toggle Missing-L filter (composes with other filters)
             const missingLBadge = document.getElementById('missing-l-badge');
             if (missingLBadge) {
                 missingLBadge.addEventListener('click', function() {
                     missingLFilterActive = !missingLFilterActive;
                     const mCol = table.getColumn('missing_l');
                     if (missingLFilterActive) {
-                        table.setFilter(missingLFilter);
                         if (mCol) mCol.show();
                         missingLBadge.classList.remove('bg-secondary');
                         missingLBadge.classList.add('bg-dark');
                     } else {
-                        table.clearFilter();
                         if (mCol) mCol.hide();
                         missingLBadge.classList.remove('bg-dark');
                         missingLBadge.classList.add('bg-secondary');
                     }
+                    applyAllFilters();
                 });
             }
         });
+
+        /*
+         * Unified filter pipeline — composes SKU search + Missing-L + GPFT% + ROI% + DIL%
+         * so the filters stack instead of overwriting each other. Tabulator's setFilter
+         * replaces any prior filter, so we build one combined predicate and pass it in.
+         */
+        function applyAllFilters() {
+            if (typeof table === 'undefined' || !table || !table.setFilter) return;
+
+            const searchEl = document.getElementById('sku-search');
+            const skuSearch = (searchEl ? (searchEl.value || '') : '').trim().toLowerCase();
+
+            const gpftEl = document.getElementById('gpft-filter');
+            const gpftFilter = gpftEl ? gpftEl.value : 'all';
+
+            const roiEl = document.getElementById('roi-filter');
+            const roiFilter = roiEl ? roiEl.value : 'all';
+
+            const dilEl = document.getElementById('dil-filter');
+            const dilFilter = dilEl ? dilEl.value : 'all';
+
+            table.setFilter(function(row) {
+                // SKU / Parent search
+                if (skuSearch) {
+                    const sku = String(row.sku || '').toLowerCase();
+                    const parent = String(row.Parent || '').toLowerCase();
+                    if (sku.indexOf(skuSearch) === -1 && parent.indexOf(skuSearch) === -1) return false;
+                }
+
+                // Missing L (price = 0 and NR/REQ = REQ)
+                if (missingLFilterActive) {
+                    if (!missingLFilter(row)) return false;
+                }
+
+                // GPFT% (uses the PFT column)
+                if (gpftFilter && gpftFilter !== 'all') {
+                    const gpft = parseFloat(row.PFT) || 0;
+                    if (gpftFilter === 'negative' && !(gpft < 0)) return false;
+                    if (gpftFilter === '0-10'    && !(gpft >= 0 && gpft < 10))   return false;
+                    if (gpftFilter === '10-20'   && !(gpft >= 10 && gpft < 20))  return false;
+                    if (gpftFilter === '20-30'   && !(gpft >= 20 && gpft < 30))  return false;
+                    if (gpftFilter === '30-40'   && !(gpft >= 30 && gpft < 40))  return false;
+                    if (gpftFilter === '40-50'   && !(gpft >= 40 && gpft < 50))  return false;
+                    if (gpftFilter === '50plus'  && !(gpft >= 50))               return false;
+                }
+
+                // ROI%
+                if (roiFilter && roiFilter !== 'all') {
+                    const roiVal = parseFloat(row.ROI) || 0;
+                    if (roiFilter === 'lt40'    && !(roiVal < 40))                return false;
+                    if (roiFilter === '40-75'   && !(roiVal >= 40 && roiVal < 75))  return false;
+                    if (roiFilter === '75-125'  && !(roiVal >= 75 && roiVal < 125)) return false;
+                    if (roiFilter === 'gt125'   && !(roiVal >= 125))               return false;
+                }
+
+                // DIL% (computed: L30 / INV * 100, same buckets as Dil column formatter)
+                if (dilFilter && dilFilter !== 'all') {
+                    const inv = parseFloat(row.INV) || 0;
+                    const l30 = parseFloat(row.L30) || 0;
+                    const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+                    if (dilFilter === 'red'    && !(dil < 16.66))                return false;
+                    if (dilFilter === 'yellow' && !(dil >= 16.66 && dil < 25))   return false;
+                    if (dilFilter === 'green'  && !(dil >= 25 && dil < 50))      return false;
+                    if (dilFilter === 'pink'   && !(dil >= 50))                  return false;
+                }
+
+                return true;
+            });
+        }
 
         // Round to retail pricing (same as ebay-tabulator-view)
         function roundToRetailPrice(price) {

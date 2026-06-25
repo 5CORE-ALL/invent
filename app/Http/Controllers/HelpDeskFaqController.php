@@ -57,9 +57,87 @@ class HelpDeskFaqController extends Controller
             $perPage = 50;
         }
 
-        $faqs = \Illuminate\Support\Facades\Schema::hasTable('help_desk_faqs')
-            ? HelpDeskFaq::orderByDesc('id')->paginate($perPage)->withQueryString()
-            : collect();
+        // Search query (`?q=…`). When present, we bypass pagination entirely
+        // and return every matching row in one response so the user can see
+        // all hits on a single screen without manually bumping per_page or
+        // walking page-by-page. When absent, behaviour is unchanged (paginated
+        // list, newest first). The columns scanned here mirror the client-side
+        // `data-search` haystack the Blade view builds for each row, so a
+        // local-only refinement still feels consistent with the full result.
+        $rawQuery = trim((string) $request->input('q', ''));
+        $searchQuery = mb_substr($rawQuery, 0, 200); // hard cap to keep the LIKE bounded
+
+        $hasFaqTable = \Illuminate\Support\Facades\Schema::hasTable('help_desk_faqs');
+        if (! $hasFaqTable) {
+            $faqs = collect();
+        } elseif ($searchQuery !== '') {
+            $needle = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $searchQuery) . '%';
+            $searchColumns = ['group_name','faq','answers','type_variant','what','action','ca','plus_action','messages'];
+            $faqs = HelpDeskFaq::where(function ($q) use ($needle, $searchColumns) {
+                foreach ($searchColumns as $col) {
+                    $q->orWhere($col, 'LIKE', $needle);
+                }
+            })->orderByDesc('id')->get();
+
+            // ── Match-context snippets ──────────────────────────────────────
+            // The visible table only renders three text cells per row (group,
+            // FAQ, truncated 80-char answer). The server-side LIKE, however,
+            // scans 9 fields — so a row can legitimately match on `messages`,
+            // `action`, `ca`, etc. without any visible cue, which makes the
+            // result list look unrelated to the query. For every matched row
+            // we compute a short snippet around the first occurrence in each
+            // matched column so the view can show "Match in messages: …call
+            // me back…" inline under the row. The visible columns
+            // (`group_name`, `faq`, `answers` once it fits in 80 chars) are
+            // skipped because the JS highlighter already marks them in place.
+            $hiddenOrTruncated = ['type_variant','what','action','ca','plus_action','messages'];
+            $columnLabels = [
+                'type_variant' => 'Variant/Type',
+                'what'         => 'What',
+                'action'       => 'Action',
+                'ca'           => 'Corrective Action',
+                'plus_action'  => '+ Action',
+                'messages'     => 'Messages',
+                'answers'      => 'Answer',
+            ];
+            $faqs->each(function ($faq) use ($searchQuery, $hiddenOrTruncated, $columnLabels) {
+                $snippets = [];
+                $needleLower = mb_strtolower($searchQuery);
+                $needleLen = mb_strlen($searchQuery);
+                $window = 40; // characters of context on each side of the match
+                // Always include `answers` when the visible 80-char preview
+                // doesn't already contain the match (so the truncated cell
+                // wouldn't have surfaced it on its own).
+                $columnsToScan = $hiddenOrTruncated;
+                $answersFull = (string) $faq->answers;
+                if (mb_stripos($answersFull, $searchQuery) !== false) {
+                    $visiblePreview = \Illuminate\Support\Str::limit($answersFull, 80);
+                    if (mb_stripos($visiblePreview, $searchQuery) === false) {
+                        $columnsToScan[] = 'answers';
+                    }
+                }
+                foreach ($columnsToScan as $col) {
+                    $value = (string) ($faq->{$col} ?? '');
+                    if ($value === '') continue;
+                    $pos = mb_stripos($value, $searchQuery);
+                    if ($pos === false) continue;
+                    $start = max(0, $pos - $window);
+                    $end = min(mb_strlen($value), $pos + $needleLen + $window);
+                    $snippet = mb_substr($value, $start, $end - $start);
+                    if ($start > 0) $snippet = '…' . ltrim($snippet);
+                    if ($end < mb_strlen($value)) $snippet = rtrim($snippet) . '…';
+                    $snippets[] = [
+                        'label'   => $columnLabels[$col] ?? $col,
+                        'snippet' => $snippet,
+                    ];
+                }
+                // setAttribute so it's available as `$faq->match_snippets` in
+                // the Blade view without polluting the schema.
+                $faq->setAttribute('match_snippets', $snippets);
+            });
+        } else {
+            $faqs = HelpDeskFaq::orderByDesc('id')->paginate($perPage)->withQueryString();
+        }
 
         $deptNames = $departments->pluck('name', 'id');
 
@@ -76,6 +154,7 @@ class HelpDeskFaqController extends Controller
             'canDeleteFaq' => $this->isGuruManager($request),
             'isGuruManager' => $this->isGuruManager($request),
             'perPage' => $perPage,
+            'searchQuery' => $searchQuery,
         ]);
     }
 

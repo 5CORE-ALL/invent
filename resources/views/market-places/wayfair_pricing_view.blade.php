@@ -206,6 +206,41 @@
                             <i class="fas fa-exchange-alt"></i> Pricing mode
                         </button>
 
+                        {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
+                             Wayfair's SGPFT / SROI server-side formulas do NOT include shipping, so the back-solve omits it too.
+                             Formula: sprice = LP × (1 + ROI%/100) / margin   (margin = per-row `_margin`, default 0.95) --}}
+                        <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                            id="wf-target-roi-controls"
+                            title="Target ROI% — sets S PRC = LP × (1 + Target ROI%/100) / margin on every checked row (back-solves so SROI column equals the target)">
+                            <label for="wf-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                                Target ROI%:
+                            </label>
+                            <input type="number" id="wf-target-roi-input" class="form-control form-control-sm text-end"
+                                placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                                title="Target ROI% applied to all checked rows when you click 'Apply S PRC'">
+                            <button id="wf-apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                                title="Compute & save S PRC = LP × (1 + Target ROI%/100) / margin for every checked row">
+                                <i class="fas fa-calculator"></i> Apply S PRC
+                            </button>
+                        </div>
+
+                        {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
+                             Formula: sprice = LP / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
+                        <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                            id="wf-target-gpft-controls"
+                            title="Target GPFT% — sets S PRC = LP / (margin − Target GPFT%/100) on every checked row (back-solves so SGPFT column equals the target)">
+                            <label for="wf-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                                Target GPFT%:
+                            </label>
+                            <input type="number" id="wf-target-gpft-input" class="form-control form-control-sm text-end"
+                                placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                                title="Target GPFT% applied to all checked rows when you click 'Apply S PRC'. Must be less than the Wayfair take-home margin (typically < 95%).">
+                            <button id="wf-apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                                title="Compute & save S PRC = LP / (margin − Target GPFT%/100) for every checked row">
+                                <i class="fas fa-calculator"></i> Apply S PRC
+                            </button>
+                        </div>
+
                         <!-- Play / Pause parent navigation -->
                         <div class="btn-group align-items-center ms-2" role="group" aria-label="Parent navigation">
                             <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
@@ -1534,6 +1569,149 @@
             $('#wf-apply-discount-btn').on('click', function() { wfApplyDiscount(); });
             $('#wf-discount-input').on('keypress', function(e) { if (e.which === 13) wfApplyDiscount(); });
             $('#wf-clear-sprice-btn').on('click', function() { wfClearSpriceForSelected(); });
+
+            /*
+             * Target ROI% / Target GPFT% bulk apply (Wayfair, per-row `_margin`, default 0.95)
+             * ------------------------------------------------------------------------------
+             * Wayfair's server-side SGPFT / SROI formulas (WayfairController::saveWayfairSpriceUpdates,
+             * lines ~922-923) do NOT include shipping — they're just:
+             *     SGPFT% = ((sprice * margin − lp) / sprice) * 100
+             *     SROI%  = ((sprice * margin − lp) / lp)     * 100
+             * Back-solving each:
+             *     SROI = target  →  sprice = lp * (1 + ROI%/100) / margin
+             *     SGPFT = target →  sprice = lp / (margin − GPFT%/100)
+             * Optimistic SGPFT / SROI written client-side (using wayfairMarginFromRow), then the
+             * existing /wayfair/pricing-save-sprice endpoint reconciles them server-side. Plain
+             * 2-decimal rounding — no .99 snapping — because snapping would shift the achieved
+             * SROI / SGPFT away from the typed target.
+             */
+            $('#wf-apply-target-roi-btn').on('click', function () {
+                const rawInput = $('#wf-target-roi-input').val();
+                const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                if (rawInput === '' || rawInput == null) {
+                    if (window.toastr) toastr.error('Please enter a Target ROI%');
+                    return;
+                }
+                if (!isFinite(targetRoiPct)) {
+                    if (window.toastr) toastr.error('Target ROI% must be a number');
+                    return;
+                }
+                if (wfSelectedSkus.size === 0) {
+                    const selectCol = table ? table.getColumn('_wf_select') : null;
+                    if (selectCol) selectCol.show();
+                    if (window.toastr) toastr.warning('Please check at least one SKU first (toggle Pricing mode to reveal checkboxes)');
+                    return;
+                }
+
+                const roiMultiplier = 1 + (targetRoiPct / 100);
+                const updates = [];
+                let updatedCount = 0;
+                let skippedNoLp  = 0;
+
+                wfSelectedSkus.forEach(function (sku) {
+                    const row = wfFindActiveSkuRow(sku);
+                    if (!row) return;
+                    const rowData = row.getData();
+                    if (rowData.is_parent) return;
+
+                    const lp = parseFloat(rowData.lp) || 0;
+                    if (lp <= 0) { skippedNoLp++; return; }
+
+                    const margin = wayfairMarginFromRow(rowData);
+                    const candidate = (lp * roiMultiplier) / margin;
+                    const newSprice = +candidate.toFixed(2);
+                    if (!isFinite(newSprice) || newSprice <= 0) return;
+
+                    const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp) / newSprice) * 100) : 0;
+                    const sroi  = lp > 0       ? Math.round(((newSprice * margin - lp) / lp)     * 100) : 0;
+
+                    row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
+                    updates.push({ sku: sku, sprice: newSprice });
+                    updatedCount++;
+                });
+
+                if (updates.length === 0) {
+                    if (window.toastr) toastr.warning('No checked rows have a usable LP > 0');
+                    return;
+                }
+
+                saveWayfairSpriceUpdates(updates);
+                const note = skippedNoLp > 0 ? ' (' + skippedNoLp + ' skipped — no LP)' : '';
+                if (window.toastr) toastr.success('Target ROI ' + targetRoiPct + '% applied to ' + updatedCount + ' SKU(s)' + note);
+            });
+
+            $('#wf-apply-target-gpft-btn').on('click', function () {
+                const rawInput = $('#wf-target-gpft-input').val();
+                const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
+
+                if (rawInput === '' || rawInput == null) {
+                    if (window.toastr) toastr.error('Please enter a Target GPFT%');
+                    return;
+                }
+                if (!isFinite(targetGpftPct)) {
+                    if (window.toastr) toastr.error('Target GPFT% must be a number');
+                    return;
+                }
+                if (wfSelectedSkus.size === 0) {
+                    const selectCol = table ? table.getColumn('_wf_select') : null;
+                    if (selectCol) selectCol.show();
+                    if (window.toastr) toastr.warning('Please check at least one SKU first (toggle Pricing mode to reveal checkboxes)');
+                    return;
+                }
+
+                const targetFraction = targetGpftPct / 100;
+                const updates = [];
+                let updatedCount = 0;
+                let skippedNoLp  = 0;
+                const skippedHighGpft = [];
+
+                wfSelectedSkus.forEach(function (sku) {
+                    const row = wfFindActiveSkuRow(sku);
+                    if (!row) return;
+                    const rowData = row.getData();
+                    if (rowData.is_parent) return;
+
+                    const lp = parseFloat(rowData.lp) || 0;
+                    if (lp <= 0) { skippedNoLp++; return; }
+
+                    const margin = wayfairMarginFromRow(rowData);
+                    const denom  = margin - targetFraction;
+                    if (denom <= 0) { skippedHighGpft.push(sku); return; }
+                    const candidate = lp / denom;
+                    const newSprice = +candidate.toFixed(2);
+                    if (!isFinite(newSprice) || newSprice <= 0) return;
+
+                    const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp) / newSprice) * 100) : 0;
+                    const sroi  = lp > 0       ? Math.round(((newSprice * margin - lp) / lp)     * 100) : 0;
+
+                    row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
+                    updates.push({ sku: sku, sprice: newSprice });
+                    updatedCount++;
+                });
+
+                if (updates.length === 0) {
+                    if (skippedHighGpft.length > 0) {
+                        if (window.toastr) toastr.error('Target GPFT% ' + targetGpftPct + '% is too high — must be less than each row\'s take-home margin (typically < 95%).');
+                    } else {
+                        if (window.toastr) toastr.warning('No checked rows have a usable LP > 0');
+                    }
+                    return;
+                }
+
+                saveWayfairSpriceUpdates(updates);
+                let note = '';
+                if (skippedNoLp > 0)        note += ' (' + skippedNoLp + ' skipped — no LP)';
+                if (skippedHighGpft.length) note += ' (' + skippedHighGpft.length + ' skipped — target ≥ margin)';
+                if (window.toastr) toastr.success('Target GPFT ' + targetGpftPct + '% applied to ' + updatedCount + ' SKU(s)' + note);
+            });
+
+            $('#wf-target-roi-input').on('keypress', function (e) {
+                if (e.which === 13) $('#wf-apply-target-roi-btn').click();
+            });
+            $('#wf-target-gpft-input').on('keypress', function (e) {
+                if (e.which === 13) $('#wf-apply-target-gpft-btn').click();
+            });
 
             $(document).on('change', '#wf-select-all', function() {
                 const checked = $(this).prop('checked');

@@ -148,10 +148,13 @@
                     <button type="button" class="btn btn-sm btn-success" id="vamImportBtn" title="Upload a CSV of video ads (same headers as the sample template)">
                         <i class="fa fa-upload"></i> Import CSV
                     </button>
+                    <a href="{{ route('video.ads.master.export') }}" class="btn btn-sm btn-info text-white" id="vamExportBtn" title="Download all rows as a CSV (same headers as Import)">
+                        <i class="fa fa-file-export"></i> Export CSV
+                    </a>
                     <a href="{{ route('video.ads.master.sample.csv') }}" class="btn btn-sm btn-outline-secondary vam-icon-btn" id="vamSampleBtn" title="Download a CSV template with 3 example rows">
                         <i class="fa fa-download"></i>
                     </a>
-                    <input type="file" id="vamImportFile" accept=".csv,text/csv" style="display: none;">
+                    <input type="file" id="vamImportFile" accept=".csv,.txt,text/csv,text/plain,application/csv,application/vnd.ms-excel" style="display: none;">
 
                     {{-- Count badges (SKU / Parent / Group / Total). They all
                          share .vam-count-badge so width and typography stay
@@ -260,18 +263,33 @@
         </div>
     </div>
 
-    {{-- Modal: add a new HOOK NAME option (invoked from the row modal's "+" button) --}}
+    {{-- Modal: add/edit a HOOK NAME option together with its default Hook
+         Message and Link. Whenever this hook is picked on a row (either via
+         the form modal or the inline cell), the Hook Message and Link cells
+         on that row will be auto-filled from these defaults. --}}
     <div class="modal fade" id="vamAddHookModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Add Hook Name</h5>
+                    <h5 class="modal-title">Add / Edit Hook</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <label class="form-label">New hook name</label>
-                    <input type="text" id="vamNewHookName" class="form-control" placeholder="e.g. Curiosity / Pain Point …" autocomplete="off">
-                    <div class="form-text">This will be saved and available for all future rows.</div>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Hook name <span class="text-danger">*</span></label>
+                            <input type="text" id="vamNewHookName" class="form-control" placeholder="e.g. Curiosity Hook" autocomplete="off">
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label fw-semibold">Default Hook Message</label>
+                            <input type="text" id="vamNewHookMessage" class="form-control" placeholder="e.g. Tired of cables that crackle?" autocomplete="off">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Default Link</label>
+                            <input type="url" id="vamNewHookLink" class="form-control" placeholder="https://…" autocomplete="off">
+                            <div class="form-text">Picking this hook on a row will auto-fill the row's Hook Message and Link with these defaults.</div>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -422,12 +440,24 @@
                 return select;
             }
 
-            // HOOK NAME — list of known hooks. The cell editor uses freetext,
-            // so the user can also type a brand new hook directly into the
-            // cell; hookNameEdited() auto-saves the new value into the global
-            // hook_options table.
+            // HOOK NAME — list of known hooks. hookOptions is now an array of
+            // `{ name, hook, link }` objects; the dropdown still shows the
+            // name but the extra fields drive auto-fill on selection.
             function buildHookLookup() {
-                return (hookOptions || []).map(n => ({ value: n, label: n }));
+                return (hookOptions || []).map(o => ({ value: o.name, label: o.name }));
+            }
+
+            // Lookup helper: find a hook option by name (case-sensitive match
+            // on the canonical stored value).
+            function findHook(name) {
+                if (!name) return null;
+                return (hookOptions || []).find(o => o.name === name) || null;
+            }
+
+            // List of just-the-names for membership checks (used by
+            // hookNameEdited to detect brand-new hooks).
+            function hookOptionNames() {
+                return (hookOptions || []).map(o => o.name);
             }
 
             // ── Persistence (single-cell PUT) ──────────────────────────────────
@@ -478,15 +508,26 @@
             // the typed value isn't already in the global hook list, we save
             // it to video_ads_hook_options first (so it shows up as a real
             // dropdown option for future rows), then persist the row.
+            //
+            // Also: when the user picks a *known* hook, copy that hook's
+            // default Hook Message and Link onto the row so the three fields
+            // stay in sync. The hook entry acts as a small template.
             function hookNameEdited(cell) {
                 const raw   = cell.getValue();
                 const value = (raw === null || raw === undefined) ? '' : String(raw).trim();
+                const row   = cell.getRow();
 
                 // Empty → just persist NULL on the row.
                 if (value === '') { persistCell(cell); return; }
 
-                // Already a known hook → save the row immediately.
-                if ((hookOptions || []).includes(value)) { persistCell(cell); return; }
+                // Already a known hook → push its defaults into the HOOK
+                // MESSAGE and LINK cells, then save those + this cell.
+                const known = findHook(value);
+                if (known) {
+                    applyHookDefaultsToRow(row, known);
+                    persistCell(cell);
+                    return;
+                }
 
                 // Brand-new hook → register it in the global list first, then
                 // persist the row. We don't block the row save on a network
@@ -505,17 +546,53 @@
                 .then(j => {
                     if (j && j.success) {
                         hookOptions = j.options || hookOptions;
-                        refreshHookSelect(''); // keep modal form's select fresh
+                        refreshHookSelect(document.getElementById('vam_hook_name').value || '');
                     }
                 })
                 .catch(e => console.warn('Failed to register new hook option:', e))
                 .finally(() => persistCell(cell));
             }
 
+            // Apply a hook template's default Hook Message + Link onto a row
+            // (both the displayed cell and the underlying data), then push
+            // those changes through the per-cell save endpoint so they're
+            // persisted. Overwrites whatever was there — same semantics as
+            // the form's auto-fill.
+            function applyHookDefaultsToRow(row, hook) {
+                if (!hook) return;
+                const updates = {};
+                const desiredHook = hook.hook || '';
+                const desiredLink = hook.link || '';
+                if (row.getCell('hook'))  updates.hook = desiredHook;
+                if (row.getCell('link'))  updates.link = desiredLink;
+                if (Object.keys(updates).length === 0) return;
+
+                // Push the values into the cells without triggering
+                // cellEdited (row.update bypasses editor hooks), then issue a
+                // single PUT carrying both changes.
+                row.update(updates);
+                const id = row.getData().id;
+                if (!id) return;
+
+                fetch(`/video-ads-master/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: JSON.stringify({
+                        hook: desiredHook === '' ? null : desiredHook,
+                        link: desiredLink === '' ? null : desiredLink,
+                    }),
+                })
+                .catch(e => console.warn('Failed to sync hook defaults to row:', e));
+            }
+
             // ── Modal form helpers ─────────────────────────────────────────────
 
             // Repopulates the HOOK NAME <select> in the form modal. Called on
-            // boot and whenever a new hook option is added.
+            // boot and whenever a new hook option is added/edited.
             function refreshHookSelect(selected) {
                 const sel = document.getElementById('vam_hook_name');
                 sel.innerHTML = '';
@@ -523,13 +600,25 @@
                 blank.value = '';
                 blank.textContent = '— Select hook name —';
                 sel.appendChild(blank);
-                (hookOptions || []).forEach(name => {
+                (hookOptions || []).forEach(opt => {
                     const o = document.createElement('option');
-                    o.value = name;
-                    o.textContent = name;
-                    if (selected && name === selected) o.selected = true;
+                    o.value = opt.name;
+                    o.textContent = opt.name;
+                    if (selected && opt.name === selected) o.selected = true;
                     sel.appendChild(o);
                 });
+            }
+
+            // When the user picks a hook in the form's <select>, copy the
+            // hook's default Hook Message + Link into the corresponding
+            // inputs. Always overwrites the fields so the form mirrors the
+            // hook template — same behaviour as inline cell editing below.
+            function applyHookDefaultsToForm() {
+                const sel  = document.getElementById('vam_hook_name');
+                const hook = findHook(sel.value);
+                if (!hook) return; // unknown / blank — leave the existing inputs alone
+                document.getElementById('vam_hook').value = hook.hook || '';
+                document.getElementById('vam_link').value = hook.link || '';
             }
 
             // Repopulates the CHANNEL <datalist>. Called on boot.
@@ -676,9 +765,20 @@
                 // "+" next to the HOOK NAME select inside the row form opens
                 // the nested "add new hook" modal.
                 document.getElementById('vamHookAddBtn').addEventListener('click', () => {
-                    document.getElementById('vamNewHookName').value = '';
+                    // Pre-fill the modal with whatever the form already has
+                    // selected so the user can quickly edit an existing
+                    // hook's defaults too.
+                    const current = document.getElementById('vam_hook_name').value || '';
+                    const hook    = findHook(current);
+                    document.getElementById('vamNewHookName').value    = hook ? hook.name : current;
+                    document.getElementById('vamNewHookMessage').value = hook ? (hook.hook || '') : (document.getElementById('vam_hook').value || '');
+                    document.getElementById('vamNewHookLink').value    = hook ? (hook.link || '') : (document.getElementById('vam_link').value || '');
                     addHookModal.show();
                 });
+
+                // Picking a hook in the form auto-fills Hook Message + Link
+                // from the hook's stored defaults.
+                document.getElementById('vam_hook_name').addEventListener('change', applyHookDefaultsToForm);
 
                 document.getElementById('vamSaveNewHookBtn').addEventListener('click', saveNewHook);
                 document.getElementById('vamNewHookName').addEventListener('keydown', (e) => {
@@ -877,15 +977,37 @@
                 fetch('/video-ads-master/import', {
                     method: 'POST',
                     headers: {
+                        // No Content-Type — the browser sets the multipart
+                        // boundary automatically. Accept ensures Laravel
+                        // returns JSON validation errors instead of a
+                        // redirect to the previous page.
                         'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
                         'X-CSRF-TOKEN': csrfToken,
                     },
                     body: fd,
                 })
-                .then(r => r.json().then(j => ({ ok: r.ok, j })))
-                .then(({ ok, j }) => {
-                    if (!ok || !j.success) {
-                        showToast((j && j.message) || 'Import failed', 'error');
+                .then(async r => {
+                    // Parse the body even on non-2xx — Laravel ships
+                    // validation errors as JSON when Accept: application/json.
+                    let j = null;
+                    const text = await r.text();
+                    try { j = text ? JSON.parse(text) : null; } catch (e) { /* not json */ }
+                    return { ok: r.ok, status: r.status, j, text };
+                })
+                .then(({ ok, status, j, text }) => {
+                    if (!ok || !j || j.success === false) {
+                        // Build the clearest error message we can.
+                        let msg = (j && (j.message || j.error)) || `Import failed (HTTP ${status})`;
+                        // Laravel validation format: { errors: { field: ["msg"...] } }
+                        if (j && j.errors && typeof j.errors === 'object') {
+                            const firstField = Object.keys(j.errors)[0];
+                            if (firstField && Array.isArray(j.errors[firstField]) && j.errors[firstField][0]) {
+                                msg = j.errors[firstField][0];
+                            }
+                        }
+                        console.error('Import failed', { status, body: j || text });
+                        showToast(msg, 'error');
                         return;
                     }
                     const created = j.created || 0;
@@ -954,8 +1076,16 @@
             // Save a brand-new HOOK NAME from the "+ Add hook" sub-modal
             // (invoked from the form modal's "+" button). The new option is
             // re-rendered in the form's <select> and pre-selected.
+            // Save a hook entry from the "Add / Edit Hook" modal — including
+            // its default Hook Message and Link. The endpoint up-serts by
+            // name, so this also lets the user edit an existing hook's
+            // defaults. After saving, the form's HOOK NAME select is
+            // re-rendered with the new option pre-selected and the form's
+            // Hook Message + Link inputs are populated from the new defaults.
             function saveNewHook() {
-                const name = document.getElementById('vamNewHookName').value.trim();
+                const name    = document.getElementById('vamNewHookName').value.trim();
+                const hookMsg = document.getElementById('vamNewHookMessage').value.trim();
+                const link    = document.getElementById('vamNewHookLink').value.trim();
                 if (!name) { showToast('Enter a hook name', 'warning'); return; }
 
                 fetch('/video-ads-master/hook-options', {
@@ -965,7 +1095,11 @@
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': csrfToken,
                     },
-                    body: JSON.stringify({ name }),
+                    body: JSON.stringify({
+                        name: name,
+                        hook: hookMsg,
+                        link: link,
+                    }),
                 })
                 .then(r => r.json())
                 .then(j => {
@@ -973,7 +1107,8 @@
                     hookOptions = j.options || hookOptions;
                     addHookModal.hide();
                     refreshHookSelect(j.name);
-                    showToast('Hook name saved', 'success');
+                    applyHookDefaultsToForm();
+                    showToast('Hook saved', 'success');
                 })
                 .catch(e => { console.error(e); showToast('Network error', 'error'); });
             }

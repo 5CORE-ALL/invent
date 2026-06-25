@@ -50,10 +50,27 @@ class DispatchIssuesController extends IssueBoardControllerBase
     protected function issueBoardIndexData(): array
     {
         $data = parent::issueBoardIndexData();
+        // Dedupe by name (case-insensitive, trimmed) so that any accidental
+        // duplicate rows in the `warehouses` table (e.g. two "Main Godown"
+        // entries with different ids) only surface once in the All Issues
+        // warehouse picker. We keep the first occurrence by id ascending,
+        // which is the canonical/original record.
+        //
+        // We also EXCLUDE soft-deleted warehouses (`deleted_at IS NOT NULL`),
+        // otherwise an archived duplicate could be picked here and then fail
+        // downstream in OutgoingController::processOutgoingFromIssue(), which
+        // is exactly how Shopify deductions used to silently no-op when a
+        // user picked a soft-deleted warehouse. This is the *primary* guard;
+        // the OutgoingController also accepts soft-deleted warehouses now to
+        // recover any legacy issue rows already saved with a deleted id.
         $data['outgoingWarehouses'] = DB::table('warehouses')
             ->select('id', 'name')
-            ->orderBy('name')
-            ->get();
+            ->whereNull('deleted_at')
+            ->orderBy('id')
+            ->get()
+            ->unique(fn ($w) => mb_strtolower(trim((string) $w->name)))
+            ->sortBy(fn ($w) => mb_strtolower((string) $w->name))
+            ->values();
         return $data;
     }
 
@@ -1016,6 +1033,155 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return response()->json(['data' => $data]);
     }
 
+    /**
+     * Per-row history endpoint backing the "History" button rendered in each
+     * row of the All Issues table. Returns every history entry for the given
+     * issue row plus its dept-split siblings (rows sharing the same group_id
+     * and SKU) so the modal shows the complete audit trail of how that issue
+     * evolved — created → updated revisions → archived — across departments.
+     *
+     * Caller: openRowHistoryModal() in resources/views/customer-care/all_issues.blade.php
+     */
+    public function rowHistoryIndex(int $id): JsonResponse
+    {
+        $issue = DB::table($this->issuesTable())->where('id', $id)->first();
+        if (! $issue) {
+            return response()->json(['data' => [], 'message' => 'Issue not found.'], 404);
+        }
+
+        $sku = trim((string) ($issue->sku ?? ''));
+        $groupId = $issue->group_id ?? null;
+
+        $relatedIdsQuery = DB::table($this->issuesTable())->select('id');
+        if ($groupId && $sku !== '') {
+            $relatedIdsQuery->where('group_id', $groupId)->where('sku', $sku);
+        } else {
+            $relatedIdsQuery->where('id', $id);
+        }
+        $relatedIds = $relatedIdsQuery->pluck('id')->map(fn ($v) => (int) $v)->all();
+        if (! in_array($id, $relatedIds, true)) {
+            $relatedIds[] = $id;
+        }
+
+        // Fetch oldest-first so we can deduplicate "overwrite-with-same-data"
+        // saves by comparing each row to the previous snapshot for the same
+        // sibling issue id. The final list is reversed to newest-first below.
+        $rows = DB::table($this->historyTable())
+            ->whereIn('orders_on_hold_issue_id', $relatedIds)
+            ->orderBy('id')
+            ->get();
+
+        $tz = config('app.timezone');
+
+        $rawSkus = $rows->pluck('sku')
+            ->map(fn ($s) => trim((string) $s))
+            ->filter(fn ($s) => $s !== '')
+            ->unique()
+            ->values()
+            ->all();
+        $instrPkgMap = $this->buildInstructionsItemPkgMap($rawSkus);
+
+        // Drop consecutive history rows whose meaningful snapshot is identical
+        // to the previous row for the same issue (i.e. the user re-saved with
+        // no actual changes). The very first row per issue (typically the
+        // `created` event) is always kept. Archive events are also always
+        // kept since they carry a state transition the user needs to see.
+        $prevFingerprintByIssue = [];
+        $kept = $rows->filter(function ($row) use (&$prevFingerprintByIssue) {
+            $issueId = (int) ($row->orders_on_hold_issue_id ?? 0);
+            $event   = strtolower(trim((string) ($row->event_type ?? '')));
+            if ($event === 'archived') {
+                $prevFingerprintByIssue[$issueId] = null;
+                return true;
+            }
+            $fingerprint = self::historySnapshotFingerprint($row);
+            $prev = $prevFingerprintByIssue[$issueId] ?? null;
+            if ($prev !== null && $prev === $fingerprint) {
+                return false;
+            }
+            $prevFingerprintByIssue[$issueId] = $fingerprint;
+            return true;
+        })->values();
+
+        $data = $kept->map(function ($row) use ($tz, $instrPkgMap) {
+            $skuKey = strtolower(trim((string) $row->sku));
+            return [
+                'id' => (int) $row->id,
+                'orders_on_hold_issue_id' => $row->orders_on_hold_issue_id ? (int) $row->orders_on_hold_issue_id : null,
+                'event_type' => $row->event_type,
+                'revision_no' => $row->revision_no !== null ? (int) $row->revision_no : null,
+                'issue_ref' => ($row->orders_on_hold_issue_id
+                    ? ((((int) ($row->revision_no ?? 0) > 0)
+                        ? ((string) $row->orders_on_hold_issue_id . '.' . (string) ((int) $row->revision_no))
+                        : (string) $row->orders_on_hold_issue_id))
+                    : null),
+                'sku' => $row->sku,
+                'qty' => (float) $row->qty,
+                'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
+                'parent' => $row->parent,
+                'marketplace_1' => $row->marketplace_1,
+                'marketplace_2' => $row->marketplace_2,
+                'what_happened' => $row->what_happened,
+                'issue' => $row->issue,
+                'issue_remark' => $row->issue_remark,
+                'action_1' => $row->action_1,
+                'action_1_remark' => $row->action_1_remark,
+                'replacement_tracking' => $row->replacement_tracking,
+                'c_action_1' => $row->c_action_1,
+                'c_action_1_remark' => $row->c_action_1_remark,
+                'close_note' => $row->close_note,
+                'department' => CustomerCareDepartments::label($row->department ?? null),
+                'departments' => CustomerCareDepartments::decode($row->department ?? null),
+                'created_by' => $row->created_by,
+                'logged_at' => $row->logged_at,
+                'logged_at_display' => $row->logged_at
+                    ? \Carbon\Carbon::parse($row->logged_at)->timezone($tz)->format('d-m-Y H:i')
+                    : '',
+                'instructions_item_pkg' => $instrPkgMap[$skuKey] ?? null,
+            ] + $this->extraHistoryRowFields($row);
+        })
+        // Newest-first for display.
+        ->reverse()
+        ->values();
+
+        return response()->json([
+            'data'          => $data,
+            'issue_id'      => $id,
+            'group_id'      => $groupId,
+            'sku'           => $sku,
+            'order_number'  => $issue->order_number ?? null,
+            'related_ids'   => array_values($relatedIds),
+            'count'         => $data->count(),
+            'total_raw'     => $rows->count(),
+        ]);
+    }
+
+    /**
+     * Stable fingerprint of a history row's "meaningful" snapshot used to
+     * deduplicate consecutive re-saves that didn't change anything. We only
+     * include fields the user can edit from the All Issues modal; logging
+     * metadata (created_by, logged_at, revision_no) is intentionally
+     * excluded so a re-save with the same values is treated as a duplicate.
+     */
+    private static function historySnapshotFingerprint(object $row): string
+    {
+        $fields = [
+            'sku', 'qty', 'order_qty', 'parent',
+            'marketplace_1', 'marketplace_2',
+            'what_happened', 'issue', 'issue_remark',
+            'action_1', 'action_1_remark',
+            'replacement_tracking', 'tracking_number', 'issue_link',
+            'c_action_1', 'c_action_1_remark', 'close_note',
+            'department',
+        ];
+        $parts = [];
+        foreach ($fields as $f) {
+            $v = $row->{$f} ?? null;
+            $parts[] = is_scalar($v) ? trim((string) $v) : json_encode($v);
+        }
+        return implode('|', $parts);
+    }
+
     public function historyIndex(): JsonResponse
     {
         $department = trim((string) request()->query('department', ''));
@@ -1082,6 +1248,47 @@ class DispatchIssuesController extends IssueBoardControllerBase
         }
 
         return parent::archive($id);
+    }
+
+    /**
+     * Hard-delete a single All Issues row plus its history rows.
+     *
+     * Restricted to the single operations manager account (users table
+     * row name="Hritiksha", email="mgr-operations@5core.com"). Both the
+     * name and email are checked so an admin renaming the account at
+     * one end (display name vs login email) doesn't silently open or
+     * close access. Anyone else gets a 403.
+     *
+     * Unlike `archive()` (which flips `is_archived` and writes an
+     * "archived" history event so the audit trail survives), this
+     * removes the row entirely along with its history — there is no
+     * recovery once the request succeeds, so the JS layer also confirms
+     * twice before calling.
+     */
+    public function destroy(int $id): JsonResponse
+    {
+        $user = auth()->user();
+        $name = trim((string) ($user?->name ?? ''));
+        $email = strtolower((string) ($user?->email ?? ''));
+        $isHritiksha = $user
+            && (strcasecmp($name, 'Hritiksha') === 0 || $email === 'mgr-operations@5core.com');
+        if (! $isHritiksha) {
+            return response()->json(['message' => 'Unauthorised.'], 403);
+        }
+
+        $row = DB::table($this->issuesTable())->where('id', $id)->first();
+        if (! $row) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        DB::transaction(function () use ($id) {
+            DB::table($this->historyTable())
+                ->where('orders_on_hold_issue_id', $id)
+                ->delete();
+            DB::table($this->issuesTable())->where('id', $id)->delete();
+        });
+
+        return response()->json(['message' => 'Hold issue deleted permanently.']);
     }
 
     public function l30Issues(\Illuminate\Http\Request $request): JsonResponse

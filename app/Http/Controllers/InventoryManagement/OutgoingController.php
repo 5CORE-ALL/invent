@@ -781,8 +781,9 @@ class OutgoingController extends Controller
         }
 
         $warehouseId = (int) ($opts['warehouse_id'] ?? 0);
-        if ($warehouseId <= 0 || ! Warehouse::where('id', $warehouseId)->exists()) {
-            return ['success' => false, 'inventory_id' => null, 'error' => 'A valid warehouse is required.'];
+       
+        if ($warehouseId <= 0 || ! DB::table('warehouses')->where('id', $warehouseId)->exists()) {
+            return ['success' => false, 'inventory_id' => null, 'error' => 'A valid warehouse is required (id ' . $warehouseId . ' not found).'];
         }
 
         $reason = trim((string) ($opts['reason'] ?? 'Replacement (All Issues)'));

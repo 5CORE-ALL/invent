@@ -1830,6 +1830,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.issues.l30.issues');
     Route::get('/customer-care/all-issues/history', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'historyIndex'])
         ->name('customer.care.dispatch.issues.history.index');
+    // Per-row history endpoint backing the row-wise "History" button on the
+    // All Issues table. Returns every history event for this issue plus its
+    // dept-split siblings (rows sharing the same group_id + SKU).
+    Route::get('/customer-care/all-issues/issues/{id}/history', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'rowHistoryIndex'])
+        ->whereNumber('id')
+        ->name('customer.care.dispatch.issues.row.history');
     Route::post('/customer-care/all-issues/issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'store'])
         ->name('customer.care.dispatch.issues.list.store');
     Route::put('/customer-care/all-issues/issues/{id}', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'update'])
@@ -1848,6 +1854,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.issues.claims.stats');
     Route::post('/customer-care/all-issues/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'archive'])
         ->name('customer.care.dispatch.issues.list.archive');
+    // Permanent delete (row + history). Server-side restricted to the
+    // operations manager account ("Hritiksha" / mgr-operations@5core.com).
+    Route::delete('/customer-care/all-issues/issues/{id}', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'destroy'])
+        ->whereNumber('id')
+        ->name('customer.care.dispatch.issues.list.destroy');
     Route::get('/customer-care/all-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dropdownOptionsIndex'])
         ->name('customer.care.dispatch.issues.dropdown.options.index');
     Route::post('/customer-care/all-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dropdownOptionsStore'])
@@ -3390,6 +3401,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/video-ads-master/{id}/copy',            [\App\Http\Controllers\VideoAdsMasterController::class, 'copy'])->whereNumber('id')->name('video.ads.master.copy');
     Route::post('/video-ads-master/hook-options',         [\App\Http\Controllers\VideoAdsMasterController::class, 'storeHookOption'])->name('video.ads.master.hook.options.store');
     Route::get('/video-ads-master/sample-csv',            [\App\Http\Controllers\VideoAdsMasterController::class, 'sampleCsv'])->name('video.ads.master.sample.csv');
+    Route::get('/video-ads-master/export',                [\App\Http\Controllers\VideoAdsMasterController::class, 'export'])->name('video.ads.master.export');
     Route::post('/video-ads-master/import',               [\App\Http\Controllers\VideoAdsMasterController::class, 'import'])->name('video.ads.master.import');
 
     // FB Video Ads (video-for-ds)
@@ -5780,6 +5792,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('fba-metrics-history', 'getMetricsHistory');
         Route::get('fba-badge-chart-data', 'fbaBadgeChartData');
         Route::post('update-fba-listing-status', 'updateFbaListingStatus');
+        Route::get('fba-fee-breakdown', 'fbaFeeBreakdown');
+        Route::get('fba-amazon-channel-ads', 'fbaAmazonChannelAds');
     });
     Route::controller(FBAAnalysticsController::class)->group(function () {
 

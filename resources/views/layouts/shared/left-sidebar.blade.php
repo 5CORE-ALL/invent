@@ -3066,7 +3066,7 @@
                             <a href="{{ route('china.load') }}">China Load</a>
                         </li>
                         <li>
-                            <a href="{{ route('upcoming.container') }}">Upcoming Container</a>
+                            <a href="{{ route('upcoming.container') }}">Coming Container</a>
                         </li>
                         <li>
                             <a href="{{ route('transit.container.details') }}">Transit Container INV</a>

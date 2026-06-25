@@ -54,7 +54,7 @@ class UpComingContainerController extends Controller
                 'payment_terms'      => $request->payment_terms,
             ]);
 
-            $message = 'Upcoming Container updated successfully!';
+            $message = 'Coming Container updated successfully!';
         } else {
             // Create new record
             UpcomingContainer::create([
@@ -68,7 +68,7 @@ class UpComingContainerController extends Controller
                 'payment_terms'      => $request->payment_terms,
             ]);
 
-            $message = 'Upcoming Container saved successfully!';
+            $message = 'Coming Container saved successfully!';
         }
 
         return redirect()->back()->with('flash_message', $message);

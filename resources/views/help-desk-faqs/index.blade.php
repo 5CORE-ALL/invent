@@ -2,6 +2,48 @@
 
 @section('css')
     <style>
+        /*
+         * Search highlight: when the page is rendered with `?q=…`, the JS
+         * walker wraps every case-insensitive match of the query inside the
+         * visible row cells with <mark.faq-search-highlight>. The colour
+         * matches the browser default <mark> for familiarity but with a bit
+         * more saturation so it survives the table's striped row backgrounds.
+         */
+        mark.faq-search-highlight {
+            background-color: #fff3a3;
+            color: inherit;
+            padding: 0 1px;
+            border-radius: 2px;
+            box-shadow: 0 0 0 1px rgba(180, 150, 0, 0.25);
+        }
+
+        /*
+         * Match-context block: rendered under the FAQ text whenever the
+         * search query matched in a column that the table doesn't display
+         * directly (Messages / Action / CA / What / + Action / Variant) or
+         * past the 80-char Answer truncation. Keeps the row visually
+         * "explainable" so the user understands why it surfaced.
+         */
+        .faq-match-context {
+            font-size: 0.78rem;
+            line-height: 1.3;
+            color: #6c757d;
+            border-left: 2px solid #fcd34d;
+            padding-left: 6px;
+            text-align: left !important;
+        }
+        .faq-match-context-item + .faq-match-context-item {
+            margin-top: 2px;
+        }
+        .faq-match-context-label {
+            font-weight: 600;
+            color: #475569;
+            margin-right: 4px;
+        }
+        .faq-match-context-snippet {
+            color: #334155;
+        }
+
         #faqTable th,
         #faqTable td {
             text-align: center !important;
@@ -102,10 +144,20 @@
     <div class="card">
         <div class="card-body">
             <div class="d-flex flex-nowrap align-items-center gap-2 mb-3 w-100">
-                {{-- Search --}}
+                {{-- Search.
+                     `value` is pre-filled from the server-side `q` param so a
+                     refresh/back-navigation keeps the user's query visible.
+                     When the user types, a debounced JS handler navigates to
+                     `?q=…`, which makes the controller skip pagination and
+                     return every matching row on a single page (so the local
+                     filter then matches across the whole dataset, not just
+                     the current paginated slice). --}}
                 <div class="input-group flex-grow-1" style="min-width: 120px;">
                     <span class="input-group-text"><i class="bx bx-search"></i></span>
-                    <input type="text" id="faqQuickSearch" class="form-control" placeholder="Search...">
+                    <input type="text" id="faqQuickSearch" class="form-control"
+                        placeholder="Search..."
+                        value="{{ $searchQuery ?? '' }}"
+                        data-server-query="{{ $searchQuery ?? '' }}">
                     <button type="button" id="faqSearchClear" class="btn btn-light border" title="Clear">&times;</button>
                 </div>
                 {{-- Dept dropdown --}}
@@ -168,6 +220,16 @@
                     <span class="text-muted" style="font-size:0.8rem;">
                         Showing {{ $faqs->firstItem() }}–{{ $faqs->lastItem() }} of {{ $faqs->total() }} total
                     </span>
+                @elseif (!empty($searchQuery))
+                    {{-- Search-active branch: server returned every match across all
+                         pages, so per-page / pagination controls would be misleading.
+                         Show the absolute hit count so the user knows the whole
+                         dataset was scanned, not just the current paginated slice. --}}
+                    <span class="text-muted" style="font-size:0.8rem;">
+                        Showing all {{ $faqs->count() }} match{{ $faqs->count() === 1 ? '' : 'es' }} for
+                        <strong>&ldquo;{{ \Illuminate\Support\Str::limit($searchQuery, 60) }}&rdquo;</strong>
+                        across every page
+                    </span>
                 @endif
             </div>
 
@@ -216,7 +278,25 @@
                                     <input type="checkbox" class="form-check-input faq-select" value="{{ $faq->id }}">
                                 </td>
                                 <td>@if (trim((string) $faq->group_name) !== ''){{ $faq->group_name }}@else<span class="text-muted">&mdash;</span>@endif</td>
-                                <td>{{ $faq->faq }}</td>
+                                <td>
+                                    {{ $faq->faq }}
+                                    @php($_snips = $faq->getAttribute('match_snippets'))
+                                    @if (!empty($_snips) && is_array($_snips))
+                                        {{-- "Match in …" sub-line: explains why the row was returned
+                                             when the matched text lives in an off-screen column
+                                             (Messages / Action / CA / What / Variant / + Action) or
+                                             past the 80-char Answer truncation. The JS highlighter
+                                             will mark the query inside each snippet too. --}}
+                                        <div class="faq-match-context mt-1">
+                                            @foreach ($_snips as $snip)
+                                                <div class="faq-match-context-item">
+                                                    <span class="faq-match-context-label">Match in {{ $snip['label'] }}:</span>
+                                                    <span class="faq-match-context-snippet">{{ $snip['snippet'] }}</span>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                </td>
                                 <td>{{ \Illuminate\Support\Str::limit($faq->answers, 80) }}</td>
                                 <td class="text-center">
                                     <button type="button" class="btn btn-sm btn-link p-0 text-dark faq-view-btn"
@@ -318,10 +398,19 @@
                 </table>
             </div>
 
-            {{-- Pagination links --}}
+            {{-- Pagination links.
+                 Explicitly request the Bootstrap-5 template (project convention,
+                 see e.g. purchase-master/supplier, product-master/tobedc). Calling
+                 plain ->links() falls back to Laravel's Tailwind template, which
+                 ships *two* sub-layouts ("mobile" with Previous/Next + showing
+                 N-of-N + an SVG chevron, and "desktop" with 1 2 3 4 5) that are
+                 normally toggled by Tailwind responsive classes. This app uses
+                 Bootstrap, not Tailwind, so neither section gets hidden — the
+                 result is duplicated paginators and a huge unsized chevron in
+                 the middle of the page. --}}
             @if ($faqs instanceof \Illuminate\Pagination\LengthAwarePaginator && $faqs->hasPages())
                 <div class="d-flex justify-content-center mt-3">
-                    {{ $faqs->onEachSide(2)->links() }}
+                    {{ $faqs->onEachSide(2)->links('pagination::bootstrap-5') }}
                 </div>
             @endif
         </div>
@@ -945,13 +1034,165 @@
                 }
             }
 
+            // ── Cross-page search (full dataset scan) ─────────────────────
+            // The client-side `applyFilters()` only hides/shows DOM rows that
+            // exist on the current paginated page, which means a user looking
+            // for "abc" on page 1 would miss "abc" rows that live on page 5.
+            // To make search behave like "show every match in one page" we
+            // debounce-navigate to `?q=<text>` after typing pauses; the
+            // controller then bypasses pagination and renders every match.
+            // We still call `applyFilters()` on every keystroke so the visible
+            // page is filtered instantly while the user is mid-type — the
+            // server reload only kicks in once typing settles, and only when
+            // the value actually differs from what the server already loaded.
+            //
+            // Note: page navigation is intentionally a real reload (not AJAX)
+            // because every row carries server-rendered data-* attributes and
+            // event handlers that would otherwise need to be re-bound.
+            function buildSearchUrl(value) {
+                var url = new URL(window.location.href);
+                var trimmed = (value || '').trim();
+                if (trimmed === '') {
+                    url.searchParams.delete('q');
+                } else {
+                    url.searchParams.set('q', trimmed);
+                }
+                // When a search is active the controller skips pagination
+                // entirely, so a stale `page` query param would 404-ish on
+                // the paginator side; strip it so a refresh stays sane.
+                url.searchParams.delete('page');
+                return url.toString();
+            }
+
+            var serverQuery = (searchInput && searchInput.getAttribute('data-server-query')) || '';
+            var searchReloadTimer = null;
+            var searchReloadDelayMs = 400;
+
+            // After the auto-reload triggered by typing, put focus back into
+            // the search box (cursor at end) so the user can keep typing
+            // without clicking again. Only do this when the URL actually
+            // carries `?q=…`, so initial page loads don't steal focus.
+            if (searchInput && serverQuery !== '') {
+                searchInput.focus();
+                try {
+                    var caret = searchInput.value.length;
+                    searchInput.setSelectionRange(caret, caret);
+                } catch (_) { /* IE/older Safari may not support range */ }
+            }
+
+            // ── Yellow background highlight of search matches in row cells ──
+            // When the page was rendered with `?q=…`, walk every visible row
+            // cell, find each case-insensitive occurrence of the query in
+            // text-only nodes, and wrap it in <mark class="faq-search-highlight">
+            // so the matched word(s) jump out against the table background.
+            //
+            // Implementation notes:
+            //   - We only touch text nodes (TreeWalker SHOW_TEXT), so existing
+            //     buttons / forms / event handlers stay intact.
+            //   - SCRIPT/STYLE/MARK/INPUT/TEXTAREA parents are skipped — we
+            //     never want to mutate code, already-highlighted text, or
+            //     editable form values.
+            //   - The query is RegExp-escaped before being compiled, so an
+            //     input like "a+b" doesn't get interpreted as the regex
+            //     metacharacter.
+            //   - Highlighting runs once per page load, so it imposes ~zero
+            //     overhead when no search is active.
+            function escapeRegExpForHighlight(s) {
+                return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            }
+
+            function highlightMatchesIn(root, query) {
+                if (!root || !query) return;
+                var skipParents = { SCRIPT: 1, STYLE: 1, MARK: 1, INPUT: 1, TEXTAREA: 1, SELECT: 1, OPTION: 1 };
+                var pattern = new RegExp(escapeRegExpForHighlight(query), 'gi');
+                var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+                    acceptNode: function(node) {
+                        if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+                        var p = node.parentNode;
+                        while (p && p !== root) {
+                            if (skipParents[p.nodeName]) return NodeFilter.FILTER_REJECT;
+                            p = p.parentNode;
+                        }
+                        // Reset the regex's lastIndex (sticky from /g) before each test.
+                        pattern.lastIndex = 0;
+                        return pattern.test(node.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+                    }
+                });
+
+                var matchedNodes = [];
+                while (walker.nextNode()) matchedNodes.push(walker.currentNode);
+
+                matchedNodes.forEach(function(textNode) {
+                    var text = textNode.nodeValue;
+                    var parent = textNode.parentNode;
+                    if (!parent) return;
+                    pattern.lastIndex = 0;
+                    var frag = document.createDocumentFragment();
+                    var lastIdx = 0;
+                    var m;
+                    while ((m = pattern.exec(text)) !== null) {
+                        if (m.index > lastIdx) {
+                            frag.appendChild(document.createTextNode(text.substring(lastIdx, m.index)));
+                        }
+                        var mark = document.createElement('mark');
+                        mark.className = 'faq-search-highlight';
+                        mark.textContent = m[0];
+                        frag.appendChild(mark);
+                        lastIdx = m.index + m[0].length;
+                        // Guard against pathological zero-length match (shouldn't
+                        // happen with the escaped query, but cheap insurance).
+                        if (m[0].length === 0) pattern.lastIndex++;
+                    }
+                    if (lastIdx < text.length) {
+                        frag.appendChild(document.createTextNode(text.substring(lastIdx)));
+                    }
+                    parent.replaceChild(frag, textNode);
+                });
+            }
+
+            if (serverQuery !== '') {
+                Array.prototype.forEach.call(document.querySelectorAll('tr.faq-row'), function(row) {
+                    highlightMatchesIn(row, serverQuery);
+                });
+            }
+
+            function scheduleServerSearch(value) {
+                if (searchReloadTimer) clearTimeout(searchReloadTimer);
+                searchReloadTimer = setTimeout(function() {
+                    var trimmed = (value || '').trim();
+                    if (trimmed === serverQuery) return; // nothing to do
+                    window.location.href = buildSearchUrl(trimmed);
+                }, searchReloadDelayMs);
+            }
+
             if (searchInput) {
-                searchInput.addEventListener('input', applyFilters);
+                searchInput.addEventListener('input', function() {
+                    applyFilters();
+                    scheduleServerSearch(searchInput.value);
+                });
+                searchInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (searchReloadTimer) clearTimeout(searchReloadTimer);
+                        var trimmed = (searchInput.value || '').trim();
+                        if (trimmed !== serverQuery) {
+                            window.location.href = buildSearchUrl(trimmed);
+                        }
+                    }
+                });
             }
             if (clearBtn) {
                 clearBtn.addEventListener('click', function() {
+                    if (searchReloadTimer) clearTimeout(searchReloadTimer);
                     searchInput.value = '';
                     applyFilters();
+                    // Only navigate if the server is currently holding a
+                    // search result set — otherwise we'd needlessly reload
+                    // the default paginated view.
+                    if (serverQuery !== '') {
+                        window.location.href = buildSearchUrl('');
+                        return;
+                    }
                     searchInput.focus();
                 });
             }

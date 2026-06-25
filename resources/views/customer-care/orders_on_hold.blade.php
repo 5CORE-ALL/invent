@@ -454,6 +454,18 @@
                 <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
                     <h5 class="mb-0">{{ $recordsTitle ?? 'Orders On Hold Records' }}</h5>
                     <div class="d-flex align-items-center gap-2 ms-auto">
+                        {{-- Quick search: case-insensitive substring match across SKU, parent,
+                             order #, marketplaces, issue/action text, root-cause, dept and
+                             created-by. Runs client-side on holdIssueRows + the dept filter. --}}
+                        <div class="input-group input-group-sm" style="width: 240px;">
+                            <span class="input-group-text" id="orders-hold-search-icon">
+                                <i class="bi bi-search"></i>
+                            </span>
+                            <input type="search" id="orders-hold-search-input" class="form-control"
+                                placeholder="Search SKU, order, parent…"
+                                aria-label="Search records" aria-describedby="orders-hold-search-icon"
+                                autocomplete="off">
+                        </div>
                         <select id="dept-filter-select" class="form-select form-select-sm" style="min-width: 180px;">
                             <option value="">All Departments</option>
                         </select>
@@ -921,8 +933,11 @@
                                     <option value="Dispatch">Dispatch</option>
                                     <option value="Shipping">Shipping</option>
                                     <option value="Listing">Listing</option>
-                                    <option value="Carrier">Carrier and Claim</option>
-                                    <option value="Carrier Issue">Carrier Issue</option>
+                                    {{-- Display labels renamed to "Carrier Claim" / "Carrier Claim
+                                         Issues" while the `value=` payload stays the same so saved
+                                         rows and department filters continue to match. --}}
+                                    <option value="Carrier">Carrier Claim</option>
+                                    <option value="Carrier Issue">Carrier Claim Issues</option>
                                     <option value="Customer Care">Customer Care</option>
                                     <option value="Pricing">Pricing</option>
                                     <option value="QC">QC</option>
@@ -1186,9 +1201,42 @@
                 return rowDepartments(r).some(d => String(d).trim().toLowerCase() === needle);
             }
 
+            // ── Quick search state + haystack ─────────────────────────────────
+            // `activeSearchQuery` is kept lowercase + trimmed so the per-row
+            // match below is a single `.includes()`. The haystack joins every
+            // user-visible text field with newlines (a separator no field
+            // contains) so a query for one field can't accidentally match
+            // across two adjacent fields.
+            let activeSearchQuery = '';
+
+            function rowSearchHaystack(r) {
+                if (!r) return '';
+                const parts = [
+                    r.sku, r.parent, r.order_number, r.shopify_order_number,
+                    r.marketplace_1, r.marketplace_2,
+                    r.what_happened, r.issue, r.issue_remark,
+                    r.action_1, r.action_1_remark,
+                    r.c_action_1, r.c_action_1_remark,
+                    r.close_note,
+                    r.created_by,
+                    rowDepartments(r).join(' '),
+                ];
+                return parts
+                    .map(v => (v === null || v === undefined) ? '' : String(v))
+                    .join('\n')
+                    .toLowerCase();
+            }
+
+            function rowMatchesSearchQuery(r) {
+                if (!activeSearchQuery) return true;
+                return rowSearchHaystack(r).includes(activeSearchQuery);
+            }
+
             function getFilteredRows() {
-                if (!activeDeptFilter) return holdIssueRows;
-                return holdIssueRows.filter(rowMatchesActiveDeptFilter);
+                let rows = holdIssueRows;
+                if (activeDeptFilter) rows = rows.filter(rowMatchesActiveDeptFilter);
+                if (activeSearchQuery) rows = rows.filter(rowMatchesSearchQuery);
+                return rows;
             }
 
             function buildDeptFilters() {
@@ -2410,6 +2458,27 @@
                 activeDeptFilter = e.target.value || null;
                 renderRows();
             });
+
+            // ── Quick-search wiring ───────────────────────────────────────────
+            // Debounce (~120 ms) so a fast typist doesn't trigger a re-render
+            // on every keystroke. The `search` event also fires when the user
+            // clears the input via the native ✕ button, so we handle both.
+            (function setupOrdersHoldSearch() {
+                const searchInput = document.getElementById('orders-hold-search-input');
+                if (!searchInput) return;
+                let searchTimer = null;
+                const apply = () => {
+                    const next = String(searchInput.value || '').trim().toLowerCase();
+                    if (next === activeSearchQuery) return;
+                    activeSearchQuery = next;
+                    renderRows();
+                };
+                searchInput.addEventListener('input', () => {
+                    if (searchTimer) clearTimeout(searchTimer);
+                    searchTimer = setTimeout(apply, 120);
+                });
+                searchInput.addEventListener('search', apply);
+            })();
 
             btnShowHistory.addEventListener('click', () => {
                 historyCard.classList.remove('d-none');

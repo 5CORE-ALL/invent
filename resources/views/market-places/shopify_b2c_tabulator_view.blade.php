@@ -282,6 +282,40 @@
                     <button id="same-price-btn" class="btn btn-sm btn-info" title="Apply ONE price (entered in the box) to every selected SKU">
                         <i class="fas fa-equals"></i> Same Price Mode
                     </button>
+
+                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
+                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = 0.95 for Shopify B2C) --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-roi-controls"
+                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 on every selected row (accounts for Shopify B2C 95% take-home)">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target ROI%:
+                        </label>
+                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
+                         Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100 (else denominator ≤ 0). --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-gpft-controls"
+                        title="Target GPFT% — sets S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            Target GPFT%:
+                        </label>
+                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Shopify B2C take-home margin (< 95%).">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) for every selected row">
+                            <i class="fas fa-calculator"></i> Apply S PRC
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Summary Stats -->
@@ -559,6 +593,175 @@
             if (e.which === 13) {
                 applyDiscount();
             }
+        });
+
+        /*
+         * Target ROI% bulk apply (Shopify B2C, margin = 0.95)
+         * ---------------------------------------------------
+         * For every selected row with a usable LP, back-solve the sale price so the
+         * resulting SROI column matches Target ROI%:
+         *     SROI = ((sprice * margin − ship − lp) / lp) * 100
+         *   → sprice = (lp * (1 + ROI%/100) + ship) / margin
+         * Optimistic SGPFT / SROI / SNPFT / SNROI are written client-side and the
+         * bulk save endpoint (/shopify/save-sprice) recomputes them server-side.
+         */
+        $('#apply-target-roi-btn').on('click', function () {
+            const rawInput = $('#target-roi-input').val();
+            const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
+
+            if (rawInput === '' || rawInput == null) {
+                showToast('Please enter a Target ROI%', 'error');
+                return;
+            }
+            if (!isFinite(targetRoiPct)) {
+                showToast('Target ROI% must be a number', 'error');
+                return;
+            }
+            if (selectedSkus.size === 0) {
+                const selectColumn = table && table.getColumn ? table.getColumn('_select') : null;
+                if (selectColumn) selectColumn.show();
+                showToast('Please select at least one SKU first (turn on Decrease / Increase / Same Price to reveal checkboxes)', 'error');
+                return;
+            }
+
+            const SHOPIFY_B2C_MARGIN = 0.95;
+            const roiMultiplier = 1 + (targetRoiPct / 100);
+            const updates = [];
+            let updatedCount = 0;
+            let skippedNoLp = 0;
+
+            selectedSkus.forEach(sku => {
+                const rows = table.searchRows('(Child) sku', '=', sku);
+                if (rows.length === 0) return;
+                const row = rows[0];
+                const rowData = row.getData();
+                if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return;
+
+                const lp = parseFloat(rowData['LP_productmaster']) || 0;
+                if (lp <= 0) { skippedNoLp++; return; }
+                const ship = parseFloat(rowData['Ship_productmaster']) || 0;
+                const ads  = parseFloat(rowData['ADS%']) || 0;
+
+                const candidate = (lp * roiMultiplier + ship) / SHOPIFY_B2C_MARGIN;
+                const newSprice = +candidate.toFixed(2);
+                if (!isFinite(newSprice) || newSprice <= 0) return;
+
+                const grossProfit = (newSprice * SHOPIFY_B2C_MARGIN) - lp - ship;
+                const sgpft = newSprice > 0 ? (grossProfit / newSprice) * 100 : 0;
+                const snpft = sgpft - ads;
+                const sroi  = lp > 0 ? (grossProfit / lp) * 100 : 0;
+                const snroi = sroi - ads;
+
+                row.update({
+                    SPRICE: newSprice,
+                    SGPFT: sgpft,
+                    SNPFT: snpft,
+                    SROI: sroi,
+                    SNROI: snroi,
+                    has_custom_sprice: true
+                });
+                updates.push({ sku: sku, sprice: newSprice });
+                updatedCount++;
+            });
+
+            if (updates.length === 0) {
+                showToast('No selected rows have a usable LP > 0', 'warning');
+                return;
+            }
+
+            saveSpriceUpdates(updates);
+            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
+            showToast(`Target ROI ${targetRoiPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
+        });
+
+        /*
+         * Target GPFT% bulk apply (Shopify B2C, margin = 0.95)
+         * ----------------------------------------------------
+         * Mirrors Target ROI but back-solves so SGPFT = Target GPFT%:
+         *     SGPFT = ((sprice * margin − ship − lp) / sprice) * 100
+         *   → sprice = (lp + ship) / (margin − GPFT%/100)
+         * Constraint: (margin − target/100) must be > 0, i.e. Target GPFT% < 95%.
+         */
+        $('#apply-target-gpft-btn').on('click', function () {
+            const rawInput = $('#target-gpft-input').val();
+            const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
+
+            if (rawInput === '' || rawInput == null) {
+                showToast('Please enter a Target GPFT%', 'error');
+                return;
+            }
+            if (!isFinite(targetGpftPct)) {
+                showToast('Target GPFT% must be a number', 'error');
+                return;
+            }
+            if (selectedSkus.size === 0) {
+                const selectColumn = table && table.getColumn ? table.getColumn('_select') : null;
+                if (selectColumn) selectColumn.show();
+                showToast('Please select at least one SKU first (turn on Decrease / Increase / Same Price to reveal checkboxes)', 'error');
+                return;
+            }
+
+            const SHOPIFY_B2C_MARGIN = 0.95;
+            const denom = SHOPIFY_B2C_MARGIN - (targetGpftPct / 100);
+            if (denom <= 0) {
+                showToast(`Target GPFT% ${targetGpftPct}% is too high — must be < 95% (Shopify B2C take-home).`, 'error');
+                return;
+            }
+
+            const updates = [];
+            let updatedCount = 0;
+            let skippedNoLp = 0;
+
+            selectedSkus.forEach(sku => {
+                const rows = table.searchRows('(Child) sku', '=', sku);
+                if (rows.length === 0) return;
+                const row = rows[0];
+                const rowData = row.getData();
+                if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return;
+
+                const lp = parseFloat(rowData['LP_productmaster']) || 0;
+                if (lp <= 0) { skippedNoLp++; return; }
+                const ship = parseFloat(rowData['Ship_productmaster']) || 0;
+                const ads  = parseFloat(rowData['ADS%']) || 0;
+
+                const candidate = (lp + ship) / denom;
+                const newSprice = +candidate.toFixed(2);
+                if (!isFinite(newSprice) || newSprice <= 0) return;
+
+                const grossProfit = (newSprice * SHOPIFY_B2C_MARGIN) - lp - ship;
+                const sgpft = newSprice > 0 ? (grossProfit / newSprice) * 100 : 0;
+                const snpft = sgpft - ads;
+                const sroi  = lp > 0 ? (grossProfit / lp) * 100 : 0;
+                const snroi = sroi - ads;
+
+                row.update({
+                    SPRICE: newSprice,
+                    SGPFT: sgpft,
+                    SNPFT: snpft,
+                    SROI: sroi,
+                    SNROI: snroi,
+                    has_custom_sprice: true
+                });
+                updates.push({ sku: sku, sprice: newSprice });
+                updatedCount++;
+            });
+
+            if (updates.length === 0) {
+                showToast('No selected rows have a usable LP > 0', 'warning');
+                return;
+            }
+
+            saveSpriceUpdates(updates);
+            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
+            showToast(`Target GPFT ${targetGpftPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
+        });
+
+        // Enter inside Target ROI%/GPFT% inputs triggers Apply S PRC
+        $('#target-roi-input').on('keypress', function(e) {
+            if (e.which === 13) $('#apply-target-roi-btn').click();
+        });
+        $('#target-gpft-input').on('keypress', function(e) {
+            if (e.which === 13) $('#apply-target-gpft-btn').click();
         });
 
         // Sugg Amz Prc button
