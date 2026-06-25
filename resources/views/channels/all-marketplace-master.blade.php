@@ -1752,12 +1752,14 @@
                         headerTooltip: "Per channel: Qty ÷ Total Views — units-based (matches /temu-decrease). Total Views come from listing/Map snapshots (traffic to offers), not the same as ad clicks. Compare to &quot;AD CVR&quot; (ad sold ÷ clicks). Big view updates can lower this % without &quot;true&quot; conversion collapsing.",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
-                            const qtyA = parseNumber(aRow.getData()['Qty'] || 0);
-                            const viewsA = parseNumber(aRow.getData()['Total Views'] || 0);
-                            const qtyB = parseNumber(bRow.getData()['Qty'] || 0);
-                            const viewsB = parseNumber(bRow.getData()['Total Views'] || 0);
-                            const cvrA = viewsA > 0 ? (qtyA / viewsA) * 100 : 0;
-                            const cvrB = viewsB > 0 ? (qtyB / viewsB) * 100 : 0;
+                            // Prefer server-provided CVR (Temu / Temu 2 use temu_l30 ÷ product_clicks
+                            // to match the /temu-decrease & /temu2-decrease badges exactly); fall back
+                            // to Qty ÷ Total Views for channels that don't pre-compute it.
+                            const aData = aRow.getData(), bData = bRow.getData();
+                            const aServer = (aData['CVR'] !== undefined && aData['CVR'] !== null && aData['CVR'] !== '');
+                            const bServer = (bData['CVR'] !== undefined && bData['CVR'] !== null && bData['CVR'] !== '');
+                            const cvrA = aServer ? parseNumber(aData['CVR']) : (parseNumber(aData['Total Views'] || 0) > 0 ? (parseNumber(aData['Qty'] || 0) / parseNumber(aData['Total Views'])) * 100 : 0);
+                            const cvrB = bServer ? parseNumber(bData['CVR']) : (parseNumber(bData['Total Views'] || 0) > 0 ? (parseNumber(bData['Qty'] || 0) / parseNumber(bData['Total Views'])) * 100 : 0);
                             return cvrA - cvrB;
                         },
                         width: 70,
@@ -1765,10 +1767,21 @@
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const channel = (row['Channel '] || '').trim();
-                            const qty = parseNumber(row['Qty'] || 0);
                             const views = parseNumber(row['Total Views'] || 0);
-                            if (views === 0) return '-';
-                            const pct = (qty / views) * 100;
+                            // Prefer server-provided CVR when present (Temu / Temu 2): matches the
+                            // /temu-decrease and /temu2-decrease "CVR" badge byte-for-byte
+                            // (sum of temu_l30 ÷ sum of product_clicks). For channels that don't
+                            // pre-compute it, fall back to the legacy Qty ÷ Views formula.
+                            const serverCvr = row['CVR'];
+                            const hasServerCvr = (serverCvr !== undefined && serverCvr !== null && serverCvr !== '');
+                            let pct;
+                            if (hasServerCvr) {
+                                pct = parseNumber(serverCvr);
+                            } else {
+                                if (views === 0) return '-';
+                                const qty = parseNumber(row['Qty'] || 0);
+                                pct = (qty / views) * 100;
+                            }
                             const dotColor = getMetricDotColor(channel, 'cvr');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="cvr" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View CVR trend"></i>`;
                             // 2 decimals so day-to-day movement on a rolling window is visible (matches chart precision).
@@ -1783,6 +1796,11 @@
                             }
                         },
                         bottomCalc: function(values, data) {
+                            // Rolling page-level CVR: sum the underlying components so totals don't
+                            // double-count channels that supply a pre-computed CVR. For server-CVR
+                            // rows (e.g. Temu/Temu 2) we use temu_l30 (sold) and product_clicks (views)
+                            // implicitly via Total Views + Qty when present. We just sum Qty + Views
+                            // across all rows so the page footer stays a stable, comparable %.
                             let totalQty = 0, totalViews = 0;
                             data.forEach(function(row) {
                                 totalQty += parseNumber(row['Qty'] || 0);

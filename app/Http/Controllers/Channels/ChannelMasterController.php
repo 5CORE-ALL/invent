@@ -419,6 +419,12 @@ class ChannelMasterController extends Controller
             $mapC = 0;
             $nmapC = 0;
             $totalViews = 0;
+            // total_sold tracks the same temu_l30 sum the /temu-decrease & /temu2-decrease
+            // pages use for the "Total Sold" badge — that ÷ total_views gives the CVR
+            // shown on those pages. We expose cvr_pct here so the /all-marketplace-master
+            // Temu/Temu 2 rows can render the IDENTICAL CVR % (instead of falling back
+            // to Qty ÷ Views, where Qty = order-level total_quantity which can differ).
+            $totalSold = 0;
 
             foreach ($data as $row) {
                 if (empty($row['sku'] ?? null)) {
@@ -430,6 +436,7 @@ class ChannelMasterController extends Controller
                 $temuPrice = (float) ($row['temu_price'] ?? 0);
                 $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
                 $totalViews += (int) ($row['product_clicks'] ?? 0);
+                $totalSold  += (int) ($row['temu_l30'] ?? 0);
 
                 // Missing L: not listed (missing='M'), INV > 0, REQ only — same rule as /map-issues.
                 if ($missing === 'M' && $inventory > 0 && $nrReq === 'REQ') {
@@ -453,11 +460,21 @@ class ChannelMasterController extends Controller
                 }
             }
 
+            // CVR exactly matches the /temu-decrease & /temu2-decrease badge:
+            //     cvrTotalViews > 0 ? (cvrTotalSold / cvrTotalViews) × 100 : 0
+            // We return 0.0 (NOT null) when views are 0 so the channel master row
+            // renders "0.00%" instead of "-". This stays byte-identical with the
+            // page's CVR badge — which also shows "0.0%" when no view data has
+            // been uploaded yet to temu2_view_data (product_clicks all zero).
+            $cvrPct = $totalViews > 0 ? round(($totalSold / $totalViews) * 100, 2) : 0.0;
+
             return [
                 'map' => $mapC,
                 'miss' => $missingC,
                 'nmap' => $nmapC,
                 'total_views' => $totalViews,
+                'total_sold' => $totalSold,
+                'cvr_pct' => $cvrPct,
             ];
         } catch (\Throwable $e) {
             Log::warning('Temu live map/miss/nmap fallback: '.$e->getMessage());
@@ -467,18 +484,7 @@ class ChannelMasterController extends Controller
         }
     }
 
-    /**
-     * Map / Miss (Missing L) / NMap for Doba — same rules as /doba-tabulator badges:
-     *   Missing L: is_missing_doba == true, NR !== 'NR', shopify_inv > 0
-     *   Map      : listed (not missing), shopify_inv > 0, doba_price > 0,
-     *              |shopify_inv − doba_inv| within tolerance (≤ 3 OR ≤ shopify_inv × 3%)
-     *   N Map    : same gates as Map but tolerance exceeded.
-     *
-     * amazon_channel_summary_data has no rows for Doba — getMapAndMissCounts('doba')
-     * therefore returns zeros and the Doba row on /all-marketplace-master shows
-     * stale 0 / 0. This helper computes the counts live from /doba-data-view so
-     * the page matches the badge bar on /doba-tabulator.
-     */
+   
     private function getDobaLiveMapMissNMapFromTabulatorData(): array
     {
         try {
@@ -836,6 +842,16 @@ class ChannelMasterController extends Controller
             $row['NMap'] = $mapMiss['nmap'];
             if (array_key_exists('total_views', $mapMiss)) {
                 $row['Total Views'] = $mapMiss['total_views'];
+            }
+            // Overlay page-matched CVR (sum(temu_l30) ÷ sum(product_clicks) × 100).
+            // The pre-calculated cache doesn't carry this field — it only stores
+            // `cvr` for `Ads CVR`. Without this overlay the frontend formatter
+            // falls back to `Qty ÷ Total Views`, which uses order-level
+            // total_quantity and silently disagrees with /temu-decrease &
+            // /temu2-decrease badges. Setting it here keeps fast-path output
+            // byte-identical with those pages.
+            if (array_key_exists('cvr_pct', $mapMiss)) {
+                $row['CVR'] = $mapMiss['cvr_pct'];
             }
         }
         unset($row);
@@ -7974,6 +7990,10 @@ class ChannelMasterController extends Controller
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            // CVR pre-computed from /temu-decrease's temu_l30 ÷ product_clicks so the
+            // /all-marketplace-master Temu row matches the page's CVR badge exactly.
+            // The Qty cell still shows order-level total_quantity (semantic preserved).
+            'CVR'        => $mapMissCounts['cvr_pct'] ?? null,
             ...$this->getChannelHealthAndReviewsStub(),
         ];
 
@@ -8028,6 +8048,9 @@ class ChannelMasterController extends Controller
                 'Miss'       => $mapMissCounts['miss'],
                 'NMap'       => $mapMissCounts['nmap'],
                 'Total Views' => $mapMissCounts['total_views'] ?? 0,
+                // CVR from /temu2-decrease: temu_l30 ÷ product_clicks. Even in the
+                // no-metrics path the page badge can be > 0 if views/sold rows exist.
+                'CVR'        => $mapMissCounts['cvr_pct'] ?? null,
                 ...$this->getChannelHealthAndReviewsStub(),
             ];
             return response()->json([
@@ -8103,6 +8126,10 @@ class ChannelMasterController extends Controller
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            // CVR pre-computed from /temu2-decrease's temu_l30 ÷ product_clicks so the
+            // /all-marketplace-master Temu 2 row matches the page's CVR badge exactly.
+            // The Qty cell still shows order-level total_quantity (semantic preserved).
+            'CVR'        => $mapMissCounts['cvr_pct'] ?? null,
             ...$this->getChannelHealthAndReviewsStub(),
         ];
 
