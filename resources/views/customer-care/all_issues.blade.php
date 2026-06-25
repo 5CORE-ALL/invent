@@ -1271,8 +1271,13 @@
                                     <option value="Dispatch">Dispatch</option>
                                     <option value="Shipping">Shipping</option>
                                     <option value="Listing">Listing</option>
-                                    <option value="Carrier">Carrier and Claim</option>
-                                    <option value="Carrier Issue">Carrier Issue</option>
+                                    {{-- Display labels were renamed (Carrier Claim / Carrier Claim Issues)
+                                         per ops manager request. The `value` attributes are intentionally
+                                         left unchanged because they are what gets persisted into the
+                                         `department` JSON column and what server-side filters compare
+                                         against (see DispatchIssuesController + CustomerCareDepartments). --}}
+                                    <option value="Carrier">Carrier Claim</option>
+                                    <option value="Carrier Issue">Carrier Claim Issues</option>
                                     <option value="Customer Care">Customer Care</option>
                                     <option value="Pricing">Pricing</option>
                                     <option value="QC">QC</option>

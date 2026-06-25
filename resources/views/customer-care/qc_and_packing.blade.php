@@ -1129,7 +1129,11 @@
                                         @endif
                                     @endif
                                 </div>
-                                @if ($showSearchBar ?? false)
+                                {{-- Search bar defaults to ON for every page that includes this
+                                     template (c-care issues, label issues, listing issues, other
+                                     issues, dispatch, dispatch issues, qc-and-packing direct, …).
+                                     A wrapper can opt out by passing showSearchBar => false. --}}
+                                @if ($showSearchBar ?? true)
                                     <div class="issues-toolbar-search">
                                         <div class="input-group input-group-sm">
                                             <span class="input-group-text" id="issues-search-icon">
@@ -1703,8 +1707,11 @@
                                         <option value="Dispatch" @selected(!empty($lockedDepartment ?? null))>Dispatch</option>
                                         <option value="Shipping">Shipping</option>
                                         <option value="Listing">Listing</option>
-                                        <option value="Carrier">Carrier and Claim</option>
-                                        <option value="Carrier Issue">Carrier Issue</option>
+                                        {{-- Display labels renamed to "Carrier Claim" / "Carrier Claim
+                                             Issues" while the `value=` payload stays the same so saved
+                                             rows and department filters continue to match. --}}
+                                        <option value="Carrier">Carrier Claim</option>
+                                        <option value="Carrier Issue">Carrier Claim Issues</option>
                                         <option value="Customer Care">Customer Care</option>
                                         <option value="Pricing">Pricing</option>
                                         <option value="QC">QC</option>

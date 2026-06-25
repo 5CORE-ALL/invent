@@ -3,9 +3,21 @@
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <style>
+        /*
+         * IMPORTANT: do NOT set `overflow-x: auto` (or any other non-visible
+         * overflow) on this wrapper. Doing so turns it into a CSS *scroll
+         * container*, which then becomes the containing block for the sticky
+         * <th> cells inside the table. The result is that `top: 70px` on the
+         * sticky header resolves against the top of this wrapper instead of
+         * the viewport — the blue header row visually "floats" in the middle
+         * of the table (just below the first data row) rather than docking
+         * under the topbar. The page-level horizontal scrollbar handles any
+         * overflow naturally for the rare cases where the table doesn't fit
+         * the viewport, and `.followup-table-shell { min-width: 980px }`
+         * still keeps the layout readable on narrow screens.
+         */
         .followup-table-outer {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
+            overflow-x: visible;
         }
 
         .followup-table-shell {
