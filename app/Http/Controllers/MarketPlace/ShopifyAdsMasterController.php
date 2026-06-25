@@ -173,18 +173,14 @@ class ShopifyAdsMasterController extends Controller
 
     /**
      * Marketplace sources/tags excluded from the /shopify Net Sales figure.
-     * Mirrors ShopifyRawDataController::EXCLUDE_SOURCES so the badge matches
-     * what that page shows.
+     * References ShopifyRawDataController::EXCLUDE_SOURCES so the badge always
+     * matches what the /shopify and /all-marketplace-master pages show — adding
+     * a new marketplace there will flow here automatically.
      */
-    private const SHOPIFY_EXCLUDE_SOURCES = [
-        'amazon', 'shein', 'ebay', 'tiktok', 'temu',
-        '179763773441', "macy's, inc.", "macy's", 'macys',
-        'purchasing power', 'purchasingpower', 'reverb',
-        'faire', 'best buy', 'bestbuy', 'best buy usa',
-        'doba', '145019994113',
-        'newegg', '189863297025',
-        'depop', 'tiendamia',
-    ];
+    private function shopifyExcludeSources(): array
+    {
+        return \App\Http\Controllers\ShopifyRawDataController::EXCLUDE_SOURCES;
+    }
 
     /**
      * Total Net Sales (gross − discounts) over the last 30 days (PST),
@@ -202,7 +198,7 @@ class ShopifyAdsMasterController extends Controller
                 ->where('order_date', '>=', $dateFrom)
                 ->where('order_date', '<=', $dateTo);
 
-            foreach (self::SHOPIFY_EXCLUDE_SOURCES as $term) {
+            foreach ($this->shopifyExcludeSources() as $term) {
                 $t = strtolower($term);
                 $q->whereRaw('LOWER(COALESCE(source_name,"")) NOT LIKE ?', ['%' . $t . '%'])
                   ->whereRaw('LOWER(COALESCE(tags,"")) NOT LIKE ?',        ['%' . $t . '%']);
