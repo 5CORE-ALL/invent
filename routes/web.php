@@ -1854,6 +1854,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.issues.claims.stats');
     Route::post('/customer-care/all-issues/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'archive'])
         ->name('customer.care.dispatch.issues.list.archive');
+    // Permanent delete (row + history). Server-side restricted to the
+    // operations manager account ("Hritiksha" / mgr-operations@5core.com).
+    Route::delete('/customer-care/all-issues/issues/{id}', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'destroy'])
+        ->whereNumber('id')
+        ->name('customer.care.dispatch.issues.list.destroy');
     Route::get('/customer-care/all-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dropdownOptionsIndex'])
         ->name('customer.care.dispatch.issues.dropdown.options.index');
     Route::post('/customer-care/all-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dropdownOptionsStore'])

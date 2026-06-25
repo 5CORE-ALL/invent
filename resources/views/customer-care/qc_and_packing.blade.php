@@ -3848,6 +3848,13 @@
                 event.preventDefault();
                 hideAlert();
 
+                // Guard against double-submission (e.g. double-clicking "Save")
+                // that would otherwise create the same record twice.
+                const submitBtn = form.querySelector('button[type="submit"]');
+                if (submitBtn && submitBtn.disabled) {
+                    return;
+                }
+
                 const sku = skuInput.value.trim();
                 const issue = issueInput.value.trim();
 
@@ -3882,6 +3889,12 @@
                     showAlert('Select at least one department.');
                     if (departmentInput) departmentInput.focus();
                     return;
+                }
+
+                const originalSubmitLabel = submitBtn ? submitBtn.textContent : '';
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Saving...';
                 }
 
                 try {
@@ -4027,6 +4040,11 @@
                     }
                 } catch (error) {
                     showAlert('Unable to save hold issue. Please try again.');
+                } finally {
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = originalSubmitLabel || 'Save';
+                    }
                 }
             });
 

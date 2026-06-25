@@ -1250,6 +1250,47 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return parent::archive($id);
     }
 
+    /**
+     * Hard-delete a single All Issues row plus its history rows.
+     *
+     * Restricted to the single operations manager account (users table
+     * row name="Hritiksha", email="mgr-operations@5core.com"). Both the
+     * name and email are checked so an admin renaming the account at
+     * one end (display name vs login email) doesn't silently open or
+     * close access. Anyone else gets a 403.
+     *
+     * Unlike `archive()` (which flips `is_archived` and writes an
+     * "archived" history event so the audit trail survives), this
+     * removes the row entirely along with its history — there is no
+     * recovery once the request succeeds, so the JS layer also confirms
+     * twice before calling.
+     */
+    public function destroy(int $id): JsonResponse
+    {
+        $user = auth()->user();
+        $name = trim((string) ($user?->name ?? ''));
+        $email = strtolower((string) ($user?->email ?? ''));
+        $isHritiksha = $user
+            && (strcasecmp($name, 'Hritiksha') === 0 || $email === 'mgr-operations@5core.com');
+        if (! $isHritiksha) {
+            return response()->json(['message' => 'Unauthorised.'], 403);
+        }
+
+        $row = DB::table($this->issuesTable())->where('id', $id)->first();
+        if (! $row) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        DB::transaction(function () use ($id) {
+            DB::table($this->historyTable())
+                ->where('orders_on_hold_issue_id', $id)
+                ->delete();
+            DB::table($this->issuesTable())->where('id', $id)->delete();
+        });
+
+        return response()->json(['message' => 'Hold issue deleted permanently.']);
+    }
+
     public function l30Issues(\Illuminate\Http\Request $request): JsonResponse
     {
         $tz         = config('app.timezone');

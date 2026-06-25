@@ -217,6 +217,36 @@
                         </ul>
                     </div>
 
+                    {{-- Target ROI% — back-solves S.Price so the resulting SGROI% matches.
+                         Formula: sprice = (LP × (1 + Target ROI%/100) + FBA_Ship) / margin --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-roi-controls"
+                        title="Target ROI% — sets S.Price = (LP × (1 + Target ROI%/100) + FBA Ship) / margin on every selected row">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">Target ROI%:</label>
+                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target ROI% applied to all selected rows when you click Apply">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S.Price = (LP × (1 + Target ROI%/100) + FBA Ship) / margin for every selected row">
+                            <i class="fas fa-calculator"></i> Apply
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% — back-solves S.Price so the resulting SGPFT% matches.
+                         Formula: sprice = (LP + FBA_Ship) / (margin − Target GPFT%/100). Target must be < margin*100. --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        id="target-gpft-controls"
+                        title="Target GPFT% — sets S.Price = (LP + FBA Ship) / (margin − Target GPFT%/100). Target must be less than the take-home margin (e.g. < 80%).">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">Target GPFT%:</label>
+                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            title="Target GPFT% applied to all selected rows when you click Apply. Must be less than the take-home margin (e.g. < 80%).">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            title="Compute & save S.Price = (LP + FBA Ship) / (margin − Target GPFT%/100) for every selected row">
+                            <i class="fas fa-calculator"></i> Apply
+                        </button>
+                    </div>
+
                     <button id="clear-sprice-btn" class="btn btn-sm btn-danger" style="display: none;">
                         <i class="fas fa-eraser"></i> Clear S.Price
                     </button>
@@ -1796,6 +1826,148 @@
                     if (e.which === 13) applyDiscount();
                 });
                 $(document).on('click', '#clear-sprice-btn', clearSpriceForSelected);
+
+                // ── Target ROI% / Target GPFT% bulk apply (mirrors amazon-tabulator-view) ──
+                // Saves a back-solved S.Price so the resulting SGROI% / SGPFT% column equals the target
+                // for every selected SKU. Uses the same /update-fba-manual-data endpoint as the rest
+                // of the S.Price flows; metrics are recomputed client-side via recalculateSPriceMetrics.
+                function applyTargetMetric(metric /* 'roi' | 'gpft' */) {
+                    const isRoi = metric === 'roi';
+                    const $btn = isRoi ? $('#apply-target-roi-btn') : $('#apply-target-gpft-btn');
+                    if (!table || $btn.prop('disabled')) return;
+
+                    const labelText = isRoi ? 'Target ROI%' : 'Target GPFT%';
+                    const $input = isRoi ? $('#target-roi-input') : $('#target-gpft-input');
+                    const rawInput = $input.val();
+                    const target = parseFloat(String(rawInput).replace(',', '.'));
+                    if (rawInput === '' || rawInput == null) {
+                        showToast(`Please enter a ${labelText}`, 'error');
+                        return;
+                    }
+                    if (!isFinite(target)) {
+                        showToast(`${labelText} must be a number`, 'error');
+                        return;
+                    }
+                    if (selectedSkus.size === 0) {
+                        showToast('Please select at least one SKU', 'error');
+                        return;
+                    }
+
+                    const targetFraction = target / 100;
+                    const rowsToProcess = [];
+                    const skippedNoLp = [];
+                    const skippedHighGpft = []; // GPFT only — when denominator (margin − target/100) ≤ 0
+
+                    table.getRows().forEach(function(r) {
+                        const d = r.getData();
+                        if (d.is_parent || !selectedSkus.has(d.SKU)) return;
+                        const lp = parseFloat(d.LP) || 0;
+                        if (lp <= 0) { skippedNoLp.push(d.SKU); return; }
+                        const ship = parseFloat(d.FBA_Ship_Calculation) || 0;
+                        const margin = fbaMarginAfterCommission(d); // 0.95 - commission/100, default 0.80
+
+                        let candidate;
+                        if (isRoi) {
+                            // sprice = (LP × (1 + target/100) + FBA_Ship) / margin
+                            candidate = (lp * (1 + targetFraction) + ship) / margin;
+                        } else {
+                            // sprice = (LP + FBA_Ship) / (margin − target/100)
+                            const denom = margin - targetFraction;
+                            if (denom <= 0) { skippedHighGpft.push(d.SKU); return; }
+                            candidate = (lp + ship) / denom;
+                        }
+                        const sprice = +candidate.toFixed(2);
+                        if (!isFinite(sprice) || sprice <= 0) return;
+                        rowsToProcess.push({ row: r, data: d, sprice: sprice });
+                    });
+
+                    if (rowsToProcess.length === 0) {
+                        if (skippedHighGpft.length > 0) {
+                            showToast(`${labelText} ${target}% is too high — must be less than the take-home margin (e.g. < 80%)`, 'error');
+                        } else if (skippedNoLp.length > 0) {
+                            showToast('No selected rows have a usable LP > 0', 'error');
+                        } else {
+                            showToast('No matching SKUs found in the current view', 'error');
+                        }
+                        return;
+                    }
+
+                    let confirmMsg = isRoi
+                        ? `Compute & save S.Price for ${rowsToProcess.length} selected SKU(s) using (LP × (1 + ${target}%/100) + FBA Ship) / margin?`
+                        : `Compute & save S.Price for ${rowsToProcess.length} selected SKU(s) using (LP + FBA Ship) / (margin − ${target}%/100)?`;
+                    if (skippedNoLp.length > 0) {
+                        confirmMsg += `\n\nSkipping ${skippedNoLp.length} row(s) with no LP.`;
+                    }
+                    if (skippedHighGpft.length > 0) {
+                        confirmMsg += `\n\nSkipping ${skippedHighGpft.length} row(s) where ${target}% ≥ take-home margin.`;
+                    }
+                    if (!confirm(confirmMsg)) return;
+
+                    const total = rowsToProcess.length;
+                    let successCount = 0, errorCount = 0, finalized = false;
+                    const originalHtml = $btn.html();
+                    $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
+
+                    const watchdog = setTimeout(function() {
+                        if (finalized) return;
+                        finalized = true;
+                        $btn.prop('disabled', false).html(originalHtml);
+                        showToast(`${labelText} timed out (${successCount}/${total} done). Refresh to verify.`, 'error');
+                    }, Math.max(20000, total * 1500));
+
+                    function bumpAndCheck() {
+                        if (finalized) return;
+                        if (successCount + errorCount !== total) return;
+                        finalized = true;
+                        clearTimeout(watchdog);
+                        $btn.prop('disabled', false).html(originalHtml);
+                        if (errorCount === 0) {
+                            showToast(`S.Price saved for ${successCount} SKU(s) @ ${labelText} ${target}%`, 'success');
+                        } else if (successCount === 0) {
+                            showToast(`${labelText} failed for ${errorCount} SKU(s)`, 'error');
+                        } else {
+                            showToast(`${labelText}: ${successCount} saved, ${errorCount} failed`, 'success');
+                        }
+                        if (typeof updateSummary === 'function') updateSummary();
+                    }
+
+                    rowsToProcess.forEach(function(item) {
+                        $.ajax({
+                            url: '/update-fba-manual-data',
+                            method: 'POST',
+                            timeout: 15000,
+                            headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                            data: {
+                                sku: item.data.FBA_SKU || item.data.SKU,
+                                field: 's_price',
+                                value: item.sprice
+                            },
+                            success: function(resp) {
+                                if (resp && resp.success === false) { errorCount++; }
+                                else {
+                                    successCount++;
+                                    const merged = Object.assign({}, item.data, { S_Price: item.sprice });
+                                    const sm = recalculateSPriceMetrics(merged, item.sprice);
+                                    item.row.update(Object.assign({ S_Price: item.sprice }, sm));
+                                    item.row.reformat();
+                                }
+                                bumpAndCheck();
+                            },
+                            error: function() { errorCount++; bumpAndCheck(); }
+                        });
+                    });
+
+                    $input.val('');
+                }
+
+                $(document).on('click', '#apply-target-roi-btn', function() { applyTargetMetric('roi'); });
+                $(document).on('click', '#apply-target-gpft-btn', function() { applyTargetMetric('gpft'); });
+                $(document).on('keypress', '#target-roi-input', function(e) {
+                    if (e.which === 13) applyTargetMetric('roi');
+                });
+                $(document).on('keypress', '#target-gpft-input', function(e) {
+                    if (e.which === 13) applyTargetMetric('gpft');
+                });
                 // ────────────────────────────────────────────────────────────────────────────────
 
                 // Amazon datasheet CVR (same idea as /amazon-tabulator-view)

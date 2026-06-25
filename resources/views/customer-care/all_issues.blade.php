@@ -1413,6 +1413,15 @@
             // ── Config / routes ────────────────────────────────────────────────
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
             const currentUserEmail = @json(auth()->user()?->email ?? '');
+            const currentUserName = @json(auth()->user()?->name ?? '');
+            // Delete button is only rendered for the operations manager
+            // account ("Hritiksha"). We match by name OR email so the gate
+            // still works if either field is updated independently. The
+            // server-side `destroy()` enforces the same check, so this is
+            // purely a UX guard — hiding a button no one else can use.
+            const canDeleteRecord =
+                String(currentUserName || '').trim().toLowerCase() === 'hritiksha'
+                || String(currentUserEmail || '').toLowerCase() === 'mgr-operations@5core.com';
             const skuSearchUrl = @json(route('customer.care.followups.skus'));
             const skuDetailsUrl = @json(route('customer.care.dispatch.issues.sku.details'));
             const replacementSkuDetailsUrl = @json(route('customer.care.dispatch.issues.replacement.sku.details'));
@@ -1428,6 +1437,9 @@
             const dropdownOptionsDeleteUrl = @json(route('customer.care.dispatch.issues.dropdown.options.delete'));
             const importUrl = @json(route('customer.care.dispatch.issues.import'));
             const archiveBase = @json(url('/customer-care/all-issues/issues'));
+            // Hard-delete endpoint base — appended with `/{id}` at call
+            // time so the URL is built next to where it's used.
+            const deleteBase = @json(url('/customer-care/all-issues/issues'));
             const l30LossUrl = @json(route('customer.care.dispatch.issues.l30.loss'));
             const l30IssuesUrl = @json(route('customer.care.dispatch.issues.l30.issues'));
             const colVisGet = @json(route('tabulator.column.visibility.user.get'));
@@ -2179,6 +2191,10 @@
                     html +=
                         '<button type="button" class="cb-row-btn cb-danger cb-archive" title="Archive"><i class="bi bi-archive-fill"></i></button>';
                 }
+                if (canDeleteRecord) {
+                    html +=
+                        '<button type="button" class="cb-row-btn cb-danger cb-delete" title="Delete permanently"><i class="bi bi-trash-fill"></i></button>';
+                }
                 return html + '</div>';
             };
 
@@ -2643,6 +2659,8 @@
                         openEditModal(data);
                     } else if (btn.classList.contains('cb-archive')) {
                         archiveRecord(data.id);
+                    } else if (btn.classList.contains('cb-delete')) {
+                        deleteRecord(data.id);
                     }
                 });
 
@@ -4084,6 +4102,32 @@
                     if (historyTable) loadHoldIssueHistoryRows();
                 } catch (e) {
                     alert('Unable to archive record. Please try again.');
+                }
+            }
+
+            // Permanently remove an issue row + its history. This is not
+            // reversible, so we double-confirm before issuing the DELETE.
+            // The server enforces the same "Hritiksha-only" check; if
+            // anyone else somehow reaches this code path they'll get a
+            // 403 from the API and see the error alert.
+            async function deleteRecord(recordId) {
+                if (!recordId) return;
+                if (!confirm('Permanently delete this record? This cannot be undone.')) return;
+                if (!confirm('Are you absolutely sure? The row and its history will be removed.')) return;
+                try {
+                    const res = await fetch(deleteBase + '/' + encodeURIComponent(recordId), {
+                        method: 'DELETE',
+                        headers: jsonHeaders,
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        alert(data?.message || 'Unable to delete record.');
+                        return;
+                    }
+                    await loadHoldIssueRows();
+                    if (historyTable) loadHoldIssueHistoryRows();
+                } catch (e) {
+                    alert('Unable to delete record. Please try again.');
                 }
             }
 
