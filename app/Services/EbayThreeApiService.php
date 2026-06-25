@@ -1374,6 +1374,56 @@ class EbayThreeApiService
     }
 
     /**
+     * Description Master: return the eBay3 listing's raw Description HTML for one SKU (no parsing). Read-only.
+     *
+     * @return array{success: bool, message: string, html?: string}
+     */
+    public function fetchRawDescriptionHtml(string $identifier): array
+    {
+        if (trim($identifier) === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+
+        $row = $this->findMetricRowBySkuOrAlternateIds('ebay_3_metrics', $identifier, ['item_id']);
+        $itemId = $row && isset($row->item_id) ? trim((string) $row->item_id) : '';
+        if ($itemId === '') {
+            return ['success' => false, 'message' => 'Product not found in ebay_3_metrics (eBay item_id required).'];
+        }
+
+        $resp = null;
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $resp = $this->getItem($itemId);
+            if ($resp !== null) {
+                break;
+            }
+            if ($attempt < 3) {
+                sleep([1, 2][$attempt - 1] ?? 2);
+            }
+        }
+
+        if ($resp === null) {
+            return ['success' => false, 'message' => 'GetItem failed for item '.$itemId.'.'];
+        }
+
+        $item = $resp['Item'] ?? null;
+        if (! is_array($item)) {
+            return ['success' => false, 'message' => 'Unexpected GetItem response (no Item).'];
+        }
+
+        $desc = $item['Description'] ?? '';
+        if (is_array($desc)) {
+            $desc = '';
+        }
+        $desc = html_entity_decode((string) $desc, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        if (trim($desc) === '') {
+            return ['success' => false, 'message' => 'This listing has no description body.'];
+        }
+
+        return ['success' => true, 'message' => 'eBay3 listing description loaded.', 'html' => $desc];
+    }
+
+    /**
      * @return array{success: bool, message: string}
      */
     public function updateDescription(string $identifier, string $description): array

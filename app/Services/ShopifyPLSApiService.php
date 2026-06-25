@@ -586,6 +586,66 @@ class ShopifyPLSApiService
     }
 
     /**
+     * Description Master pull: fetch the PLS product's rich-HTML description (body_html) + images by SKU. Read-only.
+     *
+     * @return array{success: bool, message: string, html?: string, images?: array<int,string>, title?: string, source?: string}
+     */
+    public function fetchProductDescriptionHtml(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+
+        $domain = $this->plsDomain();
+        $token = $this->plsToken();
+        if (! $domain || ! $token) {
+            return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
+        }
+
+        try {
+            $found = $this->findProductBySkuViaGraphQL($domain, $token, $sku);
+            $productId = $found['product_id'] ?? null;
+            if (! $productId) {
+                return ['success' => false, 'message' => 'No Shopify PLS product found for this SKU.'];
+            }
+
+            $verify = env('FILESYSTEM_DRIVER') === 'local';
+            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+            $res = $this->retryOnRateLimit(function () use ($token, $productUrl, $verify) {
+                $req = Http::withHeaders(['X-Shopify-Access-Token' => $token, 'Content-Type' => 'application/json']);
+                if ($verify) {
+                    $req = $req->withoutVerifying();
+                }
+
+                return $req->timeout(60)->connectTimeout(25)->get($productUrl);
+            });
+
+            if (! $res->successful()) {
+                return ['success' => false, 'message' => 'Could not load PLS product ('.$res->status().').'];
+            }
+
+            $images = array_values(array_filter(array_map(
+                fn ($i) => $i['src'] ?? null,
+                $res->json('product.images') ?? []
+            )));
+
+            return [
+                'success' => true,
+                'message' => 'Fetched from Shopify PLS.',
+                'html' => (string) ($res->json('product.body_html') ?? ''),
+                'images' => $images,
+                'title' => (string) ($res->json('product.title') ?? ''),
+                'source' => 'rest',
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('ShopifyPLS fetchProductDescriptionHtml failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Description Master: sets `body_html` to unified layout (About Item → Product Description → Features → Images).
      *
      * @return array{success: bool, message: string}

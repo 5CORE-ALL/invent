@@ -1634,6 +1634,114 @@ class ShopifyApiService
     }
 
     /**
+     * Description Master pull: fetch a product's full rich-HTML description (body_html) + product image URLs by SKU.
+     * Read-only (GETs only). Tries the catalog/variant resolver first (exact, synced on production), then falls back
+     * to a GraphQL SKU search so it still works when local Shopify mapping tables are not synced.
+     *
+     * @return array{success: bool, message: string, html?: string, images?: array<int,string>, title?: string, product_id?: string|int|null, source?: string}
+     */
+    public function fetchProductDescriptionHtml(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+
+        $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
+        $token = config('services.shopify.access_token') ?: config('services.shopify.password');
+        if (! $domain || ! $token) {
+            return ['success' => false, 'message' => 'Shopify credentials not configured.'];
+        }
+        $domain = rtrim(preg_replace('#^https?://#', '', (string) $domain), '/');
+        $verify = env('FILESYSTEM_DRIVER') === 'local';
+
+        $headers = function () use ($token, $verify) {
+            $req = Http::withHeaders(['X-Shopify-Access-Token' => $token, 'Content-Type' => 'application/json']);
+
+            return $verify ? $req->withoutVerifying() : $req;
+        };
+
+        // 1) Preferred path: resolve via local catalog/variant mapping (exact; synced on production).
+        try {
+            $variantId = $this->resolveMainStoreVariantId($sku);
+            if ($variantId) {
+                $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$variantId}.json";
+                $variantRes = $this->retryOnRateLimit(fn () => $headers()->timeout(60)->connectTimeout(25)->get($variantUrl));
+                $productId = $variantRes->successful() ? $variantRes->json('variant.product_id') : null;
+                if ($productId) {
+                    usleep(400000);
+                    $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+                    $getProduct = $this->retryOnRateLimit(fn () => $headers()->timeout(60)->connectTimeout(25)->get($productUrl));
+                    if ($getProduct->successful()) {
+                        $images = array_values(array_filter(array_map(
+                            fn ($i) => $i['src'] ?? null,
+                            $getProduct->json('product.images') ?? []
+                        )));
+
+                        return [
+                            'success' => true,
+                            'message' => 'Fetched from Shopify.',
+                            'html' => (string) ($getProduct->json('product.body_html') ?? ''),
+                            'images' => $images,
+                            'title' => (string) ($getProduct->json('product.title') ?? ''),
+                            'product_id' => $productId,
+                            'source' => 'rest',
+                        ];
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Shopify fetchProductDescriptionHtml: resolver path failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+        }
+
+        // 2) Fallback: GraphQL search by SKU (no local mapping needed). Prefer an exact SKU match among results.
+        try {
+            $query = 'query($q: String!) { productVariants(first: 10, query: $q) { edges { node { sku product { id title descriptionHtml images(first: 30) { edges { node { url } } } } } } } }';
+            $resp = $this->retryOnRateLimit(fn () => $headers()->timeout(60)->connectTimeout(25)->post(
+                "https://{$domain}/admin/api/2024-01/graphql.json",
+                ['query' => $query, 'variables' => ['q' => 'sku:'.$sku]]
+            ));
+            $edges = $resp->json('data.productVariants.edges') ?? [];
+            $chosen = null;
+            foreach ($edges as $edge) {
+                $node = $edge['node'] ?? null;
+                if (! is_array($node) || ! isset($node['product'])) {
+                    continue;
+                }
+                if ($chosen === null) {
+                    $chosen = $node;
+                }
+                if (strcasecmp(trim((string) ($node['sku'] ?? '')), $sku) === 0) {
+                    $chosen = $node;
+                    break;
+                }
+            }
+            if (is_array($chosen)) {
+                $prod = $chosen['product'];
+                $images = array_values(array_filter(array_map(
+                    fn ($e) => $e['node']['url'] ?? null,
+                    $prod['images']['edges'] ?? []
+                )));
+                $exact = strcasecmp(trim((string) ($chosen['sku'] ?? '')), $sku) === 0;
+
+                return [
+                    'success' => true,
+                    'message' => $exact ? 'Fetched from Shopify (search).' : 'Fetched from Shopify (closest match: '.($chosen['sku'] ?? '?').').',
+                    'html' => (string) ($prod['descriptionHtml'] ?? ''),
+                    'images' => $images,
+                    'title' => (string) ($prod['title'] ?? ''),
+                    'product_id' => $prod['id'] ?? null,
+                    'source' => 'graphql',
+                ];
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Shopify fetchProductDescriptionHtml: GraphQL fallback failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+        }
+
+        return ['success' => false, 'message' => 'No Shopify product found for this SKU.'];
+    }
+
+    /**
      * Return map SKU => inventory quantity from Shopify (no DB writes). Used for Reverb inventory sync.
      */
     public function getInventoryQuantitiesBySku(array $limitToSkus = []): array

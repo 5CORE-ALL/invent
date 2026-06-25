@@ -6098,6 +6098,7 @@ GRAPHQL;
                 'description_1000' => 'nullable|string',
                 'description_800' => 'nullable|string',
                 'description_600' => 'nullable|string',
+                'description_html' => 'nullable|string',
             ]);
 
             $product = ProductMaster::where('sku', $validated['sku'])->first();
@@ -6115,6 +6116,9 @@ GRAPHQL;
                 if (array_key_exists($col, $validated)) {
                     $product->{$col} = $validated[$col];
                 }
+            }
+            if (array_key_exists('description_html', $validated) && \Illuminate\Support\Facades\Schema::hasColumn('product_master', 'description_html')) {
+                $product->description_html = $validated['description_html'];
             }
             if (array_key_exists('description_1500', $validated)) {
                 $product->product_description = $validated['description_1500'];

@@ -50,6 +50,7 @@ class ProductMaster extends Model
         'description_1000',
         'description_800',
         'description_600',
+        'description_html',
         'description_v2_bullets',
         'description_v2_description',
         'description_v2_images',

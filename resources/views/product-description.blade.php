@@ -28,30 +28,30 @@
         .bp-mp-dot.pushed { background:#22c55e; border-color:#22c55e; }
         .marketplace-btn { width:28px; height:28px; border:none; border-radius:4px; color:#fff; font-weight:600; font-size:11px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; transition:all .2s; padding:0; pointer-events:none; }
         .bp-mp-stack { pointer-events:auto; }
-        .btn-amazon { background:#ff9900; color:#232f3e!important; }
-        .btn-temu { background:#e02020; }
-        .btn-reverb { background:#1a1a1a; }
-        .btn-shopify { background:#96bf48; color:#1a1a1a!important; }
-        .btn-shopify-pls { background:#5c6ac4; }
-        .btn-ebay1 { background:#0d6efd; }
-        .btn-ebay2 { background:#198754; }
-        .btn-ebay3 { background:#fd7e14; }
-        .btn-macy { background:#e20074; }
+        .btn-ebay1 { background-color:#0d6efd; }
+        .btn-ebay2 { background-color:#198754; }
+        .btn-ebay3 { background-color:#fd7e14; }
+        .btn-macy { background-color:#0d6efd; }
+        .btn-amazon { background-color:#ff9900; }
+        .btn-temu { background-color:#ff6b00; }
+        .btn-reverb { background-color:#333333; }
+        .btn-wayfair { background-color:#7a3ff2; }
+        .btn-bestbuy { background-color:#0046be; }
+        .btn-shopify { background-color:#7cb342; }
+        .btn-shopify-pls { background-color:#5c6bc0; }
         .btn-push-all { background:#ff9900!important; color:#232f3e!important; font-weight:600; }
         .action-buttons-cell { white-space:nowrap; vertical-align:middle!important; }
         .action-buttons-group { display:flex; align-items:center; gap:6px; flex-wrap:nowrap; }
         .action-btn { padding:5px 10px; border:none; border-radius:6px; font-size:11px; font-weight:500; display:inline-flex; align-items:center; gap:4px; cursor:pointer; }
         .view-btn { background:#17a2b8; color:#fff; }
-        .edit-mp-btn { background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%); color:#fff; }
+        .pull-btn { background:#f59e0b; color:#fff; padding:5px 8px; }
+        .pm-tier-btn { background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%); color:#fff; }
         .modal-header-gradient { background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff; }
         .shopify-hint { font-size:10px; color:#64748b; }
         #loadErrorBanner { display:none; }
         #viewDescModal .dm-view-body { font-size:12px; line-height:1.45; color:#334155; white-space:pre-wrap; word-break:break-word; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:.75rem; min-height:2rem; max-height:min(50vh,360px); overflow-y:auto; }
         #viewDescModal .dm-view-section-title { font-size:11px; font-weight:700; color:#1e40af; padding:.35rem .5rem; background:#eff6ff; border-radius:6px; border-left:4px solid #2563eb; margin-bottom:.5rem; margin-top:.75rem; }
-        #editMarketplaceDescModal .mp-edit-block { border:1px solid #e2e8f0; border-radius:8px; padding:.75rem; margin-bottom:.75rem; background:#fafbfc; }
-        #editMarketplaceDescModal .mp-edit-textarea { font-size:12px; line-height:1.45; }
-        #editMarketplaceDescModal .pm-tier-btn { background:#64748b; color:#fff; }
-        #dmSkeleton { min-height:200px; }
+        #dmSkeleton { min-height:0; }
         .dm-skel-table { width:100%; border-collapse:collapse; }
         .dm-skel-table td { padding:10px 8px; }
         .dm-skel-bar { height:12px; border-radius:4px; background:linear-gradient(90deg,#e2e8f0 0%,#f1f5f9 50%,#e2e8f0 100%); background-size:200% 100%; animation:dmShimmer 1.2s ease-in-out infinite; }
@@ -84,12 +84,6 @@
                         <button type="button" class="btn btn-sm btn-outline-danger ms-2" id="retryLoadBtn">Retry</button>
                     </div>
                     <div class="mb-3 dm-master-toolbar">
-                        <label class="small text-muted mb-0 me-1">Per page</label>
-                        <select id="perPageSelect" class="form-select form-select-sm" style="width:88px;display:inline-block;vertical-align:middle;">
-                            <option value="50">50</option>
-                            <option value="75" selected>75</option>
-                            <option value="100">100</option>
-                        </select>
                         <button type="button" id="exportBtn" class="btn btn-primary btn-sm"><i class="fas fa-download"></i> Export</button>
                         <button type="button" id="importBtn" class="btn btn-info btn-sm"><i class="fas fa-upload"></i> Import</button>
                         <button type="button" id="pushSelectedBtn" class="btn btn-secondary btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push Selected</button>
@@ -140,10 +134,6 @@
                                 <tbody id="table-body"></tbody>
                             </table>
                         </div>
-                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2 px-1" id="dmPaginationWrap">
-                            <div class="small text-muted" id="dmPageInfo"></div>
-                            <nav><ul class="pagination pagination-sm mb-0" id="dmPagination"></ul></nav>
-                        </div>
                     </div>
                     </div>
                 </div>
@@ -155,7 +145,7 @@
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
-                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Edit descriptions &amp; push</h5>
+                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Edit descriptions</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
@@ -163,69 +153,25 @@
                     <input type="hidden" id="modalAplusImagesJson" value="[]">
                     <div class="mb-2"><strong>SKU:</strong> <span id="modalSkuLabel"></span></div>
                     <div class="mb-3"><strong>Product:</strong> <span id="modalProductLabel"></span></div>
-                    <div class="dm-modal-section">
-                        <div class="dm-modal-section-title">Select marketplaces to push</div>
-                        <div id="modalMarketplaceChecks" class="row g-1"></div>
-                    </div>
+                    <p class="small text-muted mb-2"><i class="fas fa-info-circle"></i> Each marketplace has its own description. Pick a tab, edit in the editor, then Save. <strong>Fetch live</strong> pulls that marketplace's current listing description (tables &amp; images preserved).</p>
 
-                    <div class="dm-modal-section">
-                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                            <div class="dm-modal-section-title mb-0">Amazon A+ Content</div>
-                            <div class="d-flex flex-wrap gap-2">
-                                <button type="button" class="btn btn-outline-warning btn-sm" id="modalFetchAmazonAplusBtn">
-                                    <i class="fab fa-amazon"></i> Fetch Amazon A+ Content
-                                </button>
-                                <button type="button" class="btn btn-outline-primary btn-sm" id="modalRegenerateAplusBtn">
-                                    <i class="fas fa-arrows-rotate"></i> Regenerate Tiers from A+
-                                </button>
-                            </div>
-                        </div>
-                        <div class="small text-muted mt-1 mb-2">Fetch A+ once, preview it, then regenerate all tier textareas.</div>
-                        <details id="aplusPreviewWrap" class="mt-1 d-none">
-                            <summary class="small fw-semibold text-primary" style="cursor:pointer;">A+ Preview (images + text)</summary>
-                            <div id="aplusPreviewContent" class="dm-aplus-preview mt-2 small text-muted">No A+ content fetched yet.</div>
-                        </details>
-                    </div>
+                    <div id="modalMpTabs" class="d-flex flex-wrap gap-1 mb-2"></div>
 
-                    <div class="border rounded p-2 mb-2 bg-light">
-                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
-                            <span class="fw-semibold small">DESC 1500 — Amazon (A), Temu (T), Reverb (R)</span>
-                            <button type="button" class="btn btn-primary btn-sm modal-ai-tier" data-tier="1500"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                        <div class="fw-semibold small" id="modalActiveMpLabel">—</div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-outline-success btn-sm" id="modalFetchLiveBtn"><i class="fas fa-cloud-download-alt"></i> Fetch live</button>
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="modalAiGenBtn"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
                         </div>
-                        <textarea class="form-control form-control-sm" id="modalDesc1500" rows="5" maxlength="1500" placeholder="1400–1500 characters (AI target)"></textarea>
-                        <div class="small text-muted mt-1"><span id="modalDescCounter1500">0</span>/1500</div>
                     </div>
-                    <div class="border rounded p-2 mb-2 bg-light">
-                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
-                            <span class="fw-semibold small">DESC 1000 — Shopify Main (SM), Shopify PLS (SP)</span>
-                            <button type="button" class="btn btn-primary btn-sm modal-ai-tier" data-tier="1000"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
-                            </div>
-                        <textarea class="form-control form-control-sm" id="modalDesc1000" rows="4" maxlength="1000" placeholder="900–1000 characters (AI target)"></textarea>
-                        <div class="small text-muted mt-1"><span id="modalDescCounter1000">0</span>/1000</div>
-                            </div>
-                    <div class="border rounded p-2 mb-2 bg-light">
-                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
-                            <span class="fw-semibold small">DESC 800 — eBay1 (E1), eBay2 (E2), eBay3 (E3)</span>
-                            <button type="button" class="btn btn-primary btn-sm modal-ai-tier" data-tier="800"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
-                        </div>
-                        <textarea class="form-control form-control-sm" id="modalDesc800" rows="4" maxlength="800" placeholder="700–800 characters (AI target)"></textarea>
-                        <div class="small text-muted mt-1"><span id="modalDescCounter800">0</span>/800</div>
-                    </div>
-                    <div class="border rounded p-2 mb-2 bg-light">
-                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
-                            <span class="fw-semibold small">DESC 600 — Macy's (M)</span>
-                            <button type="button" class="btn btn-primary btn-sm modal-ai-tier" data-tier="600"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
-                        </div>
-                        <textarea class="form-control form-control-sm" id="modalDesc600" rows="4" maxlength="600" placeholder="500–600 characters (AI target)"></textarea>
-                        <div class="small text-muted mt-1"><span id="modalDescCounter600">0</span>/600</div>
-                    </div>
-                    <p class="shopify-hint mb-0"><i class="fas fa-info-circle"></i> Shopify Main &amp; PLS: listing body combines Bullet Points Master + the 1000-char description.</p>
+                    <textarea id="modalDescHtml"></textarea>
+                    <div class="small text-muted mt-1" id="modalEditorHint">Editing the selected marketplace's description.</div>
+                    <p class="shopify-hint mb-0 mt-1"><i class="fas fa-info-circle"></i> Some marketplaces can't be fetched live yet (no read API) — those tabs start from the last saved copy.</p>
                     <div class="mt-2 small text-muted d-none" id="modalAiLoadingWrap"><i class="fas fa-spinner fa-spin"></i> <span id="modalAiLoadingTier"></span></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-success" id="modalSavePmBtn"><i class="fas fa-save"></i> Save to PM</button>
-                    <button type="button" class="btn btn-primary" id="modalPushBtn"><i class="fas fa-cloud-upload-alt"></i> Push to selected marketplaces</button>
+                    <button type="button" class="btn btn-success" id="modalSavePmBtn"><i class="fas fa-save"></i> Save all</button>
                 </div>
             </div>
         </div>
@@ -250,46 +196,29 @@
         </div>
     </div>
 
-    <div class="modal fade" id="editMarketplaceDescModal" tabindex="-1">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header modal-header-gradient">
-                    <h5 class="modal-title"><i class="fas fa-store me-2"></i>Edit marketplace descriptions</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p id="mpEditSubtitle" class="small text-muted mb-2"></p>
-                    <p class="small text-muted mb-3 border-bottom pb-2">Each block saves and pushes that marketplace only. Reset clears the stored copy in metrics (live listings may still show the old text until you push).</p>
-                    <div id="mpEditFields"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                </div>
-            </div>
-        </div>
-    </div>
 @endsection
 
 @section('script')
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tinymce@7/tinymce.min.js" referrerpolicy="origin"></script>
     <script>
 document.addEventListener('DOMContentLoaded', () => {
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const LIMITS = {
-        amazon: 1500, temu: 1500, reverb: 1500,
+        amazon: 1500, temu: 1500, reverb: 1500, wayfair: 1500, bestbuy: 1500,
         shopify_main: 1000, shopify_pls: 1000,
         ebay: 800, ebay2: 800, ebay3: 800,
         macy: 600,
     };
     const LABELS = {
-        amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb',
+        amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb', wayfair: 'Wayfair', bestbuy: 'Best Buy',
         shopify_main: 'Shopify Main', shopify_pls: 'Shopify PLS',
         ebay: 'eBay1', ebay2: 'eBay2', ebay3: 'eBay3',
         macy: "Macy's",
     };
     const GROUPS = {
-        g1500: ['amazon', 'temu', 'reverb'],
+        g1500: ['amazon', 'temu', 'reverb', 'wayfair', 'bestbuy'],
         g1000: ['shopify_main', 'shopify_pls'],
         g800: ['ebay', 'ebay2', 'ebay3'],
         g600: ['macy'],
@@ -298,10 +227,10 @@ document.addEventListener('DOMContentLoaded', () => {
         amazon: 'btn-amazon', temu: 'btn-temu', reverb: 'btn-reverb',
         shopify_main: 'btn-shopify', shopify_pls: 'btn-shopify-pls',
         ebay: 'btn-ebay1', ebay2: 'btn-ebay2', ebay3: 'btn-ebay3',
-        macy: 'btn-macy',
+        macy: 'btn-macy', wayfair: 'btn-wayfair', bestbuy: 'btn-bestbuy',
     };
     const MP_SHORT = {
-        amazon: 'A', temu: 'T', reverb: 'R',
+        amazon: 'A', temu: 'T', reverb: 'R', wayfair: 'W', bestbuy: 'B',
         shopify_main: 'SM', shopify_pls: 'SP',
         ebay: 'E1', ebay2: 'E2', ebay3: 'E3',
         macy: 'M',
@@ -312,8 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let tableData = [];
     const bySku = new Map();
-    let editModal, viewDescModal, marketplaceEditModal;
-    let mpEditCurrentSku = '';
+    let editModal, viewDescModal;
     let tableBodyBound = false;
     let lastViewPlainText = '';
     let currentPage = 1;
@@ -323,15 +251,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const esc = (s) => {
         if (s == null) return '';
-        const d = document.createElement('div');
-        d.textContent = String(s);
-        return d.innerHTML;
+        return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
     };
 
     function toast(msg, ok = true) {
         if (window.bootstrap && window.bootstrap.Toast) {
             const el = document.createElement('div');
-            el.className = 'toast align-items-center text-bg-' + (ok ? 'success' : 'danger') + ' border-0 position-fixed bottom-0 end-0 m-3';
+            el.className = 'toast align-items-center text-bg-' + (ok ? 'success' : 'danger') + ' border-0 position-fixed top-0 end-0 m-3';
+            el.style.zIndex = '1090';
             el.setAttribute('role', 'alert');
             el.innerHTML = '<div class="d-flex"><div class="toast-body">' + esc(msg) + '</div></div>';
             document.body.appendChild(el);
@@ -437,8 +364,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="action-buttons-cell">
                     <div class="action-buttons-group">
                         <button type="button" class="action-btn view-btn" data-view-row="${esc(sku)}" title="View descriptions (read-only)"><i class="fas fa-eye"></i></button>
-                        <button type="button" class="action-btn edit-mp-btn" data-edit-mp="${esc(sku)}" title="Edit marketplace descriptions (push per channel)"><i class="fas fa-pen"></i></button>
-                        <button type="button" class="action-btn pm-tier-btn" data-edit-pm="${esc(sku)}" title="Edit Product Master tiers (1500–600) &amp; push"><i class="fas fa-align-left"></i></button>
+                        <button type="button" class="action-btn pull-btn" data-pull-shopify="${esc(sku)}" title="Fetch live descriptions from all marketplaces (saves each)"><i class="fas fa-cloud-download-alt"></i></button>
+                        <button type="button" class="action-btn pm-tier-btn" data-edit-pm="${esc(sku)}" title="Edit descriptions &amp; push"><i class="fas fa-edit"></i></button>
                     </div>
                 </td>
                 ${groupCell('g1500', sku, r)}
@@ -461,9 +388,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 openViewModal(viewRow.getAttribute('data-view-row'));
                 return;
             }
-            const editMpBtn = e.target.closest('[data-edit-mp]');
-            if (editMpBtn) {
-                openMarketplaceEditModal(editMpBtn.getAttribute('data-edit-mp'));
+            const pullBtn = e.target.closest('[data-pull-shopify]');
+            if (pullBtn) {
+                e.preventDefault();
+                runPullAll(pullBtn.getAttribute('data-pull-shopify'), pullBtn);
                 return;
             }
             const editPmBtn = e.target.closest('[data-edit-pm]');
@@ -517,114 +445,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    function updateMpEditCounter(ta, mp) {
-        const max = LIMITS[mp] || 1500;
-        const cnt = document.getElementById('mp-edit-cnt-' + mp);
-        if (!cnt || !ta) return;
-        const n = ta.value.length;
-        cnt.textContent = (max - n) + ' remaining · ' + n + '/' + max;
-    }
-
-    function openMarketplaceEditModal(sku) {
-        mpEditCurrentSku = String(sku);
-        const row = bySku.get(mpEditCurrentSku);
-        if (!row) return;
-        document.getElementById('mpEditSubtitle').textContent = 'SKU: ' + sku + ' — ' + (row.Parent || row.title150 || '');
-        const container = document.getElementById('mpEditFields');
-        container.innerHTML = ALL_MP.map((mp) => {
-            const max = LIMITS[mp] || 1500;
-            const shopifyHint = (mp === 'shopify_main' || mp === 'shopify_pls')
-                ? '<p class="shopify-hint mb-1"><i class="fas fa-info-circle"></i> Shopify listing body combines Bullet Points Master + this description (editable).</p>'
-                : '';
-            return `
-                <div class="mp-edit-block" data-mp="${esc(mp)}">
-                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
-                        <strong>${esc(LABELS[mp])}</strong>
-                        <span class="small text-muted" id="mp-edit-cnt-${esc(mp)}">0/${max}</span>
-                    </div>
-                    ${shopifyHint}
-                    <textarea class="form-control form-control-sm mp-edit-textarea" id="mp-edit-ta-${esc(mp)}" data-mp="${esc(mp)}" rows="4" maxlength="${max}"></textarea>
-                    <div class="d-flex flex-wrap gap-2 mt-2">
-                        <button type="button" class="btn btn-sm btn-primary save-mp-btn" data-mp="${esc(mp)}"><i class="fas fa-cloud-upload-alt"></i> Save &amp; push</button>
-                        <button type="button" class="btn btn-sm btn-outline-danger reset-mp-btn" data-mp="${esc(mp)}"><i class="fas fa-eraser"></i> Reset</button>
-                    </div>
-                </div>`;
-        }).join('');
-        ALL_MP.forEach((mp) => {
-            const ta = document.getElementById('mp-edit-ta-' + mp);
-            if (ta) {
-                ta.value = getDisplayDescForMp(row, mp);
-                updateMpEditCounter(ta, mp);
-            }
-        });
-        if (!marketplaceEditModal) marketplaceEditModal = new bootstrap.Modal(document.getElementById('editMarketplaceDescModal'));
-        marketplaceEditModal.show();
-    }
-
-    document.getElementById('editMarketplaceDescModal')?.addEventListener('input', (e) => {
-        const ta = e.target.closest('.mp-edit-textarea');
-        if (!ta) return;
-        const mp = ta.getAttribute('data-mp');
-        if (mp) updateMpEditCounter(ta, mp);
-    });
-
-    document.getElementById('editMarketplaceDescModal')?.addEventListener('click', (e) => {
-        const saveBtn = e.target.closest('.save-mp-btn');
-        const resetBtn = e.target.closest('.reset-mp-btn');
-        const sku = mpEditCurrentSku;
-        const row = bySku.get(String(sku));
-        if (!sku || !row) return;
-
-        if (saveBtn) {
-            const mp = saveBtn.getAttribute('data-mp');
-            const ta = document.getElementById('mp-edit-ta-' + mp);
-            const raw = ta ? ta.value : '';
-            const text = String(raw).trim();
-            if (!text) {
-                toast('Description cannot be empty. Use Reset to clear the stored copy.', false);
-                return;
-            }
-            const lim = LIMITS[mp] || 1500;
-            const chunk = text.length > lim ? text.slice(0, lim) : text;
-            pushPayload(sku, [{ marketplace: mp, description: chunk }], null, false);
-            return;
-        }
-
-        if (resetBtn) {
-            const mp = resetBtn.getAttribute('data-mp');
-            if (!mp) return;
-            const label = LABELS[mp] || mp;
-            if (!confirm('Clear saved description for ' + label + '? This removes the stored copy in Description Master. Live listings may still show the previous text until you push new content.')) return;
-            fetch('/product-description/reset-marketplace', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                body: JSON.stringify({ sku, marketplace: mp }),
-            })
-                .then((r) => r.json())
-                .then((res) => {
-                    if (res.success) {
-                        toast(res.message || 'Cleared');
-                        if (!row.descriptions) row.descriptions = {};
-                        row.descriptions[mp] = '';
-                        const ta = document.getElementById('mp-edit-ta-' + mp);
-                        if (ta) {
-                            ta.value = getDisplayDescForMp(row, mp);
-                            updateMpEditCounter(ta, mp);
-                        }
-                        renderTable();
-                        loadData(currentPage);
-                    } else toast(res.message || 'Reset failed', false);
-                })
-                .catch((err) => toast('Reset failed: ' + err.message, false));
-        }
-    });
-
     function pushSingleMarketplace(sku, mp) {
         const row = bySku.get(String(sku));
         if (!row) return;
         const text = getDisplayDescForMp(row, mp);
         if (!text || !String(text).trim()) {
-            toast('Add text for this tier in Product Master tiers (align-left) or edit marketplace copy.', false);
+            toast('No text for this tier. Add it via the Edit descriptions button, then push.', false);
             openEditModal(sku);
             return;
         }
@@ -648,31 +474,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const body = document.getElementById('dmSkeletonBody');
         if (shell) shell.classList.toggle('is-loading', on);
         if (on && sk && body) {
-            body.innerHTML = buildSkeletonRows(12);
+            body.innerHTML = buildSkeletonRows(4);
             sk.style.display = 'block';
         } else if (sk) {
             sk.style.display = 'none';
         }
     }
 
-    function loadData(page) {
+    function loadData() {
         hideLoadError();
         const mySeq = ++descriptionMasterLoadSeq;
-        const p = page != null ? page : currentPage;
-        currentPage = p;
-        const perPage = parseInt(document.getElementById('perPageSelect')?.value || '75', 10) || 75;
-        const qSku = (document.getElementById('skuSearchDm')?.value || '').trim();
-        const qText = (document.getElementById('previewSearchDm')?.value || '').trim();
 
         setLoadingUi(true);
         const ctrl = new AbortController();
-        const abortTimer = setTimeout(() => ctrl.abort(), 120000);
+        const abortTimer = setTimeout(() => ctrl.abort(), 180000);
 
-        const params = new URLSearchParams({ page: String(p), per_page: String(perPage) });
-        if (qSku) params.set('q_sku', qSku);
-        if (qText) params.set('q_text', qText);
-
-        fetch('/product-description-data?' + params.toString(), {
+        fetch('/product-description-data', {
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             credentials: 'same-origin',
             signal: ctrl.signal,
@@ -694,16 +511,14 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .then((res) => {
                 if (res.status === 500 && res.error) throw new Error(res.message || res.error);
+                if (mySeq !== descriptionMasterLoadSeq) return;
                 const raw = Array.isArray(res.data) ? res.data : [];
                 tableData = raw.filter((i) => i && i.SKU && !String(i.SKU).toUpperCase().includes('PARENT'));
                 bySku.clear();
                 tableData.forEach((r) => bySku.set(String(r.SKU), r));
-                listMeta = res.meta || { total: tableData.length, last_page: 1, per_page: perPage, current_page: p };
+                listMeta = res.meta || { total: tableData.length };
                 setLoadingUi(false);
-                document.getElementById('rowCountBadge').textContent = (listMeta.total != null ? listMeta.total : tableData.length) + ' products (page ' + (listMeta.current_page || p) + ' / ' + (listMeta.last_page || 1) + ')';
-                document.getElementById('skuCountDm').textContent = '(' + tableData.length + ' on page)';
                 renderTable();
-                renderPagination();
             })
             .catch((e) => {
                 clearTimeout(abortTimer);
@@ -711,7 +526,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (e.name === 'AbortError' && mySeq !== descriptionMasterLoadSeq) {
                     return;
                 }
-                const msg = e.name === 'AbortError' ? 'Request timed out (2 min).' : (e.message || 'Error');
+                const msg = e.name === 'AbortError' ? 'Request timed out.' : (e.message || 'Error');
                 console.error('Description Master: load failed', e);
                 showLoadError(msg);
                 toast('Failed to load: ' + msg, false);
@@ -720,55 +535,41 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     }
 
+    // Client-side filter over the fully-loaded dataset (no server round-trip, no skeleton on search).
+    function getFilteredData() {
+        const qSku = (document.getElementById('skuSearchDm')?.value || '').trim().toLowerCase();
+        const qText = (document.getElementById('previewSearchDm')?.value || '').trim().toLowerCase();
+        let rows = tableData;
+        if (qSku) rows = rows.filter((r) => String(r.SKU || '').toLowerCase().includes(qSku));
+        if (qText) {
+            rows = rows.filter((r) => {
+                const hay = [r.Parent, r.title150, r.description_1500, r.product_description, r.description_1000, r.description_800, r.description_600]
+                    .map((x) => String(x || '').toLowerCase()).join(' ');
+                return hay.includes(qText);
+            });
+        }
+        return rows;
+    }
+
     function renderTable() {
         const tbody = document.getElementById('table-body');
         bindTableBodyOnce();
-        if (!tableData.length) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No products on this page</td></tr>';
+        const rows = getFilteredData();
+        const total = listMeta.total != null ? listMeta.total : tableData.length;
+        const badge = document.getElementById('rowCountBadge');
+        if (badge) badge.textContent = total + ' products';
+        const cnt = document.getElementById('skuCountDm');
+        if (cnt) cnt.textContent = '(' + rows.length + ' shown)';
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No matching products</td></tr>';
             return;
         }
-        tbody.innerHTML = tableData.map(buildRowHtml).join('');
-    }
-
-    function renderPagination() {
-        const ul = document.getElementById('dmPagination');
-        const info = document.getElementById('dmPageInfo');
-        if (!ul || !info) return;
-        const cur = listMeta.current_page || currentPage || 1;
-        const last = listMeta.last_page || 1;
-        const from = listMeta.from;
-        const to = listMeta.to;
-        const total = listMeta.total;
-        info.textContent = (from != null && to != null && total != null)
-            ? ('Showing ' + from + '–' + to + ' of ' + total)
-            : ('Page ' + cur + ' of ' + last);
-
-        let html = '';
-        const addLi = (label, page, disabled, active) => {
-            html += '<li class="page-item' + (disabled ? ' disabled' : '') + (active ? ' active' : '') + '">';
-            html += '<a class="page-link" href="#" data-page="' + page + '">' + label + '</a></li>';
-        };
-        addLi('«', cur - 1, cur <= 1, false);
-        const windowSize = 5;
-        let start = Math.max(1, cur - Math.floor(windowSize / 2));
-        let end = Math.min(last, start + windowSize - 1);
-        start = Math.max(1, end - windowSize + 1);
-        for (let i = start; i <= end; i++) addLi(String(i), i, false, i === cur);
-        addLi('»', cur + 1, cur >= last, false);
-        ul.innerHTML = html;
-        ul.querySelectorAll('a.page-link').forEach((a) => {
-            a.addEventListener('click', (ev) => {
-                ev.preventDefault();
-                const pg = parseInt(a.getAttribute('data-page'), 10);
-                if (!pg || pg < 1 || pg > last || pg === cur) return;
-                loadData(pg);
-            });
-        });
+        tbody.innerHTML = rows.map(buildRowHtml).join('');
     }
 
     function scheduleSearch() {
         if (searchDebounce) clearTimeout(searchDebounce);
-        searchDebounce = setTimeout(() => loadData(1), 420);
+        searchDebounce = setTimeout(renderTable, 120);
     }
 
     function openEditModal(sku) {
@@ -777,54 +578,94 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('modalSku').value = sku;
         document.getElementById('modalSkuLabel').textContent = sku;
         document.getElementById('modalProductLabel').textContent = row.Parent || row.title150 || sku;
-        document.getElementById('modalDesc1500').value = String(row.description_1500 || row.product_description || '');
-        document.getElementById('modalDesc1000').value = String(row.description_1000 || '');
-        document.getElementById('modalDesc800').value = String(row.description_800 || '');
-        document.getElementById('modalDesc600').value = String(row.description_600 || '');
-        updateAllModalCounters();
-        const groups = [
-            { title: 'DESC 1500', mps: GROUPS.g1500, limit: 1500 },
-            { title: 'DESC 1000', mps: GROUPS.g1000, limit: 1000 },
-            { title: 'DESC 800', mps: GROUPS.g800, limit: 800 },
-            { title: 'DESC 600', mps: GROUPS.g600, limit: 600 },
-        ];
-        document.getElementById('modalMarketplaceChecks').innerHTML = groups.map((g) => `
-            <div class="col-12 mt-1">
-                <div class="dm-mp-group-title">${esc(g.title)} (${g.limit} chars)</div>
-                <div class="row g-1 mt-1">
-                    ${g.mps.map((mp) => `
-                        <div class="col-6 col-md-4 col-lg-3">
-                            <label class="form-check small">
-                                <input type="checkbox" class="form-check-input modal-mp-chk" value="${esc(mp)}">
-                                <span>${esc(LABELS[mp])}</span>
-                            </label>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        `).join('');
-        const previewWrap = document.getElementById('aplusPreviewWrap');
-        const previewContent = document.getElementById('aplusPreviewContent');
-        let existingAplusHtml = String(row.amazon_aplus_content || '').trim();
-        let existingAplusImages = [];
-        try {
-            const parsed = row.amazon_aplus_images ? JSON.parse(row.amazon_aplus_images) : [];
-            if (Array.isArray(parsed)) existingAplusImages = parsed.filter((v) => typeof v === 'string' && v.trim() !== '');
-        } catch (e) {}
-        document.getElementById('modalAplusImagesJson').value = JSON.stringify(existingAplusImages || []);
-        if (previewWrap) previewWrap.classList.toggle('d-none', !(existingAplusHtml || existingAplusImages.length));
-        if (previewContent) {
-            if (existingAplusHtml || existingAplusImages.length) {
-                const imgHtml = existingAplusImages.slice(0, 12).map((u, i) => `<img src="${esc(u)}" alt="A+ image ${i + 1}">`).join('');
-                previewContent.innerHTML = `${imgHtml}${existingAplusHtml ? `<div>${existingAplusHtml}</div>` : ''}`;
-            } else {
-                previewContent.textContent = 'No A+ content fetched yet.';
-            }
-        }
+        mpContent = {};
+        ALL_MP.forEach((mp) => { mpContent[mp] = String((row.descriptions && row.descriptions[mp]) || ''); });
+        buildMpTabs();
+        activeMp = ALL_MP[0];
         document.getElementById('modalAiLoadingWrap')?.classList.add('d-none');
         if (!editModal) editModal = new bootstrap.Modal(document.getElementById('editDescModal'));
         editModal.show();
     }
+
+    function buildMpTabs() {
+        const wrap = document.getElementById('modalMpTabs');
+        if (!wrap) return;
+        wrap.innerHTML = ALL_MP.map((mp) => `<button type="button" class="btn btn-sm btn-outline-secondary mp-tab" data-mp="${esc(mp)}">${esc(LABELS[mp])}</button>`).join('');
+    }
+
+    // Switch the active marketplace tab. stashFirst=true saves the current editor content before switching.
+    function selectMp(mp, stashFirst) {
+        if (stashFirst && activeMp) mpContent[activeMp] = getDescEditorContent();
+        activeMp = mp;
+        document.querySelectorAll('#modalMpTabs .mp-tab').forEach((b) => {
+            const on = b.getAttribute('data-mp') === mp;
+            b.classList.toggle('btn-primary', on);
+            b.classList.toggle('btn-outline-secondary', !on);
+        });
+        const lbl = document.getElementById('modalActiveMpLabel');
+        if (lbl) lbl.textContent = LABELS[mp] + ' — pushes at ' + (LIMITS[mp] || '') + ' char limit';
+        setDescEditorContent(mpContent[mp] || '');
+    }
+
+    // ── Rich HTML editor (TinyMCE) ───────────────────────────────────────
+    let descEditor = null;
+    let descEditorPromise = null;
+    let mpContent = {};
+    let activeMp = '';
+
+    // Bootstrap modals steal focus from TinyMCE dialogs (link/image/table); let TinyMCE keep it.
+    document.addEventListener('focusin', (e) => {
+        if (e.target.closest('.tox-tinymce-aux, .tox-dialog, .tox-tinymce') !== null) {
+            e.stopImmediatePropagation();
+        }
+    });
+
+    function ensureDescEditor() {
+        if (descEditor) return Promise.resolve(descEditor);
+        if (typeof tinymce === 'undefined') return Promise.resolve(null);
+        if (descEditorPromise) return descEditorPromise;
+        descEditorPromise = tinymce.init({
+            selector: '#modalDescHtml',
+            license_key: 'gpl',
+            height: 380,
+            menubar: false,
+            plugins: 'lists link image table code',
+            toolbar: 'undo redo | blocks | bold italic | bullist numlist | table | link image | removeformat code',
+            branding: false,
+            promotion: false,
+            convert_urls: false,
+            content_style: 'img{max-width:100%;height:auto;} table{max-width:100%;border-collapse:collapse;} body{font-size:14px;}',
+        }).then((eds) => {
+            descEditor = (eds && eds[0]) || (tinymce.get ? tinymce.get('modalDescHtml') : null);
+            return descEditor;
+        }).catch(() => null);
+        return descEditorPromise;
+    }
+
+    function setDescEditorContent(html) {
+        return ensureDescEditor().then((ed) => {
+            if (ed) ed.setContent(html || '');
+            else { const el = document.getElementById('modalDescHtml'); if (el) el.value = html || ''; }
+        });
+    }
+
+    function getDescEditorContent() {
+        if (descEditor) return descEditor.getContent();
+        const el = document.getElementById('modalDescHtml');
+        return el ? el.value : '';
+    }
+
+    document.getElementById('editDescModal')?.addEventListener('shown.bs.modal', () => {
+        ensureDescEditor().then(() => selectMp(activeMp || ALL_MP[0], false));
+    });
+
+    document.getElementById('modalMpTabs')?.addEventListener('click', (e) => {
+        const tab = e.target.closest('.mp-tab');
+        if (tab) selectMp(tab.getAttribute('data-mp'), true);
+    });
+
+    document.getElementById('modalFetchLiveBtn')?.addEventListener('click', runFetchLive);
+    document.getElementById('modalAiGenBtn')?.addEventListener('click', runAiGen);
 
     function setButtonLoading(btnId, loading, textWhenLoading = 'Loading...') {
         const btn = document.getElementById(btnId);
@@ -841,208 +682,118 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function fetchAmazonAplusToModal() {
+    // Fetch the ACTIVE marketplace's live description into the editor.
+    function runFetchLive() {
         const sku = document.getElementById('modalSku')?.value || '';
-        if (!sku) { toast('SKU not found in modal.', false); return; }
+        const mp = activeMp;
+        if (!sku || !mp) return;
         const wrap = document.getElementById('modalAiLoadingWrap');
         const tierEl = document.getElementById('modalAiLoadingTier');
         if (wrap) wrap.classList.remove('d-none');
-        if (tierEl) tierEl.textContent = 'Fetching Amazon A+ content…';
-        setButtonLoading('modalFetchAmazonAplusBtn', true, 'Fetching A+...');
-        try {
-            const resp = await fetch('/product-description/fetch-amazon-aplus', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                body: JSON.stringify({ sku })
+        if (tierEl) tierEl.textContent = 'Fetching live from ' + (LABELS[mp] || mp) + '…';
+        setButtonLoading('modalFetchLiveBtn', true, 'Fetching...');
+        fetch('/product-description/pull-marketplace', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+            body: JSON.stringify({ sku, marketplace: mp })
+        })
+            .then((r) => r.json())
+            .then((res) => {
+                if (res.success) {
+                    mpContent[mp] = String(res.description_html || '');
+                    if (activeMp === mp) setDescEditorContent(mpContent[mp]);
+                    toast(res.message || ('Fetched ' + (LABELS[mp] || mp)));
+                } else {
+                    toast(res.message || 'Fetch failed', false);
+                }
+            })
+            .catch((e) => toast('Fetch failed: ' + e.message, false))
+            .finally(() => {
+                if (wrap) wrap.classList.add('d-none');
+                setButtonLoading('modalFetchLiveBtn', false);
             });
-            const res = await resp.json();
-            if (!res.success) {
-                toast(res.message || 'A+ fetch failed', false);
-                return;
-            }
-            const plain = String(res.data?.description_plain || '').trim();
-            const html = String(res.data?.description_html || '').trim();
-            const images = Array.isArray(res.data?.images) ? res.data.images.filter((v) => typeof v === 'string' && v.trim() !== '') : [];
-            const d1500 = plain ? (plain.length > 1500 ? plain.slice(0, 1500) : plain) : '';
-            if (d1500) {
-                document.getElementById('modalDesc1500').value = d1500;
-                document.getElementById('modalDesc1000').value = d1500.length > 1000 ? d1500.slice(0, 1000) : d1500;
-                document.getElementById('modalDesc800').value = d1500.length > 800 ? d1500.slice(0, 800) : d1500;
-                document.getElementById('modalDesc600').value = d1500.length > 600 ? d1500.slice(0, 600) : d1500;
-                updateAllModalCounters();
-            }
-            document.getElementById('modalAplusImagesJson').value = JSON.stringify(images.slice(0, 12));
-            const previewWrap = document.getElementById('aplusPreviewWrap');
-            const previewContent = document.getElementById('aplusPreviewContent');
-            if (previewWrap) previewWrap.classList.remove('d-none');
-            if (previewContent) {
-                const imgHtml = images.slice(0, 12).map((u, i) => `<img src="${esc(u)}" alt="A+ image ${i + 1}">`).join('');
-                previewContent.innerHTML = `${imgHtml}${html ? `<div>${html}</div>` : (plain ? `<div>${esc(plain)}</div>` : '')}`;
-            }
-            toast('Amazon A+ content fetched and applied to tiers.');
-            loadData(currentPage);
-        } catch (e) {
-            toast('A+ fetch error: ' + e.message, false);
-        } finally {
-            if (wrap) wrap.classList.add('d-none');
-            setButtonLoading('modalFetchAmazonAplusBtn', false);
-        }
     }
 
-    async function regenerateTierFieldsFromAplus() {
-        const sku = document.getElementById('modalSku')?.value || '';
-        if (!sku) { toast('SKU not found in modal.', false); return; }
-        const wrap = document.getElementById('modalAiLoadingWrap');
-        const tierEl = document.getElementById('modalAiLoadingTier');
-        if (wrap) wrap.classList.remove('d-none');
-        setButtonLoading('modalRegenerateAplusBtn', true, 'Regenerating...');
-        try {
-            const req = async (marketplace) => {
-                if (tierEl) tierEl.textContent = `Regenerating ${LABELS[marketplace]} from A+…`;
-                const r = await fetch('/product-description/regenerate-marketplace', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                    body: JSON.stringify({ sku, marketplace })
-                });
-                return r.json();
-            };
-
-            const [a1500, a1000, a800, a600] = await Promise.all([
-                req('amazon'),
-                req('shopify_main'),
-                req('ebay'),
-                req('macy'),
-            ]);
-            if (a1500?.success) document.getElementById('modalDesc1500').value = String(a1500.description || '');
-            if (a1000?.success) document.getElementById('modalDesc1000').value = String(a1000.description || '');
-            if (a800?.success) document.getElementById('modalDesc800').value = String(a800.description || '');
-            if (a600?.success) document.getElementById('modalDesc600').value = String(a600.description || '');
-            const images = Array.isArray(a1500?.images) ? a1500.images.filter((v) => typeof v === 'string' && v.trim() !== '') : [];
-            if (images.length) document.getElementById('modalAplusImagesJson').value = JSON.stringify(images.slice(0, 12));
-            updateAllModalCounters();
-            toast('Descriptions regenerated from Amazon A+ reference.');
-        } catch (e) {
-            toast('Regenerate error: ' + e.message, false);
-        } finally {
-            if (wrap) wrap.classList.add('d-none');
-            setButtonLoading('modalRegenerateAplusBtn', false);
-        }
-    }
-
-    function getModalTextForMp(mp) {
-        const d1500 = document.getElementById('modalDesc1500').value.trim();
-        const d1000 = document.getElementById('modalDesc1000').value.trim();
-        const d800 = document.getElementById('modalDesc800').value.trim();
-        const d600 = document.getElementById('modalDesc600').value.trim();
-        const t = tierForMp(mp);
-        if (t === '1500') return d1500;
-        if (t === '1000') {
-            if (d1000) return d1000;
-            return d1500.length > 1000 ? d1500.slice(0, 1000) : d1500;
-        }
-        if (t === '800') {
-            if (d800) return d800;
-            return d1500.length > 800 ? d1500.slice(0, 800) : d1500;
-        }
-        if (d600) return d600;
-        return d1500.length > 600 ? d1500.slice(0, 600) : d1500;
-    }
-
-    function updateAllModalCounters() {
-        [['modalDesc1500','modalDescCounter1500',1500],['modalDesc1000','modalDescCounter1000',1000],['modalDesc800','modalDescCounter800',800],['modalDesc600','modalDescCounter600',600]].forEach(([id, cid, max]) => {
-            const el = document.getElementById(id);
-            const c = document.getElementById(cid);
-            if (el && c) c.textContent = el.value.length + '/' + max;
-        });
-    }
-
-    ['modalDesc1500','modalDesc1000','modalDesc800','modalDesc600'].forEach((id) => {
-        document.getElementById(id)?.addEventListener('input', updateAllModalCounters);
-    });
-    document.getElementById('modalFetchAmazonAplusBtn')?.addEventListener('click', fetchAmazonAplusToModal);
-    document.getElementById('modalRegenerateAplusBtn')?.addEventListener('click', regenerateTierFieldsFromAplus);
-
-    document.getElementById('editDescModal')?.addEventListener('click', (e) => {
-        const btn = e.target.closest('.modal-ai-tier');
-        if (!btn) return;
-        const tier = btn.getAttribute('data-tier');
+    // AI-generate a description for the ACTIVE marketplace at its tier length.
+    function runAiGen() {
+        const mp = activeMp;
+        if (!mp) return;
         const name = document.getElementById('modalProductLabel').textContent || '';
-        const field = { '1500':'modalDesc1500','1000':'modalDesc1000','800':'modalDesc800','600':'modalDesc600' }[tier];
-        const current = document.getElementById(field)?.value || '';
+        const tier = tierForMp(mp);
+        const tmp = document.createElement('div');
+        tmp.innerHTML = getDescEditorContent() || '';
+        const current = (tmp.textContent || '').replace(/\s+/g, ' ').trim();
         const wrap = document.getElementById('modalAiLoadingWrap');
         const tierEl = document.getElementById('modalAiLoadingTier');
         if (wrap) wrap.classList.remove('d-none');
-        if (tierEl) tierEl.textContent = 'Generating ' + tier + '-char description…';
+        if (tierEl) tierEl.textContent = 'Generating ' + tier + '-char description for ' + (LABELS[mp] || mp) + '…';
+        setButtonLoading('modalAiGenBtn', true, 'Generating...');
         fetch('/product-description/generate', {
-                method: 'POST',
+            method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
             body: JSON.stringify({ product_name: name, current_text: current, tier })
         })
             .then((r) => r.json())
             .then((res) => {
-                if (wrap) wrap.classList.add('d-none');
                 if (res.success && res.description) {
-                    document.getElementById(field).value = res.description;
-                    updateAllModalCounters();
-                    const len = res.length || res.description.length;
-                    const min = TIER_MIN_AI[tier] || 0;
-                    if (len < min) toast('AI returned ' + len + ' chars (target ' + min + '+). Edit or regenerate.', false);
-                    else toast('AI description generated (' + len + ' chars)');
+                    mpContent[mp] = String(res.description);
+                    if (activeMp === mp) setDescEditorContent(mpContent[mp]);
+                    toast('AI description generated (' + (res.length || res.description.length) + ' chars)');
                 } else toast(res.message || 'AI failed', false);
             })
-            .catch((e) => {
+            .catch((e) => toast('AI error: ' + e.message, false))
+            .finally(() => {
                 if (wrap) wrap.classList.add('d-none');
-                toast('AI error: ' + e.message, false);
+                setButtonLoading('modalAiGenBtn', false);
             });
-    });
+    }
 
-    document.getElementById('modalSavePmBtn')?.addEventListener('click', () => {
-        setButtonLoading('modalSavePmBtn', true, 'Saving...');
-        const sku = document.getElementById('modalSku').value;
-        const payload = {
-            sku,
-            description_1500: document.getElementById('modalDesc1500').value,
-            description_1000: document.getElementById('modalDesc1000').value,
-            description_800: document.getElementById('modalDesc800').value,
-            description_600: document.getElementById('modalDesc600').value,
-        };
-        fetch('/product-description/save', {
+    // Row Pull button: fetch ALL marketplaces' live descriptions for this SKU and save them (no modal).
+    function runPullAll(sku, btn) {
+        if (!sku) return;
+        if (btn) { btn.disabled = true; btn.dataset.o = btn.innerHTML; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+        toast('Fetching all marketplaces for ' + sku + '…');
+        fetch('/product-description/pull-all', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ sku })
         })
             .then((r) => r.json())
             .then((res) => {
-                if (res.success) {
-                    toast(res.message || 'Saved');
-                    loadData(currentPage);
-                } else toast(res.message || 'Save failed', false);
+                toast(res.message || 'Pull complete', !!res.success);
+                loadData(currentPage);
+            })
+            .catch((e) => toast('Pull failed: ' + e.message, false))
+            .finally(() => {
+                if (btn) { btn.disabled = false; btn.innerHTML = btn.dataset.o || '<i class="fas fa-cloud-download-alt"></i>'; }
+            });
+    }
+
+    // Save all marketplaces' edited descriptions to their metrics (no push).
+    document.getElementById('modalSavePmBtn')?.addEventListener('click', () => {
+        const sku = document.getElementById('modalSku').value;
+        if (activeMp) mpContent[activeMp] = getDescEditorContent();
+        setButtonLoading('modalSavePmBtn', true, 'Saving...');
+        const targets = ALL_MP.filter((mp) => typeof mpContent[mp] === 'string');
+        const tasks = targets.map((mp) => fetch('/product-description/save-marketplace', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+            body: JSON.stringify({ sku, marketplace: mp, description: mpContent[mp] })
+        }).then((r) => r.json()).then((res) => ({ mp, ok: !!res.success })).catch(() => ({ mp, ok: false })));
+        Promise.all(tasks)
+            .then((results) => {
+                const failed = results.filter((x) => !x.ok).map((x) => LABELS[x.mp] || x.mp);
+                const row = bySku.get(String(sku));
+                if (row) {
+                    row.descriptions = row.descriptions || {};
+                    targets.forEach((mp) => { row.descriptions[mp] = mpContent[mp]; });
+                }
+                renderTable();
+                if (failed.length) toast('Saved, but failed: ' + failed.join(', '), false);
+                else toast('Saved descriptions for all marketplaces.');
             })
             .catch((e) => toast('Save failed: ' + e.message, false))
             .finally(() => setButtonLoading('modalSavePmBtn', false));
-    });
-
-    document.getElementById('modalPushBtn')?.addEventListener('click', () => {
-        const sku = document.getElementById('modalSku').value;
-        const checks = Array.from(document.querySelectorAll('.modal-mp-chk:checked')).map((c) => c.value);
-        if (!checks.length) { toast('Select at least one marketplace', false); return; }
-        const updates = [];
-        for (const mp of checks) {
-            const text = getModalTextForMp(mp);
-            if (!text.trim()) {
-                toast('Missing text for ' + LABELS[mp] + ' (fill that tier in the modal).', false);
-                return;
-            }
-            const lim = LIMITS[mp] || 1500;
-            const chunk = text.length > lim ? text.slice(0, lim) : text;
-            let imageUrls = [];
-            try {
-                imageUrls = JSON.parse(document.getElementById('modalAplusImagesJson')?.value || '[]');
-            } catch (e) {}
-            updates.push({ marketplace: mp, description: chunk, image_urls: Array.isArray(imageUrls) ? imageUrls : [] });
-        }
-        setButtonLoading('modalPushBtn', true, 'Pushing...');
-        pushPayload(sku, updates, (ok) => { if (ok && editModal) editModal.hide(); }, true, 'modalPushBtn');
     });
 
     /** Appends per-marketplace attempt details when the server used automatic retries. */
@@ -1205,7 +956,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('skuSearchDm')?.addEventListener('input', scheduleSearch);
     document.getElementById('previewSearchDm')?.addEventListener('input', scheduleSearch);
-    document.getElementById('perPageSelect')?.addEventListener('change', () => loadData(1));
     document.getElementById('retryLoadBtn')?.addEventListener('click', () => loadData(currentPage));
 
     document.getElementById('exportBtn')?.addEventListener('click', () => {
@@ -1225,8 +975,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const ws = XLSX.utils.json_to_sheet(rows);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Descriptions');
-        XLSX.writeFile(wb, 'description_master_page_' + (listMeta.current_page || 1) + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
-        toast('Exported ' + rows.length + ' rows (current page)');
+        XLSX.writeFile(wb, 'description_master_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+        toast('Exported ' + rows.length + ' rows');
     });
 
     document.getElementById('importBtn')?.addEventListener('click', () => document.getElementById('importFile').click());

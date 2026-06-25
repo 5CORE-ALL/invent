@@ -60,6 +60,54 @@ final class ShopifyBulletPointsFormatter
         return false;
     }
 
+    /**
+     * Description Master: strip the Bullet Points "About Item" block from a listing body so the
+     * description editor shows only the description. Bullets are managed by Bullet Points Master, so
+     * the description fetch must not include them. Patterns are anchored where they could be greedy.
+     */
+    public static function removeAboutItemBlock(string $bodyHtml): string
+    {
+        $html = (string) $bodyHtml;
+        if (trim($html) === '') {
+            return '';
+        }
+
+        $patterns = [
+            // Stable marker comment added by Bullet Points Master.
+            '/<!--\s*bullet-points-master:start\s*-->.*?<!--\s*bullet-points-master:end\s*-->/is',
+            // Marked About Item section div (class + data attribute).
+            '/<div\b(?=[^>]*\bdata-bullet-points-master\s*=\s*(["\'])1\1)[^>]*>\s*<h[1-6]\b[^>]*>\s*(?:<[^>]+>\s*)*About\s+Item\s*(?:<\/[^>]+>\s*)*<\/h[1-6]>.*?<\/div>\s*<\/div>/is',
+            // About Item heading followed by the about-item div.
+            '/<h[1-6]\b[^>]*>\s*(?:<[^>]+>\s*)*About\s+Item\s*(?:<\/[^>]+>\s*)*<\/h[1-6]>\s*<div\b[^>]*class\s*=\s*(["\'])(?=[^"\']*\babout-item\b)[^"\']*\1[^>]*>.*?<\/div>/is',
+            // About Item heading up to the next real section heading.
+            '/<h[1-6]\b[^>]*>\s*(?:<[^>]+>\s*)*About\s+Item\s*(?:<\/[^>]+>\s*)*<\/h[1-6]>.*?(?=<h[1-6]\b[^>]*>\s*(?:<[^>]+>\s*)*(?:Product\s+Description|Features?|Specifications?|Images?)\b|$)/is',
+            // Reverb "Highlighted Features" heading paragraph + its following bullet paragraphs (each ends with <br>).
+            '/<p\b[^>]*>\s*(?:<[^>]+>\s*)*Highlighted\s+Features\s*(?:<\/[^>]+>\s*)*<\/p>\s*(?:<p\b[^>]*>(?:(?!<\/p>)[\s\S])*?<br\s*\/?>\s*<\/p>\s*){1,6}/is',
+            // Leading bullet list (<ol>/<ul>) at the very top = bullet block (e.g. Reverb "About Item" list).
+            '/\A\s*<(?:ol|ul)\b[^>]*>[\s\S]*?<\/(?:ol|ul)>\s*/is',
+            // Leading "About Item" label paragraph (heading rendered as <p>), with or without a colon.
+            '/\A\s*<p\b[^>]*>\s*(?:<[^>]+>\s*)*About\s+Item:?\s*(?:<\/[^>]+>\s*)*<\/p>\s*/is',
+            // Leading bracket-bullet paragraphs/headings (【...】) at the very top = About Item bullets.
+            '/\A\s*(?:<(?:p|h[1-6])\b[^>]*>(?:(?!<\/(?:p|h[1-6])>)[\s\S])*?【(?:(?!<\/(?:p|h[1-6])>)[\s\S])*?<\/(?:p|h[1-6])>\s*){1,8}/is',
+        ];
+
+        // Two passes: removing a leading "About Item" label exposes the bracket bullets for the next pass.
+        for ($pass = 0; $pass < 2; $pass++) {
+            $before = $html;
+            foreach ($patterns as $pattern) {
+                $replaced = preg_replace($pattern, '', $html, -1);
+                if (is_string($replaced)) {
+                    $html = $replaced;
+                }
+            }
+            if ($html === $before) {
+                break;
+            }
+        }
+
+        return trim($html);
+    }
+
     public static function formatAboutItemBlock(string $bulletPoints): string
     {
         $aboutHtml = DescriptionWithImagesFormatter::formatAboutItemHtml($bulletPoints);

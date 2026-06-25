@@ -3490,6 +3490,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/product-description/fetch-amazon-aplus', [DescriptionMasterController::class, 'fetchAmazonAplusContent'])->name('product.description.fetch.amazon.aplus');
     Route::post('/product-description/regenerate-marketplace', [DescriptionMasterController::class, 'regenerateDescriptionForMarketplace'])->name('product.description.regenerate.marketplace');
     Route::post('/product-description/with-images', [DescriptionMasterController::class, 'getDescriptionWithImages'])->name('product.description.with.images');
+    Route::post('/product-description/pull-shopify', [DescriptionMasterController::class, 'pullShopifyDescription'])->name('product.description.pull.shopify');
+    Route::post('/product-description/pull-marketplace', [DescriptionMasterController::class, 'pullMarketplaceDescription'])->name('product.description.pull.marketplace');
+    Route::post('/product-description/pull-all', [DescriptionMasterController::class, 'pullAllDescriptions'])->name('product.description.pull.all');
+    Route::post('/product-description/save-marketplace', [DescriptionMasterController::class, 'saveMarketplaceDescription'])->name('product.description.save.marketplace');
     Route::get('/product-description-2', [DescriptionMaster2Controller::class, 'index'])->name('product.description2');
     Route::get('/product-description-2/data', [DescriptionMaster2Controller::class, 'getData'])->name('product.description2.data');
     Route::post('/product-description-2/save', [DescriptionMaster2Controller::class, 'save'])->name('product.description2.save');

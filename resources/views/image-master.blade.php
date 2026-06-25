@@ -357,7 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const esc = (s) => { const d=document.createElement('div'); d.textContent = String(s??''); return d.innerHTML; };
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 
     function pushFailureMessage(j, mp, httpStatus) {
         const rowRes = (j && j.results && j.results[mp]) ? j.results[mp] : null;
@@ -537,7 +537,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const short = MP_SHORT[mp] || mp;
         const enabled = ENABLED_MARKETPLACES.includes(mp);
         const title = enabled ? LABELS[mp] : `${LABELS[mp]} image push is not implemented yet`;
-        return `<button type="button" class="bp-mp-stack" data-push-mp="${mp}" data-sku="${esc(sku)}" title="${esc(title)}" ${enabled ? '' : 'disabled'}>
+        return `<button type="button" class="bp-mp-stack" data-push-mp="${esc(mp)}" data-sku="${esc(sku)}" title="${esc(title)}" ${enabled ? '' : 'disabled'}>
             <span class="bp-mp-dot ${pushed?'pushed':''}"></span>
             <span class="marketplace-btn ${tile}">${esc(short)}</span>
         </button>`;

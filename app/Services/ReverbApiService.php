@@ -2082,6 +2082,41 @@ class ReverbApiService
     /**
      * @return array{plain: string, html: string}
      */
+    /**
+     * Description Master: return the current Reverb listing description (HTML) for one SKU. Read-only
+     * (DB-first via reverb_products, then Reverb API fallback).
+     *
+     * @return array{success: bool, message: string, html?: string}
+     */
+    public function fetchDescriptionHtml(string $identifier): array
+    {
+        $identifier = trim($identifier);
+        if ($identifier === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+
+        $token = self::getReverbBearerToken();
+        if (! $token) {
+            return ['success' => false, 'message' => 'Reverb token not configured.'];
+        }
+
+        $listingId = $this->getListingIdBySku($identifier);
+        if (! $listingId) {
+            return ['success' => false, 'message' => 'No Reverb listing found for this SKU.'];
+        }
+
+        $res = $this->fetchCurrentReverbDescription($token, (string) $listingId, $identifier);
+        $html = trim((string) ($res['html'] ?? ''));
+        if ($html === '') {
+            $html = trim((string) ($res['plain'] ?? ''));
+        }
+        if ($html === '') {
+            return ['success' => false, 'message' => 'Reverb listing has no description.'];
+        }
+
+        return ['success' => true, 'message' => 'Reverb description loaded.', 'html' => $html];
+    }
+
     private function fetchCurrentReverbDescription(string $token, string $listingId, ?string $identifier = null): array
     {
         // 1) Database first (requested) from reverb_products.

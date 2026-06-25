@@ -1156,6 +1156,32 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
     }
 
+    /**
+     * Description Master: return the current Temu long description (goodsDesc) for one SKU. Read-only
+     * (DB-first, then Temu detail/list API fallback via fetchCurrentTemuGoodsDesc).
+     *
+     * @return array{success: bool, message: string, html?: string}
+     */
+    public function fetchDescriptionHtml(string $identifier): array
+    {
+        $identifier = trim($identifier);
+        if ($identifier === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+
+        $goodsId = $this->getGoodsIdBySku($identifier);
+        if (! $goodsId) {
+            return ['success' => false, 'message' => 'Temu goods_id not found for this SKU.'];
+        }
+
+        $desc = trim($this->fetchCurrentTemuGoodsDesc((string) $goodsId, $identifier));
+        if ($desc === '') {
+            return ['success' => false, 'message' => 'Temu returned no description for this SKU.'];
+        }
+
+        return ['success' => true, 'message' => 'Temu description loaded.', 'html' => $desc];
+    }
+
     protected function fetchCurrentTemuGoodsDesc(string $goodsId, string $sku = ''): string
     {
         // 1) Database first (requested): prefer persisted copy to avoid API gaps.

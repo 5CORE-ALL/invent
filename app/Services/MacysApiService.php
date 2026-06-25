@@ -696,6 +696,31 @@ class MacysApiService
         }
     }
 
+    /**
+     * Description Master: return the current Macy's (Mirakl) product description for one SKU. Read-only.
+     *
+     * @return array{success: bool, message: string, html?: string}
+     */
+    public function fetchDescriptionHtml(string $identifier): array
+    {
+        $identifier = trim($identifier);
+        if ($identifier === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+
+        $sku = $this->resolveMacyMiraklSku($identifier);
+        if ($sku === '') {
+            $sku = $identifier;
+        }
+
+        $desc = trim($this->fetchCurrentMacyDescription($sku));
+        if ($desc === '') {
+            return ['success' => false, 'message' => 'Macy returned no description for this SKU.'];
+        }
+
+        return ['success' => true, 'message' => 'Macy description loaded.', 'html' => $desc];
+    }
+
     private function fetchCurrentMacyDescription(string $sku): string
     {
         $token = $this->getAccessToken();

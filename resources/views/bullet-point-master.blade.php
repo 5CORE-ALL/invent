@@ -411,9 +411,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const esc = (s) => {
         if (s == null) return '';
-        const d = document.createElement('div');
-        d.textContent = String(s);
-        return d.innerHTML;
+        return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
     };
     const trunc = (s, n = 56) => (!s ? '-' : (String(s).length > n ? String(s).slice(0, n) + '…' : String(s)));
     function toast(msg, ok=true) {
@@ -578,7 +576,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const dotClass = pushed ? 'pushed' : (failed ? 'failed' : '');
         const tip = `${LABELS[mp]}. ${stateText}. Click to push.`;
         return `
-            <button type="button" class="bp-mp-stack" data-push-mp="${mp}" data-sku="${esc(sku)}" title="${esc(tip)}">
+            <button type="button" class="bp-mp-stack" data-push-mp="${esc(mp)}" data-sku="${esc(sku)}" title="${esc(tip)}">
                 <span class="bp-mp-dot ${dotClass}" aria-hidden="true"></span>
                 <span class="marketplace-btn ${tile.cls}">${esc(tile.short)}</span>
             </button>`;

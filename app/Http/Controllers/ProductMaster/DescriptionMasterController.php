@@ -39,51 +39,20 @@ class DescriptionMasterController extends Controller
     public function getDescriptionMasterData(Request $request)
     {
         try {
-            @set_time_limit(120);
-            @ini_set('memory_limit', '256M');
+            @set_time_limit(180);
+            @ini_set('memory_limit', '512M');
 
-            $perPage = min(max((int) $request->query('per_page', 75), 10), 100);
-            $page = max((int) $request->query('page', 1), 1);
-            $qSku = trim((string) $request->query('q_sku', ''));
-            $qText = trim((string) $request->query('q_text', ''));
-
-            $query = ProductMaster::query()
+            // Load ALL non-parent rows (no pagination) — the page filters/searches client-side, like Bullet Points.
+            $products = ProductMaster::query()
                 ->orderBy('parent', 'asc')
                 ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
                 ->orderBy('sku', 'asc')
-                ->whereRaw("UPPER(COALESCE(sku, '')) NOT LIKE '%PARENT%'");
-
-            if ($qSku !== '') {
-                $safe = addcslashes($qSku, '%_\\');
-                $query->where('sku', 'like', '%'.$safe.'%');
-            }
-            if ($qText !== '') {
-                $safe = addcslashes($qText, '%_\\');
-                $like = '%'.$safe.'%';
-                $query->where(function ($w) use ($like) {
-                    $w->where('parent', 'like', $like)
-                        ->orWhere('product_description', 'like', $like)
-                        ->orWhere('description_1500', 'like', $like)
-                        ->orWhere('description_1000', 'like', $like)
-                        ->orWhere('description_800', 'like', $like)
-                        ->orWhere('description_600', 'like', $like);
-                });
-            }
-
-            $query->select([
-                'id', 'parent', 'sku', 'title150',
-                'bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5',
-                'product_description', 'description_1500', 'description_1000', 'description_800', 'description_600',
-            ]);
-            if (Schema::hasColumn('product_master', 'amazon_aplus_content')) {
-                $query->addSelect('amazon_aplus_content');
-            }
-            if (Schema::hasColumn('product_master', 'amazon_aplus_images')) {
-                $query->addSelect('amazon_aplus_images');
-            }
-
-            $paginator = $query->paginate($perPage, ['*'], 'page', $page);
-            $products = $paginator->items();
+                ->whereRaw("UPPER(COALESCE(sku, '')) NOT LIKE '%PARENT%'")
+                ->select([
+                    'id', 'parent', 'sku', 'title150',
+                    'product_description', 'description_1500', 'description_1000', 'description_800', 'description_600',
+                ])
+                ->get();
 
             $rawSkus = [];
             foreach ($products as $product) {
@@ -98,58 +67,32 @@ class DescriptionMasterController extends Controller
                 $descriptionsByMp[$marketplace] = $this->loadDescriptionMasterForSkuList($table, $rawSkus);
             }
 
-            $bulletsShopifyMain = [];
-            $bulletsShopifyPls = [];
-            if (Schema::hasTable('shopify_metrics') && Schema::hasColumn('shopify_metrics', 'bullet_points')) {
-                $bulletsShopifyMain = $this->loadBulletPointsForSkuList('shopify_metrics', $rawSkus);
-            }
-            if (Schema::hasTable('shopify_pls_metrics') && Schema::hasColumn('shopify_pls_metrics', 'bullet_points')) {
-                $bulletsShopifyPls = $this->loadBulletPointsForSkuList('shopify_pls_metrics', $rawSkus);
-            }
-
             $result = [];
             foreach ($products as $product) {
                 $sku = $this->normalizeSku($product->sku);
-                $row = [
+                $desc = [];
+                foreach (array_keys($marketTables) as $mp) {
+                    $desc[$mp] = $descriptionsByMp[$mp][$sku] ?? '';
+                }
+                $result[] = [
                     'id' => $product->id,
                     'Parent' => $product->parent,
                     'SKU' => $product->sku,
                     'title150' => $product->title150,
-                    'bullet1' => $product->bullet1,
-                    'bullet2' => $product->bullet2,
-                    'bullet3' => $product->bullet3,
-                    'bullet4' => $product->bullet4,
-                    'bullet5' => $product->bullet5,
                     'product_description' => $product->product_description,
                     'description_1500' => $product->description_1500,
                     'description_1000' => $product->description_1000,
                     'description_800' => $product->description_800,
                     'description_600' => $product->description_600,
-                    'amazon_aplus_content' => $product->amazon_aplus_content ?? '',
-                    'amazon_aplus_images' => $product->amazon_aplus_images ?? null,
+                    'descriptions' => $desc,
                 ];
-                $desc = [];
-                foreach (array_keys($marketTables) as $mp) {
-                    $desc[$mp] = $descriptionsByMp[$mp][$sku] ?? '';
-                }
-                $row['descriptions'] = $desc;
-                $row['shopify_main_bullets'] = $bulletsShopifyMain[$sku] ?? $this->defaultBulletsFromPmArray($row);
-                $row['shopify_pls_bullets'] = $bulletsShopifyPls[$sku] ?? $this->defaultBulletsFromPmArray($row);
-                $result[] = $row;
             }
 
             return response()->json([
                 'message' => 'Description Master data loaded',
                 'data' => $result,
                 'status' => 200,
-                'meta' => [
-                    'current_page' => $paginator->currentPage(),
-                    'last_page' => $paginator->lastPage(),
-                    'per_page' => $paginator->perPage(),
-                    'total' => $paginator->total(),
-                    'from' => $paginator->firstItem(),
-                    'to' => $paginator->lastItem(),
-                ],
+                'meta' => ['total' => count($result)],
             ]);
         } catch (\Throwable $e) {
             Log::error('DescriptionMaster: getDescriptionMasterData failed', ['error' => $e->getMessage()]);
@@ -501,6 +444,284 @@ class DescriptionMasterController extends Controller
         }
     }
 
+    /**
+     * POST /product-description/pull-shopify — fetch the live Shopify description (rich HTML + product images) for one SKU.
+     * Read-only against Shopify. Optionally persists to product_master.description_html when save=true.
+     */
+    public function pullShopifyDescription(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'save' => 'nullable|boolean',
+            ]);
+            $sku = $this->normalizeSku($validated['sku']);
+            if ($sku === '') {
+                return response()->json(['success' => false, 'message' => 'Invalid SKU'], 422);
+            }
+
+            $res = app(ShopifyApiService::class)->fetchProductDescriptionHtml($sku);
+            if (! ($res['success'] ?? false)) {
+                return response()->json(['success' => false, 'message' => (string) ($res['message'] ?? 'Fetch failed')], 422);
+            }
+
+            $html = (string) ($res['html'] ?? '');
+            $images = array_values((array) ($res['images'] ?? []));
+
+            if ($request->boolean('save') && Schema::hasColumn('product_master', 'description_html')) {
+                ProductMaster::query()->where('sku', $sku)->update(['description_html' => $html]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => (string) ($res['message'] ?? 'Fetched.'),
+                'sku' => $sku,
+                'description_html' => $html,
+                'images' => $images,
+                'title' => (string) ($res['title'] ?? ''),
+                'source' => (string) ($res['source'] ?? ''),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('DescriptionMaster: pullShopifyDescription failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Fetch the LIVE description (rich HTML) for one SKU from a specific marketplace. Read-only.
+     * Returns ['success'=>bool,'message'=>string,'html'=>?string,'images'=>?array,'source'=>?string].
+     */
+    private function fetchLiveMarketplaceDescription(string $marketplace, string $sku): array
+    {
+        try {
+            switch ($marketplace) {
+                case 'shopify_main':
+                    return $this->stripBulletsIfNeeded($marketplace, app(ShopifyApiService::class)->fetchProductDescriptionHtml($sku));
+
+                case 'ebay':
+                    return $this->stripBulletsIfNeeded($marketplace, app(EbayApiService::class)->fetchRawDescriptionHtml($sku));
+
+                case 'ebay2':
+                    return $this->stripBulletsIfNeeded($marketplace, app(Ebay2ApiService::class)->fetchRawDescriptionHtml($sku));
+
+                case 'temu':
+                    return app(TemuApiService::class)->fetchDescriptionHtml($sku);
+
+                case 'ebay3':
+                    return $this->stripBulletsIfNeeded($marketplace, app(EbayThreeApiService::class)->fetchRawDescriptionHtml($sku));
+
+                case 'shopify_pls':
+                    return $this->stripBulletsIfNeeded($marketplace, app(ShopifyPLSApiService::class)->fetchProductDescriptionHtml($sku));
+
+                case 'reverb':
+                    return $this->stripBulletsIfNeeded($marketplace, app(ReverbApiService::class)->fetchDescriptionHtml($sku));
+
+                case 'macy':
+                    return $this->stripBulletsIfNeeded($marketplace, app(MacysApiService::class)->fetchDescriptionHtml($sku));
+
+                case 'amazon':
+                    $r = app(AmazonSpApiService::class)->fetchAplusContent($sku);
+                    if ($r['success'] ?? false) {
+                        $data = (array) ($r['data'] ?? []);
+                        $html = (string) ($data['description_html'] ?? '');
+                        $images = array_values((array) ($data['images'] ?? []));
+                        // Amazon A+ stores its images separately from the text body; embed any that aren't
+                        // already referenced in the HTML so they render in the editor.
+                        foreach ($images as $u) {
+                            $u = (string) $u;
+                            if ($u !== '' && strpos($html, $u) === false) {
+                                $html .= '<p><img src="'.e($u).'" alt=""></p>';
+                            }
+                        }
+
+                        return [
+                            'success' => true,
+                            'message' => 'Fetched Amazon A+ content.',
+                            'html' => $html,
+                            'images' => $images,
+                            'source' => 'amazon',
+                        ];
+                    }
+
+                    return ['success' => false, 'message' => (string) ($r['message'] ?? 'Amazon fetch failed.')];
+
+                default:
+                    return ['success' => false, 'message' => 'Live fetch not available for this platform yet.'];
+            }
+        } catch (\Throwable $e) {
+            Log::warning('DescriptionMaster: live fetch failed', ['marketplace' => $marketplace, 'sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Remove the Bullet Points block from a fetched description so the editor shows only the description
+     * (bullets have their own master). Bullet placement differs per channel:
+     *  - Shopify Main/PLS, eBay1/eBay2: HTML "About Item" block in the body  -> removeAboutItemBlock()
+     *  - Reverb: HTML "Highlighted Features" block in the body               -> removeAboutItemBlock()
+     *  - Macy's: plain-text "About Item ..." before "Product Description"     -> stripMacyAboutItemText()
+     *  - eBay3 (Item Specifics), Temu (goodsSummary), Amazon (A+), Wayfair/Best Buy: bullets are a
+     *    SEPARATE field, never in the description -> nothing to strip.
+     */
+    private function stripBulletsIfNeeded(string $marketplace, array $res): array
+    {
+        if (! ($res['success'] ?? false) || empty($res['html'])) {
+            return $res;
+        }
+
+        $html = (string) $res['html'];
+        if (in_array($marketplace, ['shopify_main', 'shopify_pls', 'ebay', 'ebay2', 'reverb'], true)) {
+            $res['html'] = \App\Services\Support\ShopifyBulletPointsFormatter::removeAboutItemBlock($html);
+        } elseif ($marketplace === 'macy') {
+            $res['html'] = $this->stripMacyAboutItemText($html);
+        }
+
+        return $res;
+    }
+
+    /**
+     * Macy's stores bullets as leading plain "About Item ..." text before the "Product Description" body.
+     * Keep from "Product Description" onward; if there's no such marker, leave the text unchanged.
+     */
+    private function stripMacyAboutItemText(string $text): string
+    {
+        $t = trim($text);
+        $pos = mb_stripos($t, 'Product Description');
+        if ($pos !== false) {
+            return trim(mb_substr($t, $pos));
+        }
+
+        return $t;
+    }
+
+    /**
+     * POST /product-description/pull-marketplace — fetch ONE marketplace's live description into the editor.
+     * Optionally persists to that marketplace's metrics description_master when save=true.
+     */
+    public function pullMarketplaceDescription(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'marketplace' => 'required|string',
+                'save' => 'nullable|boolean',
+            ]);
+            $sku = $this->normalizeSku($validated['sku']);
+            $marketplace = strtolower(trim($validated['marketplace']));
+            if (! in_array($marketplace, array_keys($this->marketplaceTableMap()), true)) {
+                return response()->json(['success' => false, 'message' => 'Unknown or unsupported marketplace'], 422);
+            }
+            if ($sku === '') {
+                return response()->json(['success' => false, 'message' => 'Invalid SKU'], 422);
+            }
+
+            $res = $this->fetchLiveMarketplaceDescription($marketplace, $sku);
+            if (! ($res['success'] ?? false)) {
+                return response()->json(['success' => false, 'message' => (string) ($res['message'] ?? 'Fetch failed')], 422);
+            }
+
+            $html = (string) ($res['html'] ?? '');
+            if ($request->boolean('save')) {
+                $this->saveDescriptionToMarketplaceTable($marketplace, $sku, $html);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => (string) ($res['message'] ?? 'Fetched.'),
+                'sku' => $sku,
+                'marketplace' => $marketplace,
+                'description_html' => $html,
+                'images' => array_values((array) ($res['images'] ?? [])),
+                'source' => (string) ($res['source'] ?? ''),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('DescriptionMaster: pullMarketplaceDescription failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * POST /product-description/pull-all — fetch EVERY marketplace's live description for one SKU and save each
+     * to its metrics description_master. Used by the row Pull button (no modal). Returns per-marketplace results.
+     */
+    public function pullAllDescriptions(Request $request)
+    {
+        try {
+            $validated = $request->validate(['sku' => 'required|string']);
+            $sku = $this->normalizeSku($validated['sku']);
+            if ($sku === '') {
+                return response()->json(['success' => false, 'message' => 'Invalid SKU'], 422);
+            }
+
+            $results = [];
+            foreach (array_keys($this->marketplaceTableMap()) as $marketplace) {
+                $res = $this->fetchLiveMarketplaceDescription($marketplace, $sku);
+                $ok = (bool) ($res['success'] ?? false);
+                $html = $ok ? (string) ($res['html'] ?? '') : '';
+                if ($ok) {
+                    $this->saveDescriptionToMarketplaceTable($marketplace, $sku, $html);
+                }
+                $results[$marketplace] = [
+                    'success' => $ok,
+                    'message' => (string) ($res['message'] ?? ''),
+                    'chars' => strlen($html),
+                ];
+            }
+
+            $okCount = count(array_filter($results, fn ($r) => $r['success']));
+
+            return response()->json([
+                'success' => $okCount > 0,
+                'sku' => $sku,
+                'results' => $results,
+                'total_success' => $okCount,
+                'total' => count($results),
+                'message' => "Fetched {$okCount} of ".count($results).' marketplace(s).',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('DescriptionMaster: pullAllDescriptions failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * POST /product-description/save-marketplace — store the editor HTML for one marketplace into its
+     * metrics description_master (no marketplace push, no character-limit truncation).
+     */
+    public function saveMarketplaceDescription(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'marketplace' => 'required|string',
+                'description' => 'nullable|string',
+            ]);
+            $sku = $this->normalizeSku($validated['sku']);
+            $marketplace = strtolower(trim($validated['marketplace']));
+            if (! in_array($marketplace, array_keys($this->marketplaceTableMap()), true)) {
+                return response()->json(['success' => false, 'message' => 'Unknown or unsupported marketplace'], 422);
+            }
+            if ($sku === '') {
+                return response()->json(['success' => false, 'message' => 'Invalid SKU'], 422);
+            }
+
+            $ok = $this->saveDescriptionToMarketplaceTable($marketplace, $sku, (string) ($validated['description'] ?? ''));
+
+            return response()->json([
+                'success' => $ok,
+                'message' => $ok ? 'Saved.' : 'Could not save (metrics table/column missing).',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('DescriptionMaster: saveMarketplaceDescription failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
     private function marketplaceTableMap(): array
     {
         return [
@@ -513,6 +734,8 @@ class DescriptionMasterController extends Controller
             'ebay2' => 'ebay_2_metrics',
             'ebay3' => 'ebay_3_metrics',
             'macy' => 'macy_metrics',
+            'wayfair' => 'wayfair_metrics',
+            'bestbuy' => 'bestbuy_metrics',
         ];
     }
 
