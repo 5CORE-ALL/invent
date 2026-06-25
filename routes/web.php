@@ -5783,6 +5783,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('fba-metrics-history', 'getMetricsHistory');
         Route::get('fba-badge-chart-data', 'fbaBadgeChartData');
         Route::post('update-fba-listing-status', 'updateFbaListingStatus');
+        Route::get('fba-fee-breakdown', 'fbaFeeBreakdown');
+        Route::get('fba-amazon-channel-ads', 'fbaAmazonChannelAds');
     });
     Route::controller(FBAAnalysticsController::class)->group(function () {
 

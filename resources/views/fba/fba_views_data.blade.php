@@ -5,6 +5,28 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
+        /* Summary badges — stretch each badge to fill the row equally, larger size */
+        #summary-stats > .d-flex {
+            align-items: stretch;
+        }
+        #summary-stats > .d-flex > .badge {
+            flex: 1 1 0;
+            min-width: 0;
+            font-size: 0.95rem;
+            padding: 0.55rem 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
+        }
+        @media (max-width: 1200px) {
+            #summary-stats > .d-flex > .badge {
+                font-size: 0.85rem;
+                padding: 0.45rem 0.5rem;
+            }
+        }
+
         /* Hide sorting icons in Tabulator */
         .tabulator-col-sorter {
             display: none !important;
@@ -114,12 +136,6 @@
                         <option value="zero">0 Inventory</option>
                         <option value="more" id="more-inventory-option" selected>&gt; 0</option>
                     </select>
-                    <select id="parent-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="show">Show Parent</option>
-                        <option value="hide" selected>Hide Parent</option>
-                    </select>
-
                     <select id="gpft-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">GPFT%</option>
@@ -136,22 +152,19 @@
                     <select id="roi-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">ROI%</option>
-                        <option value="lt40">&lt; 40%</option>
-                        <option value="40-75">40–75%</option>
-                        <option value="75-125">75–125%</option>
-                        <option value="125-250">125–250%</option>
-                        <option value="gt250">&gt; 250%</option>
+                        <option value="lt40">&lt; 40</option>
+                        <option value="40-75">40 – 75</option>
+                        <option value="75-125">75 – 125</option>
+                        <option value="gt125">&gt; 125</option>
                     </select>
 
                     <select id="cvr-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">All CVR%</option>
-                        <option value="0-0">0%</option>
-                        <option value="0-2">0-2%</option>
-                        <option value="2-4">2-4%</option>
-                        <option value="4-7">4-7%</option>
-                        <option value="7-13">7-13%</option>
-                        <option value="13plus">13%+</option>
+                        <option value="0">0</option>
+                        <option value="0-5">0.01 – 4.99</option>
+                        <option value="5-15">5 – 14.99</option>
+                        <option value="15plus">&gt; 15</option>
                     </select>
 
                     <select id="cvr-trend-filter" class="form-select form-select-sm"
@@ -159,106 +172,99 @@
                         <option value="all">CVR trend</option>
                         <option value="l60_gt_l30">CVR L60 &gt; CVR L30</option>
                         <option value="l30_gt_l60">CVR L30 &gt; CVR L60</option>
-                        <option value="equal">CVR L60 = CVR L30</option>
-                    </select>
-
-                    <select id="status-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">Status</option>
-                        <option value="not_pushed">Not Pushed</option>
-                        <option value="pushed">Pushed</option>
-                        <option value="applied">Applied</option>
-                        <option value="error">Error</option>
                     </select>
 
                     <select id="inv-age-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">Inv Age</option>
                         <option value="0-30">0 – 30</option>
-                        <option value="31-60">31 – 60</option>
-                        <option value="61-90">61 – 90</option>
+                        <option value="31-90">31 – 90</option>
                         <option value="91-180">91 – 180</option>
-                        <option value="181-270">181 – 270</option>
-                        <option value="271-365">271 – 365</option>
-                        <option value="366-455">366 – 455</option>
-                        <option value="456plus">456+</option>
-                        <option value="excess">Excess</option>
-                        <option value="healthy">Healthy</option>
-                        <option value="low_stock">Low Stock</option>
-                        <option value="out_of_stock">Out of Stock</option>
+                        <option value="181plus">&gt; 181</option>
                     </select>
 
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fa fa-eye"></i> Columns
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Toggle columns">
+                            <i class="fa fa-eye"></i>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
                             style="max-height: 400px; overflow-y: auto;">
                             <!-- Columns will be populated by JavaScript -->
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
-                        <i class="fa fa-eye"></i> Show All
-                    </button>
-
-                    <a href="{{ url('/fba-manual-sample') }}" class="btn btn-sm btn-info">
-                        <i class="fa fa-download"></i> Template
-                    </a>
-                    <a href="{{ url('/fba-manual-export') }}" class="btn btn-sm btn-success">
+                    <a href="{{ url('/fba-manual-export') }}" class="btn btn-sm btn-success" title="Export to Excel">
                         <i class="fa fa-file-excel"></i>
                     </a>
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
                         data-bs-target="#importModal">
                         <i class="fa fa-upload"></i>
                     </button>
-                    
-                    <button id="decrease-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase">
-                        <i class="fas fa-exchange-alt"></i> Price Mode
+
+                    {{-- Price % dropdown — mirrors amazon-tabulator-view --}}
+                    <div class="btn-group">
+                        <button type="button" id="price-pct-btn" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-percent"></i> Price %
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" id="price-pct-dropdown">
+                            <li><a class="dropdown-item" href="#" data-mode="decrease"><i class="fas fa-minus-circle text-warning"></i> Decrease</a></li>
+                            <li><a class="dropdown-item" href="#" data-mode="increase"><i class="fas fa-plus-circle text-success"></i> Increase</a></li>
+                            <li><a class="dropdown-item" href="#" data-mode="same"><i class="fas fa-equals text-info"></i> Same Price</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" data-mode="cancel"><i class="fas fa-times"></i> Cancel</a></li>
+                        </ul>
+                    </div>
+
+                    <button id="clear-sprice-btn" class="btn btn-sm btn-danger" style="display: none;">
+                        <i class="fas fa-eraser"></i> Clear S.Price
                     </button>
                 </div>
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">All Calculations Summary <small class="text-muted fw-normal" style="font-size:11px;">(click any badge for trend chart)</small></h6>
                     <div class="d-flex flex-wrap gap-2">
                         <!-- Top Metrics -->
                         <span class="badge bg-primary fs-6 p-2 fba-badge-chart" id="total-sales-amt-badge" data-metric="sales"    style="color:black;font-weight:bold;cursor:pointer;" title="View trend">Sales: $0.00</span>
-                        <span class="badge bg-success fs-6 p-2 fba-badge-chart" id="total-pft-amt-badge"  data-metric="pft"      style="color:black;font-weight:bold;cursor:pointer;" title="View trend">PFT: $0.00</span>
+                        <span class="badge bg-success fs-6 p-2 fba-badge-chart" id="total-pft-amt-badge"  data-metric="pft"      style="color:black;font-weight:bold;cursor:pointer;display:none;" title="View trend">PFT: $0.00</span>
                         <span class="badge bg-info    fs-6 p-2 fba-badge-chart" id="avg-gpft-badge"       data-metric="gpft"     style="color:black;font-weight:bold;cursor:pointer;" title="View trend">GPFT: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2 fba-badge-chart" id="avg-price-badge"      data-metric="price"    style="color:black;font-weight:bold;cursor:pointer;" title="View trend">Price: $0.00</span>
-                        <span class="badge bg-danger  fs-6 p-2 fba-badge-chart" id="avg-cvr-badge"        data-metric="cvr"      style="color:black;font-weight:bold;cursor:pointer;" title="View trend">CVR: 0.00%</span>
+                        <span class="badge fs-6 p-2"                              id="avg-groi-badge"      style="color:white;font-weight:bold;background-color:#a00211;" title="Portfolio Gross ROI — same formula as the row's GROI% column. Green when > 60%, red otherwise.">GROI: 0%</span>
+                        <span class="badge fs-6 p-2 fba-badge-chart"           id="avg-cvr-badge"        data-metric="cvr"      style="color:#a00211;background:#ffffff;border:1px solid rgba(0,0,0,.12);font-weight:bold;cursor:pointer;" title="CVR — 0 is red, 0–5 mustard, 5–15 dark green, > 15 black on magenta">CVR: 0%</span>
                         <span class="badge bg-info    fs-6 p-2 fba-badge-chart" id="total-views-badge"    data-metric="views"    style="color:black;font-weight:bold;cursor:pointer;" title="View trend">Views: 0</span>
 
                         <!-- FBA Metrics -->
                         <span class="badge bg-primary fs-6 p-2 fba-badge-chart" id="total-fba-inv-badge"       data-metric="inv"       style="color:black;font-weight:bold;cursor:pointer;" title="View trend">INV: 0</span>
                         <span class="badge bg-success fs-6 p-2 fba-badge-chart" id="total-fba-l30-badge"       data-metric="l30"       style="color:black;font-weight:bold;cursor:pointer;" title="View trend">L30: 0</span>
-                        <span class="badge bg-warning fs-6 p-2 fba-badge-chart" id="avg-dil-percent-badge"     data-metric="dil"       style="color:black;font-weight:bold;cursor:pointer;" title="View trend">DIL: 0%</span>
+                        <span class="badge fs-6 p-2 fba-badge-chart"           id="avg-dil-percent-badge"     data-metric="dil"       style="color:#ffffff;font-weight:bold;cursor:pointer;background-color:#a00211;" title="View trend — DIL is red < 25%, green 25–50%, pink > 50%">DIL: 0%</span>
                         <span class="badge bg-danger  fs-6 p-2 fba-badge-chart" id="zero-sold-sku-count-badge" data-metric="zero_sold" style="color:black;font-weight:bold;cursor:pointer;" title="View trend">0 Sold: 0</span>
 
                         <!-- Financial Metrics -->
-                        <span class="badge bg-danger   fs-6 p-2 fba-badge-chart" id="total-tcos-badge"     data-metric="ads_pct" style="color:black;font-weight:bold;cursor:pointer;" title="View trend">Ads: 0%</span>
-                        <span class="badge bg-warning  fs-6 p-2 fba-badge-chart" id="total-spend-l30-badge" data-metric="spend"  style="color:black;font-weight:bold;cursor:pointer;" title="View trend">Spend: $0.00</span>
-                        <span class="badge bg-secondary fs-6 p-2 fba-badge-chart" id="roi-percent-badge"   data-metric="roi"    style="color:black;font-weight:bold;cursor:pointer;" title="View trend">ROI: 0%</span>
+                        <span class="badge fs-6 p-2" id="amazon-channel-ads-badge" style="background:#fff;border:1px solid rgba(0,0,0,.12);color:#212529;font-weight:bold;" title="Amazon channel Ads% — pulled directly from channel_master_calculated_data, same source as the all-marketplace-master page.">
+                            Ads: <span id="amazon-channel-ads-value">—</span>
+                            <i class="fas fa-circle ms-1" id="amazon-channel-ads-dot" style="font-size:8px;color:#adb5bd;vertical-align:middle;"></i>
+                        </span>
                     </div>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
-                <!-- Discount Input Box (shown when SKUs are selected and mode is active) -->
-                <div id="discount-input-container" class="p-2 bg-light border rounded mb-2" style="display: none;">
-                    <div class="d-flex align-items-center gap-2">
-                        <span id="selected-skus-count" class="fw-bold text-secondary"></span>
-                        <select id="discount-type" class="form-select form-select-sm" style="width:120px;">
-                            <option value="percentage">Percentage</option>
-                            <option value="value">Value ($)</option>
-                        </select>
+                {{-- Price % input — shown when Decrease / Increase / Same Price mode is active --}}
+                <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span id="discount-input-label" class="text-muted fw-bold me-1">By how much:</span>
+                        <span id="discount-type-select-wrap">
+                            <select id="discount-type-select" class="form-select form-select-sm" style="width: 140px;">
+                                <option value="percentage">Percentage (%)</option>
+                                <option value="value">Value ($)</option>
+                            </select>
+                        </span>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm"
-                            placeholder="Enter %" step="0.01" style="width:110px;">
-                        <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
-                        <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
-                            <i class="fas fa-eraser"></i> Clear S.Price
+                            placeholder="e.g. 10 or 2.50" step="0.1" min="0"
+                            style="width: 140px;" title="Enter % or $ amount to decrease/increase price">
+                        <button id="apply-discount-btn" class="btn btn-sm btn-primary">
+                            <i class="fas fa-check"></i> Apply
                         </button>
+                        <span id="selected-skus-count" class="text-muted ms-2"></span>
                     </div>
                 </div>
                 <div id="fba-table-wrapper" style="height: 600px; display: flex; flex-direction: column;">
@@ -350,6 +356,15 @@
                 <form id="importForm">
                     @csrf
                     <div class="modal-body">
+                        <div class="d-flex align-items-center justify-content-between p-2 mb-3 rounded border bg-light">
+                            <div>
+                                <div class="fw-semibold" style="font-size:13px;">Need the CSV format?</div>
+                                <div class="text-muted" style="font-size:11px;">Download the sample template, fill it in, then upload below.</div>
+                            </div>
+                            <a href="{{ url('/fba-manual-sample') }}" class="btn btn-sm btn-info">
+                                <i class="fa fa-download"></i> Template
+                            </a>
+                        </div>
                         <div class="mb-3">
                             <label for="csvFile" class="form-label">Choose CSV File</label>
                             <input type="file" class="form-control" id="csvFile" name="file" accept=".csv"
@@ -426,15 +441,61 @@
         </div>
     </div>
 
+    {{-- FBA Fee Breakdown Modal --}}
+    <div class="modal fade" id="fbaFeeBreakdownModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header py-2" style="background:#0d6efd;">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="fas fa-receipt text-white"></i>
+                        <h6 class="modal-title text-white mb-0 fw-bold">FBA Fee Breakdown</h6>
+                        <span id="fba-fee-modal-sku-badge" class="badge bg-white text-dark ms-2 fw-semibold" style="font-size:12px;"></span>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-3" id="fba-fee-modal-body">
+                    <div class="text-center py-4" id="fba-fee-modal-loading">
+                        <div class="spinner-border text-primary"></div>
+                        <p class="mt-2 text-muted mb-0">Loading fee breakdown…</p>
+                    </div>
+                </div>
+                <div class="modal-footer py-1 text-muted" style="font-size:11px;">
+                    Report generated at: <span id="fba-fee-modal-report-date" class="ms-1 fw-semibold">—</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- FBA Ship Cost Breakdown Modal (FBA Fee / FBA Fee M / Send Cost / FBA Ship total) --}}
+    <div class="modal fade" id="fbaShipBreakdownModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-md">
+            <div class="modal-content">
+                <div class="modal-header py-2" style="background:#0d6efd;">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="fas fa-truck-fast text-white"></i>
+                        <h6 class="modal-title text-white mb-0 fw-bold">FBA Ship Breakdown</h6>
+                        <span id="fba-ship-modal-sku-badge" class="badge bg-white text-dark ms-2 fw-semibold" style="font-size:12px;"></span>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-3" id="fba-ship-modal-body">
+                    {{-- populated by JS --}}
+                </div>
+            </div>
+        </div>
+    </div>
+
     @endsection
 
     @section('script-bottom')
         <script>
             const COLUMN_VIS_KEY = "fba_tabulator_column_visibility";
             let table = null; // Global table reference
-            let decreaseModeActive = false; // Track decrease mode state
-            let increaseModeActive = false; // Track increase mode state
             let selectedSkus = new Set(); // Track selected SKUs across all pages
+            // Price % mode flags — mirrors amazon-tabulator-view
+            let decreaseModeActive = false;
+            let increaseModeActive = false;
+            let samePriceModeActive = false;
             window._fbaGlobalAdsPercent = 0; // Global Ads% shared across all rows
             
             // Toast notification function
@@ -822,8 +883,7 @@
                         }
                         if ($btn && cell) {
                             $btn.prop('disabled', false);
-                            $btn.html('<i class=\"fa-solid fa-check-double\"></i>');
-                            $btn.attr('style', 'border: none; background: none; color: #28a745; padding: 0;');
+                            applyAcceptBtnStatus($btn, 'pushed');
                         }
                         removeFailedSkuFromRetry(sku);
                         return true;
@@ -835,8 +895,7 @@
                         }
                         if ($btn && cell) {
                             $btn.prop('disabled', false);
-                            $btn.html('<i class=\"fa-solid fa-x\"></i>');
-                            $btn.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                            applyAcceptBtnStatus($btn, 'error');
                         }
                         return false;
                     }
@@ -846,8 +905,7 @@
                 // Set initial loading state (only if cell exists)
                 if (retries === 0 && cell && $btn && row) {
                     $btn.prop('disabled', true);
-                    $btn.html('<i class=\"fas fa-spinner fa-spin\"></i>');
-                    $btn.attr('style', 'border: none; background: none; color: #ffc107; padding: 0;'); // Yellow text, no background
+                    applyAcceptBtnStatus($btn, 'processing');
                     if (rowData) {
                         rowData.SPRICE_STATUS = 'processing';
                         row.update(rowData);
@@ -876,10 +934,9 @@
                     
                     if ($btn && cell) {
                         $btn.prop('disabled', false);
-                        $btn.html('<i class=\"fa-solid fa-check-double\"></i>');
-                        $btn.attr('style', 'border: none; background: none; color: #28a745; padding: 0;'); // Green text, no background
+                        applyAcceptBtnStatus($btn, 'pushed');
                     }
-                    
+
                     if (!isBackgroundRetry) {
                         showToast(`Price $${price.toFixed(2)} pushed successfully for SKU: ${sku}`, 'success');
                     }
@@ -902,10 +959,9 @@
                         
                         if ($btn && cell) {
                             $btn.prop('disabled', false);
-                            $btn.html('<i class=\"fa-solid fa-x\"></i>');
-                            $btn.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;'); // Red text, no background
+                            applyAcceptBtnStatus($btn, 'error');
                         }
-                        
+
                         // Save for background retry (only if not already a background retry)
                         saveFailedSkuForRetry(sku, price, 0);
                         showToast(`Failed to apply price for SKU: ${sku} after multiple retries. Will retry in background (max 5 times).`, 'error');
@@ -915,33 +971,11 @@
                 }
             }
 
-            // Update selected count display
+            // Track count of selected SKUs (kept as a no-op stub; UI consumers were removed)
             function updateSelectedCount() {
                 const cnt = selectedSkus.size;
-                $('#selected-skus-count').text(`${cnt} SKU${cnt !== 1 ? 's' : ''} selected`);
-                $('#discount-input-container').toggle(cnt > 0 && (decreaseModeActive || increaseModeActive));
-            }
-
-            function syncPriceModeUi() {
-                const $btn = $('#decrease-btn');
-                const selectCol = table ? table.getColumn('_select') : null;
-                if (decreaseModeActive) {
-                    $btn.removeClass('btn-secondary btn-primary').addClass('btn-danger')
-                        .html('<i class="fas fa-arrow-down"></i> Decrease ON');
-                    if (selectCol) selectCol.show();
-                    return;
-                }
-                if (increaseModeActive) {
-                    $btn.removeClass('btn-secondary btn-danger').addClass('btn-primary')
-                        .html('<i class="fas fa-arrow-up"></i> Increase ON');
-                    if (selectCol) selectCol.show();
-                    return;
-                }
-                $btn.removeClass('btn-danger btn-primary').addClass('btn-secondary')
-                    .html('<i class="fas fa-exchange-alt"></i> Price Mode');
-                if (selectCol) selectCol.hide();
-                selectedSkus.clear();
-                updateSelectedCount();
+                const $el = $('#selected-skus-count');
+                if ($el.length) $el.text(cnt > 0 ? `${cnt} SKU${cnt !== 1 ? 's' : ''} selected` : '');
             }
 
             // Update select all checkbox state
@@ -952,81 +986,7 @@
                 $('#select-all-checkbox').prop('checked', allSelected);
             }
 
-            // Apply discount/increase to selected SKUs (mirrors AliExpress applyAeDiscount)
-            function applyDiscount() {
-                const discountType = $('#discount-type').val();
-                const discountVal  = parseFloat($('#discount-percentage-input').val());
-
-                if (isNaN(discountVal) || discountVal === 0 || selectedSkus.size === 0) {
-                    showToast('Please select SKUs and enter a value', 'error');
-                    return;
-                }
-
-                if (!decreaseModeActive && !increaseModeActive) {
-                    showToast('Please activate Price Mode first', 'error');
-                    return;
-                }
-
-                const allData = table.getData('active');
-                let updatedCount = 0;
-                const mode = increaseModeActive ? 'increase' : 'decrease';
-
-                allData.forEach(row => {
-                    if (row.is_parent) return;
-                    if (!selectedSkus.has(row.SKU)) return;
-
-                    const currentPrice = parseFloat(row.FBA_Price) || 0;
-                    if (currentPrice <= 0) return;
-
-                    let newSPrice;
-                    if (discountType === 'percentage') {
-                        newSPrice = increaseModeActive
-                            ? currentPrice * (1 + discountVal / 100)
-                            : currentPrice * (1 - discountVal / 100);
-                    } else {
-                        newSPrice = increaseModeActive
-                            ? currentPrice + discountVal
-                            : currentPrice - discountVal;
-                    }
-                    newSPrice = Math.max(0.01, Math.round(newSPrice * 100) / 100);
-
-                    // Instantly reflect in table row (same formulas as FbaDataController / GPFT, GROI, PFT, TPFT)
-                    const tableRow = table.searchRows('SKU', '=', row.SKU)[0];
-                    if (tableRow) {
-                        const merged = Object.assign({}, row, { S_Price: newSPrice });
-                        const sm = recalculateSPriceMetrics(merged, newSPrice);
-                        tableRow.update(Object.assign({ S_Price: newSPrice }, sm));
-                    }
-
-                    // ── Save to DB in background ─────────────────────────────
-                    $.ajax({
-                        url: '/update-fba-manual-data',
-                        method: 'POST',
-                        data: {
-                            sku: row.FBA_SKU,
-                            field: 's_price',
-                            value: newSPrice,
-                            _token: '{{ csrf_token() }}'
-                        },
-                        success: function() {
-                            updatedCount++;
-                            if (updatedCount === selectedSkus.size) {
-                                const actionText = increaseModeActive ? 'Increase' : 'Decrease';
-                                showToast(`${actionText} applied to ${updatedCount} SKU(s)`, 'success');
-                            }
-                        },
-                        error: function() {
-                            showToast(`Error applying ${mode}`, 'error');
-                        }
-                    });
-                });
-
-                setTimeout(function() {
-                    if (typeof updateSummary === 'function') updateSummary();
-                }, 0);
-
-                $('#discount-percentage-input').val('');
-            }
+            // Discount filter feature was removed. S.Price is now edited per-row inline (S Price column editor).
 
             // Retry function for applying price with up to 5 attempts (Promise-based for Apply All)
             // NOTE: Backend now includes automatic verification and retry (2 attempts with fresh token)
@@ -1151,7 +1111,7 @@
                 
                 // Get all table data to find S_Price for selected SKUs
                 const tableData = table.getData('all');
-                const skusToProcess = [];
+                const skusToProcess = []; 
                 
                 // Build list of SKUs with their prices
                 selectedSkus.forEach(sku => {
@@ -1161,7 +1121,7 @@
                         const fbaSku = row.FBA_SKU || sku;
                         if (sprice > 0) {
                             skusToProcess.push({ sku: fbaSku, price: sprice, childSku: sku });
-                        }
+                        }   
                     }
                 });
                 
@@ -1209,8 +1169,7 @@
                             const $btnInCell = $cellElement.find('.apply-price-btn');
                             if ($btnInCell.length) {
                                 $btnInCell.prop('disabled', true);
-                                $btnInCell.html('<i class="fas fa-spinner fa-spin"></i>');
-                                $btnInCell.attr('style', 'border: none; background: none; color: #ffc107; padding: 0;');
+                                applyAcceptBtnStatus($btnInCell, 'processing');
                             }
                         }
                     }
@@ -1245,8 +1204,7 @@
                                         const $btnInCell = $cellElement.find('.apply-price-btn');
                                         if ($btnInCell.length) {
                                             $btnInCell.prop('disabled', false);
-                                            $btnInCell.html('<i class="fa-solid fa-x"></i>');
-                                            $btnInCell.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                                            applyAcceptBtnStatus($btnInCell, 'error');
                                         }
                                     }
                                 }
@@ -1278,8 +1236,7 @@
                                             const $btnInCell = $cellElement.find('.apply-price-btn');
                                             if ($btnInCell.length) {
                                                 $btnInCell.prop('disabled', false);
-                                                $btnInCell.html('<i class="fa-solid fa-check-double"></i>');
-                                                $btnInCell.attr('style', 'border: none; background: none; color: #28a745; padding: 0;');
+                                                applyAcceptBtnStatus($btnInCell, 'pushed');
                                             }
                                         }
                                     }
@@ -1306,8 +1263,7 @@
                                             const $btnInCell = $cellElement.find('.apply-price-btn');
                                             if ($btnInCell.length) {
                                                 $btnInCell.prop('disabled', false);
-                                                $btnInCell.html('<i class="fa-solid fa-x"></i>');
-                                                $btnInCell.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                                                applyAcceptBtnStatus($btnInCell, 'error');
                                             }
                                         }
                                     }
@@ -1338,8 +1294,7 @@
                                     const $btnInCell = $cellElement.find('.apply-price-btn');
                                     if ($btnInCell.length) {
                                         $btnInCell.prop('disabled', false);
-                                        $btnInCell.html('<i class="fa-solid fa-x"></i>');
-                                        $btnInCell.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                                        applyAcceptBtnStatus($btnInCell, 'error');
                                     }
                                 }
                             }
@@ -1359,52 +1314,6 @@
 
             $(document).ready(function() {
                 initSkuMetricsChart();
-
-                // Price Mode button – cycles: Off → Decrease → Increase → Off (mirrors AliExpress)
-                $('#decrease-btn').on('click', function() {
-                    if (!decreaseModeActive && !increaseModeActive) {
-                        decreaseModeActive = true; increaseModeActive = false;
-                    } else if (decreaseModeActive) {
-                        decreaseModeActive = false; increaseModeActive = true;
-                    } else {
-                        decreaseModeActive = false; increaseModeActive = false;
-                    }
-                    syncPriceModeUi();
-                });
-
-                // Type selector updates placeholder
-                $('#discount-type').on('change', function() {
-                    $('#discount-percentage-input').attr('placeholder',
-                        $(this).val() === 'percentage' ? 'Enter %' : 'Enter $');
-                });
-
-                // Clear S.Price for selected SKUs
-                $('#clear-sprice-btn').on('click', function() {
-                    if (!selectedSkus.size) return;
-                    const allData = table.getData('active');
-                    let cleared = 0;
-                    allData.forEach(row => {
-                        if (row.is_parent || !selectedSkus.has(row.SKU)) return;
-
-                        // Instantly clear in table
-                        const tableRow = table.searchRows('SKU', '=', row.SKU)[0];
-                        if (tableRow) {
-                            tableRow.update({ S_Price: 0, 'SGPFT%': '', 'SGROI%': '', SPFT: 0, 'SROI%': '' });
-                        }
-
-                        $.ajax({
-                            url: '/update-fba-manual-data',
-                            method: 'POST',
-                            data: { sku: row.FBA_SKU, field: 's_price', value: 0, _token: '{{ csrf_token() }}' },
-                            success: function() {
-                                cleared++;
-                                if (cleared === selectedSkus.size) {
-                                    showToast(`S.Price cleared for ${cleared} SKU(s)`, 'success');
-                                }
-                            }
-                        });
-                    });
-                });
 
                 // Select all checkbox handler
                 $(document).on('change', '#select-all-checkbox', function() {
@@ -1444,17 +1353,6 @@
                     updateSelectAllCheckbox();
                 });
 
-                // Apply discount button
-                $('#apply-discount-btn').on('click', function() {
-                    applyDiscount();
-                });
-
-                // Apply discount on Enter key
-                $('#discount-percentage-input').on('keypress', function(e) {
-                    if (e.which === 13) {
-                        applyDiscount();
-                    }
-                });
                 // Apply All button handler
                 $(document).on('click', '#apply-all-btn', function(e) {
                     e.preventDefault();
@@ -1532,6 +1430,54 @@
                 }
 
                 // SPft% — identical rule to PRFT%: net = parseFloat(SGPFT%) − window._fbaGlobalAdsPercent, then round for display
+                // Imperative DOM updater that mirrors what the Accept column formatter renders
+                // for a given status. Used by AJAX flows that touch the live button without
+                // round-tripping through row.update().
+                function applyAcceptBtnStatus($el, status) {
+                    if (!$el || !$el.length) return;
+                    const s = buildAcceptBtnState(status);
+                    $el.html(s.html)
+                       .attr('style', s.style)
+                       .attr('title', s.title)
+                       .attr('data-status', status || '');
+                }
+
+                // Centralized state for the Accept-column dot so the column formatter and
+                // the imperative AJAX status updates stay in sync. Two visual states only:
+                //   green dot — status === 'pushed' or 'applied' (call succeeded)
+                //   yellow dot — everything else (default, processing, error → still needs a push)
+                // Inner content is always a single colored circle; the spinner is overlaid only
+                // while a push is in flight. The button keeps its data-* attributes and title so
+                // the existing click / double-click handlers work unchanged.
+                function buildAcceptBtnState(status) {
+                    const baseStyle = 'background:transparent;border:none;padding:2px 6px;cursor:pointer;line-height:1;';
+                    const dot = function(color) {
+                        return `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${color};vertical-align:middle;"></span>`;
+                    };
+                    const dotWithSpinner = function(color) {
+                        return `<span style="position:relative;display:inline-block;width:14px;height:14px;vertical-align:middle;">` +
+                                   `<span style="position:absolute;inset:0;border-radius:50%;background:${color};"></span>` +
+                                   `<i class="fas fa-spinner fa-spin" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#212529;font-size:9px;"></i>` +
+                               `</span>`;
+                    };
+                    const GREEN = '#28a745';
+                    const YELLOW = '#ffc107';
+
+                    if (status === 'processing') {
+                        return { html: dotWithSpinner(YELLOW), style: baseStyle, title: 'Price pushing in progress…' };
+                    }
+                    if (status === 'pushed') {
+                        return { html: dot(GREEN), style: baseStyle, title: 'Price pushed to Amazon (Double-click to mark as Applied)' };
+                    }
+                    if (status === 'applied') {
+                        return { html: dot(GREEN), style: baseStyle, title: 'Price applied to Amazon (Double-click to change)' };
+                    }
+                    if (status === 'error') {
+                        return { html: dot(YELLOW), style: baseStyle, title: 'Error applying price — click to retry' };
+                    }
+                    return { html: dot(YELLOW), style: baseStyle, title: 'Push price to Amazon' };
+                }
+
                 function fbaSpftPercentFromRow(rowData) {
                     if (!rowData || rowData.is_parent) return null;
                     const sgpftRaw = String(rowData['SGPFT%'] ?? '').replace(/<[^>]*>/g, '').replace('%', '').trim();
@@ -1578,6 +1524,280 @@
                     };
                 }
 
+                // ── Price % feature (mirrors amazon-tabulator-view) ─────────────────────────────
+                // Helper: round to retail (.99 endings)
+                function roundToRetailPrice(price) {
+                    if (price < 20.99) return +price.toFixed(2);
+                    return +(Math.ceil(price) - 0.01).toFixed(2);
+                }
+                // Helper: round to retail (.49 endings) — fallback when .99 would equal current price
+                function roundToRetailPrice49(price) {
+                    if (price < 20.99) return +price.toFixed(2);
+                    return +(Math.ceil(price) - 0.51).toFixed(2);
+                }
+
+                function exitPricePctMode() {
+                    decreaseModeActive = false;
+                    increaseModeActive = false;
+                    samePriceModeActive = false;
+                    selectedSkus.clear();
+                    $('.sku-select-checkbox').prop('checked', false);
+                    if ($('#select-all-checkbox').length) $('#select-all-checkbox').prop('checked', false);
+                    $('#discount-input-container').hide();
+                    $('#clear-sprice-btn').hide();
+                    $('#price-pct-btn').removeClass('btn-warning btn-success btn-info').addClass('btn-primary')
+                        .html('<i class="fas fa-percent"></i> Price %');
+                    $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply');
+                    $('#discount-type-select-wrap').show();
+                    $('#discount-input-label').text('By how much:');
+                    $('#discount-percentage-input')
+                        .val('')
+                        .attr('placeholder', 'e.g. 10 or 2.50')
+                        .attr('title', 'Enter % or $ amount to decrease/increase price');
+                    updateSelectedCount();
+                }
+
+                function setPricePctMode(mode) {
+                    if (!table) return;
+                    if (mode === 'cancel') { exitPricePctMode(); return; }
+
+                    decreaseModeActive  = (mode === 'decrease');
+                    increaseModeActive  = (mode === 'increase');
+                    samePriceModeActive = (mode === 'same');
+                    $('#clear-sprice-btn').show();
+                    $('#discount-input-container').show();
+                    $('#discount-percentage-input').val('').focus();
+
+                    if (mode === 'decrease') {
+                        $('#discount-type-select-wrap').show();
+                        $('#discount-input-label').text('By how much:');
+                        $('#discount-percentage-input')
+                            .attr('placeholder', 'e.g. 10 or 2.50')
+                            .attr('title', 'Enter % or $ amount to decrease price');
+                        $('#price-pct-btn').removeClass('btn-primary btn-success btn-info').addClass('btn-warning')
+                            .html('<i class="fas fa-minus-circle"></i> Decrease');
+                        $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Decrease');
+                    } else if (mode === 'increase') {
+                        $('#discount-type-select-wrap').show();
+                        $('#discount-input-label').text('By how much:');
+                        $('#discount-percentage-input')
+                            .attr('placeholder', 'e.g. 10 or 2.50')
+                            .attr('title', 'Enter % or $ amount to increase price');
+                        $('#price-pct-btn').removeClass('btn-primary btn-warning btn-info').addClass('btn-success')
+                            .html('<i class="fas fa-plus-circle"></i> Increase');
+                        $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Increase');
+                    } else if (mode === 'same') {
+                        $('#discount-type-select-wrap').hide();
+                        $('#discount-input-label').text('Same Price ($):');
+                        $('#discount-percentage-input')
+                            .attr('placeholder', 'Enter price (e.g. 19.99)')
+                            .attr('title', 'This single price will be applied to every selected SKU');
+                        $('#price-pct-btn').removeClass('btn-primary btn-warning btn-success').addClass('btn-info')
+                            .html('<i class="fas fa-equals"></i> Same Price');
+                        $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Same Price');
+                    }
+                    updateSelectedCount();
+                }
+
+                // Apply the price change to every selected SKU — parallel AJAX, mirrors amazon-tabulator-view.
+                function applyDiscount() {
+                    const $btn = $('#apply-discount-btn');
+                    if (!table || $btn.prop('disabled')) return;
+
+                    const rawInput = $('#discount-percentage-input').val();
+                    const inputValue = parseFloat(String(rawInput).replace(',', '.'));
+
+                    if (rawInput === '' || rawInput == null) {
+                        showToast(samePriceModeActive ? 'Please enter a price' : 'Please enter a value (% or $)', 'error');
+                        return;
+                    }
+                    if (isNaN(inputValue) || inputValue < 0) {
+                        showToast('Please enter a valid positive number', 'error');
+                        return;
+                    }
+                    const discountType = $('#discount-type-select').val();
+                    if (!samePriceModeActive && discountType === 'percentage' && inputValue > 100) {
+                        showToast('Percentage cannot exceed 100', 'error');
+                        return;
+                    }
+                    if (selectedSkus.size === 0) {
+                        showToast('Please select at least one SKU', 'error');
+                        return;
+                    }
+                    if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                        showToast('Please activate Decrease, Increase, or Same Price mode first', 'error');
+                        return;
+                    }
+
+                    const mode = samePriceModeActive ? 'same' : (increaseModeActive ? 'increase' : 'decrease');
+                    const actionText = mode === 'same' ? 'Same Price' : (mode === 'increase' ? 'Increase' : 'Discount');
+                    const totalToProcess = selectedSkus.size;
+                    let successCount = 0, errorCount = 0, finalized = false;
+
+                    const originalBtnHtml = $btn.html();
+                    $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
+
+                    // Watchdog so the button always comes back
+                    const watchdogMs = Math.max(20000, totalToProcess * 1500);
+                    const watchdog = setTimeout(function() {
+                        if (finalized) return;
+                        finalized = true;
+                        $btn.prop('disabled', false).html(originalBtnHtml);
+                        showToast(`Apply timed out (${successCount}/${totalToProcess} done). Refresh to verify.`, 'error');
+                    }, watchdogMs);
+
+                    function bumpAndCheck() {
+                        if (finalized) return;
+                        if (successCount + errorCount !== totalToProcess) return;
+                        finalized = true;
+                        clearTimeout(watchdog);
+                        $btn.prop('disabled', false).html(originalBtnHtml);
+                        if (errorCount === 0) {
+                            showToast(`${actionText} applied successfully to ${successCount} SKU${successCount > 1 ? 's' : ''}`, 'success');
+                        } else if (successCount === 0) {
+                            showToast(`Failed to apply ${actionText.toLowerCase()} — ${errorCount} SKU${errorCount > 1 ? 's' : ''} skipped`, 'error');
+                        } else {
+                            showToast(`${actionText}: ${successCount} saved, ${errorCount} skipped/failed`, 'success');
+                        }
+                        if (typeof updateSummary === 'function') updateSummary();
+                    }
+
+                    // Parallel — every selected SKU's request goes out at once (browser caps at ~6 concurrent).
+                    selectedSkus.forEach(sku => {
+                        let row = null;
+                        table.getRows().forEach(r => {
+                            const d = r.getData();
+                            if (!d.is_parent && d.SKU === sku) row = r;
+                        });
+                        if (!row) { errorCount++; bumpAndCheck(); return; }
+
+                        const rowData = row.getData();
+                        const fbaP = parseFloat(rowData.FBA_Price);
+                        const amzP = parseFloat(rowData.AMZ_Price);
+                        const originalPrice = (!isNaN(fbaP) && fbaP > 0)
+                            ? fbaP
+                            : (!isNaN(amzP) && amzP > 0 ? amzP : 0);
+
+                        // Same Price applies even when current price is empty.
+                        if (mode !== 'same' && originalPrice <= 0) {
+                            errorCount++; bumpAndCheck(); return;
+                        }
+
+                        let newPrice;
+                        if (mode === 'same') {
+                            newPrice = Math.max(0.01, inputValue);
+                        } else if (discountType === 'percentage') {
+                            const decimal = inputValue / 100;
+                            newPrice = (mode === 'decrease')
+                                ? originalPrice * (1 - decimal)
+                                : originalPrice * (1 + decimal);
+                        } else {
+                            newPrice = (mode === 'decrease')
+                                ? Math.max(0.01, originalPrice - inputValue)
+                                : originalPrice + inputValue;
+                        }
+                        newPrice = roundToRetailPrice(newPrice);
+                        if (mode !== 'same' && newPrice.toFixed(2) === originalPrice.toFixed(2)) {
+                            newPrice = roundToRetailPrice49(newPrice);
+                        }
+                        const newPriceNum = parseFloat(newPrice.toFixed(2));
+
+                        $.ajax({
+                            url: '/update-fba-manual-data',
+                            method: 'POST',
+                            timeout: 15000,
+                            headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                            data: {
+                                sku: rowData.FBA_SKU || rowData.SKU,
+                                field: 's_price',
+                                value: newPriceNum
+                            },
+                            success: function(resp) {
+                                if (resp && resp.success === false) { errorCount++; }
+                                else {
+                                    successCount++;
+                                    // Recompute SGPFT% / SGROI% / SPft / SROI% client-side (endpoint doesn't echo them)
+                                    const merged = Object.assign({}, rowData, { S_Price: newPriceNum });
+                                    const sm = recalculateSPriceMetrics(merged, newPriceNum);
+                                    row.update(Object.assign({ S_Price: newPriceNum }, sm));
+                                    row.reformat();
+                                }
+                                bumpAndCheck();
+                            },
+                            error: function() { errorCount++; bumpAndCheck(); }
+                        });
+                    });
+
+                    $('#discount-percentage-input').val('');
+                }
+
+                // Clear S.Price for every selected SKU (parallel save with watchdog).
+                function clearSpriceForSelected() {
+                    if (!table || !selectedSkus.size) {
+                        showToast('Please select SKUs first', 'error');
+                        return;
+                    }
+                    if (!confirm(`Clear S.Price for ${selectedSkus.size} selected SKU(s)?`)) return;
+
+                    const $btn = $('#clear-sprice-btn');
+                    const originalHtml = $btn.html();
+                    const targets = [];
+                    table.getRows().forEach(r => {
+                        const d = r.getData();
+                        if (!d.is_parent && selectedSkus.has(d.SKU)) {
+                            r.update({ S_Price: 0, 'SGPFT%': '', 'SGROI%': '', SPFT: 0, 'SROI%': '' });
+                            targets.push(d);
+                        }
+                    });
+                    if (!targets.length) { showToast('No matching SKUs found', 'error'); return; }
+
+                    let okCount = 0, errCount = 0, finalized = false;
+                    const total = targets.length;
+                    $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Clearing…');
+                    const watchdog = setTimeout(function() {
+                        if (finalized) return;
+                        finalized = true;
+                        $btn.prop('disabled', false).html(originalHtml);
+                        showToast('Clear timed out — refresh to verify', 'error');
+                    }, Math.max(20000, total * 1500));
+
+                    function done() {
+                        if (finalized) return;
+                        if (okCount + errCount !== total) return;
+                        finalized = true;
+                        clearTimeout(watchdog);
+                        $btn.prop('disabled', false).html(originalHtml);
+                        if (errCount === 0) showToast(`S.Price cleared for ${okCount} SKU(s)`, 'success');
+                        else                showToast(`Cleared ${okCount}, failed ${errCount}`, 'error');
+                        if (typeof updateSummary === 'function') updateSummary();
+                    }
+
+                    targets.forEach(d => {
+                        $.ajax({
+                            url: '/update-fba-manual-data',
+                            method: 'POST',
+                            timeout: 15000,
+                            headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                            data: { sku: d.FBA_SKU || d.SKU, field: 's_price', value: 0 },
+                            success: function(resp) { if (resp && resp.success === false) errCount++; else okCount++; },
+                            error: function() { errCount++; },
+                            complete: function() { done(); }
+                        });
+                    });
+                }
+
+                // Wire up the Price % dropdown, Apply, Enter-key, and Clear buttons
+                $(document).on('click', '#price-pct-dropdown a[data-mode]', function(e) {
+                    e.preventDefault();
+                    setPricePctMode($(this).data('mode'));
+                });
+                $(document).on('click', '#apply-discount-btn', applyDiscount);
+                $(document).on('keypress', '#discount-percentage-input', function(e) {
+                    if (e.which === 13) applyDiscount();
+                });
+                $(document).on('click', '#clear-sprice-btn', clearSpriceForSelected);
+                // ────────────────────────────────────────────────────────────────────────────────
+
                 // Amazon datasheet CVR (same idea as /amazon-tabulator-view)
                 function fbaCvrL30FromRow(row) {
                     if (!row || row.is_parent) return 0;
@@ -1601,13 +1821,25 @@
                     const sess45 = (sess30 + sess60) / 2;
                     return sess45 === 0 ? 0 : (aL45 / sess45) * 100;
                 }
+                // CVR color scheme (used for both per-row cells and the summary badge):
+                //   0          → red text
+                //   0.01–4.99  → mustard text
+                //   5–14.99    → dark-green text
+                //   >= 15      → black text with magenta background
+                function fbaCvrStyle(cvr) {
+                    const v = parseFloat(cvr) || 0;
+                    if (v === 0)        return { color: '#a00211', bg: 'transparent' }; // red
+                    if (v < 5)          return { color: '#b8860b', bg: 'transparent' }; // mustard / dark goldenrod
+                    if (v < 15)         return { color: '#1e7e34', bg: 'transparent' }; // dark green
+                    return                     { color: '#000000', bg: '#e83e8c' };     // black on magenta
+                }
                 function fbaCvrColoredHtml(cvr) {
-                    let color = '';
-                    if (cvr <= 4) color = '#a00211';
-                    else if (cvr > 4 && cvr <= 7) color = '#ffc107';
-                    else if (cvr > 7 && cvr <= 13) color = '#28a745';
-                    else color = '#e83e8c';
-                    return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                    const v = parseFloat(cvr) || 0;
+                    const s = fbaCvrStyle(v);
+                    const bgRule = s.bg === 'transparent'
+                        ? ''
+                        : `background-color:${s.bg};padding:1px 6px;border-radius:3px;`;
+                    return `<span style="color:${s.color};font-weight:600;${bgRule}">${v.toFixed(1)}%</span>`;
                 }
 
                 /** Oldest non-empty Inv age bucket (same order as modal / filters). */
@@ -1767,23 +1999,6 @@
                                 </div>`;
                             }
                         },
-                        {
-                            title: "Product SKU",
-                            field: "SKU",
-                            headerFilter: "input",
-                            headerFilterPlaceholder: "CP / base SKU...",
-                            cssClass: "text-secondary",
-                            tooltip: true,
-                            frozen: true,
-                            visible: false,
-                            formatter: function(cell) {
-                                const sku = cell.getValue();
-                                if (!sku || cell.getRow().getData().is_parent) return sku || '';
-                                return `<span>${sku}</span>
-                                    <i class="fa fa-copy text-secondary copy-sku-btn" style="cursor: pointer; margin-left: 8px; font-size: 14px;" data-sku="${sku}" title="Copy Product SKU"></i>`;
-                            }
-                        },
-                       
                         // {
                         //     title: "Shopify INV",
                         //     field: "Shopify_INV",
@@ -1833,13 +2048,22 @@
                             title: "FBA CVR",
                             field: "FBA_CVR",
                             sorter: function(a, b) {
-                                const numA = parseFloat(a.replace(/<[^>]*>/g, '').replace('%', ''));
-                                const numB = parseFloat(b.replace(/<[^>]*>/g, '').replace('%', ''));
+                                const numA = parseFloat(String(a).replace(/<[^>]*>/g, '').replace('%', ''));
+                                const numB = parseFloat(String(b).replace(/<[^>]*>/g, '').replace('%', ''));
                                 return numA - numB;
                             },
                             hozAlign: "center",
                             formatter: function(cell) {
-                                return cell.getValue();
+                                const raw = String(cell.getValue() || '');
+                                const num = parseFloat(raw.replace(/<[^>]*>/g, '').replace('%', '').trim());
+                                if (isNaN(num)) return '';
+                                const s = (typeof fbaCvrStyle === 'function')
+                                    ? fbaCvrStyle(num)
+                                    : { color: '#212529', bg: 'transparent' };
+                                const bgRule = s.bg === 'transparent'
+                                    ? ''
+                                    : `background-color:${s.bg};padding:1px 6px;border-radius:3px;`;
+                                return `<span style="color:${s.color};font-weight:600;${bgRule}">${Math.round(num)}%</span>`;
                             },
                         },
                         {
@@ -1886,31 +2110,32 @@
                             title: "CVR L30",
                             field: "CVR_L30",
                             hozAlign: "center",
+                            visible: false,
                             width: 65,
                             formatter: function(cell) {
                                 const row = cell.getRow().getData();
                                 if (row.is_parent) return '';
                                 const cvrL30 = fbaCvrL30FromRow(row);
                                 const cvrL60 = fbaCvrL60FromRow(row);
-                                const tol = 0.1;
                                 let arrowHtml = '';
                                 let dotColor = '#008000'; // green by default
                                 const sku = row['(Child) sku'] || '';
                                 if (sku) {
+                                    // Strict decimal comparison — any difference flips the arrow.
                                     let arrowColor = '#6c757d';
                                     let arrowIcon = 'fa-minus';
-                                    if (cvrL30 > cvrL60 + tol) {
+                                    if (cvrL30 > cvrL60) {
                                         // CVR 30 > CVR 60 (improving)
                                         arrowColor = '#28a745';
                                         arrowIcon = 'fa-arrow-up';
                                         dotColor = '#28a745'; // green
-                                    } else if (cvrL30 < cvrL60 - tol) {
+                                    } else if (cvrL30 < cvrL60) {
                                         // CVR 60 > CVR 30 (declining)
                                         arrowColor = '#a00211';
                                         arrowIcon = 'fa-arrow-down';
                                         dotColor = '#a00211'; // red
                                     } else {
-                                        // CVR 30 equals CVR 60 (within tolerance)
+                                        // Exactly equal (rare with decimals)
                                         dotColor = '#ffc107'; // yellow
                                     }
                                     arrowHtml = ` <span title="CVR 30 vs CVR 60: ${cvrL60.toFixed(1)}%" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
@@ -1981,7 +2206,7 @@
                         },
 
                         {
-                            title: "FBA Price",
+                            title: "Prc",
                             field: "FBA_Price",
                             hozAlign: "center",
                             formatter: function(cell) {
@@ -1995,6 +2220,46 @@
                                 }
                                 return `<span style="color:${color};">${price.toFixed(2)}</span>`;
                             }
+                        },
+                        {
+                            title: "Gpft",
+                            field: "GPFT%",
+                            sorter: function(a, b) {
+                                const numA = parseFloat(a.replace(/<[^>]*>/g, '').replace('%', ''));
+                                const numB = parseFloat(b.replace(/<[^>]*>/g, '').replace('%', ''));
+                                return numA - numB;
+                            },
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const rawValue = cell.getValue();
+                                const value = parseFloat(rawValue.replace('%', '')) || 0;
+                                let style = '';
+                                if (value < 10) {
+                                    style = 'color: red;';
+                                } else if (value >= 11 && value <= 15) {
+                                    style = 'background-color: yellow; color: black;';
+                                } else if (value >= 16 && value <= 20) {
+                                    style = 'color: blue;';
+                                } else if (value >= 21 && value <= 40) {
+                                    style = 'color: green;';
+                                } else if (value > 40) {
+                                    style = 'color: purple;';
+                                }
+                                return `<span style="${style}">${rawValue}</span>`;
+                            },
+                        },
+                        {
+                            title: "GROI%",
+                            field: "GROI%",
+                            sorter: function(a, b) {
+                                const numA = parseFloat(a.replace(/<[^>]*>/g, '').replace('%', ''));
+                                const numB = parseFloat(b.replace(/<[^>]*>/g, '').replace('%', ''));
+                                return numA - numB;
+                            },
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                return cell.getValue();
+                            },
                         },
                         {
                             title: "LMP",
@@ -2030,47 +2295,6 @@
                                 
                                 // Make LMP price clickable to show all competitors in modal
                                 return '<a href="#" class="lmp-price-link" data-sku="' + baseSku.replace(/"/g, '&quot;') + '" data-marketplace="amazon" style="color: ' + color + '; text-decoration: none; cursor: pointer; font-weight: 600;">$' + lmpValue.toFixed(2) + '</a>';
-                            },
-                            minWidth: 70
-                        },
-                        {
-                            title: "Price",
-                            field: "AMZ_Price",
-                            hozAlign: "center",
-                            visible: true,
-                            formatter: function(cell) {
-                                const rowData = cell.getRow().getData();
-                                const value = cell.getValue();
-                                
-                                if (rowData.is_parent) {
-                                    return '';
-                                }
-                                
-                                if (value == null || value === '' || parseFloat(value) <= 0) {
-                                    return '<span class="text-muted">-</span>';
-                                }
-                                
-                                const price = parseFloat(value);
-                                return '<span style="font-weight: 600;">$' + price.toFixed(2) + '</span>';
-                            },
-                            minWidth: 70
-                        },
-                        {
-                            title: "FBM GPFT",
-                            field: "AMZ_GPFT",
-                            hozAlign: "center",
-                            visible: true,
-                            formatter: function(cell) {
-                                const value = cell.getValue();
-                                if (value == null || value === '') return '<span class="text-muted">-</span>';
-                                const pct = parseFloat(value);
-                                let color = '';
-                                if (pct < 0) color = '#a00211';
-                                else if (pct >= 0 && pct < 10) color = '#ffc107';
-                                else if (pct >= 10 && pct < 20) color = '#3591dc';
-                                else if (pct >= 20 && pct <= 40) color = '#28a745';
-                                else color = '#e83e8c';
-                                return `<span style="color: ${color}; font-weight: 600;">${Math.round(pct)}%</span>`;
                             },
                             minWidth: 70
                         },
@@ -2132,7 +2356,6 @@
                             field: "_select",
                             hozAlign: "center",
                             headerSort: false,
-                            visible: false,
                             titleFormatter: function(column) {
                                 return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
                                     <span>Select</span>
@@ -2149,34 +2372,6 @@
                                 return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isSelected ? 'checked' : ''} style="cursor: pointer;">`;
                             }
                         },
-                        {
-                            title: "GPFT%",
-                            field: "GPFT%",
-                            sorter: function(a, b) {
-                                const numA = parseFloat(a.replace(/<[^>]*>/g, '').replace('%', ''));
-                                const numB = parseFloat(b.replace(/<[^>]*>/g, '').replace('%', ''));
-                                return numA - numB;
-                            },
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const rawValue = cell.getValue();
-                                const value = parseFloat(rawValue.replace('%', '')) || 0;
-                                let style = '';
-                                if (value < 10) {
-                                    style = 'color: red;';
-                                } else if (value >= 11 && value <= 15) {
-                                    style = 'background-color: yellow; color: black;';
-                                } else if (value >= 16 && value <= 20) {
-                                    style = 'color: blue;';
-                                } else if (value >= 21 && value <= 40) {
-                                    style = 'color: green;';
-                                } else if (value > 40) {
-                                    style = 'color: purple;';
-                                }
-                                return `<span style="${style}">${rawValue}</span>`;
-                            },
-                        },
-
                         // {
                         //     title: "PFT AMT",
                         //     field: "PFT_AMT",
@@ -2208,23 +2403,10 @@
                         // },
 
                         {
-                            title: "GROI%",
-                            field: "GROI%",
-                            sorter: function(a, b) {
-                                const numA = parseFloat(a.replace(/<[^>]*>/g, '').replace('%', ''));
-                                const numB = parseFloat(b.replace(/<[^>]*>/g, '').replace('%', ''));
-                                return numA - numB;
-                            },
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                return cell.getValue();
-                            },
-                        },
-
-                        {
                             title: "Ads%",
                             field: "TCOS_Percentage",
                             hozAlign: "center",
+                            visible: false,
                             formatter: function(cell) {
                                 const rowData = cell.getRow().getData();
                                 if (rowData.is_parent) return '';
@@ -2377,7 +2559,6 @@
                                 const rowData = cell.getRow().getData();
                                 if (rowData.is_parent) return '';
 
-                                const sku = rowData.SKU;
                                 const fbaSku = rowData.FBA_SKU;
                                 const sprice = parseFloat(rowData.S_Price) || 0;
                                 const status = rowData.SPRICE_STATUS || null;
@@ -2386,32 +2567,8 @@
                                     return '<span style="color: #999;">N/A</span>';
                                 }
 
-                                let icon = '<i class="fas fa-check"></i>';
-                                let iconColor = '#28a745'; // Green for apply
-                                let titleText = 'Apply Price to Amazon';
-
-                                if (status === 'processing') {
-                                    icon = '<i class="fas fa-spinner fa-spin"></i>';
-                                    iconColor = '#ffc107'; // Yellow text
-                                    titleText = 'Price pushing in progress...';
-                                } else if (status === 'pushed') {
-                                    icon = '<i class="fa-solid fa-check-double"></i>';
-                                    iconColor = '#28a745'; // Green text
-                                    titleText = 'Price pushed to Amazon (Double-click to mark as Applied)';
-                                } else if (status === 'applied') {
-                                    icon = '<i class="fa-solid fa-check-double"></i>';
-                                    iconColor = '#28a745'; // Green text
-                                    titleText = 'Price applied to Amazon (Double-click to change)';
-                                } else if (status === 'error') {
-                                    icon = '<i class="fa-solid fa-x"></i>';
-                                    iconColor = '#dc3545'; // Red text
-                                    titleText = 'Error applying price to Amazon';
-                                }
-
-                                // Show only icon with color, no background
-                                return `<button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${fbaSku}" data-price="${sprice}" data-status="${status || ''}" title="${titleText}" style="border: none; background: none; color: ${iconColor}; padding: 0;">
-                                    ${icon}
-                                </button>`;
+                                const s = buildAcceptBtnState(status);
+                                return `<button type="button" class="apply-price-btn" data-sku="${fbaSku}" data-price="${sprice}" data-status="${status || ''}" title="${s.title}" style="${s.style}">${s.html}</button>`;
                             },
                             cellClick: function(e, cell) {
                                 const $target = $(e.target);
@@ -2513,7 +2670,8 @@
                         {
                             title: "LP",
                             field: "LP",
-                            hozAlign: "center"
+                            hozAlign: "center",
+                            visible: false
                         },
 
                         {
@@ -2521,9 +2679,16 @@
                             field: "FBA_Ship_Calculation",
                             hozAlign: "center",
                             formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
                                 const value = parseFloat(cell.getValue());
                                 if (isNaN(value)) return '';
-                                return value.toFixed(2);
+                                const sku = (rowData.FBA_SKU || rowData.SKU || '').toString().replace(/"/g, '&quot;');
+                                return `<span>${value.toFixed(2)}</span>` +
+                                    `<span class="fba-ship-info-dot" data-sku="${sku}" ` +
+                                    `title="Click for FBA Fee / FBA Fee M / Send Cost breakdown" ` +
+                                    `style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#0d6efd;` +
+                                    `margin-left:6px;vertical-align:middle;cursor:pointer;"></span>`;
                             }
                         },
 
@@ -2555,13 +2720,29 @@
                         {
                             title: "FBA Fee",
                             field: "Fulfillment_Fee",
-                            hozAlign: "center"
+                            hozAlign: "center",
+                            visible: false,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const raw = cell.getValue();
+                                const num = parseFloat(raw);
+                                const display = isNaN(num) ? '' : num.toFixed(2);
+                                if (display === '') return '';
+                                const sku = (rowData.FBA_SKU || rowData.SKU || '').toString().replace(/"/g, '&quot;');
+                                return `<span>${display}</span>` +
+                                    `<span class="fba-fee-info-dot" data-sku="${sku}" ` +
+                                    `title="Click for fee breakdown" ` +
+                                    `style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#0d6efd;` +
+                                    `margin-left:6px;vertical-align:middle;cursor:pointer;"></span>`;
+                            }
                         },
 
                         {
                             title: "FBA Fee M",
                             field: "FBA_Fee_Manual",
                             hozAlign: "center",
+                            visible: false,
                             editable: function(cell) {
                                 // Only editable if Fulfillment_Fee is 0
                                 const fulfillmentFee = parseFloat(cell.getRow().getData()
@@ -2670,29 +2851,12 @@
                             title: "Send Cost",
                             field: "Send_Cost",
                             hozAlign: "center",
+                            visible: false,
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue());
                                 if (isNaN(value)) return '';
-                                return `
-                                    <span>${value.toFixed(2)}</span>
-                                    <i class="fa fa-info-circle text-primary send-cost-toggle-btn" 
-                                        style="cursor:pointer; margin-left:8px;" 
-                                        title="Toggle CTN columns"></i>
-                                `;
+                                return value.toFixed(2);
                             }
-                        },
-                        {
-                            title: "Comm %",
-                            field: "Commission_Percentage",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-                        {
-                            title: "Ratings",
-                            field: "Ratings",
-                            hozAlign: "center",
-                            editor: "input",
-                            tooltip: "Enter rating between 0 and 5"
                         },
 
                         // {
@@ -2981,8 +3145,6 @@
                     let totalLpAmt = 0;
                     let totalFbaInv = 0;
                     let totalFbaL30 = 0;
-                    let totalDilPercent = 0;
-                    let dilCount = 0;
                     let zeroSoldSkuCount = 0;
 
                     data.forEach(row => {
@@ -2994,33 +3156,20 @@
                             totalLpAmt += parseFloat(row.LP_AMT || 0);
                             totalFbaInv += parseFloat(row.FBA_Quantity || 0);
                             totalFbaL30 += parseFloat(row.l30_units || 0);
-                            
-                            const dil = parseFloat(row.FBA_Dil || 0);
-                            if (!isNaN(dil)) {
-                                totalDilPercent += dil;
-                                dilCount++;
-                            }
-                            
+
                             // Count SKUs with 0 L30 units sold
-                            const l30Units = parseFloat(row.l30_units || 0);
-                            if (l30Units === 0) {
+                            if ((parseFloat(row.l30_units || 0)) === 0) {
                                 zeroSoldSkuCount++;
                             }
                         }
                     });
 
-                    let totalWeightedPrice = 0;
                     let totalL30 = 0;
                     data.forEach(row => {
                         if (parseFloat(row.FBA_Quantity) > 0) {
-                            const price = parseFloat(row.FBA_Price) || 0;
-                            const l30 = parseFloat(row.l30_units) || 0;
-                            totalWeightedPrice += price * l30;
-                            totalL30 += l30;
+                            totalL30 += parseFloat(row.l30_units) || 0;
                         }
                     });
-                    const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
-                    $('#avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
 
                     let totalViews = 0;
                     data.forEach(row => {
@@ -3029,13 +3178,25 @@
                         }
                     });
                     const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
-                    $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
+                    const cvrStyle = (typeof fbaCvrStyle === 'function')
+                        ? fbaCvrStyle(avgCVR)
+                        : { color: '#000000', bg: 'transparent' };
+                    $('#avg-cvr-badge')
+                        .text('CVR: ' + Math.round(avgCVR) + '%')
+                        .css('background-color', cvrStyle.bg === 'transparent' ? '#ffffff' : cvrStyle.bg)
+                        .css('color', cvrStyle.color)
+                        .css('border', cvrStyle.bg === 'transparent' ? '1px solid rgba(0,0,0,.12)' : 'none');
                     $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                     
 
+                    // Global Ads% drives the per-row Ads% / PRFT% / ROI% / SPft% column formatters.
+                    // If the Amazon channel value (from channel_master_calculated_data) has been fetched,
+                    // prefer it so the per-row column matches the "Ads" badge and the all-marketplace-master page.
+                    // Otherwise fall back to the locally-computed totalSpendL30 / totalSalesAmt ratio.
                     const adsPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100).toFixed(1) : 0;
-                    $('#total-tcos-badge').text('Ads: ' + adsPercent + '%');
-                    window._fbaGlobalAdsPercent = parseFloat(adsPercent) || 0;
+                    window._fbaGlobalAdsPercent = (typeof window._fbaAmazonChannelAdsPct === 'number')
+                        ? window._fbaAmazonChannelAdsPct
+                        : (parseFloat(adsPercent) || 0);
                     if (table) {
                         const col = table.getColumn('TCOS_Percentage');
                         if (col) col.getCells().forEach(c => c.setValue(c.getValue(), true));
@@ -3045,13 +3206,19 @@
                             if (c2) c2.getCells().forEach(c => c.setValue(c.getValue(), true));
                         });
                     }
-                    $('#total-spend-l30-badge').text('Spend: $' + Math.round(totalSpendL30));
-                    const roiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
-                    $('#roi-percent-badge').text('ROI: ' + roiPercent + '%');
                     $('#total-fba-inv-badge').text('INV: ' + Math.round(totalFbaInv).toLocaleString());
                     $('#total-fba-l30-badge').text('L30: ' + Math.round(totalFbaL30).toLocaleString());
-                    const avgDilPercent = dilCount > 0 ? (totalDilPercent / dilCount) : 0;
-                    $('#avg-dil-percent-badge').text('DIL: ' + Math.round(avgDilPercent) + '%');
+                    // DIL = (Total FBA L30 sold / Total FBA INV) × 100
+                    const avgDilPercent = totalFbaInv > 0 ? (totalFbaL30 / totalFbaInv) * 100 : 0;
+                    // Color buckets: < 25% red, 25–50% green, > 50% pink
+                    let dilBg;
+                    if (avgDilPercent < 25)       dilBg = '#a00211'; // red
+                    else if (avgDilPercent <= 50) dilBg = '#28a745'; // green
+                    else                          dilBg = '#e83e8c'; // pink
+                    $('#avg-dil-percent-badge')
+                        .text('DIL: ' + Math.round(avgDilPercent) + '%')
+                        .css('background-color', dilBg)
+                        .css('color', '#ffffff');
                     $('#zero-sold-sku-count-badge').text('0 Sold: ' + zeroSoldSkuCount);
                     $('#total-pft-amt').text('$' + Math.round(totalPftAmt));
                     $('#total-pft-amt-badge').text('PFT: $' + Math.round(totalPftAmt));
@@ -3060,18 +3227,27 @@
                     const avgGpft = totalSalesAmt > 0 ? Math.round((totalPftAmt / totalSalesAmt) * 100) : 0;
                     $('#avg-gpft-badge').text('GPFT: ' + avgGpft + '%');
                     $('#avg-gpft-summary').text(avgGpft + '%');
+
+                    // GROI% — same formula as the row's GROI% column:
+                    //   row:    ((PRICE × marginAfterCommission) − LP − FBA_SHIP) / LP × 100
+                    //   total:  Σ PFT_AMT / Σ LP_AMT × 100
+                    // (PFT_AMT is gross profit per row over L30, LP_AMT is LP × L30, so the ratio
+                    //  is the L30-weighted equivalent of the per-row GROI formula.)
+                    const groiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
+                    $('#avg-groi-badge')
+                        .text('GROI: ' + groiPercent + '%')
+                        .css('background-color', groiPercent > 60 ? '#28a745' : '#a00211')
+                        .css('color', '#ffffff');
                 }
 
 
                 // INV 0 and More than 0 Filter
                 function applyFilters() {
                     const inventoryFilter = $('#inventory-filter').val();
-                    const parentFilter = $('#parent-filter').val();
                     const gpftFilter = $('#gpft-filter').val();
                     const roiFilter = $('#roi-filter').val();
                     const cvrFilter = $('#cvr-filter').val();
                     const cvrTrendFilter = $('#cvr-trend-filter').val();
-                    const statusFilter = $('#status-filter').val();
                     const invAgeFilter = $('#inv-age-filter').val();
 
                     table.clearFilter(true);
@@ -3082,11 +3258,10 @@
                         table.addFilter('FBA_Quantity', '>', 0);
                     }
 
-                    if (parentFilter === 'hide') {
-                        table.addFilter(function(data) {
-                            return data.is_parent !== true;
-                        });
-                    }
+                    // Parent rows are always hidden — only child SKUs are shown
+                    table.addFilter(function(data) {
+                        return data.is_parent !== true;
+                    });
 
                     if (gpftFilter !== 'all') {
                         table.addFilter(function(data) {
@@ -3110,57 +3285,35 @@
                         table.addFilter(function(data) {
                             if (data.is_parent) return true;
                             const roi = parseFloat(data['ROI']) || 0;
-                            if (roiFilter === 'lt40')    return roi < 40;
-                            if (roiFilter === 'gt250')   return roi > 250;
+                            if (roiFilter === 'lt40')   return roi < 40;
+                            if (roiFilter === 'gt125')  return roi > 125;
                             const [min, max] = roiFilter.split('-').map(Number);
                             return roi >= min && roi <= max;
                         });
                     }
 
-                    // CVR% buckets on CVR L30 (Amazon datasheet / AMZ_L30 ÷ AMZ_Sess30) — same as amazon-tabulator-view
+                    // CVR% buckets on CVR L30 (Amazon datasheet / AMZ_L30 ÷ AMZ_Sess30).
+                    // Buckets: 0 exactly, 0.01–4.99, 5–14.99, > 15.
                     if (cvrFilter !== 'all') {
                         table.addFilter(function(data) {
                             if (data.is_parent) return true;
                             const cvr = fbaCvrL30FromRow(data);
-                            const cvrRounded = Math.round(cvr * 100) / 100;
-                            if (cvrFilter === '0-0') return cvrRounded === 0;
-                            if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                            if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                            if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
-                            if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
-                            if (cvrFilter === '13plus') return cvrRounded > 13;
+                            if (cvrFilter === '0')      return cvr === 0;
+                            if (cvrFilter === '0-5')    return cvr > 0 && cvr < 5;
+                            if (cvrFilter === '5-15')   return cvr >= 5 && cvr < 15;
+                            if (cvrFilter === '15plus') return cvr >= 15;
                             return true;
                         });
                     }
 
                     if (cvrTrendFilter !== 'all') {
-                        const cvrTrendTol = 0.1;
+                        // Strict decimal comparison — any difference, however small, counts.
                         table.addFilter(function(data) {
                             if (data.is_parent) return true;
                             const cvrL30 = fbaCvrL30FromRow(data);
                             const cvrL60 = fbaCvrL60FromRow(data);
-                            if (cvrTrendFilter === 'l60_gt_l30') return cvrL60 > cvrL30 + cvrTrendTol;
-                            if (cvrTrendFilter === 'l30_gt_l60') return cvrL30 > cvrL60 + cvrTrendTol;
-                            if (cvrTrendFilter === 'equal') return Math.abs(cvrL60 - cvrL30) <= cvrTrendTol;
-                            return true;
-                        });
-                    }
-
-                    if (statusFilter !== 'all') {
-                        table.addFilter(function(data) {
-                            if (data.is_parent) return true;
-                            
-                            const status = data.SPRICE_STATUS || null;
-                            
-                            if (statusFilter === 'not_pushed') {
-                                return status === null || status === '' || status === 'error';
-                            } else if (statusFilter === 'pushed') {
-                                return status === 'pushed';
-                            } else if (statusFilter === 'applied') {
-                                return status === 'applied';
-                            } else if (statusFilter === 'error') {
-                                return status === 'error';
-                            }
+                            if (cvrTrendFilter === 'l60_gt_l30') return cvrL60 > cvrL30;
+                            if (cvrTrendFilter === 'l30_gt_l60') return cvrL30 > cvrL60;
                             return true;
                         });
                     }
@@ -3169,24 +3322,19 @@
                         table.addFilter(function(data) {
                             if (data.is_parent) return true;
 
-                            // Health-status based options
-                            if (['excess','healthy','low_stock','out_of_stock'].includes(invAgeFilter)) {
-                                const health = (data.Inv_age || '').toLowerCase().replace(/\s+/g,'_');
-                                return health === invAgeFilter;
-                            }
-
                             // Bucket-range based options – find oldest bucket with units
                             const ageData = data.age_data;
                             if (!ageData) return false;
 
                             const buckets = [
-                                { key: '456plus', val: ageData.inv_age_456_plus_days   || 0 },
-                                { key: '366-455', val: ageData.inv_age_366_to_455_days || 0 },
-                                { key: '271-365', val: ageData.inv_age_271_to_365_days || 0 },
-                                { key: '181-270', val: ageData.inv_age_181_to_270_days || 0 },
+                                // 181–270 / 271–365 / 366–455 / 456+ ranges merged into a single >181 filter bucket
+                                { key: '181plus', val: (ageData.inv_age_456_plus_days   || 0)
+                                                     + (ageData.inv_age_366_to_455_days || 0)
+                                                     + (ageData.inv_age_271_to_365_days || 0)
+                                                     + (ageData.inv_age_181_to_270_days || 0) },
                                 { key: '91-180',  val: ageData.inv_age_91_to_180_days  || 0 },
-                                { key: '61-90',   val: ageData.inv_age_61_to_90_days   || 0 },
-                                { key: '31-60',   val: ageData.inv_age_31_to_60_days   || 0 },
+                                // 31–60 and 61–90 day ranges merged into a single 31–90 filter bucket
+                                { key: '31-90',   val: (ageData.inv_age_61_to_90_days || 0) + (ageData.inv_age_31_to_60_days || 0) },
                                 { key: '0-30',    val: ageData.inv_age_0_to_30_days    || 0 },
                             ];
 
@@ -3235,11 +3383,6 @@
                     updateSummary();
                 });
 
-                $('#parent-filter').on('change', function() {
-                    applyFilters();
-                    updateSummary();
-                });
-
                 $('#gpft-filter').on('change', function() {
                     applyFilters();
                     updateSummary();
@@ -3256,11 +3399,6 @@
                 });
 
                 $('#cvr-trend-filter').on('change', function() {
-                    applyFilters();
-                    updateSummary();
-                });
-
-                $('#status-filter').on('change', function() {
                     applyFilters();
                     updateSummary();
                 });
@@ -3312,9 +3450,36 @@
                 });
 
                 // Build Column Visibility Dropdown
+                // Columns that should never appear in the column-visibility dropdown
+                const HIDDEN_FROM_DROPDOWN = ["CVR_L60", "CVR_L45", "CVR_L30", "Fulfillment_Fee", "FBA_Fee_Manual", "Send_Cost", "LP", "TCOS_Percentage"];
+
                 function buildColumnDropdown() {
                     const menu = document.getElementById("column-dropdown-menu");
                     menu.innerHTML = '';
+
+                    function appendItem(col, isVisible) {
+                        const field = col.getField();
+                        if (HIDDEN_FROM_DROPDOWN.includes(field)) return;
+                        const title = col.getDefinition().title || field;
+
+                        const li = document.createElement('li');
+                        li.classList.add('px-3', 'py-1');
+
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.classList.add('form-check-input', 'me-2');
+                        checkbox.checked = isVisible;
+                        checkbox.dataset.field = field;
+
+                        const label = document.createElement('label');
+                        label.classList.add('form-check-label');
+                        label.style.cursor = 'pointer';
+                        label.textContent = title;
+
+                        label.prepend(checkbox);
+                        li.appendChild(label);
+                        menu.appendChild(li);
+                    }
 
                     // Fetch saved visibility from server
                     fetch('/fba-column-visibility', {
@@ -3327,59 +3492,19 @@
                         .then(response => response.json())
                         .then(savedVisibility => {
                             const columns = table.getColumns().filter(col => col.getField());
-
                             columns.forEach(col => {
                                 const field = col.getField();
-                                const title = col.getDefinition().title || field;
-                                const isVisible = savedVisibility[field] !== undefined ? savedVisibility[
-                                    field] : col.isVisible();
-
-                                const li = document.createElement('li');
-                                li.classList.add('px-3', 'py-1');
-
-                                const checkbox = document.createElement('input');
-                                checkbox.type = 'checkbox';
-                                checkbox.classList.add('form-check-input', 'me-2');
-                                checkbox.checked = isVisible;
-                                checkbox.dataset.field = field;
-
-                                const label = document.createElement('label');
-                                label.classList.add('form-check-label');
-                                label.style.cursor = 'pointer';
-                                label.textContent = title;
-
-                                label.prepend(checkbox);
-                                li.appendChild(label);
-                                menu.appendChild(li);
+                                const isVisible = savedVisibility[field] !== undefined
+                                    ? savedVisibility[field]
+                                    : col.isVisible();
+                                appendItem(col, isVisible);
                             });
                         })
                         .catch(error => {
                             console.error('Error fetching column visibility:', error);
                             // Fallback to default behavior
                             const columns = table.getColumns().filter(col => col.getField());
-                            columns.forEach(col => {
-                                const field = col.getField();
-                                const title = col.getDefinition().title || field;
-                                const isVisible = col.isVisible();
-
-                                const li = document.createElement('li');
-                                li.classList.add('px-3', 'py-1');
-
-                                const checkbox = document.createElement('input');
-                                checkbox.type = 'checkbox';
-                                checkbox.classList.add('form-check-input', 'me-2');
-                                checkbox.checked = isVisible;
-                                checkbox.dataset.field = field;
-
-                                const label = document.createElement('label');
-                                label.classList.add('form-check-label');
-                                label.style.cursor = 'pointer';
-                                label.textContent = title;
-
-                                label.prepend(checkbox);
-                                li.appendChild(label);
-                                menu.appendChild(li);
-                            });
+                            columns.forEach(col => appendItem(col, col.isVisible()));
                         });
                 }
 
@@ -3414,8 +3539,10 @@
                 }
 
                 function applyColumnVisibilityFromServer() {
-                    // Columns that should always be hidden by default (Pft% related columns and CTN columns)
-                    const alwaysHiddenColumns = ["ROI%", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
+                    // Columns that should always be hidden by default (Pft% related columns and CTN columns).
+                    // HIDDEN_FROM_DROPDOWN entries are also force-hidden so a stale saved preference can't bring them back.
+                    const alwaysHiddenColumns = ["ROI%", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"]
+                        .concat(HIDDEN_FROM_DROPDOWN);
                     
                     fetch('/fba-column-visibility', {
                             method: 'GET',
@@ -3454,12 +3581,65 @@
                     buildColumnDropdown();
                     applyFilters(); // Apply default filters on load
                     updateSummary();
-                    
+                    loadAmazonChannelAdsBadge();
+
                     // Set up periodic background retry check (every 30 seconds)
                     setInterval(() => {
                         backgroundRetryFailedSkus();
                     }, 30000);
                 });
+
+                // Amazon channel Ads% — pulls the value straight from channel_master_calculated_data
+                // so it's byte-identical with the Ads% column on the all-marketplace-master page.
+                // Once it returns, it also takes over as the source of truth for window._fbaGlobalAdsPercent
+                // so per-row columns (Ads%, PRFT%, ROI%, SPft%) display the same value as the badge.
+                function loadAmazonChannelAdsBadge() {
+                    $.ajax({
+                        url: '/fba-amazon-channel-ads',
+                        method: 'GET',
+                        timeout: 10000,
+                        success: function(resp) {
+                            if (!resp || resp.success === false || resp.ads_percentage == null) {
+                                $('#amazon-channel-ads-value').text('N/A');
+                                $('#amazon-channel-ads-dot').css('color', '#adb5bd');
+                                return;
+                            }
+                            const pct = parseFloat(resp.ads_percentage) || 0;
+                            // Same thresholds as all-marketplace-master Ads% column
+                            let color;
+                            if (pct < 5)        color = '#e83e8c'; // pink
+                            else if (pct <= 10) color = '#28a745'; // green
+                            else                color = '#a00211'; // red
+                            $('#amazon-channel-ads-value')
+                                .text(pct.toFixed(1) + '%')
+                                .css('color', color);
+                            $('#amazon-channel-ads-dot').css('color', color);
+                            if (resp.calculated_at) {
+                                $('#amazon-channel-ads-badge').attr(
+                                    'title',
+                                    `Amazon channel Ads% from channel_master_calculated_data (calculated ${resp.calculated_at}). Same source as the all-marketplace-master page.`
+                                );
+                            }
+
+                            // Use this value as the source of truth for the per-row Ads%/PRFT%/ROI%/SPft% columns.
+                            window._fbaAmazonChannelAdsPct = pct;
+                            window._fbaGlobalAdsPercent = pct;
+                            if (table) {
+                                ['TCOS_Percentage', 'TPFT', 'ROI', 'SPFT'].forEach(function(f) {
+                                    const c = table.getColumn(f);
+                                    if (c) c.getCells().forEach(cell => cell.setValue(cell.getValue(), true));
+                                });
+                            }
+                        },
+                        error: function(xhr) {
+                            $('#amazon-channel-ads-value').text('N/A');
+                            $('#amazon-channel-ads-dot').css('color', '#adb5bd');
+                            if (xhr && xhr.status !== 404) {
+                                console.warn('Failed to fetch Amazon channel Ads%:', xhr.status);
+                            }
+                        }
+                    });
+                }
 
                 table.on('dataLoaded', function() {
                     updateSummary();
@@ -3492,44 +3672,6 @@
                     }
                 });
 
-                // Show All Columns button
-                document.getElementById("show-all-columns-btn").addEventListener("click", function() {
-                    // Columns that should always be hidden (Pft% related columns and CTN columns)
-                    const alwaysHiddenColumns = ["ROI%", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
-                    
-                    table.getColumns().forEach(col => {
-                        const field = col.getField();
-                        // Don't show Pft% and CTN related columns even when "Show All" is clicked
-                        if (field && !alwaysHiddenColumns.includes(field)) {
-                            col.show();
-                        }
-                    });
-                    buildColumnDropdown();
-                    saveColumnVisibilityToServer();
-                });
-
-                // Send Cost Toggle Event Listener
-                $(document).on('click', '.send-cost-toggle-btn', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-
-                    console.log('Send Cost toggle clicked, table:', table);
-                    let colsToToggle = ["Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
-
-                    colsToToggle.forEach(colName => {
-                        try {
-                            let col = table.getColumn(colName);
-                            if (col) {
-                                console.log('Toggling CTN column:', colName);
-                                col.toggle();
-                            } else {
-                                console.warn('CTN column not found:', colName);
-                            }
-                        } catch (err) {
-                            console.error('Error toggling CTN column', colName, err);
-                        }
-                    });
-                });
             });
 
             // Copy SKU to clipboard (generic fba-copy-btn)
@@ -3550,26 +3692,222 @@
                 });
             });
 
-            // Copy SKU to clipboard
-            $(document).on('click', '.copy-sku-btn', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const sku = $(this).data('sku');
-                
-                // Copy to clipboard
-                navigator.clipboard.writeText(sku).then(function() {
-                    showToast(`SKU "${sku}" copied to clipboard!`, 'success');
-                }).catch(function(err) {
-                    // Fallback for older browsers
-                    const textarea = document.createElement('textarea');
-                    textarea.value = sku;
-                    document.body.appendChild(textarea);
-                    textarea.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(textarea);
-                    showToast(`SKU "${sku}" copied to clipboard!`, 'success');
+            // ── FBA Fee breakdown dot — opens fee modal for that SKU ──
+            (function() {
+                function fmtMoney(v, currency) {
+                    const n = parseFloat(v);
+                    if (isNaN(n)) return '<span class="text-muted">—</span>';
+                    const sym = currency === 'USD' || !currency ? '$' : '';
+                    return sym + n.toFixed(2);
+                }
+                function fmtPlain(v) {
+                    const n = parseFloat(v);
+                    if (isNaN(n)) return '<span class="text-muted">—</span>';
+                    return n.toString();
+                }
+
+                function renderFeeBreakdown(d) {
+                    const cur = d.currency || 'USD';
+                    const dim = d.dimensions || {};
+                    const wt = d.weight || {};
+                    const fees = d.fees || {};
+                    const future = d.future_fees || {};
+
+                    const dimStr = (dim.longest_side != null || dim.median_side != null || dim.shortest_side != null)
+                        ? [dim.longest_side, dim.median_side, dim.shortest_side]
+                            .map(v => v == null ? '—' : parseFloat(v).toFixed(2)).join(' × ')
+                            + (dim.unit ? ' ' + dim.unit : '')
+                        : '<span class="text-muted">—</span>';
+                    const wtStr = (wt.value != null)
+                        ? parseFloat(wt.value).toFixed(3) + (wt.unit ? ' ' + wt.unit : '')
+                        : '<span class="text-muted">—</span>';
+
+                    const row = (label, value) =>
+                        `<tr><th class="fw-normal text-muted ps-0" style="width:55%;">${label}</th>` +
+                        `<td class="text-end pe-0 fw-semibold">${value}</td></tr>`;
+
+                    const totalRow = (label, value) =>
+                        `<tr class="border-top"><th class="ps-0 pt-2">${label}</th>` +
+                        `<td class="text-end pe-0 pt-2 fw-bold" style="color:#0d6efd;">${value}</td></tr>`;
+
+                    let html = '';
+
+                    // Header — product info
+                    html += '<div class="mb-3 p-2 rounded" style="background:#f8f9fa;">';
+                    if (d.product_name) {
+                        html += `<div class="fw-semibold" style="font-size:13px;">${$('<div>').text(d.product_name).html()}</div>`;
+                    }
+                    const meta = [];
+                    if (d.asin)              meta.push('ASIN: <span class="fw-semibold">' + d.asin + '</span>');
+                    if (d.fnsku)             meta.push('FNSKU: <span class="fw-semibold">' + d.fnsku + '</span>');
+                    if (d.product_size_tier) meta.push('Size Tier: <span class="fw-semibold">' + d.product_size_tier + '</span>');
+                    if (meta.length) {
+                        html += `<div class="text-muted mt-1" style="font-size:11px;">${meta.join('  &nbsp;|&nbsp;  ')}</div>`;
+                    }
+                    html += '</div>';
+
+                    // Two-column layout: dimensions on the left, fees on the right
+                    html += '<div class="row g-3">';
+
+                    html += '<div class="col-md-5">';
+                    html += '<h6 class="text-uppercase text-muted" style="font-size:11px;letter-spacing:0.5px;">Dimensions & Weight</h6>';
+                    html += '<table class="table table-sm mb-0" style="font-size:13px;">';
+                    html += row('Longest × Median × Shortest', dimStr);
+                    html += row('Length + Girth', dim.length_and_girth != null ? parseFloat(dim.length_and_girth).toFixed(2) + (dim.unit ? ' ' + dim.unit : '') : '<span class="text-muted">—</span>');
+                    html += row('Item Package Weight', wtStr);
+                    html += '</table>';
+                    html += '</div>';
+
+                    html += '<div class="col-md-7">';
+                    html += '<h6 class="text-uppercase text-muted" style="font-size:11px;letter-spacing:0.5px;">Current Fees (per unit)</h6>';
+                    html += '<table class="table table-sm mb-0" style="font-size:13px;">';
+                    html += row('Referral fee',          fmtMoney(fees.referral, cur));
+                    html += row('Variable closing fee',  fmtMoney(fees.variable_closing, cur));
+                    html += row('Fixed closing fee',     fmtMoney(fees.fixed_closing, cur));
+                    html += row('Order handling',        fmtMoney(fees.order_handling, cur));
+                    html += row('Pick & pack',           fmtMoney(fees.pick_pack, cur));
+                    html += row('Weight handling',       fmtMoney(fees.weight_handling, cur));
+                    html += row('Fulfillment fee',       fmtMoney(fees.fulfillment, cur));
+                    html += totalRow('Estimated total',  fmtMoney(fees.total, cur));
+                    html += '</table>';
+                    html += '</div>';
+
+                    html += '</div>'; // /row
+
+                    // Future fees only if any are populated
+                    const hasFuture = ['order_handling','pick_pack','weight_handling','fulfillment','total']
+                        .some(k => future[k] != null && parseFloat(future[k]) > 0);
+                    if (hasFuture) {
+                        html += '<hr class="my-3"/>';
+                        html += '<h6 class="text-uppercase text-muted" style="font-size:11px;letter-spacing:0.5px;">Future Fees (per unit)</h6>';
+                        html += '<table class="table table-sm mb-0" style="font-size:13px;">';
+                        html += row('Order handling',  fmtMoney(future.order_handling, cur));
+                        html += row('Pick & pack',     fmtMoney(future.pick_pack, cur));
+                        html += row('Weight handling', fmtMoney(future.weight_handling, cur));
+                        html += row('Fulfillment fee', fmtMoney(future.fulfillment, cur));
+                        html += totalRow('Estimated future total', fmtMoney(future.total, cur));
+                        html += '</table>';
+                    }
+
+                    return html;
+                }
+
+                $(document).on('click', '.fba-fee-info-dot', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const sku = $(this).data('sku') || $(this).attr('data-sku') || '';
+                    if (!sku) return;
+
+                    const $modalEl = $('#fbaFeeBreakdownModal');
+                    $('#fba-fee-modal-sku-badge').text(sku);
+                    $('#fba-fee-modal-report-date').text('—');
+                    $('#fba-fee-modal-body').html(
+                        '<div class="text-center py-4" id="fba-fee-modal-loading">' +
+                        '<div class="spinner-border text-primary"></div>' +
+                        '<p class="mt-2 text-muted mb-0">Loading fee breakdown…</p>' +
+                        '</div>'
+                    );
+
+                    const modal = bootstrap.Modal.getOrCreateInstance($modalEl[0]);
+                    modal.show();
+
+                    $.ajax({
+                        url: '/fba-fee-breakdown',
+                        method: 'GET',
+                        data: { sku: sku },
+                        timeout: 15000,
+                        success: function(resp) {
+                            if (!resp || resp.success === false) {
+                                $('#fba-fee-modal-body').html(
+                                    '<div class="alert alert-warning mb-0">' +
+                                    (resp && resp.error ? resp.error : 'No fee breakdown found for this SKU.') +
+                                    '</div>'
+                                );
+                                return;
+                            }
+                            $('#fba-fee-modal-body').html(renderFeeBreakdown(resp));
+                            $('#fba-fee-modal-report-date').text(resp.report_generated_at || '—');
+                        },
+                        error: function(xhr) {
+                            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error)
+                                ? xhr.responseJSON.error
+                                : (xhr && xhr.status === 404
+                                    ? 'No fee breakdown found for this SKU.'
+                                    : 'Failed to load fee breakdown.');
+                            $('#fba-fee-modal-body').html(
+                                '<div class="alert alert-warning mb-0">' + msg + '</div>'
+                            );
+                        }
+                    });
                 });
-            });
+            })();
+
+            // ── FBA Ship breakdown dot — opens modal showing FBA Fee / FBA Fee M / Send Cost / FBA Ship total ──
+            (function() {
+                function fmtNum(v) {
+                    const n = parseFloat(v);
+                    if (isNaN(n)) return '<span class="text-muted">—</span>';
+                    return n.toFixed(2);
+                }
+                function findRowDataBySku(sku) {
+                    if (!table || !sku) return null;
+                    const rows = table.getRows();
+                    for (let i = 0; i < rows.length; i++) {
+                        const d = rows[i].getData();
+                        if (!d.is_parent && (d.FBA_SKU === sku || d.SKU === sku)) return d;
+                    }
+                    return null;
+                }
+                function renderShipBreakdown(d) {
+                    const fbaFee     = parseFloat(d.Fulfillment_Fee);
+                    const fbaFeeM    = parseFloat(d.FBA_Fee_Manual);
+                    const sendCost   = parseFloat(d.Send_Cost);
+                    const fbaShipTot = parseFloat(d.FBA_Ship_Calculation);
+                    // FBA Fee M is only meaningful when FBA Fee is 0 (per the column's editable rule)
+                    const usingManual = !isNaN(fbaFee) && fbaFee === 0 && !isNaN(fbaFeeM) && fbaFeeM > 0;
+
+                    const row = (label, value, hint) =>
+                        `<tr>` +
+                        `<th class="fw-normal text-muted ps-0" style="width:55%;">${label}` +
+                            (hint ? `<div class="text-muted" style="font-size:10px;">${hint}</div>` : '') +
+                        `</th>` +
+                        `<td class="text-end pe-0 fw-semibold">${value}</td></tr>`;
+
+                    let html = '<table class="table table-sm mb-0" style="font-size:13px;">';
+                    html += row('FBA Fee', fmtNum(fbaFee), 'Fulfillment_Fee — Amazon-reported FBA fee');
+                    html += row(
+                        'FBA Fee M' + (usingManual ? ' <span class="badge bg-warning text-dark ms-1" style="font-size:9px;">in use</span>' : ''),
+                        fmtNum(fbaFeeM),
+                        'Manual override — applied when FBA Fee is 0'
+                    );
+                    html += row('Send Cost', fmtNum(sendCost), 'Inbound send cost per unit');
+                    html += `<tr class="border-top"><th class="ps-0 pt-2">FBA Ship total</th>` +
+                            `<td class="text-end pe-0 pt-2 fw-bold" style="color:#0d6efd;">${fmtNum(fbaShipTot)}</td></tr>`;
+                    html += '</table>';
+                    return html;
+                }
+
+                $(document).on('click', '.fba-ship-info-dot', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const sku = $(this).data('sku') || $(this).attr('data-sku') || '';
+                    if (!sku) return;
+
+                    const $modalEl = $('#fbaShipBreakdownModal');
+                    $('#fba-ship-modal-sku-badge').text(sku);
+
+                    const rowData = findRowDataBySku(sku);
+                    if (!rowData) {
+                        $('#fba-ship-modal-body').html(
+                            '<div class="alert alert-warning mb-0">Row not found for this SKU.</div>'
+                        );
+                    } else {
+                        $('#fba-ship-modal-body').html(renderShipBreakdown(rowData));
+                    }
+
+                    bootstrap.Modal.getOrCreateInstance($modalEl[0]).show();
+                });
+            })();
 
             // LMP Modal Event Listener for lmp-link (existing functionality)
             $(document).on('click', '.lmp-link', function(e) {

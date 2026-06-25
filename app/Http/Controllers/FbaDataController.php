@@ -8,6 +8,8 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\FbaTable;
 use App\Models\FbaPrice;
+use App\Models\FbaFees;
+use App\Models\ChannelMasterCalculatedData;
 use App\Models\AmazonDatasheet;
 use App\Models\FbaReportsMaster;
 use App\Models\FbaMonthlySale;
@@ -2034,6 +2036,108 @@ class FbaDataController extends Controller
       cache([$cacheKey => $visibility], 60 * 24 * 30); // Cache for 30 days
 
       return response()->json(['success' => true]);
+   }
+
+   /**
+    * Amazon channel Ads% pulled directly from channel_master_calculated_data,
+    * matching what /channels-master-data feeds the all-marketplace-master page.
+    * Powers the FBA view's "Ads % (Amazon channel)" summary badge.
+    */
+   public function fbaAmazonChannelAds(Request $request)
+   {
+      $row = ChannelMasterCalculatedData::query()
+         ->whereRaw("LOWER(REPLACE(channel, ' ', '')) = 'amazon'")
+         ->orderByDesc('calculated_at')
+         ->orderByDesc('id')
+         ->first();
+
+      if (!$row) {
+         return response()->json([
+            'success' => false,
+            'error' => 'Amazon channel row not found in channel_master_calculated_data',
+         ], 404);
+      }
+
+      return response()->json([
+         'success' => true,
+         'channel' => $row->channel,
+         'ads_percentage' => $row->ads_percentage !== null ? (float) $row->ads_percentage : null,
+         'tacos_percentage' => $row->tacos_percentage !== null ? (float) $row->tacos_percentage : null,
+         'total_ad_spend' => $row->total_ad_spend !== null ? (float) $row->total_ad_spend : null,
+         'l30_sales' => $row->l30_sales !== null ? (float) $row->l30_sales : null,
+         'calculated_at' => $row->calculated_at ? $row->calculated_at->format('Y-m-d H:i') : null,
+      ]);
+   }
+
+   /**
+    * Return the latest fba_fees breakdown for a single FBA SKU.
+    * Powers the "info dot" beside the FBA Fee column on the FBA view page.
+    */
+   public function fbaFeeBreakdown(Request $request)
+   {
+      $rawSku = trim((string) $request->input('sku', ''));
+      if ($rawSku === '') {
+         return response()->json(['success' => false, 'error' => 'SKU is required'], 400);
+      }
+
+      // Try the SKU as-given first, then a case-normalized fallback so it works for either FBA seller_sku or base SKU.
+      $fee = FbaFees::where('seller_sku', $rawSku)
+         ->orderByDesc('report_generated_at')
+         ->orderByDesc('id')
+         ->first();
+
+      if (!$fee) {
+         $fee = FbaFees::whereRaw('UPPER(seller_sku) = ?', [strtoupper($rawSku)])
+            ->orderByDesc('report_generated_at')
+            ->orderByDesc('id')
+            ->first();
+      }
+
+      if (!$fee) {
+         return response()->json([
+            'success' => false,
+            'error' => 'No fee breakdown found for ' . $rawSku,
+         ], 404);
+      }
+
+      return response()->json([
+         'success' => true,
+         'sku' => $fee->seller_sku,
+         'asin' => $fee->asin,
+         'fnsku' => $fee->fnsku,
+         'product_name' => $fee->product_name,
+         'product_size_tier' => $fee->product_size_tier,
+         'currency' => $fee->currency ?? 'USD',
+         'dimensions' => [
+            'longest_side' => $fee->longest_side,
+            'median_side' => $fee->median_side,
+            'shortest_side' => $fee->shortest_side,
+            'length_and_girth' => $fee->length_and_girth,
+            'unit' => $fee->unit_of_dimension,
+         ],
+         'weight' => [
+            'value' => $fee->item_package_weight,
+            'unit' => $fee->unit_of_weight,
+         ],
+         'fees' => [
+            'referral' => $fee->estimated_referral_fee_per_unit,
+            'variable_closing' => $fee->estimated_variable_closing_fee,
+            'fixed_closing' => $fee->estimated_fixed_closing_fee,
+            'order_handling' => $fee->estimated_order_handling_fee_per_order,
+            'pick_pack' => $fee->estimated_pick_pack_fee_per_unit,
+            'weight_handling' => $fee->estimated_weight_handling_fee_per_unit,
+            'fulfillment' => $fee->expected_fulfillment_fee_per_unit,
+            'total' => $fee->estimated_fee_total,
+         ],
+         'future_fees' => [
+            'order_handling' => $fee->estimated_future_order_handling_fee_per_order,
+            'pick_pack' => $fee->estimated_future_pick_pack_fee_per_unit,
+            'weight_handling' => $fee->estimated_future_weight_handling_fee_per_unit,
+            'fulfillment' => $fee->expected_future_fulfillment_fee_per_unit,
+            'total' => $fee->estimated_future_fee,
+         ],
+         'report_generated_at' => $fee->report_generated_at ? $fee->report_generated_at->format('Y-m-d H:i') : null,
+      ]);
    }
 
    public function updateFbaListingStatus(Request $request)
