@@ -13,8 +13,26 @@ class TopDawgApiService
 
     public function __construct()
     {
-        $this->baseUrl = rtrim(config('services.topdawg.base_url', 'https://topdawg.com/supplier/api'), '/');
-        $this->token = config('services.topdawg.token', '');
+        // config(key, default) only returns the default when the key is *missing*.
+        // env('TOPDAWG_API_TOKEN') returns null when the var is absent, so the value
+        // we get back here is null — not ''. Coerce explicitly so the strict
+        // `string` property assignment below never blows up with a TypeError.
+        $this->baseUrl = rtrim((string) (config('services.topdawg.base_url') ?? 'https://topdawg.com/supplier/api'), '/');
+        $this->token = (string) (config('services.topdawg.token') ?? '');
+    }
+
+    /**
+     * Throws a clear, actionable error when the API token is missing, instead of
+     * letting the request fail later with a confusing 401/500 from TopDawg.
+     */
+    protected function assertConfigured(): void
+    {
+        if ($this->token === '') {
+            throw new \RuntimeException(
+                'TopDawg API token is not configured. Add TOPDAWG_API_TOKEN=<your-token> to .env '
+                . '(and optionally TOPDAWG_API_BASE_URL), then run `php artisan config:clear`.'
+            );
+        }
     }
 
     protected function headers(): array
@@ -36,6 +54,8 @@ class TopDawgApiService
      */
     public function fetchProducts(?string $updatedSince = null, ?callable $onPage = null): array
     {
+        $this->assertConfigured();
+
         $all = [];
         $page = 1;
         $perPage = 1000;
@@ -95,6 +115,8 @@ class TopDawgApiService
      */
     public function fetchOrders(?string $updatedSince = null): array
     {
+        $this->assertConfigured();
+
         $all = [];
         $page = 1;
         $perPage = 100;

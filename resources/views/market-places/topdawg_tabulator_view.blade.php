@@ -124,11 +124,27 @@
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary ({{ $topdawgPercentage ?? 95 }}% Margin)</h6>
                     <div class="d-flex flex-wrap gap-2">
+                        <span class="badge fs-6 p-2" id="total-sales-badge"
+                              style="background:#198754;color:#fff;font-weight:bold;"
+                              title="Σ (TD L30 × TD Price) across visible rows — last-30-day TopDawg sales revenue">Sales: $0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-td-l30-badge" style="color:#000;font-weight:bold;" title="Sum of TD L30 on filtered rows">TD L30: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-badge" style="color:#fff;font-weight:bold;cursor:pointer;" title="SKUs with TD L30 = 0">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-badge" style="background:#28a745;color:#fff;font-weight:bold;cursor:pointer;" title="SKUs with TD L30 &gt; 0">&gt; 0 Sold: 0</span>
+                        {{-- GPFT / GROI — weighted profitability for filtered rows.
+                             Same shape as /purchasing-power-pricing GPFT badge:
+                               Profit (per row) = (TD Price × {{ $topdawgPercentage ?? 95 }}% − LP − Ship) × TD L30
+                               Sales L30        = TD Price × TD L30
+                               COGS             = LP × TD L30
+                             Ship comes from CP Master (ProductMaster.Values.ship → Ship_productmaster).
+                             GPFT% = (Σ Profit ÷ Σ Sales L30) × 100   (weighted gross margin)
+                             GROI% = (Σ Profit ÷ Σ COGS) × 100        (weighted ROI) --}}
+                        <span class="badge fs-6 p-2" id="gpft-pct-badge"
+                              style="background:#6f42c1;color:#fff;font-weight:bold;"
+                              title="Weighted Gross Profit %: (Σ Profit ÷ Σ Sales L30) × 100. Profit includes Ship from CP Master.">GPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="groi-pct-badge"
+                              style="background:#0d6efd;color:#fff;font-weight:bold;"
+                              title="Weighted Gross ROI %: (Σ Profit ÷ Σ COGS) × 100. COGS = LP × TD L30; Profit includes Ship from CP Master.">GROI: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color:#fff;font-weight:bold;cursor:pointer;" title="REQ + INV&gt;0 + TD Price=0">Missing L: 0</span>
-                        <span class="badge fs-6 p-2" id="map-badge" style="background:#198754;color:#fff;font-weight:bold;cursor:pointer;" title="|INV − TD Stock| ≤ 3">Map: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="nmap-badge" style="color:#fff;font-weight:bold;cursor:pointer;" title="|INV − TD Stock| &gt; 3">N Map: 0</span>
                     </div>
                 </div>
@@ -201,7 +217,7 @@
     let table = null;
     // zeroSoldFilter / moreSoldFilter removed — Sold filter is now owned by the
     // #sold-filter dropdown (driven by badge clicks and the ?badge=zero_sold|more_sold URL).
-    let missingFilter = false, mapFilter = false, nmapFilter = false;
+    let missingFilter = false, nmapFilter = false;
 
     // Pricing-mode state
     let tdDecreaseModeActive = false;
@@ -386,10 +402,9 @@
         const p = new URLSearchParams(window.location.search).get('badge');
         // Reset every badge-style filter (including the dropdown-backed Sold filter)
         // before honoring the URL deep-link, so only one filter is active afterwards.
-        missingFilter = mapFilter = nmapFilter = false;
+        missingFilter = nmapFilter = false;
         $('#sold-filter').val('all');
         if (p === 'missing') missingFilter = true;
-        else if (p === 'map') mapFilter = true;
         else if (p === 'nmap') nmapFilter = true;
         else if (p === 'zero_sold') $('#sold-filter').val('zero');
         else if (p === 'more_sold') $('#sold-filter').val('sold');
@@ -397,7 +412,6 @@
 
     function setActiveBadges() {
         $('#missing-badge').toggleClass('active-filter', missingFilter);
-        $('#map-badge').toggleClass('active-filter', mapFilter);
         $('#nmap-badge').toggleClass('active-filter', nmapFilter);
         // Sold-badge active state is now derived from the #sold-filter dropdown value,
         // which is the single source of truth for the Sold filter.
@@ -418,7 +432,12 @@
     function updateSummary() {
         const data = getSummaryRows();
         let totalTdL30 = 0;
-        let zeroSold = 0, moreSold = 0, missing = 0, mapC = 0, nmapC = 0;
+        let zeroSold = 0, moreSold = 0, missing = 0, nmapC = 0;
+        // Weighted GPFT / GROI accumulators — same shape as /purchasing-power-pricing
+        // (gpft-pct-badge / roi-percent-badge), but Profit *includes* Ship from CP
+        // Master (ProductMaster.Values.ship → Ship_productmaster). Single pass over
+        // visible rows so the badges always reflect the active filters.
+        let totalProfit = 0, totalSalesL30 = 0, totalCogs = 0;
 
         data.forEach(row => {
             const tdL30 = parseInt(row['TD L30'], 10) || 0;
@@ -431,16 +450,27 @@
             if (isMissing && nrReq === 'REQ' && inv > 0) missing++;
             const mapVal = row.MAP || '';
             if (nrReq === 'REQ' && inv > 0 && !isMissing) {
-                if (mapVal === 'Map') mapC++;
-                else if (mapVal.includes('N Map|')) nmapC++;
+                if (mapVal.includes('N Map|')) nmapC++;
             }
+
+            const price = parseFloat(row['TD Price'])           || 0;
+            const lp    = parseFloat(row.LP_productmaster)      || 0;
+            const ship  = parseFloat(row.Ship_productmaster)    || 0;
+            totalSalesL30 += price * tdL30;
+            totalCogs     += lp    * tdL30;
+            totalProfit   += (price * TD_PERCENTAGE - lp - ship) * tdL30;
         });
 
+        const gpftPct = totalSalesL30 > 0 ? (totalProfit / totalSalesL30) * 100 : 0;
+        const groiPct = totalCogs     > 0 ? (totalProfit / totalCogs)     * 100 : 0;
+
         $('#total-td-l30-badge').text('TD L30: ' + totalTdL30.toLocaleString());
+        $('#total-sales-badge').text('Sales: $' + Math.round(totalSalesL30).toLocaleString());
         $('#zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
         $('#more-sold-badge').text('> 0 Sold: ' + moreSold.toLocaleString());
+        $('#gpft-pct-badge').text('GPFT: ' + Math.round(gpftPct) + '%');
+        $('#groi-pct-badge').text('GROI: ' + Math.round(groiPct) + '%');
         $('#missing-badge').text('Missing L: ' + missing.toLocaleString());
-        $('#map-badge').text('Map: ' + mapC.toLocaleString());
         $('#nmap-badge').text('N Map: ' + nmapC.toLocaleString());
     }
 
@@ -480,7 +510,6 @@
             table.addFilter(data => (parseInt(data['TD L30'], 10) || 0) > 0);
         }
         if (missingFilter) table.addFilter(data => data.Missing === 'M' && data.nr_req === 'REQ' && (parseFloat(data.INV) || 0) > 0);
-        if (mapFilter) table.addFilter(data => data.MAP === 'Map' && data.nr_req === 'REQ' && (parseFloat(data.INV) || 0) > 0 && data.Missing !== 'M');
         if (nmapFilter) table.addFilter(data => (data.MAP || '').includes('N Map|') && data.nr_req === 'REQ' && (parseFloat(data.INV) || 0) > 0 && data.Missing !== 'M');
 
         setActiveBadges();
@@ -609,6 +638,23 @@
                         }
                         return `$${v.toFixed(2)}`;
                     }},
+                {
+                    title: 'Sales', field: 'Sales', hozAlign: 'center', width: 80,
+                    sorter: function(a, b, aRow, bRow) {
+                        const av = (parseFloat(aRow.getData()['TD L30']) || 0) * (parseFloat(aRow.getData()['TD Price']) || 0);
+                        const bv = (parseFloat(bRow.getData()['TD L30']) || 0) * (parseFloat(bRow.getData()['TD Price']) || 0);
+                        return av - bv;
+                    },
+                    tooltip: 'TD L30 × TD Price (last-30-day TopDawg sales)',
+                    formatter: c => {
+                        const d = c.getRow().getData();
+                        const l30 = parseFloat(d['TD L30']) || 0;
+                        const price = parseFloat(d['TD Price']) || 0;
+                        const sales = l30 * price;
+                        if (sales <= 0) return '<span class="text-muted">-</span>';
+                        return `<strong style="color:#198754;">$${sales.toFixed(2)}</strong>`;
+                    }
+                },
                 { title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', width: 80, sorter: 'number',
                     formatter: c => {
                         const v = c.getValue();
@@ -707,9 +753,8 @@
             setActiveBadges();
             applyFilters();
         });
-        $('#missing-badge').on('click', function() { missingFilter = !missingFilter; mapFilter = nmapFilter = false; applyFilters(); });
-        $('#map-badge').on('click', function() { mapFilter = !mapFilter; missingFilter = nmapFilter = false; applyFilters(); });
-        $('#nmap-badge').on('click', function() { nmapFilter = !nmapFilter; missingFilter = mapFilter = false; applyFilters(); });
+        $('#missing-badge').on('click', function() { missingFilter = !missingFilter; nmapFilter = false; applyFilters(); });
+        $('#nmap-badge').on('click', function() { nmapFilter = !nmapFilter; missingFilter = false; applyFilters(); });
 
         $('#export-btn').on('click', () => table.download('csv', 'topdawg_pricing.csv'));
 
