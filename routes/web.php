@@ -99,6 +99,7 @@ use App\Http\Controllers\ListingMaster\AmzListingController;
 use App\Http\Controllers\MapIssuesController;
 use App\Http\Controllers\MarketingMaster\EbayCvrLqsController;
 use App\Http\Controllers\MarketingMaster\FacebookAddsManagerController;
+use App\Http\Controllers\Sales\FacebookMarketplaceController;
 use App\Http\Controllers\MarketingMaster\InstagramAdsManagerController;
 use App\Http\Controllers\MarketingMaster\MovementPricingMaster;
 use App\Http\Controllers\MarketingMaster\ShoppableVideoController;
@@ -5247,6 +5248,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         // Export
         Route::get('/meta-ads-manager/export', 'export')->name('meta.ads.manager.export');
+    });
+
+    // Facebook Marketplace Sales (CSV template upload + grid)
+    Route::controller(FacebookMarketplaceController::class)->group(function () {
+        Route::get('/facebook-marketplace',              'index')->name('facebook.marketplace');
+        Route::get('/facebook-marketplace/data',         'getData')->name('facebook.marketplace.data');
+        Route::get('/facebook-marketplace/template',     'downloadTemplate')->name('facebook.marketplace.template');
+        Route::post('/facebook-marketplace/upload',      'upload')->name('facebook.marketplace.upload');
+        Route::delete('/facebook-marketplace/{id}',      'destroy')->name('facebook.marketplace.destroy')->whereNumber('id');
     });
 
     Route::controller(InstagramAdsManagerController::class)->group(function () {
