@@ -533,6 +533,15 @@
 @section('script-bottom')
     <script>
         const COLUMN_VIS_KEY = "doba_tabulator_column_visibility";
+        /**
+         * Server-persisted column visibility, same pattern as /ebay3-tabulator-view.
+         * Toggling a checkbox in the "Columns" dropdown POSTs to
+         * /tabulator-column-visibility with this channel so the user's
+         * choices survive page reloads. Channel is distinct from the
+         * without-ship page so the two pages can keep different column layouts.
+         */
+        const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+        const TABULATOR_COLUMN_CHANNEL = 'doba_tabulator';
         function dobaEscapeHtml(s) {
             if (s == null || s === undefined) return '';
             return String(s)
@@ -2764,28 +2773,87 @@
                 $('#pft-total-badge').text('L30 GPFT: $' + Math.round(l30Profit).toLocaleString());
             }
 
-            // Build Column Visibility Dropdown
+            /**
+             * Column visibility persistence — matches /ebay3-tabulator-view.
+             *
+             * Flow on page load:
+             *   tableBuilt  → applyColumnVisibilityFromServer() (hides any
+             *                  columns the user previously turned off)
+             *               → buildColumnDropdown() (reflects current state
+             *                  in the dropdown checkboxes)
+             *
+             * Flow on user toggle / "Show All Columns":
+             *   show() / hide() the column, then saveColumnVisibilityToServer().
+             */
             function buildColumnDropdown() {
-                const columns = table.getColumns();
                 const menu = document.getElementById("column-dropdown-menu");
-                
-                // Clear existing column items
+                if (!menu) return;
+
                 const existingItems = menu.querySelectorAll('.column-toggle-item');
                 existingItems.forEach(item => item.remove());
-                
+
+                const columns = table.getColumns();
                 columns.forEach(column => {
                     if (column.getField() === 'sl_no') return; // Skip sl_no column
-                    
+
+                    const field = column.getField();
+                    if (!field) return;
+
                     const item = document.createElement('label');
                     item.className = 'dropdown-item column-toggle-item d-flex align-items-center';
                     item.innerHTML = `
-                        <input type="checkbox" class="form-check-input me-2" 
-                               data-column="${column.getField()}" 
+                        <input type="checkbox" class="form-check-input me-2"
+                               data-column="${field}"
                                ${column.isVisible() ? 'checked' : ''}>
                         ${column.getDefinition().title}
                     `;
                     menu.appendChild(item);
                 });
+            }
+
+            function saveColumnVisibilityToServer() {
+                if (!table) return;
+                const visibility = {};
+                table.getColumns().forEach(col => {
+                    const def = col.getDefinition();
+                    if (def.field) {
+                        visibility[def.field] = col.isVisible();
+                    }
+                });
+
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    body: JSON.stringify({
+                        channel: TABULATOR_COLUMN_CHANNEL,
+                        visibility: visibility
+                    })
+                }).catch(err => console.error('Column visibility save failed:', err));
+            }
+
+            function applyColumnVisibilityFromServer() {
+                if (!table) return Promise.resolve();
+                return fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(savedVisibility => {
+                        if (!savedVisibility || typeof savedVisibility !== 'object') return;
+                        table.getColumns().forEach(col => {
+                            const def = col.getDefinition();
+                            if (def.field && savedVisibility[def.field] === false) {
+                                col.hide();
+                            }
+                        });
+                    })
+                    .catch(err => console.error('Column visibility load failed:', err));
             }
 
             // Handle SPRICE cell edit
@@ -2854,7 +2922,11 @@
 
             // Wait for table to be built
             table.on('tableBuilt', function() {
-                buildColumnDropdown();
+                // Apply user's saved visibility from the server, then build
+                // the dropdown so its checkboxes reflect the current state.
+                Promise.resolve(applyColumnVisibilityFromServer()).then(function() {
+                    buildColumnDropdown();
+                });
                 updateSummary();
                 applyFilters(); // Apply default INV > 0 filter
             });
@@ -2909,26 +2981,29 @@
                 }
             }
 
-            // Toggle column from dropdown
+            // Toggle column from dropdown — persist choice to server (same as /ebay3-tabulator-view).
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
                 if (e.target.type === 'checkbox') {
                     const columnField = e.target.getAttribute('data-column');
                     const column = table.getColumn(columnField);
-                    
+                    if (!column) return;
+
                     if (e.target.checked) {
                         column.show();
                     } else {
                         column.hide();
                     }
+                    saveColumnVisibilityToServer();
                 }
             });
 
-            // Show All Columns button
+            // Show All Columns button — also persists.
             document.getElementById("show-all-columns-btn").addEventListener("click", function() {
                 table.getColumns().forEach(column => {
                     column.show();
                 });
                 buildColumnDropdown();
+                saveColumnVisibilityToServer();
             });
 
             // Export CSV
