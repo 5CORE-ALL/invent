@@ -620,11 +620,6 @@ class Ebay3UtilizedAdsController extends Controller
         return view('campaign.ebay-three.correctly-utilized-ads');
     }
 
-    public function ebay3UtilizedView()
-    {
-        return view('campaign.ebay-three.ebay3-utilized');
-    }
-
     public function getEbay3UtilizedAdsData()
     {
         // SKU normalization function to handle spaces and whitespace

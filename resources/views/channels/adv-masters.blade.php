@@ -1874,7 +1874,7 @@
                         </tr>
 
                         <tr class="accordion-body">
-                            <td class="text-center"><a href="{{ route('ebay.pmp.ads') }}" target="_blank" style="text-decoration:none;">EB PMT</a></td>
+                            <td class="text-center">EB PMT</td>
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
                             <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>

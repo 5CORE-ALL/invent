@@ -400,6 +400,28 @@ class EbayTwoController extends Controller
             }
         }
 
+        // 3d. Same prioritization as /ebay2/campaign-ads page: latest COST_PER_SALE row per listing
+        // (fallback to overall latest), source is the local `ebay2_campaign_ads` table — the page's
+        // own data feed — so ES BID / C BID / PROMOTE here mirror that page exactly.
+        $ebay2CampaignAdsByListing = [];
+        try {
+            $ebay2CampaignAdsByListing = DB::table('ebay2_campaign_ads as t')
+                ->join(DB::raw('(SELECT listing_id,
+                                        MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
+                                        MAX(id) AS max_id
+                                 FROM ebay2_campaign_ads
+                                 GROUP BY listing_id) x'),
+                    function ($join) {
+                        $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
+                    })
+                ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid', 't.promote_with_ad')
+                ->get()
+                ->keyBy('listing_id')
+                ->toArray();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('ebay2_campaign_ads unavailable: ' . $e->getMessage());
+        }
+
         // 4. Fetch General Reports (listing_id → sku)
         $generalReports = Ebay2GeneralReport::whereIn('listing_id', array_keys($itemIdToSku))
             ->whereIn('report_range', ['L60', 'L30', 'L7'])
@@ -617,6 +639,16 @@ class EbayTwoController extends Controller
                 $row['suggested_bid'] = null;
             }
 
+            // ES BID / C BID / PROMOTE — same source as /ebay2/campaign-ads page (ebay2_campaign_ads table).
+            // Matched by listing_id (= ebay_2_metrics.item_id, i.e. SKU-wise via the metric row).
+            // Rows whose SKU has no campaign-ads record stay visible with nulls — formatter renders '—'.
+            $caRow = ($ebayMetric && isset($ebay2CampaignAdsByListing[$ebayMetric->item_id]))
+                ? $ebay2CampaignAdsByListing[$ebayMetric->item_id]
+                : null;
+            $row['ca_bid_percentage']  = $caRow->bid_percentage  ?? null;
+            $row['ca_suggested_bid']   = $caRow->suggested_bid   ?? null;
+            $row['ca_promote_with_ad'] = $caRow->promote_with_ad ?? null;
+
             // PMT clicks
             $row['pmt_clicks_l30'] = $row['PmtClkL30'] ?? 0;
             $row['pmt_clicks_l7'] = $row['PmtClkL7'] ?? 0;
@@ -829,6 +861,11 @@ class EbayTwoController extends Controller
                 $row['suggested_bid'] = null;
                 $row['pmt_clicks_l30'] = 0;
                 $row['pmt_clicks_l7'] = 0;
+
+                // Campaign-Ads defaults (ES BID / C BID / PROMOTE)
+                $row['ca_bid_percentage']  = null;
+                $row['ca_suggested_bid']   = null;
+                $row['ca_promote_with_ad'] = null;
                 
                 $price = floatval($row["eBay Price"] ?? 0);
                 $units_ordered_l30 = floatval($row["eBay L30"] ?? 0);

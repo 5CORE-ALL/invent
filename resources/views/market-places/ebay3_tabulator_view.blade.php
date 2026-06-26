@@ -133,14 +133,6 @@
             outline-offset: 2px;
         }
 
-        .acos-info-icon {
-            transition: color 0.2s;
-        }
-
-        .acos-info-icon:hover {
-            color: #007bff !important;
-        }
-
         /* Match Ebay 2 summary badge row: single row, shared width, scaled text */
         #summary-stats .ebay2-summary-badge-row {
             display: flex;
@@ -165,44 +157,6 @@
             text-align: center;
             white-space: nowrap;
         }
-        /* TACOS: must beat .ebay2-summary-badge-row > .badge so pill + colors stick */
-        #summary-stats .ebay2-summary-badge-row #tacos-percent-badge.summary-badge-tacos {
-            background-color: #b91c1c !important;
-            color: #ffffff !important;
-            font-weight: 700 !important;
-            text-transform: uppercase;
-            letter-spacing: 0.02em;
-            border-radius: 0.75rem !important;
-            border: none !important;
-            -webkit-font-smoothing: antialiased;
-        }
-
-        #campaignModal .table {
-            font-size: 0.875rem;
-        }
-
-        #campaignModal .table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            white-space: nowrap;
-            writing-mode: vertical-rl;
-            text-orientation: mixed;
-            transform: rotate(180deg);
-            height: 60px;
-            width: 40px;
-            min-width: 40px;
-            font-size: 11px;
-            vertical-align: middle;
-            text-align: center;
-            padding: 5px;
-        }
-
-        #campaignModal .table td {
-            white-space: nowrap;
-            vertical-align: middle;
-            text-align: center;
-        }
-
         .green-bg {
             color: #05bd30 !important;
         }
@@ -263,14 +217,6 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <select id="section-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="all" selected>Section Filter</option>
-                        <option value="pricing">Pricing</option>
-                        <option value="kw_ads">KW Ads</option>
-                        <option value="pmt_ads">PMT Ads</option>
-                    </select>
-
                     <select id="view-mode-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="sku" selected>SKU Only</option>
@@ -299,201 +245,6 @@
                         <option value="green">Variation — Green</option>
                     </select>
 
-                    <!-- KW Ads specific filters (hidden by default) -->
-                    <select id="kw-utilization-filter" class="form-select form-select-sm kw-ads-filter-item"
-                        style="width: auto; display: none;">
-                        <option value="all" selected>Utilization</option>
-                        <option value="green-green">Green + Green (0)</option>
-                        <option value="green-pink">Green + Pink (0)</option>
-                        <option value="green-red">Green + Red (0)</option>
-                        <option value="pink-green">Pink + Green (0)</option>
-                        <option value="pink-pink">Pink + Pink (0)</option>
-                        <option value="pink-red">Pink + Red (0)</option>
-                        <option value="red-green">Red + Green (0)</option>
-                        <option value="red-pink">Red + Pink (0)</option>
-                        <option value="red-red">Red + Red (0)</option>
-                    </select>
-
-                    <select id="kw-status-filter" class="form-select form-select-sm kw-ads-filter-item"
-                        style="width: auto; display: none;">
-                        <option value="all">Campaign Status</option>
-                        <option value="RUNNING">Running</option>
-                        <option value="PAUSED">Paused</option>
-                    </select>
-
-                    <select id="kw-nra-filter" class="form-select form-select-sm kw-ads-filter-item"
-                        style="width: auto; display: none;">
-                        <option value="all">All NRA</option>
-                        <option value="NRA">NRA</option>
-                        <option value="RA">RA</option>
-                        <option value="LATER">LATER</option>
-                    </select>
-
-                    <select id="kw-nrl-filter" class="form-select form-select-sm kw-ads-filter-item"
-                        style="width: auto; display: none;">
-                        <option value="all">All NRL</option>
-                        <option value="NRL">NRL</option>
-                        <option value="REQ">REQ</option>
-                    </select>
-
-                    <select id="kw-sbidm-filter" class="form-select form-select-sm kw-ads-filter-item"
-                        style="width: auto; display: none;">
-                        <option value="all">SBID M</option>
-                        <option value="blank">Blank</option>
-                        <option value="data">Data</option>
-                    </select>
-
-                    <!-- KW Ads Bulk Actions Dropdown -->
-                    <div class="dropdown kw-ads-filter-item" id="kw-bulk-actions-container" style="display: none;">
-                        <button class="btn btn-sm btn-warning dropdown-toggle" type="button"
-                            id="kwBulkActionsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-tasks"></i> Bulk Actions
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="kwBulkActionsDropdown">
-                            <li><a class="dropdown-item kw-bulk-action-item" href="#" data-action="NRA">Mark as NRA</a></li>
-                            <li><a class="dropdown-item kw-bulk-action-item" href="#" data-action="RA">Mark as RA</a></li>
-                            <li><a class="dropdown-item kw-bulk-action-item" href="#" data-action="LATER">Mark as LATER</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item kw-bulk-action-item" href="#" data-action="PAUSE">Pause Campaigns</a></li>
-                            <li><a class="dropdown-item kw-bulk-action-item" href="#" data-action="ACTIVATE">Activate Campaigns</a></li>
-                        </ul>
-                    </div>
-
-                    <!-- PMT Ads Dropdown Filters (inline, hidden by default) -->
-                    <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
-                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="pmt-dilFilterDropdown">
-                            <span class="status-circle default"></span> OV DIL%
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="pmt-dilFilterDropdown">
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_ov_dil" data-color="all">
-                                <span class="status-circle default"></span> All OV DIL</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_ov_dil" data-color="red">
-                                <span class="status-circle red"></span> Red</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_ov_dil" data-color="yellow">
-                                <span class="status-circle yellow"></span> Yellow</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_ov_dil" data-color="green">
-                                <span class="status-circle green"></span> Green</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_ov_dil" data-color="pink">
-                                <span class="status-circle pink"></span> Pink</a></li>
-                        </ul>
-                    </div>
-                    <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
-                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="pmt-eDilFilterDropdown">
-                            <span class="status-circle default"></span> E Dil%
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="pmt-eDilFilterDropdown">
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_e_dil" data-color="all">
-                                <span class="status-circle default"></span> All E Dil</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_e_dil" data-color="red">
-                                <span class="status-circle red"></span> Red</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_e_dil" data-color="yellow">
-                                <span class="status-circle yellow"></span> Yellow</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_e_dil" data-color="green">
-                                <span class="status-circle green"></span> Green</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_e_dil" data-color="pink">
-                                <span class="status-circle pink"></span> Pink</a></li>
-                        </ul>
-                    </div>
-                    <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
-                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="pmt-pmtClkL7FilterDropdown">
-                            <span class="status-circle default"></span> PmtClkL7
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="pmt-pmtClkL7FilterDropdown">
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_clk_l7" data-color="all">
-                                <span class="status-circle default"></span> All PmtClkL7</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_clk_l7" data-color="red">
-                                <span class="status-circle red"></span> Red</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_clk_l7" data-color="green">
-                                <span class="status-circle green"></span> Green</a></li>
-                        </ul>
-                    </div>
-                    <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
-                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="pmt-pmtClkL30FilterDropdown">
-                            <span class="status-circle default"></span> PmtClkL30
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="pmt-pmtClkL30FilterDropdown">
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_clk_l30" data-color="all">
-                                <span class="status-circle default"></span> All PmtClkL30</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_clk_l30" data-color="red">
-                                <span class="status-circle red"></span> Red</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_clk_l30" data-color="green">
-                                <span class="status-circle green"></span> Green</a></li>
-                        </ul>
-                    </div>
-                    <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
-                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="pmt-pftFilterDropdown">
-                            <span class="status-circle default"></span> PFT%
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="pmt-pftFilterDropdown">
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_pft" data-color="all">
-                                <span class="status-circle default"></span> All PFT</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_pft" data-color="red">
-                                <span class="status-circle red"></span> Red</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_pft" data-color="yellow">
-                                <span class="status-circle yellow"></span> Yellow</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_pft" data-color="blue">
-                                <span class="status-circle blue"></span> Blue</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_pft" data-color="green">
-                                <span class="status-circle green"></span> Green</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_pft" data-color="pink">
-                                <span class="status-circle pink"></span> Pink</a></li>
-                        </ul>
-                    </div>
-                    <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
-                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="pmt-roiFilterDropdown">
-                            <span class="status-circle default"></span> ROI
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="pmt-roiFilterDropdown">
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_roi" data-color="all">
-                                <span class="status-circle default"></span> All ROI</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_roi" data-color="red">
-                                <span class="status-circle red"></span> Red</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_roi" data-color="yellow">
-                                <span class="status-circle yellow"></span> Yellow</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_roi" data-color="green">
-                                <span class="status-circle green"></span> Green</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_roi" data-color="pink">
-                                <span class="status-circle pink"></span> Pink</a></li>
-                        </ul>
-                    </div>
-                    <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
-                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="pmt-tacosFilterDropdown">
-                            <span class="status-circle default"></span> TACOS
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="pmt-tacosFilterDropdown">
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_tacos" data-color="all">
-                                <span class="status-circle default"></span> All TACOS</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_tacos" data-color="pink">
-                                <span class="status-circle pink"></span> Pink</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_tacos" data-color="green">
-                                <span class="status-circle green"></span> Green</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_tacos" data-color="blue">
-                                <span class="status-circle blue"></span> Blue</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_tacos" data-color="yellow">
-                                <span class="status-circle yellow"></span> Yellow</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_tacos" data-color="red">
-                                <span class="status-circle red"></span> Red</a></li>
-                        </ul>
-                    </div>
-                    <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
-                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="pmt-scvrFilterDropdown">
-                            <span class="status-circle default"></span> SCVR
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="pmt-scvrFilterDropdown">
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_scvr" data-color="all">
-                                <span class="status-circle default"></span> All SCVR</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_scvr" data-color="red">
-                                <span class="status-circle red"></span> Red</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_scvr" data-color="yellow">
-                                <span class="status-circle yellow"></span> Yellow</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_scvr" data-color="green">
-                                <span class="status-circle green"></span> Green</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_scvr" data-color="pink">
-                                <span class="status-circle pink"></span> Pink</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_scvr" data-color="blue">
-                                <span class="status-circle blue"></span> Low SCVR</a></li>
-                        </ul>
-                    </div>
 
                     <!-- Pricing section filters -->
                     <select id="growth-sign-filter" class="form-select form-select-sm pricing-filter-item"
@@ -652,164 +403,6 @@
                     </div>
                 </div>
 
-                <!-- KW Ads Statistics (shown only when KW Ads is selected) -->
-                <div id="kw-ads-stats" class="mt-2 p-3 bg-light rounded" style="display: none;">
-                    <h6 class="mb-3">KW Ads Statistics</h6>
-                    <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-success fs-6 p-2" style="color: white; font-weight: bold;">Total Parent SKU: <span id="kw-total-sku-count">0</span></span>
-                        <span class="badge fs-6 p-2" style="background-color: #8b5cf6; color: white; font-weight: bold;">Ebay SKU: <span id="kw-ebay-sku-count">0</span></span>
-                        <span class="badge bg-info fs-6 p-2" id="kw-campaign-card" style="color: white; font-weight: bold; cursor: pointer;">Campaign: <span id="kw-campaign-count">0</span></span>
-                        <span class="badge bg-danger fs-6 p-2" id="kw-missing-card" style="color: white; font-weight: bold; cursor: pointer;">Missing: <span id="kw-missing-count">0</span></span>
-                        <span class="badge fs-6 p-2" id="kw-nra-missing-card" style="background-color: #ffc107; color: black; font-weight: bold; cursor: pointer;">NRA MISSING: <span id="kw-nra-missing-count">0</span></span>
-                        <span class="badge fs-6 p-2" id="kw-zero-inv-card" style="background-color: #f59e0b; color: black; font-weight: bold; cursor: pointer;">Zero E Stock: <span id="kw-zero-inv-count">0</span></span>
-                        <span class="badge fs-6 p-2" id="kw-nra-card" style="background-color: #ef4444; color: white; font-weight: bold; cursor: pointer;">NRA: <span id="kw-nra-count">0</span></span>
-                        <span class="badge fs-6 p-2" id="kw-nrl-missing-card" style="background-color: #ffc107; color: black; font-weight: bold; cursor: pointer;">NRL MISSING: <span id="kw-nrl-missing-count">0</span></span>
-                        <span class="badge fs-6 p-2" id="kw-nrl-card" style="background-color: #ef4444; color: white; font-weight: bold; cursor: pointer;">NRL: <span id="kw-nrl-count">0</span></span>
-                        <span class="badge fs-6 p-2" id="kw-ra-card" style="background-color: #22c55e; color: white; font-weight: bold; cursor: pointer;">RA: <span id="kw-ra-count">0</span></span>
-                        <span class="badge fs-6 p-2" id="kw-paused-card" style="background-color: #ec4899; color: white; font-weight: bold; cursor: pointer;" title="Click to view paused campaigns">PINK DIL PAUSED: <span id="kw-paused-count">0</span></span>
-                        <span class="badge fs-6 p-2" id="kw-7ub-card" style="background-color: #2563eb; color: white; font-weight: bold; cursor: pointer;">7UB: <span id="kw-7ub-count">0</span></span>
-                        <span class="badge fs-6 p-2" id="kw-7ub-1ub-card" style="background-color: #7c3aed; color: white; font-weight: bold; cursor: pointer;">7UB+1UB: <span id="kw-7ub-1ub-count">0</span></span>
-                        <span class="badge fs-6 p-2" style="background-color: #14b8a6; color: white; font-weight: bold;">L30 CLICKS: <span id="kw-l30-clicks">0</span></span>
-                        <span class="badge fs-6 p-2" style="background-color: #0ea5e9; color: white; font-weight: bold;">L30 SPEND: <span id="kw-l30-spend">0</span></span>
-                        <span class="badge fs-6 p-2" style="background-color: #f59e0b; color: black; font-weight: bold;">L30 AD SOLD: <span id="kw-l30-ad-sold">0</span></span>
-                        <span class="badge fs-6 p-2" style="background-color: #8b5cf6; color: white; font-weight: bold;">AVG ACOS: <span id="kw-avg-acos">0</span></span>
-                        <span class="badge fs-6 p-2" style="background-color: #10b981; color: white; font-weight: bold;">AVG CVR: <span id="kw-avg-cvr">0</span></span>
-                    </div>
-                </div>
-
-                <!-- KW Ads Range Filters + INC/DEC SBID Section (hidden by default) -->
-                <div id="kw-ads-range-section" style="display: none;">
-                    <div class="row g-3 align-items-end pt-2 px-2">
-                        <!-- 1UB% Filter -->
-                        <div class="col-md-2">
-                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">1UB% Range</label>
-                            <div class="d-flex gap-2">
-                                <input type="number" id="kw-range-1ub-min" class="form-control form-control-sm" placeholder="Min" step="0.01" style="border-color: #e2e8f0;">
-                                <input type="number" id="kw-range-1ub-max" class="form-control form-control-sm" placeholder="Max" step="0.01" style="border-color: #e2e8f0;">
-                            </div>
-                        </div>
-                        <!-- 7UB% Filter -->
-                        <div class="col-md-2">
-                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">7UB% Range</label>
-                            <div class="d-flex gap-2">
-                                <input type="number" id="kw-range-7ub-min" class="form-control form-control-sm" placeholder="Min" step="0.01" style="border-color: #e2e8f0;">
-                                <input type="number" id="kw-range-7ub-max" class="form-control form-control-sm" placeholder="Max" step="0.01" style="border-color: #e2e8f0;">
-                            </div>
-                        </div>
-                        <!-- LBid Filter -->
-                        <div class="col-md-2">
-                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">LBid Range</label>
-                            <div class="d-flex gap-2">
-                                <input type="number" id="kw-range-lbid-min" class="form-control form-control-sm" placeholder="Min" step="0.01" style="border-color: #e2e8f0;">
-                                <input type="number" id="kw-range-lbid-max" class="form-control form-control-sm" placeholder="Max" step="0.01" style="border-color: #e2e8f0;">
-                            </div>
-                        </div>
-                        <!-- Acos Filter -->
-                        <div class="col-md-2">
-                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">Acos Range</label>
-                            <div class="d-flex gap-2">
-                                <input type="number" id="kw-range-acos-min" class="form-control form-control-sm" placeholder="Min" step="0.01" style="border-color: #e2e8f0;">
-                                <input type="number" id="kw-range-acos-max" class="form-control form-control-sm" placeholder="Max" step="0.01" style="border-color: #e2e8f0;">
-                            </div>
-                        </div>
-                        <!-- Views Filter -->
-                        <div class="col-md-2">
-                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">Views Range</label>
-                            <div class="d-flex gap-2">
-                                <input type="number" id="kw-range-views-min" class="form-control form-control-sm" placeholder="Min" step="1" style="border-color: #e2e8f0;">
-                                <input type="number" id="kw-range-views-max" class="form-control form-control-sm" placeholder="Max" step="1" style="border-color: #e2e8f0;">
-                            </div>
-                        </div>
-                        <!-- L7 Views Filter -->
-                        <div class="col-md-2">
-                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">L7 Views Range</label>
-                            <div class="d-flex gap-2">
-                                <input type="number" id="kw-range-l7views-min" class="form-control form-control-sm" placeholder="Min" step="1" style="border-color: #e2e8f0;">
-                                <input type="number" id="kw-range-l7views-max" class="form-control form-control-sm" placeholder="Max" step="1" style="border-color: #e2e8f0;">
-                            </div>
-                        </div>
-                    </div>
-                    <!-- INC/DEC SBID Section and Action Buttons -->
-                    <div class="row g-3 align-items-end pt-3 pb-2 px-2 border-top mt-2">
-                        <div class="col-md-2">
-                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
-                                <i class="fa-solid fa-calculator me-1" style="color: #64748b;"></i>INC/DEC SBID
-                            </label>
-                            <div class="btn-group w-100" role="group">
-                                <button type="button" id="kw-inc-dec-btn" class="btn btn-warning btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                                    <i class="fa-solid fa-plus-minus me-1"></i>INC/DEC (By Value)
-                                </button>
-                                <ul class="dropdown-menu" id="kw-inc-dec-dropdown">
-                                    <li><a class="dropdown-item" href="#" data-type="value">By Value</a></li>
-                                    <li><a class="dropdown-item" href="#" data-type="percentage">By Percentage</a></li>
-                                </ul>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
-                                <span id="kw-inc-dec-label">Value/Percentage</span>
-                            </label>
-                            <input type="number" id="kw-inc-dec-input" class="form-control form-control-sm" placeholder="Enter value (e.g., +0.5 or -0.5)" step="0.01" style="border-color: #e2e8f0;">
-                        </div>
-                        <div class="col-md-2 d-flex gap-2 align-items-end">
-                            <button id="kw-apply-inc-dec-btn" class="btn btn-success btn-sm flex-fill">
-                                <i class="fa-solid fa-check me-1"></i>Apply
-                            </button>
-                            <button id="kw-clear-inc-dec-btn" class="btn btn-secondary btn-sm flex-fill">
-                                <i class="fa-solid fa-times me-1"></i>Clear Input
-                            </button>
-                        </div>
-                        <div class="col-md-2 d-flex align-items-end">
-                            <button id="kw-clear-sbid-m-btn" class="btn btn-danger btn-sm w-100">
-                                <i class="fa-solid fa-trash me-1"></i>Clear SBID M (Selected)
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- PMT Ads Range Filters (hidden by default) -->
-                <div id="pmt-ads-filter-section" style="display: none;">
-                    <!-- Range Filter Section -->
-                    <div class="row g-3 align-items-end pt-2 px-2 pb-2">
-                        <div class="col-md-2">
-                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">T VIEWS Range</label>
-                            <div class="d-flex gap-2">
-                                <input type="number" id="pmt-t-views-min" class="form-control form-control-sm" placeholder="Min" step="1" style="border-color: #e2e8f0;">
-                                <input type="number" id="pmt-t-views-max" class="form-control form-control-sm" placeholder="Max" step="1" style="border-color: #e2e8f0;">
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">L7 Views Range</label>
-                            <div class="d-flex gap-2">
-                                <input type="number" id="pmt-l7-views-min" class="form-control form-control-sm" placeholder="Min" step="1" style="border-color: #e2e8f0;">
-                                <input type="number" id="pmt-l7-views-max" class="form-control form-control-sm" placeholder="Max" step="1" style="border-color: #e2e8f0;">
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">CBID Range</label>
-                            <div class="d-flex gap-2">
-                                <input type="number" id="pmt-cbid-min" class="form-control form-control-sm" placeholder="Min" step="0.01" style="border-color: #e2e8f0;">
-                                <input type="number" id="pmt-cbid-max" class="form-control form-control-sm" placeholder="Max" step="0.01" style="border-color: #e2e8f0;">
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">SCVR Range</label>
-                            <div class="d-flex gap-2">
-                                <input type="number" id="pmt-scvr-min" class="form-control form-control-sm" placeholder="Min" step="0.01" style="border-color: #e2e8f0;">
-                                <input type="number" id="pmt-scvr-max" class="form-control form-control-sm" placeholder="Max" step="0.01" style="border-color: #e2e8f0;">
-                            </div>
-                        </div>
-                        <div class="col-md-2 d-flex gap-2 align-items-end">
-                            <button id="pmt-apply-range-btn" class="btn btn-primary btn-sm flex-fill">
-                                <i class="fa-solid fa-filter me-1"></i>Apply
-                            </button>
-                            <button id="pmt-clear-range-btn" class="btn btn-secondary btn-sm flex-fill">
-                                <i class="fa-solid fa-times me-1"></i>Clear
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Summary Stats — same badge set/order as Ebay 2 Analytics -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary</h6>
@@ -818,12 +411,8 @@
                         <span class="badge fs-6 p-2 sold-filter-badge ebay3-hover-chart" data-filter="sold" data-metric="sold_count" style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter · Hover for daily trend">&gt; 0 Sold: <span id="more-sold-count">0</span></span>
                         <span class="badge bg-success fs-6 p-2 d-none ebay3-badge-chart ebay3-hover-chart" id="total-pft-amt-badge" data-metric="total_pft_amt" style="color: black; font-weight: bold; cursor: pointer;" aria-hidden="true" title="View trend">Total PFT: $0</span>
                         <span class="badge bg-primary fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="total-sales-amt-badge" data-metric="total_sales_amt" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Sales: $0</span>
-                        <span class="badge bg-warning fs-6 p-2 d-none ebay3-badge-chart ebay3-hover-chart" id="total-spend-l30-badge" data-metric="total_spend_l30" style="color: black; font-weight: bold; cursor: pointer;" aria-hidden="true" title="View trend">PMT Spend: $0</span>
                         <span class="badge bg-info fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-gpft-badge" data-metric="gpft_percent" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">GPFT: 0%</span>
-                        <span class="badge bg-info fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-pft-badge" data-metric="npft_percent" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">NPFT: 0%</span>
                         <span class="badge bg-secondary fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="groi-percent-badge" data-metric="groi_percent" style="color: white; font-weight: bold; cursor: pointer;" title="View trend">GROI: 0%</span>
-                        <span class="badge bg-primary fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="nroi-percent-badge" data-metric="nroi_percent" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">NROI: 0%</span>
-                        <span class="badge fs-6 p-2 summary-badge-tacos ebay3-badge-chart ebay3-hover-chart" id="tacos-percent-badge" data-metric="tcos_percent" style="cursor: pointer;" title="View trend">TACOS: 0.0%</span>
                         <span class="badge bg-warning fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-price-badge" data-metric="avg_price" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Price: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-cvr-badge" data-metric="cvr_percent" style="color: white; font-weight: bold; cursor: pointer;" title="View trend">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="total-views-badge" data-metric="total_views" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Views: 0</span>
@@ -865,24 +454,6 @@
                     </div>
                     <!-- Table body (scrollable section) -->
                     <div id="ebay3-table" style="flex: 1;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Campaign Details Modal (ACOS info icon) -->
-    <div class="modal fade" id="campaignModal" tabindex="-1" aria-labelledby="campaignModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="campaignModalLabel">Campaign Details</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body" id="campaignModalBody">
-                    <!-- Content loaded via JS -->
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -1046,8 +617,6 @@
     const KW_SPENT = {{ $kwSpent ?? 0 }};
     const PMT_SPENT = {{ $pmtSpent ?? 0 }};
     const TOTAL_ADS_SPENT = KW_SPENT + PMT_SPENT;
-    /** Same as AD% column — getEbaythreeMasterAdsPercent() / all-marketplace-master */
-    const EBAY3_CHANNEL_ADS_PCT = {{ number_format((float) ($channelAdsPercent ?? 0), 4, '.', '') }};
     let table = null;
     let decreaseModeActive = false;
     let increaseModeActive = false;
@@ -1308,26 +877,6 @@
         }
     });
 
-    // PMT Ads dropdown filter state
-    let pmtDropdownFilters = {
-        'pmt_ov_dil': 'all',
-        'pmt_e_dil': 'all',
-        'pmt_clk_l7': 'all',
-        'pmt_clk_l30': 'all',
-        'pmt_pft': 'all',
-        'pmt_roi': 'all',
-        'pmt_tacos': 'all',
-        'pmt_scvr': 'all'
-    };
-
-    // PMT Ads range filter state
-    let pmtRangeFilters = {
-        't_views': { min: null, max: null },
-        'l7_views': { min: null, max: null },
-        'cbid': { min: null, max: null },
-        'scvr': { min: null, max: null }
-    };
-    
     // Toast notification function
     function showToast(message, type = 'info') {
         const toastContainer = document.querySelector('.toast-container');
@@ -3183,18 +2732,6 @@
                     width: 60
                 },
                 {
-                    title: "CVR 45",
-                    field: "CVR_45",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const val = parseFloat(cell.getValue()) || 0;
-                        let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
-                        return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
-                    },
-                    width: 60
-                },
-                {
                     title: "CVR 30",
                     field: "SCVR",
                     hozAlign: "center",
@@ -3250,29 +2787,6 @@
                             return '<span style="color: #dc3545; font-weight: 600;">0</span>';
                         }
                         return `<span style="font-weight: 600;">${value}</span>`;
-                    }
-                },
-                {
-                    title: "E L60",
-                    field: "eBay L60",
-                    hozAlign: "center",
-                    width: 50,
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        return Math.round(parseFloat(value) || 0);
-                    }
-                },
-                {
-                    title: "E L45",
-                    field: "eBay L45",
-                    hozAlign: "center",
-                    width: 50,
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        return Math.round(parseFloat(value) || 0);
                     }
                 },
                 {
@@ -3355,39 +2869,6 @@
                             return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
                         }
                         return '';
-                    }
-                },
-                {
-                    title: "Variation",
-                    field: "_ebay3_variation",
-                    hozAlign: "center",
-                    width: 76,
-                    headerSort: false,
-                    headerTooltip: "Click dot: red ↔ green (saved in this browser)",
-                    formatter: function(cell) {
-                        const sku = cell.getRow().getData()['(Child) sku'] || '';
-                        const green = sku && variationGreenSkus.has(sku);
-                        const color = green ? '#28a745' : '#dc3545';
-                        const title = green ? 'Marked OK — click for red' : 'Default — click for green';
-                        const safeSku = String(sku).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-                        return '<span class="ebay3-variation-dot" data-sku="' + safeSku + '" title="' + title + '" role="button" tabindex="0" ' +
-                            'style="display:inline-block;width:14px;height:14px;border-radius:50%;background:' + color +
-                            ';cursor:pointer;vertical-align:middle;box-shadow:0 0 0 1px rgba(0,0,0,0.12);"></span>';
-                    },
-                    cellClick: function(e, cell) {
-                        e.stopPropagation();
-                        const sku = cell.getRow().getData()['(Child) sku'];
-                        if (!sku) return;
-                        if (variationGreenSkus.has(sku)) {
-                            variationGreenSkus.delete(sku);
-                        } else {
-                            variationGreenSkus.add(sku);
-                        }
-                        persistVariationGreenSkus();
-                        cell.getRow().reformat();
-                        if (($('#variation-filter').val() || 'all') !== 'all') {
-                            applyFilters();
-                        }
                     }
                 },
                 {
@@ -3535,53 +3016,13 @@
                     width: 50
                 },
                 {
-                    title: "AD%",
-                    field: "AD%",
-                    hozAlign: "center",
-                    sorter: function(a, b, aRow, bRow) {
-                        const aData = aRow.getData();
-                        const bData = bRow.getData();
-                        
-                        const aKwSpend = parseFloat(aData['kw_spend_L30'] || 0);
-                        const bKwSpend = parseFloat(bData['kw_spend_L30'] || 0);
-                        
-                        let aVal = parseFloat(a || 0);
-                        let bVal = parseFloat(b || 0);
-                        
-                        if (aKwSpend > 0 && aVal === 0) aVal = 100;
-                        if (bKwSpend > 0 && bVal === 0) bVal = 100;
-                        
-                        return aVal - bVal;
-                    },
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        
-                        const rowData = cell.getRow().getData();
-                        const kwSpend = parseFloat(rowData['kw_spend_L30'] || 0);
-                        const adPercent = parseFloat(value || 0);
-                        const sku = rowData["(Child) sku"] || rowData.SKU || rowData.sku || '';
-                        const iconHtml = sku ? ` <i class="fas fa-info-circle acos-info-icon" style="cursor: pointer; color: #6c757d; margin-left: 5px;" data-sku="${sku}" title="View Campaign Details"></i>` : '';
-                        
-                        if (kwSpend > 0 && adPercent === 0) {
-                            return `<span style="color: #dc3545; font-weight: 600;">100%</span>${iconHtml}`;
-                        }
-                        
-                        return `${parseFloat(value).toFixed(1)}%${iconHtml}`;
-                    },
-                    width: 70
-                },
-                {
                     title: "PFT %",
                     field: "PFT %",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const gpft = parseFloat(rowData['GPFT%'] || 0);
-                        const ad = parseFloat(rowData['AD%'] || 0);
-                        
-                        const percent = gpft - ad;
+                        const percent = parseFloat(rowData['GPFT%'] || 0);
                         let color = '';
                         
                         if (percent < 10) color = '#a00211';
@@ -3798,10 +3239,7 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const sgpft = parseFloat(rowData.SGPFT || 0);
-                        const ad = parseFloat(rowData['AD%'] || 0);
-                        
-                        const percent = sgpft - ad;
+                        const percent = parseFloat(rowData.SGPFT || 0);
                         if (isNaN(percent)) return '';
                         
                         let color = '';
@@ -3836,677 +3274,55 @@
                     },
                     width: 80
                 },
+
+                // === Campaign-Ads columns (ES BID / C BID / PROMOTE) ===
+                // Same source & formatters as /ebay3/campaign-ads. SKU-wise via listing_id; rows
+                // without a campaign-ads match stay visible with the data displayed as-is ('—').
                 {
-                    title: "SPEND L30",
-                    field: "AD_Spend_L30",
+                    title: "ES BID",
+                    field: "ca_suggested_bid",
                     hozAlign: "center",
                     sorter: "number",
-                    visible: false,
+                    width: 90,
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
-                        return `
-                            <span>$${value.toFixed(2)}</span>
-                            <i class="fa fa-info-circle text-primary toggle-spendL30-btn" 
-                            style="cursor:pointer; margin-left:8px;"></i>
-                        `;
-                    },
-                    bottomCalc: "sum",
-                    bottomCalcFormatter: function(cell) {
-                        const value = cell.getValue();
-                        return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
-                    },
-                    width: 90
+                        const v = parseFloat(cell.getValue());
+                        if (isNaN(v)) return '<span class="text-muted">—</span>';
+                        return `<span class="text-info fw-semibold">${v.toFixed(1)}%</span>`;
+                    }
                 },
                 {
-                    title: "KW SPEND L30",
-                    field: "kw_spend_L30",
+                    title: "C BID",
+                    field: "ca_bid_percentage",
                     hozAlign: "center",
                     sorter: "number",
-                    visible: false,
+                    width: 90,
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
-                        return `$${value.toFixed(2)}`;
-                    },
-                    bottomCalc: "sum",
-                    bottomCalcFormatter: function(cell) {
-                        const value = cell.getValue();
-                        return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
-                    },
-                    width: 100
+                        const v = parseFloat(cell.getValue());
+                        if (isNaN(v)) return '<span class="text-muted">—</span>';
+                        const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
+                        return `<span style="color:${color}; font-weight:600;">${v.toFixed(1)}%</span>`;
+                    }
                 },
                 {
-                    title: "KW %",
-                    field: "kw_percent",
+                    title: "PROMOTE",
+                    field: "ca_promote_with_ad",
                     hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
+                    headerTooltip: "eBay Promotion eligibility status (from /ebay3/campaign-ads)",
+                    width: 140,
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const kwSpend = parseFloat(rowData['kw_spend_L30'] || 0);
-                        const pmtSpend = parseFloat(rowData['pmt_spend_L30'] || 0);
-                        const total = kwSpend + pmtSpend;
-                        const percent = total > 0 ? (kwSpend / total) * 100 : 0;
-                        return `${percent.toFixed(1)}%`;
-                    },
-                    width: 70
-                },
-                {
-                    title: "PMT SPEND L30",
-                    field: "pmt_spend_L30",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
-                        return `$${value.toFixed(2)}`;
-                    },
-                    bottomCalc: "sum",
-                    bottomCalcFormatter: function(cell) {
-                        const value = cell.getValue();
-                        return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
-                    },
-                    width: 100
-                },
-                {
-                    title: "PMT %",
-                    field: "pmt_percent",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const kwSpend = parseFloat(rowData['kw_spend_L30'] || 0);
-                        const pmtSpend = parseFloat(rowData['pmt_spend_L30'] || 0);
-                        const total = kwSpend + pmtSpend;
-                        const percent = total > 0 ? (pmtSpend / total) * 100 : 0;
-                        return `${percent.toFixed(1)}%`;
-                    },
-                    width: 70
-                },
-                // ======== KW Ads Columns (hidden by default) ========
-                {
-                    title: "Missing Ad",
-                    field: "kw_hasCampaign",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var row = cell.getRow().getData();
-                        var hasCampaign = row.kw_campaign_id && row.kw_campaign_id !== '';
-                        var nrlValue = row.NRL ? row.NRL.trim() : '';
-                        var nraValue = row.NR ? row.NR.trim() : '';
-                        var dotColor, title;
-                        if (nrlValue === 'NRL' || nraValue === 'NRA') {
-                            dotColor = '#ffc107'; title = 'NRL or NRA - Not Required';
-                        } else if (hasCampaign) {
-                            dotColor = '#28a745'; title = 'Campaign Exists';
-                        } else {
-                            dotColor = '#dc3545'; title = 'Campaign Missing';
-                        }
-                        return '<div style="display: flex; align-items: center; justify-content: center;">' +
-                            '<span style="width: 12px; height: 12px; border-radius: 50%; display: inline-block; background-color: ' + dotColor + ';" title="' + title + '"></span>' +
-                            '</div>';
-                    },
-                    width: 80
-                },
-                {
-                    title: "NRL",
-                    field: "NRL",
-                    hozAlign: "center",
-                    headerSort: false,
-                    visible: false,
-                    formatter: function(cell) {
-                        var sku = cell.getRow().getData()['(Child) sku'];
-                        var value = cell.getValue() || 'REQ';
-                        return `<select class="form-select form-select-sm kw-nrl-dropdown" 
-                                    data-sku="${sku}" data-field="NRL"
-                                    style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
-                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
-                                <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>🔴</option>
-                                </select>`;
-                    },
-                    cellClick: function(e, cell) { e.stopPropagation(); },
-                    width: 70
-                },
-                {
-                    title: "NRA",
-                    field: "NR",
-                    hozAlign: "center",
-                    headerSort: false,
-                    visible: false,
-                    formatter: function(cell) {
-                        var rowData = cell.getRow().getData();
-                        var sku = rowData['(Child) sku'];
-                        var nrlValue = rowData.NRL || 'REQ';
-                        var defaultValue = (nrlValue === 'NRL') ? 'NRA' : 'RA';
-                        var value = (cell.getValue() || '').trim() || defaultValue;
-                        return `<select class="form-select form-select-sm kw-nra-dropdown" 
-                                    data-sku="${sku}" data-field="NR"
-                                    style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
-                                <option value="RA" ${value === 'RA' ? 'selected' : ''}>🟢</option>
-                                <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>🔴</option>
-                                <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>🟡</option>
-                                </select>`;
-                    },
-                    cellClick: function(e, cell) { e.stopPropagation(); },
-                    width: 70
-                },
-                {
-                    title: "L7 VIEWS",
-                    field: "l7_views",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        return parseInt(cell.getValue() || 0).toLocaleString();
-                    },
-                    width: 70
-                },
-                {
-                    title: "CVR",
-                    field: "kw_cvr",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        return parseFloat(cell.getValue() || 0).toFixed(1) + '%';
-                    },
-                    width: 70
-                },
-                {
-                    title: "BGT",
-                    field: "kw_campaignBudgetAmount",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        return parseFloat(cell.getValue() || 0).toFixed(0);
-                    },
-                    width: 60
-                },
-                {
-                    title: "SBGT",
-                    field: "kw_sbgt",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        var rowData = cell.getRow().getData();
-                        var acos = parseFloat(rowData.kw_acos || 0);
-                        var budget = parseFloat(rowData.kw_campaignBudgetAmount || 0);
-                        var suggestedBudget = budget;
-                        if (acos > 0 && acos <= 15) suggestedBudget = budget * 1.2;
-                        else if (acos > 15 && acos <= 25) suggestedBudget = budget * 1.1;
-                        else if (acos > 25 && acos <= 35) suggestedBudget = budget;
-                        else if (acos > 35 && acos <= 50) suggestedBudget = budget * 0.9;
-                        else if (acos > 50) suggestedBudget = budget * 0.8;
-                        return suggestedBudget.toFixed(0);
-                    },
-                    width: 60
-                },
-                {
-                    title: "ACOS",
-                    field: "kw_acos",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        var rowData = cell.getRow().getData();
-                        var kwSpend = parseFloat(rowData.kw_spend_L30 || 0);
-                        var acos = parseFloat(cell.getValue() || 0);
-                        var td = cell.getElement();
-                        td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                        if (kwSpend === 0) {
-                            return '<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">-' +
-                                '<i class="fa-solid fa-circle-info" style="color: #6c757d; font-size: 12px;" title="No spend data"></i></div>';
-                        }
-                        if (acos > 0 && acos <= 15) td.classList.add('green-bg');
-                        else if (acos > 15 && acos <= 25) td.classList.add('pink-bg');
-                        else if (acos > 25) td.classList.add('red-bg');
-                        return acos > 0 ? acos.toFixed(1) + '%' : '-';
-                    },
-                    width: 70
-                },
-                {
-                    title: "KW CLICKS",
-                    field: "kw_clicks",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        return parseInt(cell.getValue() || 0).toLocaleString();
-                    },
-                    width: 70
-                },
-                {
-                    title: "KW AD SOLD",
-                    field: "kw_ad_sold",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        return parseInt(cell.getValue() || 0).toLocaleString();
-                    },
-                    width: 70
-                },
-                {
-                    title: "7UB%",
-                    field: "kw_l7_spend",
-                    hozAlign: "center",
-                    visible: false,
-                    sorter: function(a, b, aRow, bRow) {
-                        var aData = aRow.getData();
-                        var bData = bRow.getData();
-                        var aUb7 = parseFloat(aData.kw_campaignBudgetAmount) > 0 ? (parseFloat(aData.kw_l7_spend || 0) / (parseFloat(aData.kw_campaignBudgetAmount) * 7)) * 100 : 0;
-                        var bUb7 = parseFloat(bData.kw_campaignBudgetAmount) > 0 ? (parseFloat(bData.kw_l7_spend || 0) / (parseFloat(bData.kw_campaignBudgetAmount) * 7)) * 100 : 0;
-                        return aUb7 - bUb7;
-                    },
-                    formatter: function(cell) {
-                        var row = cell.getRow().getData();
-                        var l7_spend = parseFloat(row.kw_l7_spend) || 0;
-                        var budget = parseFloat(row.kw_campaignBudgetAmount) || 0;
-                        var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
-                        var td = cell.getElement();
-                        td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                        if (ub7 >= 66 && ub7 <= 99) td.classList.add('green-bg');
-                        else if (ub7 > 99) td.classList.add('pink-bg');
-                        else if (ub7 < 66 && budget > 0) td.classList.add('red-bg');
-                        return ub7.toFixed(1) + '%';
-                    },
-                    width: 50
-                },
-                {
-                    title: "1UB%",
-                    field: "kw_l1_spend",
-                    hozAlign: "center",
-                    visible: false,
-                    sorter: function(a, b, aRow, bRow) {
-                        var aData = aRow.getData();
-                        var bData = bRow.getData();
-                        var aUb1 = parseFloat(aData.kw_campaignBudgetAmount) > 0 ? (parseFloat(aData.kw_l1_spend || 0) / parseFloat(aData.kw_campaignBudgetAmount)) * 100 : 0;
-                        var bUb1 = parseFloat(bData.kw_campaignBudgetAmount) > 0 ? (parseFloat(bData.kw_l1_spend || 0) / parseFloat(bData.kw_campaignBudgetAmount)) * 100 : 0;
-                        return aUb1 - bUb1;
-                    },
-                    formatter: function(cell) {
-                        var row = cell.getRow().getData();
-                        var l1_spend = parseFloat(row.kw_l1_spend) || 0;
-                        var budget = parseFloat(row.kw_campaignBudgetAmount) || 0;
-                        var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
-                        var td = cell.getElement();
-                        td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                        if (ub1 >= 66 && ub1 <= 99) td.classList.add('green-bg');
-                        else if (ub1 > 99) td.classList.add('pink-bg');
-                        else if (ub1 < 66 && budget > 0) td.classList.add('red-bg');
-                        return ub1.toFixed(1) + '%';
-                    },
-                    width: 50
-                },
-                {
-                    title: "L7 CPC",
-                    field: "kw_l7_cpc",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        var value = parseFloat(cell.getValue() || 0);
-                        return value > 0 ? value.toFixed(2) : '-';
-                    },
-                    width: 70
-                },
-                {
-                    title: "L1 CPC",
-                    field: "kw_l1_cpc",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        var value = parseFloat(cell.getValue() || 0);
-                        return value > 0 ? value.toFixed(2) : '-';
-                    },
-                    width: 70
-                },
-                {
-                    title: "LBID",
-                    field: "kw_last_sbid",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var value = cell.getValue();
-                        if (!value || value === '' || value === '0' || value === 0) return '-';
-                        return parseFloat(value).toFixed(2);
-                    },
-                    width: 70
-                },
-                {
-                    title: "SBID",
-                    field: "kw_sbid_calc",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var rowData = cell.getRow().getData();
-                        var nraValue = rowData.NR ? rowData.NR.trim() : "";
-                        if (nraValue === 'NRA') return '-';
-                        var l1Cpc = parseFloat(rowData.kw_l1_cpc) || 0;
-                        var l7Cpc = parseFloat(rowData.kw_l7_cpc) || 0;
-                        var budget = parseFloat(rowData.kw_campaignBudgetAmount) || 0;
-                        var inv = parseFloat(rowData.INV || 0);
-                        var price = parseFloat(rowData['eBay Price'] || 0);
-                        var ub7 = budget > 0 ? (parseFloat(rowData.kw_l7_spend) || 0) / (budget * 7) * 100 : 0;
-                        var ub1 = budget > 0 ? (parseFloat(rowData.kw_l1_spend) || 0) / budget * 100 : 0;
-                        var lastSbidRaw = rowData.kw_last_sbid;
-                        var lastSbid = (!lastSbidRaw || lastSbidRaw === '' || lastSbidRaw === '0') ? 0 : parseFloat(lastSbidRaw) || 0;
-                        function getUbColor(ub) { return ub >= 66 && ub <= 99 ? 'green' : (ub > 99 ? 'pink' : 'red'); }
-                        var ub7Color = getUbColor(ub7); var ub1Color = getUbColor(ub1);
-                        if (ub7Color !== ub1Color) return '-';
-                        var sbid = 0;
-                        if (ub7 > 99 && ub1 > 99) {
-                            if (l1Cpc > 0) sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
-                            else if (l7Cpc > 0) sbid = Math.floor(l7Cpc * 0.90 * 100) / 100;
-                            if (sbid === 0) return '-';
-                            return sbid.toFixed(2);
-                        }
-                        var isOver = ub7 > 99 && ub1 > 99;
-                        var isUnder = !isOver && budget > 0 && ub7 < 66 && ub1 < 66 && inv > 0;
-                        if (isOver) {
-                            if (l1Cpc > 1.25) sbid = Math.floor(l1Cpc * 0.80 * 100) / 100;
-                            else if (l1Cpc > 0) sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
-                            if (price < 20 && sbid > 0.20) sbid = 0.20;
-                        } else if (isUnder) {
-                            var baseBid = lastSbid > 0 ? lastSbid : (l1Cpc > 0 ? l1Cpc : (l7Cpc > 0 ? l7Cpc : 0));
-                            if (baseBid > 0) {
-                                if (ub1 < 33) sbid = Math.floor((baseBid + 0.10) * 100) / 100;
-                                else if (ub1 >= 33 && ub1 < 66) sbid = Math.floor(baseBid * 1.10 * 100) / 100;
-                                else sbid = Math.floor(baseBid * 100) / 100;
-                            }
-                        } else {
-                            if (l1Cpc > 0) sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
-                            else if (l7Cpc > 0) sbid = Math.floor(l7Cpc * 0.90 * 100) / 100;
-                        }
-                        return sbid > 0 ? sbid.toFixed(2) : '-';
-                    },
-                    width: 70
-                },
-                {
-                    title: "SBID M",
-                    field: "kw_sbid_m",
-                    hozAlign: "center",
-                    visible: false,
-                    editor: "input",
-                    editorParams: { elementAttributes: { maxlength: "10" } },
-                    formatter: function(cell) {
-                        var value = cell.getValue();
-                        if (!value || value === '' || value === '0' || value === 0) return '-';
-                        return parseFloat(value).toFixed(2);
-                    },
-                    width: 70
-                },
-                {
-                    title: "APR BID",
-                    field: "kw_apr_bid",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var rowData = cell.getRow().getData();
-                        var apprSbid = rowData.kw_apprSbid || '';
-                        if (apprSbid && apprSbid !== '' && parseFloat(apprSbid) > 0) {
-                            return `<div style="display: flex; justify-content: center; align-items: center;">
-                                <i class="fa-solid fa-circle-check kw-update-bid-icon" style="color: #28a745; font-size: 20px; cursor: default;" title="Bid pushed: ${apprSbid}"></i>
-                            </div>`;
-                        } else {
-                            return `<div style="display: flex; justify-content: center; align-items: center;">
-                                <i class="fa-solid fa-check kw-update-bid-icon" style="color: #6c757d; font-size: 18px; cursor: pointer;" title="Click to push bid"></i>
-                            </div>`;
-                        }
-                    },
-                    cellClick: function(e, cell) {
-                        if (e.target.classList.contains('kw-update-bid-icon')) {
-                            e.stopPropagation();
-                            var rowData = cell.getRow().getData();
-                            var sku = rowData['(Child) sku'];
-                            var sbidM = rowData.kw_sbid_m || '';
-                            var apprSbid = rowData.kw_apprSbid || '';
-                            if (apprSbid && apprSbid !== '' && parseFloat(apprSbid) > 0) return;
-                            if (!sbidM || sbidM === '' || sbidM === '0' || parseFloat(sbidM) === 0) {
-                                alert('Please enter a value in SBID M column first'); return;
-                            }
-                            if (confirm('Are you sure you want to push bid ' + sbidM + ' for SKU ' + sku + '?')) {
-                                $.ajax({
-                                    url: '/update-ebay3-keywords-bid-price',
-                                    method: 'PUT',
-                                    data: { sku: sku, bid: sbidM, _token: '{{ csrf_token() }}' },
-                                    success: function(response) {
-                                        if (response.success) {
-                                            cell.getRow().update({kw_apprSbid: sbidM});
-                                            cell.reformat();
-                                        } else { alert('Error: ' + (response.message || 'Failed to update bid')); }
-                                    },
-                                    error: function() { alert('Error: Failed to update bid'); }
-                                });
-                            }
-                        }
-                    },
-                    width: 70
-                },
-                {
-                    title: "Status",
-                    field: "kw_campaignStatus",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var row = cell.getRow().getData();
-                        var campaignId = row.kw_campaign_id || '';
-                        var status = row.kw_campaignStatus || 'PAUSED';
-                        var isEnabled = status === 'RUNNING';
-                        if (!campaignId || campaignId === '' || campaignId === null || campaignId === undefined) {
-                            return '<span style="color: #999;">-</span>';
-                        }
-                        return `<div class="form-check form-switch d-flex justify-content-center">
-                            <input class="form-check-input kw-campaign-status-toggle" 
-                                   type="checkbox" role="switch" 
-                                   data-campaign-id="${campaignId}"
-                                   ${isEnabled ? 'checked' : ''}
-                                   style="cursor: pointer; width: 3rem; height: 1.5rem;">
-                        </div>`;
-                    },
-                    cellClick: function(e, cell) {
-                        if (e.target.classList.contains('kw-campaign-status-toggle')) e.stopPropagation();
-                    },
-                    width: 80
-                },
-                // === PMT Ads Columns ===
-                {
-                    title: "PMT CBID",
-                    field: "pmt_cbid",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var val = cell.getRow().getData().bid_percentage;
-                        if (val === null || val === undefined || val === '') return '-';
-                        return parseFloat(val).toFixed(2);
-                    },
-                    width: 80
-                },
-                {
-                    title: "PMT ES BID",
-                    field: "pmt_es_bid",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var val = cell.getRow().getData().suggested_bid;
-                        if (val === null || val === undefined || val === '') return '-';
-                        return parseFloat(val).toFixed(2);
-                    },
-                    width: 80
-                },
-                {
-                    title: "PMT S BID",
-                    field: "pmt_s_bid",
-                    hozAlign: "center",
-                    visible: false,
-                    headerSortStartingDir: "desc",
-                    sorter: function(a, b, aRow, bRow) {
-                        var getVal = function(rd) {
-                            var views = parseFloat(rd.views) || 0;
-                            var sold  = parseFloat(rd['eBay L30']) || 0;
-                            var scvr  = views > 0 ? (sold / views) * 100 : 0;
-                            if (scvr <= 4)       return 9.1;
-                            else if (scvr <= 7)  return 7.1;
-                            else if (scvr <= 13) return 4.1;
-                            else                 return 2.1;
+                        const v = cell.getValue();
+                        if (!v) return '<span class="text-muted">—</span>';
+                        const map = {
+                            'RECOMMENDED':        { color: '#198754', bg: '#d1f5e0', label: '⭐ Eligible' },
+                            'OPTIONAL':           { color: '#856404', bg: '#fff3cd', label: '⚡ Optional' },
+                            'AD_ALREADY_CREATED': { color: '#0d6efd', bg: '#cfe2ff', label: '📢 In Campaign' },
+                            'NOT_RECOMMENDED':    { color: '#6c757d', bg: '#f8f9fa', label: '— Not Rec.' },
+                            'UNDETERMINED':       { color: '#6c757d', bg: '#f8f9fa', label: '? Unknown' },
                         };
-                        return getVal(aRow.getData()) - getVal(bRow.getData());
-                    },
-                    formatter: function(cell) {
-                        var rd = cell.getRow().getData();
-                        var views = parseFloat(rd.views) || 0;
-                        var sold  = parseFloat(rd['eBay L30']) || 0;
-                        // SCVR = 0 when no views or no sold → RED
-                        var scvr  = views > 0 ? (sold / views) * 100 : 0;
-                        var sbid, color;
-                        if (scvr <= 4)       { sbid = 9.1; color = 'red'; }
-                        else if (scvr <= 7)  { sbid = 7.1; color = '#daa520'; }
-                        else if (scvr <= 13) { sbid = 4.1; color = 'green'; }
-                        else                 { sbid = 2.1; color = '#E83E8C'; }
-                        return '<span style="color:' + color + '; font-weight:600;">' + sbid.toFixed(2) + '</span>';
-                    },
-                    width: 80
+                        const s = map[v] || { color: '#6c757d', bg: '#f8f9fa', label: v };
+                        return `<span style="color:${s.color}; background:${s.bg}; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:600;">${s.label}</span>`;
+                    }
                 },
-                {
-                    title: "PMT T Views",
-                    field: "pmt_t_views",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var val = cell.getRow().getData().pmt_own_views;
-                        return val ? parseInt(val).toLocaleString() : '0';
-                    },
-                    width: 80
-                },
-                {
-                    title: "PMT L7 Views",
-                    field: "pmt_l7_views",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var val = cell.getRow().getData().pmt_own_l7_views;
-                        return val ? parseInt(val).toLocaleString() : '0';
-                    },
-                    width: 80
-                },
-                {
-                    title: "PMT SCVR",
-                    field: "pmt_scvr",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var rd = cell.getRow().getData();
-                        var views = parseFloat(rd.pmt_own_views) || 0;
-                        var ebayL30 = parseFloat(rd.pmt_own_ebay_l30) || 0;
-                        var scvr = views > 0 ? (ebayL30 / views) * 100 : 0;
-                        var color;
-                        if (scvr <= 4) color = '#a00211';
-                        else if (scvr <= 7) color = '#ffc107';
-                        else if (scvr <= 13) color = '#28a745';
-                        else color = '#e83e8c';
-                        return '<span style="color:' + color + '; font-weight: 600;">' + scvr.toFixed(2) + '%</span>';
-                    },
-                    width: 80
-                },
-                {
-                    title: "PMT ClkL7",
-                    field: "pmt_clicks_l7",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var val = cell.getRow().getData().pmt_own_clicks_l7;
-                        return val ? parseInt(val).toLocaleString() : '0';
-                    },
-                    width: 80
-                },
-                {
-                    title: "PMT Clk30",
-                    field: "pmt_clicks_l30",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var val = cell.getRow().getData().pmt_own_clicks_l30;
-                        return val ? parseInt(val).toLocaleString() : '0';
-                    },
-                    width: 80
-                },
-                {
-                    title: "PMT PFT",
-                    field: "pmt_pft",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var rd = cell.getRow().getData();
-                        var gpft = parseFloat(rd['GPFT%']) || 0;
-                        var val = gpft / 100;
-                        var color = val >= 0 ? '#198754' : '#dc3545';
-                        return '<span style="color:' + color + '">' + (val * 100).toFixed(2) + '%</span>';
-                    },
-                    width: 70
-                },
-                {
-                    title: "PMT ROI",
-                    field: "pmt_roi",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var rd = cell.getRow().getData();
-                        var roi = parseFloat(rd['ROI%']) || 0;
-                        var color = roi >= 0 ? '#198754' : '#dc3545';
-                        return '<span style="color:' + color + '">' + Math.round(roi) + '%</span>';
-                    },
-                    width: 70
-                },
-                {
-                    title: "PMT TPFT%",
-                    field: "pmt_tpft",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var rd = cell.getRow().getData();
-                        var gpft = parseFloat(rd['GPFT%']) || 0;
-                        var adUpdates = parseFloat(rd.ad_updates) || 0;
-                        var cbid = parseFloat(rd.bid_percentage) || 0;
-                        var tpft = (gpft / 100) + (adUpdates / 100) - cbid;
-                        var color = tpft >= 0 ? '#198754' : '#dc3545';
-                        return '<span style="color:' + color + '">' + tpft.toFixed(2) + '</span>';
-                    },
-                    width: 80
-                },
-                {
-                    title: "PMT TROI%",
-                    field: "pmt_troi",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var rd = cell.getRow().getData();
-                        var roi = parseFloat(rd['ROI%']) || 0;
-                        var adUpdates = parseFloat(rd.ad_updates) || 0;
-                        var cbid = parseFloat(rd.bid_percentage) || 0;
-                        var troi = (roi / 100) + (adUpdates / 100) - cbid;
-                        var color = troi >= 0 ? '#198754' : '#dc3545';
-                        return '<span style="color:' + color + '">' + troi.toFixed(2) + '</span>';
-                    },
-                    width: 80
-                },
-                {
-                    title: "PMT NRL",
-                    field: "pmt_nrl",
-                    hozAlign: "center",
-                    visible: false,
-                    formatter: function(cell) {
-                        var sku = cell.getRow().getData()['(Child) sku'];
-                        var value = cell.getRow().getData().NRL || 'REQ';
-                        var bgColor = value === 'NRL' ? '#dc3545' : '#28a745';
-                        var label = value === 'NRL' ? 'NRL' : 'REQ';
-                        return '<select class="form-select form-select-sm pmt-nrl-dropdown" data-sku="' + sku + '" data-field="NRL" style="min-width: 70px; background-color: ' + bgColor + '; color: #fff; padding: 2px 4px; font-size: 11px; border: none; border-radius: 4px;"><option value="REQ" ' + (value === 'REQ' ? 'selected' : '') + '>REQ</option><option value="NRL" ' + (value === 'NRL' ? 'selected' : '') + '>NRL</option></select>';
-                    },
-                    cellClick: function(e, cell) { e.stopPropagation(); },
-                    width: 80
-                }
             ]
         });
 
@@ -5028,223 +3844,6 @@
                 });
             }
 
-            // ======== KW Ads Section Filters ========
-            var sectionFilter = $('#section-filter').val() || 'all';
-            if (sectionFilter === 'kw_ads') {
-                // KW Utilization filter
-                var kwUtilFilter = $('#kw-utilization-filter').val();
-                if (kwUtilFilter && kwUtilFilter !== 'all') {
-                    table.addFilter(function(data) {
-                        var budget = parseFloat(data.kw_campaignBudgetAmount) || 0;
-                        if (budget === 0) return false;
-                        var ub7 = (parseFloat(data.kw_l7_spend) || 0) / (budget * 7) * 100;
-                        var ub1 = (parseFloat(data.kw_l1_spend) || 0) / budget * 100;
-                        var ub7Color = ub7 >= 66 && ub7 <= 99 ? 'green' : (ub7 > 99 ? 'pink' : 'red');
-                        var ub1Color = ub1 >= 66 && ub1 <= 99 ? 'green' : (ub1 > 99 ? 'pink' : 'red');
-                        return (ub7Color + '-' + ub1Color) === kwUtilFilter;
-                    });
-                }
-
-                // KW Campaign Status filter
-                var kwStatusFilter = $('#kw-status-filter').val();
-                if (kwStatusFilter && kwStatusFilter !== 'all') {
-                    table.addFilter(function(data) {
-                        return (data.kw_campaignStatus || '') === kwStatusFilter;
-                    });
-                }
-
-                // KW NRA filter
-                var kwNraFilter = $('#kw-nra-filter').val();
-                if (kwNraFilter && kwNraFilter !== 'all') {
-                    table.addFilter(function(data) {
-                        var nra = (data.NR || '').trim();
-                        if (kwNraFilter === 'NRA') return nra === 'NRA';
-                        if (kwNraFilter === 'RA') return nra === 'RA' || nra === '' || nra === null;
-                        if (kwNraFilter === 'LATER') return nra === 'LATER';
-                        return true;
-                    });
-                }
-
-                // KW NRL filter
-                var kwNrlFilter = $('#kw-nrl-filter').val();
-                if (kwNrlFilter && kwNrlFilter !== 'all') {
-                    table.addFilter(function(data) {
-                        var nrl = (data.NRL || '').trim();
-                        if (kwNrlFilter === 'NRL') return nrl === 'NRL';
-                        if (kwNrlFilter === 'REQ') return nrl !== 'NRL';
-                        return true;
-                    });
-                }
-
-                // KW SBID M filter
-                var kwSbidmFilter = $('#kw-sbidm-filter').val();
-                if (kwSbidmFilter && kwSbidmFilter !== 'all') {
-                    table.addFilter(function(data) {
-                        var sbidM = data.kw_sbid_m;
-                        if (kwSbidmFilter === 'blank') return !sbidM || sbidM === '' || sbidM === '0' || parseFloat(sbidM) === 0;
-                        if (kwSbidmFilter === 'data') return sbidM && sbidM !== '' && sbidM !== '0' && parseFloat(sbidM) > 0;
-                        return true;
-                    });
-                }
-
-                // KW Range filters
-                var kw1ubMin = parseFloat($('#kw-range-1ub-min').val()) || null;
-                var kw1ubMax = parseFloat($('#kw-range-1ub-max').val()) || null;
-                if (kw1ubMin !== null || kw1ubMax !== null) {
-                    table.addFilter(function(data) {
-                        var budget = parseFloat(data.kw_campaignBudgetAmount) || 0;
-                        var ub1 = budget > 0 ? (parseFloat(data.kw_l1_spend) || 0) / budget * 100 : 0;
-                        if (kw1ubMin !== null && ub1 < kw1ubMin) return false;
-                        if (kw1ubMax !== null && ub1 > kw1ubMax) return false;
-                        return true;
-                    });
-                }
-                var kw7ubMin = parseFloat($('#kw-range-7ub-min').val()) || null;
-                var kw7ubMax = parseFloat($('#kw-range-7ub-max').val()) || null;
-                if (kw7ubMin !== null || kw7ubMax !== null) {
-                    table.addFilter(function(data) {
-                        var budget = parseFloat(data.kw_campaignBudgetAmount) || 0;
-                        var ub7 = budget > 0 ? (parseFloat(data.kw_l7_spend) || 0) / (budget * 7) * 100 : 0;
-                        if (kw7ubMin !== null && ub7 < kw7ubMin) return false;
-                        if (kw7ubMax !== null && ub7 > kw7ubMax) return false;
-                        return true;
-                    });
-                }
-                var kwLbidMin = parseFloat($('#kw-range-lbid-min').val()) || null;
-                var kwLbidMax = parseFloat($('#kw-range-lbid-max').val()) || null;
-                if (kwLbidMin !== null || kwLbidMax !== null) {
-                    table.addFilter(function(data) {
-                        var lbid = parseFloat(data.kw_last_sbid) || 0;
-                        if (kwLbidMin !== null && lbid < kwLbidMin) return false;
-                        if (kwLbidMax !== null && lbid > kwLbidMax) return false;
-                        return true;
-                    });
-                }
-                var kwAcosMin = parseFloat($('#kw-range-acos-min').val()) || null;
-                var kwAcosMax = parseFloat($('#kw-range-acos-max').val()) || null;
-                if (kwAcosMin !== null || kwAcosMax !== null) {
-                    table.addFilter(function(data) {
-                        var acos = parseFloat(data.kw_acos) || 0;
-                        if (kwAcosMin !== null && acos < kwAcosMin) return false;
-                        if (kwAcosMax !== null && acos > kwAcosMax) return false;
-                        return true;
-                    });
-                }
-                var kwViewsMin = parseFloat($('#kw-range-views-min').val()) || null;
-                var kwViewsMax = parseFloat($('#kw-range-views-max').val()) || null;
-                if (kwViewsMin !== null || kwViewsMax !== null) {
-                    table.addFilter(function(data) {
-                        var views = parseFloat(data.views) || 0;
-                        if (kwViewsMin !== null && views < kwViewsMin) return false;
-                        if (kwViewsMax !== null && views > kwViewsMax) return false;
-                        return true;
-                    });
-                }
-                var kwL7ViewsMin = parseFloat($('#kw-range-l7views-min').val()) || null;
-                var kwL7ViewsMax = parseFloat($('#kw-range-l7views-max').val()) || null;
-                if (kwL7ViewsMin !== null || kwL7ViewsMax !== null) {
-                    table.addFilter(function(data) {
-                        var l7Views = parseFloat(data.l7_views) || 0;
-                        if (kwL7ViewsMin !== null && l7Views < kwL7ViewsMin) return false;
-                        if (kwL7ViewsMax !== null && l7Views > kwL7ViewsMax) return false;
-                        return true;
-                    });
-                }
-            }
-
-            // ======== PMT Ads Section Filters ========
-            if ($('#section-filter').val() === 'pmt_ads') {
-                // PMT Dropdown color filters
-                for (var pmtKey in pmtDropdownFilters) {
-                    var pmtColor = pmtDropdownFilters[pmtKey];
-                    if (pmtColor === 'all') continue;
-
-                    (function(filterKey, filterColor) {
-                        table.addFilter(function(data) {
-                            var val, color;
-
-                            if (filterKey === 'pmt_ov_dil') {
-                                var inv = parseFloat(data['INV']) || 0;
-                                var l30 = parseFloat(data['L30']) || 0;
-                                val = inv === 0 ? 0 : (l30 / inv) * 100;
-                                color = val >= 50 ? 'pink' : (val >= 25 ? 'green' : (val >= 16.66 ? 'yellow' : 'red'));
-                            } else if (filterKey === 'pmt_e_dil') {
-                                var inv2 = parseFloat(data['INV']) || 0;
-                                var eL30 = parseFloat(data['eBay L30']) || 0;
-                                val = inv2 === 0 ? 0 : (eL30 / inv2) * 100;
-                                color = val >= 50 ? 'pink' : (val >= 25 ? 'green' : (val >= 16.66 ? 'yellow' : 'red'));
-                            } else if (filterKey === 'pmt_clk_l7') {
-                                val = parseFloat(data['pmt_own_clicks_l7']) || 0;
-                                color = val > 0 ? 'green' : 'red';
-                            } else if (filterKey === 'pmt_clk_l30') {
-                                val = parseFloat(data['pmt_own_clicks_l30']) || 0;
-                                color = val > 0 ? 'green' : 'red';
-                            } else if (filterKey === 'pmt_pft') {
-                                val = parseFloat(data['PFT %']) || 0;
-                                var pftPct = val * 100;
-                                if (pftPct < 0) color = 'red';
-                                else if (pftPct >= 0 && pftPct < 10) color = 'yellow';
-                                else if (pftPct >= 10 && pftPct < 20) color = 'blue';
-                                else if (pftPct >= 20 && pftPct < 40) color = 'green';
-                                else color = 'pink';
-                            } else if (filterKey === 'pmt_roi') {
-                                val = parseFloat(data['ROI%']) || 0;
-                                var roiPct = val * 100;
-                                if (roiPct < 0) color = 'red';
-                                else if (roiPct >= 0 && roiPct < 50) color = 'yellow';
-                                else if (roiPct >= 50 && roiPct < 100) color = 'green';
-                                else color = 'pink';
-                            } else if (filterKey === 'pmt_tacos') {
-                                val = parseFloat(data['AD%']) || 0;
-                                if (val <= 0) color = 'pink';
-                                else if (val > 0 && val <= 5) color = 'green';
-                                else if (val > 5 && val <= 10) color = 'blue';
-                                else if (val > 10 && val <= 20) color = 'yellow';
-                                else color = 'red';
-                            } else if (filterKey === 'pmt_scvr') {
-                                var views3 = parseFloat(data.pmt_own_views || 0);
-                                var eL303 = parseFloat(data.pmt_own_ebay_l30 || 0);
-                                val = views3 > 0 ? (eL303 / views3) * 100 : 0;
-                                if (val === 0) color = 'red';
-                                else if (val > 0 && val <= 1) color = 'yellow';
-                                else if (val > 1 && val <= 3) color = 'green';
-                                else if (val > 3) color = 'pink';
-                                if (filterColor === 'blue') {
-                                    return val <= 0.5;
-                                }
-                            }
-
-                            return color === filterColor;
-                        });
-                    })(pmtKey, pmtColor);
-                }
-
-                // PMT Range filters
-                var hasPmtRange = Object.values(pmtRangeFilters).some(function(f) { return f.min !== null || f.max !== null; });
-                if (hasPmtRange) {
-                    table.addFilter(function(data) {
-                        var tViews = parseFloat(data.pmt_own_views) || 0;
-                        var l7Views = parseFloat(data.pmt_own_l7_views) || 0;
-                        var cbid = parseFloat(data.bid_percentage) || 0;
-                        var views4 = parseFloat(data.pmt_own_views || 0);
-                        var eL304 = parseFloat(data.pmt_own_ebay_l30 || 0);
-                        var scvrVal = views4 > 0 ? (eL304 / views4) * 100 : 0;
-
-                        var vals = {
-                            't_views': tViews, 'l7_views': l7Views,
-                            'cbid': cbid, 'scvr': scvrVal
-                        };
-
-                        for (var key in pmtRangeFilters) {
-                            var rf = pmtRangeFilters[key];
-                            if (rf.min !== null && vals[key] < rf.min) return false;
-                            if (rf.max !== null && vals[key] > rf.max) return false;
-                        }
-                        return true;
-                    });
-                }
-            }
-
             // 0 Sold filter (based on eBay L30) - triggered by badge click
             if (zeroSoldFilterActive) {
                 table.addFilter(function(data) {
@@ -5331,140 +3930,16 @@
 
         $('#view-mode-filter, #inv-filter, #el30-filter, #variation-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter').on('change', function() {
             applyFilters();
-            if ($('#section-filter').val() === 'kw_ads') {
-                updateKwAdsStats();
-            }
         });
 
         $('#growth-sign-filter').on('change', function() {
             applyFilters();
-            if ($('#section-filter').val() === 'kw_ads') {
-                updateKwAdsStats();
-            }
         });
 
-        // ======== Section Filter: show/hide column groups ========
-        var pricingOnlyColumns = [
-            'image_path', 'Missing', '_ebay3_variation', 'eBay Stock', 'MAP', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
-            'GPFT%', 'AD%', 'PFT %', 'ROI%',
-            'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI'
-        ];
-        var kwAdsOnlyColumns = [
-            'kw_hasCampaign', 'NRL', 'NR', 'l7_views', 'kw_cvr',
-            'kw_campaignBudgetAmount', 'kw_sbgt', 'kw_acos', 'kw_clicks',
-            'kw_spend_L30', 'kw_ad_sold', 'kw_l7_spend', 'kw_l1_spend', 'kw_l7_cpc', 'kw_l1_cpc',
-            'kw_last_sbid', 'kw_sbid_calc', 'kw_sbid_m', 'kw_apr_bid', 'kw_campaignStatus'
-        ];
-        var pmtAdsOnlyColumns = [
-            'pmt_cbid', 'pmt_es_bid', 'pmt_s_bid', 'pmt_t_views', 'pmt_l7_views',
-            'pmt_scvr', 'pmt_clicks_l7', 'pmt_clicks_l30',
-            'pmt_pft', 'pmt_roi', 'pmt_tpft', 'pmt_troi', 'pmt_nrl'
-        ];
-        var sharedColumns = [
-            '_select', 'INV', 'L30', 'E Dil%', 'eBay Price', 'eBay L60', 'eBay L45', 'eBay L30', 'growth_percent', 'views'
-        ];
-
-        function applySectionColumnVisibility(sectionVal) {
-            if (sectionVal === 'all' || sectionVal === 'pricing') {
-                kwAdsOnlyColumns.forEach(function(col) { try { table.hideColumn(col); } catch(e) {} });
-                pmtAdsOnlyColumns.forEach(function(col) { try { table.hideColumn(col); } catch(e) {} });
-                pricingOnlyColumns.forEach(function(col) { try { table.showColumn(col); } catch(e) {} });
-                sharedColumns.forEach(function(col) { try { table.showColumn(col); } catch(e) {} });
-            } else if (sectionVal === 'kw_ads') {
-                pricingOnlyColumns.forEach(function(col) { try { table.hideColumn(col); } catch(e) {} });
-                pmtAdsOnlyColumns.forEach(function(col) { try { table.hideColumn(col); } catch(e) {} });
-                kwAdsOnlyColumns.forEach(function(col) { try { table.showColumn(col); } catch(e) {} });
-                sharedColumns.forEach(function(col) { try { table.showColumn(col); } catch(e) {} });
-            } else if (sectionVal === 'pmt_ads') {
-                pricingOnlyColumns.forEach(function(col) { try { table.hideColumn(col); } catch(e) {} });
-                kwAdsOnlyColumns.forEach(function(col) { try { table.hideColumn(col); } catch(e) {} });
-                pmtAdsOnlyColumns.forEach(function(col) { try { table.showColumn(col); } catch(e) {} });
-                sharedColumns.forEach(function(col) { try { table.showColumn(col); } catch(e) {} });
-            }
-            table.redraw(true);
+        // No-op kept for backward compatibility with existing callers (e.g. tableBuilt).
+        function applySectionColumnVisibility(_sectionVal) {
+            if (table && table.redraw) table.redraw(true);
         }
-
-        // Store previous view mode before PMT Ads switches it
-        var prevViewModeBeforePmt = null;
-        var prevViewModeBeforeKw = null;
-
-        $('#section-filter').on('change', function() {
-            var sectionVal = $(this).val();
-            applySectionColumnVisibility(sectionVal);
-
-            if ((decreaseModeActive || increaseModeActive || samePriceModeActive) && table && table.getColumn) {
-                try {
-                    var selectCol = table.getColumn('_select');
-                    if (selectCol) selectCol.show();
-                } catch (e) {}
-            }
-
-            if (sectionVal === 'all' || sectionVal === 'pricing') {
-                // Restore view mode if returning from PMT Ads or KW Ads
-                if (prevViewModeBeforePmt !== null) {
-                    $('#view-mode-filter').val(prevViewModeBeforePmt);
-                    prevViewModeBeforePmt = null;
-                } else if (prevViewModeBeforeKw !== null) {
-                    $('#view-mode-filter').val(prevViewModeBeforeKw);
-                    prevViewModeBeforeKw = null;
-                }
-                // Hide KW Ads stats & filters, show pricing filters & Summary stats
-                $('#kw-ads-stats').hide();
-                $('#kw-ads-range-section').hide();
-                $('.kw-ads-filter-item').hide();
-                $('#pmt-ads-filter-section').hide();
-                $('.pmt-ads-filter-item').hide();
-                $('#dil-filter-wrapper').show();
-                $('.pricing-filter-item').css('display', '');
-                $('#summary-stats').show();
-                $('#view-mode-filter').show();
-                applyFilters();
-            } else if (sectionVal === 'kw_ads') {
-                // Restore view mode if returning from PMT Ads
-                if (prevViewModeBeforePmt !== null) {
-                    $('#view-mode-filter').val(prevViewModeBeforePmt);
-                    prevViewModeBeforePmt = null;
-                }
-                // Save current view mode and force Parent Only (like ebay-3/utilized page)
-                if (prevViewModeBeforeKw === null) {
-                    prevViewModeBeforeKw = $('#view-mode-filter').val();
-                }
-                $('#view-mode-filter').val('parent');
-                $('#view-mode-filter').hide();
-                // Show KW Ads filters, hide pricing filters & Summary stats
-                $('#kw-ads-stats').show();
-                $('#kw-ads-range-section').show();
-                $('.kw-ads-filter-item').css('display', 'inline-block');
-                $('#pmt-ads-filter-section').hide();
-                $('.pmt-ads-filter-item').hide();
-                $('#dil-filter-wrapper').show();
-                $('.pricing-filter-item').hide();
-                $('#summary-stats').hide();
-                applyFilters();
-                updateKwAdsStats();
-            } else if (sectionVal === 'pmt_ads') {
-                // Restore view mode if returning from KW Ads
-                if (prevViewModeBeforeKw !== null) {
-                    prevViewModeBeforeKw = null;
-                }
-                // Save current view mode and force Parent Only (like ebay-3/pmt/ads page)
-                if (prevViewModeBeforePmt === null) {
-                    prevViewModeBeforePmt = $('#view-mode-filter').val();
-                }
-                $('#view-mode-filter').val('parent');
-                $('#view-mode-filter').hide();
-                // Hide KW Ads stats & filters, show PMT filters
-                $('#kw-ads-stats').hide();
-                $('#kw-ads-range-section').hide();
-                $('.kw-ads-filter-item').hide();
-                $('.pricing-filter-item').hide();
-                $('#summary-stats').hide();
-                $('#dil-filter-wrapper').hide();
-                $('.pmt-ads-filter-item').css('display', 'inline-block');
-                $('#pmt-ads-filter-section').show();
-                applyFilters();
-            }
-        });
 
         // Flatten one tree branch for export (parent row then all _children), without mutating source objects
         function ebay3FlattenTreeBranchForExport(rowData, out) {
@@ -5553,9 +4028,8 @@
         // table.download('csv', { downloadRowRange: 'active' }) is unreliable with
         // dataTree + dataTreeFilter and can emit unfiltered rows.
         $('#export-section-btn').on('click', function() {
-            var sectionVal = $('#section-filter').val() || 'all';
             var dateStr = new Date().toISOString().slice(0, 10);
-            var filename = 'ebay3_' + sectionVal + '_export_' + dateStr + '.csv';
+            var filename = 'ebay3_export_' + dateStr + '.csv';
             try {
                 if (!table) {
                     throw new Error('Table not ready');
@@ -5604,86 +4078,7 @@
             }
         });
 
-        // KW Ads filter change handlers
-        $('#kw-utilization-filter, #kw-status-filter, #kw-nra-filter, #kw-nrl-filter, #kw-sbidm-filter').on('change', function() {
-            applyFilters();
-        });
-
-        // KW Ads Range filter event listeners
-        $('#kw-range-1ub-min, #kw-range-1ub-max, #kw-range-7ub-min, #kw-range-7ub-max, #kw-range-lbid-min, #kw-range-lbid-max, #kw-range-acos-min, #kw-range-acos-max, #kw-range-views-min, #kw-range-views-max, #kw-range-l7views-min, #kw-range-l7views-max').on('keyup change', function() {
-            applyFilters();
-        });
-
-        // INC/DEC SBID dropdown
-        $('#kw-inc-dec-dropdown .dropdown-item').on('click', function(e) {
-            e.preventDefault();
-            var type = $(this).data('type');
-            if (type === 'value') {
-                $('#kw-inc-dec-btn').html('<i class="fa-solid fa-plus-minus me-1"></i>INC/DEC (By Value)');
-                $('#kw-inc-dec-label').text('Value/Percentage');
-                $('#kw-inc-dec-input').attr('placeholder', 'Enter value (e.g., +0.5 or -0.5)');
-            } else {
-                $('#kw-inc-dec-btn').html('<i class="fa-solid fa-plus-minus me-1"></i>INC/DEC (By %)');
-                $('#kw-inc-dec-label').text('Percentage');
-                $('#kw-inc-dec-input').attr('placeholder', 'Enter % (e.g., +10 or -10)');
-            }
-        });
-
-        // Apply INC/DEC SBID
-        $('#kw-apply-inc-dec-btn').on('click', function() {
-            var inputVal = parseFloat($('#kw-inc-dec-input').val());
-            if (isNaN(inputVal) || inputVal === 0) {
-                alert('Please enter a valid value');
-                return;
-            }
-            var isPercentage = $('#kw-inc-dec-btn').text().includes('By %');
-            var selectedRows = table.getSelectedRows();
-            if (selectedRows.length === 0) {
-                // Apply to all visible rows
-                selectedRows = table.getRows("active");
-            }
-            selectedRows.forEach(function(row) {
-                var rowData = row.getData();
-                var currentSbidM = parseFloat(rowData.kw_sbid_m) || 0;
-                // Get SBID calc value if no manual value
-                if (currentSbidM === 0) {
-                    var l1Cpc = parseFloat(rowData.kw_l1_cpc) || 0;
-                    var l7Cpc = parseFloat(rowData.kw_l7_cpc) || 0;
-                    currentSbidM = l1Cpc > 0 ? l1Cpc : (l7Cpc > 0 ? l7Cpc : 0);
-                }
-                if (currentSbidM > 0) {
-                    var newVal;
-                    if (isPercentage) {
-                        newVal = currentSbidM * (1 + inputVal / 100);
-                    } else {
-                        newVal = currentSbidM + inputVal;
-                    }
-                    newVal = Math.max(0.01, Math.round(newVal * 100) / 100);
-                    row.update({kw_sbid_m: newVal.toFixed(2)});
-                }
-            });
-        });
-
-        // Clear INC/DEC input
-        $('#kw-clear-inc-dec-btn').on('click', function() {
-            $('#kw-inc-dec-input').val('');
-        });
-
-        // Clear SBID M for selected rows
-        $('#kw-clear-sbid-m-btn').on('click', function() {
-            var selectedRows = table.getSelectedRows();
-            if (selectedRows.length === 0) {
-                alert('Please select rows first');
-                return;
-            }
-            if (confirm('Clear SBID M for ' + selectedRows.length + ' selected rows?')) {
-                selectedRows.forEach(function(row) {
-                    row.update({kw_sbid_m: ''});
-                });
-            }
-        });
-
-        // KW NRL dropdown change handler
+        // NRL listing-status dropdown change handler (kw-nrl-dropdown class kept for compat)
         $(document).on('change', '.kw-nrl-dropdown', function() {
             var $select = $(this);
             var value = $select.val();
@@ -5695,7 +4090,6 @@
                 success: function(response) {
                     if (response.success) {
                         showToast('NRL updated for ' + sku, 'success');
-                        updateKwAdsStats();
                     } else {
                         showToast('Error updating NRL', 'error');
                     }
@@ -5704,7 +4098,7 @@
             });
         });
 
-        // KW NRA dropdown change handler
+        // NRA listing-status dropdown change handler (kw-nra-dropdown class kept for compat)
         $(document).on('change', '.kw-nra-dropdown', function() {
             var $select = $(this);
             var value = $select.val();
@@ -5716,135 +4110,11 @@
                 success: function(response) {
                     if (response.success) {
                         showToast('NRA updated for ' + sku, 'success');
-                        updateKwAdsStats();
                     } else {
                         showToast('Error updating NRA', 'error');
                     }
                 },
                 error: function() { showToast('Error updating NRA', 'error'); }
-            });
-        });
-
-        // KW Bulk Actions
-        $(document).on('click', '.kw-bulk-action-item', function(e) {
-            e.preventDefault();
-            var action = $(this).data('action');
-            var selectedRows = table.getSelectedRows();
-            if (selectedRows.length === 0) {
-                alert('Please select rows first');
-                return;
-            }
-            var skus = selectedRows.map(function(row) { return row.getData()['(Child) sku']; });
-            if (action === 'NRA' || action === 'RA' || action === 'LATER') {
-                if (confirm('Mark ' + selectedRows.length + ' SKUs as ' + action + '?')) {
-                    skus.forEach(function(sku) {
-                        $.ajax({
-                            url: '/update-ebay3-nr-data',
-                            method: 'POST',
-                            data: { _token: '{{ csrf_token() }}', sku: sku, field: 'NR', value: action },
-                            success: function() {},
-                            error: function() {}
-                        });
-                    });
-                    showToast(selectedRows.length + ' SKUs marked as ' + action, 'success');
-                    setTimeout(function() { table.replaceData(); }, 1000);
-                }
-            }
-        });
-
-        // ======== PMT Ads Event Handlers ========
-        // PMT column dropdown filter click handler
-        $(document).on('click', '.pmt-column-filter', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            var $item = $(this);
-            var column = $item.data('column');
-            var color = $item.data('color');
-            var dropdown = $item.closest('.manual-dropdown-container');
-            var button = dropdown.find('> button');
-
-            // Update active state
-            dropdown.find('.pmt-column-filter').removeClass('active');
-            $item.addClass('active');
-
-            // Update button to show selected color dot + label
-            var statusCircle = $item.find('.status-circle').clone();
-            var origLabel = dropdown.find('> button').attr('data-label') || button.text().trim();
-            if (!dropdown.find('> button').attr('data-label')) {
-                dropdown.find('> button').attr('data-label', button.text().trim());
-            }
-            button.html('').append(statusCircle).append(' ' + origLabel);
-
-            // Update filter state
-            pmtDropdownFilters[column] = color;
-            dropdown.removeClass('show');
-            dropdown.find('.dropdown-menu').removeClass('show');
-            applyFilters();
-        });
-
-        // PMT Ads range filter Apply button
-        $('#pmt-apply-range-btn').on('click', function() {
-            var v;
-            v = $('#pmt-t-views-min').val(); pmtRangeFilters['t_views'].min = v !== '' ? parseFloat(v) : null;
-            v = $('#pmt-t-views-max').val(); pmtRangeFilters['t_views'].max = v !== '' ? parseFloat(v) : null;
-            v = $('#pmt-l7-views-min').val(); pmtRangeFilters['l7_views'].min = v !== '' ? parseFloat(v) : null;
-            v = $('#pmt-l7-views-max').val(); pmtRangeFilters['l7_views'].max = v !== '' ? parseFloat(v) : null;
-            v = $('#pmt-cbid-min').val(); pmtRangeFilters['cbid'].min = v !== '' ? parseFloat(v) : null;
-            v = $('#pmt-cbid-max').val(); pmtRangeFilters['cbid'].max = v !== '' ? parseFloat(v) : null;
-            v = $('#pmt-scvr-min').val(); pmtRangeFilters['scvr'].min = v !== '' ? parseFloat(v) : null;
-            v = $('#pmt-scvr-max').val(); pmtRangeFilters['scvr'].max = v !== '' ? parseFloat(v) : null;
-            applyFilters();
-        });
-
-        // PMT Ads range filter Clear button
-        $('#pmt-clear-range-btn').on('click', function() {
-            $('#pmt-t-views-min, #pmt-t-views-max, #pmt-l7-views-min, #pmt-l7-views-max, #pmt-cbid-min, #pmt-cbid-max, #pmt-scvr-min, #pmt-scvr-max').val('');
-            pmtRangeFilters = {
-                't_views': { min: null, max: null },
-                'l7_views': { min: null, max: null },
-                'cbid': { min: null, max: null },
-                'scvr': { min: null, max: null }
-            };
-            // Reset dropdown filters too
-            for (var k in pmtDropdownFilters) {
-                pmtDropdownFilters[k] = 'all';
-            }
-            // Reset dropdown button appearances
-            $('.pmt-ads-filter-item.manual-dropdown-container').each(function() {
-                var btn = $(this).find('> button');
-                var origLabel = btn.attr('data-label') || btn.text().trim();
-                btn.html('<span class="status-circle default"></span> ' + origLabel);
-                $(this).find('.pmt-column-filter').removeClass('active');
-            });
-            applyFilters();
-        });
-
-        // PMT NRL dropdown change handler
-        $(document).on('change', '.pmt-nrl-dropdown', function() {
-            var $select = $(this);
-            var sku = $select.data('sku');
-            var value = $select.val();
-            var bgColor = value === 'NRL' ? '#dc3545' : '#28a745';
-            $select.css({ 'background-color': bgColor, 'color': '#fff' });
-
-            $.ajax({
-                url: '/update-ebay3-nr-data',
-                method: 'POST',
-                contentType: 'application/json',
-                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                data: JSON.stringify({ sku: sku, field: 'NRL', value: value }),
-                success: function(response) {
-                    if (response.success) {
-                        showToast('NRL updated', 'success');
-                        var rows = table.searchRows('(Child) sku', '=', sku);
-                        if (rows.length > 0) {
-                            rows[0].update({ NRL: value });
-                        }
-                    }
-                },
-                error: function(xhr) {
-                    showToast('Failed to save NRL', 'error');
-                }
             });
         });
 
@@ -5870,222 +4140,10 @@
             applyFilters();
         });
 
-        // PMT Ads: Bootstrap-style `.dropdown-menu.show` (containers are not `.pricing-filter-item`)
-        $(document).on('click', '.pmt-ads-filter-item.manual-dropdown-container > .dropdown-toggle', function(e) {
-            e.stopPropagation();
-            var $menu = $(this).siblings('.dropdown-menu');
-            $('.pmt-ads-filter-item .dropdown-menu').not($menu).removeClass('show');
-            $menu.toggleClass('show');
-        });
-
         $(document).on('click', function() {
             $('.manual-dropdown-container.pricing-filter-item').removeClass('show');
-            $('.pmt-ads-filter-item .dropdown-menu').removeClass('show');
         });
 
-        // Update KW Ads Statistics
-        function updateKwAdsStats() {
-            if (typeof table === 'undefined' || !table) return;
-            
-            var allData = table.getData('all');
-            var totalSkuCount = 0;
-            var ebaySkuCount = 0;
-            var campaignCount = 0;
-            var missingCount = 0;
-            var nraMissingCount = 0;
-            var nrlMissingCount = 0;
-            var zeroInvCount = 0;
-            var nraCount = 0;
-            var nrlCount = 0;
-            var raCount = 0;
-            var ub7Count = 0;
-            var ub7Ub1Count = 0;
-            var pausedCount = 0;
-            var totalClicks = 0;
-            var totalSpend = 0;
-            var totalAdSold = 0;
-            var totalAcos = 0;
-            var acosItems = 0;
-            var totalCvr = 0;
-            var cvrItems = 0;
-
-            var comboCounts = {
-                'green-green': 0, 'green-pink': 0, 'green-red': 0,
-                'pink-green': 0, 'pink-pink': 0, 'pink-red': 0,
-                'red-green': 0, 'red-pink': 0, 'red-red': 0
-            };
-            var processedSkusForCombo = new Set();
-            var processedSkusTotal = new Set();
-            var processedSkusEbay = new Set();
-            var processedSkusForNra = new Set();
-            var processedSkusForNrl = new Set();
-            var processedSkusForCampaign = new Set();
-            var processedSkusForMissing = new Set();
-            var processedSkusForNraMissing = new Set();
-            var processedSkusForNrlMissing = new Set();
-            var processedSkusForZeroInv = new Set();
-
-            var invFilterVal = $('#inv-filter').val() || 'more';
-            var el30FilterVal = $('#el30-filter').val() || 'all';
-            var growthSignKw = $('#growth-sign-filter').val() || 'all';
-
-            allData.forEach(function(row) {
-                var sku = row['(Child) sku'] || '';
-                if (!sku) return;
-
-                var estock = parseFloat(row['eBay Stock'] || row['E Stock'] || 0) || 0;
-                var ebayL30ForFilter = parseFloat(row['eBay L30'] || 0) || 0;
-                var ebayPrice = parseFloat(row['eBay Price'] || 0);
-                var ebayItemId = row.eBay_item_id || '';
-                var hasCampaign = row.kw_campaign_id && row.kw_campaign_id !== '';
-                var nraValue = row.NR ? row.NR.trim() : '';
-                var nrlValue = row.NRL ? row.NRL.trim() : '';
-
-                // Total SKU count (unique)
-                if (!processedSkusTotal.has(sku)) {
-                    processedSkusTotal.add(sku);
-                    totalSkuCount++;
-                }
-
-                // eBay SKU count
-                if (!processedSkusEbay.has(sku)) {
-                    processedSkusEbay.add(sku);
-                    if (ebayItemId || ebayPrice > 0) ebaySkuCount++;
-                }
-
-                // Zero E Stock count
-                if (estock <= 0 && !processedSkusForZeroInv.has(sku)) {
-                    processedSkusForZeroInv.add(sku);
-                    zeroInvCount++;
-                }
-
-                var shopifyInv = typeof ebay3Qty === 'function' ? ebay3Qty(row['INV']) : (parseFloat(row['INV'] || 0) || 0);
-                if (invFilterVal === 'zero') { if (shopifyInv !== 0) return; }
-                else if (invFilterVal === 'more') { if (shopifyInv <= 0) return; }
-
-                if (el30FilterVal === 'zero') {
-                    if (ebayL30ForFilter !== 0) return;
-                } else if (el30FilterVal === 'more') {
-                    if (ebayL30ForFilter <= 0) return;
-                }
-
-                var l60g = parseFloat(row['eBay L60']) || 0;
-                var growthRawKw = 0;
-                if (l60g > 0) {
-                    growthRawKw = ((ebayL30ForFilter - l60g) / l60g) * 100;
-                } else if (ebayL30ForFilter > 0) {
-                    growthRawKw = 100;
-                }
-                var gRoundKw = Math.round(growthRawKw);
-                if (growthSignKw && growthSignKw !== 'all') {
-                    if (growthSignKw === 'negative' && gRoundKw >= 0) return;
-                    if (growthSignKw === 'zero' && gRoundKw !== 0) return;
-                    if (growthSignKw === 'positive' && gRoundKw <= 0) return;
-                }
-
-                // NRA / RA counts
-                if (!processedSkusForNra.has(sku)) {
-                    processedSkusForNra.add(sku);
-                    if (nraValue === 'NRA') nraCount++;
-                    else raCount++;
-                }
-
-                // NRL count
-                if (!processedSkusForNrl.has(sku)) {
-                    processedSkusForNrl.add(sku);
-                    if (nrlValue === 'NRL') nrlCount++;
-                }
-
-                // Campaign / Missing counts
-                if (hasCampaign) {
-                    if (!processedSkusForCampaign.has(sku)) {
-                        processedSkusForCampaign.add(sku);
-                        campaignCount++;
-
-                        var budget = parseFloat(row.kw_campaignBudgetAmount) || 0;
-                        var l7Spend = parseFloat(row.kw_l7_spend) || 0;
-                        var l1Spend = parseFloat(row.kw_l1_spend) || 0;
-                        var ub7 = budget > 0 ? (l7Spend / (budget * 7)) * 100 : 0;
-                        var ub1 = budget > 0 ? (l1Spend / budget) * 100 : 0;
-
-                        if (ub7 >= 66 && ub7 <= 99) ub7Count++;
-                        if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) ub7Ub1Count++;
-
-                        if (!processedSkusForCombo.has(sku) && budget > 0) {
-                            processedSkusForCombo.add(sku);
-                            var ub7Color = ub7 >= 66 && ub7 <= 99 ? 'green' : (ub7 > 99 ? 'pink' : 'red');
-                            var ub1Color = ub1 >= 66 && ub1 <= 99 ? 'green' : (ub1 > 99 ? 'pink' : 'red');
-                            var combo = ub7Color + '-' + ub1Color;
-                            if (comboCounts.hasOwnProperty(combo)) comboCounts[combo]++;
-                        }
-
-                        var status = row.kw_campaignStatus || '';
-                        if (status === 'PAUSED') pausedCount++;
-
-                        totalClicks += parseInt(row.kw_clicks || 0);
-                        totalSpend += parseFloat(row.kw_spend_L30 || 0);
-                        totalAdSold += parseInt(row.kw_ad_sold || 0);
-
-                        var kwSpend = parseFloat(row.kw_spend_L30 || 0);
-                        if (kwSpend > 0) { totalAcos += parseFloat(row.kw_acos || 0); acosItems++; }
-                        var clicks = parseInt(row.kw_clicks || 0);
-                        if (clicks > 0) { totalCvr += parseFloat(row.kw_cvr || 0); cvrItems++; }
-                    }
-                } else {
-                    if (!processedSkusForMissing.has(sku)) {
-                        processedSkusForMissing.add(sku);
-                        if (nrlValue !== 'NRL' && nraValue !== 'NRA') {
-                            missingCount++;
-                        } else {
-                            if (nrlValue === 'NRL' && !processedSkusForNrlMissing.has(sku)) {
-                                processedSkusForNrlMissing.add(sku);
-                                nrlMissingCount++;
-                            }
-                            if (nraValue === 'NRA' && !processedSkusForNraMissing.has(sku)) {
-                                processedSkusForNraMissing.add(sku);
-                                nraMissingCount++;
-                            } else if (nrlValue === 'NRL' && !processedSkusForNraMissing.has(sku)) {
-                                processedSkusForNraMissing.add(sku);
-                                nraMissingCount++;
-                            }
-                        }
-                    }
-                }
-            });
-
-            // Update DOM
-            $('#kw-total-sku-count').text(totalSkuCount.toLocaleString());
-            $('#kw-ebay-sku-count').text(ebaySkuCount.toLocaleString());
-            $('#kw-campaign-count').text(campaignCount.toLocaleString());
-            $('#kw-missing-count').text(missingCount.toLocaleString());
-            $('#kw-nra-missing-count').text(nraMissingCount.toLocaleString());
-            $('#kw-nrl-missing-count').text(nrlMissingCount.toLocaleString());
-            $('#kw-zero-inv-count').text(zeroInvCount.toLocaleString());
-            $('#kw-nra-count').text(nraCount.toLocaleString());
-            $('#kw-nrl-count').text(nrlCount.toLocaleString());
-            $('#kw-ra-count').text(raCount.toLocaleString());
-            $('#kw-7ub-count').text(ub7Count.toLocaleString());
-            $('#kw-7ub-1ub-count').text(ub7Ub1Count.toLocaleString());
-            $('#kw-l30-clicks').text(totalClicks.toLocaleString());
-            $('#kw-l30-spend').text(Math.round(totalSpend).toLocaleString());
-            $('#kw-l30-ad-sold').text(totalAdSold.toLocaleString());
-            $('#kw-avg-acos').text(acosItems > 0 ? (totalAcos / acosItems).toFixed(2) + '%' : '0%');
-            $('#kw-avg-cvr').text(cvrItems > 0 ? Math.round(totalCvr / cvrItems) + '%' : '0%');
-            $('#kw-paused-count').text(pausedCount.toLocaleString());
-
-            // Update utilization filter dropdown with counts
-            var comboLabels = {
-                'green-green': 'Green + Green', 'green-pink': 'Green + Pink', 'green-red': 'Green + Red',
-                'pink-green': 'Pink + Green', 'pink-pink': 'Pink + Pink', 'pink-red': 'Pink + Red',
-                'red-green': 'Red + Green', 'red-pink': 'Red + Pink', 'red-red': 'Red + Red'
-            };
-            $('#kw-utilization-filter option').each(function() {
-                var val = $(this).val();
-                if (val !== 'all' && comboLabels[val] !== undefined) {
-                    $(this).text(comboLabels[val] + ' (' + comboCounts[val] + ')');
-                }
-            });
-        }
 
         // Update calc values
         function updateCalcValues() {
@@ -6109,8 +4167,6 @@
         function updateSummary() {
             const data = ebay3GetBackendSkuRows();
 
-            let totalKwSpendL30 = 0;
-            let totalPmtSpendL30 = 0;
             let totalPftAmt = 0;
             let totalSalesAmt = 0;
             let totalLpAmt = 0;
@@ -6130,8 +4186,6 @@
                     totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
                     totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * ebayL30;
                     totalEStockSum += estock;
-                    totalKwSpendL30 += parseFloat(row['kw_spend_L30'] || 0);
-                    totalPmtSpendL30 += parseFloat(row['pmt_spend_L30'] || 0);
                     if (ebayL30 === 0) {
                         zeroSoldCount++;
                     } else {
@@ -6180,23 +4234,15 @@
                 invStockCount = ebay3ServerSummary.nMap;
             }
 
-            const totalAdSpendL30 = totalKwSpendL30 + totalPmtSpendL30;
-            const tacosPercent = EBAY3_CHANNEL_ADS_PCT;
             const groiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;
             const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
-            const npftPercent = avgGpft - tacosPercent;
-            const nroiPercent = groiPercent - tacosPercent;
 
             $('#zero-sold-count').text(zeroSoldCount.toLocaleString());
             $('#more-sold-count').text(moreSoldCount.toLocaleString());
             $('#total-pft-amt-badge').text('Total PFT: $' + Math.round(totalPftAmt).toLocaleString());
             $('#total-sales-amt-badge').text('Sales: $' + Math.round(totalSalesAmt).toLocaleString());
-            $('#total-spend-l30-badge').text('Ad Spend (KW+PMT): $' + Math.round(totalAdSpendL30).toLocaleString());
             $('#avg-gpft-badge').text('GPFT: ' + Math.round(avgGpft) + '%');
-            $('#avg-pft-badge').text('NPFT: ' + Math.round(npftPercent) + '%');
             $('#groi-percent-badge').text('GROI: ' + Math.round(groiPercent) + '%');
-            $('#nroi-percent-badge').text('NROI: ' + Math.round(nroiPercent) + '%');
-            $('#tacos-percent-badge').text('TACOS: ' + tacosPercent.toFixed(1) + '%');
             $('#avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
             $('#avg-cvr-badge').text('CVR: ' + Math.round(avgCVR) + '%');
             $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
@@ -6289,8 +4335,7 @@
 
         // Wait for table to be built
         table.on('tableBuilt', function() {
-            // Apply initial section filter column visibility (hide KW Ads columns on load)
-            applySectionColumnVisibility($('#section-filter').val() || 'all');
+            applySectionColumnVisibility('all');
             syncEbay3PriceModeUi();
             applyColumnVisibilityFromServer();
             buildColumnDropdown();
@@ -6405,22 +4450,7 @@
             }
         })();
 
-        // Toggle SPEND L30 breakdown columns
         document.addEventListener("click", function(e) {
-            if (e.target.classList.contains("toggle-spendL30-btn")) {
-                let colsToToggle = ["kw_spend_L30", "kw_percent", "pmt_spend_L30", "pmt_percent"];
-
-                colsToToggle.forEach(colField => {
-                    let col = table.getColumn(colField);
-                    if (col) {
-                        col.toggle();
-                    }
-                });
-                
-                saveColumnVisibilityToServer();
-                buildColumnDropdown();
-            }
-
             // Copy SKU to clipboard
             if (e.target.classList.contains("copy-sku-btn")) {
                 const sku = e.target.getAttribute("data-sku");
@@ -6717,129 +4747,6 @@
             });
         });
 
-        // ACOS Info Icon Click Handler – show KW/PMT campaign modal
-        $(document).on('click', '.acos-info-icon', function(e) {
-            e.stopPropagation();
-            const sku = $(this).data('sku');
-            if (!sku) {
-                showToast('SKU not found', 'error');
-                return;
-            }
-            $('#campaignModalLabel').text('Campaign Details - ' + sku);
-            $('#campaignModalBody').html('<div class="text-center"><i class="fa fa-spinner fa-spin"></i> Loading...</div>');
-            $('#campaignModal').modal('show');
-
-            $.ajax({
-                url: '/ebay3-campaign-data-by-sku',
-                type: 'GET',
-                data: { sku: sku },
-                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                success: function(response) {
-                    function getAcosColorClass(acos) {
-                        if (acos === 0) return '';
-                        if (acos < 7) return 'pink-bg';
-                        if (acos >= 7 && acos <= 14) return 'green-bg';
-                        if (acos > 14) return 'red-bg';
-                        return '';
-                    }
-                    function fmt(val, decimals) {
-                        if (val == null || val === '' || (typeof val === 'number' && isNaN(val))) return '-';
-                        return Number(val).toFixed(decimals || 0);
-                    }
-                    function fmtPct(val) {
-                        if (val == null || val === '' || (typeof val === 'number' && isNaN(val))) return '-';
-                        return Number(val).toFixed(0) + '%';
-                    }
-                    function fmtBid(val) {
-                        if (val == null || val === '' || val === '0') return '-';
-                        const n = parseFloat(val);
-                        return (n > 0) ? n.toFixed(2) : '-';
-                    }
-                    function getUbColorClass(ub) {
-                        if (ub == null || ub === '' || (typeof ub === 'number' && isNaN(ub))) return '';
-                        const n = parseFloat(ub);
-                        if (n >= 66 && n <= 99) return 'green-bg';
-                        if (n > 99) return 'pink-bg';
-                        return 'red-bg';
-                    }
-
-                    let html = '';
-
-                    if (response.kw_campaigns && response.kw_campaigns.length > 0) {
-                        response.kw_campaigns.forEach(function(c) {
-                            const acos = parseFloat(c.acos || 0);
-                            html += '<h5 class="mb-3">KW Campaign - ' + (c.campaign_name || 'N/A') + '</h5>';
-                            html += '<div class="table-responsive mb-4"><table class="table table-bordered table-sm">';
-                            html += '<thead><tr><th>BGT</th><th>SBGT</th><th>ACOS</th><th>Clicks</th><th>Ad Spend</th><th>Ad Sales</th><th>Ad Sold</th>';
-                            html += '<th>AD CVR</th><th>7UB%</th><th>1UB%</th><th>L7CPC</th><th>L1CPC</th><th>L BID</th><th>SBID</th></tr></thead><tbody><tr>';
-                            html += '<td>' + fmt(c.bgt, 0) + '</td><td>' + fmt(c.sbgt, 0) + '</td>';
-                            html += '<td class="' + getAcosColorClass(acos) + '">' + fmtPct(acos) + '</td>';
-                            html += '<td>' + fmt(c.clicks) + '</td><td>' + fmt(c.ad_spend, 2) + '</td><td>' + fmt(c.ad_sales, 2) + '</td><td>' + fmt(c.ad_sold) + '</td>';
-                            html += '<td>' + fmtPct(c.ad_cvr) + '</td>';
-                            html += '<td class="' + getUbColorClass(c['7ub']) + '">' + (c['7ub'] != null ? fmtPct(c['7ub']) : '-') + '</td>';
-                            html += '<td class="' + getUbColorClass(c['1ub']) + '">' + (c['1ub'] != null ? fmtPct(c['1ub']) : '-') + '</td>';
-                            html += '<td>' + (c.l7cpc != null && !isNaN(c.l7cpc) ? fmt(c.l7cpc, 2) : '-') + '</td><td>' + (c.l1cpc != null && !isNaN(c.l1cpc) ? fmt(c.l1cpc, 2) : '-') + '</td>';
-                            html += '<td>' + fmtBid(c.l_bid) + '</td><td>' + (c.sbid != null && c.sbid > 0 ? fmt(c.sbid, 2) : '-') + '</td>';
-                            html += '</tr></tbody></table></div>';
-                        });
-                    } else {
-                        html += '<h5 class="mb-3">KW Campaigns</h5><p class="text-muted">No KW campaigns found</p>';
-                    }
-
-                    function calcSbid(l7Views, esBid) {
-                        const l7 = Number(l7Views || 0) || 0;
-                        const es = parseFloat(esBid) || 0;
-                        let v;
-                        if (l7 >= 0 && l7 < 50) v = es;
-                        else if (l7 >= 50 && l7 < 100) v = 9;
-                        else if (l7 >= 100 && l7 < 150) v = 8;
-                        else if (l7 >= 150 && l7 < 200) v = 7;
-                        else if (l7 >= 200 && l7 < 250) v = 6;
-                        else if (l7 >= 250 && l7 < 300) v = 5;
-                        else if (l7 >= 300 && l7 < 350) v = 4;
-                        else if (l7 >= 350 && l7 < 400) v = 3;
-                        else if (l7 >= 400) v = 2;
-                        else v = es;
-                        return Math.min(v, 15);
-                    }
-                    // SCVR coloring – same rule as ebay/pmp/ads getCvrColor
-                    function getScvrColor(scvr) {
-                        const percent = (scvr == null || scvr === '' || isNaN(parseFloat(scvr))) ? 0 : parseFloat(scvr);
-                        if (percent <= 4) return 'red';
-                        if (percent <= 7) return '#daa520';
-                        if (percent <= 13) return 'green';
-                        return '#E83E8C';
-                    }
-                    if (response.pt_campaigns && response.pt_campaigns.length > 0) {
-                        response.pt_campaigns.forEach(function(c) {
-                            // Use backend calculated s_bid if available, otherwise calculate in frontend
-                            const sBid = (c.s_bid !== null && c.s_bid !== undefined) ? c.s_bid : calcSbid(c.l7_views, c.es_bid);
-                            const scvrVal = c.scvr != null ? parseFloat(c.scvr) : null;
-                            const scvrHtml = scvrVal != null && !isNaN(scvrVal)
-                                ? '<span style="color:' + getScvrColor(scvrVal) + '; font-weight: 600;">' + fmt(scvrVal, 1) + '%</span>'
-                                : '-';
-                            html += '<h5 class="mb-3">PMT Campaign - ' + (c.campaign_name || 'N/A') + '</h5>';
-                            html += '<div class="table-responsive mb-4"><table class="table table-bordered table-sm">';
-                            html += '<thead><tr><th>CBID</th><th>ES BID</th><th>S BID</th><th>T VIEWS</th><th>L7 VIEWS</th><th>SCVR</th></tr></thead><tbody><tr>';
-                            html += '<td>' + fmt(c.cbid, 2) + '</td><td>' + fmt(c.es_bid, 2) + '</td><td>' + fmt(sBid, 2) + '</td>';
-                            html += '<td>' + fmt(c.t_views, 0) + '</td><td>' + fmt(c.l7_views, 0) + '</td><td>' + scvrHtml + '</td>';
-                            html += '</tr></tbody></table></div>';
-                        });
-                    } else {
-                        html += '<h5 class="mb-3">PMT Campaigns</h5><p class="text-muted">No PMT campaigns found</p>';
-                    }
-
-                    if (!(response.kw_campaigns && response.kw_campaigns.length > 0) && !(response.pt_campaigns && response.pt_campaigns.length > 0)) {
-                        html = '<p class="text-muted">No campaigns found for this SKU</p>';
-                    }
-                    $('#campaignModalBody').html(html);
-                },
-                error: function(xhr) {
-                    const err = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to load campaign data';
-                    $('#campaignModalBody').html('<div class="alert alert-danger">' + err + '</div>');
-                }
-            });
-        });
     });
 </script>
 @endsection

@@ -132,6 +132,22 @@
                     <code>SCVR = (Sold L30 / Views) × 100</code>. Each band: if SCVR ≤ max → use that bid.
                 </p>
 
+                {{-- L7 views threshold — short-circuits the SCVR band lookup --}}
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-md-5">
+                        <label class="form-label fw-semibold mb-1">L7 Views Threshold</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" class="form-control" id="sbid-l7-threshold-input"
+                                   step="1" min="0" value="70">
+                            <span class="input-group-text">views</span>
+                        </div>
+                        <small class="text-muted">
+                            If a row's <code>l7_views</code> &lt; this value → S Bid = ES Bid (raw suggested_bid).
+                            Otherwise the SCVR bands below are used.
+                        </small>
+                    </div>
+                </div>
+
                 <table class="table table-sm table-bordered align-middle" id="sbid-rule-table">
                     <thead class="table-light">
                         <tr>
@@ -415,7 +431,7 @@ $(document).ready(function () {
             },
             {
                 title: 'S Bid', field: 'ebay_l30', width: 110, hozAlign: 'center',
-                headerTooltip: 'Suggested bid: if SCVR or DIL is Pink → Pink bid; else SCVR rule. No SBID when CVR = 0 and DIL not Pink.',
+                headerTooltip: 'Suggested bid: if l7_views < L7 threshold → ES Bid (raw suggested_bid); else CVR-band lookup. Configure both via the "SBID Rule" button.',
                 sorter: function(a, b, aRow, bRow) {
                     return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                 },
@@ -423,7 +439,7 @@ $(document).ready(function () {
                     const row   = cell.getRow().getData();
                     const match = getCombinedSbid(row);
                     if (match.skip) {
-                        return `<span class="text-muted" title="No SBID — 0 CVR (no L30 sales)" style="font-size:11px;">— no sbid</span>`;
+                        return `<span class="text-muted" title="No SBID — l7_views below threshold and no ES Bid available" style="font-size:11px;">— no sbid</span>`;
                     }
                     return `<span style="color:${match.color}; font-weight:700;">${match.bid.toFixed(1)}%</span>`;
                 }
@@ -641,22 +657,21 @@ document.getElementById('push-selected-btn').addEventListener('click', function(
 });
 
 // ── SBID Rule helper — used by S Bid column ────────
-// Skip SBID entirely when CVR = 0 (no signal: zero sales in L30 means we don't know what to bid)
+// Walk bands top-to-bottom (ascending scvr_max) and return the first match's bid.
+// CVR = 0 is a valid value and falls into the lowest band (e.g. ≤ 4 → 10.1%) — no skip.
 // `row` (optional) carries metric values so a matched band can resolve a dynamic sub-rule.
 function getBidFromRule(scvr, row) {
     const s = parseFloat(scvr);
-    if (!isFinite(s) || s <= 0) {
-        return { bid: 0, color: '#6c757d', skip: true };
-    }
+    const safeScvr = (!isFinite(s) || s < 0) ? 0 : s;
     const bands = currentRule.bands || [];
     const ctx = {
-        scvr:       s,
+        scvr:       safeScvr,
         ebay_price: parseFloat(row && row.metric_price) || 0,
         ebay_l30:   parseFloat(row && row.ebay_l30)     || 0,
         views:      parseFloat(row && row.views)        || 0,
     };
     for (let i = 0; i < bands.length; i++) {
-        if (s <= parseFloat(bands[i].scvr_max)) {
+        if (safeScvr <= parseFloat(bands[i].scvr_max)) {
             return resolveBandBid(bands[i], ctx);
         }
     }
@@ -871,9 +886,17 @@ function removeSubBand(idx, j) {
 // Load rule when modal opens
 document.getElementById('sbidRuleModal').addEventListener('show.bs.modal', function() {
     $.get(ruleGetUrl, function(data) {
-        currentRule = data;
-        renderRuleBands(data.bands || []);
+        currentRule = data || {};
+        renderRuleBands(currentRule.bands || []);
+        // Populate L7 views threshold input (defaults to 70 when missing).
+        const thr = (currentRule.l7_views_threshold != null) ? currentRule.l7_views_threshold : 70;
+        document.getElementById('sbid-l7-threshold-input').value = thr;
     });
+});
+
+// Track threshold changes locally so the in-memory rule is in sync before save.
+document.getElementById('sbid-l7-threshold-input').addEventListener('change', function() {
+    currentRule.l7_views_threshold = parseFloat(this.value) || 0;
 });
 
 // Save rule
@@ -884,12 +907,17 @@ document.getElementById('sbid-rule-save-btn').addEventListener('click', function
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
 
+    const threshold = parseFloat(document.getElementById('sbid-l7-threshold-input').value);
+
     $.ajax({
         url: ruleSaveUrl,
         method: 'POST',
         headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
         contentType: 'application/json',
-        data: JSON.stringify({ bands: currentRule.bands }),
+        data: JSON.stringify({
+            bands: currentRule.bands,
+            l7_views_threshold: isFinite(threshold) ? threshold : 70,
+        }),
         success: function(resp) {
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
@@ -977,21 +1005,23 @@ function pinkBidOf(bands) {
     return { bid: parseFloat(last.bid), color: last.color || '#e83e8c' };
 }
 
-// Combined S Bid for the column — mirrors the command:
-// if SCVR or DIL is Pink → push the Pink bid; else normal SCVR rule (skip when 0).
+// S Bid for the column:
+//   Step 1 — if row's `l7_views` < `l7_views_threshold` → fall back to ES Bid (suggested_bid).
+//   Step 2 — else evaluate SCVR bands (the existing SBID Rule modal) top-to-bottom.
 function getCombinedSbid(row) {
-    const sold  = parseFloat(row.ebay_l30) || 0;
-    const views = parseFloat(row.views)    || 0;
-    const scvr  = views > 0 ? (sold / views) * 100 : 0;
-    const dil   = dilValue(row);
+    const l7        = parseFloat(row.l7_views)    || 0;
+    const esBidRaw  = parseFloat(row.suggested_bid);
+    const sold      = parseFloat(row.ebay_l30)    || 0;
+    const views     = parseFloat(row.views)       || 0;
+    const scvr      = views > 0 ? (sold / views) * 100 : 0;
+    const threshold = parseFloat(currentRule.l7_views_threshold);
+    const thr       = isFinite(threshold) ? threshold : 70;
 
-    if (isPinkBand(dil, currentDilRule.bands || [])) {
-        const b = pinkBidOf(currentDilRule.bands);
-        return { bid: b.bid, color: b.color, skip: false };
-    }
-    if (isPinkBand(scvr, currentRule.bands || [])) {
-        const b = pinkBidOf(currentRule.bands);
-        return { bid: b.bid, color: b.color, skip: false };
+    if (l7 < thr) {
+        if (!isFinite(esBidRaw) || esBidRaw <= 0) {
+            return { bid: 0, color: '#6c757d', skip: true };
+        }
+        return { bid: esBidRaw, color: '#0dcaf0', skip: false };
     }
     return getBidFromRule(scvr, row);
 }

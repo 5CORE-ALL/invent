@@ -13,6 +13,10 @@ class EbayCampaignAdsController extends Controller
     {
         $rule = DB::table('ebay_sbid_rules')->where('key', 'ebay1')->first();
         $ruleData = $rule ? json_decode($rule->rule, true) : $this->defaultRule();
+        // Backfill threshold for existing rule rows saved before this field was added.
+        if (!isset($ruleData['l7_views_threshold'])) {
+            $ruleData['l7_views_threshold'] = 70;
+        }
 
         $dil = DB::table('ebay_sbid_rules')->where('key', 'ebay1_dil')->first();
         $dilData = $dil ? json_decode($dil->rule, true) : $this->defaultDilRule();
@@ -31,16 +35,23 @@ class EbayCampaignAdsController extends Controller
 
     public function saveRule(Request $request)
     {
-        $bands = $request->input('bands', []);
+        $bands     = $request->input('bands', []);
+        $threshold = $request->input('l7_views_threshold', 70);
 
         if (empty($bands) || !is_array($bands)) {
             return response()->json(['error' => 'Invalid rule data'], 422);
+        }
+        if (!is_numeric($threshold) || $threshold < 0) {
+            return response()->json(['error' => 'l7_views_threshold must be a non-negative number'], 422);
         }
 
         // Sort bands by scvr_max ascending
         usort($bands, fn($a, $b) => $a['scvr_max'] <=> $b['scvr_max']);
 
-        $rule = ['bands' => $bands];
+        $rule = [
+            'l7_views_threshold' => (float) $threshold,
+            'bands'              => $bands,
+        ];
 
         DB::table('ebay_sbid_rules')->updateOrInsert(
             ['key' => 'ebay1'],
@@ -449,11 +460,12 @@ class EbayCampaignAdsController extends Controller
     private function defaultRule(): array
     {
         return [
+            'l7_views_threshold' => 70,
             'bands' => [
-                ['scvr_max' => 4,    'bid' => 9.1, 'label' => 'Red',    'color' => '#dc3545'],
-                ['scvr_max' => 7,    'bid' => 7.1, 'label' => 'Yellow', 'color' => '#ffc107'],
-                ['scvr_max' => 13,   'bid' => 4.1, 'label' => 'Green',  'color' => '#198754'],
-                ['scvr_max' => 9999, 'bid' => 2.1, 'label' => 'Pink',   'color' => '#e83e8c'],
+                ['scvr_max' => 4,    'bid' => 10.1, 'label' => 'Red',    'color' => '#dc3545'],
+                ['scvr_max' => 7,    'bid' => 8.1,  'label' => 'Yellow', 'color' => '#ffc107'],
+                ['scvr_max' => 13,   'bid' => 5.1,  'label' => 'Green',  'color' => '#198754'],
+                ['scvr_max' => 9999, 'bid' => 2.1,  'label' => 'Pink',   'color' => '#e83e8c'],
             ]
         ];
     }
@@ -469,6 +481,7 @@ class EbayCampaignAdsController extends Controller
                 DB::raw("CASE WHEN em.sku IS NOT NULL THEN 1 ELSE 0 END as sku_matched"),
                 'em.ebay_price as metric_price',
                 'em.views',
+                'em.l7_views',
                 'em.ebay_l30',
                 // Dilution inputs (from shopify_skus, matched by sku). Correlated subqueries
                 // avoid row multiplication and keep every ad row visible even when unmatched.

@@ -462,7 +462,8 @@ class PurchasingPowerController extends Controller
             $unitPrice = (float) ($r->price ?? 0);
             $qty       = max(0, (int) ($r->quantity ?? 0));
             $amount    = $unitPrice * $qty;
-            $pftEach   = ($unitPrice * $pct) - $lp - $ship;
+            
+            $pftEach   = ($unitPrice * $pct) - $lp;
             $pft       = round($pftEach * $qty, 2);
             $gpft      = $unitPrice > 0 ? round(($pftEach / $unitPrice) * 100, 2) : 0;
             $cogs      = round($lp * $qty, 2);
