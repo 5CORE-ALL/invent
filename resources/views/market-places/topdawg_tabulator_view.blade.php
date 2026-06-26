@@ -33,103 +33,18 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <p class="text-muted small mb-2">Price &amp; stock from <code>topdawg_products</code> (API). L30/L60 from order metrics. Run <code>php artisan topdawg:fetch</code> on server to refresh.</p>
-                <div class="d-flex align-items-center flex-wrap gap-2">
-                    <select id="inventory-filter" class="form-select form-select-sm" style="width:130px;">
-                        <option value="all">All Inventory</option>
-                        <option value="zero">0 Inventory</option>
-                        <option value="more" selected>More than 0</option>
-                    </select>
-                    <select id="td-stock-filter" class="form-select form-select-sm" style="width:130px;">
-                        <option value="all">TD Stock</option>
-                        <option value="zero">0 TD Stock</option>
-                        <option value="more">More than 0</option>
-                    </select>
-                    <select id="nrl-filter" class="form-select form-select-sm" style="width:130px;">
-                        <option value="all">All Status</option>
-                        <option value="REQ" selected>REQ Only</option>
-                        <option value="NR">NR Only</option>
-                    </select>
-                    <select id="gpft-filter" class="form-select form-select-sm" style="width:130px;">
-                        <option value="all">GPFT%</option>
-                        <option value="negative">Negative</option>
-                        <option value="0-10">0-10%</option>
-                        <option value="10-20">10-20%</option>
-                        <option value="20-30">20-30%</option>
-                        <option value="30plus">30%+</option>
-                    </select>
-                    {{-- Sold dropdown (mirrors Amazon tabulator + every other /pricing page).
-                         Backed by `TD L30`:
-                           all  → no filter
-                           sold → TD L30 > 0
-                           zero → TD L30 = 0
-                         Single source of truth — the #zero-sold-badge / #more-sold-badge clicks
-                         and the ?badge=zero_sold|more_sold URL deep-link all write into this
-                         dropdown so badges + dropdown + URL stay in sync. --}}
-                    <select id="sold-filter" class="form-select form-select-sm" style="width:130px;"
-                            title="Filter by TD L30 sold quantity">
-                        <option value="all">Sold</option>
-                        <option value="sold">Sold &gt; 0</option>
-                        <option value="zero">0 Sold</option>
-                    </select>
-                    <a href="{{ route('all.marketplace.master') }}" class="btn btn-sm btn-outline-primary">
-                        <i class="fas fa-th-large"></i> All Marketplace Master
-                    </a>
-                    <button id="export-btn" class="btn btn-sm btn-info"><i class="fas fa-file-csv"></i> Export CSV</button>
-
-                    <button id="decrease-btn" class="btn btn-sm btn-warning">
-                        <i class="fas fa-arrow-down"></i> Decrease Mode
-                    </button>
-                    <button id="increase-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-arrow-up"></i> Increase Mode
-                    </button>
-                    <button id="same-price-btn" class="btn btn-sm btn-info" title="Apply ONE price (entered in the box) to every selected SKU">
-                        <i class="fas fa-equals"></i> Same Price Mode
-                    </button>
-
-                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
-                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = $topdawgPercentage / 100, default 0.95) --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
-                        id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / {{ $topdawgPercentage ?? 95 }}% on every selected row (back-solves so SROI column equals the target)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target ROI%:
-                        </label>
-                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / {{ $topdawgPercentage ?? 95 }}% for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
-                        </button>
-                    </div>
-
-                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
-                         Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
-                        id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + Ship) / ({{ $topdawgPercentage ?? 95 }}% − Target GPFT%/100) on every selected row">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target GPFT%:
-                        </label>
-                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the TopDawg take-home margin ({{ $topdawgPercentage ?? 95 }}%).">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP + Ship) / ({{ $topdawgPercentage ?? 95 }}% − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
-                        </button>
-                    </div>
-                </div>
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary ({{ $topdawgPercentage ?? 95 }}% Margin)</h6>
-                    <div class="d-flex flex-wrap gap-2">
-                        <span class="badge fs-6 p-2" id="total-sales-badge"
-                              style="background:#198754;color:#fff;font-weight:bold;"
+                {{-- Summary badges — each badge gets flex:1 + text-align:center so the
+                     row of badges spans the FULL width of the card from left → right,
+                     each one occupying an equal slice. flex-nowrap prevents wrapping
+                     onto a second line so the strip stays a single visual band. --}}
+                <div id="summary-stats" class="p-3 bg-light rounded">
+                    <div class="d-flex flex-nowrap gap-2 w-100" style="overflow-x:auto;">
+                        <span class="badge fs-6 p-2 text-center" id="total-sales-badge"
+                              style="background:#198754;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;"
                               title="Σ (TD L30 × TD Price) across visible rows — last-30-day TopDawg sales revenue">Sales: $0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-td-l30-badge" style="color:#000;font-weight:bold;" title="Sum of TD L30 on filtered rows">TD L30: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-badge" style="color:#fff;font-weight:bold;cursor:pointer;" title="SKUs with TD L30 = 0">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2" id="more-sold-badge" style="background:#28a745;color:#fff;font-weight:bold;cursor:pointer;" title="SKUs with TD L30 &gt; 0">&gt; 0 Sold: 0</span>
+                        <span class="badge bg-success fs-6 p-2 text-center" id="total-td-l30-badge" style="color:#000;font-weight:bold;flex:1 1 0;min-width:90px;" title="Sum of TD L30 on filtered rows">TD L30: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 text-center" id="zero-sold-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;" title="SKUs with TD L30 = 0">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2 text-center" id="more-sold-badge" style="background:#28a745;color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;" title="SKUs with TD L30 &gt; 0">&gt; 0 Sold: 0</span>
                         {{-- GPFT / GROI — weighted profitability for filtered rows.
                              Same shape as /purchasing-power-pricing GPFT badge:
                                Profit (per row) = (TD Price × {{ $topdawgPercentage ?? 95 }}% − LP − Ship) × TD L30
@@ -138,14 +53,14 @@
                              Ship comes from CP Master (ProductMaster.Values.ship → Ship_productmaster).
                              GPFT% = (Σ Profit ÷ Σ Sales L30) × 100   (weighted gross margin)
                              GROI% = (Σ Profit ÷ Σ COGS) × 100        (weighted ROI) --}}
-                        <span class="badge fs-6 p-2" id="gpft-pct-badge"
-                              style="background:#6f42c1;color:#fff;font-weight:bold;"
+                        <span class="badge fs-6 p-2 text-center" id="gpft-pct-badge"
+                              style="background:#6f42c1;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;"
                               title="Weighted Gross Profit %: (Σ Profit ÷ Σ Sales L30) × 100. Profit includes Ship from CP Master.">GPFT: 0%</span>
-                        <span class="badge fs-6 p-2" id="groi-pct-badge"
-                              style="background:#0d6efd;color:#fff;font-weight:bold;"
+                        <span class="badge fs-6 p-2 text-center" id="groi-pct-badge"
+                              style="background:#0d6efd;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;"
                               title="Weighted Gross ROI %: (Σ Profit ÷ Σ COGS) × 100. COGS = LP × TD L30; Profit includes Ship from CP Master.">GROI: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color:#fff;font-weight:bold;cursor:pointer;" title="REQ + INV&gt;0 + TD Price=0">Missing L: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="nmap-badge" style="color:#fff;font-weight:bold;cursor:pointer;" title="|INV − TD Stock| &gt; 3">N Map: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 text-center" id="missing-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;" title="REQ + INV&gt;0 + TD Price=0">Missing L: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 text-center" id="nmap-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;" title="|INV − TD Stock| &gt; 3">N Map: 0</span>
                     </div>
                 </div>
             </div>
@@ -170,9 +85,150 @@
                     </div>
                 </div>
                 <div id="topdawg-table-wrapper" style="height:calc(100vh - 240px);display:flex;flex-direction:column;">
+                    {{-- Dedicated search row — Search SKU + Search Parent each take
+                         half the row (col-6) so they span the full table width.
+                         Stacking them above the filter strip gives the inputs more
+                         breathing room and decouples search UX from the cramped
+                         filter/button bar below. --}}
+                    <div class="p-2 bg-light border-bottom">
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <input type="text" id="sku-search" class="form-control form-control-sm w-100" placeholder="Search SKU...">
+                            </div>
+                            <div class="col-6">
+                                <input type="text" id="parent-search" class="form-control form-control-sm w-100" placeholder="Search Parent...">
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Filter / action row. Lives BELOW the search row so search
+                         inputs stay roomy and predictable while filters / mode
+                         buttons / target controls share their own strip.
+                         flex-wrap keeps everything on one line on wide screens
+                         and falls back to wrapping (no horizontal scrollbar)
+                         on narrower viewports. --}}
                     <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
-                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
-                        <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
+                        <select id="inventory-filter" class="form-select form-select-sm" style="width:90px;">
+                            <option value="all">ALL</option>
+                            <option value="zero">0 Inv</option>
+                            <option value="more" selected>&gt; 0</option>
+                        </select>
+                        <select id="nrl-filter" class="form-select form-select-sm" style="width:100px;">
+                            <option value="all">All Status</option>
+                            <option value="REQ" selected>REQ Only</option>
+                            <option value="NR">NR Only</option>
+                        </select>
+                        <select id="gpft-filter" class="form-select form-select-sm" style="width:95px;">
+                            <option value="all">GPFT%</option>
+                            <option value="negative">Negative</option>
+                            <option value="0-10">0-10%</option>
+                            <option value="10-20">10-20%</option>
+                            <option value="20-30">20-30%</option>
+                            <option value="30plus">30%+</option>
+                        </select>
+                        {{-- GROI / ROI% bracket filter — backed by the per-row `ROI%` field
+                             (((TD Price × {{ $topdawgPercentage ?? 95 }}% − LP − Ship) / LP) × 100).
+                             Brackets match the column's existing color thresholds
+                             (red < 40, yellow 40–75, green 75–125, pink ≥ 125) so the
+                             dropdown options stay visually consistent with the cell colors. --}}
+                        <select id="groi-filter" class="form-select form-select-sm" style="width:90px;"
+                                title="Filter by per-row ROI% (matches GROI badge bracketing)">
+                            <option value="all">ROI%</option>
+                            <option value="lt40">&lt; 40%</option>
+                            <option value="40-75">40–75%</option>
+                            <option value="75-125">75–125%</option>
+                            <option value="125plus">125%+</option>
+                        </select>
+                        {{-- DIL% bracket filter — backed by the per-row `Dil` field
+                             ((L30 ÷ INV) × 100, controller-computed at fetch time).
+                             Brackets match the Dil column's color thresholds exactly
+                             (red < 16.7, yellow 16.7–25, green 25–50, pink ≥ 50) so the
+                             dropdown labels stay consistent with the cell colors. --}}
+                        <select id="dil-filter" class="form-select form-select-sm" style="width:95px;"
+                                title="Filter by per-row DIL% (matches Dil column color buckets)">
+                            <option value="all">All DIL%</option>
+                            <option value="red">Red (&lt;16.7%)</option>
+                            <option value="yellow">Yellow (16.7–25%)</option>
+                            <option value="green">Green (25–50%)</option>
+                            <option value="pink">Pink (50%+)</option>
+                        </select>
+                        {{-- Sold dropdown (mirrors Amazon tabulator + every other /pricing page).
+                             Backed by `TD L30`:
+                               all  → no filter
+                               sold → TD L30 > 0
+                               zero → TD L30 = 0
+                             Single source of truth — the #zero-sold-badge / #more-sold-badge clicks
+                             and the ?badge=zero_sold|more_sold URL deep-link all write into this
+                             dropdown so badges + dropdown + URL stay in sync. --}}
+                        <select id="sold-filter" class="form-select form-select-sm" style="width:90px;"
+                                title="Filter by TD L30 sold quantity">
+                            <option value="all">Sold</option>
+                            <option value="sold">Sold &gt; 0</option>
+                            <option value="zero">0 Sold</option>
+                        </select>
+                        {{-- Column-visibility controls — same UX as /purchasing-power-pricing.
+                             • Dropdown shows a checkbox per data column; toggling persists
+                               immediately to /topdawg-pricing-column-visibility (server-side
+                               cache, keyed per user, 1-year TTL).
+                             • "Show All" resets every column to visible and saves. --}}
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                                id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                                title="Show / hide columns (saved per user)">
+                                <i class="fa fa-eye"></i>
+                            </button>
+                            <ul class="dropdown-menu" id="column-dropdown-menu"
+                                style="max-height: 400px; overflow-y: auto;"></ul>
+                        </div>
+                        <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary"
+                                title="Show all columns" aria-label="Show all columns">
+                            <i class="fa fa-eye"></i>
+                        </button>
+                        <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV" aria-label="Export CSV"><i class="fas fa-download"></i></button>
+
+                        {{-- Single price-mode cycle button — same UX as /doba-tabulator and other
+                             marketplace pricing pages. Click to cycle through:
+                               Off → Decrease → Increase → Same Price → Off --}}
+                        <button id="td-price-mode-btn" type="button" class="btn btn-sm btn-secondary"
+                                title="Cycle pricing mode: Off → Decrease → Increase → Same Price → Off">
+                            <i class="fas fa-exchange-alt"></i> Price %
+                        </button>
+
+                        {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%. --}}
+                        <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
+                            id="target-roi-controls"
+                            title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / {{ $topdawgPercentage ?? 95 }}% on every selected row (back-solves so SROI column equals the target)">
+                            <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap"
+                                   aria-label="Target ROI percent">
+                                <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
+                            </label>
+                            <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                                placeholder="30" step="0.1" style="width: 80px;"
+                                title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
+                            <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                                title="Apply — Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / {{ $topdawgPercentage ?? 95 }}% for every selected row"
+                                aria-label="Apply Target ROI">
+                                <i class="fas fa-calculator"></i>
+                            </button>
+                        </div>
+
+                        {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%. --}}
+                        <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
+                            id="target-gpft-controls"
+                            title="Target GPFT% — sets S PRC = (LP + Ship) / ({{ $topdawgPercentage ?? 95 }}% − Target GPFT%/100) on every selected row">
+                            <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap"
+                                   aria-label="Target GPFT percent">
+                                <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
+                            </label>
+                            <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                                placeholder="30" step="0.1" style="width: 80px;"
+                                title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the TopDawg take-home margin ({{ $topdawgPercentage ?? 95 }}%).">
+                            <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                                title="Apply — Compute & save S PRC = (LP + Ship) / ({{ $topdawgPercentage ?? 95 }}% − Target GPFT%/100) for every selected row"
+                                aria-label="Apply Target GPFT">
+                                <i class="fas fa-calculator"></i>
+                            </button>
+                        </div>
                     </div>
                     <div id="topdawg-pricing-table" style="flex:1;"></div>
                 </div>
@@ -229,17 +285,26 @@
         return tdDecreaseModeActive || tdIncreaseModeActive || tdSamePriceModeActive;
     }
 
-    function tdResetDecreaseBtn() {
-        $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning')
-            .html('<i class="fas fa-arrow-down"></i> Decrease Mode');
-    }
-    function tdResetIncreaseBtn() {
-        $('#increase-btn').removeClass('btn-danger').addClass('btn-success')
-            .html('<i class="fas fa-arrow-up"></i> Increase Mode');
-    }
-    function tdResetSamePriceBtn() {
-        $('#same-price-btn').removeClass('btn-danger').addClass('btn-info')
-            .html('<i class="fas fa-equals"></i> Same Price Mode');
+    // Update the single #td-price-mode-btn to reflect the current mode state.
+    // Replaces the old per-button reset helpers (tdResetDecreaseBtn / …Increase / …SamePrice)
+    // — now a single sync function owns the button's color + icon + label for every state.
+    function tdSyncPriceModeUi() {
+        const $btn = $('#td-price-mode-btn');
+        if (!$btn.length) return;
+        const allColorClasses = 'btn-secondary btn-warning btn-success btn-info btn-danger';
+        if (tdDecreaseModeActive) {
+            $btn.removeClass(allColorClasses).addClass('btn-danger')
+                .html('<i class="fas fa-arrow-down"></i> Decrease ON');
+        } else if (tdIncreaseModeActive) {
+            $btn.removeClass(allColorClasses).addClass('btn-danger')
+                .html('<i class="fas fa-arrow-up"></i> Increase ON');
+        } else if (tdSamePriceModeActive) {
+            $btn.removeClass(allColorClasses).addClass('btn-danger')
+                .html('<i class="fas fa-equals"></i> Same Price ON');
+        } else {
+            $btn.removeClass(allColorClasses).addClass('btn-secondary')
+                .html('<i class="fas fa-exchange-alt"></i> Price %');
+        }
     }
 
     function tdSyncDiscountInputUi() {
@@ -259,11 +324,13 @@
     }
 
     function tdShowSelectColumn(show) {
+        // Selection column is always visible now (see column definition above).
+        // Kept as a no-op so existing mode-toggle handlers don't need editing —
+        // they call this with `false` when a mode is turned off, but we no longer
+        // want to hide the column in that case.
         if (!table) return;
         const col = table.getColumn('_select');
-        if (col) {
-            if (show) col.show(); else col.hide();
-        }
+        if (col && !col.isVisible()) col.show();
     }
 
     function tdUpdateSelectedCount() {
@@ -272,13 +339,33 @@
         $('#discount-input-container').toggle(tdAnyModeActive() && count > 0);
     }
 
-    function tdUpdateSelectAllHeaderCheckbox() {
-        const el = document.getElementById('td-select-all');
-        if (!el || !table) return;
-        const rows = table.getRows('active').filter(r => {
+    // Returns the rows on the *current* pagination page (excluding PARENT rows).
+    //
+    // IMPORTANT: do NOT use Tabulator's getRows('visible') here — that returns
+    // only the rows currently rendered to the DOM viewport (virtual-scroll
+    // window), which is usually just ~7-15 rows depending on table height.
+    // With a paginationSize of 100, that means the header "select all" would
+    // miss the other ~85 rows on the same page.
+    //
+    // Instead, fetch ALL active (filter-passing) rows and slice them by the
+    // current page bounds. That way "select all" always selects every row on
+    // the current pagination page, regardless of scroll position.
+    function tdGetCurrentPageRows() {
+        if (!table) return [];
+        const allActive = table.getRows('active').filter(r => {
             const p = (r.getData().Parent || '');
             return !(p && String(p).toUpperCase().startsWith('PARENT'));
         });
+        const pageSize = (typeof table.getPageSize === 'function' ? table.getPageSize() : 0) || 100;
+        const currentPage = (typeof table.getPage === 'function' ? table.getPage() : 1) || 1;
+        const start = (currentPage - 1) * pageSize;
+        return allActive.slice(start, start + pageSize);
+    }
+
+    function tdUpdateSelectAllHeaderCheckbox() {
+        const el = document.getElementById('td-select-all');
+        if (!el || !table) return;
+        const rows = tdGetCurrentPageRows();
         if (!rows.length) { el.checked = false; el.indeterminate = false; return; }
         let selected = 0;
         rows.forEach(r => {
@@ -482,10 +569,6 @@
         if (invF === 'zero') table.addFilter('INV', '=', 0);
         if (invF === 'more') table.addFilter('INV', '>', 0);
 
-        const tdF = $('#td-stock-filter').val();
-        if (tdF === 'zero') table.addFilter('TD Stock', '=', 0);
-        if (tdF === 'more') table.addFilter('TD Stock', '>', 0);
-
         const nrl = $('#nrl-filter').val();
         if (nrl !== 'all') table.addFilter('nr_req', '=', nrl);
 
@@ -498,6 +581,40 @@
                 if (gpft === '10-20') return g >= 10 && g < 20;
                 if (gpft === '20-30') return g >= 20 && g < 30;
                 if (gpft === '30plus') return g >= 30;
+                return true;
+            });
+        }
+
+        // GROI / ROI% bracket filter — buckets match the ROI% column's color thresholds
+        // (red < 40, yellow 40–75, green 75–125, pink ≥ 125).
+        const groi = $('#groi-filter').val();
+        if (groi !== 'all') {
+            table.addFilter(data => {
+                const r = parseFloat(data['ROI%']) || 0;
+                if (groi === 'lt40')    return r < 40;
+                if (groi === '40-75')   return r >= 40  && r < 75;
+                if (groi === '75-125')  return r >= 75  && r < 125;
+                if (groi === '125plus') return r >= 125;
+                return true;
+            });
+        }
+
+        // DIL% bracket filter — buckets match the Dil column color thresholds
+        // (red < 16.7, yellow 16.7–25, green 25–50, pink ≥ 50). Computes DIL
+        // live from INV + L30 to match the column's display formula, so the
+        // filter agrees with the cell color even if the stored `Dil` field
+        // was rounded at a different precision by the controller.
+        const dil = $('#dil-filter').val();
+        if (dil !== 'all') {
+            table.addFilter(data => {
+                const inv   = parseFloat(data.INV) || 0;
+                const ovL30 = parseFloat(data.L30) || 0;
+                if (inv <= 0) return dil === 'red'; // INV=0 falls into the lowest bucket
+                const pct = (ovL30 / inv) * 100;
+                if (dil === 'red')    return pct < 16.66;
+                if (dil === 'yellow') return pct >= 16.66 && pct < 25;
+                if (dil === 'green')  return pct >= 25    && pct < 50;
+                if (dil === 'pink')   return pct >= 50;
                 return true;
             });
         }
@@ -528,13 +645,16 @@
             initialSort: [{ column: 'TD L30', dir: 'desc' }],
             columns: [
                 {
-                    // Selection column (hidden until a pricing mode is active).
+                    // Selection column — always visible. Checkboxes let the user
+                    // pre-select SKUs before turning on Decrease / Increase / Same Price
+                    // / Target ROI% / Target GPFT% (instead of having to toggle a mode
+                    // first just to reveal the checkbox column).
                     title: '<div style="display:flex;align-items:center;justify-content:center;"><input type="checkbox" id="td-select-all" title="Select / clear all filtered SKUs"></div>',
                     field: '_select',
                     width: 50,
                     frozen: true,
                     headerSort: false,
-                    visible: false,
+                    visible: true,
                     hozAlign: 'center',
                     formatter: function(cell) {
                         const sku = cell.getRow().getData()['(Child) sku'];
@@ -652,15 +772,9 @@
                         const price = parseFloat(d['TD Price']) || 0;
                         const sales = l30 * price;
                         if (sales <= 0) return '<span class="text-muted">-</span>';
-                        return `<strong style="color:#198754;">$${sales.toFixed(2)}</strong>`;
+                        return `<strong style="color:#198754;">$${Math.round(sales).toLocaleString()}</strong>`;
                     }
                 },
-                { title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', width: 80, sorter: 'number',
-                    formatter: c => {
-                        const v = c.getValue();
-                        if (v === null || v === undefined || v === '') return '<span class="text-muted">-</span>';
-                        return `<strong>$${Number(v).toFixed(2)}</strong>`;
-                    }},
                 { title: 'GPFT%', field: 'GPFT%', hozAlign: 'center', width: 50, sorter: 'number',
                     formatter: c => {
                         const percent = parseFloat(c.getValue());
@@ -673,7 +787,7 @@
                         else color = '#e83e8c';
                         return `<span style="color:${color};font-weight:600;">${percent.toFixed(0)}%</span>`;
                     }},
-                { title: 'PFT%', field: 'PFT %', hozAlign: 'center', width: 50, sorter: 'number',
+                { title: 'PFT%', field: 'PFT %', hozAlign: 'center', width: 50, sorter: 'number', visible: false,
                     formatter: c => {
                         const percent = parseFloat(c.getValue());
                         if (isNaN(percent)) return '';
@@ -696,15 +810,69 @@
                         else color = '#d63384';
                         return `<span style="color:${color};font-weight:600;">${percent.toFixed(0)}%</span>`;
                     }},
+                {
+                    title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', width: 80, sorter: 'number',
+                    editor: 'number', editorParams: { min: 0, step: 0.01 },
+                    tooltip: 'Click to edit SPRICE — SGPFT / SROI recompute and auto-save',
+                    cellClick: (e) => e.stopPropagation(),
+                    formatter: c => {
+                        const v = c.getValue();
+                        if (v === null || v === undefined || v === '') {
+                            return '<span class="text-muted" style="cursor:text;" title="Click to set SPRICE">-</span>';
+                        }
+                        return `<strong style="cursor:text;background:#e7f1ff;padding:2px 6px;border-radius:3px;">$${Number(v).toFixed(2)}</strong>`;
+                    }
+                },
+                {
+                    // SGPFT% — gross profit % at the seller price.
+                    // Formula matches GPFT%, with SPRICE in place of TD Price:
+                    //   ((SPRICE × {{ $topdawgPercentage ?? 95 }}% − LP − Ship) / SPRICE) × 100
+                    // LP + Ship come from CP Master so this margin uses the same
+                    // assumptions as the GPFT badge above the table.
+                    title: 'SGPFT%', field: 'SGPFT', hozAlign: 'center', width: 55, sorter: 'number',
+                    tooltip: 'Gross Profit % at SPRICE (same formula as GPFT%, using Ship from CP Master)',
+                    formatter: c => {
+                        const v = c.getValue();
+                        if (v === null || v === undefined || v === '') return '<span class="text-muted">-</span>';
+                        const percent = parseFloat(v);
+                        if (isNaN(percent)) return '';
+                        let color = '';
+                        if (percent < 10) color = '#a00211';
+                        else if (percent < 15) color = '#ffc107';
+                        else if (percent < 20) color = '#3591dc';
+                        else if (percent <= 40) color = '#28a745';
+                        else color = '#e83e8c';
+                        return `<span style="color:${color};font-weight:600;">${percent.toFixed(0)}%</span>`;
+                    }
+                },
+                {
+                    // SROI% — return on investment at the seller price.
+                    // Formula matches ROI%, with SPRICE in place of TD Price:
+                    //   ((SPRICE × {{ $topdawgPercentage ?? 95 }}% − LP − Ship) / LP) × 100
+                    title: 'SROI%', field: 'SROI', hozAlign: 'center', width: 55, sorter: 'number',
+                    tooltip: 'ROI % at SPRICE (same formula as ROI%, using Ship from CP Master)',
+                    formatter: c => {
+                        const v = c.getValue();
+                        if (v === null || v === undefined || v === '') return '<span class="text-muted">-</span>';
+                        const percent = parseFloat(v);
+                        if (isNaN(percent)) return '';
+                        let color = '';
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
+                        return `<span style="color:${color};font-weight:600;">${percent.toFixed(0)}%</span>`;
+                    }
+                },
                 { title: 'Profit', field: 'Profit', hozAlign: 'center', width: 70, sorter: 'number', visible: false,
                     formatter: c => {
                         const v = parseFloat(c.getValue()) || 0;
                         const color = v >= 0 ? '#28a745' : '#a00211';
                         return `<span style="color:${color};font-weight:600;">$${v.toFixed(2)}</span>`;
                     }},
-                { title: 'LP', field: 'LP_productmaster', hozAlign: 'center', width: 60, sorter: 'number',
+                { title: 'LP', field: 'LP_productmaster', hozAlign: 'center', width: 60, sorter: 'number', visible: false,
                     formatter: c => '$' + (parseFloat(c.getValue()) || 0).toFixed(2) },
-                { title: 'Ship', field: 'Ship_productmaster', hozAlign: 'center', width: 60, sorter: 'number',
+                { title: 'Ship', field: 'Ship_productmaster', hozAlign: 'center', width: 60, sorter: 'number', visible: false,
                     formatter: c => '$' + (parseFloat(c.getValue()) || 0).toFixed(2) },
                 { title: 'TDID', field: 'TDID', width: 120, visible: false },
                 { title: 'State', field: 'listing_state', width: 70, visible: false },
@@ -725,7 +893,136 @@
         });
         table.on('dataFiltered', updateSummary);
 
-        $('#inventory-filter, #td-stock-filter, #nrl-filter, #gpft-filter, #sold-filter').on('change', function() {
+        // ─── Column visibility ───────────────────────────────────────────
+        // Persists in the shared `channel_tabulator_column_settings` DB table
+        // (same store eBay1/eBay2/eBay3/Amazon/mfrg use) via the shared
+        // /tabulator-column-visibility endpoint. The `channel` param is what
+        // makes the row unique — every page that uses this endpoint owns one
+        // channel string and one row in the table.
+        const TD_TABULATOR_COLUMN_CHANNEL = 'topdawg_tabulator';
+        const TD_TABULATOR_COLUMN_VISIBILITY_URL = '{{ url('/tabulator-column-visibility') }}';
+
+        function tdBuildColumnDropdown() {
+            let html = '';
+            table.getColumns().forEach(col => {
+                const field = col.getField();
+                const title = col.getDefinition().title;
+                // Skip the always-on _select checkbox column and any column
+                // without a `field` (e.g. UI-only group headers).
+                if (field && field !== '_select' && title) {
+                    // Strip any HTML inside the title (the SKU select-all header
+                    // wraps an <input>) before using it as a checkbox label.
+                    const safeLabel = String(title).replace(/<[^>]*>/g, '').trim() || field;
+                    html += `<li class="dropdown-item"><label style="cursor:pointer;display:flex;align-items:center;gap:8px;">
+                        <input type="checkbox" class="td-column-toggle" data-field="${field}" ${col.isVisible() ? 'checked' : ''}>
+                        ${safeLabel}
+                    </label></li>`;
+                }
+            });
+            $('#column-dropdown-menu').html(html);
+        }
+
+        function tdSaveColumnVisibilityToServer() {
+            const visibility = {};
+            table.getColumns().forEach(col => {
+                const f = col.getField();
+                if (f && f !== '_select') visibility[f] = col.isVisible();
+            });
+            fetch(TD_TABULATOR_COLUMN_VISIBILITY_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({
+                    channel: TD_TABULATOR_COLUMN_CHANNEL,
+                    visibility: visibility
+                })
+            }).catch(err => console.error('Error saving TopDawg column visibility:', err));
+        }
+
+        function tdApplyColumnVisibilityFromServer() {
+            fetch(TD_TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TD_TABULATOR_COLUMN_CHANNEL), {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                }
+            })
+            .then(r => r.json())
+            .then(savedVisibility => {
+                if (savedVisibility && typeof savedVisibility === 'object' && Object.keys(savedVisibility).length > 0) {
+                    table.getColumns().forEach(col => {
+                        const field = col.getField();
+                        if (field && savedVisibility.hasOwnProperty(field)) {
+                            if (savedVisibility[field]) col.show(); else col.hide();
+                        }
+                    });
+                    // Refresh the dropdown so its checkboxes mirror the new
+                    // visibility we just applied.
+                    tdBuildColumnDropdown();
+                }
+            })
+            .catch(err => console.error('Error loading TopDawg column visibility:', err));
+        }
+
+        table.on('tableBuilt', function() {
+            tdBuildColumnDropdown();
+            tdApplyColumnVisibilityFromServer();
+        });
+
+        // Per-column checkbox toggle — save instantly after every change.
+        document.getElementById('column-dropdown-menu').addEventListener('change', function(e) {
+            if (e.target.classList.contains('td-column-toggle')) {
+                const col = table.getColumn(e.target.dataset.field);
+                if (col) {
+                    e.target.checked ? col.show() : col.hide();
+                    tdSaveColumnVisibilityToServer();
+                }
+            }
+        });
+
+        // "Show All" — un-hide every data column and persist.
+        document.getElementById('show-all-columns-btn').addEventListener('click', function() {
+            table.getColumns().forEach(col => {
+                if (col.getField() && col.getField() !== '_select') col.show();
+            });
+            tdBuildColumnDropdown();
+            tdSaveColumnVisibilityToServer();
+        });
+
+        // Inline SPRICE edit — same UX as /purchasing-power-pricing. Live-recompute
+        // SGPFT / SROI from the new SPRICE (using LP + Ship from CP Master so the
+        // margins match the GPFT / GROI badges), then auto-save via the existing
+        // /topdawg-save-sprice endpoint. Empty value → null (clear SPRICE).
+        table.on('cellEdited', function(cell) {
+            if (cell.getField() !== 'SPRICE') return;
+            const row = cell.getRow();
+            const d   = row.getData();
+            const sku = d && d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
+            if (!sku) return;
+
+            const raw = cell.getValue();
+            const lp   = parseFloat(d.LP_productmaster)   || 0;
+            const ship = parseFloat(d.Ship_productmaster) || 0;
+
+            if (raw === '' || raw === null || raw === undefined || isNaN(parseFloat(raw)) || parseFloat(raw) <= 0) {
+                row.update({ SPRICE: null, SGPFT: null, SROI: null });
+                tdSaveSpriceUpdates([{ sku: sku, sprice: null }]);
+                tdShowToast(`${sku}: SPRICE cleared`, 'success');
+                return;
+            }
+
+            const newSprice = +parseFloat(raw).toFixed(2);
+            const sgpft = newSprice > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp - ship) / newSprice) * 100) : 0;
+            const sroi  = lp > 0        ? Math.round(((newSprice * TD_PERCENTAGE - lp - ship) / lp)       * 100) : 0;
+
+            row.update({ SPRICE: newSprice, SGPFT: sgpft, SROI: sroi });
+            tdSaveSpriceUpdates([{ sku: sku, sprice: newSprice }]);
+            tdShowToast(`${sku}: SPRICE saved`, 'success');
+        });
+
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #groi-filter, #dil-filter, #sold-filter').on('change', function() {
             // Keep badge "active-filter" styling in sync when the Sold dropdown changes
             // directly (not via badge click). Other handlers call setActiveBadges() themselves.
             setActiveBadges();
@@ -761,70 +1058,39 @@
         // ─── Pricing-mode toggles ─────────────────────────────────────────
         $('#discount-type-select').on('change', function() { tdSyncDiscountInputUi(); });
 
-        $('#decrease-btn').on('click', function() {
-            tdDecreaseModeActive = !tdDecreaseModeActive;
-            tdIncreaseModeActive = false;
-            tdSamePriceModeActive = false;
-            tdResetIncreaseBtn();
-            tdResetSamePriceBtn();
-            if (tdDecreaseModeActive) {
-                $(this).removeClass('btn-warning').addClass('btn-danger')
-                    .html('<i class="fas fa-arrow-down"></i> Decrease ON');
-                tdShowSelectColumn(true);
+        // Cycle pricing modes on a single button:
+        //   Off → Decrease → Increase → Same Price → Off
+        // Each click advances exactly one step. When we cycle BACK to Off, the
+        // selected SKUs are cleared (same behavior as the old per-button toggle
+        // that cleared on turn-off) — but moving between modes keeps the selection
+        // intact so users can re-apply different math to the same set of SKUs.
+        $('#td-price-mode-btn').on('click', function() {
+            if (!tdDecreaseModeActive && !tdIncreaseModeActive && !tdSamePriceModeActive) {
+                tdDecreaseModeActive = true;
+            } else if (tdDecreaseModeActive) {
+                tdDecreaseModeActive = false;
+                tdIncreaseModeActive = true;
+            } else if (tdIncreaseModeActive) {
+                tdIncreaseModeActive = false;
+                tdSamePriceModeActive = true;
             } else {
-                tdResetDecreaseBtn();
-                tdShowSelectColumn(false);
+                tdSamePriceModeActive = false;
                 tdSelectedSkus.clear();
             }
+            tdShowSelectColumn(true);
             tdUpdateSelectedCount();
-            tdSyncDiscountInputUi();
-        });
-
-        $('#increase-btn').on('click', function() {
-            tdIncreaseModeActive = !tdIncreaseModeActive;
-            tdDecreaseModeActive = false;
-            tdSamePriceModeActive = false;
-            tdResetDecreaseBtn();
-            tdResetSamePriceBtn();
-            if (tdIncreaseModeActive) {
-                $(this).removeClass('btn-success').addClass('btn-danger')
-                    .html('<i class="fas fa-arrow-up"></i> Increase ON');
-                tdShowSelectColumn(true);
-            } else {
-                tdResetIncreaseBtn();
-                tdShowSelectColumn(false);
-                tdSelectedSkus.clear();
-            }
-            tdUpdateSelectedCount();
-            tdSyncDiscountInputUi();
-        });
-
-        $('#same-price-btn').on('click', function() {
-            tdSamePriceModeActive = !tdSamePriceModeActive;
-            tdDecreaseModeActive = false;
-            tdIncreaseModeActive = false;
-            tdResetDecreaseBtn();
-            tdResetIncreaseBtn();
-            if (tdSamePriceModeActive) {
-                $(this).removeClass('btn-info').addClass('btn-danger')
-                    .html('<i class="fas fa-equals"></i> Same Price ON');
-                tdShowSelectColumn(true);
-            } else {
-                tdResetSamePriceBtn();
-                tdShowSelectColumn(false);
-                tdSelectedSkus.clear();
-            }
-            tdUpdateSelectedCount();
+            tdSyncPriceModeUi();
             tdSyncDiscountInputUi();
         });
 
         // ─── Selection handlers ───────────────────────────────────────────
+        // Select-all is scoped to the *current pagination page* (not the entire
+        // filtered set). SKUs that were selected on other pages stay selected,
+        // so you can page-by-page accumulate a selection without losing rows
+        // when you move forward / backward.
         $(document).on('change', '#td-select-all', function() {
             const checked = $(this).prop('checked');
-            const rows = table.getRows('active').filter(r => {
-                const p = (r.getData().Parent || '');
-                return !(p && String(p).toUpperCase().startsWith('PARENT'));
-            });
+            const rows = tdGetCurrentPageRows();
             rows.forEach(r => {
                 const sku = String(r.getData()['(Child) sku'] || '');
                 if (!sku) return;
