@@ -629,6 +629,73 @@
             background-color: #fffbeb;
             border-color: #fde68a;
         }
+
+        /* ── Shipping Master change-history modal (compact) ── */
+        .shipping-history-table { font-size: 12px; }
+        .shipping-history-table th,
+        .shipping-history-table td {
+            padding: 4px 8px !important;
+            vertical-align: middle;
+        }
+        .shipping-history-table .shm-field-cell {
+            font-weight: 600;
+            color: #0a3d91;
+            white-space: nowrap;
+        }
+        .shipping-history-table .shm-field-cell .shm-field-icon {
+            color: #6c8fc4;
+            margin-right: 4px;
+        }
+        .shipping-history-table tr.shm-field-first td {
+            border-top: 1px solid #c7dbff;
+        }
+        .shipping-history-table tr.shm-field-cont .shm-field-cell {
+            color: #b9c4d6;
+            font-weight: 500;
+            font-size: 11px;
+        }
+        .shipping-history-table .shm-when {
+            white-space: nowrap;
+            color: #6c757d;
+            font-size: 11px;
+        }
+        .shipping-history-table .shm-who .badge {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 3px 7px;
+        }
+        .shipping-history-table .shm-old {
+            color: #6c757d;
+            text-decoration: line-through;
+            text-decoration-color: rgba(220, 53, 69, 0.55);
+        }
+        .shipping-history-table .shm-arrow {
+            color: #adb5bd;
+            margin: 0 6px;
+        }
+        .shipping-history-table .shm-new {
+            background: #0d6efd;
+            color: #ffffff;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .shipping-history-table .shm-empty {
+            font-style: italic;
+            opacity: 0.85;
+        }
+        .shipping-history-table .shm-latest-dot {
+            display: inline-block;
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: #28a745;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+        .shipping-history-table tbody tr:hover {
+            background: #f8fbff;
+        }
     </style>
 @endsection
 
@@ -1196,14 +1263,13 @@
                     </div>
                     <div id="shippingHistoryError" class="alert alert-danger mb-0" style="display:none;"></div>
                     <div class="table-responsive" id="shippingHistoryTableWrap" style="display:none; max-height: 65vh;">
-                        <table class="table table-sm table-striped table-hover mb-0">
+                        <table class="table table-sm table-hover mb-0 align-middle shipping-history-table">
                             <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
                                 <tr>
-                                    <th style="white-space:nowrap;">When</th>
-                                    <th>Who</th>
-                                    <th>Field</th>
-                                    <th>Old value</th>
-                                    <th>New value</th>
+                                    <th style="white-space:nowrap; width: 24%;">Field</th>
+                                    <th style="white-space:nowrap; width: 16%;">When</th>
+                                    <th style="white-space:nowrap; width: 14%;">Who</th>
+                                    <th>Change (old → new)</th>
                                 </tr>
                             </thead>
                             <tbody id="shippingHistoryTbody"></tbody>
@@ -3839,7 +3905,7 @@
              */
             function shippingHistoryFmtValue(v) {
                 if (v === null || v === undefined || v === '') {
-                    return '<span class="text-muted fst-italic">empty</span>';
+                    return '<span class="shm-empty">empty</span>';
                 }
                 return escapeHtml(String(v));
             }
@@ -3893,16 +3959,43 @@
                         return;
                     }
 
-                    const html = rows.map(r => `
-                        <tr>
-                            <td style="white-space:nowrap;font-size:12px;">${escapeHtml(r.updated_at || '')}</td>
-                            <td style="white-space:nowrap;"><span class="badge bg-secondary">${escapeHtml(r.updated_by || 'N/A')}</span></td>
-                            <td><strong>${escapeHtml(r.field_label || r.field || '')}</strong></td>
-                            <td class="text-danger">${shippingHistoryFmtValue(r.old_value)}</td>
-                            <td class="text-success fw-semibold">${shippingHistoryFmtValue(r.new_value)}</td>
-                        </tr>
-                    `).join('');
-                    tbody.innerHTML = html;
+                    // Group rows by field (value-wise) but render them in one
+                    // compact line per edit — the field name only appears on
+                    // the first row of each group, subsequent rows show "↳".
+                    const groups = new Map();
+                    rows.forEach(r => {
+                        const key = r.field || '';
+                        if (!groups.has(key)) {
+                            groups.set(key, { label: r.field_label || r.field || '', items: [] });
+                        }
+                        groups.get(key).items.push(r);
+                    });
+
+                    const parts = [];
+                    groups.forEach((group, fieldKey) => {
+                        group.items.forEach((r, idx) => {
+                            const isFirst = idx === 0;
+                            const isLatest = idx === 0;
+                            const rowClass = isFirst ? 'shm-field-first' : 'shm-field-cont';
+                            const fieldCell = isFirst
+                                ? `<i class="bi bi-tag-fill shm-field-icon"></i>${escapeHtml(group.label)}`
+                                : `<span style="padding-left:14px;">↳</span>`;
+                            parts.push(`
+                                <tr class="${rowClass}" data-field="${escapeHtml(fieldKey)}">
+                                    <td class="shm-field-cell">${fieldCell}</td>
+                                    <td class="shm-when">${isLatest ? '<span class="shm-latest-dot" title="latest"></span>' : ''}${escapeHtml(r.updated_at || '')}</td>
+                                    <td class="shm-who"><span class="badge bg-secondary">${escapeHtml(r.updated_by || 'N/A')}</span></td>
+                                    <td>
+                                        <span class="shm-old">${shippingHistoryFmtValue(r.old_value)}</span>
+                                        <i class="bi bi-arrow-right shm-arrow"></i>
+                                        <span class="shm-new">${shippingHistoryFmtValue(r.new_value)}</span>
+                                    </td>
+                                </tr>
+                            `);
+                        });
+                    });
+
+                    tbody.innerHTML = parts.join('');
                     if (tableWrap) tableWrap.style.display = 'block';
                 } catch (err) {
                     console.error('Shipping history load error:', err);
