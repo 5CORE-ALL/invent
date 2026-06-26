@@ -14,33 +14,36 @@
         #doba-withoutship-table.tabulator {
             border: 1px solid #dee2e6 !important;
             border-radius: 8px !important;
-            font-size: 12px !important;
+            font-size: 11px !important;
         }
         #doba-withoutship-table .tabulator-header {
             background: #f8f9fa;
             border-bottom: 1px solid #dee2e6;
         }
         #doba-withoutship-table .tabulator-row {
-            min-height: 50px;
+            min-height: 44px;
         }
         #doba-withoutship-table .tabulator-cell {
-            padding: 10px 12px !important;
+            padding: 4px 4px !important;
             vertical-align: middle !important;
+        }
+        #doba-withoutship-table .tabulator-header .tabulator-col .tabulator-col-content {
+            padding: 4px 2px !important;
         }
         #doba-withoutship-table .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: vertical-rl;
             text-orientation: mixed;
             white-space: nowrap;
             transform: rotate(180deg);
-            height: 78px;
+            height: 70px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 600;
         }
         #doba-withoutship-table .tabulator-header .tabulator-col {
-            height: 80px !important;
+            height: 72px !important;
         }
         #doba-withoutship-table .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0 !important;
@@ -867,7 +870,7 @@
                             sroiValue = ((newPrice * 0.95) - ship - lp) / lp * 100;
                         }
                         $.ajax({
-                            url: '/doba/save-sprice',
+                            url: '/doba/save-sprice-withoutship',
                             method: 'POST',
                             data: {
                                 _token: $('meta[name="csrf-token"]').attr('content'),
@@ -998,7 +1001,7 @@
                         
                         // Save to database
                         $.ajax({
-                            url: '/doba/save-sprice',
+                            url: '/doba/save-sprice-withoutship',
                             method: 'POST',
                             data: {
                                 _token: $('meta[name="csrf-token"]').attr('content'),
@@ -1074,7 +1077,7 @@
                             
                             // Save to database
                             $.ajax({
-                                url: '/doba/save-sprice',
+                                url: '/doba/save-sprice-withoutship',
                                 method: 'POST',
                                 headers: {
                                     'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
@@ -1149,7 +1152,7 @@
                         
                         // Save to database
                         $.ajax({
-                            url: '/doba/save-sprice',
+                            url: '/doba/save-sprice-withoutship',
                             method: 'POST',
                             headers: {
                                 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
@@ -1228,7 +1231,7 @@
                         
                         // Save to database
                         $.ajax({
-                            url: '/doba/save-sprice',
+                            url: '/doba/save-sprice-withoutship',
                             method: 'POST',
                             headers: {
                                 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
@@ -1359,20 +1362,22 @@
                 pagination: "local",
                 paginationSize: 50,
                 paginationSizeSelector: [25, 50, 100, 200],
-                layout: "fitData",
-                responsiveLayout: "hide",
+                layout: "fitColumns",
+                responsiveLayout: false,
                 placeholder: "No Data Available",
                 selectable: false,
                 headerFilterPlaceholder: "",
                 columnDefaults: {
                     hozAlign: "center",
                     headerHozAlign: "center",
+                    minWidth: 38,
+                    resizable: true,
                 },
                 columns: [
                     {
                         title: "Img",
                         field: "thumb_image",
-                        width: 58,
+                        width: 44,
                         frozen: true,
                         headerSort: false,
                         formatter: function(cell) {
@@ -1385,13 +1390,14 @@
                                 return '<span class="text-muted" style="font-size:11px;">—</span>';
                             }
                             const safe = String(url).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                            return '<div class="dws-img-hover-wrap"><img class="dws-thumb-sm" src="' + safe + '" alt="" loading="lazy" style="max-width:48px;max-height:48px;object-fit:contain;"></div>';
+                            return '<div class="dws-img-hover-wrap"><img class="dws-thumb-sm" src="' + safe + '" alt="" loading="lazy" style="max-width:36px;max-height:36px;object-fit:contain;"></div>';
                         }
                     },
                     {
                         title: "SKU",
                         field: "(Child) sku",
-                        width: 175,
+                        width: 130,
+                        minWidth: 110,
                         frozen: true,
                         hozAlign: "left",
                         headerHozAlign: "left",
@@ -1420,7 +1426,7 @@
                     {
                         title: "B/S",
                         field: "links_column",
-                        width: 55,
+                        width: 42,
                         frozen: true,
                         hozAlign: "center",
                         headerSort: false,
@@ -2147,7 +2153,7 @@
                         
                         // Save to backend with S(PP)
                         $.ajax({
-                            url: '/doba/save-sprice',
+                            url: '/doba/save-sprice-withoutship',
                             method: 'POST',
                             data: {
                                 _token: $('meta[name="csrf-token"]').attr('content'),

@@ -2931,6 +2931,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/doba_withoutship', [DobaController::class, 'dobaTabulatorViewWithoutShip'])->name('doba.withoutship');
     Route::get('/doba/summary-metrics', [DobaController::class, 'getDobaSummaryMetrics']);
     Route::post('/doba/save-sprice', [DobaController::class, 'saveSpriceToDatabase'])->name('doba.save-sprice');
+    Route::post('/doba/save-sprice-withoutship', [DobaController::class, 'saveSpriceWithoutShipToDatabase'])->name('doba.save-sprice.withoutship');
     Route::post('/doba/push-price', [DobaController::class, 'pushPriceToDoba'])->name('doba.push-price');
     Route::post('/update-all-doba-skus', [DobaController::class, 'updateAllDobaSkus']);
     Route::post('/doba-analytics/import', [DobaController::class, 'importDobaAnalytics'])->name('doba.analytics.import');
@@ -4068,6 +4069,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/shipping-master/store', [CategoryController::class, 'storeShippingMaster'])->name('shipping.master.store');
     Route::post('/shipping-master/update', [CategoryController::class, 'updateShippingMaster'])->name('shipping.master.update');
     Route::post('/shipping-master/import', [CategoryController::class, 'importShippingMaster'])->name('shipping.master.import');
+    Route::get('/shipping-master/history/{id}', [CategoryController::class, 'getShippingMasterHistory'])->whereNumber('id')->name('shipping.master.history');
     Route::get('/general-specific-master', [CategoryController::class, 'generalSpecificMaster'])->name('general.specific.master');
     Route::get('/general-specific-master-data-view', [CategoryController::class, 'getGeneralSpecificMasterData'])->name('general.specific.master.data');
     Route::get('/general-specific-master/skus', [CategoryController::class, 'getSkusForDropdown'])->name('general.specific.master.skus');
