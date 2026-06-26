@@ -32,19 +32,32 @@
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
+            <div class="card-body py-1">
                 {{-- Summary badges — each badge gets flex:1 + text-align:center so the
                      row of badges spans the FULL width of the card from left → right,
-                     each one occupying an equal slice. flex-nowrap prevents wrapping
-                     onto a second line so the strip stays a single visual band. --}}
-                <div id="summary-stats" class="p-3 bg-light rounded">
-                    <div class="d-flex flex-nowrap gap-2 w-100" style="overflow-x:auto;">
-                        <span class="badge fs-6 p-2 text-center" id="total-sales-badge"
-                              style="background:#198754;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;"
+                     each one occupying an equal slice. flex-nowrap keeps it as a
+                     single visual band. Padding kept tight (p-1 / py-1 px-2) so the
+                     strip doesn't dominate the screen. --}}
+                <div id="summary-stats" class="p-1 bg-light rounded">
+                    <div class="d-flex flex-nowrap gap-1 w-100" style="overflow-x:auto;">
+                        {{-- Badges are intentionally ~1.5× the default `.badge` height:
+                             custom padding (8px vert / 10px horiz) + font-size 14px
+                             gives a visible, easy-to-read pill while still keeping
+                             everything on a single horizontal strip. The flex:1 1 0
+                             rule still distributes them equally across the row. --}}
+                        {{-- Rows — count of SKUs visible after all current filters
+                             apply. Matches the row count rendered in the table /
+                             feeding every other summary badge. PARENT rows are
+                             excluded (same shape as everything else here). --}}
+                        <span class="badge text-center" id="total-rows-badge"
+                              style="background:#343a40;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
+                              title="Number of SKU rows currently passing the filters">Rows: 0</span>
+                        <span class="badge text-center" id="total-sales-badge"
+                              style="background:#198754;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
                               title="Σ (TD L30 × TD Price) across visible rows — last-30-day TopDawg sales revenue">Sales: $0</span>
-                        <span class="badge bg-success fs-6 p-2 text-center" id="total-td-l30-badge" style="color:#000;font-weight:bold;flex:1 1 0;min-width:90px;" title="Sum of TD L30 on filtered rows">TD L30: 0</span>
-                        <span class="badge bg-danger fs-6 p-2 text-center" id="zero-sold-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;" title="SKUs with TD L30 = 0">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2 text-center" id="more-sold-badge" style="background:#28a745;color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;" title="SKUs with TD L30 &gt; 0">&gt; 0 Sold: 0</span>
+                        <span class="badge bg-success text-center" id="total-td-l30-badge" style="color:#000;font-weight:bold;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="Sum of TD L30 on filtered rows">TD L30: 0</span>
+                        <span class="badge bg-danger text-center" id="zero-sold-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="SKUs with TD L30 = 0">0 Sold: 0</span>
+                        <span class="badge text-center" id="more-sold-badge" style="background:#28a745;color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="SKUs with TD L30 &gt; 0">&gt; 0 Sold: 0</span>
                         {{-- GPFT / GROI — weighted profitability for filtered rows.
                              Same shape as /purchasing-power-pricing GPFT badge:
                                Profit (per row) = (TD Price × {{ $topdawgPercentage ?? 95 }}% − LP − Ship) × TD L30
@@ -53,14 +66,14 @@
                              Ship comes from CP Master (ProductMaster.Values.ship → Ship_productmaster).
                              GPFT% = (Σ Profit ÷ Σ Sales L30) × 100   (weighted gross margin)
                              GROI% = (Σ Profit ÷ Σ COGS) × 100        (weighted ROI) --}}
-                        <span class="badge fs-6 p-2 text-center" id="gpft-pct-badge"
-                              style="background:#6f42c1;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;"
+                        <span class="badge text-center" id="gpft-pct-badge"
+                              style="background:#6f42c1;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
                               title="Weighted Gross Profit %: (Σ Profit ÷ Σ Sales L30) × 100. Profit includes Ship from CP Master.">GPFT: 0%</span>
-                        <span class="badge fs-6 p-2 text-center" id="groi-pct-badge"
-                              style="background:#0d6efd;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;"
+                        <span class="badge text-center" id="groi-pct-badge"
+                              style="background:#0d6efd;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
                               title="Weighted Gross ROI %: (Σ Profit ÷ Σ COGS) × 100. COGS = LP × TD L30; Profit includes Ship from CP Master.">GROI: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2 text-center" id="missing-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;" title="REQ + INV&gt;0 + TD Price=0">Missing L: 0</span>
-                        <span class="badge bg-danger fs-6 p-2 text-center" id="nmap-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;" title="|INV − TD Stock| &gt; 3">N Map: 0</span>
+                        <span class="badge bg-danger text-center" id="missing-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="REQ + INV&gt;0 + TD Price=0">Missing L: 0</span>
+                        <span class="badge bg-danger text-center" id="nmap-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="|INV − TD Stock| &gt; 3">N Map: 0</span>
                     </div>
                 </div>
             </div>
@@ -85,29 +98,12 @@
                     </div>
                 </div>
                 <div id="topdawg-table-wrapper" style="height:calc(100vh - 240px);display:flex;flex-direction:column;">
-                    {{-- Dedicated search row — Search SKU + Search Parent each take
-                         half the row (col-6) so they span the full table width.
-                         Stacking them above the filter strip gives the inputs more
-                         breathing room and decouples search UX from the cramped
-                         filter/button bar below. --}}
-                    <div class="p-2 bg-light border-bottom">
-                        <div class="row g-2">
-                            <div class="col-6">
-                                <input type="text" id="sku-search" class="form-control form-control-sm w-100" placeholder="Search SKU...">
-                            </div>
-                            <div class="col-6">
-                                <input type="text" id="parent-search" class="form-control form-control-sm w-100" placeholder="Search Parent...">
-                            </div>
-                        </div>
-                    </div>
-
-                    {{-- Filter / action row. Lives BELOW the search row so search
-                         inputs stay roomy and predictable while filters / mode
-                         buttons / target controls share their own strip.
+                    {{-- Filter / action row — lives ABOVE the search row.
                          flex-wrap keeps everything on one line on wide screens
                          and falls back to wrapping (no horizontal scrollbar)
-                         on narrower viewports. --}}
-                    <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
+                         on narrower viewports. Tight px-2 py-1 + gap-1 keeps
+                         the strip vertically compact. --}}
+                    <div class="px-2 py-1 bg-light border-bottom d-flex flex-wrap gap-1 align-items-center">
                         <select id="inventory-filter" class="form-select form-select-sm" style="width:90px;">
                             <option value="all">ALL</option>
                             <option value="zero">0 Inv</option>
@@ -141,14 +137,14 @@
                         </select>
                         {{-- DIL% bracket filter — backed by the per-row `Dil` field
                              ((L30 ÷ INV) × 100, controller-computed at fetch time).
-                             Brackets match the Dil column's color thresholds exactly
-                             (red < 16.7, yellow 16.7–25, green 25–50, pink ≥ 50) so the
-                             dropdown labels stay consistent with the cell colors. --}}
+                             Buckets were 4 (red / yellow / green / pink) but the
+                             yellow band (16.7–25%) was merged into red, so the
+                             filter — and the cell color formatter below — now use
+                             three buckets: red < 25, green 25–50, pink ≥ 50. --}}
                         <select id="dil-filter" class="form-select form-select-sm" style="width:95px;"
                                 title="Filter by per-row DIL% (matches Dil column color buckets)">
                             <option value="all">All DIL%</option>
-                            <option value="red">Red (&lt;16.7%)</option>
-                            <option value="yellow">Yellow (16.7–25%)</option>
+                            <option value="red">Red (&lt;25%)</option>
                             <option value="green">Green (25–50%)</option>
                             <option value="pink">Pink (50%+)</option>
                         </select>
@@ -185,6 +181,26 @@
                             <i class="fa fa-eye"></i>
                         </button>
                         <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV" aria-label="Export CSV"><i class="fas fa-download"></i></button>
+
+                        {{-- Push selected SKUs' SPRICE to TopDawg's review queue.
+                             Hidden until at least one selected SKU has a SPRICE set.
+                             The badge in the label shows how many will be sent. --}}
+                        <button id="td-push-btn" type="button" class="btn btn-sm btn-primary"
+                                style="display:none;"
+                                title="Push the SPRICE of every selected SKU to TopDawg. A 200 from TD means 'queued for review', not 'live on storefront'.">
+                            <i class="fas fa-upload"></i> Push to TD (<span id="td-push-count">0</span>)
+                        </button>
+                        {{-- Inline help bubble explaining TopDawg's review-queue behavior so
+                             users don't think the push silently failed when the storefront
+                             price doesn't change immediately. --}}
+                        <button type="button" class="btn btn-sm btn-link p-0 ms-1"
+                                style="display:none;color:#0d6efd;"
+                                id="td-push-info-btn"
+                                title="Why doesn't my price update right away?"
+                                data-bs-toggle="popover" data-bs-trigger="focus" data-bs-html="true"
+                                data-bs-content="TopDawg places every supplier price update into their <strong>internal review queue</strong>. The API responds <em>'Product submitted successfully for review.'</em> immediately, but the storefront price only changes after TD's team approves your submission (typically 1–24h). To bypass review, ask your TD account manager about auto-approval.">
+                            <i class="fas fa-info-circle fa-lg"></i>
+                        </button>
 
                         {{-- Single price-mode cycle button — same UX as /doba-tabulator and other
                              marketplace pricing pages. Click to cycle through:
@@ -228,6 +244,22 @@
                                 aria-label="Apply Target GPFT">
                                 <i class="fas fa-calculator"></i>
                             </button>
+                        </div>
+                    </div>
+
+                    {{-- Dedicated search row — Search SKU + Search Parent each take
+                         half the row (col-6) so they span the full table width.
+                         Tight px-2 py-1 keeps this strip slim. Sits BELOW the
+                         filter/action row so search inputs are nearest to the
+                         table they affect (per the user's "interchange rows" ask). --}}
+                    <div class="px-2 py-1 bg-light border-bottom">
+                        <div class="row g-1">
+                            <div class="col-6">
+                                <input type="text" id="sku-search" class="form-control form-control-sm w-100" placeholder="Search SKU...">
+                            </div>
+                            <div class="col-6">
+                                <input type="text" id="parent-search" class="form-control form-control-sm w-100" placeholder="Search Parent...">
+                            </div>
                         </div>
                     </div>
                     <div id="topdawg-pricing-table" style="flex:1;"></div>
@@ -337,6 +369,46 @@
         const count = tdSelectedSkus.size;
         $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
         $('#discount-input-container').toggle(tdAnyModeActive() && count > 0);
+        tdUpdatePushButton();
+    }
+
+    // Show "Push to TD" when at least one selected SKU has a SPRICE that's
+    // > 0. Otherwise hide it — there's nothing to send if no row has a
+    // user-chosen price override. The info popover button mirrors the push
+    // button's visibility so the explanation is only visible when it's
+    // contextually relevant.
+    function tdUpdatePushButton() {
+        const $btn  = $('#td-push-btn');
+        const $info = $('#td-push-info-btn');
+        if (!$btn.length || !table) return;
+        const pushable = tdCollectPushableItems();
+        if (pushable.length === 0) {
+            $btn.hide();
+            $info.hide();
+            return;
+        }
+        $('#td-push-count').text(pushable.length);
+        $btn.show();
+        $info.show();
+    }
+
+    // Walks the table's active rows and returns the items eligible to push:
+    // - currently selected (`tdSelectedSkus`)
+    // - has a numeric SPRICE > 0 (we never push the live TD Price; pushing
+    //   the existing price would just resubmit it into TopDawg's review queue
+    //   for no benefit).
+    function tdCollectPushableItems() {
+        if (!table) return [];
+        const items = [];
+        table.getRows('active').forEach(row => {
+            const d = row.getData();
+            const sku = d && d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
+            if (!sku || !tdSelectedSkus.has(sku)) return;
+            const sprice = parseFloat(d.SPRICE);
+            if (!isFinite(sprice) || sprice <= 0) return;
+            items.push({ sku: sku, price: +sprice.toFixed(2), row: row });
+        });
+        return items;
     }
 
     // Returns the rows on the *current* pagination page (excluding PARENT rows).
@@ -551,6 +623,7 @@
         const gpftPct = totalSalesL30 > 0 ? (totalProfit / totalSalesL30) * 100 : 0;
         const groiPct = totalCogs     > 0 ? (totalProfit / totalCogs)     * 100 : 0;
 
+        $('#total-rows-badge').text('Rows: ' + data.length.toLocaleString());
         $('#total-td-l30-badge').text('TD L30: ' + totalTdL30.toLocaleString());
         $('#total-sales-badge').text('Sales: $' + Math.round(totalSalesL30).toLocaleString());
         $('#zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
@@ -599,11 +672,10 @@
             });
         }
 
-        // DIL% bracket filter — buckets match the Dil column color thresholds
-        // (red < 16.7, yellow 16.7–25, green 25–50, pink ≥ 50). Computes DIL
-        // live from INV + L30 to match the column's display formula, so the
-        // filter agrees with the cell color even if the stored `Dil` field
-        // was rounded at a different precision by the controller.
+        // DIL% bracket filter — three buckets after merging yellow into red:
+        // red < 25, green 25–50, pink ≥ 50. Computes DIL live from INV + L30
+        // so the filter always agrees with the cell-color formatter (no
+        // rounding-drift surprises at bucket boundaries).
         const dil = $('#dil-filter').val();
         if (dil !== 'all') {
             table.addFilter(data => {
@@ -611,10 +683,9 @@
                 const ovL30 = parseFloat(data.L30) || 0;
                 if (inv <= 0) return dil === 'red'; // INV=0 falls into the lowest bucket
                 const pct = (ovL30 / inv) * 100;
-                if (dil === 'red')    return pct < 16.66;
-                if (dil === 'yellow') return pct >= 16.66 && pct < 25;
-                if (dil === 'green')  return pct >= 25    && pct < 50;
-                if (dil === 'pink')   return pct >= 50;
+                if (dil === 'red')   return pct < 25;
+                if (dil === 'green') return pct >= 25 && pct < 50;
+                if (dil === 'pink')  return pct >= 50;
                 return true;
             });
         }
@@ -636,12 +707,20 @@
     $(document).ready(function() {
         applyUrlBadgeFilter();
 
+        // Initialize the "?" popover on the push-info button so users can click
+        // it for a full explanation of TopDawg's review-queue workflow.
+        // Bootstrap 5's popover plugin needs explicit init (unlike tooltips).
+        if (window.bootstrap && bootstrap.Popover) {
+            const infoBtn = document.getElementById('td-push-info-btn');
+            if (infoBtn) new bootstrap.Popover(infoBtn);
+        }
+
         table = new Tabulator('#topdawg-pricing-table', {
             ajaxURL: '/topdawg-data-json',
             layout: 'fitDataStretch',
             pagination: true,
             paginationSize: 100,
-            paginationSizeSelector: [50, 100, 200, 500],
+            paginationSizeSelector: [50, 100, 200, 500, 1000],
             initialSort: [{ column: 'TD L30', dir: 'desc' }],
             columns: [
                 {
@@ -700,6 +779,9 @@
                 { title: 'INV', field: 'INV', hozAlign: 'center', width: 50, sorter: 'number' },
                 { title: 'OV L30', field: 'L30', hozAlign: 'center', width: 50, sorter: 'number' },
                 { title: 'Dil', field: 'Dil', hozAlign: 'center', width: 50, sorter: 'number',
+                    // DIL color buckets: red < 25, green 25–50, pink ≥ 50.
+                    // (The old yellow band 16.7–25 was merged into red so the
+                    // dropdown filter and cell color stay in lockstep.)
                     formatter: c => {
                         const row = c.getRow().getData();
                         const inv = parseFloat(row.INV) || 0;
@@ -707,8 +789,7 @@
                         if (inv === 0) return '<span style="color:#6c757d;">0%</span>';
                         const dil = (ovL30 / inv) * 100;
                         let color = '';
-                        if (dil < 16.66) color = '#a00211';
-                        else if (dil < 25) color = '#ffc107';
+                        if (dil < 25) color = '#a00211';
                         else if (dil < 50) color = '#28a745';
                         else color = '#e83e8c';
                         return `<span style="color:${color};font-weight:600;">${Math.round(dil)}%</span>`;
@@ -820,7 +901,18 @@
                         if (v === null || v === undefined || v === '') {
                             return '<span class="text-muted" style="cursor:text;" title="Click to set SPRICE">-</span>';
                         }
-                        return `<strong style="cursor:text;background:#e7f1ff;padding:2px 6px;border-radius:3px;">$${Number(v).toFixed(2)}</strong>`;
+                        // SPRICE_STATUS comes from the push-to-TopDawg flow:
+                        //   pushing → in-flight (orange)
+                        //   pushed  → accepted into TopDawg's review queue (yellow)
+                        //   failed  → TopDawg rejected / errored (red)
+                        // Default (no status) shows the standard blue "custom price" chip.
+                        const status = c.getRow().getData().SPRICE_STATUS || '';
+                        let bg = '#e7f1ff';
+                        let tip = '';
+                        if (status === 'pushing') { bg = '#ffe5b4'; tip = ' title="Pushing to TopDawg…"'; }
+                        else if (status === 'pushed') { bg = '#fff3cd'; tip = ' title="Pushed — queued in TopDawg review"'; }
+                        else if (status === 'failed') { bg = '#f8d7da'; tip = ' title="Push failed — see console / Laravel log"'; }
+                        return `<strong${tip} style="cursor:text;background:${bg};padding:2px 6px;border-radius:3px;">$${Number(v).toFixed(2)}</strong>`;
                     }
                 },
                 {
@@ -1117,6 +1209,83 @@
             if (e.which === 13) tdApplyDiscount();
         });
         $('#clear-sprice-btn').on('click', tdClearSpriceForSelected);
+
+        // ─── Push to TopDawg (selected rows with SPRICE > 0) ──────────────
+        // POSTs every selected SKU's SPRICE to /topdawg-push-prices, which
+        // loops through TopDawgApiService::pushPrice() server-side. We show
+        // a single confirm before sending and a single summary toast after
+        // ("X queued, Y failed") with details in console for debugging.
+        // A 200 from TopDawg = "queued for review", NOT "live price" — that
+        // wording is in the button tooltip and the toast.
+        $('#td-push-btn').on('click', function() {
+            const items = tdCollectPushableItems();
+            if (items.length === 0) {
+                tdShowToast('No selected SKU has a SPRICE > 0. Set a SPRICE first.', 'warning');
+                return;
+            }
+            if (!confirm(`Push SPRICE for ${items.length} SKU(s) to TopDawg's review queue?`)) {
+                return;
+            }
+
+            const $btn = $(this);
+            const original = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
+
+            // Mark the rows visually so the user can see progress while
+            // the batch endpoint loops server-side.
+            items.forEach(it => it.row.update({ SPRICE_STATUS: 'pushing' }));
+
+            $.ajax({
+                url: "{{ route('topdawg.push.prices') }}",
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    items: items.map(it => ({ sku: it.sku, price: it.price })),
+                },
+                timeout: 120000, // batch can be slow — TD's review-queue submit is per-SKU
+                success: function(res) {
+                    const ok   = (res && res.ok_count)   || 0;
+                    const fail = (res && res.fail_count) || 0;
+                    const results = (res && Array.isArray(res.results)) ? res.results : [];
+
+                    // Update row status from the per-SKU outcome.
+                    const byOk   = new Set(results.filter(r => r.ok).map(r => String(r.sku)));
+                    const byFail = new Set(results.filter(r => !r.ok).map(r => String(r.sku)));
+                    items.forEach(it => {
+                        if (byOk.has(it.sku))   it.row.update({ SPRICE_STATUS: 'pushed' });
+                        else if (byFail.has(it.sku)) it.row.update({ SPRICE_STATUS: 'failed' });
+                    });
+
+                    // Pull TopDawg's literal response message off the first success
+                    // so the toast quotes TD's wording — this kills the recurring
+                    // "I pushed but the site didn't update" confusion: TD's own
+                    // message says it went to review.
+                    const tdReply = (results.find(r => r.ok && r.message) || {}).message
+                                  || 'Product submitted successfully for review.';
+                    const kind = (fail === 0) ? 'success' : (ok > 0 ? 'warning' : 'error');
+                    const msg  = (fail === 0)
+                        ? `TopDawg accepted ${ok} SKU(s) into REVIEW QUEUE. TD said: "${tdReply}" — storefront price updates after TD approval (usually 1–24h).`
+                        : `Pushed ${ok} / ${ok + fail} — ${fail} failed. ${ok > 0 ? 'Accepted SKUs are in TopDawg review queue.' : ''}`;
+                    tdShowToast(msg, kind);
+
+                    if (fail > 0 && window.console) {
+                        console.warn('TopDawg push: failures', results.filter(r => !r.ok));
+                    }
+                    // Full per-row server response for the curious / for debugging.
+                    if (window.console) console.info('TopDawg push results:', results);
+                },
+                error: function(xhr) {
+                    items.forEach(it => it.row.update({ SPRICE_STATUS: 'failed' }));
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message
+                              : 'Push to TopDawg failed';
+                    tdShowToast(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).html(original);
+                    tdUpdatePushButton();
+                }
+            });
+        });
 
         /*
          * Target ROI% / Target GPFT% bulk apply (TopDawg, margin = TD_PERCENTAGE)

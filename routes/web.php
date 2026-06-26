@@ -536,6 +536,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/topdawg-data-json', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'dataJson'])->name('topdawg.data.json');
     Route::post('/topdawg-save-links', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'saveLinks'])->name('topdawg.save.links');
     Route::post('/topdawg-save-sprice', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'saveSprice'])->name('topdawg.save.sprice');
+    Route::post('/topdawg-push-prices', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'pushPrices'])->name('topdawg.push.prices');
 
     // Route::get('/get-channel-sales-data', [ChannelMasterController::class, 'getChannelSalesData']);
     Route::get('/sales-trend-data', [ChannelMasterController::class, 'getSalesTrendData']);
