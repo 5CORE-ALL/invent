@@ -92,6 +92,22 @@
                         </select>
                     </div>
 
+                    {{-- Sold dropdown (mirrors Amazon tabulator + every other /pricing page).
+                         Backed by `BB L30`:
+                           all  → no filter
+                           sold → BB L30 > 0
+                           zero → BB L30 = 0
+                         Single source of truth — the existing #zero-sold-count-badge and
+                         #more-sold-count-badge click handlers just toggle this dropdown so
+                         badges + dropdown can never disagree. --}}
+                    <select id="sold-filter" class="form-select form-select-sm"
+                            style="width: auto; display: inline-block;"
+                            title="Filter by BB L30 sold quantity">
+                        <option value="all">Sold</option>
+                        <option value="sold">Sold &gt; 0</option>
+                        <option value="zero">0 Sold</option>
+                    </select>
+
                     <select id="roi-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">ROI%</option>
@@ -545,19 +561,17 @@
             clearSpriceForSelected();
         });
 
-        // 0 Sold badge click handler - filter to show only 0 sold items
-        let zeroSoldFilterActive = false;
+        // Sold badges just toggle the #sold-filter dropdown so the dropdown stays the
+        // single source of truth for the Sold filter (mirrors Amazon tabulator behavior).
+        // Clicking the same badge twice clears the filter (toggle semantics preserved).
         $('#zero-sold-count-badge').on('click', function() {
-            zeroSoldFilterActive = !zeroSoldFilterActive;
-            moreSoldFilterActive = false; // Deactivate the other filter
+            const next = $('#sold-filter').val() === 'zero' ? 'all' : 'zero';
+            $('#sold-filter').val(next);
             applyFilters();
         });
-
-        // > 0 Sold badge click handler - filter to show items with sales > 0
-        let moreSoldFilterActive = false;
         $('#more-sold-count-badge').on('click', function() {
-            moreSoldFilterActive = !moreSoldFilterActive;
-            zeroSoldFilterActive = false; // Deactivate the other filter
+            const next = $('#sold-filter').val() === 'sold' ? 'all' : 'sold';
+            $('#sold-filter').val(next);
             applyFilters();
         });
 
@@ -1555,13 +1569,13 @@
                 });
             }
 
-            // 0 Sold filter (based on BB L30) - triggered by badge click
-            if (zeroSoldFilterActive) {
+            // Sold filter (based on BB L30) — driven by the #sold-filter dropdown.
+            // The legacy 0 Sold / > 0 Sold badges just toggle this dropdown value so
+            // there is exactly one source of truth (mirrors Amazon tabulator behavior).
+            const soldFilter = $('#sold-filter').val();
+            if (soldFilter === 'zero') {
                 table.addFilter("BB L30", "=", 0);
-            }
-
-            // > 0 Sold filter (based on BB L30) - triggered by badge click
-            if (moreSoldFilterActive) {
+            } else if (soldFilter === 'sold') {
                 table.addFilter("BB L30", ">", 0);
             }
 
@@ -1610,7 +1624,7 @@
             updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #roi-filter, #dil-filter').on('change', function() {
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #roi-filter, #dil-filter, #sold-filter').on('change', function() {
             applyFilters();
         });
 

@@ -73,6 +73,20 @@
                         </select>
                     </div>
 
+                    {{-- Sold dropdown (mirrors Amazon tabulator + /doba + /shopify-b2c + /macys).
+                         Backed by `PP L30`:
+                           all  → no filter
+                           sold → PP L30 > 0
+                           zero → PP L30 = 0
+                         Single source of truth — #zero-sold-count-badge / #more-sold-count-badge
+                         click handlers just toggle this dropdown so badges + dropdown stay synced. --}}
+                    <select id="sold-filter" class="form-select form-select-sm" style="width: auto;"
+                            title="Filter by PP L30 sold quantity">
+                        <option value="all">Sold</option>
+                        <option value="sold">Sold &gt; 0</option>
+                        <option value="zero">0 Sold</option>
+                    </select>
+
                     <select id="roi-filter" class="form-select form-select-sm" style="width: auto;">
                         <option value="all">ROI%</option>
                         <option value="lt40">&lt; 40%</option>
@@ -520,12 +534,23 @@
             if (e.which === 13) $('#apply-target-gpft-btn').click();
         });
 
-        let zeroSoldFilterActive = false, moreSoldFilterActive = false;
+        // Sold filter is now owned by the #sold-filter dropdown (mirrors Amazon tabulator).
+        // Other "badge active" flags (Amz, mapping, missing) remain unchanged below.
         let lessAmzFilterActive = false, moreAmzFilterActive = false;
         let missingFilterActive = false, mappingFilterActive = false;
 
-        $('#zero-sold-count-badge').on('click', function() { zeroSoldFilterActive = !zeroSoldFilterActive; moreSoldFilterActive = false; applyFilters(); });
-        $('#more-sold-count-badge').on('click', function() { moreSoldFilterActive = !moreSoldFilterActive; zeroSoldFilterActive = false; applyFilters(); });
+        // Sold badges just toggle the dropdown so the dropdown stays the single source of
+        // truth. Clicking the same badge twice clears the filter (toggle semantics preserved).
+        $('#zero-sold-count-badge').on('click', function() {
+            const next = $('#sold-filter').val() === 'zero' ? 'all' : 'zero';
+            $('#sold-filter').val(next);
+            applyFilters();
+        });
+        $('#more-sold-count-badge').on('click', function() {
+            const next = $('#sold-filter').val() === 'sold' ? 'all' : 'sold';
+            $('#sold-filter').val(next);
+            applyFilters();
+        });
         $('#less-amz-badge').on('click', function() { lessAmzFilterActive = !lessAmzFilterActive; moreAmzFilterActive = false; applyFilters(); });
         $('#more-amz-badge').on('click', function() { moreAmzFilterActive = !moreAmzFilterActive; lessAmzFilterActive = false; applyFilters(); });
         $('#missing-badge').on('click', function() { missingFilterActive = !missingFilterActive; mappingFilterActive = false; applyFilters(); });
@@ -1058,8 +1083,9 @@
                 });
             }
 
-            if (zeroSoldFilterActive) table.addFilter('PP L30', '=', 0);
-            if (moreSoldFilterActive) table.addFilter('PP L30', '>', 0);
+            const soldFilter = $('#sold-filter').val();
+            if (soldFilter === 'zero') table.addFilter('PP L30', '=', 0);
+            else if (soldFilter === 'sold') table.addFilter('PP L30', '>', 0);
             if (lessAmzFilterActive) table.addFilter(d => { const mc = parseFloat(d['PP Price']) || 0, amz = parseFloat(d['A Price']) || 0; return amz > 0 && mc > 0 && mc < amz; });
             if (moreAmzFilterActive) table.addFilter(d => { const mc = parseFloat(d['PP Price']) || 0, amz = parseFloat(d['A Price']) || 0; return amz > 0 && mc > 0 && mc > amz; });
             if (missingFilterActive) table.addFilter(d => { return (d.nr_req || 'REQ') === 'REQ' && (parseFloat(d.INV) || 0) > 0 && (parseFloat(d['PP Price']) || 0) === 0; });
@@ -1071,7 +1097,7 @@
             updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #roi-filter').on('change', function() { applyFilters(); });
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #roi-filter, #sold-filter').on('change', function() { applyFilters(); });
 
         function updateSummary() {
             const data = table.getData('active').filter(r => !(r.Parent && r.Parent.startsWith('PARENT')));

@@ -90,6 +90,22 @@
                         </select>
                     </div>
 
+                    {{-- Sold dropdown (mirrors Amazon tabulator + /doba + /shopify-b2c-pricing).
+                         Backed by `MC L30`:
+                           all  → no filter
+                           sold → MC L30 > 0
+                           zero → MC L30 = 0
+                         The dropdown is the single source of truth — the existing
+                         #zero-sold-count-badge / #more-sold-count-badge click handlers
+                         just write into this dropdown so badges + dropdown can never disagree. --}}
+                    <select id="sold-filter" class="form-select form-select-sm"
+                            style="width: auto; display: inline-block;"
+                            title="Filter by MC L30 sold quantity">
+                        <option value="all">Sold</option>
+                        <option value="sold">Sold &gt; 0</option>
+                        <option value="zero">0 Sold</option>
+                    </select>
+
                     <select id="roi-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">ROI%</option>
@@ -722,18 +738,17 @@
             clearSpriceForSelected();
         });
 
-        // 0 Sold badge — filter to MC L30 = 0
-        let zeroSoldFilterActive = false;
+        // Badge clicks just toggle the #sold-filter dropdown so the dropdown stays the
+        // single source of truth for the Sold filter (mirrors Amazon tabulator behavior).
+        // Clicking the same badge twice clears the filter (toggle semantics preserved).
         $('#zero-sold-count-badge').on('click', function() {
-            zeroSoldFilterActive = !zeroSoldFilterActive;
-            moreSoldFilterActive = false;
+            const next = $('#sold-filter').val() === 'zero' ? 'all' : 'zero';
+            $('#sold-filter').val(next);
             applyFilters();
         });
-
-        let moreSoldFilterActive = false;
         $('#more-sold-count-badge').on('click', function() {
-            moreSoldFilterActive = !moreSoldFilterActive;
-            zeroSoldFilterActive = false;
+            const next = $('#sold-filter').val() === 'sold' ? 'all' : 'sold';
+            $('#sold-filter').val(next);
             applyFilters();
         });
 
@@ -1788,11 +1803,13 @@
                 });
             }
 
-            if (zeroSoldFilterActive) {
+            // Sold filter (based on MC L30). Driven by the #sold-filter dropdown — the
+            // legacy 0 Sold / > 0 Sold badge clicks just toggle this dropdown value so
+            // there is exactly one source of truth (mirrors Amazon tabulator behavior).
+            const soldFilter = $('#sold-filter').val();
+            if (soldFilter === 'zero') {
                 table.addFilter("MC L30", "=", 0);
-            }
-
-            if (moreSoldFilterActive) {
+            } else if (soldFilter === 'sold') {
                 table.addFilter("MC L30", ">", 0);
             }
 
@@ -1835,7 +1852,7 @@
             updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #roi-filter, #dil-filter').on('change', function() {
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #roi-filter, #dil-filter, #sold-filter').on('change', function() {
             applyFilters();
         });
 

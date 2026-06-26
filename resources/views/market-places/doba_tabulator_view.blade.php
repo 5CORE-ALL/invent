@@ -322,6 +322,17 @@
                         </select>
                     </div>
 
+                    {{-- Sold dropdown (mirrors Amazon tabulator). Filters on `doba L30`:
+                         all  → show every row (no filter)
+                         sold → only rows where Doba L30 > 0
+                         zero → only rows where Doba L30 = 0 --}}
+                    <select id="sold-filter" class="form-select form-select-sm" style="width: 130px;"
+                            title="Filter by Doba L30 sold quantity">
+                        <option value="all">Sold</option>
+                        <option value="sold">Sold &gt; 0</option>
+                        <option value="zero">0 Sold</option>
+                    </select>
+
                     <!-- DIL Filter -->
                     <div class="dropdown manual-dropdown-container">
                         <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown" 
@@ -2455,6 +2466,19 @@
                     });
                 }
 
+                // Sold filter (mirrors Amazon tabulator). Stacks with the existing L30 min/max
+                // filter so users can combine "Sold > 0" with a range. Parent rows have a
+                // summary `doba L30`, so they participate naturally — no special-casing here.
+                const soldFilter = $('#sold-filter').val();
+                if (soldFilter && soldFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        const dobaL30 = parseFloat(data['doba L30']) || 0;
+                        if (soldFilter === 'sold') return dobaL30 > 0;
+                        if (soldFilter === 'zero') return dobaL30 === 0;
+                        return true;
+                    });
+                }
+
                 // DIL Filter (based on inventory and L30)
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
@@ -2641,7 +2665,7 @@
                 if (el) el.textContent = 'Visible rows: ' + visibleNonParentRows.length;
             }
 
-            $('#inventory-filter, #parent-filter, #missing-filter, #gpft-filter, #cvr-filter').on('change', function() {
+            $('#inventory-filter, #parent-filter, #missing-filter, #gpft-filter, #cvr-filter, #sold-filter').on('change', function() {
                 applyFilters();
             });
 

@@ -301,20 +301,20 @@
                                 <td class="text-center">
                                     <button type="button" class="btn btn-sm btn-link p-0 text-dark faq-view-btn"
                                         title="View"
-                                        data-group="{{ e($faq->group_name) }}"
-                                        data-faq="{{ e($faq->faq) }}"
-                                        data-answers="{{ e($faq->answers) }}"
-                                        data-dept-label="{{ e($deptLabel) }}"
-                                        data-type-variant="{{ e($faq->type_variant) }}"
-                                        data-what="{{ e($faq->what) }}"
-                                        data-link="{{ e($faq->link) }}"
-                                        data-link2="{{ e($faq->link2) }}"
-                                        data-sop="{{ e($faq->sop) }}"
-                                        data-video="{{ e($faq->video) }}"
-                                        data-actiontext="{{ e($faq->action) }}"
-                                        data-ca="{{ e($faq->ca) }}"
-                                        data-plus-action="{{ e($faq->plus_action) }}"
-                                        data-messages="{{ e($faq->messages) }}">
+                                        data-group="{{ $faq->group_name }}"
+                                        data-faq="{{ $faq->faq }}"
+                                        data-answers="{{ $faq->answers }}"
+                                        data-dept-label="{{ $deptLabel }}"
+                                        data-type-variant="{{ $faq->type_variant }}"
+                                        data-what="{{ $faq->what }}"
+                                        data-link="{{ $faq->link }}"
+                                        data-link2="{{ $faq->link2 }}"
+                                        data-sop="{{ $faq->sop }}"
+                                        data-video="{{ $faq->video }}"
+                                        data-actiontext="{{ $faq->action }}"
+                                        data-ca="{{ $faq->ca }}"
+                                        data-plus-action="{{ $faq->plus_action }}"
+                                        data-messages="{{ $faq->messages }}">
                                         <img src="{{ asset('images/magnifier-icon.png') }}" alt="View" style="height: 34px; width: auto; object-fit: contain;">
                                     </button>
                                 </td>
@@ -335,29 +335,29 @@
                                 <td class="text-center">@if ($faq->link2)<a href="{{ $faq->link2 }}" target="_blank" rel="noopener" title="Open link 2"><img src="{{ asset('images/link-icon.png') }}" alt="Link 2" style="height: 26px; width: 26px; object-fit: contain;"></a>@else<span class="text-muted">&mdash;</span>@endif</td>
                                 <td class="text-center">@if ($faq->sop)<a href="{{ $faq->sop }}" target="_blank" rel="noopener" title="Open SOP"><img src="{{ asset('assets/images/task-sop-icon.png') }}" alt="SOP" style="height: 32px; width: 32px; object-fit: contain;"></a>@else<span class="text-muted">&mdash;</span>@endif</td>
                                 <td class="text-center">@if ($faq->video)<a href="{{ $faq->video }}" target="_blank" rel="noopener" title="Open video"><img src="{{ asset('assets/images/task-video-icon.png') }}" alt="Video" style="height: 32px; width: 32px; object-fit: contain;"></a>@else<span class="text-muted">&mdash;</span>@endif</td>
-                                <td class="text-center">@if ($faq->action)<button type="button" class="btn btn-link p-0 faq-actiontext-btn" data-actiontext="{{ e($faq->action) }}" title="{{ $faq->action }}"><img src="{{ asset('images/action-comic.png') }}" alt="Action" style="height: 34px; width: auto; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
-                                <td class="text-center">@if ($faq->plus_action)<button type="button" class="btn btn-link p-0 faq-action-btn" data-action="{{ e($faq->plus_action) }}" title="{{ $faq->plus_action }}"><img src="{{ asset('images/action-comic.png') }}" alt="+ Action" style="height: 34px; width: auto; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
-                                <td class="text-center">@if ($faq->ca)<button type="button" class="btn btn-link p-0 faq-ca-btn" data-ca="{{ e($faq->ca) }}" title="Corrective Action"><img src="{{ asset('images/action-icon.png') }}" alt="Corrective Action" style="height: 30px; width: 30px; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
-                                <td class="text-center">@if ($faq->messages)<button type="button" class="btn btn-link p-0 faq-msg-btn" data-message="{{ e($faq->messages) }}" title="View message"><img src="{{ asset('images/message-icon.png') }}" alt="Message" class="faq-msg-icon" style="height: 104px; width: 104px; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
+                                <td class="text-center">@if ($faq->action)<button type="button" class="btn btn-link p-0 faq-actiontext-btn" data-actiontext="{{ $faq->action }}" title="{{ $faq->action }}"><img src="{{ asset('images/action-comic.png') }}" alt="Action" style="height: 34px; width: auto; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
+                                <td class="text-center">@if ($faq->plus_action)<button type="button" class="btn btn-link p-0 faq-action-btn" data-action="{{ $faq->plus_action }}" title="{{ $faq->plus_action }}"><img src="{{ asset('images/action-comic.png') }}" alt="+ Action" style="height: 34px; width: auto; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
+                                <td class="text-center">@if ($faq->ca)<button type="button" class="btn btn-link p-0 faq-ca-btn" data-ca="{{ $faq->ca }}" title="Corrective Action"><img src="{{ asset('images/action-icon.png') }}" alt="Corrective Action" style="height: 30px; width: 30px; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
+                                <td class="text-center">@if ($faq->messages)<button type="button" class="btn btn-link p-0 faq-msg-btn" data-message="{{ $faq->messages }}" title="View message"><img src="{{ asset('images/message-icon.png') }}" alt="Message" class="faq-msg-icon" style="height: 104px; width: 104px; object-fit: contain;"></button>@else<span class="text-muted">&mdash;</span>@endif</td>
                                 <td>
                                     <div class="d-flex justify-content-center align-items-center gap-2 flex-nowrap">
                                     @if ($canEditFaq)
                                     <button type="button" class="btn btn-sm btn-link p-0 text-secondary faq-edit-btn"
                                         data-id="{{ $faq->id }}"
-                                        data-group="{{ e($faq->group_name) }}"
-                                        data-faq="{{ e($faq->faq) }}"
-                                        data-answers="{{ e($faq->answers) }}"
-                                        data-type-variant="{{ e($faq->type_variant) }}"
-                                        data-what="{{ e($faq->what) }}"
+                                        data-group="{{ $faq->group_name }}"
+                                        data-faq="{{ $faq->faq }}"
+                                        data-answers="{{ $faq->answers }}"
+                                        data-type-variant="{{ $faq->type_variant }}"
+                                        data-what="{{ $faq->what }}"
                                         data-dept='@json($faqDept)'
-                                        data-link="{{ e($faq->link) }}"
-                                        data-link2="{{ e($faq->link2) }}"
-                                        data-sop="{{ e($faq->sop) }}"
-                                        data-video="{{ e($faq->video) }}"
-                                        data-actiontext="{{ e($faq->action) }}"
-                                        data-ca="{{ e($faq->ca) }}"
-                                        data-plus-action="{{ e($faq->plus_action) }}"
-                                        data-messages="{{ e($faq->messages) }}" title="Edit">
+                                        data-link="{{ $faq->link }}"
+                                        data-link2="{{ $faq->link2 }}"
+                                        data-sop="{{ $faq->sop }}"
+                                        data-video="{{ $faq->video }}"
+                                        data-actiontext="{{ $faq->action }}"
+                                        data-ca="{{ $faq->ca }}"
+                                        data-plus-action="{{ $faq->plus_action }}"
+                                        data-messages="{{ $faq->messages }}" title="Edit">
                                         <i class="ri-edit-line fs-5"></i>
                                     </button>
                                     @endif
@@ -377,8 +377,8 @@
                                         <button type="button" class="btn btn-sm btn-link p-0 faq-guru-btn"
                                             title="View history"
                                             data-history='@json($hist)'
-                                            data-created="{{ e($faq->created_by_email) }}"
-                                            data-updated="{{ e($faq->updated_by_email) }}">
+                                            data-created="{{ $faq->created_by_email }}"
+                                            data-updated="{{ $faq->updated_by_email }}">
                                             <i class="ri-history-line fs-5"></i>
                                         </button>
                                     @else

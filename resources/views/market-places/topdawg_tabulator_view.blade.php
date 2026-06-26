@@ -58,6 +58,20 @@
                         <option value="20-30">20-30%</option>
                         <option value="30plus">30%+</option>
                     </select>
+                    {{-- Sold dropdown (mirrors Amazon tabulator + every other /pricing page).
+                         Backed by `TD L30`:
+                           all  → no filter
+                           sold → TD L30 > 0
+                           zero → TD L30 = 0
+                         Single source of truth — the #zero-sold-badge / #more-sold-badge clicks
+                         and the ?badge=zero_sold|more_sold URL deep-link all write into this
+                         dropdown so badges + dropdown + URL stay in sync. --}}
+                    <select id="sold-filter" class="form-select form-select-sm" style="width:130px;"
+                            title="Filter by TD L30 sold quantity">
+                        <option value="all">Sold</option>
+                        <option value="sold">Sold &gt; 0</option>
+                        <option value="zero">0 Sold</option>
+                    </select>
                     <a href="{{ route('all.marketplace.master') }}" class="btn btn-sm btn-outline-primary">
                         <i class="fas fa-th-large"></i> All Marketplace Master
                     </a>
@@ -185,7 +199,8 @@
     const TD_MAP_TOLERANCE = 3;
     const TD_PERCENTAGE    = {{ $topdawgPercentage ?? 95 }} / 100;
     let table = null;
-    let zeroSoldFilter = false, moreSoldFilter = false;
+    // zeroSoldFilter / moreSoldFilter removed — Sold filter is now owned by the
+    // #sold-filter dropdown (driven by badge clicks and the ?badge=zero_sold|more_sold URL).
     let missingFilter = false, mapFilter = false, nmapFilter = false;
 
     // Pricing-mode state
@@ -369,20 +384,26 @@
 
     function applyUrlBadgeFilter() {
         const p = new URLSearchParams(window.location.search).get('badge');
-        missingFilter = mapFilter = nmapFilter = zeroSoldFilter = moreSoldFilter = false;
+        // Reset every badge-style filter (including the dropdown-backed Sold filter)
+        // before honoring the URL deep-link, so only one filter is active afterwards.
+        missingFilter = mapFilter = nmapFilter = false;
+        $('#sold-filter').val('all');
         if (p === 'missing') missingFilter = true;
         else if (p === 'map') mapFilter = true;
         else if (p === 'nmap') nmapFilter = true;
-        else if (p === 'zero_sold') zeroSoldFilter = true;
-        else if (p === 'more_sold') moreSoldFilter = true;
+        else if (p === 'zero_sold') $('#sold-filter').val('zero');
+        else if (p === 'more_sold') $('#sold-filter').val('sold');
     }
 
     function setActiveBadges() {
         $('#missing-badge').toggleClass('active-filter', missingFilter);
         $('#map-badge').toggleClass('active-filter', mapFilter);
         $('#nmap-badge').toggleClass('active-filter', nmapFilter);
-        $('#zero-sold-badge').toggleClass('active-filter', zeroSoldFilter);
-        $('#more-sold-badge').toggleClass('active-filter', moreSoldFilter);
+        // Sold-badge active state is now derived from the #sold-filter dropdown value,
+        // which is the single source of truth for the Sold filter.
+        const sold = $('#sold-filter').val();
+        $('#zero-sold-badge').toggleClass('active-filter', sold === 'zero');
+        $('#more-sold-badge').toggleClass('active-filter', sold === 'sold');
     }
 
     function getSummaryRows() {
@@ -451,8 +472,13 @@
             });
         }
 
-        if (zeroSoldFilter) table.addFilter(data => (parseInt(data['TD L30'], 10) || 0) === 0);
-        if (moreSoldFilter) table.addFilter(data => (parseInt(data['TD L30'], 10) || 0) > 0);
+        // Sold filter — driven by the #sold-filter dropdown (single source of truth).
+        const soldFilter = $('#sold-filter').val();
+        if (soldFilter === 'zero') {
+            table.addFilter(data => (parseInt(data['TD L30'], 10) || 0) === 0);
+        } else if (soldFilter === 'sold') {
+            table.addFilter(data => (parseInt(data['TD L30'], 10) || 0) > 0);
+        }
         if (missingFilter) table.addFilter(data => data.Missing === 'M' && data.nr_req === 'REQ' && (parseFloat(data.INV) || 0) > 0);
         if (mapFilter) table.addFilter(data => data.MAP === 'Map' && data.nr_req === 'REQ' && (parseFloat(data.INV) || 0) > 0 && data.Missing !== 'M');
         if (nmapFilter) table.addFilter(data => (data.MAP || '').includes('N Map|') && data.nr_req === 'REQ' && (parseFloat(data.INV) || 0) > 0 && data.Missing !== 'M');
@@ -653,7 +679,12 @@
         });
         table.on('dataFiltered', updateSummary);
 
-        $('#inventory-filter, #td-stock-filter, #nrl-filter, #gpft-filter').on('change', applyFilters);
+        $('#inventory-filter, #td-stock-filter, #nrl-filter, #gpft-filter, #sold-filter').on('change', function() {
+            // Keep badge "active-filter" styling in sync when the Sold dropdown changes
+            // directly (not via badge click). Other handlers call setActiveBadges() themselves.
+            setActiveBadges();
+            applyFilters();
+        });
         $('#sku-search, #parent-search').on('keyup', function() {
             table.setFilter([
                 { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' },
@@ -662,8 +693,20 @@
             updateSummary();
         });
 
-        $('#zero-sold-badge').on('click', function() { zeroSoldFilter = !zeroSoldFilter; moreSoldFilter = false; applyFilters(); });
-        $('#more-sold-badge').on('click', function() { moreSoldFilter = !moreSoldFilter; zeroSoldFilter = false; applyFilters(); });
+        // Sold badges just toggle the #sold-filter dropdown so the dropdown stays the
+        // single source of truth (mirrors Amazon tabulator). Click again to clear.
+        $('#zero-sold-badge').on('click', function() {
+            const next = $('#sold-filter').val() === 'zero' ? 'all' : 'zero';
+            $('#sold-filter').val(next);
+            setActiveBadges();
+            applyFilters();
+        });
+        $('#more-sold-badge').on('click', function() {
+            const next = $('#sold-filter').val() === 'sold' ? 'all' : 'sold';
+            $('#sold-filter').val(next);
+            setActiveBadges();
+            applyFilters();
+        });
         $('#missing-badge').on('click', function() { missingFilter = !missingFilter; mapFilter = nmapFilter = false; applyFilters(); });
         $('#map-badge').on('click', function() { mapFilter = !mapFilter; missingFilter = nmapFilter = false; applyFilters(); });
         $('#nmap-badge').on('click', function() { nmapFilter = !nmapFilter; missingFilter = mapFilter = false; applyFilters(); });

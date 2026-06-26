@@ -89,6 +89,15 @@
                         <option value="pink">Pink (50%+)</option>
                     </select>
 
+                    {{-- Sold dropdown (mirrors Amazon tabulator + every other /pricing page).
+                         Backed by `pls_l30` (PLS L30 sold qty). --}}
+                    <select id="sold-filter" class="form-select form-select-sm" style="width: auto;"
+                            title="Filter by PLS L30 sold quantity">
+                        <option value="all">Sold</option>
+                        <option value="sold">Sold &gt; 0</option>
+                        <option value="zero">0 Sold</option>
+                    </select>
+
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
                             <i class="fa fa-eye"></i> Columns
@@ -330,6 +339,7 @@
         $('#gpft-filter').on('change', function () { applyFilters(); });
         $('#roi-filter').on('change', function () { applyFilters(); });
         $('#dil-filter').on('change', function () { applyFilters(); });
+        $('#sold-filter').on('change', function () { applyFilters(); });
 
         $('#sku-search').on('keyup', function () { applyFilters(); });
         $('#parent-search').on('keyup', function () { applyFilters(); });
@@ -354,6 +364,7 @@
             const gpftFilter = $('#gpft-filter').val();
             const roiFilter = $('#roi-filter').val();
             const dilFilter = $('#dil-filter').val();
+            const soldFilter = $('#sold-filter').val();
             const skuSearch = ($('#sku-search').val() || '').toString().trim().toLowerCase();
             const parentSearch = ($('#parent-search').val() || '').toString().trim().toLowerCase();
             
@@ -396,7 +407,15 @@
                     if (dilFilter === 'green' && (dil < 25 || dil >= 50)) return false;
                     if (dilFilter === 'pink' && dil < 50) return false;
                 }
-                
+
+                // Sold filter (PLS L30 sold qty — `pls_l30` field). Mirrors the Amazon
+                // tabulator dropdown styling.
+                if (soldFilter && soldFilter !== 'all') {
+                    const soldQty = parseInt(data.pls_l30) || 0;
+                    if (soldFilter === 'sold' && !(soldQty > 0))   return false;
+                    if (soldFilter === 'zero' && !(soldQty === 0)) return false;
+                }
+
                 return true;
             });
             

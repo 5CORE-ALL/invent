@@ -179,6 +179,21 @@
                         </select>
                     </div>
 
+                    {{-- Sold dropdown (mirrors Amazon tabulator + /doba + /shopify-b2c + /macys
+                         + /purchasing-power + /wayfair). Backed by `reverb_daily_qty`:
+                           all  → no filter
+                           sold → reverb_daily_qty > 0
+                           zero → reverb_daily_qty = 0
+                         Single source of truth. The #zero-sold-count-badge / #more-sold-count-badge
+                         click handlers (and the ?badge=zero_sold|more_sold URL deep-link) all
+                         drive this dropdown value, so badges + dropdown + URL stay in sync. --}}
+                    <select id="sold-filter" class="form-select form-select-sm" style="width: 130px;"
+                            title="Filter by Reverb L30 sold quantity (reverb_daily_qty)">
+                        <option value="all">Sold</option>
+                        <option value="sold">Sold &gt; 0</option>
+                        <option value="zero">0 Sold</option>
+                    </select>
+
                     <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
                         <option value="all">ROI%</option>
                         <option value="lt40">&lt; 40%</option>
@@ -705,19 +720,17 @@
             clearSpriceForSelected();
         });
 
-        // 0 Sold badge click handler - filter to show only 0 sold items
-        let zeroSoldFilterActive = false;
+        // Sold badges just toggle the #sold-filter dropdown so the dropdown stays the
+        // single source of truth for the Sold filter (mirrors Amazon tabulator behavior).
+        // Clicking the same badge twice clears the filter (toggle semantics preserved).
         $('#zero-sold-count-badge').on('click', function() {
-            zeroSoldFilterActive = !zeroSoldFilterActive;
-            moreSoldFilterActive = false; // Deactivate the other filter
+            const next = $('#sold-filter').val() === 'zero' ? 'all' : 'zero';
+            $('#sold-filter').val(next);
             applyFilters();
         });
-
-        // > 0 Sold badge click handler - filter to show items with sales > 0
-        let moreSoldFilterActive = false;
         $('#more-sold-count-badge').on('click', function() {
-            moreSoldFilterActive = !moreSoldFilterActive;
-            zeroSoldFilterActive = false; // Deactivate the other filter
+            const next = $('#sold-filter').val() === 'sold' ? 'all' : 'sold';
+            $('#sold-filter').val(next);
             applyFilters();
         });
 
@@ -744,7 +757,9 @@
 
         function clearReverbBadgeFilters() {
             missingFilterActive = mapFilterActive = invRStockFilterActive = false;
-            zeroSoldFilterActive = moreSoldFilterActive = false;
+            // Sold filter lives on the #sold-filter dropdown now — reset it here too so
+            // this helper still fully clears any active Sold-style filter.
+            $('#sold-filter').val('all');
         }
 
         function syncReverbBadgeFilterStyles() {
@@ -798,8 +813,8 @@
                 if (badge === 'missing') missingFilterActive = true;
                 else if (badge === 'map') mapFilterActive = true;
                 else if (badge === 'nmap') invRStockFilterActive = true;
-                else if (badge === 'zero_sold') zeroSoldFilterActive = true;
-                else if (badge === 'more_sold') moreSoldFilterActive = true;
+                else if (badge === 'zero_sold') $('#sold-filter').val('zero');
+                else if (badge === 'more_sold') $('#sold-filter').val('sold');
                 syncReverbBadgeFilterStyles();
                 applyMissingColumnVisibility();
             }
@@ -2068,13 +2083,13 @@
                 });
             }
 
-            // 0 Sold filter (reverb_daily_qty) - matches summary badge counts
-            if (zeroSoldFilterActive) {
+            // Sold filter (reverb_daily_qty) — driven by the #sold-filter dropdown.
+            // Badge clicks and the ?badge=zero_sold|more_sold URL deep-link both write into
+            // this dropdown, so there is exactly one source of truth.
+            const soldFilter = $('#sold-filter').val();
+            if (soldFilter === 'zero') {
                 table.addFilter("reverb_daily_qty", "=", 0);
-            }
-
-            // > 0 Sold filter (reverb_daily_qty)
-            if (moreSoldFilterActive) {
+            } else if (soldFilter === 'sold') {
                 table.addFilter("reverb_daily_qty", ">", 0);
             }
 
@@ -2131,7 +2146,7 @@
             updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #reverb-stock-filter').on('change', function() {
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #reverb-stock-filter, #sold-filter').on('change', function() {
             applyFilters();
         });
 

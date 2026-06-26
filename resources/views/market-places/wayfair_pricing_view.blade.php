@@ -156,9 +156,19 @@
                             <option value="75-125">75–125%</option>
                             <option value="gt125">125%+</option>
                         </select>
-                        <select id="wf-fqty-filter" class="form-select form-select-sm" style="width:130px;" title="Units sold (Wayfair daily L30)">
+                        {{-- Sold dropdown (mirrors Amazon tabulator + /doba + /shopify-b2c + /macys + /purchasing-power).
+                             Backed by `al30` (Wayfair daily L30 sold qty). Adds Amazon-style
+                             "Sold > 0" / "0 Sold" options at the top while keeping the granular
+                             1–10 / 10+ buckets below. This dropdown is the single source of truth —
+                             #wf-zero-sold-badge / #wf-more-sold-badge click handlers just toggle
+                             this dropdown so badges + dropdown can never disagree.
+                             Note: binary cases (`0 Sold`, `Sold > 0`) intentionally do NOT enforce
+                             inv > 0 — matches Amazon styling + existing badge click semantics.
+                             The granular 1–10 / 10+ cases retain inv > 0 (restock-decision focus). --}}
+                        <select id="wf-fqty-filter" class="form-select form-select-sm" style="width:130px;" title="Units sold (Wayfair daily L30 / al30)">
                             <option value="all">Sold</option>
-                            <option value="0">0</option>
+                            <option value="more">Sold &gt; 0</option>
+                            <option value="0">0 Sold</option>
                             <option value="0-10">1–10</option>
                             <option value="10plus">10+</option>
                         </select>
@@ -366,8 +376,8 @@
         let wfMissingActive = false;
         let wfMapActive = false;
         let wfNMapActive = false;
-        let wfZeroSoldActive = false;
-        let wfMoreSoldActive = false;
+        // wfZeroSoldActive / wfMoreSoldActive removed — Sold filter is now owned by the
+        // #wf-fqty-filter dropdown (which is also driven by the 0 Sold / >0 Sold badges).
 
         let wfDecreaseModeActive = false;
         let wfIncreaseModeActive = false;
@@ -1033,10 +1043,14 @@
             }
             if (fqtyFilter !== 'all') {
                 table.addFilter(function(d) {
-                    if ((parseInt(d.inv, 10) || 0) <= 0) return false;
                     const fqty = parseFloat(d.al30) || 0;
-                    if (fqtyFilter === '0') return fqty === 0;
-                    if (fqtyFilter === '0-10') return fqty > 0 && fqty <= 10;
+                    // Binary Amazon-style cases: no inv > 0 constraint (matches Amazon + the
+                    // legacy badge click behavior). Granular 1–10 / 10+ buckets keep the
+                    // inv > 0 gate so they remain useful for restock decisions.
+                    if (fqtyFilter === '0')    return fqty === 0;
+                    if (fqtyFilter === 'more') return fqty > 0;
+                    if ((parseInt(d.inv, 10) || 0) <= 0) return false;
+                    if (fqtyFilter === '0-10')   return fqty > 0 && fqty <= 10;
                     if (fqtyFilter === '10plus') return fqty > 10;
                     return true;
                 });
@@ -1063,8 +1077,7 @@
             }
             if (wfMapActive) table.addFilter(d => wfRowMapStatus(d) === 'map');
             if (wfNMapActive) table.addFilter(d => wfRowMapStatus(d) === 'nmap');
-            if (wfZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
-            if (wfMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
+            // Sold filter is owned by #wf-fqty-filter dropdown above — see fqtyFilter block.
 
             updateSummary();
         }
@@ -1856,33 +1869,45 @@
                 }
             });
 
+            // These three badges are mutually exclusive with the Sold filter, so they also
+            // reset the #wf-fqty-filter dropdown back to "Sold" (all) — matches the prior
+            // behavior of clearing the wfZeroSoldActive / wfMoreSoldActive flags.
             $('#wf-missing-badge').on('click', function() {
                 wfMissingActive = !wfMissingActive;
-                wfMapActive = wfNMapActive = wfZeroSoldActive = wfMoreSoldActive = false;
+                wfMapActive = wfNMapActive = false;
+                $('#wf-fqty-filter').val('all');
                 wfClearSkuSelections();
                 applyFilters();
             });
             $('#wf-map-count-badge').on('click', function() {
                 wfMapActive = !wfMapActive;
-                wfMissingActive = wfNMapActive = wfZeroSoldActive = wfMoreSoldActive = false;
+                wfMissingActive = wfNMapActive = false;
+                $('#wf-fqty-filter').val('all');
                 wfClearSkuSelections();
                 applyFilters();
             });
             $('#wf-nmap-count-badge').on('click', function() {
                 wfNMapActive = !wfNMapActive;
-                wfMissingActive = wfMapActive = wfZeroSoldActive = wfMoreSoldActive = false;
+                wfMissingActive = wfMapActive = false;
+                $('#wf-fqty-filter').val('all');
                 wfClearSkuSelections();
                 applyFilters();
             });
+            // Sold badges just toggle the #wf-fqty-filter dropdown so the dropdown stays
+            // the single source of truth for the Sold filter (mirrors Amazon tabulator).
+            // Clicking the same badge twice clears the filter (toggle semantics preserved).
+            // Mutex with Missing/Map/NMap badges retained by clearing those flags here.
             $('#wf-zero-sold-badge').on('click', function() {
-                wfZeroSoldActive = !wfZeroSoldActive;
-                wfMoreSoldActive = wfMissingActive = wfMapActive = wfNMapActive = false;
+                const next = $('#wf-fqty-filter').val() === '0' ? 'all' : '0';
+                $('#wf-fqty-filter').val(next);
+                wfMissingActive = wfMapActive = wfNMapActive = false;
                 wfClearSkuSelections();
                 applyFilters();
             });
             $('#wf-more-sold-badge').on('click', function() {
-                wfMoreSoldActive = !wfMoreSoldActive;
-                wfZeroSoldActive = wfMissingActive = wfMapActive = wfNMapActive = false;
+                const next = $('#wf-fqty-filter').val() === 'more' ? 'all' : 'more';
+                $('#wf-fqty-filter').val(next);
+                wfMissingActive = wfMapActive = wfNMapActive = false;
                 wfClearSkuSelections();
                 applyFilters();
             });
