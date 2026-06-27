@@ -245,6 +245,22 @@
                         </select>
                     </div>
 
+                    {{-- L7 vs L30 views-pace filter.
+                         Value comes from `l7_vs_l30_pct` on each row, computed as
+                         (L7 daily-avg views) ÷ (L30 daily-avg views) × 100.
+                         > 70  → SKU is keeping pace with (or beating) the L30
+                                 baseline — colored green in the L7 vs L30 column.
+                         < 71  → SKU is trailing the L30 pace — colored red.
+                         Rows with 0 views (either side) fall in the < 71 bucket. --}}
+                    <div>
+                        <select id="l7-vs-l30-filter" class="form-select form-select-sm" style="width: 140px;"
+                                title="L7 vs L30 views pace (daily-average ratio × 100)">
+                            <option value="all">L7 vs L30</option>
+                            <option value="gt70">&gt; 70% (trending up)</option>
+                            <option value="lt71">&lt; 71% (trending down)</option>
+                        </select>
+                    </div>
+
                     <!-- CVR Trend Filter -->
                     <div>
                         <select id="cvr-trend-filter" class="form-select form-select-sm" style="width: 150px;">
@@ -307,37 +323,44 @@
                         </select>
                     </div>
 
-                    {{-- Target ROI% bulk control — back-solves SPRICE for selected rows so SROI = Target ROI%. --}}
-                    {{-- stemuPrice = (LP × (1 + ROI%/100) + temu_ship) / margin; then sprice = stemuPrice or stemuPrice − 2.99 (Temu adds a $2.99 ship bumper when sprice ≤ $26.99). --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                    {{-- Target ROI% bulk control — back-solves SPRICE for selected rows so SROI = Target ROI%.
+                         stemuPrice = (LP × (1 + ROI%/100) + temu_ship) / margin; then sprice = stemuPrice
+                         or stemuPrice − 2.99 (Temu adds a $2.99 ship bumper when sprice ≤ $26.99).
+                         Visual styling matches /doba-tabulator: 🎯 emoji label + icon-only Apply button. --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-white"
                         id="target-roi-controls"
                         title="Target ROI% — sets SPRICE so the on-page SROI column equals the target (accounts for Temu fees, temu_ship, and the $2.99 ship bumper on prices ≤ $26.99)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target ROI%:
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap"
+                               aria-label="Target ROI percent">
+                            <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
                             placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target ROI% applied to all selected rows when you click 'Apply SPRICE'">
+                            title="Target ROI% applied to all selected rows when you click Apply">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save SPRICE so SROI column = Target ROI% for every selected row">
-                            <i class="fas fa-calculator"></i> Apply SPRICE
+                            title="Apply — Compute & save SPRICE so SROI column = Target ROI% for every selected row"
+                            aria-label="Apply Target ROI">
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
-                    {{-- Target GPFT% bulk control — back-solves SPRICE for selected rows so SGPRFT = Target GPFT%. --}}
-                    {{-- Formula: stemuPrice = (LP + temu_ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100 (else denominator ≤ 0). --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                    {{-- Target GPFT% bulk control — back-solves SPRICE for selected rows so SGPRFT = Target GPFT%.
+                         Formula: stemuPrice = (LP + temu_ship) / (margin − GPFT%/100). Target GPFT% must be
+                         < margin*100 (else denominator ≤ 0). Same icon-only doba styling as the ROI chip. --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-white"
                         id="target-gpft-controls"
                         title="Target GPFT% — sets SPRICE so the on-page SGPRFT column equals the target (accounts for Temu fees, temu_ship, and the $2.99 ship bumper on prices ≤ $26.99)">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target GPFT%:
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap"
+                               aria-label="Target GPFT percent">
+                            <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
                             placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply SPRICE'. Must be less than the Temu take-home margin (e.g. < 96%).">
+                            title="Target GPFT% applied to all selected rows when you click Apply. Must be less than the Temu take-home margin (e.g. < 96%).">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save SPRICE so SGPRFT column = Target GPFT% for every selected row">
-                            <i class="fas fa-calculator"></i> Apply SPRICE
+                            title="Apply — Compute & save SPRICE so SGPRFT column = Target GPFT% for every selected row"
+                            aria-label="Apply Target GPFT">
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
@@ -439,7 +462,27 @@
                                 <button type="button" class="dropdown-item d-flex align-items-center gap-2"
                                     data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
                                     <i class="fa fa-eye text-success" style="width: 18px;"></i>
-                                    <span>Up View Data</span>
+                                    <span>Up View Data (L30)</span>
+                                </button>
+                            </li>
+                            <li>
+                                {{-- Same Excel format as the L30 view-data upload; persists to
+                                     temu_view_data_l7 so the two uploads don't overwrite each
+                                     other. Drives the "L7 vs L30 %" column + filter. --}}
+                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                    data-bs-toggle="modal" data-bs-target="#uploadViewDataL7Modal">
+                                    <i class="fa fa-eye text-primary" style="width: 18px;"></i>
+                                    <span>Up View Data (L7)</span>
+                                </button>
+                            </li>
+                            <li>
+                                {{-- Prior-week window (days 8–14 back). Same upload format;
+                                     persists to temu_view_data_l7_to_l14 so the L30/L7/L7-to-L14
+                                     replace-all uploads remain independent. --}}
+                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                    data-bs-toggle="modal" data-bs-target="#uploadViewDataL7ToL14Modal">
+                                    <i class="fa fa-eye text-info" style="width: 18px;"></i>
+                                    <span>Up View Data (L7 to L14)</span>
                                 </button>
                             </li>
                             <li>
@@ -712,6 +755,95 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" form="uploadViewDataForm" class="btn btn-success">
                         <i class="fa fa-upload me-1"></i>Up View Data
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Upload Temu L7 View Data modal. Same form/file shape as the L30 modal
+         above (Excel/CSV with the same column headers); posts to a different
+         route so it lands in temu_view_data_l7 instead of temu_view_data. --}}
+    <div class="modal fade" id="uploadViewDataL7Modal" tabindex="-1" aria-labelledby="uploadViewDataL7ModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="uploadViewDataL7ModalLabel">
+                        <i class="fa fa-eye me-2"></i>Upload Temu L7 View Data
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="uploadViewDataL7Form" action="{{ route('temu.viewdata.l7.upload') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="viewDataL7File" class="form-label fw-bold">
+                                <i class="fa fa-file-excel text-primary me-1"></i>Choose Excel File (last 7 days)
+                            </label>
+                            <input type="file" class="form-control" id="viewDataL7File" name="file" accept=".xlsx,.xls,.csv" required>
+                            <div class="form-text">
+                                <i class="fa fa-info-circle text-info me-1"></i>
+                                Accepts .xlsx, .xls, or .csv files (Max: 10MB). Same column layout as L30 view data — just export only the last 7 days from Temu.
+                            </div>
+                        </div>
+                        <div class="alert alert-info">
+                            <i class="fa fa-lightbulb me-2"></i>
+                            <strong>Note:</strong> Replace-all upload — overwrites all existing L7 rows.
+                            <a href="{{ route('temu.viewdata.l7.sample') }}" class="alert-link">
+                                <i class="fa fa-download"></i> Download Sample File
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadViewDataL7Form" class="btn btn-primary">
+                        <i class="fa fa-upload me-1"></i>Up L7 View Data
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Upload Temu prior-week (L7-to-L14) View Data modal. Same form/file
+         shape as the L30 and L7 modals; posts to the L7-to-L14 route so it
+         lands in temu_view_data_l7_to_l14 without disturbing the other two
+         windows. --}}
+    <div class="modal fade" id="uploadViewDataL7ToL14Modal" tabindex="-1" aria-labelledby="uploadViewDataL7ToL14ModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-dark">
+                    <h5 class="modal-title" id="uploadViewDataL7ToL14ModalLabel">
+                        <i class="fa fa-eye me-2"></i>Upload Temu View Data (L7 to L14)
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="uploadViewDataL7ToL14Form" action="{{ route('temu.viewdata.l7tol14.upload') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="viewDataL7ToL14File" class="form-label fw-bold">
+                                <i class="fa fa-file-excel text-info me-1"></i>Choose Excel File (days 8–14 back)
+                            </label>
+                            <input type="file" class="form-control" id="viewDataL7ToL14File" name="file" accept=".xlsx,.xls,.csv" required>
+                            <div class="form-text">
+                                <i class="fa fa-info-circle text-info me-1"></i>
+                                Accepts .xlsx, .xls, or .csv files (Max: 10MB). Same column layout as the L30 / L7 view-data uploads — export the prior 7-day window from Temu (last week, not the current 7 days).
+                            </div>
+                        </div>
+                        <div class="alert alert-info">
+                            <i class="fa fa-lightbulb me-2"></i>
+                            <strong>Note:</strong> Replace-all upload — overwrites all existing L7-to-L14 rows.
+                            <a href="{{ route('temu.viewdata.l7tol14.sample') }}" class="alert-link">
+                                <i class="fa fa-download"></i> Download Sample File
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadViewDataL7ToL14Form" class="btn btn-info">
+                        <i class="fa fa-upload me-1"></i>Up L7 to L14 View Data
                     </button>
                 </div>
             </div>
@@ -2218,7 +2350,9 @@
             temuApplyTargetSpriceBatch({
                 label: `Target ROI ${targetRoiPct}%`,
                 $btn: $btn,
-                btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
+                // Icon-only — matches the doba "Apply" chip; aria-label on the
+                // <button> in HTML keeps screen readers informed.
+                btnHtml: '<i class="fas fa-calculator"></i>',
                 computeStemuPrice: function(rd) {
                     const lp = parseFloat(rd.lp) || 0;
                     if (lp <= 0) return null;
@@ -2246,7 +2380,8 @@
             temuApplyTargetSpriceBatch({
                 label: `Target GPFT ${targetGpftPct}%`,
                 $btn: $btn,
-                btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
+                // Icon-only — see note in the ROI handler above.
+                btnHtml: '<i class="fas fa-calculator"></i>',
                 computeStemuPrice: function(rd) {
                     const lp = parseFloat(rd.lp) || 0;
                     if (lp <= 0) return null;
@@ -3652,6 +3787,58 @@
                         return `${value.toLocaleString()} ${dotBtn}`.trim();
                     }
                 },
+                {
+                    // L7 product clicks — total views uploaded for the last 7 days
+                    // via the "Up View Data (L7)" flow. Populated by the L7 mirror
+                    // table (temu_view_data_l7); 0 when no L7 upload exists.
+                    title: "View 7",
+                    field: "product_clicks_l7",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 80,
+                    headerTooltip: "L7 product clicks — sum from temu_view_data_l7 for this SKU's goods_id. Upload via the 'Up View Data (L7)' menu.",
+                    formatter: function(cell) {
+                        const value = parseInt(cell.getValue()) || 0;
+                        return value.toLocaleString();
+                    }
+                },
+                {
+                    // Prior-week product clicks (days 8–14 back). Populated by the
+                    // "Up View Data (L7 to L14)" upload; 0 when no upload exists.
+                    // Sits next to "View 7" so week-over-week movement is one glance.
+                    title: "Views 14",
+                    field: "product_clicks_l7_to_l14",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 80,
+                    headerTooltip: "L7→L14 product clicks — the prior 7-day window (days 8–14 back). Upload via the 'Up View Data (L7 to L14)' menu.",
+                    formatter: function(cell) {
+                        const value = parseInt(cell.getValue()) || 0;
+                        return value.toLocaleString();
+                    }
+                },
+                {
+                    // L7 vs L30 % — ratio of L7 daily-average views to L30 daily-average views.
+                    // 100 = same pace, >100 = trending up, <100 = trending down.
+                    // Per product spec: > 70% colored green (acceptable / trending up),
+                    // anything else (incl. 0 when L7 or L30 is missing) colored red.
+                    // The header tooltip explains the formula so it's discoverable
+                    // without diving into the controller.
+                    title: "L7 vs L30 %",
+                    field: "l7_vs_l30_pct",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 110,
+                    headerTooltip: "L7 daily-average views ÷ L30 daily-average views × 100. 100 = same pace. Green = >70% (keeping pace), Red = ≤70%.",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue());
+                        if (value === null || isNaN(value) || value === 0) {
+                            return '<span style="color: #a00211; font-weight: 600;">0%</span>';
+                        }
+                        const color = value > 70 ? '#28a745' : '#a00211';
+                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
+                    }
+                },
                
                 //  {
                 //     title: "CTR",
@@ -4602,6 +4789,7 @@
             const arrowFilter = $('#arrow-filter').val();
             const adsFilter = $('#ads-filter').val();
             const spriceFilter = $('#sprice-filter').val();
+            const l7VsL30Filter = $('#l7-vs-l30-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
             const skuSearch = $('#sku-search').val();
             adsReqFilter = $('#ads-req-filter').val();
@@ -4652,6 +4840,18 @@
                     if (groiFilter === '60-80') return groi >= 60 && groi < 80;
                     if (groiFilter === '80-100') return groi >= 80 && groi < 100;
                     if (groiFilter === 'gt100') return groi >= 100;
+                    return true;
+                });
+            }
+
+            // L7 vs L30 % filter — operates on the same `l7_vs_l30_pct` field
+            // shown in the column. >70 / <71 split mirrors the green/red coloring,
+            // so toggling the filter shows exactly the green or red rows.
+            if (l7VsL30Filter !== 'all') {
+                table.addFilter(function(data) {
+                    const pct = parseFloat(data.l7_vs_l30_pct) || 0;
+                    if (l7VsL30Filter === 'gt70') return pct > 70;
+                    if (l7VsL30Filter === 'lt71') return pct < 71;
                     return true;
                 });
             }
@@ -5209,7 +5409,7 @@
             });
         });
 
-        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter, #nr-req-filter, #nrp-filter, #sold-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter, #nr-req-filter, #nrp-filter, #sold-filter, #l7-vs-l30-filter').on('change', function() {
             applyFilters();
         });
 
