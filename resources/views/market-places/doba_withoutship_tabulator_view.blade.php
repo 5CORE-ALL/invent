@@ -318,9 +318,11 @@
                 <div id="summary-stats" class="p-3 bg-light rounded mb-3">
                     <div class="d-flex flex-wrap gap-2">
                         <span id="dws-total-sales-badge" class="badge bg-primary fs-6 p-2" style="font-weight:700; color: white !important;">Sales: $0</span>
-                        <span id="total-skus" class="badge bg-info fs-6 p-2" style="font-weight:700; color: #111 !important;">Total SKUs: 0</span>
-                        <span id="zero-sold-count" class="badge bg-danger fs-6 p-2" style="font-weight:700; color: white !important;">L30 0 Sold: 0</span>
-                        <span id="sold-count" class="badge bg-success fs-6 p-2" style="font-weight:700; color: white !important;">SOLD: 0</span>
+                        {{-- Rows: count of SKUs currently passing all filters
+                             (excludes PARENT rows). Backed by table.getData("active")
+                             so it updates whenever filters change. --}}
+                        <span id="total-skus" class="badge bg-info fs-6 p-2" style="font-weight:700; color: #111 !important;" title="Number of SKU rows passing the current filters">Rows: 0</span>
+                        <span id="zero-sold-count" class="badge bg-danger fs-6 p-2" style="font-weight:700; color: white !important;">0 Sold: 0</span>
                         <span id="missing-count" class="badge fs-6 p-2" style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
                         <span id="nmap-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter inventory mismatch (Shop INV vs D INV)">N Map: 0</span>
                         <span id="disc-vs-amz-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter non-competitive items"><i class="fas fa-chart-line"></i> VS AMZ: 0</span>
@@ -333,10 +335,15 @@
                             GROWTH look catastrophically red (e.g. -89%) even when sales were fine.
                             Re-add only after redefining L60 as "the prior 30 days (today-60 → today-31)".
                         --}}
-                        <span id="pft-percentage-badge" class="badge bg-danger fs-6 p-2" style="color: white; font-weight:700;">L30 GPFT %: 0%</span>
-                        <span id="roi-percentage-badge" class="badge fs-6 p-2" style="background-color: #6f42c1; color: white; font-weight:700;">L30 ROI %: 0%</span>
-                        <span id="pft-total-badge" class="badge bg-dark fs-6 p-2" style="color: white; font-weight:700;">L30 GPFT: $0</span>
-                        <span id="total-cogs-badge" class="badge bg-secondary fs-6 p-2" style="color: white; font-weight:700;">Total COGS: $0</span>
+                        <span id="pft-percentage-badge" class="badge bg-danger fs-6 p-2" style="color: white; font-weight:700;">GPFT: 0%</span>
+                        <span id="roi-percentage-badge" class="badge fs-6 p-2" style="background-color: #6f42c1; color: white; font-weight:700;">ROI: 0%</span>
+                        {{-- L30 GPFT $ and Total COGS badges hidden by request — the
+                             percentage versions (L30 GPFT % / L30 ROI %) carry the same
+                             signal in a more comparable form. The text(...) updaters in
+                             updateSummary() below still write to these IDs harmlessly
+                             (no-op on hidden nodes), so nothing else needs touching. --}}
+                        <span id="pft-total-badge" class="badge bg-dark fs-6 p-2" style="color: white; font-weight:700; display:none;">L30 GPFT: $0</span>
+                        <span id="total-cogs-badge" class="badge bg-secondary fs-6 p-2" style="color: white; font-weight:700; display:none;">Total COGS: $0</span>
                     </div>
                 </div>
 
@@ -443,21 +450,21 @@
                         <i class="fas fa-exchange-alt"></i> Price %
                     </button>
 
-                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
-                         Without-ship page: ship is excluded from margin math, so the formula simplifies to
-                         sprice = (LP × (1 + ROI%/100)) / {{ ($dobaPercentage ?? 95) / 100 }}  (Doba margin {{ $dobaPercentage ?? 95 }}%, ship not in formula). --}}
+                    
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
                         id="target-roi-controls"
                         title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100)) / {{ ($dobaPercentage ?? 95) / 100 }} on every selected row (back-solves so SROI column equals the target)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target ROI%:
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap"
+                               aria-label="Target ROI percent">
+                            <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
                             placeholder="e.g. 30" step="0.1" style="width: 80px;"
                             title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100)) / {{ ($dobaPercentage ?? 95) / 100 }} for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            title="Apply — Compute & save S PRC = (LP × (1 + Target ROI%/100)) / {{ ($dobaPercentage ?? 95) / 100 }} for every selected row"
+                            aria-label="Apply Target ROI">
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
@@ -466,15 +473,17 @@
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
                         id="target-gpft-controls"
                         title="Target GPFT% — sets S PRC = LP / ({{ ($dobaPercentage ?? 95) / 100 }} − Target GPFT%/100) on every selected row">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target GPFT%:
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap"
+                               aria-label="Target GPFT percent">
+                            <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
                             placeholder="e.g. 30" step="0.1" style="width: 80px;"
                             title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Doba take-home margin (< 95%).">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = LP / ({{ ($dobaPercentage ?? 95) / 100 }} − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            title="Apply — Compute & save S PRC = LP / ({{ ($dobaPercentage ?? 95) / 100 }} − Target GPFT%/100) for every selected row"
+                            aria-label="Apply Target GPFT">
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
                 </div>
@@ -1644,7 +1653,7 @@
                 },
                 pagination: "local",
                 paginationSize: 50,
-                paginationSizeSelector: [25, 50, 100, 200],
+                paginationSizeSelector: [25, 50, 100, 200, 500, 1000],
                 layout: "fitColumns",
                 responsiveLayout: false,
                 placeholder: "No Data Available",
@@ -1687,9 +1696,14 @@
                     {
                         title: "Img",
                         field: "thumb_image",
-                        width: 44,
+                        // No explicit width — Tabulator will auto-size the column
+                        // to fit its content (the 36×36 thumbnail + small gutters)
+                        // instead of being clipped to a hard 44 px box.
+                        widthGrow: 1,
+                        minWidth: 50,
                         frozen: true,
                         headerSort: false,
+                        resizable: true,
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             if (row.is_parent) {
@@ -1706,8 +1720,13 @@
                     {
                         title: "SKU",
                         field: "(Child) sku",
-                        width: 130,
+                        // No explicit width — column auto-sizes to fit the longest
+                        // SKU. widthGrow lets it claim its share of available space
+                        // under fitColumns layout, minWidth prevents collapse, and
+                        // resizable lets the user drag the header to taste.
+                        widthGrow: 2,
                         minWidth: 110,
+                        resizable: true,
                         frozen: true,
                         hozAlign: "left",
                         headerHozAlign: "left",
@@ -1761,7 +1780,7 @@
                     },
                     
                     {
-                        title: "Shop INV",
+                        title: "Inv",
                         field: "shopify_inv",
                         width: 80,
                         sorter: "number",
@@ -1947,24 +1966,6 @@
                         }
                     },
                     {
-                        title: "Missing",
-                        field: "missing",
-                        width: 70,
-                        hozAlign: "center",
-                        headerSort: false,
-                        formatter: function(cell, formatterParams) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent) return '';
-                            const nrVal = rowData.NR || '';
-                            const shopInv = parseFloat(rowData.shopify_inv) || 0;
-                            // Missing = has inventory but not listed on Doba, excluding NR rows
-                            if (rowData.is_missing_doba && nrVal !== 'NR' && shopInv > 0) {
-                                return '<span style="font-size: 16px; color: #dc3545; font-weight: bold;">M</span>';
-                            }
-                            return '';
-                        }
-                    },
-                    {
                         title: "Price",
                         field: "self_pick_price",
                         width: 80,
@@ -2017,7 +2018,7 @@
                         field: "LP_productmaster",
                         width: 70,
                         sorter: "number",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return value > 0 ? `$${value.toFixed(2)}` : '';
@@ -2081,6 +2082,7 @@
                         field: "msrp",
                         width: 75,
                         sorter: "number",
+                        visible: false,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return value > 0 ? `$${value.toFixed(2)}` : '';
@@ -2091,9 +2093,32 @@
                         field: "map",
                         width: 70,
                         sorter: "number",
+                        visible: false,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return value > 0 ? `$${value.toFixed(2)}` : '';
+                        }
+                    },
+                    {
+                        // Moved to the very end of the column list — secondary
+                        // signal (inventory exists in Shopify but not listed on
+                        // Doba) lives last so the primary pricing columns stay
+                        // grouped at the left half of the table.
+                        title: "Missing",
+                        field: "missing",
+                        width: 70,
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell, formatterParams) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent) return '';
+                            const nrVal = rowData.NR || '';
+                            const shopInv = parseFloat(rowData.shopify_inv) || 0;
+                            // Missing = has inventory but not listed on Doba, excluding NR rows
+                            if (rowData.is_missing_doba && nrVal !== 'NR' && shopInv > 0) {
+                                return '<span style="font-size: 16px; color: #dc3545; font-weight: bold;">M</span>';
+                            }
+                            return '';
                         }
                     }
                 ],
@@ -2362,18 +2387,29 @@
                 }
 
                 $('#dws-total-sales-badge').text('Sales: $' + Math.round(totalL30Sales).toLocaleString());
-                $('#total-skus').text('Total SKUs: ' + totalSkus);
-                $('#zero-sold-count').text('L30 0 Sold: ' + l30ZeroSold);
-                $('#sold-count').text('SOLD: ' + sold);
+                $('#total-skus').text('Rows: ' + totalSkus.toLocaleString());
+                $('#zero-sold-count').text('0 Sold: ' + l30ZeroSold);
                 $('#missing-count').html('<i class="fas fa-exclamation-triangle"></i> Missing: ' + missing);
                 $('#nmap-count').text('N Map: ' + nmap);
                 $('#disc-vs-amz-count').html('<i class="fas fa-chart-line"></i> VS AMZ: ' + discVsAmzCount);
 
-                $('#pft-percentage-badge').text('L30 GPFT %: ' + l30GpftPercent.toFixed(1) + '%');
+                $('#pft-percentage-badge').text('GPFT: ' + l30GpftPercent.toFixed(1) + '%');
                 $('#pft-total-badge').text('L30 GPFT: $' + Math.round(l30Profit).toLocaleString());
 
                 const l30RoiAgg = totalL30COGS > 0 ? (l30Profit / totalL30COGS) * 100 : 0;
-                $('#roi-percentage-badge').text('L30 ROI %: ' + Math.round(l30RoiAgg) + '%');
+                // Color the ROI badge by the same 4-bucket slabs the ROI filter dropdown uses:
+                //   red    < 40
+                //   yellow 40–75
+                //   green  75–125
+                //   pink   ≥ 125
+                let roiBadgeBg;
+                if      (l30RoiAgg < 40)  roiBadgeBg = '#a00211';
+                else if (l30RoiAgg < 75)  roiBadgeBg = '#ffc107';
+                else if (l30RoiAgg < 125) roiBadgeBg = '#28a745';
+                else                       roiBadgeBg = '#e83e8c';
+                $('#roi-percentage-badge')
+                    .css('background-color', roiBadgeBg)
+                    .text('ROI: ' + Math.round(l30RoiAgg) + '%');
                 $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalL30COGS).toLocaleString());
             }
 
