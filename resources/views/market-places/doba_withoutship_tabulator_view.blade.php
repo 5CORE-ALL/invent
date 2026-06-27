@@ -311,7 +311,36 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
 
-                {{-- Row 1: filters + DIL; Search SKU aligned right (/aliexpress-pricing style) --}}
+                {{-- Row 1: summary KPIs — moved to the top of the toolbar so the
+                     headline numbers (Sales, Total SKUs, Missing, L30 GPFT/ROI,
+                     COGS) are the first thing users see when they land on the
+                     page. Filter / action rows live below. --}}
+                <div id="summary-stats" class="p-3 bg-light rounded mb-3">
+                    <div class="d-flex flex-wrap gap-2">
+                        <span id="dws-total-sales-badge" class="badge bg-primary fs-6 p-2" style="font-weight:700; color: white !important;">Sales: $0</span>
+                        <span id="total-skus" class="badge bg-info fs-6 p-2" style="font-weight:700; color: #111 !important;">Total SKUs: 0</span>
+                        <span id="zero-sold-count" class="badge bg-danger fs-6 p-2" style="font-weight:700; color: white !important;">L30 0 Sold: 0</span>
+                        <span id="sold-count" class="badge bg-success fs-6 p-2" style="font-weight:700; color: white !important;">SOLD: 0</span>
+                        <span id="missing-count" class="badge fs-6 p-2" style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
+                        <span id="nmap-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter inventory mismatch (Shop INV vs D INV)">N Map: 0</span>
+                        <span id="disc-vs-amz-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter non-competitive items"><i class="fas fa-chart-line"></i> VS AMZ: 0</span>
+                        {{--
+                            GROWTH / GROWTH GPFT / GROWTH GPFT % badges intentionally removed.
+                            They compared totalL30* vs totalL60*, but doba_metrics.quantity_l60 is
+                            populated as "every order older than 30 days" (FetchDobaDailyData tags
+                            anything not in the last 30 days as period='l60' with no upper bound),
+                            so L60 covered ~7 months of accumulated history. The math always made
+                            GROWTH look catastrophically red (e.g. -89%) even when sales were fine.
+                            Re-add only after redefining L60 as "the prior 30 days (today-60 → today-31)".
+                        --}}
+                        <span id="pft-percentage-badge" class="badge bg-danger fs-6 p-2" style="color: white; font-weight:700;">L30 GPFT %: 0%</span>
+                        <span id="roi-percentage-badge" class="badge fs-6 p-2" style="background-color: #6f42c1; color: white; font-weight:700;">L30 ROI %: 0%</span>
+                        <span id="pft-total-badge" class="badge bg-dark fs-6 p-2" style="color: white; font-weight:700;">L30 GPFT: $0</span>
+                        <span id="total-cogs-badge" class="badge bg-secondary fs-6 p-2" style="color: white; font-weight:700;">Total COGS: $0</span>
+                    </div>
+                </div>
+
+                {{-- Row 2: filters + DIL; Search SKU aligned right (/aliexpress-pricing style) --}}
                 <div class="d-flex flex-wrap align-items-center gap-2 mb-2 w-100">
                     <div class="d-flex flex-wrap align-items-center gap-2 flex-grow-1">
                     <select id="dws-row-type-filter" class="form-select form-select-sm" style="width:120px;">
@@ -392,18 +421,17 @@
                     </div>
                 </div>
 
-                {{-- Row 2: actions (same order feel as /aliexpress-pricing) --}}
+                {{-- Row 3: actions (same order feel as /aliexpress-pricing) --}}
                 <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                    <button type="button" id="reload-data-btn" class="btn btn-sm btn-outline-primary">
-                        <i class="fa fa-refresh"></i> Reload
-                    </button>
-                    <button type="button" id="export-csv-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-file-csv"></i> Export CSV
+                    <button type="button" id="export-csv-btn" class="btn btn-sm btn-success"
+                            title="Export CSV" aria-label="Export CSV">
+                        <i class="fas fa-download"></i>
                     </button>
                     <div class="dropdown">
                         <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
-                                data-bs-toggle="dropdown" id="column-visibility-btn">
-                            <i class="fas fa-columns"></i> Columns
+                                data-bs-toggle="dropdown" id="column-visibility-btn"
+                                title="Show / hide columns" aria-label="Show / hide columns">
+                            <i class="fas fa-columns"></i>
                         </button>
                         <div class="dropdown-menu" id="column-dropdown-menu" style="max-height: 300px; overflow-y: auto;">
                             <button class="dropdown-item" type="button" id="show-all-columns-btn">Show All Columns</button>
@@ -417,10 +445,10 @@
 
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
                          Without-ship page: ship is excluded from margin math, so the formula simplifies to
-                         sprice = (LP × (1 + ROI%/100)) / 0.95 (margin = 0.95 for Doba). --}}
+                         sprice = (LP × (1 + ROI%/100)) / {{ ($dobaPercentage ?? 95) / 100 }}  (Doba margin {{ $dobaPercentage ?? 95 }}%, ship not in formula). --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
                         id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100)) / 0.95 on every selected row (back-solves so SROI column equals the target)">
+                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100)) / {{ ($dobaPercentage ?? 95) / 100 }} on every selected row (back-solves so SROI column equals the target)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
                             Target ROI%:
                         </label>
@@ -428,16 +456,16 @@
                             placeholder="e.g. 30" step="0.1" style="width: 80px;"
                             title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100)) / 0.95 for every selected row">
+                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100)) / {{ ($dobaPercentage ?? 95) / 100 }} for every selected row">
                             <i class="fas fa-calculator"></i> Apply S PRC
                         </button>
                     </div>
 
                     {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
-                         Without-ship: sprice = LP / (0.95 − GPFT%/100). Target GPFT% must be < margin*100. --}}
+                         Without-ship: sprice = LP / ({{ ($dobaPercentage ?? 95) / 100 }} − GPFT%/100). Target GPFT% must be < {{ $dobaPercentage ?? 95 }}%. --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
                         id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = LP / (0.95 − Target GPFT%/100) on every selected row">
+                        title="Target GPFT% — sets S PRC = LP / ({{ ($dobaPercentage ?? 95) / 100 }} − Target GPFT%/100) on every selected row">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
                             Target GPFT%:
                         </label>
@@ -445,37 +473,12 @@
                             placeholder="e.g. 30" step="0.1" style="width: 80px;"
                             title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Doba take-home margin (< 95%).">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = LP / (0.95 − Target GPFT%/100) for every selected row">
+                            title="Compute & save S PRC = LP / ({{ ($dobaPercentage ?? 95) / 100 }} − Target GPFT%/100) for every selected row">
                             <i class="fas fa-calculator"></i> Apply S PRC
                         </button>
                     </div>
                 </div>
 
-                {{-- Row 3: summary KPIs (/aliexpress-pricing style) --}}
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
-                    <div class="d-flex flex-wrap gap-2">
-                        <span id="dws-total-sales-badge" class="badge bg-primary fs-6 p-2" style="font-weight:700; color: white !important;">Sales: $0</span>
-                        <span id="total-skus" class="badge bg-info fs-6 p-2" style="font-weight:700; color: #111 !important;">Total SKUs: 0</span>
-                        <span id="zero-sold-count" class="badge bg-danger fs-6 p-2" style="font-weight:700; color: white !important;">L30 0 Sold: 0</span>
-                        <span id="sold-count" class="badge bg-success fs-6 p-2" style="font-weight:700; color: white !important;">SOLD: 0</span>
-                        <span id="missing-count" class="badge fs-6 p-2" style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
-                        <span id="nmap-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter inventory mismatch (Shop INV vs D INV)">N Map: 0</span>
-                        <span id="disc-vs-amz-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter non-competitive items"><i class="fas fa-chart-line"></i> VS AMZ: 0</span>
-                        {{--
-                            GROWTH / GROWTH GPFT / GROWTH GPFT % badges intentionally removed.
-                            They compared totalL30* vs totalL60*, but doba_metrics.quantity_l60 is
-                            populated as "every order older than 30 days" (FetchDobaDailyData tags
-                            anything not in the last 30 days as period='l60' with no upper bound),
-                            so L60 covered ~7 months of accumulated history. The math always made
-                            GROWTH look catastrophically red (e.g. -89%) even when sales were fine.
-                            Re-add only after redefining L60 as "the prior 30 days (today-60 → today-31)".
-                        --}}
-                        <span id="pft-percentage-badge" class="badge bg-danger fs-6 p-2" style="color: white; font-weight:700;">L30 GPFT %: 0%</span>
-                        <span id="roi-percentage-badge" class="badge fs-6 p-2" style="background-color: #6f42c1; color: white; font-weight:700;">L30 ROI %: 0%</span>
-                        <span id="pft-total-badge" class="badge bg-dark fs-6 p-2" style="color: white; font-weight:700;">L30 GPFT: $0</span>
-                        <span id="total-cogs-badge" class="badge bg-secondary fs-6 p-2" style="color: white; font-weight:700;">Total COGS: $0</span>
-                    </div>
-                </div>
             </div>
             <div class="card-body" style="padding: 0;">
                 <!-- Discount Input Box (shown when SKUs are selected) -->
@@ -561,6 +564,32 @@
         const TABULATOR_COLUMN_CHANNEL = 'doba_withoutship_tabulator';
         /** Omit ship in PFT/ROI/GPFT/promo/SPFT/self-pick math; LP column shows product LP (COGS). */
         const FORMULA_SHIP = 0;
+
+        /*
+         * ─── Margin formulas (single source of truth) ──────────────────────
+         *
+         * FORMULA_PERCENT is the Doba take-home margin pulled live from
+         * MarketplacePercentage (admin-editable), divided by 100. It's the
+         * EXACT same `$percentage` the controller uses to compute NPFT% /
+         * NROI%, so SPFT% / SROI% will always match shape and value scale
+         * when SPRICE = Price.
+         *
+         * --- Per-row N (current) margins, computed server-side ---
+         *   NPFT % = ((Price × FORMULA_PERCENT − SHIP − LP) ÷ Price) × 100
+         *   NROI % = ((Price × FORMULA_PERCENT − SHIP − LP) ÷ LP)    × 100
+         *
+         * --- Per-row S (seller-override) margins, computed client-side ---
+         *   SPFT % = ((SPRICE × FORMULA_PERCENT − SHIP − LP) ÷ SPRICE) × 100
+         *   SROI % = ((SPRICE × FORMULA_PERCENT − SHIP − LP) ÷ LP)     × 100
+         *
+         * --- Back-solve formulas (used by Target ROI / Target GPFT bulk apply) ---
+         *   Target ROI %  → sprice = (LP × (1 + ROI%/100) + SHIP) ÷ FORMULA_PERCENT
+         *   Target GPFT % → sprice = (LP + SHIP) ÷ (FORMULA_PERCENT − GPFT%/100)
+         *
+         * SHIP is FORMULA_SHIP (= 0 on this "without ship" page).
+         * Changing the admin Doba percentage automatically updates BOTH N* and S* margins.
+         */
+        const FORMULA_PERCENT = {{ ($dobaPercentage ?? 95) / 100 }};
 
         function dwsEscapeHtml(s) {
             if (s == null || s === undefined) return '';
@@ -752,7 +781,9 @@
                 }
                 $btn.removeClass('btn-danger btn-success btn-outline-primary').addClass('btn-secondary')
                     .html('<i class="fas fa-exchange-alt"></i> Price %');
-                selectColumn.hide();
+                // Selection column is now always visible (moved to the first column,
+                // before Img). Don't hide it on mode-off — just clear the selection.
+                if (selectColumn && !selectColumn.isVisible()) selectColumn.show();
                 selectedSkus.clear();
                 $('.sku-select-checkbox').prop('checked', false);
                 $('#select-all-checkbox').prop('checked', false);
@@ -915,8 +946,8 @@
                         let spftValue = 0;
                         let sroiValue = 0;
                         if (newPrice > 0 && lp > 0) {
-                            spftValue = ((newPrice * 0.95) - ship - lp) / newPrice * 100;
-                            sroiValue = ((newPrice * 0.95) - ship - lp) / lp * 100;
+                            spftValue = ((newPrice * FORMULA_PERCENT) - ship - lp) / newPrice * 100;
+                            sroiValue = ((newPrice * FORMULA_PERCENT) - ship - lp) / lp       * 100;
                         }
                         $.ajax({
                             url: '/doba/save-sprice-withoutship',
@@ -930,10 +961,15 @@
                                 s_self_pick: selfPickValue
                             },
                             success: function() {
+                                // Intentionally NOT setting `self_pick_price` here.
+                                // self_pick_price drives the "Price" column and must
+                                // stay independent of SPRICE — editing SPRICE (via
+                                // Same Price / Decrease / Increase / Target apply)
+                                // changes seller-side margins, not the displayed
+                                // Price column. Same convention as cellEdited.
                                 row.update({
                                     sprice: newPrice,
                                     s_self_pick: selfPickValue,
-                                    self_pick_price: selfPickValue,
                                     spft: spftValue,
                                     sroi: sroiValue,
                                     apply_status: 'applied'
@@ -1044,8 +1080,8 @@
                         let spftValue = 0;
                         let sroiValue = 0;
                         if (newPrice > 0 && lp > 0) {
-                            spftValue = ((newPrice * 0.95) - ship - lp) / newPrice * 100;
-                            sroiValue = ((newPrice * 0.95) - ship - lp) / lp * 100;
+                            spftValue = ((newPrice * FORMULA_PERCENT) - ship - lp) / newPrice * 100;
+                            sroiValue = ((newPrice * FORMULA_PERCENT) - ship - lp) / lp       * 100;
                         }
                         
                         // Save to database
@@ -1101,13 +1137,19 @@
             });
 
             /*
-             * Target ROI% bulk apply (Doba "without ship", margin = 0.95, ship excluded)
-             * ------------------------------------------------------------------------
-             * Mirrors the /topdawg-pricing Target ROI handler exactly:
-             *   1. Compute every selected row's new SPRICE / SGPFT / SROI client-side
-             *      using the same back-solve formula:
-             *        SROI = ((sprice * 0.95 − ship − lp) / lp) * 100
-             *      → sprice = (lp * (1 + ROI%/100) + ship) / 0.95
+             * Target ROI% bulk apply (Doba "without ship" — ship NOT in formula)
+             * ------------------------------------------------------------------
+             * Mirrors the /topdawg-pricing Target ROI handler in flow but
+             * intentionally omits the `ship` term — this is the without-ship
+             * page; FORMULA_SHIP is 0 so the math was already ship-less, this
+             * just makes the code/comment match.
+             *
+             * Back-solve so SROI = Target ROI%:
+             *     SROI = ((sprice * FORMULA_PERCENT − lp) / lp) * 100
+             *   → sprice = (lp * (1 + ROI%/100)) / FORMULA_PERCENT
+             *
+             * FORMULA_PERCENT is the live Doba take-home margin pulled from
+             * MarketplacePercentage (e.g. 0.95).
              *   2. Optimistically `row.update(...)` for every row so the UI flips
              *      instantly (no per-row spinner — feels identical to TopDawg).
              *   3. Fire all /doba/save-sprice-withoutship saves in PARALLEL so the
@@ -1135,18 +1177,22 @@
                 }
 
                 const roiMultiplier = 1 + (targetRoiPct / 100);
-                applyTargetBackSolve(function (lp, ship) {
-                    return (lp * roiMultiplier + ship) / 0.95;
+                applyTargetBackSolve(function (lp) {
+                    // Ship intentionally NOT in the formula (without-ship page):
+                    //   sprice = (LP × (1 + ROI%/100)) ÷ FORMULA_PERCENT
+                    return (lp * roiMultiplier) / FORMULA_PERCENT;
                 }, `Target ROI ${targetRoiPct}%`);
             });
 
             /*
-             * Target GPFT% bulk apply (Doba "without ship", margin = 0.95)
-             * ------------------------------------------------------------
-             * Same optimistic-update + parallel-save pattern as Target ROI above:
-             *     SGPFT = ((sprice * 0.95 − ship − lp) / sprice) * 100
-             *   → sprice = (lp + ship) / (0.95 − GPFT%/100)
-             * Constraint: (0.95 − target/100) must be > 0, i.e. target < 95.
+             * Target GPFT% bulk apply (Doba "without ship" — ship NOT in formula)
+             * -------------------------------------------------------------------
+             * Same optimistic-update + parallel-save pattern as Target ROI above,
+             * ship intentionally omitted (without-ship page):
+             *     SGPFT = ((sprice * FORMULA_PERCENT − lp) / sprice) * 100
+             *   → sprice = lp / (FORMULA_PERCENT − GPFT%/100)
+             * Constraint: (FORMULA_PERCENT − target/100) must be > 0,
+             * i.e. target < FORMULA_PERCENT × 100.
              */
             $('#apply-target-gpft-btn').on('click', function () {
                 const rawInput = $('#target-gpft-input').val();
@@ -1165,14 +1211,17 @@
                     return;
                 }
 
-                const denom = 0.95 - targetGpftPct / 100;
+                // denom = FORMULA_PERCENT − target/100  (back-solve denominator)
+                const denom = FORMULA_PERCENT - targetGpftPct / 100;
                 if (denom <= 0) {
-                    showToast('danger', `Target GPFT% ${targetGpftPct}% is too high — must be < 95% (Doba take-home).`);
+                    showToast('danger', `Target GPFT% ${targetGpftPct}% is too high — must be < ${(FORMULA_PERCENT * 100).toFixed(0)}% (Doba take-home).`);
                     return;
                 }
 
-                applyTargetBackSolve(function (lp, ship) {
-                    return (lp + ship) / denom;
+                applyTargetBackSolve(function (lp) {
+                    // Ship intentionally NOT in the formula (without-ship page):
+                    //   sprice = LP ÷ (FORMULA_PERCENT − GPFT%/100)
+                    return lp / denom;
                 }, `Target GPFT ${targetGpftPct}%`);
             });
 
@@ -1188,7 +1237,8 @@
             //   - Shows ONE summary toast at the end ("Target ROI 30% applied
             //     to N SKU(s) (M skipped — no LP)").
             //
-            // computePriceFn(lp, ship) returns the new SPRICE for the row.
+            // computePriceFn(lp) returns the new SPRICE for the row.
+            // Ship is intentionally not passed in — this is the without-ship page.
             function applyTargetBackSolve(computePriceFn, labelPrefix) {
                 const updates = [];
                 let skippedNoLp = 0;
@@ -1201,21 +1251,29 @@
 
                     const lp = parseFloat(d.LP_productmaster) || 0;
                     if (lp <= 0) { skippedNoLp++; return; }
-                    const ship = (typeof FORMULA_SHIP !== 'undefined') ? FORMULA_SHIP : 0;
 
-                    const candidate = computePriceFn(lp, ship);
+                    const candidate = computePriceFn(lp);
                     const newPrice  = +Number(candidate).toFixed(2);
                     if (!isFinite(newPrice) || newPrice <= 0) return;
 
-                    const spft = newPrice > 0 ? ((newPrice * 0.95) - ship - lp) / newPrice * 100 : 0;
-                    const sroi = lp > 0       ? ((newPrice * 0.95) - ship - lp) / lp       * 100 : 0;
-                    const selfPick = parseFloat(Math.max(0, newPrice - ship).toFixed(2));
+                    // SGPFT% / SGROI% — same formula shape as NPFT% / NROI% but
+                    // ship-less (without-ship page). FORMULA_PERCENT pulls the
+                    // live Doba take-home margin so any admin tweak applies
+                    // here automatically.
+                    const spft = newPrice > 0 ? ((newPrice * FORMULA_PERCENT) - lp) / newPrice * 100 : 0;
+                    const sroi = lp > 0       ? ((newPrice * FORMULA_PERCENT) - lp) / lp       * 100 : 0;
+                    // SelfPick = SPRICE on this page (no ship deduction).
+                    const selfPick = +newPrice.toFixed(2);
 
                     // Optimistic row update (no apply_status spinner — TopDawg-style).
+                    // Intentionally NOT setting `self_pick_price`: that field powers
+                    // the "Price" column and must stay independent of SPRICE.
+                    // Editing SPRICE (whether via cell edit, Same Price mode, or
+                    // these Target ROI / Target GPFT bulk apply paths) only changes
+                    // seller-side margins, never the displayed Price column.
                     row.update({
                         sprice: newPrice,
                         s_self_pick: selfPick,
-                        self_pick_price: selfPick,
                         spft: spft,
                         sroi: sroi,
                     });
@@ -1358,9 +1416,9 @@
                         const ship = FORMULA_SHIP;
                         
                         // Calculate SPFT and SROI
-                        const spftValue = suggestedPrice > 0 ? ((suggestedPrice * 0.95) - ship - lp) / suggestedPrice * 100 : 0;
-                        const sroiValue = lp > 0 ? (((suggestedPrice * 0.95) - ship - lp) / lp) * 100 : 0;
-                        const selfPickValue = suggestedPrice * 0.95;
+                        const spftValue = suggestedPrice > 0 ? ((suggestedPrice * FORMULA_PERCENT) - ship - lp) / suggestedPrice * 100 : 0;
+                        const sroiValue = lp > 0 ? (((suggestedPrice * FORMULA_PERCENT) - ship - lp) / lp) * 100 : 0;
+                        const selfPickValue = suggestedPrice * FORMULA_PERCENT;
                         
                         // Update row
                         row.update({
@@ -1437,9 +1495,9 @@
                         const ship = FORMULA_SHIP;
                         
                         // Calculate SPFT and SROI
-                        const spftValue = suggestedPrice > 0 ? ((suggestedPrice * 0.95) - ship - lp) / suggestedPrice * 100 : 0;
-                        const sroiValue = lp > 0 ? (((suggestedPrice * 0.95) - ship - lp) / lp) * 100 : 0;
-                        const selfPickValue = suggestedPrice * 0.95;
+                        const spftValue = suggestedPrice > 0 ? ((suggestedPrice * FORMULA_PERCENT) - ship - lp) / suggestedPrice * 100 : 0;
+                        const sroiValue = lp > 0 ? (((suggestedPrice * FORMULA_PERCENT) - ship - lp) / lp) * 100 : 0;
+                        const selfPickValue = suggestedPrice * FORMULA_PERCENT;
                         
                         // Update row
                         row.update({
@@ -1525,9 +1583,12 @@
 
                             // SPFT and SROI calculations using same formula as PFT and ROI
                             const sprice = Number(item.SPRICE) || 0;
-                            const spft = sprice > 0 ? ((sprice * 0.95) - ship - lp) / sprice * 100 : 0;
-                            const sprofit = sprice > 0 ? (sprice * 0.95) - ship - lp : 0;
-                            const sroi = lp > 0 && sprice > 0 ? (((sprice * 0.95) - ship - lp) / lp) * 100 : 0;
+                            // SPFT / SROI use the exact same formula as the backend's
+                            // NPFT / NROI (see header comment block above) — only the
+                            // input price differs (SPRICE here vs Price for N*).
+                            const spft    = sprice > 0 ? ((sprice * FORMULA_PERCENT) - ship - lp) / sprice * 100 : 0;
+                            const sprofit = sprice > 0 ?  (sprice * FORMULA_PERCENT) - ship - lp               : 0;
+                            const sroi    = (lp > 0 && sprice > 0) ? (((sprice * FORMULA_PERCENT) - ship - lp) / lp) * 100 : 0;
 
                             return {
                                 sl_no: index + 1,
@@ -1596,6 +1657,33 @@
                     resizable: true,
                 },
                 columns: [
+                    {
+                        // Selection column — now FIRST (before Img) and visible by
+                        // default. Frozen so it stays pinned to the left when the
+                        // user scrolls horizontally, matching the Img / SKU column.
+                        // Mode toggles (Decrease / Increase / Same Price) still wire
+                        // through `selectColumn.show()`, but no longer hide it on
+                        // mode-off (see syncDwsPriceModeUi above).
+                        field: "_select",
+                        hozAlign: "center",
+                        headerSort: false,
+                        visible: true,
+                        frozen: true,
+                        width: 50,
+                        titleFormatter: function(column) {
+                            return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+                                <input type="checkbox" id="select-all-checkbox" style="cursor: pointer;" title="Select All Filtered SKUs">
+                            </div>`;
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.is_parent;
+                            if (isParent) return '';
+                            const sku = rowData['(Child) sku'];
+                            const isSelected = selectedSkus.has(sku);
+                            return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isSelected ? 'checked' : ''} style="cursor: pointer;">`;
+                        }
+                    },
                     {
                         title: "Img",
                         field: "thumb_image",
@@ -1887,18 +1975,7 @@
                         }
                     },
                     {
-                        title: "W LP Prc",
-                        field: "doba_list_price",
-                        width: 90,
-                        sorter: "number",
-                        visible: true,
-                        formatter: function(cell, formatterParams) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            return value > 0 ? `<span style="color: #495057; font-weight: 600;">$${value.toFixed(2)}</span>` : '<span style="color: #6c757d;">-</span>';
-                        }
-                    },
-                    {
-                        title: "NPFT%",
+                        title: "GPFT",
                         field: "NPFT_pct",
                         width: 80,
                         sorter: "number",
@@ -1917,7 +1994,7 @@
                         }
                     },
                     {
-                        title: "NROI%",
+                        title: "GROI",
                         field: "Roi",
                         width: 70,
                         sorter: "number",
@@ -1933,30 +2010,6 @@
                             else style = 'color: #e83e8c; font-weight: 800;'; // pink - extra bold
                             
                             return `<span style="${style}">${Math.round(value)}%</span>`;
-                        }
-                    },
-                    {
-                        field: "_select",
-                        hozAlign: "center",
-                        headerSort: false,
-                        visible: false,
-                        width: 50,
-                        titleFormatter: function(column) {
-                            return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
-                                <input type="checkbox" id="select-all-checkbox" style="cursor: pointer;" title="Select All Filtered SKUs">
-                            </div>`;
-                        },
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const isParent = rowData.is_parent;
-                            
-                            if (isParent) return '';
-                            
-                            const sku = rowData['(Child) sku'];
-                            const isSelected = selectedSkus.has(sku);
-                            
-                            // Just show checkbox - status icons are in _push column (like Amazon)
-                            return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isSelected ? 'checked' : ''} style="cursor: pointer;">`;
                         }
                     },
                     {
@@ -1987,7 +2040,7 @@
                         }
                     },
                     {
-                        title: "SPFT",
+                        title: "SGPFT",
                         field: "spft",
                         width: 70,
                         sorter: "number",
@@ -2006,7 +2059,7 @@
                         }
                     },
                     {
-                        title: "SROI",
+                        title: "SGROI",
                         field: "sroi",
                         width: 70,
                         sorter: "number",
@@ -2419,11 +2472,11 @@
                     const sku = rowData['(Child) sku'];
                     
                     if (sprice > 0 && lp > 0) {
-                        // Calculate SPFT% = ((sprice * 0.95) - ship - lp) / sprice * 100
-                        const spft = ((sprice * 0.95) - ship - lp) / sprice * 100;
-                        
-                        // Calculate SROI% = ((sprice * 0.95) - ship - lp) / lp * 100
-                        const sroi = ((sprice * 0.95) - ship - lp) / lp * 100;
+                        // Same formula as NPFT% / NROI% (see header comment block):
+                        //   SPFT % = ((sprice × FORMULA_PERCENT − ship − lp) ÷ sprice) × 100
+                        //   SROI % = ((sprice × FORMULA_PERCENT − ship − lp) ÷ lp)     × 100
+                        const spft = ((sprice * FORMULA_PERCENT) - ship - lp) / sprice * 100;
+                        const sroi = ((sprice * FORMULA_PERCENT) - ship - lp) / lp     * 100;
                         
                         // Calculate S(PP) = SPRICE - SHIP
                         const sSelfPick = sprice - ship;
@@ -2535,11 +2588,6 @@
             // Export CSV
             $('#export-csv-btn').on('click', function() {
                 table.download("csv", "doba_pricing_cvr_export.csv");
-            });
-
-            // Reload Data
-            $('#reload-data-btn').on('click', function() {
-                table.replaceData("/doba-data-view-withoutship");
             });
 
             // Toast notification
