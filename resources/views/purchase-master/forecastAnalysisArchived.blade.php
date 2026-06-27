@@ -206,7 +206,6 @@
                     }
                 },
                 { title: 'MOQ',         field: 'moq',           hozAlign: 'right',     width: 90,  sorter: 'number' },
-                { title: 's_msl',       field: 's_msl',         hozAlign: 'right',     width: 80,  sorter: 'number' },
                 { title: 'CP',          field: 'cp',            hozAlign: 'right',     width: 80,  sorter: 'number' },
                 { title: 'CBM',         field: 'cbm',           hozAlign: 'right',     width: 80,  sorter: 'number' },
                 { title: 'MIP',         field: 'order_given',   hozAlign: 'right',     width: 80,  sorter: 'number' },

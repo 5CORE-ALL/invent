@@ -1009,10 +1009,6 @@
                                 <label class="form-label small mb-1">Transit</label>
                                 <input type="number" step="1" min="0" class="form-control" id="fre_transit">
                             </div>
-                            <div class="col-md-3">
-                                <label class="form-label small mb-1">MSL Manual</label>
-                                <input type="text" maxlength="4" class="form-control" id="fre_smsl">
-                            </div>
 
                             {{-- Product Master (CP / CBM live on product_master.Values) --}}
                             <div class="col-12 mt-3">
@@ -1280,6 +1276,8 @@
         // --------------------------------------------------------------------
         let forecastRowEditState = {
             row: null,
+            targetRows: [],
+            pendingBulkTargets: null,
             original: {},
         };
 
@@ -1317,6 +1315,16 @@
             const sku    = String(forecastRowGetField(d, 'SKU', 'sku') || '').trim();
             const parent = String(forecastRowGetField(d, 'Parent', 'parent') || '').trim();
 
+            // Lock bulk targets when the modal opens so a later selection change
+            // (e.g. clicking the Edit button) cannot shrink this to a single row.
+            const bulkTargets = (forecastRowEditState.pendingBulkTargets && forecastRowEditState.pendingBulkTargets.length)
+                ? forecastRowEditState.pendingBulkTargets
+                : ((typeof getForecastBulkTargetRows === 'function')
+                    ? getForecastBulkTargetRows(sku, [row])
+                    : [row]);
+            forecastRowEditState.pendingBulkTargets = null;
+            forecastRowEditState.targetRows = bulkTargets;
+
             // Row data values used to pre-fill the modal. Try several known field
             // aliases so this works against whichever shape the controller's
             // buildForecastAnalysisData() emits.
@@ -1326,7 +1334,6 @@
                 mip:        forecastRowGetField(d, 'order_given', 'Order Given'),
                 r2s:        forecastRowGetField(d, 'readyToShipQty', 'ready_to_ship', 'r2s'),
                 transit:    forecastRowGetField(d, 'transit', 'Transit'),
-                s_msl:      forecastRowGetField(d, 's_msl', 's-msl', 'S-MSL'),
                 cp:         forecastRowGetField(d, 'CP', 'cp', 'LP'),
                 cbm:        forecastRowGetField(d, 'CBM', 'cbm'),
                 stage:      String(forecastRowGetField(d, 'stage', 'Stage') || '').trim().toLowerCase(),
@@ -1358,14 +1365,16 @@
             // Pre-fill form
             $('#fre_sku').val(sku);
             $('#fre_parent').val(parent);
-            $('#forecastRowEditSubtitle').text(sku + (parent ? '  ·  ' + parent : ''));
+            const bulkHint = bulkTargets.length > 1
+                ? ' · changes apply to ' + bulkTargets.length + ' selected rows'
+                : '';
+            $('#forecastRowEditSubtitle').text(sku + (parent ? '  ·  ' + parent : '') + bulkHint);
 
             $('#fre_moq').val(original.moq);
             $('#fre_order').val(original.order);
             $('#fre_mip').val(original.mip);
             $('#fre_r2s').val(original.r2s);
             $('#fre_transit').val(original.transit);
-            $('#fre_smsl').val(original.s_msl);
             $('#fre_cp').val(original.cp);
             $('#fre_cbm').val(original.cbm);
             $('#fre_stage').val(original.stage);
@@ -1510,26 +1519,18 @@
             if (!row) return;
             const $btn = $(this);
             const $status = $('#forecastRowEditStatus');
-            const sku = $('#fre_sku').val();
-            const parent = $('#fre_parent').val();
+            const sku = String($('#fre_sku').val() || '').trim();
             if (!sku) {
                 $status.html('<span class="text-danger">Missing SKU — cannot save.</span>');
                 return;
             }
 
-            // Read current modal values, diff against the snapshot taken when the
-            // modal opened, and build one POST per changed column. Each column
-            // posts to /update-forecast-data so all the existing server-side
-            // validation, normalisation (NR uppercased, Stage lowercased, etc.)
-            // and side-effects (e.g. Stage -> stage-dependent table updates)
-            // run identically to inline editing.
             const fieldDefs = [
                 { id: 'fre_moq',         column: 'MOQ',           key: 'moq' },
                 { id: 'fre_order',       column: 'ORDER',         key: 'order' },
                 { id: 'fre_mip',         column: 'MIP',           key: 'mip' },
                 { id: 'fre_r2s',         column: 'R2S',           key: 'r2s' },
                 { id: 'fre_transit',     column: 'Transit',       key: 'transit' },
-                { id: 'fre_smsl',        column: 'S-MSL',         key: 's_msl' },
                 { id: 'fre_cp',          column: 'CP',            key: 'cp' },
                 { id: 'fre_cbm',         column: 'CBM',           key: 'cbm' },
                 { id: 'fre_stage',       column: 'Stage',         key: 'stage' },
@@ -1545,48 +1546,96 @@
             ];
 
             const original = forecastRowEditState.original || {};
-            const changes = [];
+            const fieldChanges = [];
             fieldDefs.forEach(function(f) {
                 let val = $('#' + f.id).val();
                 if (val === undefined || val === null) val = '';
                 if (forecastRowValChanged(original[f.key], val)) {
-                    changes.push({ sku: sku, parent: parent, column: f.column, value: val });
+                    fieldChanges.push({ column: f.column, value: val });
                 }
             });
 
-            if (changes.length === 0) {
+            if (fieldChanges.length === 0) {
                 $status.html('<span class="text-muted">No changes to save.</span>');
                 return;
             }
 
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Saving…');
-            $status.html('<span class="text-muted">Saving ' + changes.length + ' field(s)…</span>');
+            const targetRows = (forecastRowEditState.targetRows && forecastRowEditState.targetRows.length)
+                ? forecastRowEditState.targetRows
+                : getForecastBulkTargetRows(sku, [row]);
+            if (!targetRows.length) {
+                $status.html('<span class="text-danger">No rows to update.</span>');
+                return;
+            }
 
-            Promise.all(changes.map(updateForecastFieldPromise)).then(function(results) {
-                const failed = results.filter(function(r) { return !r.ok; });
-                const ok = results.length - failed.length;
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Saving…');
+            $status.html('<span class="text-muted">Saving ' + fieldChanges.length + ' field(s) to ' + targetRows.length + ' row(s)…</span>');
+
+            (async function() {
+                const failed = [];
+                let ok = 0;
+
+                for (let ri = 0; ri < targetRows.length; ri++) {
+                    const targetRow = targetRows[ri];
+                    const d = targetRow.getData() || {};
+                    const tSku = String(d.SKU || '').trim();
+                    const tParent = String(d.Parent || '').trim();
+                    if (!tSku) continue;
+
+                    for (let fi = 0; fi < fieldChanges.length; fi++) {
+                        const fc = fieldChanges[fi];
+                        if (fc.column === 'Stage') {
+                            const moq = parseInt(d.MOQ, 10) || 0;
+                            if (!moq) {
+                                failed.push(tSku + ' (MOQ=0, Stage skipped)');
+                                continue;
+                            }
+                        }
+
+                        const saveVal = fc.column === 'Stage'
+                            ? String(fc.value || '').trim().toLowerCase()
+                            : fc.value;
+
+                        try {
+                            const res = await updateForecastFieldPromise({
+                                sku: tSku,
+                                parent: tParent,
+                                column: fc.column,
+                                value: saveVal
+                            });
+                            if (!res || !res.ok) {
+                                failed.push(tSku + ' · ' + fc.column + (res && res.message ? ': ' + res.message : ''));
+                                continue;
+                            }
+                            ok++;
+                            patchForecastRowAfterModalSave(targetRow, fc.column, saveVal);
+                        } catch (e) {
+                            failed.push(tSku + ' · ' + fc.column + ': ' + (e.message || 'error'));
+                        }
+                    }
+                }
 
                 if (failed.length === 0) {
-                    $status.html('<span class="text-success">All ' + ok + ' field(s) saved.</span>');
-                    // Refresh the table so derived columns (to_order, msl, etc.) recompute
-                    // from the newly-saved underlying tables, then close the modal.
+                    $status.html('<span class="text-success">Saved ' + fieldChanges.length + ' field(s) on ' + targetRows.length + ' row(s).</span>');
                     setTimeout(function() {
                         const modalEl = document.getElementById('forecastRowEditModal');
                         const modal = bootstrap.Modal.getInstance(modalEl);
                         if (modal) modal.hide();
-                        try { table.replaceData(); } catch (e) { /* ignore */ }
+                        table.deselectRow();
+                        forecastBulkSelectionCache = [];
+                        updateBulkEditBadge();
+                        if (FORECAST_IS_PRESIDENT) forecastArchiveUpdateButton();
+                        if (typeof setCombinedFilters === 'function') setCombinedFilters();
                     }, 500);
                 } else {
-                    const lines = failed.map(function(r) {
-                        return '<li><strong>' + r.payload.column + ':</strong> ' + (r.message || 'failed') + '</li>';
-                    }).join('');
                     $status.html(
                         '<div class="text-warning">' +
-                        ok + ' saved, ' + failed.length + ' failed:' +
-                        '<ul class="mb-0 small">' + lines + '</ul></div>'
+                        ok + ' saved, ' + failed.length + ' failed:<ul class="mb-0 small">' +
+                        failed.map(function(msg) { return '<li>' + msg + '</li>'; }).join('') +
+                        '</ul></div>'
                     );
                 }
-            }).finally(function() {
+            })().finally(function() {
                 $btn.prop('disabled', false).html('<i class="fas fa-save me-2"></i> Save Changes');
             });
         });
@@ -1635,6 +1684,94 @@
             return sku.indexOf('parent') === -1;
         }
 
+        let forecastBulkSelectionCache = [];
+
+        function dedupeForecastRows(rows) {
+            const seen = new Set();
+            return (rows || []).filter(function (row) {
+                if (!isSelectableForecastRow(row)) return false;
+                const d = row.getData() || {};
+                const key = String(d.SKU || '').trim() + '||' + String(d.Parent || '').trim();
+                if (!key || seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+        }
+
+        /** Checkbox-selected rows; keeps multi-select when focus moves to a dropdown. */
+        function getForecastBulkTargetRows(primarySku, extraRows) {
+            const merged = dedupeForecastRows([
+                ...(forecastBulkSelectionCache || []),
+                ...(typeof table !== 'undefined' && table && table.getSelectedRows ? table.getSelectedRows() : []),
+                ...(extraRows || [])
+            ]);
+            if (merged.length > 0) return merged;
+
+            if (primarySku && typeof table !== 'undefined' && table) {
+                const match = table.getRows().find(function (r) {
+                    return String((r.getData() || {}).SKU || '').trim() === String(primarySku).trim();
+                });
+                if (match && isSelectableForecastRow(match)) return [match];
+            }
+            return [];
+        }
+
+        function patchForecastRowAfterStage(row, newValue) {
+            const rowData = row.getData() || {};
+            const stLow = String(newValue || '').trim().toLowerCase();
+            const moqNum = parseFloat(rowData.MOQ) || 0;
+            const updateData = {
+                stage: stLow,
+                two_order_qty: stLow === 'to_order_analysis' ? moqNum : 0,
+                appr_req_qty: stLow === 'appr_req' ? moqNum : 0,
+                order_given: stLow === 'mip' ? rowData.order_given : 0,
+                readyToShipQty: stLow === 'r2s' ? rowData.readyToShipQty : 0,
+                transit: stLow === 'transit' ? rowData.transit : 0,
+            };
+            row.update(updateData, true);
+            if (typeof syncParentStageQtyColumns === 'function') {
+                syncParentStageQtyColumns(rowData.Parent || rowData.parentKey);
+            }
+            if (typeof row.reformat === 'function') {
+                row.reformat();
+            } else {
+                row.getCells().forEach(function (cell) {
+                    if (cell && typeof cell.reformat === 'function') cell.reformat();
+                });
+            }
+            if (typeof setCombinedFilters === 'function') setCombinedFilters();
+        }
+
+        function patchForecastRowAfterModalSave(row, column, value) {
+            const col = String(column || '');
+            if (col === 'Stage') {
+                patchForecastRowAfterStage(row, String(value || '').trim().toLowerCase());
+                return;
+            }
+
+            const patch = {};
+            if (col === 'NR') patch.nr = value;
+            else if (col === 'MOQ') patch.MOQ = value;
+            else if (col === 'ORDER') patch.two_order_qty = value;
+            else if (col === 'MIP') patch.order_given = value;
+            else if (col === 'R2S') patch.readyToShipQty = value;
+            else if (col === 'Transit') patch.transit = value;
+            else if (col === 'CP') patch.CP = value;
+            else if (col === 'CBM') patch.CBM = value;
+            else if (col === 'Notes') patch.notes = value;
+            else if (col === 'REQ') patch.req = value;
+            else if (col === 'Clink') patch.Clink = value;
+            else if (col === 'Olink') patch.Olink = value;
+            else if (col === 'rfq_form_link') patch.rfq_form_link = value;
+            else if (col === 'rfq_report') patch.rfq_report = value;
+            else if (col === 'Hide') patch.hide = value;
+            else if (col === 'Date of Appr') patch.date_apprvl = value;
+
+            if (!Object.keys(patch).length) return;
+            row.update(patch, true);
+            if (typeof row.reformat === 'function') row.reformat();
+        }
+
         // ── President-only Archive / Restore (selection state lives outside Tabulator
         //    so it survives re-renders, pagination and filter changes) ─────────────
         // Whether the current user is the president - emitted by Blade from
@@ -1642,17 +1779,12 @@
         // the request somehow falls through. The actual security check is the
         // exact-email guard on the controller.
         const FORECAST_IS_PRESIDENT = @json($__forecastIsPresident ?? false);
-        // Selected (sku, parent) pairs as a Set keyed by 'sku||parent'. Set is used
-        // (rather than an array) so checkbox toggles are O(1) and we can quickly
-        // figure out how many rows are picked.
-        const forecastArchiveSelection = new Set();
-
         function forecastArchiveKey(sku, parent) {
             return String(sku || '').trim() + '||' + String(parent || '').trim();
         }
 
         function forecastArchiveUpdateButton() {
-            const count = forecastArchiveSelection.size;
+            const count = dedupeForecastRows(table ? table.getSelectedRows() : []).length;
             const $btn = $('#archive-selected-btn');
             const $cnt = $('#archive-selected-count');
             if ($cnt.length) $cnt.text(count);
@@ -1793,7 +1925,13 @@
 
         const table = new Tabulator("#forecast-table", {
             ajaxURL: "/forecast-analysis-data-view",
-            ajaxConfig: "GET",
+            ajaxConfig: {
+                method: "GET",
+                headers: {
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache"
+                }
+            },
             layout: "fitDataFill",
             pagination: true,
             paginationSize: 100,
@@ -1804,6 +1942,7 @@
             resizableColumns: true,
             height: 600,
             index: "SKU",
+            selectableRows: true,
             rowFormatter: function(row) {
                 const data = row.getData();
                 const sku = data["SKU"] || '';
@@ -1813,35 +1952,36 @@
                 }
             },
             columns: [
-                // President-only: row picker for the Archive workflow. Spread in an
-                // empty list when the user isn't the president, so no column is added
-                // and the visual layout for everyone else is unchanged.
-                ...(FORECAST_IS_PRESIDENT ? [{
-                    title: '<input type="checkbox" id="forecast-archive-select-all" title="Select all rows on this page">',
-                    field: '_archive_select',
-                    headerSort: false,
-                    download: false,
-                    width: 36,
-                    minWidth: 32,
-                    maxWidth: 40,
-                    widthGrow: 0,
-                    hozAlign: 'center',
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) return '';
-                        const sku = String(d.SKU || '').trim();
-                        const parent = String(d.Parent || '').trim();
-                        const key = forecastArchiveKey(sku, parent);
-                        const checked = forecastArchiveSelection.has(key) ? 'checked' : '';
-                        return '<input type="checkbox" class="forecast-archive-row-cb" data-sku="' +
-                            sku.replace(/"/g, '&quot;') + '" data-parent="' +
-                            parent.replace(/"/g, '&quot;') + '" ' + checked + '>';
+                {
+                    formatter: "rowSelection",
+                    titleFormatter: function(cell) {
+                        const checkbox = document.createElement("input");
+                        checkbox.type = "checkbox";
+                        checkbox.style.margin = "0";
+                        checkbox.style.cursor = "pointer";
+                        checkbox.addEventListener("click", function(e) {
+                            e.stopPropagation();
+                            const activeRows = cell.getTable().getRows("active").filter(isSelectableForecastRow);
+                            if (checkbox.checked) {
+                                activeRows.forEach(function(row) { row.select(); });
+                            } else {
+                                cell.getTable().deselectRow();
+                            }
+                        });
+                        return checkbox;
                     },
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 40,
+                    minWidth: 40,
+                    movable: false,
                     cellClick: function(e, cell) {
-                        // Stop event bubbling so the surrounding row click doesn't fire.
                         e.stopPropagation();
+                        const row = cell.getRow();
+                        if (!isSelectableForecastRow(row)) return;
+                        row.toggleSelect();
                     }
-                }] : []),
+                },
                 {
                     title: "#",
                     field: "Image",
@@ -1948,37 +2088,6 @@
                         </div>`;
                     }
                 },
-                {
-                    formatter: "rowSelection",
-                    titleFormatter: function(cell) {
-                        const checkbox = document.createElement("input");
-                        checkbox.type = "checkbox";
-                        checkbox.style.margin = "0";
-                        checkbox.style.cursor = "pointer";
-                        checkbox.addEventListener("click", function(e) {
-                            e.stopPropagation();
-                            const activeRows = cell.getTable().getRows("active").filter(isSelectableForecastRow);
-                            if (checkbox.checked) {
-                                activeRows.forEach(function(row) { row.select(); });
-                            } else {
-                                cell.getTable().deselectRow();
-                            }
-                        });
-                        return checkbox;
-                    },
-                    hozAlign: "center",
-                    headerSort: false,
-                    width: 40,
-                    minWidth: 40,
-                    movable: false,
-                    cellClick: function(e, cell) {
-                        e.stopPropagation();
-                        const row = cell.getRow();
-                        if (!isSelectableForecastRow(row)) return;
-                        row.toggleSelect();
-                    }
-                },
-                
                 {
                     title: "INV",
                     field: "INV",
@@ -2103,24 +2212,11 @@
                                 activeMonths: row["Total month"] ?? 0,
                                 msl:         row["msl"]          ?? 0,
                                 mslShopify:  row["msl_shopify"]  ?? 0,
-                                mslManual:   row["s_msl"]        ?? null,
                                 mAvg:        row["m_avg"]        ?? 0,
                             };
                             openMonthModal(monthData, sku, fbaMonths, mslInfo);
                         }
                     }
-                },
-                {
-                    title: "MSL Manual",
-                    field: "s_msl",
-                    accessor: row => (row && row["s_msl"] !== undefined && row["s_msl"] !== null) ? row["s_msl"] : '',
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const v = cell.getValue();
-                        const s = String(v == null ? '' : v).trim();
-                        if (!s) return '<div style="text-align:center;" class="text-muted">—</div>';
-                        return `<div style="text-align:center;font-weight:700;">${s}</div>`;
-                    },
                 },
                 {
                     title: "2 Ord",
@@ -2133,15 +2229,6 @@
                         const col = isNeg ? '#b71c1c' : '#e6aa19';
 
                         return `<div class="text-center"><span class="forecast-to-order-pct" style="color:${col};">${disp}</span></div>`;
-                    }
-                },
-                {
-                    title: "M AVG ",
-                    field: "MSL_Four",
-                    accessor: row => (row ? row["MSL_Four"] : null),
-                    formatter: function(cell) {
-                        const value = cell.getValue() || 0;
-                        return `<div style="text-align:center; font-weight:bold;">${value.toFixed(0)}</div>`;
                     }
                 },
                 {
@@ -2205,31 +2292,21 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData() || {};
                         const isParent = !!(rowData.is_parent || rowData.isParent);
-                        const skuAttr = String(rowData.SKU || '').replace(/'/g, "\\'");
-                        const parentAttr = String(rowData.Parent || '').replace(/'/g, "\\'");
-                        const renderWithMoveDot = function(valueText, isFallback) {
-                            if (isParent) {
-                                const bgParent = isFallback ? 'background:#fff3a0;border-radius:4px;padding:2px 4px;' : '';
-                                return `<div style="text-align:center;font-weight:700;${bgParent}">${valueText}</div>`;
-                            }
-                            const bg = isFallback ? 'background:#fff3a0;border-radius:4px;padding:2px 4px;' : '';
-                            return `<div style="text-align:center;font-weight:700;${bg}display:flex;align-items:center;justify-content:center;gap:6px;">
-                                <span>${valueText}</span>
-                                <button type="button" class="appr-req-move-dot" data-sku='${skuAttr}' data-parent='${parentAttr}' title="Move MOQ to Order" aria-label="Move MOQ to Order"
-                                    style="width:10px;height:10px;border-radius:9999px;border:1px solid #b8860b;background:#facc15;padding:0;cursor:pointer;display:inline-block;line-height:1;"></button>
-                            </div>`;
+                        const renderValue = function(valueText, isFallback) {
+                            const bg = (!isParent && isFallback) ? 'background:#fff3a0;border-radius:4px;padding:2px 4px;' : '';
+                            return `<div style="text-align:center;font-weight:700;${bg}">${valueText}</div>`;
                         };
                         const v = parseFloat(cell.getValue());
                         if (!v || isNaN(v)) {
                             const fallbackApprReq = getEffectiveApprReqValue(rowData);
                             if (fallbackApprReq > 0) {
                                 const dispMoq = Number.isInteger(fallbackApprReq) ? fallbackApprReq : fallbackApprReq.toFixed(2).replace(/\.?0+$/, '');
-                                return renderWithMoveDot(dispMoq, true);
+                                return renderValue(dispMoq, true);
                             }
                             return '<div style="text-align:center;" class="text-muted">—</div>';
                         }
                         const disp = Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '');
-                        return renderWithMoveDot(disp, false);
+                        return renderValue(disp, false);
                     }
                 },
                 {
@@ -2240,21 +2317,12 @@
                     headerSort: true,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const skuAttr = String(rowData.SKU || '').replace(/'/g, "\\'");
-                        const parentAttr = String(rowData.Parent || '').replace(/'/g, "\\'");
                         const v = parseFloat(cell.getValue());
                         if (!v || isNaN(v)) {
                             return '<div style="text-align:center;" class="text-muted">—</div>';
                         }
                         const disp = Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '');
-                        if (rowData && (rowData.is_parent || rowData.isParent)) {
-                            return `<div style="text-align:center;font-weight:bold;">${disp}</div>`;
-                        }
-                        return `<div style="text-align:center;font-weight:bold;display:flex;align-items:center;justify-content:center;gap:6px;">
-                            <span>${disp}</span>
-                            <button type="button" class="order-to-mip-move-dot" data-sku='${skuAttr}' data-parent='${parentAttr}' title="Move Order to MIP" aria-label="Move Order to MIP"
-                                style="width:10px;height:10px;border-radius:9999px;border:1px solid #1e40af;background:#2563eb;padding:0;cursor:pointer;display:inline-block;line-height:1;flex-shrink:0;"></button>
-                        </div>`;
+                        return `<div style="text-align:center;font-weight:bold;">${disp}</div>`;
                     },
                 },
                 //   {
@@ -2302,18 +2370,11 @@
                     headerSort: true,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const skuAttr = String(rowData.SKU || '').replace(/'/g, "\\'");
-                        const parentAttr = String(rowData.Parent || '').replace(/'/g, "\\'");
                         const value = cell.getValue();
                         const n = parseFloat(value);
                         const showDash = value === null || value === undefined || value === '' || isNaN(n) || n === 0;
                         if (showDash) return `<div style="text-align:center;font-weight:bold;">-</div>`;
-                        if (rowData.is_parent || rowData.isParent) return `<div style="text-align:center;font-weight:bold;">${String(value)}</div>`;
-                        return `<div style="text-align:center;font-weight:bold;display:flex;align-items:center;justify-content:center;gap:6px;">
-                            <span>${String(value)}</span>
-                            <button type="button" class="mip-to-r2s-move-dot" data-sku='${skuAttr}' data-parent='${parentAttr}' title="Move MIP to R2S" aria-label="Move MIP to R2S"
-                                style="width:10px;height:10px;border-radius:9999px;border:1px solid #15803d;background:#16a34a;padding:0;cursor:pointer;display:inline-block;line-height:1;flex-shrink:0;"></button>
-                        </div>`;
+                        return `<div style="text-align:center;font-weight:bold;">${String(value)}</div>`;
                     },
                 },
                 {
@@ -3276,6 +3337,7 @@
                     },
                     cellClick: function(e, cell) {
                         if (!e.target.closest('.forecast-edit-row-btn')) return;
+                        e.stopPropagation();
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return;
                         openForecastEditModal(cell.getRow());
@@ -3413,7 +3475,6 @@
 
 
                 const groupedMSL = {};
-                const groupedS_MSL = {};
 
                 // Children grouped by parentKey — built during the .map pass so the
                 // parent-aggregation forEach below doesn't have to .filter again per parent.
@@ -3433,8 +3494,7 @@
 
                     // Use PHP-computed combined MSL (Shopify + FBA) directly — no need to recalculate
                     const msl = parseFloat(item.msl) || (totalMonth > 0 ? (total / totalMonth) * 4 : 0);
-                    const s_msl_val = parseFloat(item["s_msl"] ?? item["s-msl"]) || 0;
-                    const effectiveMslForToOrder = Math.max(msl, s_msl_val);
+                    const effectiveMslForToOrder = msl;
                     const m_avg = parseFloat(item.m_avg) || (totalMonth > 0 ? total / totalMonth : 0);
 
                     // Get stage from item to determine which fields to use for to_order calculation
@@ -3469,9 +3529,6 @@
 
                     if (!groupedMSL[parentKey]) groupedMSL[parentKey] = 0;
                     groupedMSL[parentKey] += msl;
-
-                    if (!groupedS_MSL[parentKey]) groupedS_MSL[parentKey] = 0;
-                    groupedS_MSL[parentKey] += s_msl_val;
 
                     const isParent = item.is_parent === true || item.is_parent === "true" || sku.toUpperCase().includes("PARENT");
 
@@ -3519,7 +3576,6 @@
                         two_order_qty: twoOrderQty,
                         appr_req_qty: apprReqQty,
                         parentKey: parentKey,
-                        s_msl: s_msl_val,
                         is_parent: isParent,
                         isParent: isParent,
                         raw_data: item || {},
@@ -3803,13 +3859,15 @@
                 badge.classList.remove('d-flex');
             }
         }
-        table.on("rowSelectionChanged", function() {
+        table.on("rowSelectionChanged", function(data, rows) {
+            forecastBulkSelectionCache = dedupeForecastRows(rows || table.getSelectedRows());
             const scrollEl = table.rowManager?.element;
             const savedTop  = scrollEl?.scrollTop  || 0;
             const savedLeft = scrollEl?.scrollLeft || 0;
             const savedPage = (table.getPage && table.getPage() > 0) ? table.getPage() : null;
 
             updateBulkEditBadge();
+            if (FORECAST_IS_PRESIDENT) forecastArchiveUpdateButton();
 
             requestAnimationFrame(function() {
                 const restoreScroll = function() {
@@ -3833,6 +3891,23 @@
         table.on("dataLoaded", function() { updateTopRowCounter(); });
         table.on("dataFiltered", function() { updateTopRowCounter(); });
         table.on("pageLoaded", function() { updateTopRowCounter(); });
+
+        // Preserve checkbox multi-select before Edit click collapses Tabulator selection.
+        $(document).on('mousedown', '.forecast-edit-row-btn', function(e) {
+            e.stopPropagation();
+            if (!table) return;
+            const rowEl = this.closest('.tabulator-row');
+            if (!rowEl) return;
+            let clickedRow = null;
+            table.getRows().forEach(function(r) {
+                if (r.getElement() === rowEl) clickedRow = r;
+            });
+            forecastRowEditState.pendingBulkTargets = dedupeForecastRows([
+                ...(forecastBulkSelectionCache || []),
+                ...(table.getSelectedRows() || []),
+                ...(clickedRow ? [clickedRow] : [])
+            ]);
+        });
 
         // Populate bulk supplier dropdowns when suppliers load
         function refreshBulkSupplierSearchSelect() {
@@ -3858,13 +3933,10 @@
             e.preventDefault();
             const supplierName = (document.getElementById('bulk-current-supplier-select')?.value || '').trim();
             if (!supplierName) { alert('Please select a supplier.'); return; }
-            const selected = table.getSelectedRows();
-            const validRows = [];
-            selected.forEach(function(row) {
-                const d = row.getData();
-                const sku = (d.SKU || '').trim();
-                if (sku && !sku.toLowerCase().includes('parent')) validRows.push({ row: row, sku: sku });
-            });
+            const selectedRows = getForecastBulkTargetRows();
+            const validRows = selectedRows.map(function (row) {
+                return { row: row, sku: String((row.getData() || {}).SKU || '').trim() };
+            }).filter(function (item) { return item.sku && !item.sku.toLowerCase().includes('parent'); });
             if (validRows.length === 0) { alert('No valid SKUs in selection.'); return; }
             const btn = this;
             btn.disabled = true;
@@ -3883,6 +3955,7 @@
                     item.row.update({ mfrg_supplier: supplierName }, true);
                 });
                 table.deselectRow();
+                forecastBulkSelectionCache = [];
                 updateBulkEditBadge();
                 btn.disabled = false;
                 const sel = document.getElementById('bulk-current-supplier-select');
@@ -3980,37 +4053,76 @@
                 alert('Please enter a value.');
                 return;
             }
-            const selected = table.getSelectedRows();
-            const rows = [];
-            selected.forEach(function(row) {
-                const d = row.getData();
-                const sku = (d.SKU || '').trim();
-                const parent = (d.Parent || '').trim();
-                if (sku && !sku.toLowerCase().includes('parent')) rows.push({ sku, parent });
-            });
-            if (rows.length === 0) { alert('No valid rows in selection.'); return; }
+            const selectedRows = getForecastBulkTargetRows();
+            if (selectedRows.length === 0) {
+                alert('Select one or more rows using the checkboxes first.');
+                return;
+            }
             const btn = document.getElementById(btnId);
             if (btn) btn.disabled = true;
-            let done = 0;
-            const total = rows.length;
-            const onComplete = function() {
-                done++;
-                if (done >= total) {
-                    table.replaceData();
-                    table.deselectRow();
-                    updateBulkEditBadge();
-                    if (btn) btn.disabled = false;
-                    const el = document.getElementById(selectId);
-                    if (el) el.value = el.tagName === 'SELECT' ? '' : '';
-                    const dd = bootstrap.Dropdown.getInstance(document.querySelector('#' + ddBtnId));
-                    if (dd) dd.hide();
+            const stageVal = String(column).toLowerCase() === 'stage' ? String(val).trim().toLowerCase() : val;
+
+            (async function () {
+                const failed = [];
+                let ok = 0;
+                for (let i = 0; i < selectedRows.length; i++) {
+                    const row = selectedRows[i];
+                    const d = row.getData() || {};
+                    const sku = String(d.SKU || '').trim();
+                    const parent = String(d.Parent || '').trim();
+                    if (!sku) continue;
+
+                    if (column === 'Stage') {
+                        const moq = parseInt(d.MOQ, 10) || 0;
+                        if (!moq) {
+                            failed.push(sku + ' (MOQ=0)');
+                            continue;
+                        }
+                    }
+
+                    try {
+                        const res = await updateForecastFieldPromise({
+                            sku: sku,
+                            parent: parent,
+                            column: column,
+                            value: column === 'Stage' ? stageVal : val
+                        });
+                        if (!res || !res.ok) {
+                            failed.push(sku + (res && res.message ? ': ' + res.message : ''));
+                            continue;
+                        }
+                        ok++;
+                        if (column === 'Stage') {
+                            patchForecastRowAfterStage(row, stageVal);
+                        } else if (column === 'NR') {
+                            row.update({ nr: val }, true);
+                            row.reformat();
+                        } else if (column === 'MOQ') {
+                            row.update({ MOQ: val }, true);
+                            if (typeof row.reformat === 'function') row.reformat();
+                        } else if (column === 'Order') {
+                            row.update({ two_order_qty: val }, true);
+                        } else if (column === 'CP') {
+                            row.update({ CP: val }, true);
+                        }
+                    } catch (e) {
+                        failed.push(sku + ': ' + (e.message || 'error'));
+                    }
                 }
-            };
-            rows.forEach(function(r) {
-                $.post('/update-forecast-data', { sku: r.sku, parent: r.parent, column: column, value: val, _token: $('meta[name="csrf-token"]').attr('content') })
-                    .done(function() { onComplete(); })
-                    .fail(function() { onComplete(); });
-            });
+
+                table.deselectRow();
+                forecastBulkSelectionCache = [];
+                updateBulkEditBadge();
+                if (btn) btn.disabled = false;
+                const el = document.getElementById(selectId);
+                if (el) el.value = el.tagName === 'SELECT' ? '' : '';
+                const dd = bootstrap.Dropdown.getInstance(document.querySelector('#' + ddBtnId));
+                if (dd) dd.hide();
+
+                if (failed.length) {
+                    alert('Updated ' + ok + ' row(s). Failed: ' + failed.join('; '));
+                }
+            })();
         }
 
         document.getElementById('bulk-apply-stage')?.addEventListener('click', function(e) {
@@ -4112,74 +4224,23 @@
         let pendingCombinedFiltersRun = false;
         let filterPostCalcTimer = null;
         const FORECAST_FILTER_PREF_KEY = 'forecast_analysis_filter_prefs_v1';
-        function readForecastFilterPrefs() {
+        function clearForecastStoredPrefs() {
             try {
-                const raw = localStorage.getItem(FORECAST_FILTER_PREF_KEY);
-                if (!raw) return {};
-                const parsed = JSON.parse(raw);
-                return parsed && typeof parsed === 'object' ? parsed : {};
-            } catch (e) {
-                return {};
-            }
-        }
-        function saveForecastFilterPrefs() {
-            try {
-                const nrpChecked = Array.from(document.querySelectorAll('.nrp-ms-opt:checked')).map(function(cb) { return cb.value; });
-                const payload = {
-                    stageFilter: currentStageFilter || '',
-                    rowTypeFilter: currentRowTypeFilter || 'sku',
-                    apprReqFilter: currentColorFilter || '',
-                    twoOrdFilter: currentTwoOrdColorFilter || '',
-                    topQtyFilters: Object.assign({}, currentTopQtySignFilters || {}),
-                    nrpChecked: nrpChecked.length ? nrpChecked : ['REQ', 'NR', 'LATER'],
-                    invFilter: currentInvFilter || ''
-                };
-                localStorage.setItem(FORECAST_FILTER_PREF_KEY, JSON.stringify(payload));
+                localStorage.removeItem(FORECAST_FILTER_PREF_KEY);
+                localStorage.removeItem('tabulator_column_visibility');
+                localStorage.removeItem('tabulator_column_visibility_forecast');
             } catch (e) {}
         }
+        // Never restore saved filters/column prefs after refresh — clear on each load.
+        clearForecastStoredPrefs();
+        function readForecastFilterPrefs() {
+            return {};
+        }
+        function saveForecastFilterPrefs() {
+            clearForecastStoredPrefs();
+        }
         function restoreForecastFilterPrefs() {
-            const prefs = readForecastFilterPrefs();
-
-            const stageVal = normalizeStageValue(prefs.stageFilter || '');
-            currentStageFilter = stageVal;
-            const sf = document.getElementById('stage-filter');
-            if (sf) sf.value = stageVal;
-
-            const rowTypeVal = ['all', 'sku', 'parent'].includes(prefs.rowTypeFilter) ? prefs.rowTypeFilter : 'sku';
-            currentRowTypeFilter = rowTypeVal;
-            const rt = document.getElementById('row-data-type');
-            if (rt) rt.value = rowTypeVal;
-
-            currentColorFilter = '';
-
-            const twoOrdVal = normalizeTwoOrdFilterValue(prefs.twoOrdFilter || '');
-            currentTwoOrdColorFilter = twoOrdVal;
-            const twoOrdSel = document.getElementById('two-ord-color-filter');
-            if (twoOrdSel) twoOrdSel.value = twoOrdVal;
-
-            const tq = prefs.topQtyFilters && typeof prefs.topQtyFilters === 'object' ? prefs.topQtyFilters : {};
-            ['order', 'mip', 'r2s', 'trn', 'moq'].forEach(function(k) {
-                const val = normalizeQtySignFilterValue(tq[k] || '');
-                currentTopQtySignFilters[k] = val;
-                const el = document.getElementById(k + '-color-filter-top');
-                if (el) el.value = val;
-            });
-
-            const wantedNrp = Array.isArray(prefs.nrpChecked) && prefs.nrpChecked.length ? new Set(prefs.nrpChecked) : new Set(['REQ', 'NR', 'LATER']);
-            document.querySelectorAll('.nrp-ms-opt').forEach(function(cb) {
-                cb.checked = wantedNrp.has(cb.value);
-            });
-            updateNRPMultiselectLabel();
-
-            const invPref = prefs.invFilter != null ? String(prefs.invFilter).trim() : '';
-            currentInvFilter = invPref;
-            const tblInv = Tabulator.findTable("#forecast-table")[0];
-            if (tblInv && typeof tblInv.setHeaderFilterValue === 'function' && invPref) {
-                try {
-                    tblInv.setHeaderFilterValue('INV', invPref);
-                } catch (e) { /* column may have no header filter */ }
-            }
-            syncZeroStockBadgeActiveState();
+            /* intentionally empty — filters always start at defaults on refresh */
         }
 
         /**
@@ -4256,11 +4317,11 @@
             }
 
             // Re-apply combined filters with everything empty → shows every row,
-            // then refresh the zero-stock badge state and persist the cleared prefs.
+            // then refresh the zero-stock badge state (do not persist prefs).
             if (typeof setCombinedFilters === 'function') setCombinedFilters();
             if (typeof syncZeroStockBadgeActiveState === 'function') syncZeroStockBadgeActiveState();
             if (typeof updateZeroStockBadgeCount === 'function') updateZeroStockBadgeCount();
-            if (typeof saveForecastFilterPrefs === 'function') saveForecastFilterPrefs();
+            clearForecastStoredPrefs();
         }
         window.clearAllForecastFilters = clearAllForecastFilters;
         document.addEventListener('click', function(e) {
@@ -4270,66 +4331,21 @@
             clearAllForecastFilters();
         });
 
-        // ── Archive selection wiring (president-only). Handlers are installed for
-        //    every user but only do work when the checkbox column actually exists
-        //    in the DOM, which is controlled by FORECAST_IS_PRESIDENT in the
-        //    columns array above. ────────────────────────────────────────────────
-        $(document).on('change', '.forecast-archive-row-cb', function() {
-            const sku = $(this).attr('data-sku') || '';
-            const parent = $(this).attr('data-parent') || '';
-            const key = forecastArchiveKey(sku, parent);
-            if ($(this).is(':checked')) {
-                forecastArchiveSelection.add(key);
-            } else {
-                forecastArchiveSelection.delete(key);
-                $('#forecast-archive-select-all').prop('checked', false);
-            }
-            forecastArchiveUpdateButton();
-        });
-
-        // "Select all" toggles every selectable (non-parent, currently rendered) row.
-        // Operates on table.getRows('active') so it follows the active filters.
-        $(document).on('change', '#forecast-archive-select-all', function() {
-            if (!table) return;
-            const turnOn = $(this).is(':checked');
-            const rows = (typeof table.getRows === 'function') ? table.getRows('active') : [];
-            rows.forEach(function(r) {
-                const d = r.getData() || {};
-                if (d.is_parent || d.isParent) return;
-                const sku = String(d.SKU || '').trim();
-                const parent = String(d.Parent || '').trim();
-                const key = forecastArchiveKey(sku, parent);
-                if (turnOn) forecastArchiveSelection.add(key);
-                else forecastArchiveSelection.delete(key);
-            });
-            try { table.redraw(true); } catch (e) { /* ignore */ }
-            forecastArchiveUpdateButton();
-        });
-
         $(document).on('click', '#archive-selected-btn', function() {
             if (!FORECAST_IS_PRESIDENT) return;
-            if (forecastArchiveSelection.size === 0) return;
+            const selectedRows = dedupeForecastRows(table.getSelectedRows());
+            if (selectedRows.length === 0) return;
 
-            // Build a map of selected (sku, parent) -> row data snapshot so the
-            // archive captures the row's currently-displayed state. The forecast
-            // page's row data can come from joined sources (not just
-            // forecast_analysis), so without a snapshot the Restore page would
-            // show blank Stage / NR / Notes for rows that weren't already in
-            // forecast_analysis with those fields filled.
-            const selectedKeys = new Set(forecastArchiveSelection);
             const itemsBySku = new Map();
-            (table.getRows() || []).forEach(function(r) {
+            selectedRows.forEach(function(r) {
                 const d = r.getData() || {};
-                if (d.is_parent || d.isParent) return;
                 const sku = String(d.SKU || '').trim();
                 const parent = String(d.Parent || '').trim();
                 const key = forecastArchiveKey(sku, parent);
-                if (!selectedKeys.has(key)) return;
                 if (itemsBySku.has(key)) return;
                 itemsBySku.set(key, {
                     sku: sku,
                     parent: parent,
-                    // String-ish fields — only sent when they have a value
                     stage:         d.stage || d.Stage || '',
                     nr:            d.nr || d.NR || '',
                     req:           d.req || d.REQ || '',
@@ -4339,20 +4355,12 @@
                     rfq_form_link: d.rfq_form_link || '',
                     rfq_report:    d.rfq_report || '',
                     date_apprvl:   d.date_apprvl || d['Date of Appr'] || '',
-                    // Numeric fields — the backend only takes is_numeric values
-                    s_msl:         (d.s_msl ?? d['s-msl'] ?? d['S-MSL'] ?? ''),
                     approved_qty:  (d.MOQ ?? d['Approved QTY'] ?? d.approved_qty ?? ''),
                     order_given:   (d.order_given ?? d['Order Given'] ?? ''),
                     transit:       (d.transit ?? d.Transit ?? ''),
                 });
             });
-            // Fall back to bare sku/parent for any selected key whose row wasn't
-            // found (e.g. row was filtered out between selection and click).
-            const items = Array.from(selectedKeys).map(function(key) {
-                if (itemsBySku.has(key)) return itemsBySku.get(key);
-                const parts = key.split('||');
-                return { sku: parts[0] || '', parent: parts[1] || '' };
-            });
+            const items = Array.from(itemsBySku.values());
             if (!confirm('Archive ' + items.length + ' row(s)? They will be hidden from this view and listed on the Restore page.')) {
                 return;
             }
@@ -4370,9 +4378,10 @@
                 },
                 success: function(res) {
                     if (res && res.success) {
-                        forecastArchiveSelection.clear();
-                        $('#forecast-archive-select-all').prop('checked', false);
+                        table.deselectRow();
+                        forecastBulkSelectionCache = [];
                         forecastArchiveUpdateButton();
+                        updateBulkEditBadge();
                         try { table.replaceData(); } catch (e) { /* ignore */ }
                     } else {
                         alert((res && res.message) || 'Failed to archive.');
@@ -5474,8 +5483,6 @@
                 const shopifyActiveMonths = parseFloat(mslInfo.activeMonths) || 0;
                 const shopifyMsl          = parseFloat(mslInfo.mslShopify || mslInfo.msl) || 0;
                 const mAvg                = parseFloat(mslInfo.mAvg)         || 0;
-                const mslManual           = mslInfo.mslManual;
-                const hasMslManual        = mslManual !== null && mslManual !== '' && parseFloat(mslManual) > 0;
 
                 // FBA totals — recalculated from fbaMonths data
                 let fbaTotal        = 0;
@@ -5550,7 +5557,6 @@
                     `}
 
                     <span style="color:#9ca3af; font-size:0.73rem;">(M.Avg: ${mAvg > 0 ? mAvg.toFixed(2) : '0'})</span>
-                    ${hasMslManual ? `<span style="background:#fef9c3; color:#92400e; font-weight:600; padding:2px 10px; border-radius:20px; font-size:0.8rem;">Manual Override: ${parseFloat(mslManual)}</span>` : ''}
                 `;
                 wrapper.appendChild(formulaEl);
             }
@@ -5650,33 +5656,16 @@
             modal.show();
         }
 
-        const COLUMN_VIS_KEY = "tabulator_column_visibility";
+        const COLUMN_VIS_KEY = "tabulator_column_visibility_forecast";
 
         function saveColumnVisibilityToLocalStorage() {
-            const vis = {};
-            table.getColumns().forEach(function(col) {
-                const f = col.getField();
-                if (f) vis[f] = col.isVisible();
-            });
-            localStorage.setItem(COLUMN_VIS_KEY, JSON.stringify(vis));
+            /* no-op — column visibility is not persisted across refresh */
         }
 
         function initColumnModal() {
             const trigger = document.getElementById("hide-column-dropdown");
             const modalEl = document.getElementById("columnCustomizeModal");
             if (!trigger || !modalEl) return;
-
-            // Restore saved visibility only after table is fully built
-            table.on('tableBuilt', function() {
-                const savedVis = JSON.parse(localStorage.getItem(COLUMN_VIS_KEY) || '{}');
-                if (Object.keys(savedVis).length) {
-                    table.getColumns().forEach(function(col) {
-                        const f = col.getField();
-                        if (!f) return;
-                        if (savedVis[f] === false) col.hide();
-                    });
-                }
-            });
 
             // Map of field → plain text label
             const FIELD_LABELS = {};
@@ -5756,14 +5745,7 @@
         }
 
         function saveColumnVisibilityToLocalStorage() {
-            const visibility = {};
-            table.getColumns().forEach(col => {
-                const field = col.getField();
-                if (field) {
-                    visibility[field] = col.isVisible();
-                }
-            });
-            localStorage.setItem(COLUMN_VIS_KEY, JSON.stringify(visibility));
+            /* no-op — column visibility is not persisted across refresh */
         }
 
         document.addEventListener("DOMContentLoaded", () => {
@@ -5779,11 +5761,11 @@
                 const parent = $cell.data('parent');
 
                 // Convert raw value to number safely
-                const newValue = ['MOQ', 'S-MSL', 'order_given'].includes(field) ?
+                const newValue = ['MOQ', 'order_given'].includes(field) ?
                     Number(newValueRaw) :
                     newValueRaw;
 
-                const original = ['MOQ', 'S-MSL', 'order_given'].includes(field) ?
+                const original = ['MOQ', 'order_given'].includes(field) ?
                     Number(originalValue) :
                     originalValue;
 
@@ -5791,7 +5773,7 @@
                 if (newValue === original) return;
 
                 // Numeric validation
-                if (['MOQ', 'S-MSL', 'order_given'].includes(field) && isNaN(newValue)) {
+                if (['MOQ', 'order_given'].includes(field) && isNaN(newValue)) {
                     alert('Please enter a valid number.');
                     $cell.text(originalValue); // revert
                     return;
@@ -6020,208 +6002,6 @@
                         );
                     }, 150);
                 });
-
-            $(document).off('click', '.appr-req-move-dot').on('click', '.appr-req-move-dot', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const $btn = $(this);
-                if ($btn.data('busy')) return;
-
-                const sku = String($btn.data('sku') || '').trim();
-                const parent = String($btn.data('parent') || '').trim();
-                if (!sku) return;
-
-                const row = table.getRows().find(r => {
-                    const d = r.getData();
-                    return String(d.SKU || '').trim() === sku && String(d.Parent || '').trim() === parent;
-                });
-
-                if (!row) {
-                    alert('Row not found.');
-                    return;
-                }
-
-                const rowData = row.getData() || {};
-                const raw = rowData.raw_data || {};
-                const moqVal = parseFloat(rowData.MOQ ?? raw.MOQ ?? raw['Approved QTY'] ?? 0);
-                if (!Number.isFinite(moqVal) || moqVal <= 0) {
-                    alert('MOQ is empty or zero.');
-                    return;
-                }
-
-                $btn.data('busy', true).css('opacity', '0.5').css('cursor', 'wait');
-
-                updateForecastField({
-                        sku: sku,
-                        parent: parent,
-                        column: 'Stage',
-                        value: 'to_order_analysis'
-                    },
-                    function() {
-                        const updatedRaw = Object.assign({}, raw, {
-                            stage: 'to_order_analysis',
-                            two_order_qty: moqVal,
-                            appr_req_qty: 0,
-                            order_given: 0,
-                            readyToShipQty: 0,
-                            transit: 0
-                        });
-
-                        row.update({
-                            stage: 'to_order_analysis',
-                            two_order_qty: moqVal,
-                            appr_req_qty: 0,
-                            order_given: 0,
-                            readyToShipQty: 0,
-                            transit: 0,
-                            raw_data: updatedRaw
-                        }, true);
-
-                        syncParentStageQtyColumns(rowData.Parent || rowData.parentKey);
-                        row.getCells().forEach(function(cell) {
-                            const f = cell.getField();
-                            if (['stage', 'order_given', 'readyToShipQty', 'transit', 'to_order', 'two_order_qty', 'appr_req_qty'].includes(f)) {
-                                cell.reformat();
-                            }
-                        });
-                        setCombinedFilters();
-                        $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
-                    },
-                    function() {
-                        $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
-                        alert('Failed to move MOQ to Order.');
-                    }
-                );
-            });
-
-            $(document).off('click', '.order-to-mip-move-dot').on('click', '.order-to-mip-move-dot', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const $btn = $(this);
-                if ($btn.data('busy')) return;
-
-                const sku = String($btn.data('sku') || '').trim();
-                const parent = String($btn.data('parent') || '').trim();
-                if (!sku) return;
-
-                const row = table.getRows().find(r => {
-                    const d = r.getData();
-                    return String(d.SKU || '').trim() === sku && String(d.Parent || '').trim() === parent;
-                });
-
-                if (!row) { alert('Row not found.'); return; }
-
-                const rowData = row.getData() || {};
-                const orderQty = parseFloat(rowData.two_order_qty ?? 0);
-                if (!Number.isFinite(orderQty) || orderQty <= 0) {
-                    alert('Order quantity is empty or zero.');
-                    return;
-                }
-
-                $btn.data('busy', true).css('opacity', '0.5').css('cursor', 'wait');
-
-                updateForecastField(
-                    { sku: sku, parent: parent, column: 'Stage', value: 'mip' },
-                    function() {
-                        updateForecastField(
-                            { sku: sku, parent: parent, column: 'order_given', value: orderQty },
-                            function() {
-                                row.update({
-                                    stage: 'mip',
-                                    order_given: orderQty,
-                                    two_order_qty: 0,
-                                    appr_req_qty: 0,
-                                    readyToShipQty: 0,
-                                    transit: 0
-                                }, true);
-                                syncParentStageQtyColumns(rowData.Parent || rowData.parentKey);
-                                row.getCells().forEach(function(cell) {
-                                    const f = cell.getField();
-                                    if (['stage', 'order_given', 'readyToShipQty', 'transit', 'to_order', 'two_order_qty', 'appr_req_qty'].includes(f)) {
-                                        cell.reformat();
-                                    }
-                                });
-                                setCombinedFilters();
-                                $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
-                            },
-                            function() {
-                                $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
-                                alert('Failed to move Order to MIP.');
-                            }
-                        );
-                    },
-                    function() {
-                        $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
-                        alert('Failed to move Order to MIP.');
-                    }
-                );
-            });
-
-            $(document).off('click', '.mip-to-r2s-move-dot').on('click', '.mip-to-r2s-move-dot', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const $btn = $(this);
-                if ($btn.data('busy')) return;
-
-                const sku = String($btn.data('sku') || '').trim();
-                const parent = String($btn.data('parent') || '').trim();
-                if (!sku) return;
-
-                const row = table.getRows().find(r => {
-                    const d = r.getData();
-                    return String(d.SKU || '').trim() === sku && String(d.Parent || '').trim() === parent;
-                });
-
-                if (!row) { alert('Row not found.'); return; }
-
-                const rowData = row.getData() || {};
-                const mipQty = parseFloat(rowData.order_given ?? 0);
-                if (!Number.isFinite(mipQty) || mipQty <= 0) {
-                    alert('MIP quantity is empty or zero.');
-                    return;
-                }
-
-                $btn.data('busy', true).css('opacity', '0.5').css('cursor', 'wait');
-
-                updateForecastField(
-                    { sku: sku, parent: parent, column: 'Stage', value: 'r2s' },
-                    function() {
-                        updateForecastField(
-                            { sku: sku, parent: parent, column: 'R2S', value: mipQty },
-                            function() {
-                                row.update({
-                                    stage: 'r2s',
-                                    readyToShipQty: mipQty,
-                                    order_given: 0,
-                                    two_order_qty: 0,
-                                    appr_req_qty: 0,
-                                    transit: 0
-                                }, true);
-                                syncParentStageQtyColumns(rowData.Parent || rowData.parentKey);
-                                row.getCells().forEach(function(cell) {
-                                    const f = cell.getField();
-                                    if (['stage', 'order_given', 'readyToShipQty', 'transit', 'to_order', 'two_order_qty', 'appr_req_qty'].includes(f)) {
-                                        cell.reformat();
-                                    }
-                                });
-                                setCombinedFilters();
-                                $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
-                            },
-                            function() {
-                                $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
-                                alert('Failed to move MIP to R2S.');
-                            }
-                        );
-                    },
-                    function() {
-                        $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
-                        alert('Failed to move MIP to R2S.');
-                    }
-                );
-            });
 
             $(document).off('click', '.forecast-mfrg-toggle-dot').on('click', '.forecast-mfrg-toggle-dot', function(e) {
                 e.preventDefault();

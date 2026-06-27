@@ -241,7 +241,7 @@ class ForecastAnalysisController extends Controller
         // If multiple records exist for same SKU, prefer the one with non-empty stage value, then non-empty nr value
         $forecastMap = DB::table('forecast_analysis')
             ->get([
-                'sku', 'parent', 's_msl', 'approved_qty', 'nr', 'req', 'hide', 'notes',
+                'sku', 'parent', 'approved_qty', 'nr', 'req', 'hide', 'notes',
                 'clink', 'olink', 'rfq_form_link', 'rfq_report', 'date_apprvl', 'stage',
             ])
             ->groupBy(function($item) use ($normalizeSku) {
@@ -690,7 +690,6 @@ class ForecastAnalysisController extends Controller
             // Match forecast record by SKU only
             if ($forecastMap->has($sheetSku)) {
                 $forecast = $forecastMap->get($sheetSku);
-                $item->{'s-msl'} = $forecast->s_msl ?? 0;
                 $item->{'Approved QTY'} = $forecast->approved_qty ?? 0;
                 // MOQ on forecast = same as two-orders (approved_qty) so changes on to-order page show here
                 $approved = $forecast->approved_qty ?? null;
@@ -729,7 +728,6 @@ class ForecastAnalysisController extends Controller
                     ->first();
                 
                 if ($forecastRecord) {
-                    $item->{'s-msl'} = $forecastRecord->s_msl ?? 0;
                     $item->{'Approved QTY'} = $forecastRecord->approved_qty ?? 0;
                     // MOQ = same as two-orders (approved_qty)
                     $approved = $forecastRecord->approved_qty ?? null;
@@ -904,11 +902,10 @@ class ForecastAnalysisController extends Controller
                 $combinedMsl = $combinedActiveMonths > 0 ? ($combinedTotal / $combinedActiveMonths) * 4 : $msl;
 
                 // Use combined MSL as the primary MSL shown in the table
-                $effectiveMsl = (isset($item->{'s-msl'}) && $item->{'s-msl'} > 0) ? $item->{'s-msl'} : $combinedMsl;
+                $effectiveMsl = $combinedMsl;
 
                 $lp = is_numeric($item->{'LP'}) ? (float)$item->{'LP'} : 0;
                 $item->{'MSL_C'} = round($combinedMsl * $lp / 4, 2);
-                $item->{'MSL_Four'} = round($combinedMsl / 4, 2);
                 $item->{'MSL_SP'} = floor($shopifyb2c_price * $effectiveMsl / 4);
 
                 $amzPrc = $resolveAmazonPrice($sheetSku);
@@ -1550,9 +1547,6 @@ class ForecastAnalysisController extends Controller
         if (!$columnKey) {
             return response()->json(['success' => false, 'message' => 'Invalid column']);
         }
-        if ($columnKey === 's_msl') {
-            $value = mb_substr((string) $value, 0, 4);
-        }
 
         // Match by SKU only - prefer record with stage value if multiple exist
         $existing = DB::table('forecast_analysis')
@@ -2118,7 +2112,7 @@ class ForecastAnalysisController extends Controller
 
     /**
      * Archive a batch of (sku, parent) rows. Body shape:
-     *   { items: [ { sku, parent, stage?, nr?, req?, notes?, s_msl?, approved_qty?,
+     *   { items: [ { sku, parent, stage?, nr?, req?, notes?, approved_qty?,
      *               order_given?, transit?, clink?, olink?, rfq_form_link?,
      *               rfq_report?, date_apprvl? }, ... ] }
      *
@@ -2151,7 +2145,7 @@ class ForecastAnalysisController extends Controller
 
         // Whitelisted snapshot fields (string + numeric variants of each get coerced).
         $stringFields  = ['stage', 'nr', 'req', 'notes', 'clink', 'olink', 'rfq_form_link', 'rfq_report', 'date_apprvl'];
-        $numericFields = ['s_msl', 'approved_qty', 'order_given', 'transit'];
+        $numericFields = ['approved_qty', 'order_given', 'transit'];
 
         foreach ($items as $item) {
             $sku = trim((string) ($item['sku'] ?? ''));
@@ -2281,7 +2275,7 @@ class ForecastAnalysisController extends Controller
             ->orderByDesc('archived_at')
             ->get([
                 'id', 'sku', 'parent', 'archived_at', 'archived_by',
-                's_msl', 'approved_qty', 'nr', 'req', 'stage', 'notes', 'updated_at',
+                'approved_qty', 'nr', 'req', 'stage', 'notes', 'updated_at',
                 'clink', 'olink', 'rfq_form_link', 'rfq_report', 'date_apprvl',
                 'order_given', 'transit',
             ]);
@@ -2353,7 +2347,6 @@ class ForecastAnalysisController extends Controller
                 'cbm'          => $values['cbm'] ?? '',
                 'moq'          => $r->approved_qty,    // mirror what the main view shows for MOQ
                 'approved_qty' => $r->approved_qty,
-                's_msl'        => $r->s_msl,
                 'nr'           => $r->nr,
                 'req'          => $r->req,
                 'stage'        => $r->stage,
@@ -2402,7 +2395,6 @@ class ForecastAnalysisController extends Controller
             'order_given' => 'Order Given',
             'date_apprvl' => 'Date of Appr',
             'approved_qty' => 'Approved Qty',
-            's_msl' => 'MSL Manual',
         ];
     }
 

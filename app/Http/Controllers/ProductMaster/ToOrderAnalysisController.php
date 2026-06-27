@@ -116,7 +116,7 @@ class ToOrderAnalysisController extends Controller
             $skusForReviews = $toOrderRecords->pluck('sku')->map(fn($s) => strtoupper(trim((string) $s)))->unique()->filter()->values()->all();
             $ratingReviewsMap = $this->getRatingReviewsBySku($skusForReviews);
 
-            // MSL: same as forecast page – from movement_analysis (Total/Total month)*4, fallback to forecast_analysis.s_msl
+            // MSL: from movement_analysis (Total/Total month)*4
             $movementMap = DB::table('movement_analysis')->get()->keyBy(fn($item) => strtoupper(trim($item->sku ?? '')));
 
             $processedData = [];
@@ -172,7 +172,6 @@ class ToOrderAnalysisController extends Controller
                 $approvedQty = (int)($toOrder->approved_qty ?? 0);
 
                 $mslValue = $this->computeMslForSku($sheetSku, $movementMap, $forecast);
-                $sMsl = $forecast ? (int)($forecast->s_msl ?? 0) : 0;
                 $lpMsl = ($mslValue > 0 && $lp > 0) ? round($mslValue * $lp / 4, 2) : null;
 
                 $rr = $ratingReviewsMap[$sheetSku] ?? ['rating' => null, 'reviews' => null];
@@ -186,7 +185,6 @@ class ToOrderAnalysisController extends Controller
                     // Use stored supplier; only fallback to parent lookup when never set (null). Empty = user chose "Select" so keep blank.
                     'Supplier'        => $toOrder->supplier_name !== null ? (string) $toOrder->supplier_name : ($supplierName ?? ''),
                     'msl'             => $mslValue,
-                    's_msl'           => $sMsl,
                     'lp_msl'          => $lpMsl,
                     'rating'          => $rr['rating'],
                     'reviews'         => $rr['reviews'],
@@ -400,7 +398,7 @@ class ToOrderAnalysisController extends Controller
             $skusForReviews = $allSkus;
             $ratingReviewsMap = $this->getRatingReviewsBySku($skusForReviews);
 
-            // MSL: same as forecast page – from movement_analysis (Total/Total month)*4, fallback to forecast_analysis.s_msl
+            // MSL: from movement_analysis (Total/Total month)*4
             $movementMap = DB::table('movement_analysis')->get()->keyBy(fn($item) => strtoupper(trim($item->sku ?? '')));
             $qcIssuesBySku = $this->buildQcPackingIssuesBySku($allSkus);
 
@@ -511,7 +509,6 @@ class ToOrderAnalysisController extends Controller
                 $review = $allReviews->get($reviewKey);
                 $rr = $ratingReviewsMap[$sheetSku] ?? ['rating' => null, 'reviews' => null];
                 $mslValue = $this->computeMslForSku($sheetSku, $movementMap, $forecast);
-                $sMsl = $forecast ? (int)($forecast->s_msl ?? 0) : 0;
                 $lpMsl = ($mslValue > 0 && $lp > 0) ? round($mslValue * $lp / 4, 2) : null;
 
                 $instructionsItemPkg = '';
@@ -558,7 +555,6 @@ class ToOrderAnalysisController extends Controller
                     'Category'        => $supplierCategoryMap[strtoupper(trim((string) ($toOrder->supplier_name !== null ? $toOrder->supplier_name : ($supplierName ?? ''))))] ?? '',
                     'Exec'            => isset($toOrder->exec) && $toOrder->exec !== null ? (string) $toOrder->exec : '',
                     'msl'             => $mslValue,
-                    's_msl'           => $sMsl,
                     'lp_msl'          => $lpMsl,
                     'rating'          => $rr['rating'],
                     'reviews'         => $rr['reviews'],
@@ -667,8 +663,7 @@ class ToOrderAnalysisController extends Controller
     }
 
     /**
-     * Compute MSL for a SKU the same way as forecast page: from movement_analysis (Total/Total month)*4,
-     * fallback to forecast_analysis.s_msl when no movement data.
+     * Compute MSL for a SKU the same way as forecast page: from movement_analysis (Total/Total month)*4.
      */
     private function computeMslForSku(string $sheetSku, $movementMap, $forecast): int
     {
@@ -691,8 +686,7 @@ class ToOrderAnalysisController extends Controller
                 return (int) round($msl);
             }
         }
-        $sMsl = $forecast ? (int) ($forecast->s_msl ?? 0) : 0;
-        return $sMsl;
+        return 0;
     }
 
     private function forecastNullOrDashQtyForYellow(mixed $value): bool
@@ -728,8 +722,7 @@ class ToOrderAnalysisController extends Controller
             ? $mslFromProp
             : ($totalMonth > 0 ? ($total / $totalMonth) * 4 : 0.0);
 
-        $sMslVal = (float) ($item->{'s_msl'} ?? $item->{'s-msl'} ?? 0);
-        $effectiveMslForToOrder = max($msl, $sMslVal);
+        $effectiveMslForToOrder = $msl;
 
         $itemStage = strtolower(trim((string) ($item->stage ?? '')));
 

@@ -1597,8 +1597,15 @@
 
             const table = new Tabulator("#toOrderAnalysis-table", {
                 ajaxURL: "/to-order-analysis/data",
-                ajaxConfig: "GET",
+                ajaxConfig: {
+                    method: "GET",
+                    headers: {
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "Pragma": "no-cache"
+                    }
+                },
                 index: "SKU",
+                selectableRows: true,
                 layout: "fitData",
                 height: "700px",
                 initialSort: [{ column: "Date of Appr", dir: "asc" }],
@@ -2299,7 +2306,163 @@
                 },
             });
 
-            // Executive column — save on change + update badge colour live
+            function isToaSelectableRow(row) {
+                const sku = String((row.getData && row.getData().SKU) || '').trim();
+                return sku && !sku.startsWith('PARENT');
+            }
+
+            let toaBulkSelectionCache = [];
+
+            function dedupeToaRows(rows) {
+                const seen = new Set();
+                return (rows || []).filter(function (r) {
+                    if (!isToaSelectableRow(r)) return false;
+                    const sku = String(r.getData().SKU || '').trim();
+                    if (!sku || seen.has(sku)) return false;
+                    seen.add(sku);
+                    return true;
+                });
+            }
+
+            /** Selected checkbox rows; keeps multi-select when focus moves to a dropdown. */
+            function getToaBulkTargetRows(primarySku, extraRows) {
+                const live = dedupeToaRows(table.getSelectedRows());
+                const cached = dedupeToaRows(toaBulkSelectionCache);
+                let selected = cached.length > live.length ? cached : live;
+                if (selected.length > 0) return selected;
+
+                const rows = [];
+                const seen = new Set();
+                (extraRows || []).forEach(function (r) {
+                    if (!r || !isToaSelectableRow(r)) return;
+                    const sku = String(r.getData().SKU || '').trim();
+                    if (seen.has(sku)) return;
+                    seen.add(sku);
+                    rows.push(r);
+                });
+                if (rows.length) return rows;
+                if (primarySku) {
+                    const row = table.searchRows('SKU', '=', primarySku)[0];
+                    if (row && isToaSelectableRow(row)) return [row];
+                }
+                return [];
+            }
+
+            function postStageUpdate(sku, parent, value) {
+                return new Promise(function (resolve, reject) {
+                    $.post('/update-forecast-data', {
+                        sku: sku,
+                        parent: parent || '',
+                        column: 'Stage',
+                        value: value,
+                        _token: $('meta[name="csrf-token"]').attr('content')
+                    }).done(function (res) {
+                        if (res && res.success) resolve(res);
+                        else reject(new Error((res && res.message) ? res.message : 'Save failed'));
+                    }).fail(function () { reject(new Error('Network error')); });
+                });
+            }
+
+            async function applyStageToRow(row, stageVal) {
+                const d = row.getData();
+                const sku = String(d.SKU || '').trim();
+                const parent = String(d.Parent || '').trim();
+                const moq = parseInt(d.approved_qty, 10) || 0;
+                if (!moq) return { ok: false, skippedMoq: true, sku: sku };
+                try {
+                    await postStageUpdate(sku, parent, stageVal);
+                    if (stageVal === 'mip') {
+                        const insertRes = await fetch('/mfrg-progresses/insert', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                            },
+                            body: JSON.stringify({
+                                parent: d.Parent || '',
+                                sku: d.SKU || '',
+                                order_qty: d.approved_qty || '',
+                                supplier: d.Supplier || '',
+                                adv_date: d['Adv date'] || ''
+                            })
+                        }).then(function (r) { return r.json(); });
+                        if (insertRes.success) {
+                            row.delete();
+                            return { ok: true, deleted: true, sku: sku };
+                        }
+                        row.update({ stage: stageVal }, true);
+                        return { ok: false, error: insertRes.message || 'insert failed', sku: sku };
+                    }
+                    row.update({ stage: stageVal }, true);
+                    return { ok: true, sku: sku };
+                } catch (e) {
+                    return { ok: false, error: e.message || 'error', sku: sku };
+                }
+            }
+
+            async function applyStageToRows(rows, stageVal) {
+                const skippedMoq = [];
+                const failed = [];
+                let ok = 0;
+                for (let i = 0; i < rows.length; i++) {
+                    const res = await applyStageToRow(rows[i], stageVal);
+                    if (res.skippedMoq) skippedMoq.push(res.sku);
+                    else if (res.ok) ok++;
+                    else failed.push(res.sku + (res.error ? ': ' + res.error : ''));
+                }
+                return { ok: ok, failed: failed, skippedMoq: skippedMoq };
+            }
+
+            function applySupplierToRows(rows, supplierName) {
+                const skus = rows.map(function (r) { return (r.getData().SKU || '').trim().toUpperCase(); })
+                    .filter(function (s) { return s && !s.startsWith('PARENT'); });
+                if (skus.length === 0) {
+                    return Promise.resolve({ ok: 0, skipped: rows.length });
+                }
+                return fetch('{{ route('to.order.analysis.bulk.supplier') }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    },
+                    body: JSON.stringify({ skus: skus, supplier_name: supplierName })
+                }).then(function (res) { return res.json(); }).then(function (res) {
+                    if (!res || !res.success) {
+                        throw new Error((res && res.message) ? res.message : 'Supplier update failed');
+                    }
+                    rows.forEach(function (row) {
+                        row.update({ Supplier: supplierName }, true);
+                    });
+                    return { ok: skus.length, skipped: rows.length - skus.length, message: res.message };
+                });
+            }
+
+            function applyExecutiveToRows(rows, execValue) {
+                const skus = rows.map(function (r) { return (r.getData().SKU || '').trim().toUpperCase(); })
+                    .filter(function (s) { return s && !s.startsWith('PARENT'); });
+                if (skus.length === 0) {
+                    return Promise.resolve({ ok: 0, skipped: rows.length });
+                }
+                const execName = execValue === '__unassigned__' ? '' : execValue;
+                return fetch('/to-order-analysis/bulk-update-exec', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    },
+                    body: JSON.stringify({ skus: skus, exec_name: execName })
+                }).then(function (res) { return res.json(); }).then(function (res) {
+                    if (!res || !res.success) {
+                        throw new Error((res && res.message) ? res.message : 'Executive update failed');
+                    }
+                    rows.forEach(function (row) {
+                        row.update({ Exec: execName || '' }, true);
+                    });
+                    return { ok: skus.length, skipped: rows.length - skus.length, message: res.message };
+                });
+            }
+
+            // Executive column — save on change + update badge colour live (bulk when rows selected)
             const TOA_EXEC_COLORS = {
                 "Atin":   { bg: "#3b82f6", text: "#fff" },
                 "Jack":   { bg: "#10b981", text: "#fff" },
@@ -2314,32 +2477,30 @@
                 if (!sel) return;
                 const newVal = sel.value;
                 const sku   = sel.dataset.sku;
-                const rowId = sel.dataset.rowId || 0;
-                const c = TOA_EXEC_COLORS[newVal] || { bg: "#e5e7eb", text: "#6b7280" };
-                sel.style.background = c.bg;
-                sel.style.color      = c.text;
-                // update Tabulator data so filters/sorts reflect change
-                const tRow = table.searchRows("SKU", "=", sku)[0];
-                if (tRow) tRow.update({ Exec: newVal });
+                const targets = getToaBulkTargetRows(sku);
+                if (!targets.length) return;
+
+                targets.forEach(function (row) {
+                    const execSel = row.getElement().querySelector('.toa-exec-select');
+                    if (execSel) {
+                        execSel.value = newVal;
+                        const c = TOA_EXEC_COLORS[newVal] || { bg: "#e5e7eb", text: "#6b7280" };
+                        execSel.style.background = c.bg;
+                        execSel.style.color = c.text;
+                    }
+                    row.update({ Exec: newVal || '' }, true);
+                });
+
                 try {
-                    const res = await fetch("/update-link", {
-                        method: "POST",
-                        headers: {
-                            "Accept": "application/json",
-                            "Content-Type": "application/json",
-                            "X-Requested-With": "XMLHttpRequest",
-                            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-                        },
-                        body: JSON.stringify({ sku, row_id: rowId, column: "Exec", value: newVal || null }),
-                    });
-                    const d = await res.json().catch(() => ({}));
-                    if (!res.ok || !d.success) throw new Error(d.message || "Save failed");
-                } catch(err) {
-                    alert("Could not save executive: " + err.message);
+                    await applyExecutiveToRows(targets, newVal || '__unassigned__');
+                } catch (err) {
+                    alert("Could not save executive: " + (err.message || 'Save failed'));
+                    table.replaceData();
                 }
             });
 
             table.on("rowSelectionChanged", function(data, rows) {
+                toaBulkSelectionCache = dedupeToaRows(rows || table.getSelectedRows());
                 if (data.length > 0) {
                     $('#delete-selected-btn').removeClass('d-none');
                 } else {
@@ -2384,16 +2545,10 @@
                     const clickedRow = table.getRow($(this).closest('.tabulator-row')[0]);
                     if (!clickedRow) return;
 
-                    const selected = table.getSelectedRows();
-                    const seen = new Set();
-                    currentRows = [];
-                    [clickedRow].concat(selected).forEach(function (r) {
-                        const data = r.getData();
-                        const sku = String(data.SKU || '').trim();
-                        if (!sku || seen.has(sku)) return;
-                        seen.add(sku);
-                        currentRows.push(r);
-                    });
+                    currentRows = getToaBulkTargetRows(
+                        String(clickedRow.getData().SKU || '').trim(),
+                        [clickedRow]
+                    );
 
                     // Reset the form between opens so leftover values don't bleed
                     // into the next session.
@@ -2410,119 +2565,6 @@
 
                     bsModal.show();
                 });
-
-                // Stage update for a single row — mirrors the old bulk handler so
-                // the MIP-special-case (insert into mfrg-progresses) still works.
-                function postStageUpdate(sku, parent, value) {
-                    return new Promise(function (resolve, reject) {
-                        $.post('/update-forecast-data', {
-                            sku: sku,
-                            parent: parent || '',
-                            column: 'Stage',
-                            value: value,
-                            _token: $('meta[name="csrf-token"]').attr('content')
-                        }).done(function (res) {
-                            if (res && res.success) resolve(res);
-                            else reject(new Error((res && res.message) ? res.message : 'Save failed'));
-                        }).fail(function () { reject(new Error('Network error')); });
-                    });
-                }
-
-                async function applyStageToRows(rows, stageVal) {
-                    const skippedMoq = [];
-                    const toProcess = [];
-                    rows.forEach(function (row) {
-                        const d = row.getData();
-                        const moq = parseInt(d.approved_qty, 10) || 0;
-                        if (!moq) skippedMoq.push(d.SKU);
-                        else      toProcess.push(row);
-                    });
-                    if (toProcess.length === 0) {
-                        return { ok: 0, failed: [], skippedMoq: skippedMoq };
-                    }
-                    let ok = 0;
-                    const failed = [];
-                    for (let i = 0; i < toProcess.length; i++) {
-                        const row = toProcess[i];
-                        const d = row.getData();
-                        const sku = String(d.SKU || '').trim();
-                        const parent = String(d.Parent || '').trim();
-                        try {
-                            await postStageUpdate(sku, parent, stageVal);
-                            if (stageVal === 'mip') {
-                                const insertRes = await fetch('/mfrg-progresses/insert', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                                    },
-                                    body: JSON.stringify({
-                                        parent: d.Parent || '',
-                                        sku: d.SKU || '',
-                                        order_qty: d.approved_qty || '',
-                                        supplier: d.Supplier || '',
-                                        adv_date: d['Adv date'] || ''
-                                    })
-                                }).then(function (r) { return r.json(); });
-                                if (insertRes.success) {
-                                    row.delete();
-                                } else {
-                                    row.update({ stage: stageVal }, true);
-                                    failed.push(sku + ' (MIP: ' + (insertRes.message || 'insert failed') + ')');
-                                }
-                            } else {
-                                row.update({ stage: stageVal }, true);
-                            }
-                            ok++;
-                        } catch (e) {
-                            failed.push(sku + ': ' + (e.message || 'error'));
-                        }
-                    }
-                    return { ok: ok, failed: failed, skippedMoq: skippedMoq };
-                }
-
-                function applySupplierToRows(rows, supplierName) {
-                    const skus = rows.map(function (r) { return (r.getData().SKU || '').trim().toUpperCase(); })
-                                     .filter(function (s) { return s && !s.startsWith('PARENT'); });
-                    if (skus.length === 0) {
-                        return Promise.resolve({ ok: 0, skipped: rows.length });
-                    }
-                    return fetch('{{ route('to.order.analysis.bulk.supplier') }}', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                        },
-                        body: JSON.stringify({ skus: skus, supplier_name: supplierName })
-                    }).then(function (res) { return res.json(); }).then(function (res) {
-                        if (!res || !res.success) {
-                            throw new Error((res && res.message) ? res.message : 'Supplier update failed');
-                        }
-                        return { ok: skus.length, skipped: rows.length - skus.length, message: res.message };
-                    });
-                }
-
-                function applyExecutiveToRows(rows, execValue) {
-                    const skus = rows.map(function (r) { return (r.getData().SKU || '').trim().toUpperCase(); })
-                                     .filter(function (s) { return s && !s.startsWith('PARENT'); });
-                    if (skus.length === 0) {
-                        return Promise.resolve({ ok: 0, skipped: rows.length });
-                    }
-                    const execName = execValue === '__unassigned__' ? '' : execValue;
-                    return fetch('/to-order-analysis/bulk-update-exec', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                        },
-                        body: JSON.stringify({ skus: skus, exec_name: execName })
-                    }).then(function (res) { return res.json(); }).then(function (res) {
-                        if (!res || !res.success) {
-                            throw new Error((res && res.message) ? res.message : 'Executive update failed');
-                        }
-                        return { ok: skus.length, skipped: rows.length - skus.length, message: res.message };
-                    });
-                }
 
                 $(applyBtn).off('click.toaActionApply').on('click.toaActionApply', async function () {
                     if (!currentRows.length) return;
@@ -2562,10 +2604,8 @@
                         }
 
                         bsModal.hide();
-                        // Refresh the table so updated Supplier / Exec values render.
-                        if (supplierVal || execVal) {
-                            table.replaceData();
-                        }
+                        table.deselectRow();
+                        toaBulkSelectionCache = [];
                         alert('Done.\n\n' + summary.join('\n'));
                     } catch (err) {
                         alert('Error: ' + (err.message || 'Something went wrong'));
@@ -2796,171 +2836,167 @@
                 });
             }
 
-            // Handle editable select fields
-            $(document).off('change', '.editable-select').on('change', '.editable-select', function() {
+            // Keep row selection when opening inline Stage / NRP / Supplier dropdowns.
+            $(document).off('mousedown.toaBulkSelect click.toaBulkSelect', '.editable-select, .toa-exec-select')
+                .on('mousedown.toaBulkSelect click.toaBulkSelect', '.editable-select, .toa-exec-select', function (e) {
+                    e.stopPropagation();
+                });
+
+            // Handle editable select fields (Stage, NRP, Supplier) — applies to all checkbox-selected rows
+            $(document).off('change', '.editable-select').on('change', '.editable-select', async function() {
                 const $el = $(this);
                 const sku = $el.data('sku');
                 const parent = $el.data('parent');
-                const column = $el.data('column'); // For other columns like Supplier, nrl
-                const field = $el.data('type'); // For Stage column
+                const column = $el.data('column');
+                const field = $el.data('type');
                 const value = $el.val().trim();
-                
-                // Handle Stage and NR columns using updateForecastField
-                if (field === "Stage" || field === "NR") {
-                    // Update background color immediately
-                    let bgColor = '#fff';
-                    if (value === 'to_order_analysis') {
-                        bgColor = '#ffc107'; // Yellow
-                    } else if (value === 'mip') {
-                        bgColor = '#0d6efd'; // Blue
-                    } else if (value === 'r2s') {
-                        bgColor = '#198754'; // Green
-                    }
-                    $el.css({
-                        'background-color': bgColor,
-                        'color': '#000'
-                    });
-                    const table = Tabulator.findTable("#toOrderAnalysis-table")[0];
-                    if (table) {
-                        const row = table.searchRows("SKU", "=", sku)[0];
-                        const orderQty = row ? row.getData()["approved_qty"] : null;
-                        
-                        if (!orderQty || orderQty === "0" || parseInt(orderQty) === 0) {
-                            alert("MOQ cannot be empty or zero.");
+                const targets = getToaBulkTargetRows(sku);
+
+                if (!targets.length) return;
+
+                if (field === 'Stage' || field === 'NR') {
+                    if (field === 'Stage') {
+                        const skippedMoq = [];
+                        targets.forEach(function (row) {
+                            const moq = parseInt(row.getData().approved_qty, 10) || 0;
+                            if (!moq) skippedMoq.push(row.getData().SKU);
+                        });
+                        if (skippedMoq.length === targets.length) {
+                            alert('MOQ cannot be empty or zero.');
                             $el.val('');
                             return;
                         }
+
+                        targets.forEach(function (row) {
+                            const stageSel = row.getElement().querySelector('.editable-select[data-type="Stage"]');
+                            if (stageSel) stageSel.value = value;
+                        });
+
+                        const failed = [];
+                        let ok = 0;
+                        for (let i = 0; i < targets.length; i++) {
+                            const res = await applyStageToRow(targets[i], value);
+                            if (res.skippedMoq) continue;
+                            if (res.ok) ok++;
+                            else failed.push(res.sku + (res.error ? ': ' + res.error : ''));
+                        }
+                        if (skippedMoq.length) {
+                            alert('Skipped (MOQ=0): ' + skippedMoq.join(', '));
+                        }
+                        if (failed.length) {
+                            alert('Some rows failed: ' + failed.join('; '));
+                        }
+                        return;
                     }
 
-                    updateForecastField({
-                        sku,
-                        parent,
-                        column: field,
-                        value: value
-                    }, function() {
-                        // Update cell after successful save
-                        const table = Tabulator.findTable("#toOrderAnalysis-table")[0];
-                        if (table) {
-                            const row = table.searchRows("SKU", "=", sku)[0];
-                            if (row) {
-                                if (field === "Stage") {
-                                    // Update row data - this will automatically trigger formatter
-                                    row.update({ stage: value }, true);
-                                    // Filter table to show only rows with this stage
-                                    if (value && value !== '') {
-                                        table.setFilter("stage", "=", value);
-                                    } else {
-                                        table.clearFilter();
-                                    }
-                                } else if (field === "NR") {
-                                    row.update({ nr: value });
-                                    row.reformat();
-                                }
-                            }
-                        }
-
-                        // Handle MIP stage (equivalent to Mfrg Progress)
-                        if (value === "mip") {
-                            const table = Tabulator.findTable("#toOrderAnalysis-table")[0];
-                            if (!table) return;
-
-                            const row = table.searchRows("SKU", "=", sku)[0];
-                            if (!row) return;
-
-                            const rowData = row.getData();
-                            const payload = {
-                                parent: rowData.Parent || "",
-                                sku: rowData.SKU || "",
-                                order_qty: rowData.approved_qty || "",
-                                supplier: rowData.Supplier || "",
-                                adv_date: rowData["Adv date"] || ""
-                            };
-
-                            fetch("/mfrg-progresses/insert", {
-                                method: "POST",
-                                headers: {
-                                    "Content-Type": "application/json",
-                                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-                                },
-                                body: JSON.stringify(payload)
-                            }).then(r => r.json()).then(insertRes => {
-                                if (insertRes.success) {
-                                    row.delete();
-                                }
-                            });
-                        }
-                    }, function() {
-                        alert('Failed to save ' + field + '.');
+                    // NR / NRP bulk
+                    targets.forEach(function (row) {
+                        const nrSel = row.getElement().querySelector('.editable-select[data-type="NR"]');
+                        if (nrSel) nrSel.value = value;
                     });
-                } else if (column === 'nrl') {
-                    // Legacy nrl column - convert to NR and use updateForecastField
-                    updateForecastField({
-                        sku,
-                        parent: parent || '',
-                        column: 'NR',
-                        value: value
-                    }, function() {
-                        const table = Tabulator.findTable("#toOrderAnalysis-table")[0];
-                        if (table) {
-                            const row = table.searchRows("SKU", "=", sku)[0];
-                            if (row) {
-                                row.update({ nr: value });
-                                row.reformat();
-                            }
-                        }
-                    }, function() {
-                        alert('Failed to save NRP.');
+
+                    let pending = targets.length;
+                    let hadError = false;
+                    targets.forEach(function (row) {
+                        const d = row.getData();
+                        updateForecastField({
+                            sku: d.SKU,
+                            parent: d.Parent || parent || '',
+                            column: 'NR',
+                            value: value
+                        }, function () {
+                            row.update({ nr: value }, true);
+                            row.reformat();
+                            pending--;
+                        }, function () {
+                            hadError = true;
+                            pending--;
+                        });
                     });
-                } else {
-                    // Handle other columns (Supplier, RFQ links, Adv date, etc.) using /update-link endpoint
-                    const payload = { sku, column, value };
-                    if (column === 'Supplier') {
-                        let pSave = $el.data('parent') != null ? String($el.data('parent')).trim() : '';
-                        if (!pSave) {
-                            const tblP = Tabulator.findTable("#toOrderAnalysis-table")[0];
-                            const rP = tblP ? tblP.searchRows("SKU", "=", sku)[0] : null;
-                            if (rP) {
-                                pSave = (rP.getData().Parent || '').trim();
-                            }
-                        }
-                        payload.parent = pSave;
-                    }
-                    fetch('/update-link', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                            'Accept': 'application/json'
-                        },
-                        body: JSON.stringify(payload)
-                    })
-                    .then(res => {
-                        if (!res.ok) {
-                            return res.json().then(data => { throw new Error(data.message || 'Request failed'); }).catch(() => { throw new Error('Request failed'); });
-                        }
-                        return res.json();
-                    })
-                    .then(result => {
-                        if (!result.success) {
-                            alert('Update failed: ' + (result.message || 'Unknown error'));
-                            return;
-                        }
-                        // Update the row in the table so the UI reflects the change
-                        const tbl = Tabulator.findTable("#toOrderAnalysis-table")[0];
-                        if (tbl && column) {
-                            const row = tbl.searchRows("SKU", "=", sku)[0];
-                            if (row) {
-                                const fieldMap = { 'Supplier': 'Supplier', 'Adv date': 'Adv date', 'RFQ Form Link': 'RFQ Form Link', 'Rfq Report Link': 'Rfq Report Link', 'Reviews': 'Reviews' };
-                                const field = fieldMap[column] || column;
-                                row.update({ [field]: value }, true);
-                            }
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Network error:', error);
-                        alert('Error saving: ' + (error.message || 'Please try again.'));
-                    });
+                    if (hadError) alert('Failed to save NRP on one or more rows.');
+                    return;
                 }
+
+                if (column === 'nrl') {
+                    targets.forEach(function (row) {
+                        const d = row.getData();
+                        updateForecastField({
+                            sku: d.SKU,
+                            parent: d.Parent || parent || '',
+                            column: 'NR',
+                            value: value
+                        }, function () {
+                            row.update({ nr: value }, true);
+                            row.reformat();
+                        }, function () {
+                            alert('Failed to save NRP.');
+                        });
+                    });
+                    return;
+                }
+
+                if (column === 'Supplier') {
+                    targets.forEach(function (row) {
+                        const supSel = row.getElement().querySelector('.editable-select[data-column="Supplier"]');
+                        if (supSel) supSel.value = value;
+                    });
+                    try {
+                        await applySupplierToRows(targets, value);
+                    } catch (error) {
+                        console.error('Network error:', error);
+                        alert('Error saving supplier: ' + (error.message || 'Please try again.'));
+                        table.replaceData();
+                    }
+                    return;
+                }
+
+                // Other columns (RFQ links, Adv date, etc.) — single row only
+                const payload = { sku, column, value };
+                if (column === 'Supplier') {
+                    let pSave = $el.data('parent') != null ? String($el.data('parent')).trim() : '';
+                    if (!pSave) {
+                        const tblP = Tabulator.findTable("#toOrderAnalysis-table")[0];
+                        const rP = tblP ? tblP.searchRows("SKU", "=", sku)[0] : null;
+                        if (rP) {
+                            pSave = (rP.getData().Parent || '').trim();
+                        }
+                    }
+                    payload.parent = pSave;
+                }
+                fetch('/update-link', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                })
+                .then(res => {
+                    if (!res.ok) {
+                        return res.json().then(data => { throw new Error(data.message || 'Request failed'); }).catch(() => { throw new Error('Request failed'); });
+                    }
+                    return res.json();
+                })
+                .then(result => {
+                    if (!result.success) {
+                        alert('Update failed: ' + (result.message || 'Unknown error'));
+                        return;
+                    }
+                    const tbl = Tabulator.findTable("#toOrderAnalysis-table")[0];
+                    if (tbl && column) {
+                        const row = tbl.searchRows("SKU", "=", sku)[0];
+                        if (row) {
+                            const fieldMap = { 'Supplier': 'Supplier', 'Adv date': 'Adv date', 'RFQ Form Link': 'RFQ Form Link', 'Rfq Report Link': 'Rfq Report Link', 'Reviews': 'Reviews' };
+                            const dataField = fieldMap[column] || column;
+                            row.update({ [dataField]: value }, true);
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Network error:', error);
+                    alert('Error saving: ' + (error.message || 'Please try again.'));
+                });
             });
 
             let supplierKeys = [];
@@ -3230,32 +3266,11 @@
                         '<button type="button" class="btn btn-sm btn-link p-0 small" id="toa-columns-all">Show all</button></div>' + rows;
                 }
                 function saveVisibility() {
-                    const visibility = {};
-                    table.getColumns().forEach(function (col) {
-                        const field = col.getField();
-                        if (field) visibility[field] = col.isVisible();
-                    });
-                    fetch(TOA_COLUMN_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': TOA_CSRF },
-                        body: JSON.stringify({ channel: TOA_COLUMN_CHANNEL, visibility: visibility })
-                    }).catch(function () {});
+                    /* no-op — column visibility is not persisted across refresh */
                 }
                 function applyVisibility() {
-                    return fetch(TOA_COLUMN_URL + '?channel=' + encodeURIComponent(TOA_COLUMN_CHANNEL), {
-                        method: 'GET', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': TOA_CSRF }
-                    })
-                        .then(r => r.json())
-                        .then(function (saved) {
-                            if (!saved || typeof saved !== 'object') return;
-                            table.getColumns().forEach(function (col) {
-                                const field = col.getField();
-                                if (!field) return;
-                                if (saved[field] === false) col.hide(); else col.show();
-                            });
-                            table.redraw(true);
-                        })
-                        .catch(function () {});
+                    /* no-op — always use default column layout on load */
+                    return Promise.resolve();
                 }
 
                 colBtn.addEventListener('click', function (e) {
@@ -3289,12 +3304,6 @@
                         colMenu.style.display = 'none';
                     }
                 });
-
-                // Apply saved (shared) visibility once the table is ready.
-                let applied = false;
-                const applyOnce = function () { if (applied) return; applied = true; applyVisibility(); };
-                table.on('tableBuilt', applyOnce);
-                try { if (table.getColumns && table.getColumns().length) applyOnce(); } catch (e) {}
             })();
 
             // add and edit review
