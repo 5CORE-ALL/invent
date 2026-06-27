@@ -26,6 +26,7 @@
         .bp-mp-stack:hover .marketplace-btn { transform:translateY(-1px); box-shadow:0 2px 6px rgba(0,0,0,.18); }
         .bp-mp-dot { width:10px; height:10px; border-radius:50%; border:2px solid #94a3b8; background:transparent; transition:background .15s,border-color .15s; flex-shrink:0; }
         .bp-mp-dot.pushed { background:#22c55e; border-color:#22c55e; }
+        .bp-mp-dot.failed { background:#ef4444; border-color:#ef4444; }
         .marketplace-btn { width:28px; height:28px; border:none; border-radius:4px; color:#fff; font-weight:600; font-size:11px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; transition:all .2s; padding:0; pointer-events:none; }
         .bp-mp-stack { pointer-events:auto; }
         .btn-ebay1 { background-color:#0d6efd; }
@@ -64,6 +65,8 @@
         .dm-aplus-preview img { max-width:100%; height:auto; border-radius:6px; margin-bottom:.5rem; }
         .dm-mp-group-title { font-size:11px; font-weight:600; color:#334155; }
         .btn.is-loading { opacity:.75; pointer-events:none; }
+        #modalDescCharCount { font-variant-numeric: tabular-nums; }
+        #modalDescCharCount.at-limit { color:#dc2626; font-weight:600; }
     </style>
 @endsection
 
@@ -111,17 +114,17 @@
                                             <input type="text" id="previewSearchDm" class="th-sub" placeholder="Filter preview" autocomplete="off">
                                         </th>
                                         <th>Action</th>
-                                        <th title="Amazon, Temu, Reverb — max 1500 characters each">
+                                        <th title="Amazon &amp; Temu: 2000 plain text. Wayfair: 2000 (100–200 words). Reverb &amp; Best Buy: 1500.">
                                             <div class="bp-mp-th-title">DESC 1500</div>
                                             <div class="bp-mp-th-icons">
-                                                <span class="bp-mp-th-pill btn-amazon">A</span><span class="bp-mp-th-pill btn-temu">T</span><span class="bp-mp-th-pill btn-reverb">R</span>
+                                                <span class="bp-mp-th-pill btn-amazon">A</span><span class="bp-mp-th-pill btn-temu">T</span><span class="bp-mp-th-pill btn-reverb">R</span><span class="bp-mp-th-pill btn-wayfair">W</span><span class="bp-mp-th-pill btn-bestbuy">B</span>
                                             </div>
                                         </th>
-                                        <th title="Shopify Main, Shopify PLS — max 1000 characters each">
+                                        <th title="Shopify Main &amp; PLS — no platform hard limit (editor allows long HTML body).">
                                             <div class="bp-mp-th-title">DESC 1000</div>
                                             <div class="bp-mp-th-icons"><span class="bp-mp-th-pill btn-shopify">SM</span><span class="bp-mp-th-pill btn-shopify-pls">SP</span></div>
                                         </th>
-                                        <th title="eBay1, eBay2, eBay3 — max 800 characters each">
+                                        <th title="eBay1–3 — up to 500,000 chars; ~800 chars show on mobile listing preview.">
                                             <div class="bp-mp-th-title">DESC 800</div>
                                             <div class="bp-mp-th-icons"><span class="bp-mp-th-pill btn-ebay1">E1</span><span class="bp-mp-th-pill btn-ebay2">E2</span><span class="bp-mp-th-pill btn-ebay3">E3</span></div>
                                         </th>
@@ -165,12 +168,16 @@
                         </div>
                     </div>
                     <textarea id="modalDescHtml"></textarea>
-                    <div class="small text-muted mt-1" id="modalEditorHint">Editing the selected marketplace's description.</div>
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-1">
+                        <div class="small text-muted" id="modalEditorHint">Editing the selected marketplace's description.</div>
+                        <div class="small text-muted" id="modalDescCharCount">0 / —</div>
+                    </div>
                     <p class="shopify-hint mb-0 mt-1"><i class="fas fa-info-circle"></i> Some marketplaces can't be fetched live yet (no read API) — those tabs start from the last saved copy.</p>
                     <div class="mt-2 small text-muted d-none" id="modalAiLoadingWrap"><i class="fas fa-spinner fa-spin"></i> <span id="modalAiLoadingTier"></span></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-warning" id="modalSavePushBtn"><i class="fas fa-cloud-upload-alt"></i> Save &amp; Push tab</button>
                     <button type="button" class="btn btn-success" id="modalSavePmBtn"><i class="fas fa-save"></i> Save all</button>
                 </div>
             </div>
@@ -196,6 +203,27 @@
         </div>
     </div>
 
+    <div class="modal fade" id="marketplacePushConfirmModal" tabindex="-1" aria-labelledby="marketplacePushConfirmTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger-subtle">
+                    <h5 class="modal-title" id="marketplacePushConfirmTitle"><i class="fas fa-triangle-exclamation me-2"></i>Confirm Marketplace Push</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2" id="marketplacePushConfirmMessage">Do you want to push this description?</p>
+                    <div class="alert alert-danger small mb-0" id="marketplacePushConfirmWarning">
+                        This action will update the selected marketplace listing. Please confirm before continuing.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="marketplacePushConfirmBtn"><i class="fas fa-cloud-upload-alt"></i> Yes, Push</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 
 @section('script')
@@ -205,11 +233,27 @@
     <script>
 document.addEventListener('DOMContentLoaded', () => {
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    // Per-platform plain-text push limits (see marketplace listing rules).
     const LIMITS = {
-        amazon: 1500, temu: 1500, reverb: 1500, wayfair: 1500, bestbuy: 1500,
-        shopify_main: 1000, shopify_pls: 1000,
-        ebay: 800, ebay2: 800, ebay3: 800,
+        amazon: 2000, temu: 2000,
+        reverb: 1500, bestbuy: 1500,
+        wayfair: 2000,
+        shopify_main: 500000, shopify_pls: 500000,
+        ebay: 500000, ebay2: 500000, ebay3: 500000,
         macy: 600,
+    };
+    const LIMIT_LABELS = {
+        amazon: '2000 (plain text, no HTML)',
+        temu: '2000 (plain text)',
+        shopify_main: 'no hard limit',
+        shopify_pls: 'no hard limit',
+        ebay: '500000 (~800 on mobile)',
+        ebay2: '500000 (~800 on mobile)',
+        ebay3: '500000 (~800 on mobile)',
+        reverb: '1500',
+        wayfair: '2000 (100–200 words marketing copy)',
+        bestbuy: '1500',
+        macy: '600',
     };
     const LABELS = {
         amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb', wayfair: 'Wayfair', bestbuy: 'Best Buy',
@@ -241,7 +285,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let tableData = [];
     const bySku = new Map();
-    let editModal, viewDescModal;
+    let editModal, viewDescModal, marketplacePushConfirmModal;
+    let marketplacePushConfirmResolver = null;
     let tableBodyBound = false;
     let lastViewPlainText = '';
     let currentPage = 1;
@@ -276,6 +321,30 @@ document.addEventListener('DOMContentLoaded', () => {
         return window.confirm(EBAY3_WARNING);
     }
 
+    function confirmMarketplacePush({ sku = '', marketplaces = [], mode = 'single' } = {}) {
+        const labels = (Array.isArray(marketplaces) ? marketplaces : []).map((mp) => LABELS[mp] || mp);
+        const scopeText = labels.length ? labels.join(', ') : 'the selected marketplace(s)';
+        const messageEl = document.getElementById('marketplacePushConfirmMessage');
+        const confirmBtn = document.getElementById('marketplacePushConfirmBtn');
+        if (messageEl) {
+            if (mode === 'single' && sku) {
+                messageEl.textContent = `Push description for SKU ${sku} to ${scopeText}?`;
+            } else if (mode === 'selected') {
+                messageEl.textContent = 'Push descriptions for all checked marketplace tiles?';
+            } else {
+                messageEl.textContent = `Push each row's tier-specific description to every marketplace on this page?`;
+            }
+        }
+        if (confirmBtn) confirmBtn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Yes, Push';
+        if (!marketplacePushConfirmModal || !window.bootstrap) {
+            return Promise.resolve(window.confirm(`Push description to ${scopeText}?`));
+        }
+        return new Promise((resolve) => {
+            marketplacePushConfirmResolver = resolve;
+            marketplacePushConfirmModal.show();
+        });
+    }
+
     function hideLoadError() {
         const b = document.getElementById('loadErrorBanner');
         if (b) b.style.display = 'none';
@@ -295,23 +364,62 @@ document.addEventListener('DOMContentLoaded', () => {
         return '600';
     }
 
+    function stripHtmlToPlain(text) {
+        if (!text) return '';
+        const s = String(text);
+        if (!/<[^>]+>/.test(s)) return s.trim();
+        const tmp = document.createElement('div');
+        tmp.innerHTML = s;
+        return (tmp.textContent || tmp.innerText || '').replace(/\s+/g, ' ').trim();
+    }
+
+    /** Plain text for PM preview sync and char-count fallbacks. */
+    function prepareTextForPush(text, mp) {
+        const plain = stripHtmlToPlain(text);
+        const lim = LIMITS[mp] || 1500;
+        return plain.length > lim ? plain.slice(0, lim) : plain;
+    }
+
+    /** Push payload: HTML for rich channels (server uses description_html); plain for char checks / Amazon. */
+    function buildPushUpdate(sku, row, mp) {
+        const html = enforceMpContentLimit(mp, getDescriptionForPush(sku, row, mp));
+        return {
+            marketplace: mp,
+            description: prepareTextForPush(html, mp),
+            description_html: html,
+        };
+    }
+
+    function storedDescriptionFromSaveResponse(res, fallback) {
+        return String((res && (res.description_stored || res.description_plain)) || fallback || '');
+    }
+
+    function getCharLimitForMp(mp) {
+        return LIMITS[mp] || 1500;
+    }
+
+    /** Truncate to plain-text limit; returns safe HTML for the editor. */
+    function enforceMpContentLimit(mp, html) {
+        const lim = getCharLimitForMp(mp);
+        const plain = stripHtmlToPlain(html);
+        if (plain.length <= lim) return String(html || '');
+        const truncated = plain.slice(0, lim);
+        return truncated.replace(/\n/g, '<br>');
+    }
+
     function getPmTextForMp(row, mp) {
+        const lim = getCharLimitForMp(mp);
         const t = tierForMp(mp);
         const d1500 = String(row.description_1500 || row.product_description || '').trim();
         const d1000 = String(row.description_1000 || '').trim();
         const d800 = String(row.description_800 || '').trim();
         const d600 = String(row.description_600 || '').trim();
-        if (t === '1500') return d1500;
-        if (t === '1000') {
-            if (d1000) return d1000;
-            return d1500.length > 1000 ? d1500.slice(0, 1000) : d1500;
-        }
-        if (t === '800') {
-            if (d800) return d800;
-            return d1500.length > 800 ? d1500.slice(0, 800) : d1500;
-        }
-        if (d600) return d600;
-        return d1500.length > 600 ? d1500.slice(0, 600) : d1500;
+        let text = '';
+        if (t === '1500') text = d1500;
+        else if (t === '1000') text = d1000 || d1500;
+        else if (t === '800') text = d800 || d1500;
+        else text = d600 || d1500;
+        return text.length > lim ? text.slice(0, lim) : text;
     }
 
     function preview100(row) {
@@ -327,16 +435,37 @@ document.addEventListener('DOMContentLoaded', () => {
         return getPmTextForMp(row, mp);
     }
 
-    function mpStackHtml(sku, mp, savedText) {
-        const pushed = (savedText || '').trim() !== '';
+    /** Prefer unsaved modal editor content when the edit modal is open (matches Bullet Points Master). */
+    function getDescriptionForPush(sku, row, mp) {
+        const editModalEl = document.getElementById('editDescModal');
+        const modalSku = document.getElementById('modalSku')?.value || '';
+        const editModalOpen = editModalEl && editModalEl.classList.contains('show');
+        if (editModalOpen && String(modalSku) === String(sku)) {
+            if (String(activeMp) === String(mp)) {
+                stashActiveEditorContent();
+            }
+            const cached = mpContent[mp];
+            if (stripHtmlToPlain(cached || '')) {
+                return cached;
+            }
+        }
+        return getDisplayDescForMp(row, mp);
+    }
+
+    function mpStackHtml(sku, mp, savedText, status = '') {
+        const normalizedStatus = String(status || '').toLowerCase();
+        const pushed = normalizedStatus === 'success';
+        const failed = normalizedStatus === 'failed';
         const cls = MP_TILE[mp] || 'btn-secondary';
         const short = MP_SHORT[mp] || mp;
-        const tip = LABELS[mp] + (pushed ? ' — pushed' : ' — not pushed') + '. Click to push.';
+        const stateText = pushed ? 'Pushed' : (failed ? 'Push failed' : 'Not pushed');
+        const dotClass = pushed ? 'pushed' : (failed ? 'failed' : '');
+        const tip = `${LABELS[mp]}. ${stateText}. Click to push.`;
         return `
             <div class="dm-mp-item">
                 <input type="checkbox" class="form-check-input dm-sel-mp" data-sku="${esc(sku)}" data-mp="${esc(mp)}" title="Include in Push Selected">
                 <button type="button" class="bp-mp-stack" data-push-mp="${esc(mp)}" data-sku="${esc(sku)}" title="${esc(tip)}">
-                    <span class="bp-mp-dot ${pushed ? 'pushed' : ''}" aria-hidden="true"></span>
+                    <span class="bp-mp-dot ${dotClass}" aria-hidden="true"></span>
                     <span class="marketplace-btn ${cls}">${esc(short)}</span>
                 </button>
             </div>`;
@@ -345,10 +474,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function groupCell(groupKey, sku, row) {
         const keys = GROUPS[groupKey] || [];
         const desc = row.descriptions || {};
+        const statuses = row.description_push_statuses || {};
         return `
             <td class="marketplaces-cell">
                 <div class="bp-mp-inline">
-                    ${keys.map((mp) => mpStackHtml(sku, mp, desc[mp] || '')).join('')}
+                    ${keys.map((mp) => mpStackHtml(sku, mp, desc[mp] || '', statuses[mp] ?? '')).join('')}
                 </div>
             </td>`;
     }
@@ -402,7 +532,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const pushBtn = e.target.closest('.bp-mp-stack[data-push-mp]');
             if (pushBtn) {
                 e.preventDefault();
-                pushSingleMarketplace(pushBtn.getAttribute('data-sku'), pushBtn.getAttribute('data-push-mp'));
+                pushSingleMarketplace(pushBtn.getAttribute('data-sku'), pushBtn.getAttribute('data-push-mp'), pushBtn);
             }
         });
     }
@@ -424,7 +554,8 @@ document.addEventListener('DOMContentLoaded', () => {
         ALL_MP.forEach((mp) => {
             const label = LABELS[mp];
             const t = getDisplayDescForMp(row, mp);
-            html += '<div class="mb-2"><strong>' + esc(label) + '</strong> <span class="text-muted">(' + (LIMITS[mp] || '') + ' max)</span><div class="dm-view-body mt-1">' + (t ? esc(t) : '<em class="text-muted">Empty</em>') + '</div></div>';
+            const display = t ? esc(stripHtmlToPlain(t)) : '<em class="text-muted">Empty</em>';
+            html += '<div class="mb-2"><strong>' + esc(label) + '</strong> <span class="text-muted">(' + (LIMIT_LABELS[mp] || LIMITS[mp] || '') + ' max)</span><div class="dm-view-body mt-1">' + display + '</div></div>';
             lines.push(label + ': ' + (t || '(empty)'));
         });
         lastViewPlainText = 'SKU: ' + sku + '\n\n' + lines.join('\n\n');
@@ -445,18 +576,46 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    function pushSingleMarketplace(sku, mp) {
+    async function pushSingleMarketplace(sku, mp, stackEl) {
         const row = bySku.get(String(sku));
         if (!row) return;
-        const text = getDisplayDescForMp(row, mp);
-        if (!text || !String(text).trim()) {
-            toast('No text for this tier. Add it via the Edit descriptions button, then push.', false);
+        const confirmed = await confirmMarketplacePush({ sku, marketplaces: [mp], mode: 'single' });
+        if (!confirmed) return;
+        const update = buildPushUpdate(sku, row, mp);
+        if (!update.description) {
+            toast('No text for this tier. Edit in the modal, then Save & Push or push the marketplace tile.', false);
             openEditModal(sku);
             return;
         }
-        const lim = LIMITS[mp] || 1500;
-        const t = text.length > lim ? text.slice(0, lim) : text;
-        pushPayload(sku, [{ marketplace: mp, description: t }], null, false);
+        let retryLabelTimer;
+        let origStackHtml;
+        if (stackEl) {
+            origStackHtml = stackEl.innerHTML;
+            stackEl.disabled = true;
+            retryLabelTimer = setTimeout(() => {
+                if (stackEl.disabled) stackEl.innerHTML = '<span class="small text-nowrap">Updating...</span>';
+            }, 2000);
+        }
+        pushPayload(sku, [update], (ok) => {
+            if (stackEl) {
+                stackEl.innerHTML = origStackHtml || stackEl.innerHTML;
+                const dot = stackEl.querySelector('.bp-mp-dot');
+                if (dot) {
+                    dot.classList.remove('pushed', 'failed');
+                    dot.classList.add(ok ? 'pushed' : 'failed');
+                }
+                stackEl.title = `${LABELS[mp] || mp}. ${ok ? 'Pushed' : 'Push failed'}. Click to push.`;
+                row.description_push_statuses = row.description_push_statuses || {};
+                row.description_push_statuses[mp] = ok ? 'success' : 'failed';
+                if (ok) {
+                    row.descriptions = row.descriptions || {};
+                    row.descriptions[mp] = update.description_html || update.description;
+                }
+            }
+        }, false, null, () => {
+            if (retryLabelTimer) clearTimeout(retryLabelTimer);
+            if (stackEl) stackEl.disabled = false;
+        });
     }
 
     function buildSkeletonRows(n) {
@@ -579,7 +738,9 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('modalSkuLabel').textContent = sku;
         document.getElementById('modalProductLabel').textContent = row.Parent || row.title150 || sku;
         mpContent = {};
-        ALL_MP.forEach((mp) => { mpContent[mp] = String((row.descriptions && row.descriptions[mp]) || ''); });
+        ALL_MP.forEach((mp) => {
+            mpContent[mp] = enforceMpContentLimit(mp, String((row.descriptions && row.descriptions[mp]) || ''));
+        });
         buildMpTabs();
         activeMp = ALL_MP[0];
         document.getElementById('modalAiLoadingWrap')?.classList.add('d-none');
@@ -595,7 +756,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Switch the active marketplace tab. stashFirst=true saves the current editor content before switching.
     function selectMp(mp, stashFirst) {
-        if (stashFirst && activeMp) mpContent[activeMp] = getDescEditorContent();
+        if (stashFirst && activeMp) stashActiveEditorContent();
         activeMp = mp;
         document.querySelectorAll('#modalMpTabs .mp-tab').forEach((b) => {
             const on = b.getAttribute('data-mp') === mp;
@@ -603,8 +764,11 @@ document.addEventListener('DOMContentLoaded', () => {
             b.classList.toggle('btn-outline-secondary', !on);
         });
         const lbl = document.getElementById('modalActiveMpLabel');
-        if (lbl) lbl.textContent = LABELS[mp] + ' — pushes at ' + (LIMITS[mp] || '') + ' char limit';
-        setDescEditorContent(mpContent[mp] || '');
+        if (lbl) lbl.textContent = LABELS[mp] + ' — max ' + (LIMIT_LABELS[mp] || (LIMITS[mp] + ' plain-text characters'));
+        const limited = enforceMpContentLimit(mp, mpContent[mp] || '');
+        mpContent[mp] = limited;
+        descEditorLastValid[mp] = limited;
+        setDescEditorContent(limited);
     }
 
     // ── Rich HTML editor (TinyMCE) ───────────────────────────────────────
@@ -612,6 +776,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let descEditorPromise = null;
     let mpContent = {};
     let activeMp = '';
+    let descEditorLastValid = {};
+    let descEditorEnforcing = false;
 
     // Bootstrap modals steal focus from TinyMCE dialogs (link/image/table); let TinyMCE keep it.
     document.addEventListener('focusin', (e) => {
@@ -619,6 +785,51 @@ document.addEventListener('DOMContentLoaded', () => {
             e.stopImmediatePropagation();
         }
     });
+
+    function getEditorPlainLength(content) {
+        return stripHtmlToPlain(content).length;
+    }
+
+    function updateDescCharCounter() {
+        const mp = activeMp;
+        const el = document.getElementById('modalDescCharCount');
+        if (!el || !mp) return;
+        const lim = getCharLimitForMp(mp);
+        const len = getEditorPlainLength(getDescEditorContent());
+        if (lim >= 100000) {
+            el.textContent = len + ' characters (Shopify/eBay: no hard platform limit)';
+            el.classList.remove('at-limit');
+            return;
+        }
+        el.textContent = len + ' / ' + lim + ' plain-text characters';
+        el.classList.toggle('at-limit', len >= lim);
+    }
+
+    function stashActiveEditorContent() {
+        if (!activeMp) return;
+        const limited = enforceMpContentLimit(activeMp, getDescEditorContent());
+        mpContent[activeMp] = limited;
+        descEditorLastValid[activeMp] = limited;
+    }
+
+    function enforceEditorCharLimit() {
+        if (!descEditor || descEditorEnforcing || !activeMp) return;
+        const lim = getCharLimitForMp(activeMp);
+        const content = descEditor.getContent();
+        const len = getEditorPlainLength(content);
+        if (len <= lim) {
+            descEditorLastValid[activeMp] = content;
+            mpContent[activeMp] = content;
+            updateDescCharCounter();
+            return;
+        }
+        descEditorEnforcing = true;
+        const prev = descEditorLastValid[activeMp] ?? enforceMpContentLimit(activeMp, content);
+        descEditor.setContent(prev);
+        mpContent[activeMp] = prev;
+        descEditorEnforcing = false;
+        updateDescCharCounter();
+    }
 
     function ensureDescEditor() {
         if (descEditor) return Promise.resolve(descEditor);
@@ -635,6 +846,34 @@ document.addEventListener('DOMContentLoaded', () => {
             promotion: false,
             convert_urls: false,
             content_style: 'img{max-width:100%;height:auto;} table{max-width:100%;border-collapse:collapse;} body{font-size:14px;}',
+            setup: (editor) => {
+                const guard = () => {
+                    if (descEditorEnforcing) return;
+                    enforceEditorCharLimit();
+                };
+                editor.on('init', () => {
+                    if (activeMp) {
+                        descEditorLastValid[activeMp] = editor.getContent();
+                        updateDescCharCounter();
+                    }
+                });
+                editor.on('input change keyup paste Undo Redo SetContent', guard);
+                editor.on('PastePreProcess', (e) => {
+                    const mp = activeMp;
+                    if (!mp || descEditorEnforcing) return;
+                    const lim = getCharLimitForMp(mp);
+                    const currentLen = getEditorPlainLength(descEditorLastValid[mp] || editor.getContent());
+                    const remaining = lim - currentLen;
+                    if (remaining <= 0) {
+                        e.content = '';
+                        return;
+                    }
+                    const pastePlain = stripHtmlToPlain(e.content || '');
+                    if (pastePlain.length > remaining) {
+                        e.content = pastePlain.slice(0, remaining).replace(/\n/g, '<br>');
+                    }
+                });
+            },
         }).then((eds) => {
             descEditor = (eds && eds[0]) || (tinymce.get ? tinymce.get('modalDescHtml') : null);
             return descEditor;
@@ -643,9 +882,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function setDescEditorContent(html) {
+        const mp = activeMp;
+        const limited = mp ? enforceMpContentLimit(mp, html || '') : String(html || '');
+        if (mp) {
+            mpContent[mp] = limited;
+            descEditorLastValid[mp] = limited;
+        }
         return ensureDescEditor().then((ed) => {
-            if (ed) ed.setContent(html || '');
-            else { const el = document.getElementById('modalDescHtml'); if (el) el.value = html || ''; }
+            descEditorEnforcing = true;
+            if (ed) ed.setContent(limited);
+            else { const el = document.getElementById('modalDescHtml'); if (el) el.value = limited; }
+            descEditorEnforcing = false;
+            updateDescCharCounter();
         });
     }
 
@@ -700,8 +948,10 @@ document.addEventListener('DOMContentLoaded', () => {
             .then((r) => r.json())
             .then((res) => {
                 if (res.success) {
-                    mpContent[mp] = String(res.description_html || '');
-                    if (activeMp === mp) setDescEditorContent(mpContent[mp]);
+                    const limited = enforceMpContentLimit(mp, String(res.description_html || res.description_plain || ''));
+                    mpContent[mp] = limited;
+                    descEditorLastValid[mp] = limited;
+                    if (activeMp === mp) setDescEditorContent(limited);
                     toast(res.message || ('Fetched ' + (LABELS[mp] || mp)));
                 } else {
                     toast(res.message || 'Fetch failed', false);
@@ -726,19 +976,27 @@ document.addEventListener('DOMContentLoaded', () => {
         const wrap = document.getElementById('modalAiLoadingWrap');
         const tierEl = document.getElementById('modalAiLoadingTier');
         if (wrap) wrap.classList.remove('d-none');
-        if (tierEl) tierEl.textContent = 'Generating ' + tier + '-char description for ' + (LABELS[mp] || mp) + '…';
+        if (tierEl) tierEl.textContent = 'Generating description for ' + (LABELS[mp] || mp) + ' (max ' + (LIMIT_LABELS[mp] || getCharLimitForMp(mp)) + ')…';
         setButtonLoading('modalAiGenBtn', true, 'Generating...');
         fetch('/product-description/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-            body: JSON.stringify({ product_name: name, current_text: current, tier })
+            body: JSON.stringify({
+                product_name: name,
+                current_text: current,
+                tier,
+                max_chars: getCharLimitForMp(mp),
+                marketplace: mp,
+            })
         })
             .then((r) => r.json())
             .then((res) => {
                 if (res.success && res.description) {
-                    mpContent[mp] = String(res.description);
-                    if (activeMp === mp) setDescEditorContent(mpContent[mp]);
-                    toast('AI description generated (' + (res.length || res.description.length) + ' chars)');
+                    const limited = enforceMpContentLimit(mp, String(res.description));
+                    mpContent[mp] = limited;
+                    descEditorLastValid[mp] = limited;
+                    if (activeMp === mp) setDescEditorContent(limited);
+                    toast('AI description generated (' + stripHtmlToPlain(limited).length + ' chars)');
                 } else toast(res.message || 'AI failed', false);
             })
             .catch((e) => toast('AI error: ' + e.message, false))
@@ -772,28 +1030,75 @@ document.addEventListener('DOMContentLoaded', () => {
     // Save all marketplaces' edited descriptions to their metrics (no push).
     document.getElementById('modalSavePmBtn')?.addEventListener('click', () => {
         const sku = document.getElementById('modalSku').value;
-        if (activeMp) mpContent[activeMp] = getDescEditorContent();
+        stashActiveEditorContent();
         setButtonLoading('modalSavePmBtn', true, 'Saving...');
-        const targets = ALL_MP.filter((mp) => typeof mpContent[mp] === 'string');
+        const targets = ALL_MP.filter((mp) => stripHtmlToPlain(mpContent[mp] || '').length > 0);
+        if (!targets.length) {
+            toast('Nothing to save — add text on at least one marketplace tab.', false);
+            setButtonLoading('modalSavePmBtn', false);
+            return;
+        }
         const tasks = targets.map((mp) => fetch('/product-description/save-marketplace', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-            body: JSON.stringify({ sku, marketplace: mp, description: mpContent[mp] })
-        }).then((r) => r.json()).then((res) => ({ mp, ok: !!res.success })).catch(() => ({ mp, ok: false })));
+            body: JSON.stringify({ sku, marketplace: mp, description: enforceMpContentLimit(mp, mpContent[mp]) })
+        }).then((r) => r.json()).then((res) => ({ mp, ok: !!res.success, stored: storedDescriptionFromSaveResponse(res, mpContent[mp]) })).catch(() => ({ mp, ok: false, stored: '' })));
         Promise.all(tasks)
             .then((results) => {
                 const failed = results.filter((x) => !x.ok).map((x) => LABELS[x.mp] || x.mp);
                 const row = bySku.get(String(sku));
                 if (row) {
                     row.descriptions = row.descriptions || {};
-                    targets.forEach((mp) => { row.descriptions[mp] = mpContent[mp]; });
+                    results.filter((x) => x.ok).forEach(({ mp, stored }) => {
+                        row.descriptions[mp] = stored || mpContent[mp];
+                        mpContent[mp] = row.descriptions[mp];
+                    });
                 }
                 renderTable();
                 if (failed.length) toast('Saved, but failed: ' + failed.join(', '), false);
-                else toast('Saved descriptions for all marketplaces.');
+                else toast('Saved descriptions for ' + results.filter((x) => x.ok).length + ' marketplace(s).');
             })
             .catch((e) => toast('Save failed: ' + e.message, false))
             .finally(() => setButtonLoading('modalSavePmBtn', false));
+    });
+
+    document.getElementById('modalSavePushBtn')?.addEventListener('click', async () => {
+        const sku = document.getElementById('modalSku')?.value || '';
+        const mp = activeMp;
+        if (!sku || !mp) return;
+        stashActiveEditorContent();
+        const pushUpdate = buildPushUpdate(sku, bySku.get(String(sku)) || { descriptions: mpContent }, mp);
+        if (!pushUpdate.description) {
+            toast('Nothing to push — add description text for ' + (LABELS[mp] || mp) + '.', false);
+            return;
+        }
+        const confirmed = await confirmMarketplacePush({ sku, marketplaces: [mp], mode: 'single' });
+        if (!confirmed) return;
+        setButtonLoading('modalSavePushBtn', true, 'Saving...');
+        try {
+            const saveRes = await fetch('/product-description/save-marketplace', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: JSON.stringify({ sku, marketplace: mp, description: pushUpdate.description_html }),
+            }).then((r) => r.json());
+            if (!saveRes.success) {
+                toast(saveRes.message || 'Save failed before push', false);
+                return;
+            }
+            const row = bySku.get(String(sku));
+            if (row) {
+                row.descriptions = row.descriptions || {};
+                row.descriptions[mp] = storedDescriptionFromSaveResponse(saveRes, pushUpdate.description_html);
+                mpContent[mp] = row.descriptions[mp];
+            }
+            await new Promise((resolve) => {
+                pushPayload(sku, [pushUpdate], resolve, false, 'modalSavePushBtn');
+            });
+        } catch (e) {
+            toast('Save & push failed: ' + e.message, false);
+        } finally {
+            setButtonLoading('modalSavePushBtn', false);
+        }
     });
 
     /** Appends per-marketplace attempt details when the server used automatic retries. */
@@ -814,10 +1119,11 @@ document.addEventListener('DOMContentLoaded', () => {
     /**
      * @param {string|null} loadingBtnId — optional main push button id: disabled for whole request; shows "Retrying..." after 2s while waiting (server may retry).
      */
-    function pushPayload(sku, updates, done, doneOnlyOnSuccess, loadingBtnId) {
+    function pushPayload(sku, updates, done, doneOnlyOnSuccess, loadingBtnId, onFinally) {
         const updateMps = Array.isArray(updates) ? updates.map((u) => u.marketplace) : [];
         if (!confirmEbay3Push(updateMps)) {
             if (typeof done === 'function') done(false);
+            if (typeof onFinally === 'function') onFinally();
             return;
         }
         let retryLabelTimer;
@@ -834,22 +1140,38 @@ document.addEventListener('DOMContentLoaded', () => {
             .then((r) => r.json())
             .then((res) => {
                 const detail = summarizeMarketplacePushRetries(res.results);
-                if (res.success) {
-                    toast((res.message || 'Pushed') + (detail ? ' — ' + detail : ''));
+                const row = bySku.get(String(sku));
+                if (row) {
+                    row.description_push_statuses = row.description_push_statuses || {};
                     updates.forEach((u) => {
-                        const row = bySku.get(String(sku));
-                        if (row) {
+                        const rmp = res.results && (res.results[u.marketplace] || res.results[String(u.marketplace).toLowerCase()]);
+                        const ok = !!(rmp && rmp.success);
+                        row.description_push_statuses[u.marketplace] = ok ? 'success' : 'failed';
+                        if (ok) {
                             if (!row.descriptions) row.descriptions = {};
-                            row.descriptions[u.marketplace] = u.description;
+                            if (u.description_html) {
+                                row.descriptions[u.marketplace] = u.description_html;
+                            }
+                            if (u.marketplace === 'shopify_main' || u.marketplace === 'shopify_pls') {
+                                row.description_1000 = u.description;
+                            }
+                            if (u.marketplace === 'amazon') {
+                                row.description_1500 = u.description;
+                                row.product_description = u.description;
+                            }
                         }
                     });
+                }
+                if (res.success) {
+                    toast((res.message || 'Pushed') + (detail ? ' — ' + detail : ''));
+                    renderTable();
                     if (typeof done === 'function') done(true);
                 } else {
                     const failMsg = (res.message || 'Push failed') + (detail ? ' — ' + detail : '');
                     toast(failMsg, false);
+                    renderTable();
                     if (typeof done === 'function') done(false);
                 }
-                loadData(currentPage);
             })
             .catch((e) => {
                 toast('Push failed: ' + e.message, false);
@@ -858,20 +1180,21 @@ document.addEventListener('DOMContentLoaded', () => {
             .finally(() => {
                 if (retryLabelTimer) clearTimeout(retryLabelTimer);
                 if (loadingBtnId) setButtonLoading(loadingBtnId, false);
+                if (typeof onFinally === 'function') onFinally();
             });
     }
 
     document.getElementById('pushSelectedBtn')?.addEventListener('click', async () => {
+        const confirmed = await confirmMarketplacePush({ mode: 'selected' });
+        if (!confirmed) return;
         const pairs = [];
         document.querySelectorAll('.dm-sel-mp:checked').forEach((chk) => {
             const sku = chk.dataset.sku;
             const mp = chk.dataset.mp;
             const row = bySku.get(String(sku));
-            const text = row ? getPmTextForMp(row, mp) : '';
-            if (!text) return;
-            const lim = LIMITS[mp] || 1500;
-            const t = text.length > lim ? text.slice(0, lim) : text;
-            pairs.push({ sku, mp, description: t });
+            const update = row ? buildPushUpdate(sku, row, mp) : null;
+            if (!update || !update.description) return;
+            pairs.push({ sku, mp, update });
         });
         if (!pairs.length) {
             toast('Select marketplace checkboxes for rows with PM text for that tier.', false);
@@ -880,7 +1203,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const byS = {};
         pairs.forEach((p) => {
             if (!byS[p.sku]) byS[p.sku] = [];
-            byS[p.sku].push({ marketplace: p.mp, description: p.description });
+            byS[p.sku].push(p.update);
         });
         const bulkBtn = document.getElementById('pushSelectedBtn');
         const bulkAllBtn = document.getElementById('pushAllBtn');
@@ -909,17 +1232,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    document.getElementById('pushAllBtn')?.addEventListener('click', () => {
-        if (!confirm('Push each row\'s tier-specific description to every marketplace on this page? Rows missing tier text are skipped.')) return;
+    document.getElementById('pushAllBtn')?.addEventListener('click', async () => {
+        const confirmed = await confirmMarketplacePush({ mode: 'all' });
+        if (!confirmed) return;
         const tasks = [];
         tableData.forEach((row) => {
             const sku = String(row.SKU || '');
             ALL_MP.forEach((mp) => {
-                const text = getPmTextForMp(row, mp);
-                if (!text) return;
-                const lim = LIMITS[mp] || 1500;
-                const d = text.length > lim ? text.slice(0, lim) : text;
-                tasks.push({ sku, mp, description: d });
+                const update = buildPushUpdate(sku, row, mp);
+                if (!update.description) return;
+                tasks.push({ sku, mp, update });
             });
         });
         if (!tasks.length) { toast('No tier descriptions to push on this page.', false); return; }
@@ -945,11 +1267,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 if (selBtn) selBtn.disabled = false;
                 toast('Push ALL complete');
-                loadData(currentPage);
+                renderTable();
                 return;
             }
-            const { sku, mp, description } = tasks[i++];
-            pushPayload(sku, [{ marketplace: mp, description }], next);
+            const { sku, mp, update } = tasks[i++];
+            pushPayload(sku, [update], next);
         }
         next();
     });
@@ -1016,7 +1338,20 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.readAsArrayBuffer(file);
     });
 
+    document.getElementById('marketplacePushConfirmBtn')?.addEventListener('click', () => {
+        if (marketplacePushConfirmResolver) marketplacePushConfirmResolver(true);
+        marketplacePushConfirmResolver = null;
+        if (marketplacePushConfirmModal) marketplacePushConfirmModal.hide();
+    });
+    document.getElementById('marketplacePushConfirmModal')?.addEventListener('hidden.bs.modal', () => {
+        if (marketplacePushConfirmResolver) marketplacePushConfirmResolver(false);
+        marketplacePushConfirmResolver = null;
+    });
+
     loadData(1);
+    if (window.bootstrap) {
+        marketplacePushConfirmModal = new bootstrap.Modal(document.getElementById('marketplacePushConfirmModal'));
+    }
 });
     </script>
 @endsection

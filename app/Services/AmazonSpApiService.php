@@ -1089,75 +1089,193 @@ class AmazonSpApiService
         return null;
     }
 
-    public function getAmazonProductType($sku, $amazonSku = null, $accessToken = null)
+    /**
+     * Resolve the Amazon seller SKU + product type to use for Listings PATCH (bullets, description).
+     * Prefers FBA/FBM MSKUs when the base SKU exists but has no product type (common for dual listings).
+     *
+     * @return array{amazon_sku: ?string, product_type: ?string}
+     */
+    private function resolveAmazonListingTarget(string $internalSku, ?string $accessToken = null): array
     {
-        try {
-            $sku = trim($sku);
-            if (empty($sku)) {
-                Log::warning("getAmazonProductType: Empty SKU provided");
-                return null;
-            }
+        $internalSku = trim($internalSku);
+        if ($internalSku === '') {
+            return ['amazon_sku' => null, 'product_type' => null];
+        }
 
-            $sellerId = config('services.amazon_sp.seller_id');
-            if (empty($sellerId)) {
-                Log::warning("getAmazonProductType: Seller ID not configured");
-                return null;
-            }
+        if (empty($accessToken)) {
+            $accessToken = $this->getAccessToken();
+        }
+        if (empty($accessToken)) {
+            return ['amazon_sku' => null, 'product_type' => null];
+        }
 
-            // Use provided token or get new one
-            if (empty($accessToken)) {
-                $accessToken = $this->getAccessToken();
-                if (empty($accessToken)) {
-                    Log::warning("getAmazonProductType: Failed to get access token", ['sku' => $sku]);
-                    return null;
-                }
-            }
+        $bases = array_values(array_unique(array_filter([
+            $internalSku,
+            preg_replace('/\s+/u', ' ', $internalSku),
+            str_replace([' ', "\xc2\xa0"], '', $internalSku),
+        ])));
 
-            // Use provided Amazon SKU or find it
+        $candidates = [];
+        foreach ($bases as $base) {
+            $candidates[] = $base;
+            $candidates[] = $base.' FBA';
+            $candidates[] = $base.' FBM';
+        }
+        $candidates = array_values(array_unique(array_filter($candidates)));
+
+        $bestSku = null;
+        $bestType = null;
+        $bestScore = -1;
+
+        foreach ($candidates as $candidate) {
+            $amazonSku = $this->findAmazonSkuFormat($candidate, $accessToken, 'ATVPDKIKX0DER');
             if (empty($amazonSku)) {
-                $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken, 'ATVPDKIKX0DER');
-                if (empty($amazonSku)) {
-                    Log::warning("getAmazonProductType: Could not find SKU in Amazon", ['sku' => $sku]);
-                    return null;
-                }
+                continue;
             }
 
-            // Use the correct SKU format to get product type (US listing; URL matches find above)
-            $encodedSku = rawurlencode($amazonSku);
-            $url = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
+            $productType = $this->fetchListingProductType($amazonSku, $accessToken);
+            $score = $productType ? 10 : 1;
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestSku = $amazonSku;
+                $bestType = $productType;
+            }
+            if ($productType) {
+                break;
+            }
+        }
 
+        if ($bestSku && empty($bestType)) {
+            $asin = $this->lookupAsinFromListingsReport($internalSku);
+            if ($asin) {
+                $catalog = $this->getCatalogItemByAsin($asin);
+                $bestType = $this->extractProductTypeFromListingJson(is_array($catalog) ? $catalog : []);
+            }
+        }
+
+        if ($bestSku && empty($bestType)) {
+            Log::warning('resolveAmazonListingTarget: product type unresolved', [
+                'internal_sku' => $internalSku,
+                'amazon_sku' => $bestSku,
+            ]);
+        } elseif ($bestSku && $bestType && $bestSku !== $internalSku) {
+            Log::info('resolveAmazonListingTarget: using alternate Amazon MSKU', [
+                'internal_sku' => $internalSku,
+                'amazon_sku' => $bestSku,
+                'product_type' => $bestType,
+            ]);
+        }
+
+        return ['amazon_sku' => $bestSku, 'product_type' => $bestType];
+    }
+
+    private function fetchListingProductType(string $amazonSku, string $accessToken): ?string
+    {
+        $sellerId = config('services.amazon_sp.seller_id');
+        if (empty($sellerId)) {
+            return null;
+        }
+
+        $marketplaceId = rawurlencode((string) (config('services.amazon_sp.marketplace_id') ?: 'ATVPDKIKX0DER'));
+        $included = rawurlencode('summaries,productTypes,attributes');
+        $url = $this->endpoint.'/listings/2021-08-01/items/'.$sellerId.'/'.rawurlencode($amazonSku)
+            .'?marketplaceIds='.$marketplaceId.'&includedData='.$included;
+
+        try {
             $response = Http::withHeaders([
                 'x-amz-access-token' => $accessToken,
                 'Content-Type' => 'application/json',
             ])->timeout(30)->get($url);
 
-            if ($response->failed()) {
-                Log::warning("getAmazonProductType: Failed to get product type", [
-                    'sku' => $sku,
-                    'amazon_sku' => $amazonSku,
-                    'status' => $response->status(),
-                    'response' => $response->json()
-                ]);
+            if (! $response->successful()) {
                 return null;
             }
 
-            $data = $response->json();
-            $productType = $data['summaries'][0]['productType'] ?? null;
+            return $this->extractProductTypeFromListingJson($response->json() ?? []);
+        } catch (\Throwable $e) {
+            Log::debug('fetchListingProductType failed', ['amazon_sku' => $amazonSku, 'error' => $e->getMessage()]);
 
-            if (empty($productType)) {
-                Log::warning("getAmazonProductType: Product type not found in response", [
-                    'sku' => $sku,
-                    'amazon_sku' => $amazonSku,
-                    'response' => $data
-                ]);
+            return null;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function extractProductTypeFromListingJson(array $data): ?string
+    {
+        $fromSummary = trim((string) ($data['summaries'][0]['productType'] ?? ''));
+        if ($fromSummary !== '') {
+            return $fromSummary;
+        }
+
+        $fromTypes = trim((string) ($data['productTypes'][0]['productType'] ?? ''));
+        if ($fromTypes !== '') {
+            return $fromTypes;
+        }
+
+        return null;
+    }
+
+    private function lookupAsinFromListingsReport(string $sku): ?string
+    {
+        if (! Schema::hasTable('amazon_listings_raw') || ! Schema::hasColumn('amazon_listings_raw', 'seller_sku')) {
+            return null;
+        }
+
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        $row = DB::table('amazon_listings_raw')
+            ->where('seller_sku', $sku)
+            ->orWhere('seller_sku', $sku.' FBA')
+            ->orWhere('seller_sku', $sku.' FBM')
+            ->orWhere('seller_sku', 'like', $sku.' %')
+            ->orderByRaw('CASE WHEN seller_sku = ? THEN 0 WHEN seller_sku = ? THEN 1 ELSE 2 END', [$sku, $sku.' FBA'])
+            ->value('asin1');
+
+        $asin = trim((string) $row);
+
+        return $asin !== '' ? $asin : null;
+    }
+
+    public function getAmazonProductType($sku, $amazonSku = null, $accessToken = null)
+    {
+        try {
+            $sku = trim($sku);
+            if ($sku === '') {
+                Log::warning('getAmazonProductType: Empty SKU provided');
+
+                return null;
             }
 
-            return $productType;
+            if (empty($accessToken)) {
+                $accessToken = $this->getAccessToken();
+                if (empty($accessToken)) {
+                    Log::warning('getAmazonProductType: Failed to get access token', ['sku' => $sku]);
+
+                    return null;
+                }
+            }
+
+            if (! empty($amazonSku)) {
+                $direct = $this->fetchListingProductType($amazonSku, $accessToken);
+                if ($direct) {
+                    return $direct;
+                }
+            }
+
+            $resolved = $this->resolveAmazonListingTarget($sku, $accessToken);
+
+            return $resolved['product_type'] ?: null;
         } catch (\Exception $e) {
-            Log::error("getAmazonProductType: Exception", [
+            Log::error('getAmazonProductType: Exception', [
                 'sku' => $sku,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return null;
         }
     }
@@ -3509,7 +3627,9 @@ class AmazonSpApiService
                 }
 
                 if ($amazonSku === null) {
-                    $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken);
+                    $listingTarget = $this->resolveAmazonListingTarget($sku, $accessToken);
+                    $amazonSku = $listingTarget['amazon_sku'];
+                    $productType = $listingTarget['product_type'];
                     if (empty($amazonSku)) {
                         return ['success' => false, 'message' => 'SKU not found in Amazon.'];
                     }
@@ -4006,7 +4126,9 @@ class AmazonSpApiService
                 }
 
                 if ($amazonSku === null) {
-                    $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken);
+                    $listingTarget = $this->resolveAmazonListingTarget($sku, $accessToken);
+                    $amazonSku = $listingTarget['amazon_sku'];
+                    $productType = $listingTarget['product_type'];
                     if (empty($amazonSku)) {
                         return ['success' => false, 'message' => 'SKU not found in Amazon.'];
                     }
@@ -4154,7 +4276,9 @@ class AmazonSpApiService
                 }
 
                 if ($amazonSku === null) {
-                    $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken);
+                    $listingTarget = $this->resolveAmazonListingTarget($sku, $accessToken);
+                    $amazonSku = $listingTarget['amazon_sku'];
+                    $productType = $listingTarget['product_type'];
                     if (empty($amazonSku)) {
                         return ['success' => false, 'message' => 'SKU not found in Amazon.'];
                     }

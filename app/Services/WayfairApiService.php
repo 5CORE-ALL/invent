@@ -505,18 +505,67 @@ XML;
     }
 
     /**
-     * Uses the same key-features update path; description is split into lines.
+     * Uses the same key-features update path; HTML descriptions are split into formatted feature lines.
      *
+     * @param  list<string>  $imageUrls
      * @return array{success: bool, message: string}
      */
-    public function updateProductDescription(string $identifier, string $description): array
+    public function updateProductDescription(string $identifier, string $description, array $imageUrls = []): array
     {
         $description = trim($description);
         if ($description === '') {
             return ['success' => false, 'message' => 'Description is required.'];
         }
 
-        return $this->updateBulletPoints($identifier, $description);
+        $lines = \App\Services\Support\DescriptionWithImagesFormatter::htmlToFeatureLines($description);
+        if ($lines === []) {
+            return ['success' => false, 'message' => 'No description content found.'];
+        }
+
+        return $this->updateBulletPoints($identifier, implode("\n", $lines));
+    }
+
+    /**
+     * Description Master: load Wayfair description (metrics first, then key-feature bullets as HTML list).
+     *
+     * @return array{success: bool, message: string, html?: string, source?: string}
+     */
+    public function fetchDescriptionHtml(string $identifier): array
+    {
+        $identifier = trim($identifier);
+        if ($identifier === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+
+        if (Schema::hasTable('wayfair_metrics')) {
+            $row = $this->findMetricRowBySkuOrAlternateIds('wayfair_metrics', $identifier, [
+                'supplier_part_number',
+                'supplier_sku',
+                'catalog_supplier_part_number',
+            ]);
+            if ($row) {
+                $master = trim((string) ($row->description_master ?? ''));
+                if ($master !== '') {
+                    return [
+                        'success' => true,
+                        'message' => 'Wayfair description loaded from metrics.',
+                        'html' => $master,
+                        'source' => 'metrics',
+                    ];
+                }
+                $bullets = trim((string) ($row->bullet_points ?? ''));
+                if ($bullets !== '') {
+                    return [
+                        'success' => true,
+                        'message' => 'Wayfair key features loaded from metrics.',
+                        'html' => \App\Services\Support\DescriptionWithImagesFormatter::linesToEditorHtml($bullets),
+                        'source' => 'metrics_bullets',
+                    ];
+                }
+            }
+        }
+
+        return ['success' => false, 'message' => 'No Wayfair description found for this SKU.'];
     }
 
     /**

@@ -961,7 +961,7 @@ class ReverbApiService
         }
 
         $current = $this->fetchCurrentReverbDescription($token, $listingId, $trim);
-        $incomingPlain = trim($description);
+        $incomingPlain = DescriptionWithImagesFormatter::plainTextFromDescription($description);
         $skuForImages = $product && $product->sku ? (string) $product->sku : $trim;
         $incomingHtml = DescriptionWithImagesFormatter::buildHtmlWithImages(
             $incomingPlain,

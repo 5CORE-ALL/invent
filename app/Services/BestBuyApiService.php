@@ -9,6 +9,7 @@ use Aws\Credentials\Credentials;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Models\ProductStockMapping;
 
 class BestBuyApiService
@@ -146,9 +147,151 @@ class BestBuyApiService
     /**
      * @return array{success: bool, message: string}
      */
-    public function updateProductDescription(string $sku, string $description): array
+    public function updateProductDescription(string $sku, string $description, array $imageUrls = []): array
     {
-        return $this->updateBulletPoints($sku, $description);
+        return $this->updateDescription($sku, $description, $imageUrls);
+    }
+
+    /**
+     * Mirakl longDescription / productDescription (HTML) for Best Buy channel.
+     *
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string}
+     */
+    public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
+    {
+        if (trim($identifier) === '' || trim($description) === '') {
+            return ['success' => false, 'message' => 'SKU and description are required.'];
+        }
+
+        $description = trim($description);
+        if ($description === '') {
+            return ['success' => false, 'message' => 'Description is empty.'];
+        }
+
+        $sku = trim($identifier);
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return ['success' => false, 'message' => 'Best Buy / Mirakl access token not available.'];
+        }
+
+        $descriptionWithImages = DescriptionWithImagesFormatter::buildHtmlWithImages(
+            $description,
+            $identifier,
+            $sku,
+            'Product Image',
+            12,
+            $imageUrls
+        )['html'];
+
+        $productPayload = [
+            'id' => $sku,
+            'attributes' => [
+                'longDescription' => $descriptionWithImages,
+                'productDescription' => $descriptionWithImages,
+            ],
+        ];
+
+        $headers = [
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+            'channel_id' => 'bestbuyusa',
+        ];
+
+        try {
+            $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(60);
+            $response = $request->post('https://miraklconnect.com/api/products', ['products' => [$productPayload]]);
+            if (! $response->successful()) {
+                $response = $request->patch("https://miraklconnect.com/api/products/{$sku}", $productPayload);
+            }
+            if (! $response->successful()) {
+                $response = $request->put("https://miraklconnect.com/api/products/{$sku}", $productPayload);
+            }
+
+            if (! $response->successful()) {
+                return ['success' => false, 'message' => 'Best Buy description update failed: '.$response->body()];
+            }
+
+            return ['success' => true, 'message' => 'Best Buy product description updated.'];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Description Master: return the current Best Buy (Mirakl) product description for one SKU.
+     *
+     * @return array{success: bool, message: string, html?: string, source?: string}
+     */
+    public function fetchDescriptionHtml(string $identifier): array
+    {
+        $identifier = trim($identifier);
+        if ($identifier === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+
+        $sku = $identifier;
+        if (Schema::hasTable('bestbuy_metrics')) {
+            $row = \Illuminate\Support\Facades\DB::table('bestbuy_metrics')->where('sku', $sku)->first();
+            if ($row) {
+                $master = trim((string) ($row->description_master ?? ''));
+                if ($master !== '') {
+                    return [
+                        'success' => true,
+                        'message' => 'Best Buy description loaded from metrics.',
+                        'html' => $master,
+                        'source' => 'metrics',
+                    ];
+                }
+                $bullets = trim((string) ($row->bullet_points ?? ''));
+                if ($bullets !== '') {
+                    return [
+                        'success' => true,
+                        'message' => 'Best Buy description loaded from metrics bullets.',
+                        'html' => DescriptionWithImagesFormatter::linesToEditorHtml($bullets),
+                        'source' => 'metrics_bullets',
+                    ];
+                }
+            }
+        }
+
+        $desc = trim($this->fetchCurrentBestBuyDescription($sku));
+        if ($desc === '') {
+            return ['success' => false, 'message' => 'Best Buy returned no description for this SKU.'];
+        }
+
+        return ['success' => true, 'message' => 'Best Buy description loaded.', 'html' => $desc, 'source' => 'mirakl'];
+    }
+
+    private function fetchCurrentBestBuyDescription(string $sku): string
+    {
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return '';
+        }
+
+        try {
+            $response = Http::withoutVerifying()->withToken($token)->withHeaders([
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+                'channel_id' => 'bestbuyusa',
+            ])->timeout(45)->get('https://miraklconnect.com/api/products/'.$sku);
+
+            if (! $response->successful()) {
+                return '';
+            }
+
+            $attrs = $response->json('attributes') ?? $response->json('data.attributes') ?? [];
+            if (! is_array($attrs)) {
+                return '';
+            }
+
+            return trim((string) ($attrs['longDescription'] ?? $attrs['productDescription'] ?? $attrs['description'] ?? ''));
+        } catch (\Throwable $e) {
+            Log::warning('Best Buy fetch current description failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return '';
+        }
     }
 
     /**

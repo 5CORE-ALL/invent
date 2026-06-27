@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\ProductMaster\Concerns\RetriesMarketplacePush;
 use App\Models\ProductMaster;
 use App\Services\AmazonSpApiService;
+use App\Services\BestBuyApiService;
 use App\Services\Ebay2ApiService;
 use App\Services\EbayApiService;
 use App\Services\EbayThreeApiService;
@@ -15,6 +16,7 @@ use App\Services\ShopifyApiService;
 use App\Services\ShopifyPLSApiService;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\TemuApiService;
+use App\Services\WayfairApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -66,6 +68,7 @@ class DescriptionMasterController extends Controller
             foreach ($marketTables as $marketplace => $table) {
                 $descriptionsByMp[$marketplace] = $this->loadDescriptionMasterForSkuList($table, $rawSkus);
             }
+            $pushStatusesBySku = $this->loadDescriptionPushStatusesBySku();
 
             $result = [];
             foreach ($products as $product) {
@@ -85,6 +88,7 @@ class DescriptionMasterController extends Controller
                     'description_800' => $product->description_800,
                     'description_600' => $product->description_600,
                     'descriptions' => $desc,
+                    'description_push_statuses' => $pushStatusesBySku[$sku] ?? [],
                 ];
             }
 
@@ -116,6 +120,7 @@ class DescriptionMasterController extends Controller
                 'updates' => 'required|array|min:1',
                 'updates.*.marketplace' => 'required|string',
                 'updates.*.description' => 'nullable|string',
+                'updates.*.description_html' => 'nullable|string',
                 'updates.*.image_urls' => 'nullable|array',
                 'updates.*.image_urls.*' => 'nullable|string',
             ]);
@@ -126,13 +131,19 @@ class DescriptionMasterController extends Controller
 
             foreach ($validated['updates'] as $u) {
                 $marketplace = strtolower(trim($u['marketplace']));
-                $text = trim((string) ($u['description'] ?? ''));
+                $requestPlain = trim((string) ($u['description'] ?? ''));
+                $requestHtml = trim((string) ($u['description_html'] ?? ''));
+                $masterText = $this->loadMasterDescriptionTextForSku($sku, $marketplace);
+                $rawForSave = $this->resolveDescriptionForMetricsSave(
+                    $sku,
+                    $marketplace,
+                    $requestPlain,
+                    $requestHtml,
+                    $masterText
+                );
+                $text = $this->prepareDescriptionForPush($rawForSave, $marketplace);
+                $storedText = $this->prepareDescriptionForMetricsSave($rawForSave, $marketplace);
                 $imageUrls = array_values(array_filter(array_map('trim', (array) ($u['image_urls'] ?? []))));
-                if ($text === '') {
-                    $results[$marketplace] = ['success' => false, 'message' => 'Description cannot be empty'];
-
-                    continue;
-                }
 
                 if (! in_array($marketplace, $allowedMarketplaces, true)) {
                     $results[$marketplace] = ['success' => false, 'message' => 'Unknown or unsupported marketplace'];
@@ -140,14 +151,36 @@ class DescriptionMasterController extends Controller
                     continue;
                 }
 
-                $max = $this->maxCharsForMarketplace($marketplace);
-                if (mb_strlen($text) > $max) {
-                    $results[$marketplace] = ['success' => false, 'message' => "Description exceeds {$max} characters for this marketplace."];
+                if ($text === '') {
+                    $results[$marketplace] = ['success' => false, 'message' => 'Description cannot be empty'];
+                    $this->saveDescriptionPushStatus($sku, $marketplace, 'failed', 'Description cannot be empty');
 
                     continue;
                 }
 
-                $this->saveDescriptionToMarketplaceTable($marketplace, $sku, $text);
+                $max = $this->maxCharsForMarketplace($marketplace);
+                $plainLen = mb_strlen($this->normalizeDescriptionPlainText($text));
+                if ($plainLen > $max) {
+                    $msg = "Description exceeds {$max} characters for this marketplace.";
+                    $results[$marketplace] = ['success' => false, 'message' => $msg];
+                    $this->saveDescriptionPushStatus($sku, $marketplace, 'failed', $msg);
+
+                    continue;
+                }
+
+                Log::info('DescriptionMaster marketplace push started', [
+                    'sku' => $sku,
+                    'marketplace' => $marketplace,
+                    'request_plain_chars' => mb_strlen($requestPlain),
+                    'request_html_chars' => mb_strlen($requestHtml),
+                    'push_plain_chars' => $plainLen,
+                    'push_payload_chars' => mb_strlen($text),
+                    'push_uses_html' => $this->marketplacesPushHtml($marketplace),
+                    'master_chars' => mb_strlen($masterText),
+                    'using_master_description' => $requestPlain === '' && $requestHtml === '' && $masterText !== '',
+                    'text_preview' => mb_substr($this->normalizeDescriptionPlainText($text), 0, 80),
+                ]);
+
                 $serviceResult = $this->invokeMarketplacePushWithRetries(
                     fn () => $this->callMarketplaceDescriptionService($marketplace, $sku, $text, $imageUrls),
                     'DescriptionMaster',
@@ -156,9 +189,37 @@ class DescriptionMasterController extends Controller
                 );
 
                 $success = (bool) ($serviceResult['success'] ?? false);
+                $tableSaved = $success
+                    ? $this->saveDescriptionToMarketplaceTable($marketplace, $sku, $storedText)
+                    : false;
+                if ($success) {
+                    if ($marketplace === 'amazon') {
+                        $this->syncAmazonPlainDescriptionToProductMaster($sku, $text);
+                    } elseif (in_array($marketplace, ['shopify_main', 'shopify_pls'], true)) {
+                        $this->syncShopifyPlainDescriptionToProductMaster($sku, $storedText);
+                    }
+                }
+                $pushStatus = $success ? 'success' : 'failed';
+                $pushMessage = $success
+                    ? ($serviceResult['message'] ?? 'Updated')
+                    : ($serviceResult['message'] ?? 'Unable to update this marketplace');
+                $this->saveDescriptionPushStatus($sku, $marketplace, $pushStatus, $pushMessage);
+                Log::info('DescriptionMaster marketplace push finished', [
+                    'sku' => $sku,
+                    'marketplace' => $marketplace,
+                    'success' => $success,
+                    'local_saved' => $tableSaved,
+                    'push_status' => $pushStatus,
+                    'message' => $pushMessage,
+                    'attempts' => (int) ($serviceResult['attempts'] ?? 1),
+                    'retried' => (bool) ($serviceResult['retried'] ?? false),
+                ]);
                 $results[$marketplace] = [
                     'success' => $success,
-                    'message' => $serviceResult['message'] ?? ($success ? 'Updated' : 'Update failed'),
+                    'marketplace_success' => $success,
+                    'push_status' => $pushStatus,
+                    'message' => $pushMessage,
+                    'local_saved' => $tableSaved,
                     'attempts' => (int) ($serviceResult['attempts'] ?? 1),
                     'retried' => (bool) ($serviceResult['retried'] ?? false),
                 ];
@@ -229,7 +290,7 @@ class DescriptionMasterController extends Controller
     }
 
     /**
-     * POST /product-description/generate — Anthropic Claude; tier sets min/max length (1500 / 1000 / 800 / 600 groups).
+     * POST /product-description/generate — Anthropic Claude; tier or max_chars sets length target.
      */
     public function generateDescriptionWithAI(Request $request)
     {
@@ -237,19 +298,36 @@ class DescriptionMasterController extends Controller
             $validated = $request->validate([
                 'product_name' => 'required|string',
                 'current_text' => 'nullable|string',
-                'tier' => 'nullable|string|in:1500,1000,800,600',
+                'tier' => 'nullable|string|in:1500,1000,800,600,2000',
+                'max_chars' => 'nullable|integer|min:150|max:500000',
+                'marketplace' => 'nullable|string',
             ]);
 
             $productName = $validated['product_name'];
             $current = trim((string) ($validated['current_text'] ?? ''));
-            $tier = $validated['tier'] ?? '1500';
+            $marketplace = strtolower(trim((string) ($validated['marketplace'] ?? '')));
 
-            [$minLen, $maxLen] = match ($tier) {
-                '1000' => [900, 1000],
-                '800' => [700, 800],
-                '600' => [500, 600],
-                default => [1400, 1500],
-            };
+            if (! empty($validated['max_chars'])) {
+                $maxLen = (int) $validated['max_chars'];
+                $minLen = $marketplace !== ''
+                    ? $this->minCharsForMarketplace($marketplace)
+                    : max(150, (int) floor($maxLen * 0.85));
+            } else {
+                $tier = $validated['tier'] ?? '1500';
+                [$minLen, $maxLen] = match ($tier) {
+                    '2000' => [1900, 2000],
+                    '1000' => [900, 1000],
+                    '800' => [700, 800],
+                    '600' => [500, 600],
+                    default => [1400, 1500],
+                };
+            }
+
+            if ($maxLen > 10000) {
+                // Shopify / eBay "unlimited" tiers — generate a strong long-form block, not 500k chars.
+                $maxLen = min($maxLen, 8000);
+                $minLen = min($minLen, max(150, (int) floor($maxLen * 0.85)));
+            }
 
             $prompt = "Generate a detailed product description of minimum {$minLen} characters and maximum {$maxLen} characters.\n".
                 "Product: {$productName}\n".
@@ -312,7 +390,8 @@ class DescriptionMasterController extends Controller
                 'success' => true,
                 'description' => $text,
                 'length' => mb_strlen($text),
-                'tier' => $tier,
+                'tier' => $validated['tier'] ?? (string) $maxLen,
+                'max_chars' => $maxLen,
             ]);
         } catch (\Throwable $e) {
             Log::error('DescriptionMaster: generateDescriptionWithAI failed', ['error' => $e->getMessage()]);
@@ -343,6 +422,7 @@ class DescriptionMasterController extends Controller
             $data = (array) ($res['data'] ?? []);
             $html = (string) ($data['description_html'] ?? '');
             $images = (array) ($data['images'] ?? []);
+            $plain = $this->truncateDescriptionForMarketplace($html !== '' ? $html : (string) ($data['description_plain'] ?? ''), 'amazon');
 
             if (Schema::hasTable('product_master')) {
                 $update = [];
@@ -355,15 +435,31 @@ class DescriptionMasterController extends Controller
                         $update['amazon_aplus_images'] = $encoded;
                     }
                 }
+                if ($plain !== '') {
+                    if (Schema::hasColumn('product_master', 'description_1500')) {
+                        $update['description_1500'] = $plain;
+                    }
+                    if (Schema::hasColumn('product_master', 'product_description')) {
+                        $update['product_description'] = $plain;
+                    }
+                }
                 if ($update !== []) {
                     ProductMaster::query()->where('sku', $sku)->update($update);
                 }
             }
 
+            if ($plain !== '') {
+                $this->saveDescriptionToMarketplaceTable('amazon', $sku, $plain);
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => 'Amazon A+ content fetched.',
-                'data' => $data,
+                'message' => 'Amazon listing description fetched (product_description attribute; plain text synced to DESC 1500).',
+                'data' => array_merge($data, [
+                    'description_plain' => $plain,
+                    'plain_length' => mb_strlen($plain),
+                    'char_limit' => $this->maxCharsForMarketplace('amazon'),
+                ]),
             ]);
         } catch (\Throwable $e) {
             Log::error('DescriptionMaster: fetchAmazonAplusContent failed', ['error' => $e->getMessage()]);
@@ -537,7 +633,7 @@ class DescriptionMasterController extends Controller
 
                         return [
                             'success' => true,
-                            'message' => 'Fetched Amazon A+ content.',
+                            'message' => 'Fetched Amazon listing description (product_description attribute via SP-API).',
                             'html' => $html,
                             'images' => $images,
                             'source' => 'amazon',
@@ -545,6 +641,12 @@ class DescriptionMasterController extends Controller
                     }
 
                     return ['success' => false, 'message' => (string) ($r['message'] ?? 'Amazon fetch failed.')];
+
+                case 'wayfair':
+                    return app(WayfairApiService::class)->fetchDescriptionHtml($sku);
+
+                case 'bestbuy':
+                    return app(BestBuyApiService::class)->fetchDescriptionHtml($sku);
 
                 default:
                     return ['success' => false, 'message' => 'Live fetch not available for this platform yet.'];
@@ -562,8 +664,9 @@ class DescriptionMasterController extends Controller
      *  - Shopify Main/PLS, eBay1/eBay2: HTML "About Item" block in the body  -> removeAboutItemBlock()
      *  - Reverb: HTML "Highlighted Features" block in the body               -> removeAboutItemBlock()
      *  - Macy's: plain-text "About Item ..." before "Product Description"     -> stripMacyAboutItemText()
-     *  - eBay3 (Item Specifics), Temu (goodsSummary), Amazon (A+), Wayfair/Best Buy: bullets are a
+     *  - eBay3 (Item Specifics), Temu (goodsSummary), Amazon (A+): bullets are a
      *    SEPARATE field, never in the description -> nothing to strip.
+     *  - Wayfair / Best Buy: key-feature lines are converted to/from HTML lists on fetch/push.
      */
     private function stripBulletsIfNeeded(string $marketplace, array $res): array
     {
@@ -624,7 +727,14 @@ class DescriptionMasterController extends Controller
 
             $html = (string) ($res['html'] ?? '');
             if ($request->boolean('save')) {
-                $this->saveDescriptionToMarketplaceTable($marketplace, $sku, $html);
+                $this->saveDescriptionToMarketplaceTable(
+                    $marketplace,
+                    $sku,
+                    $this->prepareDescriptionForMetricsSave($html, $marketplace)
+                );
+                if ($marketplace === 'amazon') {
+                    $this->syncAmazonPlainDescriptionToProductMaster($sku, $html);
+                }
             }
 
             return response()->json([
@@ -633,6 +743,8 @@ class DescriptionMasterController extends Controller
                 'sku' => $sku,
                 'marketplace' => $marketplace,
                 'description_html' => $html,
+                'description_plain' => $this->truncateDescriptionForMarketplace($html, $marketplace),
+                'char_limit' => $this->maxCharsForMarketplace($marketplace),
                 'images' => array_values((array) ($res['images'] ?? [])),
                 'source' => (string) ($res['source'] ?? ''),
             ]);
@@ -662,12 +774,17 @@ class DescriptionMasterController extends Controller
                 $ok = (bool) ($res['success'] ?? false);
                 $html = $ok ? (string) ($res['html'] ?? '') : '';
                 if ($ok) {
-                    $this->saveDescriptionToMarketplaceTable($marketplace, $sku, $html);
+                    $stored = $this->prepareDescriptionForMetricsSave($html, $marketplace);
+                    $this->saveDescriptionToMarketplaceTable($marketplace, $sku, $stored);
+                    if ($marketplace === 'amazon') {
+                        $this->syncAmazonPlainDescriptionToProductMaster($sku, $html);
+                    }
                 }
                 $results[$marketplace] = [
                     'success' => $ok,
                     'message' => (string) ($res['message'] ?? ''),
-                    'chars' => strlen($html),
+                    'chars' => mb_strlen($ok ? $this->truncateDescriptionForMarketplace($html, $marketplace) : ''),
+                    'char_limit' => $this->maxCharsForMarketplace($marketplace),
                 ];
             }
 
@@ -709,11 +826,14 @@ class DescriptionMasterController extends Controller
                 return response()->json(['success' => false, 'message' => 'Invalid SKU'], 422);
             }
 
-            $ok = $this->saveDescriptionToMarketplaceTable($marketplace, $sku, (string) ($validated['description'] ?? ''));
+            $stored = $this->prepareDescriptionForMetricsSave((string) ($validated['description'] ?? ''), $marketplace);
+            $ok = $this->saveDescriptionToMarketplaceTable($marketplace, $sku, $stored);
 
             return response()->json([
                 'success' => $ok,
                 'message' => $ok ? 'Saved.' : 'Could not save (metrics table/column missing).',
+                'description_stored' => $stored,
+                'description_plain' => $this->normalizeDescriptionPlainText($stored),
             ]);
         } catch (\Throwable $e) {
             Log::error('DescriptionMaster: saveMarketplaceDescription failed', ['error' => $e->getMessage()]);
@@ -741,13 +861,178 @@ class DescriptionMasterController extends Controller
 
     private function maxCharsForMarketplace(string $marketplace): int
     {
+        // Platform listing limits (Amazon/Temu: plain text; Shopify: no hard cap; eBay: 500k — ~800 visible on mobile).
         return match ($marketplace) {
-            'amazon', 'temu', 'reverb' => 1500,
-            'shopify_main', 'shopify_pls' => 1000,
-            'ebay', 'ebay2', 'ebay3' => 800,
+            'amazon', 'temu' => 2000,
+            'shopify_main', 'shopify_pls' => 500000,
+            'ebay', 'ebay2', 'ebay3' => 500000,
+            'reverb', 'bestbuy' => 1500,
+            'wayfair' => 2000,
             'macy' => 600,
             default => 1500,
         };
+    }
+
+    /**
+     * Minimum plain-text length for AI generation (Amazon recommends ≥150 chars).
+     */
+    private function minCharsForMarketplace(string $marketplace): int
+    {
+        return match ($marketplace) {
+            'amazon' => 150,
+            default => max(150, (int) floor($this->maxCharsForMarketplace($marketplace) * 0.85)),
+        };
+    }
+
+    /**
+     * Push payloads use plain text. Strip HTML from pulled listing / editor content before counting chars.
+     */
+    private function normalizeDescriptionPlainText(string $text): string
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return '';
+        }
+
+        if (preg_match('/<[^>]+>/', $text)) {
+            $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        }
+
+        $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
+
+        return trim($text);
+    }
+
+    /**
+     * Plain-text body truncated to the marketplace character limit (used before API push).
+     */
+    private function truncateDescriptionForMarketplace(string $text, string $marketplace): string
+    {
+        $plain = $this->normalizeDescriptionPlainText($text);
+        if ($plain === '') {
+            return '';
+        }
+
+        $max = $this->maxCharsForMarketplace($marketplace);
+        if (mb_strlen($plain) > $max) {
+            return mb_substr($plain, 0, $max);
+        }
+
+        return $plain;
+    }
+
+    /**
+     * All Description Master marketplaces push formatted descriptions (HTML-aware per channel API).
+     */
+    private function marketplacesPushHtml(string $marketplace): bool
+    {
+        return isset($this->marketplaceTableMap()[$marketplace]);
+    }
+
+    /**
+     * Push payload: preserve HTML for all marketplaces; char limits apply to plain-text length.
+     */
+    private function prepareDescriptionForPush(string $text, string $marketplace): string
+    {
+        return $this->prepareDescriptionForMetricsSave($text, $marketplace);
+    }
+
+    /**
+     * Preserve TinyMCE HTML in description_master; enforce limits on plain-text length.
+     */
+    private function prepareDescriptionForMetricsSave(string $text, string $marketplace): string
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return '';
+        }
+
+        $max = $this->maxCharsForMarketplace($marketplace);
+        if (mb_strlen($this->normalizeDescriptionPlainText($text)) > $max) {
+            return $this->truncateDescriptionForMarketplace($text, $marketplace);
+        }
+
+        return $text;
+    }
+
+    /**
+     * Prefer explicit HTML from the client; otherwise keep stored HTML when push plain text matches.
+     */
+    private function resolveDescriptionForMetricsSave(
+        string $sku,
+        string $marketplace,
+        string $requestPlain,
+        string $requestHtml,
+        string $masterText
+    ): string {
+        if ($requestHtml !== '') {
+            return $requestHtml;
+        }
+
+        if ($requestPlain !== '') {
+            $existing = $this->loadDescriptionMasterTextForSku($sku, $marketplace);
+            if ($existing !== ''
+                && $this->normalizeDescriptionPlainText($existing) === $this->normalizeDescriptionPlainText($requestPlain)) {
+                return $existing;
+            }
+
+            return $requestPlain;
+        }
+
+        return $masterText;
+    }
+
+    private function loadDescriptionMasterTextForSku(string $sku, string $marketplace): string
+    {
+        $tables = $this->marketplaceTableMap();
+        if (! isset($tables[$marketplace])) {
+            return '';
+        }
+
+        $map = $this->loadDescriptionMasterForSkuList($tables[$marketplace], [$sku]);
+
+        return $map[$sku] ?? '';
+    }
+
+    /**
+     * After Amazon live fetch, keep PM tier columns in sync with listing plain text (1500-char group).
+     */
+    private function syncAmazonPlainDescriptionToProductMaster(string $sku, string $content): void
+    {
+        $plain = $this->truncateDescriptionForMarketplace($content, 'amazon');
+        if ($plain === '' || ! Schema::hasTable('product_master')) {
+            return;
+        }
+
+        $update = [];
+        if (Schema::hasColumn('product_master', 'description_1500')) {
+            $update['description_1500'] = $plain;
+        }
+        if (Schema::hasColumn('product_master', 'product_description')) {
+            $update['product_description'] = $plain;
+        }
+        if ($update !== []) {
+            ProductMaster::query()->where('sku', $sku)->update($update);
+        }
+    }
+
+    /**
+     * After Shopify push, keep PM description_1000 in sync so Preview (PM) reflects the pushed copy.
+     */
+    private function syncShopifyPlainDescriptionToProductMaster(string $sku, string $content): void
+    {
+        $plain = $this->truncateDescriptionForMarketplace($content, 'shopify_main');
+        if ($plain === '' || ! Schema::hasTable('product_master')) {
+            return;
+        }
+
+        $update = [];
+        if (Schema::hasColumn('product_master', 'description_1000')) {
+            $update['description_1000'] = $plain;
+        }
+        if ($update !== []) {
+            ProductMaster::query()->where('sku', $sku)->update($update);
+        }
     }
 
     /**
@@ -905,6 +1190,8 @@ class DescriptionMasterController extends Controller
             'ebay' => [EbayApiService::class, 'updateDescription'],
             'ebay2' => [Ebay2ApiService::class, 'updateDescription'],
             'ebay3' => [EbayThreeApiService::class, 'updateDescription'],
+            'wayfair' => [WayfairApiService::class, 'updateProductDescription'],
+            'bestbuy' => [BestBuyApiService::class, 'updateDescription'],
         ];
 
         try {
@@ -938,6 +1225,98 @@ class DescriptionMasterController extends Controller
         }
 
         return str_replace("\u{00a0}", ' ', trim((string) $sku));
+    }
+
+    /**
+     * Product Master tier text for a marketplace (mirrors getPmTextForMp() in the blade).
+     */
+    private function loadMasterDescriptionTextForSku(string $sku, string $marketplace): string
+    {
+        $pm = ProductMaster::query()->where('sku', $sku)->first();
+        if (! $pm) {
+            return '';
+        }
+
+        $d1500 = trim((string) ($pm->description_1500 ?? $pm->product_description ?? ''));
+        $d1000 = trim((string) ($pm->description_1000 ?? ''));
+        $d800 = trim((string) ($pm->description_800 ?? ''));
+        $d600 = trim((string) ($pm->description_600 ?? ''));
+
+        if (in_array($marketplace, ['amazon', 'temu', 'reverb', 'wayfair', 'bestbuy'], true)) {
+            $text = $d1500;
+        } elseif (in_array($marketplace, ['shopify_main', 'shopify_pls'], true)) {
+            $text = $d1000 !== '' ? $d1000 : $d1500;
+        } elseif (in_array($marketplace, ['ebay', 'ebay2', 'ebay3'], true)) {
+            $text = $d800 !== '' ? $d800 : $d1500;
+        } else {
+            $text = $d600 !== '' ? $d600 : $d1500;
+        }
+
+        return $this->truncateDescriptionForMarketplace($text, $marketplace);
+    }
+
+    /**
+     * @return array<string, array<string, string>> normalized sku => [marketplace => status]
+     */
+    private function loadDescriptionPushStatusesBySku(): array
+    {
+        if (! Schema::hasTable('description_marketplace_push_statuses')) {
+            return [];
+        }
+
+        try {
+            $statuses = [];
+            DB::table('description_marketplace_push_statuses')
+                ->select('sku', 'marketplace', 'status')
+                ->whereNotNull('sku')
+                ->orderByDesc('attempted_at')
+                ->get()
+                ->each(function ($row) use (&$statuses) {
+                    $sku = $this->normalizeSku($row->sku);
+                    $marketplace = strtolower(trim((string) $row->marketplace));
+                    $status = strtolower(trim((string) $row->status));
+
+                    if ($sku !== '' && $marketplace !== '' && in_array($status, ['success', 'failed'], true)) {
+                        $statuses[$sku][$marketplace] = $status;
+                    }
+                });
+
+            return $statuses;
+        } catch (\Throwable $e) {
+            Log::warning('DescriptionMaster: unable to load description push statuses', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    private function saveDescriptionPushStatus(string $sku, string $marketplace, string $status, string $message = ''): void
+    {
+        if (! Schema::hasTable('description_marketplace_push_statuses')) {
+            return;
+        }
+
+        try {
+            DB::table('description_marketplace_push_statuses')->updateOrInsert(
+                [
+                    'sku' => $this->normalizeSku($sku),
+                    'marketplace' => strtolower(trim($marketplace)),
+                ],
+                [
+                    'status' => in_array($status, ['success', 'failed'], true) ? $status : 'failed',
+                    'message' => $message !== '' ? mb_substr($message, 0, 1000) : null,
+                    'attempted_at' => now(),
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('DescriptionMaster: unable to save description push status', [
+                'sku' => $sku,
+                'marketplace' => $marketplace,
+                'status' => $status,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

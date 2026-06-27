@@ -29,7 +29,7 @@ class DescriptionWithImagesFormatter
             $images = self::resolveImageUrls($identifier, $skuHint, $maxImages);
         }
 
-        $textInner = '<p>'.nl2br(htmlspecialchars($descriptionPlain, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</p>';
+        $textInner = self::formatDescriptionInnerHtml($descriptionPlain);
 
         if ($shopifyRichLayout) {
             $aboutHtml = self::formatAboutItemHtml((string) ($aboutItemBulletsPlain ?? ''));
@@ -99,6 +99,155 @@ class DescriptionWithImagesFormatter
         ]);
 
         return ['html' => $html, 'text_html' => $textInner, 'images' => $images];
+    }
+
+    /**
+     * Plain-text length for char limits (strips editor / listing HTML).
+     */
+    public static function plainTextFromDescription(string $text): string
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return '';
+        }
+
+        if (preg_match('/<[^>]+>/', $text)) {
+            $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        }
+
+        return trim(preg_replace('/\s+/u', ' ', $text) ?? $text);
+    }
+
+    /**
+     * Editor or fetched listing body → inner HTML for the Product Description block (no double-escape).
+     */
+    public static function formatDescriptionInnerHtml(string $description): string
+    {
+        $description = trim($description);
+        if ($description === '') {
+            return '<p></p>';
+        }
+
+        $body = self::extractEditorDescriptionBody($description);
+
+        if (! preg_match('/<[^>]+>/', $body)) {
+            return '<p>'.nl2br(htmlspecialchars($body, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</p>';
+        }
+
+        return self::sanitizeEditorHtml($body);
+    }
+
+    /**
+     * Pull description copy out of a full listing body or unified Shopify layout.
+     */
+    public static function extractEditorDescriptionBody(string $html): string
+    {
+        $html = trim($html);
+        if ($html === '') {
+            return '';
+        }
+
+        if (preg_match('/<div\b[^>]*\bclass\s*=\s*["\'][^"\']*\bproduct-text\b[^"\']*["\'][^>]*>(.*)/is', $html, $m)) {
+            $inner = trim($m[1]);
+            if (preg_match('/\A(.*?)(?=<\/div>\s*(?:<h3\b|<div\b[^>]*\bclass\s*=\s*["\'][^"\']*\bfeatures-grid\b|$))/is', $inner, $section)) {
+                return trim($section[1]);
+            }
+
+            return $inner;
+        }
+
+        if (preg_match('/<h[1-6]\b[^>]*>\s*Product\s+Description\s*<\/h[1-6]>\s*(.*)/is', $html, $m)) {
+            $after = trim($m[1]);
+            if (preg_match('/\A(.*?)(?=<h[1-6]\b|<div\b[^>]*\bclass\s*=\s*["\'][^"\']*\bfeatures-grid\b|<div\b[^>]*\bclass\s*=\s*["\'][^"\']*\bproduct-images\b|$)/is', $after, $section)) {
+                return trim($section[1]);
+            }
+
+            return $after;
+        }
+
+        $stripped = ShopifyBulletPointsFormatter::removeAboutItemBlock($html);
+
+        return trim($stripped);
+    }
+
+    private static function sanitizeEditorHtml(string $html): string
+    {
+        $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html) ?? $html;
+        $html = preg_replace('/<iframe\b[^>]*>.*?<\/iframe>/is', '', $html) ?? $html;
+
+        return trim($html);
+    }
+
+    /**
+     * Convert editor HTML to bullet/feature lines (Wayfair key features, plain newline bodies).
+     * Preserves inline tags such as strong/em within each line.
+     *
+     * @return list<string>
+     */
+    public static function htmlToFeatureLines(string $html): array
+    {
+        $html = trim($html);
+        if ($html === '') {
+            return [];
+        }
+
+        if (! preg_match('/<[^>]+>/', $html)) {
+            return array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $html))));
+        }
+
+        $body = self::extractEditorDescriptionBody($html);
+
+        if (preg_match_all('/<li\b[^>]*>(.*?)<\/li>/is', $body, $matches)) {
+            $lines = [];
+            foreach ($matches[1] as $item) {
+                $line = trim(self::sanitizeEditorHtml($item));
+                if ($line !== '') {
+                    $lines[] = $line;
+                }
+            }
+            if ($lines !== []) {
+                return $lines;
+            }
+        }
+
+        if (preg_match_all('/<p\b[^>]*>(.*?)<\/p>/is', $body, $matches)) {
+            $lines = [];
+            foreach ($matches[1] as $item) {
+                $line = trim(self::sanitizeEditorHtml($item));
+                if ($line !== '') {
+                    $lines[] = $line;
+                }
+            }
+            if ($lines !== []) {
+                return $lines;
+            }
+        }
+
+        $withBreaks = preg_replace('/<br\s*\/?>/i', "\n", $body) ?? $body;
+        $plain = self::plainTextFromDescription($withBreaks);
+        if ($plain === '') {
+            return [];
+        }
+
+        return array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $plain))));
+    }
+
+    /**
+     * Plain newline-separated lines → HTML list for the TinyMCE editor.
+     */
+    public static function linesToEditorHtml(string $text): string
+    {
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', trim($text)))));
+        if ($lines === []) {
+            return '';
+        }
+
+        $items = array_map(
+            static fn (string $line) => '<li>'.($line).'</li>',
+            $lines
+        );
+
+        return '<ul>'.implode('', $items).'</ul>';
     }
 
     /**
