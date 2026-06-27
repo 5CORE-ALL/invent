@@ -527,6 +527,39 @@
                         <input type="text" id="search-sku"      class="form-control form-control-sm border-primary" placeholder="SKU…"      autocomplete="off" style="width:140px;">
                         <input type="text" id="search-supplier" class="form-control form-control-sm border-primary" placeholder="Supplier…" autocomplete="off" style="width:130px;">
 
+                        {{-- Executive quick filter — matches the in-cell Exec column
+                             values; empty string means "show every executive". --}}
+                        <select id="executive-filter"
+                                class="form-select form-select-sm border-primary"
+                                style="width:140px;"
+                                title="Filter by assigned executive"
+                                aria-label="Executive filter">
+                            <option value="">👤 All Execs</option>
+                            <option value="__unassigned__">— Unassigned —</option>
+                            <option value="Atin">Atin</option>
+                            <option value="Jack">Jack</option>
+                            <option value="Nitish">Nitish</option>
+                            <option value="Ajay">Ajay</option>
+                            <option value="Candy">Candy</option>
+                            <option value="Sruti">Sruti</option>
+                        </select>
+
+                        {{-- NRP checkbox dropdown — promoted to the top filter row so
+                             REQ / 2BDC / LATER toggles sit next to the other quick
+                             filters. The button label is kept in sync by the existing
+                             updateNRPMultiselectLabel() helper. --}}
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-sm btn-light border border-primary dropdown-toggle" type="button" id="nrp-filter-dropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" style="min-width:130px;" title="Filter by NRP type (REQ / 2BDC / LATER)">
+                                🔍 NRP: <span id="nrp-filter-label">ALL Items</span>
+                            </button>
+                            <ul class="dropdown-menu shadow-sm p-2" style="min-width:170px;" aria-labelledby="nrp-filter-dropdown">
+                                <li class="small text-muted px-2 mb-1">Show item types</li>
+                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="REQ" checked><span>REQ</span></label></li>
+                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="NR" checked><span>2BDC</span></label></li>
+                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="LATER" checked><span>LATER</span></label></li>
+                            </ul>
+                        </div>
+
                         <span class="vr align-self-stretch opacity-25"></span>
 
                         <!-- Stage Filter + blue summary badge (filtered child rows + column sum) -->
@@ -554,19 +587,6 @@
                         <select id="row-data-type" class="form-select form-select-sm border border-primary" style="width:150px;" aria-label="Row type"></select>
 
                         <span class="vr align-self-stretch opacity-25"></span>
-
-                        <!-- NRP multiselect -->
-                        <div class="dropdown d-inline-block">
-                            <button class="btn btn-sm btn-light border border-primary dropdown-toggle" type="button" id="nrp-filter-dropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" style="min-width:120px;">
-                                <span id="nrp-filter-label">ALL Items</span>
-                                </button>
-                            <ul class="dropdown-menu shadow-sm p-2" style="min-width:170px;" aria-labelledby="nrp-filter-dropdown">
-                                <li class="small text-muted px-2 mb-1">Show item types</li>
-                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="REQ" checked><span>REQ</span></label></li>
-                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="NR" checked><span>2BDC</span></label></li>
-                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="LATER" checked><span>LATER</span></label></li>
-                            </ul>
-                            </div>
 
                         <!-- Column Management -->
                         <div class="dropdown">
@@ -4155,6 +4175,7 @@
         let currentSearchSku = '';
         let currentSearchParent = '';
         let currentSearchSupplier = '';
+        let currentExecutiveFilter = '';
         let currentSupplierFilter = null;
         let currentZoneFilter = null;
         let currentContainerFilter = null;
@@ -4270,6 +4291,7 @@
             currentSearchSku         = '';
             currentSearchParent      = '';
             currentSearchSupplier    = '';
+            currentExecutiveFilter   = '';
             currentSupplierFilter    = null;
             currentZoneFilter        = null;
             currentContainerFilter   = null;
@@ -4288,6 +4310,8 @@
                 const el = document.getElementById(id);
                 if (el) el.value = '';
             });
+            const execEl = document.getElementById('executive-filter');
+            if (execEl) execEl.value = '';
             const sf = document.getElementById('stage-filter');
             if (sf) sf.value = '';
             const sbadge = document.getElementById('stage-filter-badge');
@@ -5012,6 +5036,18 @@
                 if (currentSearchSku      && !String(data.SKU            || '').toLowerCase().includes(currentSearchSku))      return false;
                 if (currentSearchParent   && !String(data.Parent         || '').toLowerCase().includes(currentSearchParent))   return false;
                 if (currentSearchSupplier && !String(data.mfrg_supplier  || '').toLowerCase().includes(currentSearchSupplier)) return false;
+
+                // Executive filter (exact match; "__unassigned__" sentinel = blank exec).
+                // Parent rows render Exec as "-" and don't carry their own exec, so the
+                // unassigned bucket only meaningfully includes child SKUs.
+                if (currentExecutiveFilter) {
+                    const rowExec = String(data.exec || '').trim();
+                    if (currentExecutiveFilter === '__unassigned__') {
+                        if (rowExec !== '') return false;
+                    } else if (rowExec.toLowerCase() !== currentExecutiveFilter.toLowerCase()) {
+                        return false;
+                    }
+                }
 
                 // Supplier play filter
                 if (currentSupplierFilter) {
@@ -6831,6 +6867,14 @@
                 makeSearchHandler('search-sku',      function(v) { currentSearchSku      = v; });
                 makeSearchHandler('search-parent',   function(v) { currentSearchParent   = v; });
                 makeSearchHandler('search-supplier', function(v) { currentSearchSupplier = v; });
+
+                const execEl = document.getElementById('executive-filter');
+                if (execEl) {
+                    execEl.addEventListener('change', function() {
+                        currentExecutiveFilter = String(execEl.value || '').trim();
+                        setCombinedFilters();
+                    });
+                }
             })();
 
             document.getElementById('stage-filter').addEventListener('change', function(e) {
