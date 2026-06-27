@@ -6,6 +6,23 @@
         <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 
     <style>
+        /* Target ROI% / Target GPFT% inputs — narrow enough for ~2 digits and
+           strip the native number-input spinner arrows (the up/down chevrons
+           that Chrome/Edge/Firefox draw on type="number"). Targeted by ID so
+           the rule doesn't accidentally affect any other number inputs on the
+           page. */
+        #target-roi-input,
+        #target-gpft-input {
+            -moz-appearance: textfield; /* Firefox: drop the spinner */
+        }
+        #target-roi-input::-webkit-outer-spin-button,
+        #target-roi-input::-webkit-inner-spin-button,
+        #target-gpft-input::-webkit-outer-spin-button,
+        #target-gpft-input::-webkit-inner-spin-button {
+            -webkit-appearance: none; /* Chrome/Safari/Edge: drop the spinner */
+            margin: 0;
+        }
+
         /* NRP cell — show just a colored dot by default; clicking opens a native
            <select> that's positioned absolutely on top with opacity:0 so the dropdown
            menu appears right where the dot is. Same UX/CSS as /forecast.analysis. */
@@ -39,18 +56,17 @@
             appearance: none;
         }
 
-        /* Summary Statistics badges — bumped to 1.2x size for readability.
-           Targets every .badge inside #summary-stats so new badges added later
-           pick the size up automatically. fs-6 = 1rem default → 1.2rem here.
-           Padding is also bumped by the same 1.2x to keep proportions, and the
-           container gap is widened slightly so the larger badges don't touch. */
-        #summary-stats .badge {
-            font-size: 1.2rem !important;
-            padding: 0.6rem 0.72rem !important; /* p-2 (.5rem) × 1.2 */
-            line-height: 1.2;
-        }
-        #summary-stats .d-flex.gap-2 {
-            gap: 0.6rem !important; /* matches 1.2× the default gap-2 */
+        /* Summary Statistics — sizing comes from per-badge inline styles
+           (font-size:14px / padding:8px 10px / flex:1 1 0 / min-width:90px)
+           so the strip matches /doba-tabulator's compact look. No global
+           bump rule here; previous 1.2× override was removed. */
+
+        /* Toolbar row — flex-wrap so the row breaks to a 2nd line instead of
+           growing a horizontal scrollbar. `flex-shrink: 0` on every child so
+           individual selects keep their natural width (otherwise flex would
+           squish them down on a narrow viewport). */
+        .temu-toolbar-row > * {
+            flex-shrink: 0;
         }
 
         .tabulator-col .tabulator-col-sorter {
@@ -184,8 +200,129 @@
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
-                <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+            {{-- py-1 to keep the toolbar block compact; previous py-3 left too much
+                 padding above the badge strip and below the filter rows. --}}
+            <div class="card-body py-1">
+                {{-- Compact summary strip — positioned at the TOP of the toolbar
+                     to match /doba-tabulator. Each badge:
+                       • flex:1 1 0 + text-center → spreads edge-to-edge across the row.
+                       • min-width:90px so labels stay readable on narrow viewports.
+                       • font-size:14px + padding:8px 10px → matches doba sizing.
+                       • flex-nowrap + overflow-x:auto → single horizontal band; the
+                         strip scrolls horizontally rather than wrapping if there
+                         are more badges than fit (same pattern as doba).
+                     IMPORTANT: badge IDs are unchanged, so updateSummary() and the
+                     click-to-filter handlers attached elsewhere still work. --}}
+                <div id="summary-stats" class="p-1 bg-light rounded mb-1">
+                    {{-- Was `flex-nowrap` + `overflow-x:auto` (would scroll horizontally
+                         when too many badges); switched to `flex-wrap` so the strip
+                         simply wraps to a second line on narrow viewports. No scroll bar. --}}
+                    <div class="d-flex flex-wrap gap-1 w-100">
+                        <!-- Basic Counts (sales summary = same as tabulator sales page) -->
+                        <span id="total-revenue-badge"
+                              class="badge bg-success text-center temu-badge-history"
+                              data-badge-metric="total_sales" data-badge-label="Sales"
+                              style="font-weight:700; color: white !important; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Total Sales — click to view history"
+                              aria-label="Total Sales">$ 0</span>
+                        {{-- "Orders" badge removed per product request. backendOrders is
+                             still parsed in updateSummary() (it's part of the same
+                             sales_summary payload that drives QTY + Sales), but no
+                             longer rendered. --}}
+                        <span id="total-quantity-badge"
+                              class="badge bg-success text-center temu-badge-history"
+                              data-badge-metric="total_quantity" data-badge-label="QTY"
+                              style="font-weight:700; color: white !important; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Click to view history">QTY 0</span>
+                        <span id="zero-sold-count-badge"
+                              class="badge bg-danger text-center"
+                              style="font-weight:700; color: white !important; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Click to filter 0 sold items (INV>0)">0 Sold 0</span>
+                        <span id="missing-count-badge"
+                              class="badge text-center"
+                              style="background-color: #dc3545; color: white !important; font-weight:700; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Click to filter missing SKUs (INV>0)">M-L 0</span>
+                        <span id="not-mapped-count-badge"
+                              class="badge text-center"
+                              style="background-color: #dc3545; color: white !important; font-weight:700; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Click to filter not mapped SKUs (INV>0)">M-M 0</span>
+                        {{-- "Views" badge (formerly "Green Alert") removed per product request.
+                             temuIsGreenAlert() helper, greenAlertCount, and the cell-color
+                             logic on the Temu Price column stay so the green coloring on
+                             individual rows still works. Click-to-filter via the badge is
+                             gone with the badge; filter via toolbar dropdowns instead. --}}
+                        {{-- "Alert" badge (formerly "Red Alert"): opposite of the Views/Green-Alert
+                             badge — Temu is uncompetitive (at/above every competitor threshold). --}}
+                        <span id="temu-red-alert-badge"
+                              class="badge text-center"
+                              style="background-color: #a00211; color: white !important; font-weight:700; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Click to filter rows where Temu Price &ge; Amazon × 0.85 AND &ge; eBay 1 × 0.90 AND &ge; eBay 2 × 0.90 (uncompetitive)"
+                              aria-label="Alert — uncompetitive Temu pricing"><i class="fas fa-triangle-exclamation"></i> 0</span>
+
+                        <!-- Pricing & Performance -->
+                        {{-- "Total Views" + "Total Sold" badges removed per product request.
+                             The underlying sums (cvrTotalViews / cvrTotalSold) are still
+                             computed in JS because the CVR badge below uses them
+                             (Total Sold ÷ Total Views × 100). --}}
+                        <span id="avg-cvr-badge"
+                              class="badge bg-warning text-center temu-badge-history"
+                              data-badge-metric="avg_cvr_pct" data-badge-label="CVR %"
+                              style="font-weight:700; color: #111 !important; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Total Sold / Total Views * 100">CVR 0.0%</span>
+
+                        {{-- Financial Totals (kept hidden — % equivalents in the next group
+                             carry the same signal; JS still writes to these IDs harmlessly). --}}
+                        <span id="total-profit-badge" class="badge bg-primary" style="font-weight:700; color: white !important; display:none;">PFT $0</span>
+                        <span id="total-lp-badge" class="badge bg-info" style="font-weight:700; color: #111 !important; display:none;">Total LP $0</span>
+
+                        <!-- Percentages (Gross) -->
+                        <span id="avg-gprft-badge"
+                              class="badge bg-success text-center"
+                              style="font-weight:700; color: white !important; font-size:14px; padding:4px 8px;">GPFT 0%</span>
+                        <span id="avg-groi-badge"
+                              class="badge text-center"
+                              style="background-color: #6f42c1; color: white !important; font-weight:700; font-size:14px; padding:4px 8px;">GROI 0%</span>
+
+                        <!-- Advertising Metrics -->
+                        <span id="total-spend-badge"
+                              class="badge text-center temu-badge-history"
+                              data-badge-metric="total_spend" data-badge-label="Spend"
+                              style="background-color: #87CEEB; color: #111 !important; font-weight:700; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Click to view history">Ads$ 0.00</span>
+                        <span id="avg-ads-badge"
+                              class="badge bg-warning text-center"
+                              style="font-weight:700; color: #111 !important; font-size:14px; padding:4px 8px;">Ads 0%</span>
+
+                        <!-- Percentages (Net) -->
+                        <span id="avg-npft-badge"
+                              class="badge bg-success text-center"
+                              style="font-weight:700; color: white !important; font-size:14px; padding:4px 8px;">NPFT 0%</span>
+                        <span id="avg-nroi-badge"
+                              class="badge text-center"
+                              style="background-color: #6f42c1; color: white !important; font-weight:700; font-size:14px; padding:4px 8px;">NROI 0%</span>
+
+                       
+                        <span id="total-views-badge"
+                              class="badge bg-info text-center temu-badge-history"
+                              data-badge-metric="total_views" data-badge-label="Views"
+                              style="font-weight:700; color: #111 !important; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Total Views (sum of product_clicks across visible rows) — click to view history"
+                              aria-label="Total Views"><i class="fas fa-eye"></i> 0</span>
+                        <span id="avg-views-badge"
+                              class="badge bg-info text-center temu-badge-history"
+                              data-badge-metric="avg_views" data-badge-label="AVG views"
+                              style="font-weight:700; color: #111 !important; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Average Views per product — click to view history"
+                              aria-label="Average Views per product"><i class="far fa-eye"></i> 0</span>
+                    </div>
+                </div>
+
+                {{-- Toolbar (filters + actions) — wraps onto a 2nd row when the
+                     viewport can't fit everything on one row. No horizontal scroll
+                     bar; controls keep their natural width (via `flex-shrink:0` in
+                     the CSS rule for .temu-toolbar-row > *) and the row simply
+                     overflows downward instead of sideways. --}}
+                <div class="d-flex align-items-center flex-wrap gap-1 mb-1 temu-toolbar-row">
                     <!-- Inventory Filter -->
                     <div>
                         <select id="inventory-filter" class="form-select form-select-sm" style="width: 140px;">
@@ -195,9 +332,10 @@
                         </select>
                     </div>
 
-                    <!-- GPFT + CVR (same stack as Reverb pricing) -->
-                    <div class="d-flex flex-column gap-1" style="width: 130px;">
-                        <select id="gpft-filter" class="form-select form-select-sm">
+                    {{-- GPFT% filter — flattened into its own chip (was previously
+                         stacked vertically with the CVR% filter via flex-column). --}}
+                    <div>
+                        <select id="gpft-filter" class="form-select form-select-sm" style="width: 130px;">
                             <option value="all">GPFT%</option>
                             <option value="negative">Negative</option>
                             <option value="0-10">0-10%</option>
@@ -206,7 +344,12 @@
                             <option value="30-40">30-40%</option>
                             <option value="40plus">Above 40%</option>
                         </select>
-                        <select id="cvr-filter" class="form-select form-select-sm">
+                    </div>
+
+                    {{-- CVR% filter — now sits in the same horizontal row as the
+                         other filters instead of stacking under GPFT%. --}}
+                    <div>
+                        <select id="cvr-filter" class="form-select form-select-sm" style="width: 130px;">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
                             <option value="0-3">0-3%</option>
@@ -245,43 +388,10 @@
                         </select>
                     </div>
 
-                    {{-- L7 vs L30 views-pace filter.
-                         Value comes from `l7_vs_l30_pct` on each row, computed as
-                         (L7 daily-avg views) ÷ (L30 daily-avg views) × 100.
-                         > 70  → SKU is keeping pace with (or beating) the L30
-                                 baseline — colored green in the L7 vs L30 column.
-                         < 71  → SKU is trailing the L30 pace — colored red.
-                         Rows with 0 views (either side) fall in the < 71 bucket. --}}
-                    <div>
-                        <select id="l7-vs-l30-filter" class="form-select form-select-sm" style="width: 140px;"
-                                title="L7 vs L30 views pace (daily-average ratio × 100)">
-                            <option value="all">L7 vs L30</option>
-                            <option value="gt70">&gt; 70% (trending up)</option>
-                            <option value="lt71">&lt; 71% (trending down)</option>
-                        </select>
-                    </div>
-
-                    <!-- CVR Trend Filter -->
-                    <div>
-                        <select id="cvr-trend-filter" class="form-select form-select-sm" style="width: 150px;">
-                            <option value="all">All CVR trend</option>
-                            <option value="l60_gt_l30">CVR 60 &gt; CVR 30</option>
-                            <option value="l30_gt_l60">CVR 30 &gt; CVR 60</option>
-                            <option value="equal">CVR 60 = CVR 30</option>
-                        </select>
-                    </div>
-
-                    <!-- Arrow filter (CVR 30 vs CVR 60: up / down / equal) -->
-                    <div>
-                        <select id="arrow-filter" class="form-select form-select-sm" style="width: 120px;">
-                            <option value="all">All arrows</option>
-                            <option value="up">↑ Up (CVR 30 &gt; CVR 60)</option>
-                            <option value="down">↓ Down (CVR 30 &lt; CVR 60)</option>
-                            <option value="equal">＝ Equal</option>
-                        </select>
-                    </div>
-
-                    <!-- DIL Filter -->
+                    {{-- DIL% bracket filter — buckets aligned with /topdawg-tabulator:
+                         Red < 25, Green 25–50, Pink ≥ 50. The yellow band (16.7–25%)
+                         that used to exist was merged into red so the temu DIL color
+                         scheme matches Topdawg's. --}}
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                             <span class="status-circle default"></span> DIL%
@@ -290,37 +400,12 @@
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
                                     <span class="status-circle default"></span> All DIL</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
-                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
-                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
+                                    <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
-                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
+                                    <span class="status-circle green"></span> Green (25–50%)</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
                                     <span class="status-circle pink"></span> Pink (50%+)</a></li>
                         </ul>
-                    </div>
-
-                    <!-- ADS Filter -->
-                    <div>
-                        <select id="ads-filter" class="form-select form-select-sm" style="width: 120px;">
-                            <option value="all">All ADS%</option>
-                            <option value="0-10">Below 10%</option>
-                            <option value="10-20">10-20%</option>
-                            <option value="20-30">20-30%</option>
-                            <option value="30-100">30-100%</option>
-                            <option value="100plus">100%+</option>
-                        </select>
-                    </div>
-
-                    <!-- SPRICE Filter -->
-                    <div>
-                        <select id="sprice-filter" class="form-select form-select-sm" style="width: 130px;">
-                            <option value="all">All SPRICE</option>
-                            <option value="blank">Blank S PRC only</option>
-                            <option value="27-31">$27-$31</option>
-                            <option value="lt27">&lt; $27</option>
-                            <option value="gt31">&gt; $31</option>
-                        </select>
                     </div>
 
                     {{-- Target ROI% bulk control — back-solves SPRICE for selected rows so SROI = Target ROI%.
@@ -335,7 +420,7 @@
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            placeholder="30" step="0.1" maxlength="2" style="width: 45px;"
                             title="Target ROI% applied to all selected rows when you click Apply">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
                             title="Apply — Compute & save SPRICE so SROI column = Target ROI% for every selected row"
@@ -355,29 +440,13 @@
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            placeholder="30" step="0.1" maxlength="2" style="width: 45px;"
                             title="Target GPFT% applied to all selected rows when you click Apply. Must be less than the Temu take-home margin (e.g. < 96%).">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
                             title="Apply — Compute & save SPRICE so SGPRFT column = Target GPFT% for every selected row"
                             aria-label="Apply Target GPFT">
                             <i class="fas fa-calculator"></i>
                         </button>
-                    </div>
-
-                    <!-- Ads Req Filter -->
-                    <div>
-                        <select id="ads-req-filter" class="form-select form-select-sm" style="width: 130px;">
-                            <option value="all">All Ads Req</option>
-                            <option value="below-avg">Below Avg Views</option>
-                        </select>
-                    </div>
-
-                    <!-- Ads Running Filter -->
-                    <div>
-                        <select id="ads-running-filter" class="form-select form-select-sm" style="width: 140px;">
-                            <option value="all">All Ads Status</option>
-                            <option value="running">Ads Running</option>
-                        </select>
                     </div>
 
                     <!-- NRL/REQ Filter -->
@@ -394,7 +463,7 @@
                          on each row's `nrp` field (REQ / NR / LATER). --}}
                     <div>
                         <select id="nrp-filter" class="form-select form-select-sm" style="width: 110px;" title="Filter by NRP">
-                            <option value="all">NRP: ALL</option>
+                            <option value="all">NRP</option>
                             <option value="REQ">REQ</option>
                             <option value="NR">2BDC</option>
                             <option value="LATER">LATER</option>
@@ -419,29 +488,30 @@
 
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fa fa-eye"></i> Columns
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Show / hide table columns"
+                            aria-label="Toggle column visibility">
+                            <i class="fas fa-table-columns"></i>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
                             style="max-height: 400px; overflow-y: auto;">
                         </ul>
                     </div>
 
-                    <button type="button" class="btn btn-sm btn-success" id="export-btn">
-                        <i class="fa fa-download"></i> Export L30
+                    <button type="button" class="btn btn-sm btn-success" id="export-btn"
+                        title="Export L30 data to CSV"
+                        aria-label="Export L30">
+                        <i class="fas fa-file-export"></i>
                     </button>
-                    <a href="{{ route('temu.tabulator') }}" class="btn btn-sm btn-outline-primary" title="View order-level sales data (Order ID, status, line items)">
-                        <i class="fa fa-list-alt"></i> Order Data
-                    </a>
                     <div class="d-inline-flex align-items-center gap-1 flex-shrink-0 border rounded px-2 py-1 bg-light ms-1" title="Campaign report & sales period for this table">
-                        <label for="campaign-period-select" class="mb-0 small fw-semibold text-nowrap text-dark">Campaign Data</label>
+                        <label for="campaign-period-select" class="mb-0 small fw-semibold text-nowrap text-dark">Campaign</label>
                         <select id="campaign-period-select" class="form-select form-select-sm" style="min-width: 88px;">
                             <option value="L30" selected>L30</option>
                             <option value="L7">L7</option>
                         </select>
                     </div>
                     <a href="{{ route('temu.lmp') }}" class="btn btn-sm btn-outline-secondary" title="Temu LMP table and upload">
-                        <i class="fa fa-link"></i> Temu LMP
+                        <i class="fas fa-link"></i> LMP
                     </a>
 
                     <button id="inc-dec-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same Price → Off">
@@ -454,24 +524,25 @@
                     <div class="dropdown d-inline-block">
                         <button type="button" class="btn btn-sm btn-primary dropdown-toggle"
                             id="temuUploadDropdown" data-bs-toggle="dropdown" aria-expanded="false"
-                            title="Upload Temu data files">
-                            <i class="fa fa-upload"></i> Upload
+                            title="Upload Temu data files"
+                            aria-label="Upload Temu data files">
+                            <i class="fas fa-upload"></i>
                         </button>
                         <ul class="dropdown-menu shadow-sm" aria-labelledby="temuUploadDropdown">
                             <li>
                                 <button type="button" class="dropdown-item d-flex align-items-center gap-2"
                                     data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
-                                    <i class="fa fa-eye text-success" style="width: 18px;"></i>
+                                    <i class="fas fa-eye text-success" style="width: 18px;"></i>
                                     <span>Up View Data (L30)</span>
                                 </button>
                             </li>
                             <li>
                                 {{-- Same Excel format as the L30 view-data upload; persists to
                                      temu_view_data_l7 so the two uploads don't overwrite each
-                                     other. Drives the "L7 vs L30 %" column + filter. --}}
+                                     other. Feeds the "View 7" column. --}}
                                 <button type="button" class="dropdown-item d-flex align-items-center gap-2"
                                     data-bs-toggle="modal" data-bs-target="#uploadViewDataL7Modal">
-                                    <i class="fa fa-eye text-primary" style="width: 18px;"></i>
+                                    <i class="fas fa-eye text-primary" style="width: 18px;"></i>
                                     <span>Up View Data (L7)</span>
                                 </button>
                             </li>
@@ -481,36 +552,52 @@
                                      replace-all uploads remain independent. --}}
                                 <button type="button" class="dropdown-item d-flex align-items-center gap-2"
                                     data-bs-toggle="modal" data-bs-target="#uploadViewDataL7ToL14Modal">
-                                    <i class="fa fa-eye text-info" style="width: 18px;"></i>
+                                    <i class="fas fa-eye text-info" style="width: 18px;"></i>
                                     <span>Up View Data (L7 to L14)</span>
                                 </button>
                             </li>
                             <li>
                                 <button type="button" class="dropdown-item d-flex align-items-center gap-2"
                                     data-bs-toggle="modal" data-bs-target="#uploadAdDataModal">
-                                    <i class="fa fa-chart-line text-warning" style="width: 18px;"></i>
+                                    <i class="fas fa-chart-line text-warning" style="width: 18px;"></i>
                                     <span>Up Ad Data</span>
                                 </button>
                             </li>
                             <li>
                                 <button type="button" class="dropdown-item d-flex align-items-center gap-2"
                                     data-bs-toggle="modal" data-bs-target="#uploadRPricingModal">
-                                    <i class="fa fa-tags text-danger" style="width: 18px;"></i>
+                                    <i class="fas fa-tags text-danger" style="width: 18px;"></i>
                                     <span>Up R Pricing</span>
                                 </button>
                             </li>
                             <li>
                                 <button type="button" class="dropdown-item d-flex align-items-center gap-2"
                                     data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
-                                    <i class="fa fa-dollar-sign text-info" style="width: 18px;"></i>
+                                    <i class="fas fa-dollar-sign text-info" style="width: 18px;"></i>
                                     <span>Up Pricing</span>
                                 </button>
                             </li>
                         </ul>
                     </div>
-                    <button type="button" id="toggle-ads-columns-btn" class="btn btn-sm btn-secondary">
-                        <i class="fa fa-filter"></i> Ads Section
+                    <button type="button" id="toggle-ads-columns-btn" class="btn btn-sm btn-secondary"
+                        title="Toggle Ads Section (show only ad-related columns + ads-stats strip)"
+                        aria-label="Toggle Ads Section">
+                        <i class="fas fa-filter"></i>
                     </button>
+
+                    {{-- SKU search — moved into the toolbar so it wraps alongside the
+                         other filter dropdowns instead of sitting on a dedicated row
+                         above the table. Width capped at ~30 chars; maxlength matches
+                         so users can't type past the visible field. The keyup handler
+                         + filter logic in applyFilters() read $('#sku-search').val()
+                         which still resolves correctly because we kept the ID. --}}
+                    <div class="d-flex align-items-center gap-1">
+                        <input type="text" id="sku-search" class="form-control form-control-sm"
+                            placeholder="Search by SKU…"
+                            maxlength="30"
+                            style="width: 30ch; max-width: 100%;">
+                        <small id="search-result-info" class="text-muted" style="display: none;"></small>
+                    </div>
                 </div>
 
                 <!-- Ads Count Section (shown when Show Ads Columns is on) - like TikTok -->
@@ -537,51 +624,6 @@
                     </div>
                 </div>
 
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-1">Summary Statistics</h6>
-                    <small class="text-muted d-block mb-2">Sums from full table (all rows, no filter)</small>
-                    <div class="d-flex flex-wrap gap-2">
-                        <!-- Basic Counts (sales summary = same as tabulator sales page) -->
-                        <span class="badge bg-success fs-6 p-2 temu-badge-history" id="total-revenue-badge" data-badge-metric="total_sales" data-badge-label="Sales" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">Sales: $0</span>
-                        <span class="badge bg-primary fs-6 p-2 temu-badge-history" id="total-orders-badge" data-badge-metric="total_orders" data-badge-label="Orders" style="color: white; font-weight: bold; cursor: pointer;" title="Click to view history">Orders: 0</span>
-                        <span class="badge bg-success fs-6 p-2 temu-badge-history" id="total-quantity-badge" data-badge-metric="total_quantity" data-badge-label="QTY" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">QTY: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items (INV>0)">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; background-color: #dc3545; cursor: pointer;" title="Click to filter missing SKUs (INV>0)">Missing L: 0</span>
-                        <span class="badge fs-6 p-2" id="not-mapped-count-badge" style="color: white; font-weight: bold; background-color: #dc3545; cursor: pointer;" title="Click to filter not mapped SKUs (INV>0)">Missing M: 0</span>
-                        {{-- Green Alert badge: rows where Temu Price < Amazon × 0.85 OR < eBay 1 × 0.90 OR < eBay 2 × 0.90.
-                             Click to toggle filtering to just those rows. Computed via temuIsGreenAlert(rd). --}}
-                        <span class="badge fs-6 p-2" id="temu-green-alert-badge" style="color: white; font-weight: bold; background-color: #28a745; cursor: pointer;" title="Click to filter Green Alert rows: Temu Price &lt; Amazon × 0.85 OR &lt; eBay 1 × 0.90 OR &lt; eBay 2 × 0.90">Green Alert: 0</span>
-                        {{-- Red Alert badge: opposite of Green — Temu is uncompetitive (at/above every competitor threshold).
-                             Click to toggle filtering. Computed via temuIsRedAlert(rd). --}}
-                        <span class="badge fs-6 p-2" id="temu-red-alert-badge" style="color: white; font-weight: bold; background-color: #a00211; cursor: pointer;" title="Click to filter Red Alert rows: Temu Price &ge; Amazon × 0.85 AND &ge; eBay 1 × 0.90 AND &ge; eBay 2 × 0.90 (uncompetitive)">Red Alert: 0</span>
-                        
-                        <!-- Pricing & Performance -->
-                       
-                        <span class="badge bg-info fs-6 p-2" id="cvr-total-views-badge" style="color: black; font-weight: bold;" title="Sum of product_clicks for all visible rows (from temu_view_data)">Total Views: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="cvr-total-sold-badge" style="color: black; font-weight: bold;" title="Sum of temu_l30 for all visible rows (from temu_orders / temu_daily_data)">Total Sold: 0</span>
-                        <span class="badge bg-warning fs-6 p-2 temu-badge-history" id="avg-cvr-badge" data-badge-metric="avg_cvr_pct" data-badge-label="CVR %" style="color: black; font-weight: bold; cursor: pointer;" title="Total Sold / Total Views * 100">CVR: 0.0%</span>
-                        
-                        <!-- Financial Totals -->
-                        <span class="badge bg-primary fs-6 p-2" id="total-profit-badge" style="color: black; font-weight: bold; display: none;">PFT: $0</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-lp-badge" style="color: black; font-weight: bold; display: none;">Total LP: $0</span>
-                        
-                        <!-- Percentages (Gross) -->
-                        <span class="badge bg-success fs-6 p-2" id="avg-gprft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
-                        <span class="badge bg-primary fs-6 p-2" id="avg-groi-badge" style="color: black; font-weight: bold;">GROI: 0%</span>
-                        
-                        <!-- Advertising Metrics -->
-                        <span class="badge fs-6 p-2 temu-badge-history" id="total-spend-badge" data-badge-metric="total_spend" data-badge-label="Spend" style="color: black; font-weight: bold; background-color: #87CEEB; cursor: pointer;" title="Click to view history">Spend: $0.00</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-ads-badge" style="color: black; font-weight: bold;">Ads: 0%</span>
-                        
-                        <!-- Percentages (Net) -->
-                        <span class="badge bg-success fs-6 p-2" id="avg-npft-badge" style="color: black; font-weight: bold;">NPFT: 0%</span>
-                        <span class="badge bg-primary fs-6 p-2" id="avg-nroi-badge" style="color: black; font-weight: bold;">NROI: 0%</span>
-                        
-                        <!-- Engagement -->
-                        <span class="badge bg-info fs-6 p-2 temu-badge-history" id="total-views-badge" data-badge-metric="total_views" data-badge-label="Views" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">Views: 0</span>
-                        <span class="badge bg-info fs-6 p-2 temu-badge-history" id="avg-views-badge" data-badge-metric="avg_views" data-badge-label="AVG views" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">AVG views: 0</span>
-                    </div>
-                </div>
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
@@ -609,15 +651,14 @@
                             <i class="fas fa-dollar-sign"></i> SPRC 26.99
                         </button>
                         <button type="button" id="clear-sprice-btn" class="btn btn-sm btn-danger">
-                            <i class="fa fa-trash"></i> Clear SPRICE
+                            <i class="fas fa-trash"></i> Clear SPRICE
                         </button>
                     </div>
                 </div>
                 <div id="temu-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search by SKU (case-insensitive)...">
-                        <small id="search-result-info" class="text-muted" style="display: none;"></small>
-                    </div>
+                    {{-- SKU search input moved up into the toolbar row (.temu-toolbar-row)
+                         so it shares the same flex-wrap behavior as the other filters.
+                         The table starts directly under the toolbar now. --}}
                     <div id="temu-table" style="flex: 1;"></div>
                 </div>
             </div>
@@ -712,7 +753,7 @@
             <div class="modal-content">
                 <div class="modal-header bg-success text-white">
                     <h5 class="modal-title" id="uploadViewDataModalLabel">
-                        <i class="fa fa-eye me-2"></i>Upload Temu View Data
+                        <i class="fas fa-eye me-2"></i>Upload Temu View Data
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -734,19 +775,19 @@
                         @csrf
                         <div class="mb-3">
                             <label for="viewDataFile" class="form-label fw-bold">
-                                <i class="fa fa-file-excel text-success me-1"></i>Choose Excel File
+                                <i class="fas fa-file-excel text-success me-1"></i>Choose Excel File
                             </label>
                             <input type="file" class="form-control" id="viewDataFile" name="file" accept=".xlsx,.xls,.csv" required>
                             <div class="form-text">
-                                <i class="fa fa-info-circle text-info me-1"></i>
+                                <i class="fas fa-info-circle text-info me-1"></i>
                                 Accepts .xlsx, .xls, or .csv files (Max: 10MB)
                             </div>
                         </div>
                         <div class="alert alert-info">
-                            <i class="fa fa-lightbulb me-2"></i>
+                            <i class="fas fa-lightbulb me-2"></i>
                             <strong>Note:</strong> This will INSERT new records only (no truncate/update).
                             <a href="{{ route('temu.viewdata.sample') }}" class="alert-link">
-                                <i class="fa fa-download"></i> Download Sample File
+                                <i class="fas fa-download"></i> Download Sample File
                             </a>
                         </div>
                     </form>
@@ -754,7 +795,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" form="uploadViewDataForm" class="btn btn-success">
-                        <i class="fa fa-upload me-1"></i>Up View Data
+                        <i class="fas fa-upload me-1"></i>Up View Data
                     </button>
                 </div>
             </div>
@@ -769,7 +810,7 @@
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title" id="uploadViewDataL7ModalLabel">
-                        <i class="fa fa-eye me-2"></i>Upload Temu L7 View Data
+                        <i class="fas fa-eye me-2"></i>Upload Temu L7 View Data
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -778,19 +819,19 @@
                         @csrf
                         <div class="mb-3">
                             <label for="viewDataL7File" class="form-label fw-bold">
-                                <i class="fa fa-file-excel text-primary me-1"></i>Choose Excel File (last 7 days)
+                                <i class="fas fa-file-excel text-primary me-1"></i>Choose Excel File (last 7 days)
                             </label>
                             <input type="file" class="form-control" id="viewDataL7File" name="file" accept=".xlsx,.xls,.csv" required>
                             <div class="form-text">
-                                <i class="fa fa-info-circle text-info me-1"></i>
+                                <i class="fas fa-info-circle text-info me-1"></i>
                                 Accepts .xlsx, .xls, or .csv files (Max: 10MB). Same column layout as L30 view data — just export only the last 7 days from Temu.
                             </div>
                         </div>
                         <div class="alert alert-info">
-                            <i class="fa fa-lightbulb me-2"></i>
+                            <i class="fas fa-lightbulb me-2"></i>
                             <strong>Note:</strong> Replace-all upload — overwrites all existing L7 rows.
                             <a href="{{ route('temu.viewdata.l7.sample') }}" class="alert-link">
-                                <i class="fa fa-download"></i> Download Sample File
+                                <i class="fas fa-download"></i> Download Sample File
                             </a>
                         </div>
                     </form>
@@ -798,7 +839,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" form="uploadViewDataL7Form" class="btn btn-primary">
-                        <i class="fa fa-upload me-1"></i>Up L7 View Data
+                        <i class="fas fa-upload me-1"></i>Up L7 View Data
                     </button>
                 </div>
             </div>
@@ -814,7 +855,7 @@
             <div class="modal-content">
                 <div class="modal-header bg-info text-dark">
                     <h5 class="modal-title" id="uploadViewDataL7ToL14ModalLabel">
-                        <i class="fa fa-eye me-2"></i>Upload Temu View Data (L7 to L14)
+                        <i class="fas fa-eye me-2"></i>Upload Temu View Data (L7 to L14)
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -823,19 +864,19 @@
                         @csrf
                         <div class="mb-3">
                             <label for="viewDataL7ToL14File" class="form-label fw-bold">
-                                <i class="fa fa-file-excel text-info me-1"></i>Choose Excel File (days 8–14 back)
+                                <i class="fas fa-file-excel text-info me-1"></i>Choose Excel File (days 8–14 back)
                             </label>
                             <input type="file" class="form-control" id="viewDataL7ToL14File" name="file" accept=".xlsx,.xls,.csv" required>
                             <div class="form-text">
-                                <i class="fa fa-info-circle text-info me-1"></i>
+                                <i class="fas fa-info-circle text-info me-1"></i>
                                 Accepts .xlsx, .xls, or .csv files (Max: 10MB). Same column layout as the L30 / L7 view-data uploads — export the prior 7-day window from Temu (last week, not the current 7 days).
                             </div>
                         </div>
                         <div class="alert alert-info">
-                            <i class="fa fa-lightbulb me-2"></i>
+                            <i class="fas fa-lightbulb me-2"></i>
                             <strong>Note:</strong> Replace-all upload — overwrites all existing L7-to-L14 rows.
                             <a href="{{ route('temu.viewdata.l7tol14.sample') }}" class="alert-link">
-                                <i class="fa fa-download"></i> Download Sample File
+                                <i class="fas fa-download"></i> Download Sample File
                             </a>
                         </div>
                     </form>
@@ -843,7 +884,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" form="uploadViewDataL7ToL14Form" class="btn btn-info">
-                        <i class="fa fa-upload me-1"></i>Up L7 to L14 View Data
+                        <i class="fas fa-upload me-1"></i>Up L7 to L14 View Data
                     </button>
                 </div>
             </div>
@@ -856,7 +897,7 @@
             <div class="modal-content">
                 <div class="modal-header bg-warning text-dark">
                     <h5 class="modal-title" id="uploadAdDataModalLabel">
-                        <i class="fa fa-chart-line me-2"></i>Upload Temu Ad Data
+                        <i class="fas fa-chart-line me-2"></i>Upload Temu Ad Data
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -878,11 +919,11 @@
                         @csrf
                         <div class="mb-3">
                             <label for="adDataFile" class="form-label fw-bold">
-                                <i class="fa fa-file-excel text-success me-1"></i>Choose Excel File
+                                <i class="fas fa-file-excel text-success me-1"></i>Choose Excel File
                             </label>
                             <input type="file" class="form-control" id="adDataFile" name="ad_data_file" accept=".xlsx,.xls,.csv" required>
                             <div class="form-text">
-                                <i class="fa fa-info-circle text-info me-1"></i>
+                                <i class="fas fa-info-circle text-info me-1"></i>
                                 Accepts .xlsx, .xls, or .csv files (Max: 10MB)
                             </div>
                         </div>
@@ -892,7 +933,7 @@
                              default "Campaign Data" filter at the top of the page. --}}
                         <div class="mb-3">
                             <label for="adDataReportRange" class="form-label fw-bold">
-                                <i class="fa fa-calendar-alt text-primary me-1"></i>Report Range
+                                <i class="fas fa-calendar-alt text-primary me-1"></i>Report Range
                             </label>
                             <select class="form-select" id="adDataReportRange" name="report_range" required>
                                 <option value="L30" selected>L30 (last 30 days)</option>
@@ -900,15 +941,15 @@
                                 <option value="L60">L60 (last 60 days)</option>
                             </select>
                             <div class="form-text">
-                                <i class="fa fa-info-circle text-info me-1"></i>
+                                <i class="fas fa-info-circle text-info me-1"></i>
                                 Match this to the period the Temu export covers — it's used by the Spend/ACOS/ROAS badges.
                             </div>
                         </div>
                         <div class="alert alert-warning">
-                            <i class="fa fa-exclamation-triangle me-2"></i>
+                            <i class="fas fa-exclamation-triangle me-2"></i>
                             <strong>Warning:</strong> This will clear existing ad data and replace the selected report range before uploading new data.
                             <br>
-                            <i class="fa fa-info-circle me-1"></i>
+                            <i class="fas fa-info-circle me-1"></i>
                             Upload the Temu Ads report Excel directly (as exported from Temu).
                         </div>
                     </form>
@@ -916,7 +957,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" form="uploadAdDataForm" class="btn btn-warning">
-                        <i class="fa fa-upload me-1"></i>Up Ad Data
+                        <i class="fas fa-upload me-1"></i>Up Ad Data
                     </button>
                 </div>
             </div>
@@ -929,7 +970,7 @@
             <div class="modal-content">
                 <div class="modal-header bg-danger text-white">
                     <h5 class="modal-title" id="uploadRPricingModalLabel">
-                        <i class="fa fa-tags me-2"></i>Upload Temu R Pricing Data
+                        <i class="fas fa-tags me-2"></i>Upload Temu R Pricing Data
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -951,20 +992,20 @@
                         @csrf
                         <div class="mb-3">
                             <label for="rPricingFile" class="form-label fw-bold">
-                                <i class="fa fa-file-excel text-success me-1"></i>Choose Excel File
+                                <i class="fas fa-file-excel text-success me-1"></i>Choose Excel File
                             </label>
                             <input type="file" class="form-control" id="rPricingFile" name="r_pricing_file" accept=".xlsx,.xls,.csv" required>
                             <div class="form-text">
-                                <i class="fa fa-info-circle text-info me-1"></i>
+                                <i class="fas fa-info-circle text-info me-1"></i>
                                 Accepts .xlsx, .xls, or .csv files (Max: 10MB)
                             </div>
                         </div>
                         <div class="alert alert-warning">
-                            <i class="fa fa-exclamation-triangle me-2"></i>
+                            <i class="fas fa-exclamation-triangle me-2"></i>
                             <strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading new data!
                             <br>
                             <a href="{{ route('temu.rpricing.sample') }}" class="alert-link">
-                                <i class="fa fa-download"></i> Download Sample File
+                                <i class="fas fa-download"></i> Download Sample File
                             </a>
                         </div>
                     </form>
@@ -972,7 +1013,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" form="uploadRPricingForm" class="btn btn-danger">
-                        <i class="fa fa-upload me-1"></i>Up R Pricing
+                        <i class="fas fa-upload me-1"></i>Up R Pricing
                     </button>
                 </div>
             </div>
@@ -985,7 +1026,7 @@
             <div class="modal-content">
                 <div class="modal-header bg-info text-white">
                     <h5 class="modal-title" id="uploadPricingModalLabel">
-                        <i class="fa fa-dollar-sign me-2"></i>Upload Temu Pricing Data
+                        <i class="fas fa-dollar-sign me-2"></i>Upload Temu Pricing Data
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -1007,20 +1048,20 @@
                         @csrf
                         <div class="mb-3">
                             <label for="pricingFile" class="form-label fw-bold">
-                                <i class="fa fa-file-excel text-success me-1"></i>Choose Excel File
+                                <i class="fas fa-file-excel text-success me-1"></i>Choose Excel File
                             </label>
                             <input type="file" class="form-control" name="pricing_file" id="pricingFile" accept=".xlsx,.xls,.csv" required>
                             <div class="form-text">
-                                <i class="fa fa-info-circle text-info me-1"></i>
+                                <i class="fas fa-info-circle text-info me-1"></i>
                                 Accepts .xlsx, .xls, or .csv files (Max: 10MB)
                             </div>
                         </div>
                         <div class="alert alert-info">
-                            <i class="fa fa-lightbulb me-2"></i>
+                            <i class="fas fa-lightbulb me-2"></i>
                             <strong>Note:</strong> This will update pricing data.
                             <br>
                             <a href="{{ route('temu.pricing.sample') }}" class="alert-link">
-                                <i class="fa fa-download"></i> Download Sample File
+                                <i class="fas fa-download"></i> Download Sample File
                             </a>
                         </div>
                     </form>
@@ -1028,7 +1069,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" form="uploadPricingForm" class="btn btn-info">
-                        <i class="fa fa-upload me-1"></i>Up Pricing
+                        <i class="fas fa-upload me-1"></i>Up Pricing
                     </button>
                 </div>
             </div>
@@ -1132,7 +1173,7 @@
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="fa fa-chart-line me-2"></i>Daily Average Views History</h5>
+                    <h5 class="modal-title"><i class="fas fa-chart-line me-2"></i>Daily Average Views History</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -1146,11 +1187,11 @@
                             </select>
                         </div>
                         <div class="text-muted">
-                            <small><i class="fa fa-info-circle"></i> Shows historical average views across all products</small>
+                            <small><i class="fas fa-info-circle"></i> Shows historical average views across all products</small>
                         </div>
                     </div>
                     <div id="avg-views-no-data-message" class="alert alert-warning" style="display: none;">
-                        <i class="fa fa-exclamation-triangle me-2"></i>
+                        <i class="fas fa-exclamation-triangle me-2"></i>
                         <strong>No Data Available:</strong> No historical data available yet. Click "Store Daily Avg" to begin tracking.
                     </div>
                     <div style="height: 400px; position: relative;">
@@ -1204,9 +1245,6 @@
     let selectedSkus = new Set();
     let soldSpriceBlankFilterActive = false;
     let latestAvgViews = 0;
-    let adsReqFilter = 'all';
-    let adsRunningFilter = 'all';
-    
     // SKU-specific chart (UI matches Amazon: ref panel High/Med/Low, median line, value labels on points, green/red/grey dots)
     let skuMetricsChart = null;
     let currentSku = null;
@@ -2408,7 +2446,6 @@
         let missingBadgeFilterActive = false;
         let mapBadgeFilterActive = false;
         let notMapBadgeFilterActive = false;
-        let greenAlertFilterActive = false;
         let redAlertFilterActive = false;
 
         // 0 Sold badge just toggles the #sold-filter dropdown so the dropdown stays the
@@ -2416,16 +2453,6 @@
         $('#zero-sold-count-badge').on('click', function() {
             const next = $('#sold-filter').val() === 'zero' ? 'all' : 'zero';
             $('#sold-filter').val(next);
-            applyFilters();
-        });
-
-        // Green Alert badge toggle — filters to only rows where temuIsGreenAlert(rd) is true.
-        // Highlights the badge with a yellow outline while active so users see at a glance
-        // that a filter is on (matches the visual cue used elsewhere on this page).
-        $('#temu-green-alert-badge').on('click', function() {
-            greenAlertFilterActive = !greenAlertFilterActive;
-            $(this).css('outline', greenAlertFilterActive ? '3px solid #ffc107' : '');
-            $(this).css('outline-offset', greenAlertFilterActive ? '2px' : '');
             applyFilters();
         });
 
@@ -2956,7 +2983,7 @@
                     skus: skusArray
                 },
                 beforeSend: function() {
-                    $('#clear-sprice-btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Clearing...');
+                    $('#clear-sprice-btn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Clearing...');
                 },
                 success: function(response) {
                     if (response.success) {
@@ -2977,7 +3004,7 @@
                     showToast('Failed to clear SPRICE data', 'error');
                 },
                 complete: function() {
-                    $('#clear-sprice-btn').prop('disabled', false).html('<i class="fa fa-trash"></i> Clear SPRICE');
+                    $('#clear-sprice-btn').prop('disabled', false).html('<i class="fas fa-trash"></i> Clear SPRICE');
                 }
             });
         }
@@ -3179,24 +3206,21 @@
                 const hasBackendSalesSummary = (backendOrders > 0 || backendQuantity > 0 || backendRevenue > 0);
 
                 if (hasBackendSalesSummary) {
-                    $('#total-orders-badge').text('Orders: ' + backendOrders.toLocaleString());
-                    $('#total-quantity-badge').text('QTY: ' + backendQuantity.toLocaleString());
-                    $('#total-revenue-badge').text('Sales: $' + Math.round(backendRevenue).toLocaleString());
+                    $('#total-quantity-badge').text('QTY ' + backendQuantity.toLocaleString());
+                    $('#total-revenue-badge').text('$ ' + Math.round(backendRevenue).toLocaleString());
                 } else {
-                    $('#total-orders-badge').text('Orders: 0');
-                    $('#total-quantity-badge').text('QTY: ' + totalQuantity.toLocaleString());
-                    $('#total-revenue-badge').text('Sales: $' + Math.round(totalRevenue).toLocaleString());
+                    $('#total-quantity-badge').text('QTY ' + totalQuantity.toLocaleString());
+                    $('#total-revenue-badge').text('$ ' + Math.round(totalRevenue).toLocaleString());
                 }
             } else {
-                $('#total-orders-badge').text('Orders: 0');
-                $('#total-quantity-badge').text('QTY: ' + totalQuantity.toLocaleString());
-                $('#total-revenue-badge').text('Sales: $' + Math.round(totalRevenue).toLocaleString());
+                $('#total-quantity-badge').text('QTY ' + totalQuantity.toLocaleString());
+                $('#total-revenue-badge').text('$ ' + Math.round(totalRevenue).toLocaleString());
             }
-            $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
-            $('#missing-count-badge').text('Missing L: ' + missingCount.toLocaleString());
-            $('#not-mapped-count-badge').text('Missing M: ' + notMappedCount.toLocaleString());
-            $('#temu-green-alert-badge').text('Green Alert: ' + greenAlertCount.toLocaleString());
-            $('#temu-red-alert-badge').text('Red Alert: ' + redAlertCount.toLocaleString());
+            $('#zero-sold-count-badge').text('0 Sold ' + zeroSoldCount.toLocaleString());
+            $('#missing-count-badge').text('M-L ' + missingCount.toLocaleString());
+            $('#not-mapped-count-badge').text('M-M ' + notMappedCount.toLocaleString());
+            // Use .html() so the FontAwesome <i> renders; .text() would HTML-escape it.
+            $('#temu-red-alert-badge').html('<i class="fas fa-triangle-exclamation"></i> ' + redAlertCount.toLocaleString());
             // CVR badge: use the LIVE qtyPerViews computed from the same totalQuantity
             // and totalViews that drive the QTY and Views badges. Previously this preferred
             // the daily snapshot in temu_badge_daily_data so the badge would visually match
@@ -3212,29 +3236,40 @@
                 const snapshotCvr = parseFloat(todayBadgeSnapshotFromBackend.avg_cvr_pct);
                 if (isFinite(snapshotCvr)) displayCvr = snapshotCvr;
             }
-            $('#cvr-total-views-badge').text('Total Views: ' + cvrTotalViews.toLocaleString());
-            $('#cvr-total-sold-badge').text('Total Sold: ' + cvrTotalSold.toLocaleString());
-            $('#avg-cvr-badge').text('CVR: ' + displayCvr.toFixed(2) + '%');
-            $('#avg-dil-badge').text('Avg DIL: ' + Math.round(avgDil) + '%');
+            $('#avg-cvr-badge').text('CVR ' + displayCvr.toFixed(1) + '%');
+            $('#avg-dil-badge').text('Avg DIL ' + Math.round(avgDil) + '%');
             // Total Revenue badge set above from sales_summary or table
-            $('#total-profit-badge').text('PFT: $' + Math.round(totalProfit).toLocaleString());
-            $('#total-lp-badge').text('Total LP: $' + Math.round(totalLp).toLocaleString());
-            $('#avg-gprft-badge').text('GPFT: ' + Math.round(avgGprft) + '%');
-            $('#avg-groi-badge').text('GROI: ' + Math.round(avgGroi) + '%');
+            $('#total-profit-badge').text('PFT $' + Math.round(totalProfit).toLocaleString());
+            $('#total-lp-badge').text('Total LP $' + Math.round(totalLp).toLocaleString());
+            $('#avg-gprft-badge').text('GPFT ' + Math.round(avgGprft) + '%');
+            $('#avg-groi-badge').text('GROI ' + Math.round(avgGroi) + '%');
             // Prefer the file total from temu_campaign_reports (computed in PHP) so
             // the badge always matches what the user uploaded — even rows whose
             // goods_id isn't yet in temu_pricing AND have no SKU column would
             // otherwise be dropped by the per-row sum above.
             const spendForSummaryBadge = (adTotalsFromBackend && adTotalsFromBackend.spend != null)
                 ? Number(adTotalsFromBackend.spend) : totalSpend;
-            $('#total-spend-badge').text('Spend: $' + Math.round(spendForSummaryBadge).toLocaleString());
+            $('#total-spend-badge').text('Ads$ ' + Math.round(spendForSummaryBadge).toLocaleString());
             // Use badgeAvgAds (aggregate Ads% from backend) for badge display (matches all-marketplace-master)
             const displayAdsPercent = (badgeAvgAds != null) ? badgeAvgAds : adsPercentForNpft;
-            $('#avg-ads-badge').text('Ads: ' + displayAdsPercent.toFixed(1) + '%');
-            $('#avg-npft-badge').text('NPFT: ' + Math.round(avgNpft) + '%');
-            $('#avg-nroi-badge').text('NROI: ' + Math.round(avgNroi) + '%');
-            $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
-            $('#avg-views-badge').text('AVG views: ' + Math.round(avgViews));
+            $('#avg-ads-badge').text('Ads ' + displayAdsPercent.toFixed(1) + '%');
+            $('#avg-npft-badge').text('NPFT ' + Math.round(avgNpft) + '%');
+            $('#avg-nroi-badge').text('NROI ' + Math.round(avgNroi) + '%');
+
+            // Compact "k" / "M" formatter for big numbers, e.g. 61,488 → 61k,
+            // 1,500,000 → 1.5M. Anything below 1,000 stays as-is with commas.
+            // Used only on the Total Views badge for now (per product request);
+            // keep the rest of the strip on exact comma-separated values.
+            const compactInt = (n) => {
+                n = Number(n) || 0;
+                if (Math.abs(n) >= 1_000_000) return Math.round(n / 100_000) / 10 + 'M';
+                if (Math.abs(n) >= 1_000)     return Math.round(n / 1_000) + 'k';
+                return n.toLocaleString();
+            };
+
+            // Use .html() so the FontAwesome <i> renders; .text() would HTML-escape it.
+            $('#total-views-badge').html('<i class="fas fa-eye"></i> ' + compactInt(totalViews));
+            $('#avg-views-badge').html('<i class="far fa-eye"></i> ' + Math.round(avgViews).toLocaleString());
         }
 
         // Update Ads/Utilized count section (when Show Ads Columns is on) - like TikTok
@@ -3431,7 +3466,7 @@
                         const sku = cell.getValue();
                         if (!sku) return '';
                         
-                        return `${sku} <button type="button" class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price trend" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
+                        return `${sku} <button type="button" class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price trend" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fas fa-info-circle"></i></button>`;
                     }
                 },
                 {
@@ -3443,10 +3478,10 @@
                         const sellerLink = d.seller_link || '';
                         let html = '<div style="display:flex;flex-direction:column;gap:4px;align-items:center;">';
                         if (sellerLink) {
-                            html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> S</a>`;
+                            html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size:12px;text-decoration:none;"><i class="fas fa-link"></i> S</a>`;
                         }
                         if (buyerLink) {
-                            html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> B</a>`;
+                            html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size:12px;text-decoration:none;"><i class="fas fa-link"></i> B</a>`;
                         }
                         if (!sellerLink && !buyerLink) {
                             html += '<span class="text-muted" style="font-size:12px;">-</span>';
@@ -3476,7 +3511,7 @@
                     formatter: function(cell) {
                         const goodsId = (cell.getValue() || '').toString().trim();
                         if (!goodsId) return '';
-                        return `${goodsId} <button type="button" class="btn btn-sm p-0 ms-1 copy-goods-id" data-goods-id="${goodsId}" title="Copy Goods ID" style="border:none;background:none;color:#6c757d;"><i class="fa fa-copy"></i></button>`;
+                        return `${goodsId} <button type="button" class="btn btn-sm p-0 ms-1 copy-goods-id" data-goods-id="${goodsId}" title="Copy Goods ID" style="border:none;background:none;color:#6c757d;"><i class="fas fa-copy"></i></button>`;
                     }
                 },
                 {
@@ -3504,14 +3539,13 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
+                        // DIL color buckets — aligned with /topdawg-tabulator:
+                        // red < 25, green 25–50, pink ≥ 50. (Yellow band merged into red.)
                         const dil = parseFloat(cell.getValue()) || 0;
-                        
                         let color = '';
-                        if (dil < 16.66) color = '#a00211'; // red (includes 0)
-                        else if (dil >= 16.66 && dil < 25) color = '#ffc107'; // yellow
-                        else if (dil >= 25 && dil < 50) color = '#28a745'; // green
-                        else color = '#e83e8c'; // pink (50 and above)
-                        
+                        if (dil < 25)      color = '#a00211'; // red (includes 0)
+                        else if (dil < 50) color = '#28a745'; // green
+                        else               color = '#e83e8c'; // pink (50+)
                         return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
                     }
                 },
@@ -3815,28 +3849,6 @@
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue()) || 0;
                         return value.toLocaleString();
-                    }
-                },
-                {
-                    // L7 vs L30 % — ratio of L7 daily-average views to L30 daily-average views.
-                    // 100 = same pace, >100 = trending up, <100 = trending down.
-                    // Per product spec: > 70% colored green (acceptable / trending up),
-                    // anything else (incl. 0 when L7 or L30 is missing) colored red.
-                    // The header tooltip explains the formula so it's discoverable
-                    // without diving into the controller.
-                    title: "L7 vs L30 %",
-                    field: "l7_vs_l30_pct",
-                    hozAlign: "center",
-                    sorter: "number",
-                    width: 110,
-                    headerTooltip: "L7 daily-average views ÷ L30 daily-average views × 100. 100 = same pace. Green = >70% (keeping pace), Red = ≤70%.",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue());
-                        if (value === null || isNaN(value) || value === 0) {
-                            return '<span style="color: #a00211; font-weight: 600;">0%</span>';
-                        }
-                        const color = value > 70 ? '#28a745' : '#a00211';
-                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
                     }
                 },
                
@@ -4673,7 +4685,8 @@
                     table.getColumns().filter(c => c.getField() && l60ColumnFields.includes(c.getField())).forEach(c => c.show());
                 }
                 
-                $(this).html('<i class="fa fa-filter"></i> Show All Columns');
+                // Icon-only — title attr already conveys the action; aria-label set in HTML.
+                $(this).html('<i class="fas fa-eye"></i>').attr('title', 'Show all columns (exit Ads Section view)');
                 $(this).removeClass('btn-secondary btn-primary').addClass('btn-danger');
                 $('#temu-ads-count-section').removeClass('d-none');
                 $('#summary-stats').addClass('d-none');
@@ -4694,7 +4707,7 @@
                     table.getColumns().filter(c => c.getField() && l60ColumnFields.includes(c.getField())).forEach(c => c.show());
                 }
                 
-                $(this).html('<i class="fa fa-filter"></i> Ads Section');
+                $(this).html('<i class="fas fa-filter"></i>').attr('title', 'Toggle Ads Section (show only ad-related columns + ads-stats strip)');
                 $(this).removeClass('btn-danger btn-primary').addClass('btn-secondary');
                 $('#temu-ads-count-section').addClass('d-none');
                 $('#summary-stats').removeClass('d-none');
@@ -4785,16 +4798,8 @@
             const gpftFilter = $('#gpft-filter').val();
             const groiFilter = $('#roi-filter').val();
             const cvrFilter = $('#cvr-filter').val();
-            const cvrTrendFilter = $('#cvr-trend-filter').val();
-            const arrowFilter = $('#arrow-filter').val();
-            const adsFilter = $('#ads-filter').val();
-            const spriceFilter = $('#sprice-filter').val();
-            const l7VsL30Filter = $('#l7-vs-l30-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
             const skuSearch = $('#sku-search').val();
-            adsReqFilter = $('#ads-req-filter').val();
-            adsRunningFilter = $('#ads-running-filter').val();
-
             // Clear all filters first
             table.clearFilter();
 
@@ -4844,18 +4849,6 @@
                 });
             }
 
-            // L7 vs L30 % filter — operates on the same `l7_vs_l30_pct` field
-            // shown in the column. >70 / <71 split mirrors the green/red coloring,
-            // so toggling the filter shows exactly the green or red rows.
-            if (l7VsL30Filter !== 'all') {
-                table.addFilter(function(data) {
-                    const pct = parseFloat(data.l7_vs_l30_pct) || 0;
-                    if (l7VsL30Filter === 'gt70') return pct > 70;
-                    if (l7VsL30Filter === 'lt71') return pct < 71;
-                    return true;
-                });
-            }
-
             // CVR filter
             if (cvrFilter !== 'all') {
                 table.addFilter(function(data) {
@@ -4871,64 +4864,13 @@
                 });
             }
 
-            // ADS filter
-            if (adsFilter !== 'all') {
-                table.addFilter(function(data) {
-                    const ads = parseFloat(data.ads_percent) || 0;
-                    
-                    if (adsFilter === '0-10') return ads >= 0 && ads < 10;
-                    if (adsFilter === '10-20') return ads >= 10 && ads < 20;
-                    if (adsFilter === '20-30') return ads >= 20 && ads < 30;
-                    if (adsFilter === '30-100') return ads >= 30 && ads <= 100;
-                    if (adsFilter === '100plus') return ads > 100;
-                    return true;
-                });
-            }
-
-            // DIL filter
+            // DIL filter — buckets match /topdawg-tabulator (red < 25, green 25–50, pink ≥ 50).
             if (dilFilter !== 'all') {
                 table.addFilter(function(data) {
                     const dil = parseFloat(data['dil_percent']) || 0;
-                    
-                    if (dilFilter === 'red') return dil < 16.66;
-                    if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                    if (dilFilter === 'red')   return dil < 25;
                     if (dilFilter === 'green') return dil >= 25 && dil < 50;
-                    if (dilFilter === 'pink') return dil >= 50;
-                    return true;
-                });
-            }
-
-            // CVR trend filter (CVR 60 vs CVR 30)
-            const cvrTrendTol = 0.1;
-            const applyArrowOrCvrTrend = (filterVal) => {
-                if (filterVal === 'all') return;
-                table.addFilter(function(data) {
-                    const cvr30 = parseFloat(data.cvr_30 || data.cvr_percent) || 0;
-                    const cvr60 = parseFloat(data.cvr_60) || 0;
-                    if (filterVal === 'l60_gt_l30' || filterVal === 'down') return cvr60 > cvr30 + cvrTrendTol;
-                    if (filterVal === 'l30_gt_l60' || filterVal === 'up') return cvr30 > cvr60 + cvrTrendTol;
-                    if (filterVal === 'equal') return Math.abs(cvr30 - cvr60) <= cvrTrendTol;
-                    return true;
-                });
-            };
-            if (arrowFilter !== 'all') {
-                applyArrowOrCvrTrend(arrowFilter);
-            } else if (cvrTrendFilter !== 'all') {
-                applyArrowOrCvrTrend(cvrTrendFilter);
-            }
-
-            // SPRICE filter
-            if (spriceFilter !== 'all') {
-                table.addFilter(function(data) {
-                    const spriceVal = data.sprice;
-                    const sprice = parseFloat(spriceVal) || 0;
-                    if (spriceFilter === 'blank') {
-                        const blank = spriceVal == null || spriceVal === '' || isNaN(sprice) || sprice <= 0;
-                        return blank;
-                    }
-                    if (spriceFilter === '27-31') return sprice >= 27 && sprice <= 31;
-                    if (spriceFilter === 'lt27') return sprice > 0 && sprice < 27;
-                    if (spriceFilter === 'gt31') return sprice > 31;
+                    if (dilFilter === 'pink')  return dil >= 50;
                     return true;
                 });
             }
@@ -4945,28 +4887,6 @@
                     const spriceIsBlank = !spriceVal || spriceVal === '' || spriceVal === 0 || parseFloat(spriceVal) === 0;
                     
                     return inventory > 0 && temuL30 > 0 && spriceIsBlank;
-                });
-            }
-
-            // Ads Req filter
-            if (adsReqFilter !== 'all') {
-                table.addFilter(function(data) {
-                    const views = parseFloat(data['product_clicks']) || 0;
-                    if (adsReqFilter === 'below-avg' && latestAvgViews > 0) {
-                        return views > 0 && views < latestAvgViews;
-                    }
-                    return true;
-                });
-            }
-
-            // Ads Running filter
-            if (adsRunningFilter !== 'all') {
-                table.addFilter(function(data) {
-                    const target = parseFloat(data['target']) || 0;
-                    if (adsRunningFilter === 'running') {
-                        return target > 0;
-                    }
-                    return true;
                 });
             }
 
@@ -5024,14 +4944,6 @@
                 });
             }
 
-            // Green Alert badge filter — rows where Temu Price falls below Amazon × 0.85
-            // or eBay 1 × 0.90 or eBay 2 × 0.90 (driven by temuIsGreenAlert so cell color,
-            // filter, and badge count never get out of sync).
-            if (greenAlertFilterActive) {
-                table.addFilter(function(data) {
-                    return temuIsGreenAlert(data);
-                });
-            }
             // Red Alert badge filter — opposite (Temu uncompetitive).
             if (redAlertFilterActive) {
                 table.addFilter(function(data) {
@@ -5184,7 +5096,7 @@
                 const totalCount = table.getData('all').length;
                 
                 if (resultCount === 0) {
-                    $('#search-result-info').html(`<i class="fa fa-exclamation-triangle text-warning"></i> No results found for "${skuSearch}". SKU may not exist in product_master table.`).show();
+                    $('#search-result-info').html(`<i class="fas fa-exclamation-triangle text-warning"></i> No results found for "${skuSearch}". SKU may not exist in product_master table.`).show();
                 } else {
                     $('#search-result-info').html(`Found ${resultCount} result(s) matching "${skuSearch}"`).show();
                 }
@@ -5409,35 +5321,8 @@
             });
         });
 
-        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter, #nr-req-filter, #nrp-filter, #sold-filter, #l7-vs-l30-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #nr-req-filter, #nrp-filter, #sold-filter').on('change', function() {
             applyFilters();
-        });
-
-        // Handle column visibility for Ads Req filter
-        $('#ads-req-filter').on('change', function() {
-            const value = $(this).val();
-            
-            if (value === 'below-avg') {
-                // Hide columns from GROI% to SPFT%
-                table.getColumn('roi_percent').hide();
-                table.getColumn('npft_percent').hide();
-                table.getColumn('nroi_percent').hide();
-                table.getColumn('recommended_base_price').hide();
-                table.getColumn('sprice').hide();
-                table.getColumn('stemu_price').hide();
-                table.getColumn('sgprft_percent').hide();
-                table.getColumn('spft_percent').hide();
-            } else {
-                // Show columns when filter is cleared
-                table.getColumn('roi_percent').show();
-                table.getColumn('npft_percent').show();
-                table.getColumn('nroi_percent').show();
-                table.getColumn('recommended_base_price').show();
-                table.getColumn('sprice').show();
-                table.getColumn('stemu_price').show();
-                table.getColumn('sgprft_percent').show();
-                table.getColumn('spft_percent').show();
-            }
         });
 
         $(document).on('click', '.column-filter', function(e) {
