@@ -309,34 +309,60 @@
 
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
+            <div class="card-body py-1">
 
                 {{-- Row 1: summary KPIs — moved to the top of the toolbar so the
                      headline numbers (Sales, Total SKUs, Missing, L30 GPFT/ROI,
                      COGS) are the first thing users see when they land on the
                      page. Filter / action rows live below. --}}
-                <div id="summary-stats" class="p-3 bg-light rounded mb-3">
-                    <div class="d-flex flex-wrap gap-2">
-                        <span id="dws-total-sales-badge" class="badge bg-primary fs-6 p-2" style="font-weight:700; color: white !important;">Sales: $0</span>
+                {{-- Each visible badge gets flex:1 1 0 + text-center so the badge
+                     row spans the FULL width of the card and the badges split it
+                     evenly. flex-nowrap keeps everything on one line; min-width
+                     prevents text from getting crushed on narrow viewports
+                     (horizontal scroll only as a last resort).
+                     Hidden badges (display:none) don't take part in the flex
+                     distribution since they're out-of-flow, so the visible badges
+                     get the full row width. --}}
+                {{-- Compact summary strip — same vertical footprint as
+                     /topdawg-pricing. Each visible badge: flex:1 1 0 +
+                     text-center so they span the FULL card width; py-1 px-2
+                     + font-size 14px keeps the strip tight without losing
+                     legibility. flex-nowrap + safety overflow-x:auto so the
+                     row never wraps onto a second line. --}}
+                <div id="summary-stats" class="p-1 bg-light rounded mb-1">
+                    <div class="d-flex flex-nowrap gap-1 w-100" style="overflow-x:auto;">
+                        <span id="dws-total-sales-badge"
+                              class="badge bg-primary text-center"
+                              style="font-weight:700; color: white !important; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;">Sales: $0</span>
                         {{-- Rows: count of SKUs currently passing all filters
                              (excludes PARENT rows). Backed by table.getData("active")
                              so it updates whenever filters change. --}}
-                        <span id="total-skus" class="badge bg-info fs-6 p-2" style="font-weight:700; color: #111 !important;" title="Number of SKU rows passing the current filters">Rows: 0</span>
-                        <span id="zero-sold-count" class="badge bg-danger fs-6 p-2" style="font-weight:700; color: white !important;">0 Sold: 0</span>
-                        <span id="missing-count" class="badge fs-6 p-2" style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
-                        <span id="nmap-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter inventory mismatch (Shop INV vs D INV)">N Map: 0</span>
-                        <span id="disc-vs-amz-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter non-competitive items"><i class="fas fa-chart-line"></i> VS AMZ: 0</span>
-                        {{--
-                            GROWTH / GROWTH GPFT / GROWTH GPFT % badges intentionally removed.
-                            They compared totalL30* vs totalL60*, but doba_metrics.quantity_l60 is
-                            populated as "every order older than 30 days" (FetchDobaDailyData tags
-                            anything not in the last 30 days as period='l60' with no upper bound),
-                            so L60 covered ~7 months of accumulated history. The math always made
-                            GROWTH look catastrophically red (e.g. -89%) even when sales were fine.
-                            Re-add only after redefining L60 as "the prior 30 days (today-60 → today-31)".
-                        --}}
-                        <span id="pft-percentage-badge" class="badge bg-danger fs-6 p-2" style="color: white; font-weight:700;">GPFT: 0%</span>
-                        <span id="roi-percentage-badge" class="badge fs-6 p-2" style="background-color: #6f42c1; color: white; font-weight:700;">ROI: 0%</span>
+                        <span id="total-skus"
+                              class="badge bg-info text-center"
+                              style="font-weight:700; color: #111 !important; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
+                              title="Number of SKU rows passing the current filters">Rows: 0</span>
+                        <span id="zero-sold-count"
+                              class="badge bg-danger text-center"
+                              style="font-weight:700; color: white !important; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;">0 Sold: 0</span>
+                        <span id="missing-count"
+                              class="badge text-center"
+                              style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
+                              title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
+                        <span id="nmap-count"
+                              class="badge text-center"
+                              style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
+                              title="Click to filter inventory mismatch (Shop INV vs D INV)">N Map: 0</span>
+                        <span id="disc-vs-amz-count"
+                              class="badge text-center"
+                              style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
+                              title="Click to filter non-competitive items"><i class="fas fa-chart-line"></i> VS AMZ: 0</span>
+                        
+                        <span id="pft-percentage-badge"
+                              class="badge bg-danger text-center"
+                              style="color: white; font-weight:700; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;">GPFT: 0%</span>
+                        <span id="roi-percentage-badge"
+                              class="badge text-center"
+                              style="background-color: #6f42c1; color: white; font-weight:700; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;">ROI: 0%</span>
                         {{-- L30 GPFT $ and Total COGS badges hidden by request — the
                              percentage versions (L30 GPFT % / L30 ROI %) carry the same
                              signal in a more comparable form. The text(...) updaters in
@@ -347,63 +373,56 @@
                     </div>
                 </div>
 
-                {{-- Row 2: filters + DIL; Search SKU aligned right (/aliexpress-pricing style) --}}
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-2 w-100">
-                    <div class="d-flex flex-wrap align-items-center gap-2 flex-grow-1">
-                    <select id="dws-row-type-filter" class="form-select form-select-sm" style="width:120px;">
+                {{-- Combined filters + actions row.
+                     Single flex-wrap line; gap-1 + mb-1 keep the row visually
+                     compact (matches /topdawg-pricing density). On narrow
+                     viewports it wraps to additional lines instead of producing
+                     a horizontal scrollbar. --}}
+                <div class="d-flex flex-wrap align-items-center gap-1 mb-1 w-100">
+                    <select id="dws-row-type-filter" class="form-select form-select-sm" style="width:100px;">
                         <option value="all" selected>All Rows</option>
                         <option value="parents">Parents</option>
                         <option value="skus">SKUs</option>
                     </select>
 
-                    <select id="dws-inv-filter" class="form-select form-select-sm" style="width:110px;" title="Inventory (INV)">
+                    <select id="dws-inv-filter" class="form-select form-select-sm" style="width:95px;" title="Inventory (INV)">
                         <option value="all">All INV</option>
                         <option value="zero">0 INV</option>
                         <option value="more" selected>&gt; 0 INV</option>
                     </select>
 
-                    <select id="dws-gpft-filter" class="form-select form-select-sm" style="width:130px;">
+                    {{-- GPFT% filter — same 5-bucket slab as /topdawg-pricing
+                         (Negative / 0-10 / 10-20 / 20-30 / 30+). Simpler than
+                         the previous 8-bucket grid and matches the badge color
+                         buckets on the page. --}}
+                    <select id="dws-gpft-filter" class="form-select form-select-sm" style="width:100px;">
                         <option value="all">GPFT%</option>
                         <option value="negative">Negative</option>
                         <option value="0-10">0–10%</option>
                         <option value="10-20">10–20%</option>
                         <option value="20-30">20–30%</option>
-                        <option value="30-40">30–40%</option>
-                        <option value="40-50">40–50%</option>
-                        <option value="50-60">50–60%</option>
-                        <option value="50plus">50%+</option>
+                        <option value="30plus">30%+</option>
                     </select>
 
-                    <select id="dws-roi-filter" class="form-select form-select-sm" style="width:130px;">
+                    {{-- ROI% filter — same 4-bucket slab as /topdawg-pricing
+                         (< 40 / 40–75 / 75–125 / 125+). Matches the ROI badge
+                         color buckets defined in updateSummary above (red /
+                         yellow / green / pink). --}}
+                    <select id="dws-roi-filter" class="form-select form-select-sm" style="width:100px;">
                         <option value="all">ROI%</option>
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
-                        <option value="125-250">125–250%</option>
-                        <option value="gt250">&gt; 250%</option>
+                        <option value="125plus">125%+</option>
                     </select>
 
                     {{-- Sold dropdown (mirrors Amazon tabulator + /doba page). Backed by `doba L30`;
                          when filtering Sold > 0 / 0 Sold, only child rows with INV > 0 are shown.
                          IDs/values are unchanged so existing applyFilters() logic still matches. --}}
-                    <select id="dws-al30-filter" class="form-select form-select-sm" style="width:140px;" title="Sold (Doba L30); when filtering 0 Sold or Sold > 0, only child rows with INV > 0">
+                    <select id="dws-al30-filter" class="form-select form-select-sm" style="width:100px;" title="Sold (Doba L30); when filtering 0 Sold or Sold > 0, only child rows with INV > 0">
                         <option value="all" selected>Sold</option>
                         <option value="more">Sold &gt; 0</option>
                         <option value="0">0 Sold</option>
-                    </select>
-
-                    <select id="dws-map-filter" class="form-select form-select-sm" style="width:120px;">
-                        <option value="all">Map</option>
-                        <option value="map">Map only</option>
-                        <option value="nmap">N Map only</option>
-                    </select>
-
-                    <select id="dws-growth-sign-filter" class="form-select form-select-sm" style="width: 150px;"
-                            title="Doba L30 vs L60 sales growth % (same as Growth column)">
-                        <option value="all" selected>Growth</option>
-                        <option value="negative">Growth &lt; 0</option>
-                        <option value="zero">Growth = 0</option>
-                        <option value="positive">Growth &gt; 0</option>
                     </select>
 
                     <div class="dws-manual-dropdown">
@@ -425,11 +444,7 @@
                                 <span class="dws-sc pink"></span>Pink (50%+)</a></li>
                         </ul>
                     </div>
-                    </div>
-                </div>
 
-                {{-- Row 3: actions (same order feel as /aliexpress-pricing) --}}
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                     <button type="button" id="export-csv-btn" class="btn btn-sm btn-success"
                             title="Export CSV" aria-label="Export CSV">
                         <i class="fas fa-download"></i>
@@ -451,7 +466,7 @@
                     </button>
 
                     
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                    <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
                         id="target-roi-controls"
                         title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100)) / {{ ($dobaPercentage ?? 95) / 100 }} on every selected row (back-solves so SROI column equals the target)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap"
@@ -459,7 +474,7 @@
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            placeholder="30" step="0.1" style="width: 60px;"
                             title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
                             title="Apply — Compute & save S PRC = (LP × (1 + Target ROI%/100)) / {{ ($dobaPercentage ?? 95) / 100 }} for every selected row"
@@ -470,7 +485,7 @@
 
                     {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
                          Without-ship: sprice = LP / ({{ ($dobaPercentage ?? 95) / 100 }} − GPFT%/100). Target GPFT% must be < {{ $dobaPercentage ?? 95 }}%. --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                    <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
                         id="target-gpft-controls"
                         title="Target GPFT% — sets S PRC = LP / ({{ ($dobaPercentage ?? 95) / 100 }} − Target GPFT%/100) on every selected row">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap"
@@ -478,7 +493,7 @@
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            placeholder="30" step="0.1" style="width: 60px;"
                             title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Doba take-home margin (< 95%).">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
                             title="Apply — Compute & save S PRC = LP / ({{ ($dobaPercentage ?? 95) / 100 }} − Target GPFT%/100) for every selected row"
@@ -519,8 +534,10 @@
                         <span id="selected-skus-count" class="text-muted ms-2"></span>
                     </div>
                 </div>
-                <div class="p-2 bg-light border-bottom">
-                    <input type="text" id="dws-sku-search" class="form-control" placeholder="Search SKU..." autocomplete="off">
+                {{-- Compact search row — px-2 py-1 matches the filter row above
+                     so the two strips have the same vertical rhythm. --}}
+                <div class="px-2 py-1 bg-light border-bottom">
+                    <input type="text" id="dws-sku-search" class="form-control form-control-sm" placeholder="Search SKU..." autocomplete="off">
                 </div>
                 <div id="doba-withoutship-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <div id="doba-withoutship-table" style="flex: 1;"></div>
@@ -2153,7 +2170,6 @@
                 const gpftFilter = $('#dws-gpft-filter').val();
                 const roiFilter = $('#dws-roi-filter').val();
                 const al30Filter = $('#dws-al30-filter').val();
-                const mapFilter = $('#dws-map-filter').val();
                 const dilColor = $('.dws-dil-item.active').data('color') || 'all';
                 const skuSearch = ($('#dws-sku-search').val() || '').trim().toLowerCase();
 
@@ -2181,12 +2197,14 @@
                     }
                 }
 
+                // GPFT% filter — 5 buckets (Negative / 0-10 / 10-20 / 20-30 / 30+).
+                // Matches the /topdawg-pricing GPFT filter slabs.
                 if (gpftFilter !== 'all') {
                     table.addFilter(function(data) {
                         if (data.is_parent) return true;
                         const gpft = parseFloat(data.NPFT_pct) || 0;
                         if (gpftFilter === 'negative') return gpft < 0;
-                        if (gpftFilter === '50plus') return gpft >= 50;
+                        if (gpftFilter === '30plus')   return gpft >= 30;
                         const parts = gpftFilter.split('-');
                         const min = parseFloat(parts[0]);
                         const max = parseFloat(parts[1]);
@@ -2194,14 +2212,16 @@
                     });
                 }
 
+                // ROI% filter — 4 buckets (< 40 / 40-75 / 75-125 / 125+).
+                // Matches the ROI badge color buckets defined in updateSummary above.
                 if (roiFilter !== 'all') {
                     table.addFilter(function(data) {
                         if (data.is_parent) return true;
                         const roiVal = parseFloat(data.Roi) || 0;
-                        if (roiFilter === 'lt40') return roiVal < 40;
-                        if (roiFilter === 'gt250') return roiVal > 250;
+                        if (roiFilter === 'lt40')     return roiVal < 40;
+                        if (roiFilter === '125plus')  return roiVal >= 125;
                         const [min, max] = roiFilter.split('-').map(Number);
-                        return roiVal >= min && roiVal <= max;
+                        return roiVal >= min && roiVal < max;
                     });
                 }
 
@@ -2216,18 +2236,6 @@
                     });
                 }
 
-                if (mapFilter === 'map') {
-                    table.addFilter(function(data) {
-                        if (data.is_parent) return true;
-                        return (parseFloat(data.map) || 0) > 0;
-                    });
-                } else if (mapFilter === 'nmap') {
-                    table.addFilter(function(data) {
-                        if (data.is_parent) return true;
-                        return (parseFloat(data.map) || 0) === 0;
-                    });
-                }
-
                 if (dilColor !== 'all') {
                     // Three buckets after merging yellow into red:
                     //   red < 25, green 25–50, pink ≥ 50.
@@ -2238,26 +2246,6 @@
                         if (dilColor === 'red')   return dil < 25;
                         if (dilColor === 'green') return dil >= 25 && dil < 50;
                         if (dilColor === 'pink')  return dil >= 50;
-                        return true;
-                    });
-                }
-
-                const growthSign = $('#dws-growth-sign-filter').val();
-                if (growthSign && growthSign !== 'all') {
-                    table.addFilter(function(data) {
-                        if (data.is_parent) return true;
-                        const l30 = parseFloat(data['doba L30']) || 0;
-                        const l60 = parseFloat(data['doba L60']) || 0;
-                        let growth = 0;
-                        if (l60 > 0) {
-                            growth = ((l30 - l60) / l60) * 100;
-                        } else if (l30 > 0) {
-                            growth = 100;
-                        }
-                        const g = Math.round(growth);
-                        if (growthSign === 'negative') return g < 0;
-                        if (growthSign === 'zero') return g === 0;
-                        if (growthSign === 'positive') return g > 0;
                         return true;
                     });
                 }
@@ -2293,7 +2281,7 @@
                 if (el) el.textContent = 'Visible rows: ' + n;
             }
 
-            $('#dws-row-type-filter, #dws-inv-filter, #dws-gpft-filter, #dws-roi-filter, #dws-al30-filter, #dws-map-filter, #dws-growth-sign-filter').on('change', function() {
+            $('#dws-row-type-filter, #dws-inv-filter, #dws-gpft-filter, #dws-roi-filter, #dws-al30-filter').on('change', function() {
                 applyFilters();
             });
 
