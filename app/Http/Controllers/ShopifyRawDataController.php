@@ -39,6 +39,7 @@ class ShopifyRawDataController extends Controller
         'doba', '145019994113',
         'newegg', '189863297025',
         'depop', 'tiendamia',
+        'mercari', 'aliexpress', 'ali express', 'wayfair',
     ];
 
     /**

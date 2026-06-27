@@ -1465,11 +1465,6 @@
                                 <ul class="side-nav-third-level">
 
                                     <li>
-                                        <a href="{{ route('adcvr.ebay') }}">Ebay Ads - CVR</a>
-                                    </li>
-
-
-                                    <li>
                                         <a href="{{ route('listing.ebay') }}">Listing EBay</a>
                                     </li>
 
@@ -1532,9 +1527,6 @@
                                         <a href="{{ route('ebay.pink.dil.ads') }}">Ebay Pink Dil Ads</a>
                                     </li> --}}
                                     <li>
-                                        <a href="{{ route('ebay.pmp.ads') }}">Ebay PMT Ads</a>
-                                    </li>
-                                    <li>
                                         <a href="{{ route('ebay.campaign.ads') }}">eBay Campaign Ads (Raw)</a>
                                     </li>
                                     {{-- <li>
@@ -1543,9 +1535,6 @@
                                     <li>
                                         <a href="{{ route('ebay.running.ads') }}">Ebay Running Ads</a>
                                     </li> --}}
-                                    <li>
-                                        <a href="{{ route('ebay.utilized') }}">Ebay Utilized's</a>
-                                    </li>
                                     {{-- <li>
                                         <a href="{{ route('ebay-over-uti') }}">Ebay OVER UTIL.</a>
                                     </li>
@@ -1879,19 +1868,7 @@
                                     </li>
 
                                     <li>
-                                        <a href="{{ route('ebay2.pmt.ads') }}">PMT Ads</a>
-                                    </li>
-                                    <li>
                                         <a href="{{ route('ebay2.campaign.ads') }}">eBay 2 Campaign Ads (Raw)</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('ebay2.running.ads') }}">Running Ads</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('ebay2.missing.ads') }}">Missing Ads</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('ebay2.utilized') }}">Ebay 2 Utilized's</a>
                                     </li>
                                 </ul>
                             </div>
@@ -1974,9 +1951,6 @@
                                     {{-- <li>
                                         <a href="{{ route('ebay3.pink.dil.ads') }}">Ebay 3 Pink Dil Ads</a>
                                     </li> --}}
-                                    <li>
-                                        <a href="{{ route('ebay3.utilized') }}">Ebay 3 Utilized's</a>
-                                    </li>
                                     {{-- <li>
                                         <a href="{{ route('ebay3.over.utilized') }}">Ebay 3 OVER UTIL.</a>
                                     </li>
@@ -1986,9 +1960,6 @@
                                     <li>
                                         <a href="{{ route('ebay3.correctly.utilized') }}">Ebay 3 CORRECTLY UTIL.</a>
                                     </li> --}}
-                                    <li>
-                                        <a href="{{ route('ebay3.pmt.ads') }}">Ebay 3 PMT Ads</a>
-                                    </li>
                                     <li>
                                         <a href="{{ route('ebay3.campaign.ads') }}">eBay 3 Campaign Ads (Raw)</a>
                                     </li>
@@ -2002,9 +1973,6 @@
                                     <li>
                                         <a href="{{ route('ebay3.running.ads') }}">Ebay 3 Running Ads</a>
                                     </li> --}}
-                                    <li>
-                                        <a href="{{ route('ebay3.missing.ads') }}">Ebay 3 Missing Ads</a>
-                                    </li>
                                 </ul>
                             </div>
                         </li>
@@ -3236,6 +3204,8 @@
                         <li><a href="{{ route('walmart.daily.sales') }}">Walmart Sales Data</a></li>
 
                         <li><a href="{{ route('wayfair.daily.sales') }}">Wayfair Sales Data</a></li>
+
+                        <li><a href="{{ route('facebook.marketplace') }}">Facebook Marketplace</a></li>
                     </ul>
                 </div>
             </li>

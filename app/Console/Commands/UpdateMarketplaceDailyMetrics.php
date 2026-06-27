@@ -895,8 +895,8 @@ class UpdateMarketplaceDailyMetrics extends Command
             $basePrice = (float) ($row->base_price_total ?? 0);
             $totalQuantity += $quantity;
 
-            $total   = $basePrice * $quantity;
-            $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
+            // FB Prc: +$2.99 when per-unit base price ≤ $26.99 (matches /temu-decrease and /temu-tabulator).
+            $fbPrice = $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice;
             $totalRevenue  += $fbPrice * $quantity; // match tabulator: revenue uses fbPrice
             $totalL30Sales += $fbPrice * $quantity;
 
@@ -1507,9 +1507,13 @@ class UpdateMarketplaceDailyMetrics extends Command
             return strtoupper($item->sku);
         });
 
-        // Get marketplace percentage from ChannelMaster (like other channels)
-        $marketplaceData = ChannelMaster::where('channel', 'Aliexpress')->first();
-        $percentage = $marketplaceData ? (float) ($marketplaceData->channel_percentage ?? 100) : 100.0;
+        // Margin source MUST match AliexpressController::getDailyData() and
+        // aggregateAliexpressOrderRows() so the snapshot value stays in sync
+        // with the live /aliexpress-tabulator and /all-marketplace-master pages.
+        // Previously this read ChannelMaster.channel_percentage which could
+        // silently drift from MarketplacePercentage.percentage.
+        $mpRow = MarketplacePercentage::where('marketplace', 'Aliexpress')->first();
+        $percentage = $mpRow !== null ? (float) ($mpRow->percentage ?? 100) : 100.0;
         if ($percentage <= 0) {
             $percentage = 89.0;
         }
@@ -2289,13 +2293,20 @@ class UpdateMarketplaceDailyMetrics extends Command
         $totalQuantityForPrice = 0;
 
         foreach ($orders as $order) {
+            // Skip rules MUST match the live /bestbuy/daily-sales JS aggregation
+            // (resources/views/sales/bestbuy_daily_sales_data.blade.php updateSummary),
+            // otherwise the snapshot's GPFT% / ROI% will drift from the page badges.
             if (!$order->sku || $order->sku === '') continue;
+            if (!$order->order_id || $order->order_id === '') continue;
 
-            $totalOrders++;
             $quantity = (int) ($order->quantity ?? 1);
             $unitPrice = (float) ($order->unit_price ?? 0);
+
+            if ($quantity === 0) continue;
+
+            $totalOrders++;
             $saleAmount = $unitPrice * $quantity;
-            
+
             $totalQuantity += $quantity;
             $totalRevenue += $saleAmount;
 

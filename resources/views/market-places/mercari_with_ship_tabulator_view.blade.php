@@ -130,6 +130,16 @@
                         <option value="pink">Pink (50%+)</option>
                     </select>
 
+                    {{-- Sold dropdown (mirrors Amazon tabulator + every other /pricing page).
+                         Backed by the `sold` field (Mercari w/Ship L30 sold qty — shown in the
+                         "L30" column on this page; OV L30 lives in the `L30` field). --}}
+                    <select id="sold-filter" class="form-select form-select-sm" style="width: 120px;"
+                            title="Filter by Mercari L30 sold quantity">
+                        <option value="all">Sold</option>
+                        <option value="sold">Sold &gt; 0</option>
+                        <option value="zero">0 Sold</option>
+                    </select>
+
                     <span class="badge bg-success fs-6 p-2" id="avg-pft-badge" style="color: #fff; font-weight: bold;">PFT: 0%</span>
                     <span class="badge bg-primary fs-6 p-2" id="avg-roi-badge" style="color: #fff; font-weight: bold;">ROI: 0%</span>
                     <span class="badge bg-secondary fs-6 p-2" id="missing-l-badge" style="color: #fff; font-weight: bold; cursor: pointer;" title="Click to filter: Price = 0 and NR/REQ = REQ">Missing L: 0</span>
@@ -467,8 +477,8 @@
                 });
             }
 
-            // GPFT% / ROI% / DIL% slab dropdown change handlers — all funnel into the
-            // single combined applyAllFilters() so the three slab selects stack with
+            // GPFT% / ROI% / DIL% / Sold slab dropdown change handlers — all funnel into the
+            // single combined applyAllFilters() so the four slab selects stack with
             // the SKU search and the Missing-L badge instead of overwriting each other.
             const gpftFilterEl = document.getElementById('gpft-filter');
             if (gpftFilterEl) gpftFilterEl.addEventListener('change', applyAllFilters);
@@ -476,6 +486,8 @@
             if (roiFilterEl) roiFilterEl.addEventListener('change', applyAllFilters);
             const dilFilterEl = document.getElementById('dil-filter');
             if (dilFilterEl) dilFilterEl.addEventListener('change', applyAllFilters);
+            const soldFilterEl = document.getElementById('sold-filter');
+            if (soldFilterEl) soldFilterEl.addEventListener('change', applyAllFilters);
 
             // Price % toggle — cycle Off → Decrease → Increase → Same Price → Off
             const priceModeBtn = document.getElementById('price-mode-btn');
@@ -711,6 +723,9 @@
             const dilEl = document.getElementById('dil-filter');
             const dilFilter = dilEl ? dilEl.value : 'all';
 
+            const soldEl = document.getElementById('sold-filter');
+            const soldFilter = soldEl ? soldEl.value : 'all';
+
             table.setFilter(function(row) {
                 // SKU / Parent search
                 if (skuSearch) {
@@ -754,6 +769,14 @@
                     if (dilFilter === 'yellow' && !(dil >= 16.66 && dil < 25))   return false;
                     if (dilFilter === 'green'  && !(dil >= 25 && dil < 50))      return false;
                     if (dilFilter === 'pink'   && !(dil >= 50))                  return false;
+                }
+
+                // Sold filter (Mercari w/Ship L30 sold qty — `sold` field, shown in the L30 column).
+                // Mirrors the Amazon tabulator dropdown styling.
+                if (soldFilter && soldFilter !== 'all') {
+                    const soldQty = parseFloat(row.sold) || 0;
+                    if (soldFilter === 'sold' && !(soldQty > 0))  return false;
+                    if (soldFilter === 'zero' && !(soldQty === 0)) return false;
                 }
 
                 return true;

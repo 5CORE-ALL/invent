@@ -191,6 +191,23 @@
                         </select>
                     </div>
 
+                    {{-- Sold dropdown (mirrors Amazon tabulator + /temu-decrease + every other /pricing page).
+                         Backed by `temu_l30`:
+                           all  → no filter
+                           sold → temu_l30 > 0
+                           zero → temu_l30 = 0 AND INV > 0 (preserves the original
+                                  #zero-sold-count-badge semantics — "0 sold items (INV>0)")
+                         The existing #zero-sold-count-badge click handler just toggles this
+                         dropdown so badges + dropdown can never disagree. There is no
+                         "> 0 Sold" badge on this page, but the dropdown still offers the
+                         option for symmetry with the Amazon styling. --}}
+                    <select id="sold-filter" class="form-select form-select-sm" style="width: 130px;"
+                            title="Filter by Temu L30 sold quantity (0 Sold also requires INV > 0)">
+                        <option value="all">Sold</option>
+                        <option value="sold">Sold &gt; 0</option>
+                        <option value="zero">0 Sold</option>
+                    </select>
+
                     <!-- ROI Filter -->
                     <div>
                         <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
@@ -1959,7 +1976,8 @@
         });
 
         // Badge click handlers for filtering
-        let zeroSoldFilterActive = false;
+        // zeroSoldFilterActive removed — Sold filter is now owned by the #sold-filter
+        // dropdown (which the 0 Sold badge below just toggles).
         let lessAmzFilterActive = false;
         let moreAmzFilterActive = false;
         let missingBadgeFilterActive = false;
@@ -1983,8 +2001,11 @@
             return Math.round((diff / invNum) * 100) <= 3;
         }
 
+        // 0 Sold badge just toggles the #sold-filter dropdown so the dropdown stays the
+        // single source of truth (mirrors Amazon tabulator). Click again to clear.
         $('#zero-sold-count-badge').on('click', function() {
-            zeroSoldFilterActive = !zeroSoldFilterActive;
+            const next = $('#sold-filter').val() === 'zero' ? 'all' : 'zero';
+            $('#sold-filter').val(next);
             applyFilters();
         });
 
@@ -3973,12 +3994,20 @@
                 });
             }
 
-            // 0 Sold badge filter (only INV > 0)
-            if (zeroSoldFilterActive) {
+            // Sold filter — driven by the #sold-filter dropdown (single source of truth).
+            // The legacy #zero-sold-count-badge click just toggles this dropdown to "zero".
+            // `zero` keeps the original badge semantics (INV > 0 required). `sold` is the new
+            // option added for parity with the Amazon-style dropdown (no INV constraint).
+            const soldFilter = $('#sold-filter').val();
+            if (soldFilter === 'zero') {
                 table.addFilter(function(data) {
                     const temuL30 = parseInt(data['temu_l30']) || 0;
                     const inv = parseFloat(data['inventory']) || 0;
                     return temuL30 === 0 && inv > 0;
+                });
+            } else if (soldFilter === 'sold') {
+                table.addFilter(function(data) {
+                    return (parseInt(data['temu_l30']) || 0) > 0;
                 });
             }
 
@@ -4264,7 +4293,7 @@
             });
         });
 
-        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #sprice-filter, #nr-req-filter, #stock-transfer-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #sprice-filter, #nr-req-filter, #stock-transfer-filter, #sold-filter').on('change', function() {
             applyFilters();
         });
 

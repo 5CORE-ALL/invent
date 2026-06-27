@@ -15,12 +15,15 @@ use App\Models\ProductCategory;
 use App\Models\ProductGroup;
 use App\Models\ProductMaster;
 use App\Models\QcImprovementReqBeforeItemPkg;
+use App\Models\ShippingMasterHistory;
 use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
 use App\Services\EbayApiService;
 use App\Services\WalmartApiService;
 use App\Support\OpenAiRequest;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -757,6 +760,7 @@ class CategoryController extends Controller
                 'tt_ship' => 'nullable|numeric',
                 'temu_ship' => 'nullable|numeric',
                 'ebay2_ship' => 'nullable|numeric',
+                'shein_ship' => 'nullable|numeric',
                 'gofo' => 'nullable|numeric',
                 'temu_gofo' => 'nullable|numeric',
                 'fedex' => 'nullable|numeric',
@@ -858,20 +862,35 @@ class CategoryController extends Controller
                 }
             }
 
-            foreach (['ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'] as $shipField) {
+            foreach (['ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'shein_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'] as $shipField) {
                 if (array_key_exists($shipField, $validated)) {
                     $v = $validated[$shipField];
                     $values[$shipField] = ($v !== null && $v !== '') ? (float) $v : null;
                 }
             }
 
+            // Snapshot of the OLD Values (before save) for change tracking
+            $oldValues = is_array($product->getOriginal('Values'))
+                ? $product->getOriginal('Values')
+                : (is_string($product->getOriginal('Values')) ? json_decode($product->getOriginal('Values'), true) : []);
+            if (! is_array($oldValues)) {
+                $oldValues = [];
+            }
+
             // Save the updated Values
             $product->Values = $values;
             $product->save();
 
+            // Capture FBA old values (separate table) before syncing
+            $fbaOldShip = null;
+            $fbaOldManualTotal = null;
             if (array_key_exists('fba_ship_calculation', $validated) || array_key_exists('fba_manual_ship', $validated)) {
+                [$fbaOldShip, $fbaOldManualTotal] = $this->snapshotFbaCalcForProduct($product);
                 $this->syncFbaShipCalculationFromShippingMaster($product, $validated);
             }
+
+            // Log history for every changed field (Values + FBA)
+            $this->logShippingMasterChanges($product, $validated, $oldValues, $values, $fbaOldShip, $fbaOldManualTotal);
 
             return response()->json([
                 'success' => true,
@@ -886,6 +905,246 @@ class CategoryController extends Controller
                 'message' => 'Error updating data: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Fetch the existing FBA ship calculation totals so we can record the
+     * "old value" in shipping_master_history. Returns
+     * [fba_ship_calculation, fba_manual_ship_total] where the manual total
+     * matches the value shown in the page (fee + send_cost).
+     *
+     * @return array{0: float|null, 1: float|null}
+     */
+    private function snapshotFbaCalcForProduct(ProductMaster $product): array
+    {
+        $normalizedSku = str_replace("\u{00a0}", ' ', (string) $product->sku);
+        $baseKey = strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', $normalizedSku)));
+        $exactKey = strtoupper(trim($normalizedSku));
+
+        $calc = FbaShipCalculation::whereRaw('UPPER(TRIM(sku)) = ?', [$baseKey])->first()
+            ?? FbaShipCalculation::whereRaw('UPPER(TRIM(sku)) = ?', [$exactKey])->first();
+
+        if (! $calc) {
+            return [null, null];
+        }
+
+        $shipCalc = $calc->fba_ship_calculation !== null ? (float) $calc->fba_ship_calculation : null;
+        $manualTotal = round((float) ($calc->fba_fee_manual ?? 0) + (float) ($calc->send_cost ?? 0), 2);
+
+        return [$shipCalc, $manualTotal];
+    }
+
+    /**
+     * Human-readable labels used by the History modal. Keys match the
+     * payload fields submitted from shipping-master.blade.php.
+     *
+     * @return array<string,string>
+     */
+    public static function shippingHistoryFieldLabels(): array
+    {
+        return [
+            'ship' => 'Ship',
+            'ship_bb' => 'Ship BB',
+            'tt_ship' => 'TT 1 Ship',
+            'temu_ship' => 'Temu ship',
+            'temu_gofo' => 'Temu GOFO',
+            'ebay2_ship' => 'Ebay2 ship',
+            'shein_ship' => 'Shein ship',
+            'gofo' => 'GOFO',
+            'fedex' => 'Fedex',
+            'ups' => 'UPS',
+            'usps' => 'USPS',
+            'uni' => 'UNI',
+            'fba_ship_calculation' => 'FBA ship',
+            'fba_manual_ship' => 'FBA manual ship',
+            'wt_act' => 'Item WT ACT (LB)',
+            'wt_act_kg' => 'Item Weight ACT (Kg)',
+            'wt_decl' => 'Item WT DECL (LB)',
+            'l' => 'Item Length (inch)',
+            'w' => 'Item Width (inch)',
+            'h' => 'Item Height (inch)',
+            'l_cm' => 'Item Length (CM)',
+            'w_cm' => 'Item Width (CM)',
+            'h_cm' => 'Item Height (CM)',
+            'ctn_l' => 'CTN L (CM)',
+            'ctn_w' => 'CTN W (CM)',
+            'ctn_h' => 'CTN H (CM)',
+            'ctn_qty' => 'CTN (QTY)',
+            'ctn_cbm' => 'CTN (CBM)',
+            'ctn_cbm_each' => 'CTN (CBM/Each)',
+            'ctn_weight_kg' => 'CTN Weight (Kg)',
+            'ctn_weight_lb' => 'CTN Weight (LB)',
+            'ctn_instructions' => 'CTN Instructions',
+            'cbm' => 'CBM',
+            'cbm_e' => 'CBM (E)',
+            'ctn_gwt' => 'CTN GWT',
+        ];
+    }
+
+    /**
+     * Compare old vs new values and write one history row per field that
+     * actually changed. Tracks both `Values`-JSON fields and the two FBA
+     * fields that live in fba_ship_calculations.
+     *
+     * @param  array<string,mixed>  $validated
+     * @param  array<string,mixed>  $oldValues
+     * @param  array<string,mixed>  $newValues
+     */
+    private function logShippingMasterChanges(
+        ProductMaster $product,
+        array $validated,
+        array $oldValues,
+        array $newValues,
+        ?float $fbaOldShip,
+        ?float $fbaOldManualTotal
+    ): void {
+        $trackedValueFields = [
+            'wt_act', 'wt_act_kg', 'wt_decl',
+            'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm',
+            'cbm', 'cbm_e', 'ctn_gwt',
+            'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each',
+            'ctn_weight_kg', 'ctn_weight_lb', 'ctn_instructions',
+            'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'shein_ship',
+            'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni',
+        ];
+
+        $user = Auth::user()?->name ?? 'N/A';
+        $now = Carbon::now();
+        $rows = [];
+
+        foreach ($trackedValueFields as $field) {
+            if (! array_key_exists($field, $validated)) {
+                continue; // user did not submit this field this time
+            }
+            $old = $oldValues[$field] ?? null;
+            $new = $newValues[$field] ?? null;
+            if ($this->shippingHistoryValuesEqual($old, $new)) {
+                continue;
+            }
+            $rows[] = [
+                'product_id' => $product->id,
+                'sku' => $product->sku,
+                'field' => $field,
+                'old_value' => $this->shippingHistoryStringify($old),
+                'new_value' => $this->shippingHistoryStringify($new),
+                'updated_by' => $user,
+                'updated_at' => $now,
+            ];
+        }
+
+        // FBA fields live in fba_ship_calculations, snapshotted earlier.
+        if (array_key_exists('fba_ship_calculation', $validated)) {
+            $newShip = $validated['fba_ship_calculation'];
+            $newShip = ($newShip === null || $newShip === '') ? null : (float) $newShip;
+            if (! $this->shippingHistoryValuesEqual($fbaOldShip, $newShip)) {
+                $rows[] = [
+                    'product_id' => $product->id,
+                    'sku' => $product->sku,
+                    'field' => 'fba_ship_calculation',
+                    'old_value' => $this->shippingHistoryStringify($fbaOldShip),
+                    'new_value' => $this->shippingHistoryStringify($newShip),
+                    'updated_by' => $user,
+                    'updated_at' => $now,
+                ];
+            }
+        }
+        if (array_key_exists('fba_manual_ship', $validated)) {
+            $newManual = $validated['fba_manual_ship'];
+            $newManual = ($newManual === null || $newManual === '') ? null : (float) $newManual;
+            if (! $this->shippingHistoryValuesEqual($fbaOldManualTotal, $newManual)) {
+                $rows[] = [
+                    'product_id' => $product->id,
+                    'sku' => $product->sku,
+                    'field' => 'fba_manual_ship',
+                    'old_value' => $this->shippingHistoryStringify($fbaOldManualTotal),
+                    'new_value' => $this->shippingHistoryStringify($newManual),
+                    'updated_by' => $user,
+                    'updated_at' => $now,
+                ];
+            }
+        }
+
+        if (! empty($rows)) {
+            try {
+                ShippingMasterHistory::insert($rows);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to record shipping master history: '.$e->getMessage());
+            }
+        }
+    }
+
+    /** Decide whether two scalar values are "the same" for change tracking. */
+    private function shippingHistoryValuesEqual($a, $b): bool
+    {
+        $isEmpty = function ($v): bool {
+            return $v === null || $v === '' || (is_array($v) && empty($v));
+        };
+        if ($isEmpty($a) && $isEmpty($b)) {
+            return true;
+        }
+        if (is_numeric($a) && is_numeric($b)) {
+            return abs((float) $a - (float) $b) < 0.000001;
+        }
+
+        return (string) $a === (string) $b;
+    }
+
+    /** Stringify a value for storage in the history table. */
+    private function shippingHistoryStringify($v): ?string
+    {
+        if ($v === null || $v === '') {
+            return null;
+        }
+        if (is_bool($v)) {
+            return $v ? '1' : '0';
+        }
+        if (is_array($v) || is_object($v)) {
+            return json_encode($v);
+        }
+
+        return (string) $v;
+    }
+
+    /**
+     * GET /shipping-master/history/{id}
+     * Returns the change-log for one ProductMaster row, newest first.
+     */
+    public function getShippingMasterHistory($id)
+    {
+        $product = ProductMaster::find($id);
+        if (! $product) {
+            return response()->json(['success' => false, 'message' => 'Product not found.'], 404);
+        }
+
+        $labels = self::shippingHistoryFieldLabels();
+
+        $history = ShippingMasterHistory::where('product_id', $product->id)
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->limit(500)
+            ->get()
+            ->map(function ($h) use ($labels) {
+                return [
+                    'id' => $h->id,
+                    'field' => $h->field,
+                    'field_label' => $labels[$h->field] ?? $h->field,
+                    'old_value' => $h->old_value,
+                    'new_value' => $h->new_value,
+                    'updated_by' => $h->updated_by ?: 'N/A',
+                    'updated_at' => $h->updated_at
+                        ? Carbon::parse($h->updated_at)->timezone('America/New_York')->format('m-d-Y H:i')
+                        : null,
+                ];
+            })
+            ->values()
+            ->all();
+
+        return response()->json([
+            'success' => true,
+            'sku' => $product->sku,
+            'product_id' => $product->id,
+            'history' => $history,
+        ]);
     }
 
     /**
@@ -1115,6 +1374,7 @@ class CategoryController extends Controller
             'tt_ship' => 'nullable|numeric',
             'temu_ship' => 'nullable|numeric',
             'ebay2_ship' => 'nullable|numeric',
+            'shein_ship' => 'nullable|numeric',
             'label_qty' => 'nullable|integer',
         ]);
 
@@ -1150,6 +1410,9 @@ class CategoryController extends Controller
             if (isset($validated['ebay2_ship'])) {
                 $values['ebay2_ship'] = $validated['ebay2_ship'] !== null && $validated['ebay2_ship'] !== '' ? (float) $validated['ebay2_ship'] : null;
             }
+            if (isset($validated['shein_ship'])) {
+                $values['shein_ship'] = $validated['shein_ship'] !== null && $validated['shein_ship'] !== '' ? (float) $validated['shein_ship'] : null;
+            }
             if (isset($validated['label_qty'])) {
                 $values['label_qty'] = $validated['label_qty'] !== null && $validated['label_qty'] !== '' ? (int) $validated['label_qty'] : null;
             }
@@ -1168,6 +1431,7 @@ class CategoryController extends Controller
                     'tt_ship' => $values['tt_ship'] ?? null,
                     'temu_ship' => $values['temu_ship'] ?? null,
                     'ebay2_ship' => $values['ebay2_ship'] ?? null,
+                    'shein_ship' => $values['shein_ship'] ?? null,
                     'label_qty' => $values['label_qty'] ?? null,
                 ],
             ]);
@@ -1219,6 +1483,7 @@ class CategoryController extends Controller
             'tt_ship' => 'nullable|numeric',
             'temu_ship' => 'nullable|numeric',
             'ebay2_ship' => 'nullable|numeric',
+            'shein_ship' => 'nullable|numeric',
             'label_qty' => 'nullable|integer',
         ]);
 
@@ -1254,6 +1519,9 @@ class CategoryController extends Controller
             if (isset($validated['ebay2_ship'])) {
                 $values['ebay2_ship'] = $validated['ebay2_ship'] !== null && $validated['ebay2_ship'] !== '' ? (float) $validated['ebay2_ship'] : null;
             }
+            if (isset($validated['shein_ship'])) {
+                $values['shein_ship'] = $validated['shein_ship'] !== null && $validated['shein_ship'] !== '' ? (float) $validated['shein_ship'] : null;
+            }
             if (isset($validated['label_qty'])) {
                 $values['label_qty'] = $validated['label_qty'] !== null && $validated['label_qty'] !== '' ? (int) $validated['label_qty'] : null;
             }
@@ -1272,6 +1540,7 @@ class CategoryController extends Controller
                     'tt_ship' => $values['tt_ship'] ?? null,
                     'temu_ship' => $values['temu_ship'] ?? null,
                     'ebay2_ship' => $values['ebay2_ship'] ?? null,
+                    'shein_ship' => $values['shein_ship'] ?? null,
                     'label_qty' => $values['label_qty'] ?? null,
                 ],
             ]);
@@ -1325,6 +1594,7 @@ class CategoryController extends Controller
                 'tt_ship' => 'tt_ship',
                 'temu_ship' => 'temu_ship',
                 'ebay2_ship' => 'ebay2_ship',
+                'shein_ship' => 'shein_ship',
                 'label_qty' => 'label_qty',
             ];
 
@@ -1416,6 +1686,15 @@ class CategoryController extends Controller
                     $ebay2ShipValue = trim($row[$columnIndices['ebay2_ship']]);
                     if ($ebay2ShipValue !== '') {
                         $values['ebay2_ship'] = $ebay2ShipValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update SHEIN SHIP if column exists and has value
+                if (isset($columnIndices['shein_ship']) && isset($row[$columnIndices['shein_ship']])) {
+                    $sheinShipValue = trim($row[$columnIndices['shein_ship']]);
+                    if ($sheinShipValue !== '') {
+                        $values['shein_ship'] = $sheinShipValue;
                         $hasChanges = true;
                     }
                 }
@@ -6633,6 +6912,7 @@ PROMPT;
                 'tt_ship' => 'tt_ship',
                 'temu_ship' => 'temu_ship',
                 'ebay2_ship' => 'ebay2_ship',
+                'shein_ship' => 'shein_ship',
                 'gofo' => 'gofo',
                 'temu_gofo' => 'temu_gofo',
                 'temu__gofo' => 'temu_gofo',
@@ -6699,7 +6979,7 @@ PROMPT;
                         $value = trim($row[$colIndex]);
                         if ($value !== '') {
                             // Convert to float for numeric fields
-                            if (in_array($field, ['wt_act', 'wt_act_kg', 'wt_decl', 'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt', 'ctn_weight_kg', 'ctn_weight_lb', 'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'])) {
+                            if (in_array($field, ['wt_act', 'wt_act_kg', 'wt_decl', 'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt', 'ctn_weight_kg', 'ctn_weight_lb', 'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'shein_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'])) {
                                 $value = is_numeric($value) ? (float) $value : null;
                             } elseif ($field === 'ctn_instructions') {
                                 $value = mb_substr($value, 0, 100);

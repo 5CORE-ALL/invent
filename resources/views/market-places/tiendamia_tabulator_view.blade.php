@@ -237,10 +237,21 @@
                         <option value="has">Has Clicks</option>
                     </select>
 
+                    {{-- Sold dropdown (mirrors Amazon tabulator + every other /pricing page).
+                         Backed by `M L30` (Tiendamia L30 sold qty). Adds Amazon-style
+                         "Sold > 0" / "0 Sold" options at the top while keeping the granular
+                         0-10 / 10+ buckets below. This dropdown is the single source of truth —
+                         the existing #zero-sold-count-badge / #more-sold-count-badge clicks
+                         (and the mutex resets from the Missing L / Map / N Map / Ads badges)
+                         all write into this dropdown so badges + dropdown can never disagree.
+                         Note: binary cases (`0 Sold`, `Sold > 0`) intentionally do NOT enforce
+                         inv > 0 — matches Amazon styling + the legacy badge semantics.
+                         The granular 0-10 / 10+ cases retain inv > 0 for restock decisions. --}}
                     <select id="tl30-filter" class="form-select form-select-sm" style="width: 130px;"
-                        title="Excludes 0 inventory items">
-                        <option value="all">T L30</option>
-                        <option value="0">0</option>
+                        title="Filter by Tiendamia L30 sold (M L30). 0-10 / 10+ exclude 0 inventory items.">
+                        <option value="all">Sold</option>
+                        <option value="more">Sold &gt; 0</option>
+                        <option value="0">0 Sold</option>
                         <option value="0-10">0-10</option>
                         <option value="10+">10+</option>
                     </select>
@@ -1209,11 +1220,13 @@
                 if (e.which === 13) $('#apply-target-gpft-btn').click();
             });
 
-            // 0 Sold badge click handler (same mutual exclusivity as ebay2-tabulator-view)
-            let zeroSoldFilterActive = false;
+            // Sold badges just toggle the #tl30-filter dropdown so the dropdown stays the
+            // single source of truth for the Sold filter (mirrors Amazon tabulator behavior).
+            // Clicking the same badge twice clears the filter (toggle semantics preserved).
+            // Mutex with Missing/Map/NMap/Ads badges retained by clearing their flags here.
             $('#zero-sold-count-badge').on('click', function() {
-                zeroSoldFilterActive = !zeroSoldFilterActive;
-                moreSoldFilterActive = false;
+                const next = $('#tl30-filter').val() === '0' ? 'all' : '0';
+                $('#tl30-filter').val(next);
                 missingFilterActive = false;
                 mapFilterActive = false;
                 invTTStockFilterActive = false;
@@ -1221,12 +1234,9 @@
                 $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
                 applyFilters();
             });
-
-            // > 0 Sold badge click handler
-            let moreSoldFilterActive = false;
             $('#more-sold-count-badge').on('click', function() {
-                moreSoldFilterActive = !moreSoldFilterActive;
-                zeroSoldFilterActive = false;
+                const next = $('#tl30-filter').val() === 'more' ? 'all' : 'more';
+                $('#tl30-filter').val(next);
                 missingFilterActive = false;
                 mapFilterActive = false;
                 invTTStockFilterActive = false;
@@ -1247,8 +1257,7 @@
                 } else {
                     $(this).removeClass('border border-3 border-dark');
                 }
-                zeroSoldFilterActive = false;
-                moreSoldFilterActive = false;
+                $('#tl30-filter').val('all');
                 adsBadgeFilter = null;
                 $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
                 applyFilters();
@@ -1266,8 +1275,7 @@
                 } else {
                     $(this).removeClass('border border-3 border-dark');
                 }
-                zeroSoldFilterActive = false;
-                moreSoldFilterActive = false;
+                $('#tl30-filter').val('all');
                 adsBadgeFilter = null;
                 $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
                 applyFilters();
@@ -1285,8 +1293,7 @@
                 } else {
                     $(this).removeClass('border border-3 border-dark');
                 }
-                zeroSoldFilterActive = false;
-                moreSoldFilterActive = false;
+                $('#tl30-filter').val('all');
                 adsBadgeFilter = null;
                 $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
                 applyFilters();
@@ -1305,8 +1312,7 @@
                 missingFilterActive = false;
                 mapFilterActive = false;
                 invTTStockFilterActive = false;
-                zeroSoldFilterActive = false;
-                moreSoldFilterActive = false;
+                $('#tl30-filter').val('all');
                 applyFilters();
                 if (typeof updateUtilizedCounts === 'function') updateUtilizedCounts();
             });
@@ -2842,17 +2848,22 @@
                     });
                 }
 
-                // T L30 filter (parent rows always visible; excludes 0 inventory items for child rows only)
+                // Sold filter (T L30 / M L30) — parent rows always visible.
+                // Binary Amazon-style cases (`0 Sold`, `Sold > 0`) skip the inv > 0 gate
+                // to match the legacy #zero-sold-count-badge / #more-sold-count-badge
+                // semantics. Granular 0-10 / 10+ buckets keep inv > 0 so they remain
+                // useful for restock decisions.
                 const tl30Filter = $('#tl30-filter').val();
                 if (tl30Filter !== 'all') {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return true;
+                        const ttL30 = parseFloat(data['M L30']) || 0;
+                        if (tl30Filter === '0')    return ttL30 === 0;
+                        if (tl30Filter === 'more') return ttL30 > 0;
                         const inv = parseFloat(data.INV) || 0;
                         if (inv <= 0) return false;
-                        const ttL30 = parseFloat(data['M L30']) || 0;
-                        if (tl30Filter === '0') return ttL30 === 0;
                         if (tl30Filter === '0-10') return ttL30 > 0 && ttL30 <= 10;
-                        if (tl30Filter === '10+') return ttL30 > 10;
+                        if (tl30Filter === '10+')  return ttL30 > 10;
                         return true;
                     });
                 }
@@ -2873,21 +2884,8 @@
                     });
                 }
 
-                // 0 Sold filter (parent rows always visible)
-                if (zeroSoldFilterActive) {
-                    table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
-                        return parseFloat(data['M L30']) === 0;
-                    });
-                }
-
-                // > 0 Sold filter (parent rows always visible)
-                if (moreSoldFilterActive) {
-                    table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
-                        return parseFloat(data['M L30']) > 0;
-                    });
-                }
+                // 0 Sold / > 0 Sold filtering is owned by the #tl30-filter dropdown above —
+                // the legacy badges just toggle that dropdown value. See the dropdown block.
 
                 // Missing filter (parent rows always visible)
                 if (missingFilterActive) {

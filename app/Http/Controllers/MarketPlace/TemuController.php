@@ -23,6 +23,8 @@ use App\Models\TemuPricing;
 use App\Models\Temu2Pricing;
 use App\Models\Temu2DataView;
 use App\Models\TemuViewData;
+use App\Models\TemuViewDataL7;
+use App\Models\TemuViewDataL7ToL14;
 use App\Models\Temu2ViewData;
 use App\Models\TemuAdData;
 use App\Models\TemuRPricing;
@@ -1889,8 +1891,8 @@ class TemuController extends Controller
                 }
                 $basePrice = $item->base_price_total !== null ? (float)$item->base_price_total : 0;
                 $quantity = $item->quantity_purchased !== null ? (int)$item->quantity_purchased : 0;
-                $total = $basePrice * $quantity;
-                $fbPrice = $total < 27 ? ($basePrice + 2.99) : $basePrice;
+                // FB Prc: +$2.99 when per-unit base price ≤ $26.99 (matches /temu-decrease).
+                $fbPrice = $basePrice <= 26.99 ? ($basePrice + 2.99) : $basePrice;
                 $pft = ($fbPrice * 0.96 - $lp - $temuShip) * $quantity;
                 $result[] = [
                     'Parent' => $parent,
@@ -1994,8 +1996,8 @@ class TemuController extends Controller
                 }
                 $basePrice = $item->base_price_total !== null ? (float)$item->base_price_total : 0;
                 $quantity = $item->quantity_purchased !== null ? (int)$item->quantity_purchased : 0;
-                $total = $basePrice * $quantity;
-                $fbPrice = $total < 27 ? ($basePrice + 2.99) : $basePrice;
+                // FB Prc: +$2.99 when per-unit base price ≤ $26.99 (matches /temu-decrease).
+                $fbPrice = $basePrice <= 26.99 ? ($basePrice + 2.99) : $basePrice;
                 $pft = ($fbPrice * 0.96 - $lp - $temuShip) * $quantity;
                 $result[] = [
                     'Parent' => $parent,
@@ -2848,9 +2850,9 @@ class TemuController extends Controller
             $qty = (int)($row->quantity_purchased ?? 0);
             $base = (float)($row->base_price_total ?? 0);
             $totalQuantity += $qty;
-            // Use fbPrice logic to match all-marketplace-master and buildTemuDecreaseDataResponse
-            $total = $base * $qty;
-            $fbPrice = $total < 27 ? $base + 2.99 : $base;
+            // FB Prc: +$2.99 when per-unit base price ≤ $26.99
+            // (matches /temu-decrease, all-marketplace-master, and buildTemuDecreaseDataResponse).
+            $fbPrice = $base <= 26.99 ? $base + 2.99 : $base;
             $totalRevenue += $fbPrice * $qty;
         }
         return [
@@ -3121,10 +3123,9 @@ class TemuController extends Controller
                 $base = (float)($row->base_price_total ?? 0);
                 $salesTotalQuantity += $qty;
                 
-                // Calculate fbPrice same as temu-tabulator and UpdateMarketplaceDailyMetrics
-                // fbPrice = (basePrice * quantity < 27) ? basePrice + 2.99 : basePrice
-                $total = $base * $qty;
-                $fbPrice = $total < 27 ? $base + 2.99 : $base;
+                // FB Prc: +$2.99 when per-unit base price ≤ $26.99
+                // (matches /temu-decrease, /temu-tabulator, and UpdateMarketplaceDailyMetrics).
+                $fbPrice = $base <= 26.99 ? $base + 2.99 : $base;
                 $salesTotalRevenue += $fbPrice * $qty;
             }
             $salesSummary = [
@@ -3143,6 +3144,27 @@ class TemuController extends Controller
                 ->groupBy('goods_id')
                 ->get()
                 ->keyBy('goods_id');
+
+            // L7 view data — Temu 1 only (Temu 2 keeps its single window for now).
+            // Same aggregation shape as $viewData so the per-row lookup is symmetric.
+            // Wrapped in Schema::hasTable so a fresh checkout without the migration
+            // still loads the page (column just shows 0 / no data).
+            $viewDataL7 = ($isTemu2Pricing || ! Schema::hasTable('temu_view_data_l7'))
+                ? collect()
+                : TemuViewDataL7::selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
+                    ->groupBy('goods_id')
+                    ->get()
+                    ->keyBy('goods_id');
+
+            // L7-to-L14 view data — prior-week window (days 8–14 back). Used to
+            // surface "Views 14" alongside L30 / L7 so users can see week-over-week
+            // movement at a glance. Same hasTable guard as L7 above.
+            $viewDataL7ToL14 = ($isTemu2Pricing || ! Schema::hasTable('temu_view_data_l7_to_l14'))
+                ? collect()
+                : TemuViewDataL7ToL14::selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
+                    ->groupBy('goods_id')
+                    ->get()
+                    ->keyBy('goods_id');
 
             $goodsIds = $pricingData->pluck('goods_id')->filter()->unique()->values()->all();
             $campaignRange = $isL7Period ? 'L7' : 'L30';
@@ -3282,7 +3304,7 @@ class TemuController extends Controller
                 });
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $viewDataL7, $viewDataL7ToL14, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -3336,6 +3358,24 @@ class TemuController extends Controller
                 $viewDataItem = $goodsId ? $viewData->get($goodsId) : null;
                 $productClicks = $viewDataItem ? $viewDataItem->product_clicks : 0;
                 $ctr = $viewDataItem ? $viewDataItem->ctr : 0;
+
+                // L7 views (last 7 days) for the "L7 vs L30 %" column. Same goods_id
+                // join as L30; missing upload → 0. The "% vs L30 pace" compares the
+                // L7 daily-average to the L30 daily-average:
+                //     (l7_views / 7) ÷ (l30_views / 30) × 100
+                //   = l7_views × 30 ÷ (l30_views × 7) × 100
+                // 100 = same pace, > 100 = trending up, < 100 = trending down. The
+                // page colors >70 green and <71 red per product spec.
+                $viewDataL7Item = $goodsId ? $viewDataL7->get($goodsId) : null;
+                $productClicksL7 = $viewDataL7Item ? (int) $viewDataL7Item->product_clicks : 0;
+                $l7VsL30Pct = ($productClicks > 0 && $productClicksL7 > 0)
+                    ? round((($productClicksL7 / 7) / ($productClicks / 30)) * 100, 2)
+                    : 0;
+
+                // Prior week (days 8–14 back). Joined the same way as L7 so the
+                // "Views 14" column lines up with "View 7" by goods_id.
+                $viewDataL7ToL14Item = $goodsId ? $viewDataL7ToL14->get($goodsId) : null;
+                $productClicksL7ToL14 = $viewDataL7ToL14Item ? (int) $viewDataL7ToL14Item->product_clicks : 0;
                 
                 // Join keys: normalize goods_id so campaign reports match temu_pricing (Excel float issues)
                 $goodsIdKey = $goodsId ? TemuGoodsIdHelper::normalizeKey($goodsId) : null;
@@ -3587,6 +3627,9 @@ class TemuController extends Controller
                     'roi_percent' => round($roiPercent, 2),
                     'product_clicks' => (int)$productClicks,
                     'ctr' => round($ctr, 2),
+                    'product_clicks_l7' => $productClicksL7,
+                    'product_clicks_l7_to_l14' => $productClicksL7ToL14,
+                    'l7_vs_l30_pct' => $l7VsL30Pct,
                     'cvr_percent' => round($cvrPercent, 2),
                     'cvr_30' => round($cvrPercent, 2),
                     'cvr_45' => $cvr45,
@@ -4110,6 +4153,314 @@ class TemuController extends Controller
 
         // Output Download
         $fileName = 'Temu_View_Data_Sample_' . date('Y-m-d') . '.xlsx';
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="' . $fileName . '"');
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+    }
+
+    /**
+     * Upload Temu L7 View Data. Mirrors uploadTemuViewData (same file format,
+     * same replace-all semantics, same parsing rules) but persists to the
+     * temu_view_data_l7 table so the L30 upload doesn't wipe the L7 rows
+     * (or vice versa). The /temu-decrease page reads both and computes
+     * "L7 vs L30 %" per goods_id.
+     */
+    public function uploadTemuViewDataL7(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls,csv|max:10240'
+        ]);
+
+        try {
+            $file = $request->file('file');
+            $spreadsheet = IOFactory::load($file->getRealPath());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            $headers = array_shift($rows);
+
+            $imported = 0;
+            $skipped = 0;
+
+            DB::beginTransaction();
+            try {
+                // Replace-all upload: wipe the L7 rows so the table is exactly
+                // what's in the uploaded file (mirrors uploadTemuViewData).
+                $deletedCount = TemuViewDataL7::query()->delete();
+
+                foreach ($rows as $row) {
+                    if (empty($row[0]) || empty($row[1])) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $rowData = array_combine($headers, $row);
+
+                    $date = null;
+                    if (!empty($rowData['Date'])) {
+                        try {
+                            $date = Carbon::parse($rowData['Date'])->format('Y-m-d');
+                        } catch (\Exception $e) {
+                            Log::warning("Could not parse date: " . $rowData['Date']);
+                        }
+                    }
+
+                    $ctr = 0;
+                    if (!empty($rowData['CTR'])) {
+                        $ctrValue = str_replace('%', '', $rowData['CTR']);
+                        $ctr = (float)$ctrValue;
+                    }
+
+                    $goodsId = $rowData['Goods ID'] ?? null;
+
+                    $viewData = [
+                        'goods_name' => $rowData['Goods Name'] ?? null,
+                        'product_impressions' => !empty($rowData['Product impressions']) ? (int)$rowData['Product impressions'] : 0,
+                        'visitor_impressions' => !empty($rowData['Number of visitor impressions of the product']) ? (int)$rowData['Number of visitor impressions of the product'] : 0,
+                        'product_clicks' => !empty($rowData['Product clicks']) ? (int)$rowData['Product clicks'] : 0,
+                        'visitor_clicks' => !empty($rowData['Number of visitor clicks on the product']) ? (int)$rowData['Number of visitor clicks on the product'] : 0,
+                        'ctr' => $ctr,
+                    ];
+
+                    TemuViewDataL7::updateOrCreate(
+                        ['date' => $date, 'goods_id' => $goodsId],
+                        $viewData
+                    );
+                    $imported++;
+                }
+
+                DB::commit();
+
+                return back()->with('success', "Successfully imported $imported L7 view records! ($skipped skipped, replaced $deletedCount existing rows)");
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            Log::error('Error uploading Temu L7 view data: ' . $e->getMessage());
+            return back()->with('error', 'Error uploading L7 file: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Sample file for the L7 view-data upload. Identical schema to
+     * downloadTemuViewDataSample so the same Excel export from Temu's
+     * dashboard can feed either L30 or L7 uploads.
+     */
+    public function downloadTemuViewDataL7Sample()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $headers = [
+            'Date',
+            'Goods ID',
+            'Goods Name',
+            'Product impressions',
+            'Number of visitor impressions of the product',
+            'Product clicks',
+            'Number of visitor clicks on the product',
+            'CTR'
+        ];
+
+        $sheet->fromArray($headers, NULL, 'A1');
+
+        $sampleData = [
+            [
+                Carbon::now()->subDays(6)->format('Y-m-d'),
+                '603163444796046',
+                '5Core 6.5 Inch Midrange Car Door Speaker',
+                '22893',
+                '16451',
+                '732',
+                '648',
+                '3.20%'
+            ],
+            [
+                Carbon::now()->subDays(6)->format('Y-m-d'),
+                '603258940684269',
+                'Adjustable Heavy Duty Guitar Stand',
+                '18411',
+                '13182',
+                '115',
+                '102',
+                '0.62%'
+            ]
+        ];
+
+        $sheet->fromArray($sampleData, NULL, 'A2');
+
+        foreach (range('A', 'H') as $col) {
+            $sheet->getColumnDimension($col)->setWidth(25);
+        }
+
+        $headerStyle = [
+            'font' => ['bold' => true],
+            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']]
+        ];
+        $sheet->getStyle('A1:H1')->applyFromArray($headerStyle);
+
+        $fileName = 'Temu_View_Data_L7_Sample_' . date('Y-m-d') . '.xlsx';
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="' . $fileName . '"');
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+    }
+
+    /**
+     * Upload Temu prior-week (L7-to-L14) View Data. Mirrors uploadTemuViewData
+     * row for row — same Excel format, same replace-all semantics, same parsing
+     * rules — but persists to temu_view_data_l7_to_l14 so it doesn't overwrite
+     * the L30 or L7 windows. Enables week-over-week deltas on /temu-decrease.
+     */
+    public function uploadTemuViewDataL7ToL14(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls,csv|max:10240'
+        ]);
+
+        try {
+            $file = $request->file('file');
+            $spreadsheet = IOFactory::load($file->getRealPath());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            $headers = array_shift($rows);
+
+            $imported = 0;
+            $skipped = 0;
+
+            DB::beginTransaction();
+            try {
+                // Replace-all upload: wipe the prior-week rows so the table is
+                // exactly what's in the uploaded file (mirrors uploadTemuViewData
+                // and uploadTemuViewDataL7).
+                $deletedCount = TemuViewDataL7ToL14::query()->delete();
+
+                foreach ($rows as $row) {
+                    if (empty($row[0]) || empty($row[1])) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $rowData = array_combine($headers, $row);
+
+                    $date = null;
+                    if (!empty($rowData['Date'])) {
+                        try {
+                            $date = Carbon::parse($rowData['Date'])->format('Y-m-d');
+                        } catch (\Exception $e) {
+                            Log::warning("Could not parse date: " . $rowData['Date']);
+                        }
+                    }
+
+                    $ctr = 0;
+                    if (!empty($rowData['CTR'])) {
+                        $ctrValue = str_replace('%', '', $rowData['CTR']);
+                        $ctr = (float)$ctrValue;
+                    }
+
+                    $goodsId = $rowData['Goods ID'] ?? null;
+
+                    $viewData = [
+                        'goods_name' => $rowData['Goods Name'] ?? null,
+                        'product_impressions' => !empty($rowData['Product impressions']) ? (int)$rowData['Product impressions'] : 0,
+                        'visitor_impressions' => !empty($rowData['Number of visitor impressions of the product']) ? (int)$rowData['Number of visitor impressions of the product'] : 0,
+                        'product_clicks' => !empty($rowData['Product clicks']) ? (int)$rowData['Product clicks'] : 0,
+                        'visitor_clicks' => !empty($rowData['Number of visitor clicks on the product']) ? (int)$rowData['Number of visitor clicks on the product'] : 0,
+                        'ctr' => $ctr,
+                    ];
+
+                    TemuViewDataL7ToL14::updateOrCreate(
+                        ['date' => $date, 'goods_id' => $goodsId],
+                        $viewData
+                    );
+                    $imported++;
+                }
+
+                DB::commit();
+
+                return back()->with('success', "Successfully imported $imported L7-to-L14 view records! ($skipped skipped, replaced $deletedCount existing rows)");
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            Log::error('Error uploading Temu L7-to-L14 view data: ' . $e->getMessage());
+            return back()->with('error', 'Error uploading L7-to-L14 file: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Sample file for the L7-to-L14 view-data upload. Identical schema to the
+     * L30 / L7 samples so the same Excel export from Temu's dashboard can feed
+     * any of the three uploads — only the date range the user chooses differs.
+     */
+    public function downloadTemuViewDataL7ToL14Sample()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $headers = [
+            'Date',
+            'Goods ID',
+            'Goods Name',
+            'Product impressions',
+            'Number of visitor impressions of the product',
+            'Product clicks',
+            'Number of visitor clicks on the product',
+            'CTR'
+        ];
+
+        $sheet->fromArray($headers, NULL, 'A1');
+
+        // Sample dates fall inside the prior-week window (days 8–14 back) so
+        // the user can immediately see which range to export from Temu.
+        $sampleData = [
+            [
+                Carbon::now()->subDays(13)->format('Y-m-d'),
+                '603163444796046',
+                '5Core 6.5 Inch Midrange Car Door Speaker',
+                '21055',
+                '15103',
+                '671',
+                '595',
+                '3.18%'
+            ],
+            [
+                Carbon::now()->subDays(13)->format('Y-m-d'),
+                '603258940684269',
+                'Adjustable Heavy Duty Guitar Stand',
+                '17288',
+                '12366',
+                '108',
+                '95',
+                '0.61%'
+            ]
+        ];
+
+        $sheet->fromArray($sampleData, NULL, 'A2');
+
+        foreach (range('A', 'H') as $col) {
+            $sheet->getColumnDimension($col)->setWidth(25);
+        }
+
+        $headerStyle = [
+            'font' => ['bold' => true],
+            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']]
+        ];
+        $sheet->getStyle('A1:H1')->applyFromArray($headerStyle);
+
+        $fileName = 'Temu_View_Data_L7_to_L14_Sample_' . date('Y-m-d') . '.xlsx';
 
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment;filename="' . $fileName . '"');

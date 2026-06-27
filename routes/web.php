@@ -31,9 +31,7 @@ use App\Http\Controllers\Campaigns\Ebay2RunningAdsController;
 use App\Http\Controllers\Campaigns\Ebay2UtilizedAdsController;
 use App\Http\Controllers\Campaigns\Ebay3AcosController;
 use App\Http\Controllers\Campaigns\Ebay3KeywordAdsController;
-use App\Http\Controllers\Campaigns\Ebay3MissingAdsController;
 use App\Http\Controllers\Campaigns\Ebay3PinkDilAdController;
-use App\Http\Controllers\Campaigns\Ebay3PmtAdsController;
 use App\Http\Controllers\Campaigns\Ebay3RunningAdsController;
 use App\Http\Controllers\Campaigns\Ebay3UtilizedAdsController;
 use App\Http\Controllers\Campaigns\EbayKwAdsController;
@@ -101,6 +99,7 @@ use App\Http\Controllers\ListingMaster\AmzListingController;
 use App\Http\Controllers\MapIssuesController;
 use App\Http\Controllers\MarketingMaster\EbayCvrLqsController;
 use App\Http\Controllers\MarketingMaster\FacebookAddsManagerController;
+use App\Http\Controllers\Sales\FacebookMarketplaceController;
 use App\Http\Controllers\MarketingMaster\InstagramAdsManagerController;
 use App\Http\Controllers\MarketingMaster\MovementPricingMaster;
 use App\Http\Controllers\MarketingMaster\ShoppableVideoController;
@@ -537,6 +536,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/topdawg-data-json', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'dataJson'])->name('topdawg.data.json');
     Route::post('/topdawg-save-links', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'saveLinks'])->name('topdawg.save.links');
     Route::post('/topdawg-save-sprice', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'saveSprice'])->name('topdawg.save.sprice');
+    Route::post('/topdawg-push-prices', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'pushPrices'])->name('topdawg.push.prices');
 
     // Route::get('/get-channel-sales-data', [ChannelMasterController::class, 'getChannelSalesData']);
     Route::get('/sales-trend-data', [ChannelMasterController::class, 'getSalesTrendData']);
@@ -2932,6 +2932,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/doba_withoutship', [DobaController::class, 'dobaTabulatorViewWithoutShip'])->name('doba.withoutship');
     Route::get('/doba/summary-metrics', [DobaController::class, 'getDobaSummaryMetrics']);
     Route::post('/doba/save-sprice', [DobaController::class, 'saveSpriceToDatabase'])->name('doba.save-sprice');
+    Route::post('/doba/save-sprice-withoutship', [DobaController::class, 'saveSpriceWithoutShipToDatabase'])->name('doba.save-sprice.withoutship');
     Route::post('/doba/push-price', [DobaController::class, 'pushPriceToDoba'])->name('doba.push-price');
     Route::post('/update-all-doba-skus', [DobaController::class, 'updateAllDobaSkus']);
     Route::post('/doba-analytics/import', [DobaController::class, 'importDobaAnalytics'])->name('doba.analytics.import');
@@ -2992,8 +2993,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon/low-visibility/campaign-clicks', [AmazonLowVisibilityController::class, 'getCampaignClicksBySku']);
     Route::get('/amazon/low-visibility/daily-views-data', [AmazonLowVisibilityController::class, 'getDailyViewsData']);
 
-    Route::get('/ad-cvr-ebay', action: [EbayZeroController::class, 'adcvrEbay'])->name('adcvr.ebay');
-    Route::get('/ad-cvr-ebay-data', action: [EbayZeroController::class, 'adcvrEbayData'])->name('adcvr.ebay.data');
     Route::post('/update-ebay-price', [EbayZeroController::class, 'updateEbayPrice'])->name('update.ebay.price');
 
     Route::get('/ebay/zero/view-data', [EbayZeroController::class, 'getVieweBayZeroData'])->name('ebay.zero.viewData');
@@ -3925,6 +3924,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Temu View Data Upload
     Route::post('/temu-view-data/upload', [TemuController::class, 'uploadTemuViewData'])->name('temu.viewdata.upload');
     Route::get('/temu-view-data/sample', [TemuController::class, 'downloadTemuViewDataSample'])->name('temu.viewdata.sample');
+    // L7 mirror — same format, separate table so the replace-all upload on
+    // either window doesn't wipe the other. Drives the "L7 vs L30 %" column
+    // on /temu-decrease.
+    Route::post('/temu-view-data-l7/upload', [TemuController::class, 'uploadTemuViewDataL7'])->name('temu.viewdata.l7.upload');
+    Route::get('/temu-view-data-l7/sample', [TemuController::class, 'downloadTemuViewDataL7Sample'])->name('temu.viewdata.l7.sample');
+    // Prior-week mirror (days 8–14 back). Same shape as L30/L7; persisted in
+    // its own table so the replace-all upload doesn't clobber the other two.
+    Route::post('/temu-view-data-l7-to-l14/upload', [TemuController::class, 'uploadTemuViewDataL7ToL14'])->name('temu.viewdata.l7tol14.upload');
+    Route::get('/temu-view-data-l7-to-l14/sample', [TemuController::class, 'downloadTemuViewDataL7ToL14Sample'])->name('temu.viewdata.l7tol14.sample');
     Route::post('/temu2-view-data/upload', [TemuController::class, 'uploadTemu2ViewData'])->name('temu2.viewdata.upload');
     Route::get('/temu2-view-data/sample', [TemuController::class, 'downloadTemu2ViewDataSample'])->name('temu2.viewdata.sample');
 
@@ -4071,6 +4079,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/shipping-master/store', [CategoryController::class, 'storeShippingMaster'])->name('shipping.master.store');
     Route::post('/shipping-master/update', [CategoryController::class, 'updateShippingMaster'])->name('shipping.master.update');
     Route::post('/shipping-master/import', [CategoryController::class, 'importShippingMaster'])->name('shipping.master.import');
+    Route::get('/shipping-master/history/{id}', [CategoryController::class, 'getShippingMasterHistory'])->whereNumber('id')->name('shipping.master.history');
     Route::get('/general-specific-master', [CategoryController::class, 'generalSpecificMaster'])->name('general.specific.master');
     Route::get('/general-specific-master-data-view', [CategoryController::class, 'getGeneralSpecificMasterData'])->name('general.specific.master.data');
     Route::get('/general-specific-master/skus', [CategoryController::class, 'getSkusForDropdown'])->name('general.specific.master.skus');
@@ -5253,6 +5262,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/meta-ads-manager/export', 'export')->name('meta.ads.manager.export');
     });
 
+    // Facebook Marketplace Sales (CSV template upload + grid)
+    Route::controller(FacebookMarketplaceController::class)->group(function () {
+        Route::get('/facebook-marketplace',              'index')->name('facebook.marketplace');
+        Route::get('/facebook-marketplace/data',         'getData')->name('facebook.marketplace.data');
+        Route::get('/facebook-marketplace/template',     'downloadTemplate')->name('facebook.marketplace.template');
+        Route::post('/facebook-marketplace/upload',      'upload')->name('facebook.marketplace.upload');
+        Route::delete('/facebook-marketplace/{id}',      'destroy')->name('facebook.marketplace.destroy')->whereNumber('id');
+    });
+
     Route::controller(InstagramAdsManagerController::class)->group(function () {
         Route::get('/instagram-ads-control/data', 'index')->name('instagram.ads.index');
         Route::get('/instagram-web-to-video', 'instagramWebToVideo')->name('instagram.web.to.video');
@@ -5359,14 +5377,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay-over-uti', 'ebayOverUtilisation')->name('ebay-over-uti');
         Route::get('/ebay/under/utilized', 'ebayUnderUtilized')->name('ebay-under-utilize');
         Route::get('/ebay/correctly/utlized', 'ebayCorrectlyUtilized')->name('ebay-correctly-utilize');
-        Route::get('/ebay/utilized', 'ebayUtilizedView')->name('ebay.utilized');
         Route::get('/ebay/make-new/campaign/kw', 'ebayMakeCampaignKw')->name('ebay-make-new-campaign-kw');
         Route::get('/ebay/make-new/campaign/kw/data', 'getEbayMakeNewCampaignKw');
 
         Route::get('/ebay-over-uti/data', 'getEbayOverUtiData')->name('ebay-over-uti-data');
         Route::get('/ebay-over-uti/filter', 'filterOverUtilizedAds')->name('ebay-over-uti.filter');
         Route::get('/ebay-over-uti/campaign-chart', 'getCampaignChartData')->name('ebay-over-uti.campaign-chart');
-        Route::get('/ebay/utilized/ads/data', 'getEbayUtilizedAdsData');
         Route::get('/ebay/get-utilization-counts', 'getEbayUtilizationCounts');
         Route::get('/ebay/get-utilization-chart-data', 'getEbayUtilizationChartData');
         Route::post('/ebay/store-statistics', 'storeEbayStatistics');
@@ -5436,7 +5452,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
 
     Route::controller(EbayPMPAdsController::class)->group(function () {
-        Route::get('/ebay/pmp/ads', 'index')->name('ebay.pmp.ads');
         Route::get('/ebay/pmp/ads/data', 'getEbayPmpAdsData');
         Route::get('/ebay/pmp/debug/ebay-views/{sku}', 'debugEbaySkuViews')->where('sku', '.*');
         Route::get('/ebay/pmp/ads/filter', 'filterEbayPmpAds')->name('ebay.pmp.ads.filter');
@@ -5477,27 +5492,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay-views/get-data', 'getEbayViewsData');
     });
 
-    // ebay 2 ads section
+    // ebay 2 ads section — page routes removed; only the shared NR-data endpoint
+    // is preserved here because `resources/views/market-places/ebayTwoAnalysis.blade.php`
+    // still calls it.
     Route::controller(Ebay2PMTAdController::class)->group(function () {
-        Route::get('/ebay-2/pmt/ads', 'index')->name('ebay2.pmt.ads');
-        Route::get('/ebay-2/pmp/ads/data', 'getEbay2PmtAdsData');
-        Route::get('/ebay-2/pmp/ads/filter', 'filterEbay2PmtAds')->name('ebay2.pmt.ads.filter');
-        Route::get('/ebay-2/pmp/ads/campaign-chart', 'getCampaignChartData')->name('ebay2.pmt.ads.campaign-chart');
-        Route::post('/update-ebay-2-pmt-percentage', 'updateEbay2Percentage');
-        Route::post('/update-ebay-2-pmt-sprice', 'saveEbay2PMTSpriceToDatabase');
         Route::post('/update-ebay2-nr-data', 'updateEbay2NrData');
-    });
-
-    Route::controller(Ebay2RunningAdsController::class)->group(function () {
-        Route::get('/ebay-2/ad-running/list', 'index')->name('ebay2.running.ads');
-        Route::get('/ebay-2/ad-running/data', 'getEbay2RunningAdsData');
-        Route::get('/adv-ebay2/ad-running/save-data', 'getEbay2AdvRunningAdDataSave')->name('adv-ebay2.ad-running.save-data');
-    });
-
-    Route::controller(Ebay2MissingAdsController::class)->group(function () {
-        Route::get('/ebay2/ad-missing/list', 'index')->name('ebay2.missing.ads');
-        Route::get('/ebay2/ad-missing/data', 'getEbay2MissingAdsData');
-        Route::get('/adv-ebay2/missing/save-data', 'getAdvEbay2MissingSaveData')->name('adv-ebay2.missing.save-data');
     });
 
     // ebay 3 ads section
@@ -5517,20 +5516,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay-3/pink-dil/ads/data', 'getEbay3PinkDilAdsData');
     });
 
-    Route::controller(Ebay3PmtAdsController::class)->group(function () {
-        Route::get('/ebay-3/pmt/ads', 'index')->name('ebay3.pmt.ads');
-        Route::get('/ebay-3/pmp/ads/data', 'getEbay3PmtAdsData');
-        Route::post('/update-ebay-3-pmt-percenatge', 'updateEbay3Percentage');
-        Route::post('/update-ebay-3-pmt-sprice', 'saveEbay3PMTSpriceToDatabase');
-        Route::get('/ebay-3/pmp/ads/filter', 'filterEbay3PmtAds')->name('ebay3.pmp.ads.filter');
-        Route::get('/ebay-3/pmp/ads/campaign-chart', 'getCampaignChartData')->name('ebay3.pmp.ads.campaign-chart');
-    });
+    // Ebay3PmtAdsController routes removed (page /ebay-3/pmt/ads deleted)
 
     Route::controller(Ebay3UtilizedAdsController::class)->group(function () {
         Route::get('/ebay-3/over-utilized', 'ebay3OverUtilizedAdsView')->name('ebay3.over.utilized');
         Route::get('/ebay-3/under-utilized', 'ebay3UnderUtilizedAdsView')->name('ebay3.under.utilized');
         Route::get('/ebay-3/correctly-utilized', 'ebay3CorrectlyUtilizedAdsView')->name('ebay3.correctly.utilized');
-        Route::get('/ebay-3/utilized', 'ebay3UtilizedView')->name('ebay3.utilized');
+        // /ebay-3/utilized route removed (page deleted); shared endpoints below still serve over/under/correctly utilized pages.
         Route::get('/ebay-3/get-utilization-counts', 'getEbay3UtilizationCounts');
         Route::get('/ebay-3/get-utilization-chart-data', 'getEbay3UtilizationChartData');
         Route::get('/ebay-3/utilized/ads/data', 'getEbay3UtilizedAdsData');
@@ -5543,22 +5535,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/save-ebay3-sbid-m-bulk', 'saveEbay3SbidMBulk');
         Route::post('/clear-ebay3-sbid-m-bulk', 'clearEbay3SbidMBulk');
         Route::post('/toggle-ebay3-campaign-status', 'toggleCampaignStatus');
-    });
-
-    Route::controller(Ebay2UtilizedAdsController::class)->group(function () {
-        Route::get('/ebay-2/utilized', 'ebay2UtilizedView')->name('ebay2.utilized');
-        Route::get('/ebay-2/get-utilization-counts', 'getEbay2UtilizationCounts');
-        Route::get('/ebay-2/get-utilization-chart-data', 'getEbay2UtilizationChartData');
-        Route::get('/ebay-2/utilized/ads/data', 'getEbay2UtilizedAdsData');
-        Route::post('/ebay-2/store-statistics', 'storeEbay2Statistics');
-        Route::get('/ebay-2/over-utilized/filter', 'filterOverUtilizedAds')->name('ebay2.over.utilized.filter');
-        Route::get('/ebay-2/over-utilized/campaign-chart', 'getCampaignChartData')->name('ebay2.over.utilized.campaign-chart');
-        Route::put('/update-ebay2-keywords-bid-price', 'updateKeywordsBidDynamic');
-        Route::post('/update-ebay2-nr-data', 'updateEbay2NrData');
-        Route::post('/save-ebay2-sbid-m', 'saveEbay2SbidM');
-        Route::post('/save-ebay2-sbid-m-bulk', 'saveEbay2SbidMBulk');
-        Route::post('/clear-ebay2-sbid-m-bulk', 'clearEbay2SbidMBulk');
-        Route::post('/toggle-ebay2-campaign-status', 'toggleCampaignStatus');
     });
 
     Route::controller(Ebay3KeywordAdsController::class)->group(function () {
@@ -5578,11 +5554,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/adv-ebay3/ad-running/save-data', 'getAdvEbay3AdRunningDataSave')->name('adv-ebay3.ad-running.save-data');
     });
 
-    Route::controller(Ebay3MissingAdsController::class)->group(function () {
-        Route::get('/ebay-3/ad-missing/list', 'index')->name('ebay3.missing.ads');
-        Route::get('/ebay-3/ad-missing/data', 'getEbay3MissingAdsData');
-        Route::get('/adv-ebay3/missing/save-data', 'getEbay3MissingDataSave')->name('adv-ebay3.missing.save-data');
-    });
+    // Ebay3MissingAdsController routes removed (page /ebay-3/ad-missing/list deleted)
 
     Route::controller(WalmartUtilisationController::class)->group(function () {
         Route::get('/walmart/utilized/bgt', 'bgtUtilisedView')->name('walmart.utilized.bgt');

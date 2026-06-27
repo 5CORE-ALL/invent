@@ -334,6 +334,28 @@ class EbayController extends Controller
             Log::warning('eBay getViewEbayData: apicentral campaign listings unavailable: ' . $e->getMessage());
         }
 
+        // Same prioritization as /ebay/campaign-ads page: latest COST_PER_SALE row per listing
+        // (fallback to overall latest), source is the local `ebay_campaign_ads` table — the page's
+        // own data feed — so C Bid / ES Bid / Promote here mirror that page exactly.
+        $ebayCampaignAdsByListing = [];
+        try {
+            $ebayCampaignAdsByListing = DB::table('ebay_campaign_ads as t')
+                ->join(DB::raw('(SELECT listing_id,
+                                        MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
+                                        MAX(id) AS max_id
+                                 FROM ebay_campaign_ads
+                                 GROUP BY listing_id) x'),
+                    function ($join) {
+                        $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
+                    })
+                ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid', 't.promote_with_ad')
+                ->get()
+                ->keyBy('listing_id')
+                ->toArray();
+        } catch (\Throwable $e) {
+            Log::warning('eBay getViewEbayData: ebay_campaign_ads unavailable: ' . $e->getMessage());
+        }
+
         // Latest NR/REQ + links from Listing eBay page (source of truth)
         $nrValues = EbayDataView::whereIn("sku", $skus)->pluck("value", "sku");
         
@@ -612,6 +634,16 @@ class EbayController extends Controller
                 $row['bid_percentage'] = null;
                 $row['suggested_bid'] = null;
             }
+
+            // C BID / ES BID / PROMOTE — same source as /ebay/campaign-ads page (ebay_campaign_ads table).
+            // Matched by listing_id (= ebay_metrics.item_id, i.e. SKU-wise via the metric row).
+            // Rows whose SKU has no campaign-ads record stay visible with nulls — formatter renders '—'.
+            $caRow = ($ebayMetric && isset($ebayCampaignAdsByListing[$ebayMetric->item_id]))
+                ? $ebayCampaignAdsByListing[$ebayMetric->item_id]
+                : null;
+            $row['ca_bid_percentage'] = $caRow->bid_percentage ?? null;
+            $row['ca_suggested_bid']  = $caRow->suggested_bid  ?? null;
+            $row['ca_promote_with_ad'] = $caRow->promote_with_ad ?? null;
 
             // LMP data - lowest entry plus all competitors
             // Use uppercase and trimmed SKU for lookup (case-insensitive)

@@ -579,10 +579,13 @@ class AliexpressController extends Controller
             return strtoupper(trim((string) $item->sku));
         });
 
-        $marketplaceData = ChannelMaster::where('channel', 'Aliexpress')->first();
-        $percentage = $marketplaceData !== null
-            ? (float) ($marketplaceData->channel_percentage ?? 100)
-            : 100.0;
+        // Margin source MUST match getDailyData() so /all-marketplace-master's
+        // Aliexpress PFT % / ROI % stays byte-identical with the
+        // /aliexpress-tabulator page badges. Previously this used
+        // ChannelMaster.channel_percentage which could diverge from
+        // MarketplacePercentage.percentage and silently drift the snapshot.
+        $mpRow = MarketplacePercentage::where('marketplace', 'Aliexpress')->first();
+        $percentage = $mpRow !== null ? (float) ($mpRow->percentage ?? 100) : 100.0;
         if ($percentage <= 0) {
             $percentage = 89.0;
         }
@@ -959,6 +962,9 @@ class AliexpressController extends Controller
             }
 
             // Net revenue % after fees: marketplace_percentages (same source as getViewAliexpressData).
+            // NOTE: Must stay in sync with aggregateAliexpressOrderRows() so the
+            // /aliexpress-tabulator page's PFT % / ROI % badges match the
+            // /all-marketplace-master Aliexpress row exactly. Change one, change both.
             $mpRow = MarketplacePercentage::where('marketplace', 'Aliexpress')->first();
             $percentage = $mpRow !== null ? (float) ($mpRow->percentage ?? 100) : 100.0;
             if ($percentage <= 0) {
@@ -998,11 +1004,20 @@ class AliexpressController extends Controller
                         : (isset($productMaster->ship) ? floatval($productMaster->ship) : 0);
                 }
 
-                // Line total: prefer product_total; some exports only fill supply_price
+                // Line total: prefer product_total; some exports only fill supply_price;
+                // older exports drop both and only fill order_amount. Without the
+                // order_amount fallback those rows ended up with unit_price = 0,
+                // making per-row PFT = −(lp+ship)*qty (a loss) even though revenue
+                // existed — which made /aliexpress-tabulator's PFT % drift below
+                // /all-marketplace-master's number. Same fallback as
+                // aggregateAliexpressOrderRows() — keep them aligned.
                 $quantity = max(1, (int) $item->quantity);
                 $lineTotal = (float) ($item->product_total ?? 0);
                 if ($lineTotal <= 0) {
                     $lineTotal = (float) ($item->supply_price ?? 0);
+                }
+                if ($lineTotal <= 0) {
+                    $lineTotal = (float) ($item->order_amount ?? 0);
                 }
                 $unitPrice = $lineTotal > 0 ? $lineTotal / $quantity : 0;
 

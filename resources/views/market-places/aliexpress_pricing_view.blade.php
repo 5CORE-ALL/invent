@@ -295,6 +295,21 @@
                             </button>
                         </div>
 
+                        {{-- Column Visibility Dropdown (persists in channel_tabulator_column_settings, channel='aliexpress_pricing') --}}
+                        <div class="dropdown d-inline-block ms-2">
+                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                                id="ae-column-visibility-dropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fa fa-eye"></i> Columns
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="ae-column-visibility-dropdown"
+                                id="ae-column-dropdown-menu" style="max-height: 400px; overflow-y: auto;">
+                                {{-- Populated by JS --}}
+                            </ul>
+                        </div>
+                        <button id="ae-show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
+                            <i class="fa fa-eye"></i> Show All
+                        </button>
+
                         <!-- Play / Pause parent navigation -->
                         <div class="btn-group align-items-center ms-2" role="group" aria-label="Parent navigation">
                             <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
@@ -1739,6 +1754,136 @@
                 const sroi  = lp     > 0 ? Math.round(((sprice * margin - lp - ship)  / lp)    * 100) : 0;
                 cell.getRow().update({ sgpft: sgpft, sroi: sroi });
                 saveSpriceUpdates([{ sku: sku, sprice: sprice }]);
+            });
+
+            /*
+             * ============================================================================
+             * Column visibility (mirrors shein-pricing-view / ebay-tabulator-view)
+             * Persists in the shared DB table `channel_tabulator_column_settings` via the
+             * /tabulator-column-visibility endpoint, channel = 'aliexpress_pricing'.
+             * ============================================================================
+             */
+            const AE_COLUMN_VIS_URL = '/tabulator-column-visibility';
+            const AE_COLUMN_VIS_CHANNEL = 'aliexpress_pricing';
+
+            function aeBuildColumnDropdown() {
+                const menu = document.getElementById('ae-column-dropdown-menu');
+                if (!menu) return;
+                menu.innerHTML = '';
+
+                fetch(AE_COLUMN_VIS_URL + '?channel=' + encodeURIComponent(AE_COLUMN_VIS_CHANNEL), {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        }
+                    })
+                    .then(r => r.json())
+                    .then(savedVisibility => {
+                        const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+                        table.getColumns().forEach(col => {
+                            const def = col.getDefinition();
+                            if (!def.field || def.field === '_ae_select') return;
+                            const title = (def.title || '').replace(/<[^>]*>/g, '').trim() || def.field;
+
+                            const li = document.createElement('li');
+                            const label = document.createElement('label');
+                            label.style.display = 'block';
+                            label.style.padding = '5px 10px';
+                            label.style.cursor = 'pointer';
+
+                            const checkbox = document.createElement('input');
+                            checkbox.type = 'checkbox';
+                            checkbox.value = def.field;
+                            checkbox.checked = map.hasOwnProperty(def.field) ? (map[def.field] !== false) : col.isVisible();
+                            checkbox.style.marginRight = '8px';
+                            checkbox.className = 'ae-column-toggle';
+
+                            label.appendChild(checkbox);
+                            label.appendChild(document.createTextNode(title));
+                            li.appendChild(label);
+                            menu.appendChild(li);
+                        });
+                    })
+                    .catch(err => console.error('Error loading AliExpress column visibility:', err));
+            }
+
+            function aeSaveColumnVisibilityToServer() {
+                const visibility = {};
+                table.getColumns().forEach(col => {
+                    const def = col.getDefinition();
+                    if (def.field && def.field !== '_ae_select') {
+                        visibility[def.field] = col.isVisible();
+                    }
+                });
+
+                fetch(AE_COLUMN_VIS_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({
+                        channel: AE_COLUMN_VIS_CHANNEL,
+                        visibility: visibility
+                    })
+                }).catch(err => console.error('Error saving AliExpress column visibility:', err));
+            }
+
+            function aeApplyColumnVisibilityFromServer() {
+                fetch(AE_COLUMN_VIS_URL + '?channel=' + encodeURIComponent(AE_COLUMN_VIS_CHANNEL), {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        }
+                    })
+                    .then(r => r.json())
+                    .then(savedVisibility => {
+                        if (savedVisibility && typeof savedVisibility === 'object') {
+                            Object.keys(savedVisibility).forEach(field => {
+                                if (field === '_ae_select') return;
+                                const col = table.getColumn(field);
+                                if (col) {
+                                    if (savedVisibility[field]) {
+                                        col.show();
+                                    } else {
+                                        col.hide();
+                                    }
+                                }
+                            });
+                        }
+                    })
+                    .catch(err => console.error('Error applying AliExpress column visibility:', err));
+            }
+
+            // Toggle column from dropdown
+            document.getElementById('ae-column-dropdown-menu').addEventListener('change', function(e) {
+                if (e.target.classList && e.target.classList.contains('ae-column-toggle')) {
+                    const field = e.target.value;
+                    const col = table.getColumn(field);
+                    if (col) {
+                        if (e.target.checked) col.show();
+                        else col.hide();
+                        aeSaveColumnVisibilityToServer();
+                    }
+                }
+            });
+
+            // Show All Columns button — make every non-select column visible
+            document.getElementById('ae-show-all-columns-btn').addEventListener('click', function() {
+                table.getColumns().forEach(col => {
+                    const def = col.getDefinition();
+                    if (def.field && def.field !== '_ae_select') col.show();
+                });
+                aeBuildColumnDropdown();
+                aeSaveColumnVisibilityToServer();
+            });
+
+            // Build dropdown and apply server visibility once the table is built
+            table.on('tableBuilt', function() {
+                aeApplyColumnVisibilityFromServer();
+                aeBuildColumnDropdown();
             });
 
             // Click filter badges → table filter only (never chart)

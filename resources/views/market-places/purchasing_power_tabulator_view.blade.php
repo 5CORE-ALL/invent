@@ -73,6 +73,20 @@
                         </select>
                     </div>
 
+                    {{-- Sold dropdown (mirrors Amazon tabulator + /doba + /shopify-b2c + /macys).
+                         Backed by `PP L30`:
+                           all  → no filter
+                           sold → PP L30 > 0
+                           zero → PP L30 = 0
+                         Single source of truth — #zero-sold-count-badge / #more-sold-count-badge
+                         click handlers just toggle this dropdown so badges + dropdown stay synced. --}}
+                    <select id="sold-filter" class="form-select form-select-sm" style="width: auto;"
+                            title="Filter by PP L30 sold quantity">
+                        <option value="all">Sold</option>
+                        <option value="sold">Sold &gt; 0</option>
+                        <option value="zero">0 Sold</option>
+                    </select>
+
                     <select id="roi-filter" class="form-select form-select-sm" style="width: auto;">
                         <option value="all">ROI%</option>
                         <option value="lt40">&lt; 40%</option>
@@ -157,7 +171,16 @@
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color:black;font-weight:bold;">Total PFT: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color:black;font-weight:bold;">Total Sales: $0</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color:black;font-weight:bold;">AVG GPFT: 0%</span>
+                        {{-- PFT $ and GPFT % (weighted) — these match the /all-marketplace-master
+                             Purchasing Power row exactly. PFT = Σ Profit (dollars), GPFT % =
+                             (Σ Profit ÷ Σ Sales L30) × 100 — weighted by sales (the standard
+                             accounting margin used across the channel master and sales pages). --}}
+                        <span class="badge fs-6 p-2" id="pft-badge"
+                              style="background:#198754;color:#fff;font-weight:bold;"
+                              title="Sum of per-row Profit dollars across visible rows (matches /all-marketplace-master Total PFT)">PFT: $0</span>
+                        <span class="badge fs-6 p-2" id="gpft-pct-badge"
+                              style="background:#6f42c1;color:#fff;font-weight:bold;"
+                              title="Weighted Gross Profit %: (Σ Profit ÷ Σ Sales L30) × 100. Matches /all-marketplace-master Gprofit% formula and /purchasing-power-sales GPFT % (rev) badge.">GPFT: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color:black;font-weight:bold;">Avg Price: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color:black;font-weight:bold;">Total INV: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color:black;font-weight:bold;">Total PP L30: 0</span>
@@ -511,12 +534,23 @@
             if (e.which === 13) $('#apply-target-gpft-btn').click();
         });
 
-        let zeroSoldFilterActive = false, moreSoldFilterActive = false;
+        // Sold filter is now owned by the #sold-filter dropdown (mirrors Amazon tabulator).
+        // Other "badge active" flags (Amz, mapping, missing) remain unchanged below.
         let lessAmzFilterActive = false, moreAmzFilterActive = false;
         let missingFilterActive = false, mappingFilterActive = false;
 
-        $('#zero-sold-count-badge').on('click', function() { zeroSoldFilterActive = !zeroSoldFilterActive; moreSoldFilterActive = false; applyFilters(); });
-        $('#more-sold-count-badge').on('click', function() { moreSoldFilterActive = !moreSoldFilterActive; zeroSoldFilterActive = false; applyFilters(); });
+        // Sold badges just toggle the dropdown so the dropdown stays the single source of
+        // truth. Clicking the same badge twice clears the filter (toggle semantics preserved).
+        $('#zero-sold-count-badge').on('click', function() {
+            const next = $('#sold-filter').val() === 'zero' ? 'all' : 'zero';
+            $('#sold-filter').val(next);
+            applyFilters();
+        });
+        $('#more-sold-count-badge').on('click', function() {
+            const next = $('#sold-filter').val() === 'sold' ? 'all' : 'sold';
+            $('#sold-filter').val(next);
+            applyFilters();
+        });
         $('#less-amz-badge').on('click', function() { lessAmzFilterActive = !lessAmzFilterActive; moreAmzFilterActive = false; applyFilters(); });
         $('#more-amz-badge').on('click', function() { moreAmzFilterActive = !moreAmzFilterActive; lessAmzFilterActive = false; applyFilters(); });
         $('#missing-badge').on('click', function() { missingFilterActive = !missingFilterActive; mappingFilterActive = false; applyFilters(); });
@@ -1049,8 +1083,9 @@
                 });
             }
 
-            if (zeroSoldFilterActive) table.addFilter('PP L30', '=', 0);
-            if (moreSoldFilterActive) table.addFilter('PP L30', '>', 0);
+            const soldFilter = $('#sold-filter').val();
+            if (soldFilter === 'zero') table.addFilter('PP L30', '=', 0);
+            else if (soldFilter === 'sold') table.addFilter('PP L30', '>', 0);
             if (lessAmzFilterActive) table.addFilter(d => { const mc = parseFloat(d['PP Price']) || 0, amz = parseFloat(d['A Price']) || 0; return amz > 0 && mc > 0 && mc < amz; });
             if (moreAmzFilterActive) table.addFilter(d => { const mc = parseFloat(d['PP Price']) || 0, amz = parseFloat(d['A Price']) || 0; return amz > 0 && mc > 0 && mc > amz; });
             if (missingFilterActive) table.addFilter(d => { return (d.nr_req || 'REQ') === 'REQ' && (parseFloat(d.INV) || 0) > 0 && (parseFloat(d['PP Price']) || 0) === 0; });
@@ -1062,19 +1097,18 @@
             updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #roi-filter').on('change', function() { applyFilters(); });
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #roi-filter, #sold-filter').on('change', function() { applyFilters(); });
 
         function updateSummary() {
             const data = table.getData('active').filter(r => !(r.Parent && r.Parent.startsWith('PARENT')));
-            let totalPft = 0, totalSales = 0, totalGpft = 0, totalPrice = 0, priceCount = 0;
+            let totalPft = 0, totalSales = 0, totalPrice = 0, priceCount = 0;
             let totalInv = 0, totalL30 = 0, zeroSold = 0, totalDil = 0, dilCount = 0;
-            let totalCogs = 0, totalRoi = 0, roiCount = 0, missingCount = 0, mappingCount = 0;
+            let totalCogs = 0, missingCount = 0, mappingCount = 0;
             let totalPpStock = 0;
 
             data.forEach(row => {
                 totalPft   += parseFloat(row.Profit) || 0;
                 totalSales += parseFloat(row['Sales L30']) || 0;
-                totalGpft  += parseFloat(row['GPFT%']) || 0;
 
                 const price = parseFloat(row['PP Price']) || 0, inv = parseFloat(row.INV) || 0, nrReq = row.nr_req || 'REQ';
                 if (price > 0) { totalPrice += price; priceCount++; }
@@ -1089,8 +1123,6 @@
 
                 const lp = parseFloat(row.LP_productmaster) || 0, l30 = parseFloat(row['PP L30']) || 0;
                 totalCogs += lp * l30;
-                const roi = parseFloat(row['ROI%']) || 0;
-                if (roi !== 0) { totalRoi += roi; roiCount++; }
 
                 if (nrReq === 'REQ' && inv > 0 && price > 0) {
                     if (!ppInvPpStockWithinTolerance(inv, row['PP INV'])) mappingCount++;
@@ -1099,21 +1131,34 @@
                 totalPpStock += parseFloat(row['PP INV']) || 0;
             });
 
-            const avgGpft = data.length > 0 ? totalGpft / data.length : 0;
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
             const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
-            const avgRoi = roiCount > 0 ? totalRoi / roiCount : 0;
+            // Weighted ROI % = (Σ Profit ÷ Σ COGS) × 100.
+            // Matches /all-marketplace-master's G ROI cell exactly (same formula
+            // /bestbuy/daily-sales & /aliexpress-tabulator use). The simple-average
+            // version that lived here (Σ ROI% ÷ count) was misleading — a single
+            // SKU with $1 COGS and 800% ROI swung the badge a lot even though it
+            // contributed almost no profit. Weighted = the right number for
+            // leadership and matches the channel master row.
+            const roiPctWeighted = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
             $('#total-pft-amt-badge').text(`Total PFT: $${Math.round(totalPft).toLocaleString()}`);
             $('#total-sales-amt-badge').text(`Total Sales: $${Math.round(totalSales).toLocaleString()}`);
-            $('#avg-gpft-badge').text(`AVG GPFT: ${avgGpft.toFixed(1)}%`);
             $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);
+            // PFT $ (sum of Profit) and GPFT % weighted by sales — same shape as
+            // /all-marketplace-master's Total PFT + Gprofit% cells and the
+            // /purchasing-power-sales page badges. Weighted GPFT respects sales
+            // volume per SKU (industry-standard margin), unlike a simple per-row
+            // average that lets low-sales SKUs swing the % unfairly.
+            const gpftPctWeighted = totalSales > 0 ? (totalPft / totalSales) * 100 : 0;
+            $('#pft-badge').text(`PFT: $${Math.round(totalPft).toLocaleString()}`);
+            $('#gpft-pct-badge').text(`GPFT: ${gpftPctWeighted.toFixed(1)}%`);
             $('#total-inv-badge').text(`Total INV: ${totalInv.toLocaleString()}`);
             $('#total-l30-badge').text(`Total PP L30: ${totalL30.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSold}`);
             $('#avg-dil-badge').text(`DIL%: ${(avgDil * 100).toFixed(1)}%`);
             $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
-            $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
+            $('#roi-percent-badge').text(`ROI%: ${roiPctWeighted.toFixed(1)}%`);
             $('#missing-badge').text(`MISSING: ${missingCount}`);
             $('#mapping-badge').text(`MAPPING: ${mappingCount}`);
             $('#total-pp-stock-badge').text(`PP Stock: ${totalPpStock.toLocaleString()}`);

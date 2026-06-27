@@ -224,6 +224,20 @@
                         </select>
                     </div>
 
+                    {{-- Sold dropdown (mirrors Amazon tabulator + /doba page). Backed by `B2B L30`:
+                         all  → no filter
+                         sold → B2B L30 > 0
+                         zero → B2B L30 = 0
+                         Acts as the single source of truth — the #zero-sold-count-badge and
+                         #more-sold-count-badge click handlers just write into this dropdown so
+                         the badges and dropdown can never disagree. --}}
+                    <select id="sold-filter" class="form-select form-select-sm"
+                            style="width: 130px;" title="Filter by B2B L30 sold quantity">
+                        <option value="all">Sold</option>
+                        <option value="sold">Sold &gt; 0</option>
+                        <option value="zero">0 Sold</option>
+                    </select>
+
                     <select id="roi-filter" class="form-select form-select-sm"
                         style="width: 130px;">
                         <option value="all">ROI%</option>
@@ -774,19 +788,17 @@
             clearSpriceForSelected();
         });
 
-        // 0 Sold badge click handler - filter to show B2B L30 = 0
-        let zeroSoldFilterActive = false;
+        // Badge clicks just toggle the #sold-filter dropdown so the dropdown stays the
+        // single source of truth for the Sold filter (mirrors Amazon tabulator behavior).
+        // Clicking the same badge twice clears the filter (toggle semantics preserved).
         $('#zero-sold-count-badge').on('click', function() {
-            zeroSoldFilterActive = !zeroSoldFilterActive;
-            moreSoldFilterActive = false; // Deactivate the other filter
+            const next = $('#sold-filter').val() === 'zero' ? 'all' : 'zero';
+            $('#sold-filter').val(next);
             applyFilters();
         });
-
-        // > 0 Sold badge click handler - filter to show B2B L30 > 0
-        let moreSoldFilterActive = false;
         $('#more-sold-count-badge').on('click', function() {
-            moreSoldFilterActive = !moreSoldFilterActive;
-            zeroSoldFilterActive = false; // Deactivate the other filter
+            const next = $('#sold-filter').val() === 'sold' ? 'all' : 'sold';
+            $('#sold-filter').val(next);
             applyFilters();
         });
 
@@ -1937,13 +1949,13 @@
                 });
             }
 
-            // 0 Sold filter (based on B2B L30) - triggered by badge click
-            if (zeroSoldFilterActive) {
+            // Sold filter (based on B2B L30). Driven by the #sold-filter dropdown;
+            // the legacy zero/more "badge active" flags are kept in sync below in the
+            // badge click handlers so existing badge UX (toggle on/off) still works.
+            const soldFilter = $('#sold-filter').val();
+            if (soldFilter === 'zero') {
                 table.addFilter("B2B L30", "=", 0);
-            }
-
-            // > 0 Sold filter (based on B2B L30) - triggered by badge click
-            if (moreSoldFilterActive) {
+            } else if (soldFilter === 'sold') {
                 table.addFilter("B2B L30", ">", 0);
             }
 
@@ -1973,7 +1985,7 @@
             updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter').on('change', function() {
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #sold-filter').on('change', function() {
             applyFilters();
         });
 

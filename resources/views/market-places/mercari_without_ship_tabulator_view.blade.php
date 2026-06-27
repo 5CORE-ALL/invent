@@ -96,6 +96,16 @@
                         </button>
                     </div>
 
+                    {{-- Sold dropdown (mirrors Amazon tabulator + Mercari w/Ship + every other /pricing page).
+                         Backed by the `sold` field (Mercari w/o Ship L30 sold qty — shown in the
+                         "L30" column on this page; OV L30 lives in the `L30` field). --}}
+                    <select id="sold-filter" class="form-select form-select-sm" style="width: 120px;"
+                            title="Filter by Mercari L30 sold quantity">
+                        <option value="all">Sold</option>
+                        <option value="sold">Sold &gt; 0</option>
+                        <option value="zero">0 Sold</option>
+                    </select>
+
                     <span class="badge bg-success fs-6 p-2" id="avg-pft-badge" style="color: #fff; font-weight: bold;">PFT: 0%</span>
                     <span class="badge bg-primary fs-6 p-2" id="avg-roi-badge" style="color: #fff; font-weight: bold;">ROI: 0%</span>
                     <span class="badge bg-secondary fs-6 p-2" id="missing-l-badge" style="color: #fff; font-weight: bold; cursor: pointer;" title="Click to filter: Price = 0 and NR/REQ = REQ">Missing L: 0</span>
@@ -427,19 +437,14 @@
 
             const searchInput = document.getElementById('sku-search');
             if (searchInput) {
-                searchInput.addEventListener('keyup', function() {
-                    const value = (this.value || '').trim().toLowerCase();
-                    if (value) {
-                        table.setFilter(function(row) {
-                            const sku = String(row.sku || '').toLowerCase();
-                            const parent = String(row.Parent || '').toLowerCase();
-                            return sku.indexOf(value) !== -1 || parent.indexOf(value) !== -1;
-                        });
-                    } else {
-                        table.clearFilter();
-                    }
-                });
+                // Funnel into applyAllFilters() so SKU search stacks with the Missing L
+                // badge and the Sold dropdown (used to overwrite them with setFilter).
+                searchInput.addEventListener('keyup', applyAllFilters);
             }
+
+            // Sold dropdown change — same funnel, stacks with the other two filters.
+            const soldFilterEl = document.getElementById('sold-filter');
+            if (soldFilterEl) soldFilterEl.addEventListener('change', applyAllFilters);
 
             // Price % toggle — cycle Off → Decrease → Increase → Off
             const priceModeBtn = document.getElementById('price-mode-btn');
@@ -633,23 +638,24 @@
                 });
             }
 
-            // Missing L badge — click to filter
+            // Missing L badge — click to toggle. Filter logic now lives in applyAllFilters()
+            // so Missing L stacks with the SKU search and the Sold dropdown (used to
+            // overwrite them via direct setFilter/clearFilter calls).
             const missingLBadge = document.getElementById('missing-l-badge');
             if (missingLBadge) {
                 missingLBadge.addEventListener('click', function() {
                     missingLFilterActive = !missingLFilterActive;
                     const mCol = table.getColumn('missing_l');
                     if (missingLFilterActive) {
-                        table.setFilter(missingLFilter);
                         if (mCol) mCol.show();
                         missingLBadge.classList.remove('bg-secondary');
                         missingLBadge.classList.add('bg-dark');
                     } else {
-                        table.clearFilter();
                         if (mCol) mCol.hide();
                         missingLBadge.classList.remove('bg-dark');
                         missingLBadge.classList.add('bg-secondary');
                     }
+                    applyAllFilters();
                 });
             }
         });
@@ -747,6 +753,41 @@
             const price = parseFloat(row.price) || 0;
             const nr = row.nr_req || '';
             return price === 0 && nr === 'REQ';
+        }
+
+        // Unified filter — combines SKU/Parent search, the Missing L badge toggle, and
+        // the Sold dropdown into one Tabulator filter so they STACK instead of
+        // overwriting each other (matches the Mercari w/Ship pattern). All three filter
+        // entry points (search keyup, badge click, Sold dropdown change) call this.
+        function applyAllFilters() {
+            if (typeof table === 'undefined' || !table || !table.setFilter) return;
+
+            const searchEl = document.getElementById('sku-search');
+            const skuSearch = (searchEl ? (searchEl.value || '') : '').trim().toLowerCase();
+
+            const soldEl = document.getElementById('sold-filter');
+            const soldFilter = soldEl ? soldEl.value : 'all';
+
+            table.setFilter(function(row) {
+                // SKU / Parent search
+                if (skuSearch) {
+                    const sku = String(row.sku || '').toLowerCase();
+                    const parent = String(row.Parent || '').toLowerCase();
+                    if (sku.indexOf(skuSearch) === -1 && parent.indexOf(skuSearch) === -1) return false;
+                }
+
+                // Missing L (price = 0 and NR/REQ = REQ) — only when the badge is toggled on
+                if (missingLFilterActive && !missingLFilter(row)) return false;
+
+                // Sold filter (Mercari w/o Ship L30 sold qty — `sold` field).
+                if (soldFilter && soldFilter !== 'all') {
+                    const soldQty = parseFloat(row.sold) || 0;
+                    if (soldFilter === 'sold' && !(soldQty > 0))   return false;
+                    if (soldFilter === 'zero' && !(soldQty === 0)) return false;
+                }
+
+                return true;
+            });
         }
 
         function updateBadges(data) {

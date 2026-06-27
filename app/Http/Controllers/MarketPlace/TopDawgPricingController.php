@@ -9,6 +9,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TopDawgDataView;
 use App\Models\TopDawgProduct;
+use App\Services\TopDawgApiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -389,5 +390,85 @@ class TopDawgPricingController extends Controller
             Log::error('TopDawg saveSprice failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Push a batch of SKU → price updates to TopDawg.
+     *
+     * Each item is POSTed individually through TopDawgApiService::pushPrice()
+     * (which talks to the confirmed `/SupplierProduct/update` endpoint with
+     * body `{ product_code, price }`). We collect a per-row outcome so the UI
+     * can render exactly which SKUs were accepted into TopDawg's review queue
+     * and which failed.
+     *
+     * Note: a 200 from TopDawg means "queued for review", not "live price".
+     * That's by design on TD's side and is surfaced in the per-row `message`.
+     *
+     * Request shape:
+     *   { "items": [ { "sku": "ABC", "price": 19.99 }, ... ] }
+     *
+     * Response shape:
+     *   {
+     *     "success": bool,             // true iff every item succeeded
+     *     "ok_count":   int,           // # of items TD accepted
+     *     "fail_count": int,           // # of items TD rejected / errored
+     *     "results": [
+     *       { "sku": "ABC", "price": 19.99, "ok": true,
+     *         "status": 200, "message": "Product submitted successfully for review." },
+     *       ...
+     *     ]
+     *   }
+     */
+    public function pushPrices(Request $request, TopDawgApiService $api): JsonResponse
+    {
+        $validated = $request->validate([
+            'items'           => 'required|array|min:1|max:500',
+            'items.*.sku'     => 'required|string|max:190',
+            'items.*.price'   => 'required|numeric|min:0.01',
+        ]);
+
+        $results   = [];
+        $okCount   = 0;
+        $failCount = 0;
+
+        foreach ($validated['items'] as $item) {
+            $sku   = (string) $item['sku'];
+            $price = (float) $item['price'];
+
+            try {
+                $r = $api->pushPrice($sku, $price);
+                $okCount   += $r['ok'] ? 1 : 0;
+                $failCount += $r['ok'] ? 0 : 1;
+                $results[] = [
+                    'sku'     => $sku,
+                    'price'   => $price,
+                    'ok'      => $r['ok'],
+                    'status'  => $r['status'],
+                    'message' => is_array($r['response'])
+                        ? ($r['response']['message']
+                            ?? ($r['response']['error'] ?? json_encode($r['response'])))
+                        : (string) $r['response'],
+                ];
+            } catch (\Throwable $e) {
+                $failCount++;
+                Log::warning('TopDawg pushPrices: per-row push failed', [
+                    'sku' => $sku, 'price' => $price, 'error' => $e->getMessage(),
+                ]);
+                $results[] = [
+                    'sku'     => $sku,
+                    'price'   => $price,
+                    'ok'      => false,
+                    'status'  => 0,
+                    'message' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return response()->json([
+            'success'    => $failCount === 0,
+            'ok_count'   => $okCount,
+            'fail_count' => $failCount,
+            'results'    => $results,
+        ]);
     }
 }

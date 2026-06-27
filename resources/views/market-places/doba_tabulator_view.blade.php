@@ -278,53 +278,132 @@
     
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
-                
-                {{-- Row 1: filters + Search SKU (/aliexpress-pricing style) --}}
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-2 w-100">
-                    <div class="d-flex flex-wrap align-items-center gap-2 flex-grow-1">
-                    <select id="inventory-filter" class="form-select form-select-sm" style="width: 120px;">
+            <div class="card-body py-1">
+
+                {{-- Compact summary strip — moved to the TOP of the toolbar so
+                     the headline numbers (Sales, Rows, 0 Sold, Missing, N Map,
+                     VS AMZ, GPFT, ROI) are the first thing users see, matching
+                     /doba-tabulator-withoutship and /topdawg-pricing.
+                       • Each visible badge: flex:1 1 0 + text-center → spreads
+                         edge-to-edge across the full card width.
+                       • flex-nowrap so the strip stays a single visual band.
+                       • min-width:90px so labels stay readable on narrow viewports.
+                       • SOLD, L30 GPFT $ (per-row pft-total) and Total COGS hidden
+                         via display:none — the % versions carry the same signal.
+                     IMPORTANT: badge IDs, the controller data source, and every
+                     updateSummary() / API-response handler are unchanged. Only
+                     labels and CSS were touched. --}}
+                <div id="summary-stats" class="p-1 bg-light rounded mb-1">
+                    <div class="d-flex flex-nowrap gap-1 w-100" style="overflow-x:auto;">
+                        <span id="doba-total-sales-badge"
+                              class="badge bg-primary text-center"
+                              style="font-weight:700; color: white !important; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;">Sales: $0</span>
+                        <span id="total-skus"
+                              class="badge bg-info text-center"
+                              style="font-weight:700; color: #111 !important; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
+                              title="Number of SKU rows passing the current filters">Rows: 0</span>
+                        <span id="zero-sold-count"
+                              class="badge bg-danger text-center"
+                              style="font-weight:700; color: white !important; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;">0 Sold: 0</span>
+                        {{-- SOLD badge hidden (redundant with 0 Sold + Sales). --}}
+                        <span id="sold-count" class="badge bg-success fs-6 p-2" style="font-weight:700; color: white !important; display:none;">SOLD: 0</span>
+                        <span id="missing-count"
+                              class="badge text-center"
+                              style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
+                              title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
+                        <span id="nmap-count"
+                              class="badge text-center"
+                              style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
+                              title="Click to filter inventory mismatch (Shop INV vs D INV)">N Map: 0</span>
+                        <span id="disc-vs-amz-count"
+                              class="badge text-center"
+                              style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
+                              title="Click to filter non-competitive items"><i class="fas fa-chart-line"></i> VS AMZ: 0</span>
+                        {{--
+                            GROWTH / GROWTH GPFT / GROWTH GPFT % badges intentionally removed.
+                            They compared totalL30* vs totalL60*, but doba_metrics.quantity_l60 is
+                            populated as "every order older than 30 days" (FetchDobaDailyData tags
+                            anything not in the last 30 days as period='l60' with no upper bound),
+                            so L60 covered ~7 months of accumulated history. The math always made
+                            GROWTH look catastrophically red (e.g. -89%) even when sales were fine.
+                            Re-add only after redefining L60 as "the prior 30 days (today-60 → today-31)".
+                        --}}
+                        <span id="pft-percentage-badge"
+                              class="badge bg-danger text-center"
+                              style="color: white; font-weight:700; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;">GPFT: 0%</span>
+                        <span id="roi-percentage-badge"
+                              class="badge text-center"
+                              style="background-color: #6f42c1; color: white; font-weight:700; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;">ROI: 0%</span>
+                        {{-- L30 GPFT $ and Total COGS hidden — the % versions
+                             carry the same signal in a more comparable form.
+                             The text(...) updaters in updateSummary() and the
+                             controller-response handler keep writing to these
+                             IDs harmlessly (no-op on hidden nodes). --}}
+                        <span id="pft-total-badge" class="badge bg-dark fs-6 p-2" style="color: white; font-weight:700; display:none;">L30 GPFT: $0</span>
+                        <span id="total-cogs-badge" class="badge bg-secondary fs-6 p-2" style="color: white; font-weight:700; display:none;">Total COGS: $0</span>
+                    </div>
+                </div>
+
+                {{-- Combined filters + actions row.
+                     Single flex-wrap line saves vertical space; flex-wrap is
+                     preserved (rather than nowrap) so on narrow viewports the
+                     row wraps to additional lines instead of producing a
+                     horizontal scrollbar. Widths tightened to maximize the
+                     chance of staying on one row at typical desktop widths. --}}
+                <div class="d-flex flex-wrap align-items-center gap-1 mb-1 w-100">
+                    <select id="inventory-filter" class="form-select form-select-sm" style="width:100px;">
                         <option value="">All INV</option>
                         <option value="positive" selected>INV > 0</option>
                         <option value="zero">INV = 0</option>
                     </select>
 
-                    <select id="parent-filter" class="form-select form-select-sm" style="width: 150px;">
-                        <option value="">All Products</option>
+                    <select id="parent-filter" class="form-select form-select-sm" style="width:110px;">
+                        <option value="">Row</option>
                         <option value="parent">Parent Only</option>
                         <option value="child">Child Only</option>
                     </select>
 
-                    <select id="missing-filter" class="form-select form-select-sm" style="width: 150px;">
+                    {{-- "Missing" filter — dropdown is hidden by request, but the
+                         <select> element stays in the DOM because the Missing badge's
+                         click-to-filter handler writes to #missing-filter directly. --}}
+                    <select id="missing-filter" class="form-select form-select-sm" style="display:none;">
                         <option value="">All Products</option>
                         <option value="missing">Missing Only</option>
                     </select>
 
-                    <!-- GPFT% + CVR% (inline; GPFT = NPFT%, CVR = Doba L30 ÷ OV L30) -->
-                    <div class="d-flex align-items-center gap-1" title="GPFT% uses NPFT%; CVR uses Doba L30 sold ÷ OV L30 (Shopify)">
-                        <select id="gpft-filter" class="form-select form-select-sm" style="width: 130px;">
-                            <option value="all">GPFT%</option>
-                            <option value="negative">Negative</option>
-                            <option value="0-10">0-10%</option>
-                            <option value="10-20">10-20%</option>
-                            <option value="20-30">20-30%</option>
-                            <option value="30-40">30-40%</option>
-                            <option value="40-50">40-50%</option>
-                            <option value="50plus">Above 50%</option>
-                        </select>
-                        <select id="cvr-filter" class="form-select form-select-sm" style="width: 130px;">
-                            <option value="all">All CVR%</option>
-                            <option value="0-0">0%</option>
-                            <option value="0-3">0-3%</option>
-                            <option value="3-7">3-7%</option>
-                            <option value="7-13">7-13%</option>
-                            <option value="13plus">13%+</option>
-                        </select>
-                    </div>
+                    <select id="gpft-filter" class="form-select form-select-sm" style="width:100px;"
+                            title="GPFT% — uses NPFT%">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40-50">40-50%</option>
+                        <option value="50plus">Above 50%</option>
+                    </select>
+                    <select id="cvr-filter" class="form-select form-select-sm" style="width:100px;"
+                            title="CVR — Doba L30 sold ÷ OV L30 (Shopify)">
+                        <option value="all">CVR</option>
+                        <option value="0-0">0%</option>
+                        <option value="0-3">0-3%</option>
+                        <option value="3-7">3-7%</option>
+                        <option value="7-13">7-13%</option>
+                        <option value="13plus">13%+</option>
+                    </select>
+
+                    {{-- Sold dropdown (mirrors Amazon tabulator). Filters on `doba L30`:
+                         all → no filter; sold → Doba L30 > 0; zero → Doba L30 = 0. --}}
+                    <select id="sold-filter" class="form-select form-select-sm" style="width:100px;"
+                            title="Filter by Doba L30 sold quantity">
+                        <option value="all">Sold</option>
+                        <option value="sold">Sold &gt; 0</option>
+                        <option value="zero">0 Sold</option>
+                    </select>
 
                     <!-- DIL Filter -->
                     <div class="dropdown manual-dropdown-container">
-                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown" 
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown"
                                 data-bs-toggle="dropdown" aria-expanded="false">
                             <span class="status-circle default"></span> DIL%
                         </button>
@@ -342,48 +421,23 @@
                         </ul>
                     </div>
 
-                    <!-- Growth Filter -->
-                    <div class="d-flex align-items-center gap-1 flex-wrap">
-                        <label class="mb-0 fw-bold" style="font-size: 12px;">Growth:</label>
-                        <select id="growth-sign-filter" class="form-select form-select-sm" style="width: 130px;"
-                                title="Doba L30 vs L60: (L30 − L60) / L60 × 100; L60=0 and L30&gt;0 counts as +100%">
-                            <option value="all" selected>All</option>
-                            <option value="negative">Negative (&lt; 0)</option>
-                            <option value="zero">Zero (= 0)</option>
-                            <option value="positive">Positive (&gt; 0)</option>
-                        </select>
-                        <button id="clear-growth-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;" type="button"
-                                title="Clear growth sign">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
+                    <select id="roi-filter" class="form-select form-select-sm" style="width:100px;">
+                        <option value="all">ROI%</option>
+                        <option value="lt40">&lt; 40%</option>
+                        <option value="40-75">40–75%</option>
+                        <option value="75-125">75–125%</option>
+                        <option value="gt125">125%+</option>
+                    </select>
 
-                    <!-- ROI Filter -->
-                    <div>
-                        <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
-                            <option value="all">ROI%</option>
-                            <option value="lt40">&lt; 40%</option>
-                            <option value="40-75">40–75%</option>
-                            <option value="75-125">75–125%</option>
-                            <option value="gt125">125%+</option>
-                        </select>
-                    </div>
-
-                    </div>
-                </div>
-
-                {{-- Row 2: actions --}}
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                    <button type="button" id="reload-data-btn" class="btn btn-sm btn-outline-primary">
-                        <i class="fa fa-refresh"></i> Reload
-                    </button>
-                    <button type="button" id="export-csv-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-file-csv"></i> Export CSV
+                    <button type="button" id="export-csv-btn" class="btn btn-sm btn-success"
+                            title="Export CSV" aria-label="Export CSV">
+                        <i class="fas fa-download"></i>
                     </button>
                     <div class="dropdown">
-                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" 
-                                data-bs-toggle="dropdown" id="column-visibility-btn">
-                            <i class="fas fa-columns"></i> Columns
+                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+                                data-bs-toggle="dropdown" id="column-visibility-btn"
+                                title="Show / hide columns" aria-label="Show / hide columns">
+                            <i class="fas fa-columns"></i>
                         </button>
                         <div class="dropdown-menu" id="column-dropdown-menu" style="max-height: 300px; overflow-y: auto;">
                             <button class="dropdown-item" id="show-all-columns-btn">Show All Columns</button>
@@ -399,65 +453,46 @@
                     </button>
 
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
-                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin  (margin = 0.95 for Doba) --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin  (margin = 0.95 for Doba)
+                         Compact icon-only chip: 🎯 emoji replaces the word "Target",
+                         Apply button is icon-only (matches /doba-tabulator-withoutship). --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
                         id="target-roi-controls"
                         title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 on every selected row (back-solves so SROI column equals the target)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target ROI%:
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap"
+                               aria-label="Target ROI percent">
+                            <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
+                            placeholder="30" step="0.1" style="width: 60px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply'">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            title="Apply — Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 for every selected row"
+                            aria-label="Apply Target ROI">
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
                     {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
                          Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                    <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
                         id="target-gpft-controls"
                         title="Target GPFT% — sets S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) on every selected row">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target GPFT%:
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap"
+                               aria-label="Target GPFT percent">
+                            <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Doba take-home margin (< 95%).">
+                            placeholder="30" step="0.1" style="width: 60px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply'. Must be less than the Doba take-home margin (< 95%).">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            title="Apply — Compute & save S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) for every selected row"
+                            aria-label="Apply Target GPFT">
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
                 </div>
 
-                {{-- Row 3: summary KPIs (/aliexpress-pricing style) --}}
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
-                    <div class="d-flex flex-wrap gap-2">
-                        <span id="doba-total-sales-badge" class="badge bg-primary fs-6 p-2" style="font-weight:700; color: white !important;">Sales: $0</span>
-                        <span id="total-skus" class="badge bg-info fs-6 p-2" style="font-weight:700; color: #111 !important;">Total SKUs: 0</span>
-                        <span id="zero-sold-count" class="badge bg-danger fs-6 p-2" style="font-weight:700; color: white !important;">L30 0 Sold: 0</span>
-                        <span id="sold-count" class="badge bg-success fs-6 p-2" style="font-weight:700; color: white !important;">SOLD: 0</span>
-                        <span id="missing-count" class="badge fs-6 p-2" style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
-                        <span id="nmap-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter inventory mismatch (Shop INV vs D INV)">N Map: 0</span>
-                        <span id="disc-vs-amz-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter non-competitive items"><i class="fas fa-chart-line"></i> VS AMZ: 0</span>
-                        {{--
-                            GROWTH / GROWTH GPFT / GROWTH GPFT % badges intentionally removed.
-                            They compared totalL30* vs totalL60*, but doba_metrics.quantity_l60 is
-                            populated as "every order older than 30 days" (FetchDobaDailyData tags
-                            anything not in the last 30 days as period='l60' with no upper bound),
-                            so L60 covered ~7 months of accumulated history. The math always made
-                            GROWTH look catastrophically red (e.g. -89%) even when sales were fine.
-                            Re-add only after redefining L60 as "the prior 30 days (today-60 → today-31)".
-                        --}}
-                        <span id="pft-percentage-badge" class="badge bg-danger fs-6 p-2" style="color: white; font-weight:700;">L30 GPFT %: 0%</span>
-                        <span id="roi-percentage-badge" class="badge fs-6 p-2" style="background-color: #6f42c1; color: white; font-weight:700;">L30 ROI %: 0%</span>
-                        <span id="pft-total-badge" class="badge bg-dark fs-6 p-2" style="color: white; font-weight:700;">L30 GPFT: $0</span>
-                        <span id="total-cogs-badge" class="badge bg-secondary fs-6 p-2" style="color: white; font-weight:700;">Total COGS: $0</span>
-                    </div>
-                </div>
             </div>
             <div class="card-body" style="padding: 0;">
                 <!-- Discount Input Box (shown when SKUs are selected) -->
@@ -489,9 +524,18 @@
                         <span id="selected-skus-count" class="text-muted ms-2"></span>
                     </div>
                 </div>
-                <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
-                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." autocomplete="off" style="max-width: 220px;">
-                    <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." autocomplete="off" style="max-width: 220px;">
+                {{-- Dedicated search row — Search SKU + Search Parent each take
+                     half the row (col-6) so they span the full table width.
+                     Tight px-2 py-1 keeps this strip slim. --}}
+                <div class="px-2 py-1 bg-light border-bottom">
+                    <div class="row g-1">
+                        <div class="col-6">
+                            <input type="text" id="sku-search" class="form-control form-control-sm w-100" placeholder="Search SKU..." autocomplete="off">
+                        </div>
+                        <div class="col-6">
+                            <input type="text" id="parent-search" class="form-control form-control-sm w-100" placeholder="Search Parent..." autocomplete="off">
+                        </div>
+                    </div>
                 </div>
                 <div id="doba-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <div id="doba-table" style="flex: 1;"></div>
@@ -533,6 +577,15 @@
 @section('script-bottom')
     <script>
         const COLUMN_VIS_KEY = "doba_tabulator_column_visibility";
+        /**
+         * Server-persisted column visibility, same pattern as /ebay3-tabulator-view.
+         * Toggling a checkbox in the "Columns" dropdown POSTs to
+         * /tabulator-column-visibility with this channel so the user's
+         * choices survive page reloads. Channel is distinct from the
+         * without-ship page so the two pages can keep different column layouts.
+         */
+        const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+        const TABULATOR_COLUMN_CHANNEL = 'doba_tabulator';
         function dobaEscapeHtml(s) {
             if (s == null || s === undefined) return '';
             return String(s)
@@ -2446,6 +2499,19 @@
                     });
                 }
 
+                // Sold filter (mirrors Amazon tabulator). Stacks with the existing L30 min/max
+                // filter so users can combine "Sold > 0" with a range. Parent rows have a
+                // summary `doba L30`, so they participate naturally — no special-casing here.
+                const soldFilter = $('#sold-filter').val();
+                if (soldFilter && soldFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        const dobaL30 = parseFloat(data['doba L30']) || 0;
+                        if (soldFilter === 'sold') return dobaL30 > 0;
+                        if (soldFilter === 'zero') return dobaL30 === 0;
+                        return true;
+                    });
+                }
+
                 // DIL Filter (based on inventory and L30)
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
@@ -2457,26 +2523,6 @@
                         if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
                         if (dilFilter === 'green') return dil >= 25 && dil < 50;
                         if (dilFilter === 'pink') return dil >= 50;
-                        return true;
-                    });
-                }
-
-                // Growth: sign bucket (negative / zero / positive), same formula as Growth column
-                const growthSign = $('#growth-sign-filter').val();
-                if (growthSign && growthSign !== 'all') {
-                    table.addFilter(function(data) {
-                        const l30 = parseFloat(data['doba L30']) || 0;
-                        const l60 = parseFloat(data['doba L60']) || 0;
-                        let growth = 0;
-                        if (l60 > 0) {
-                            growth = ((l30 - l60) / l60) * 100;
-                        } else if (l30 > 0) {
-                            growth = 100;
-                        }
-                        const g = Math.round(growth);
-                        if (growthSign === 'negative') return g < 0;
-                        if (growthSign === 'zero') return g === 0;
-                        if (growthSign === 'positive') return g > 0;
                         return true;
                     });
                 }
@@ -2632,21 +2678,11 @@
                 if (el) el.textContent = 'Visible rows: ' + visibleNonParentRows.length;
             }
 
-            $('#inventory-filter, #parent-filter, #missing-filter, #gpft-filter, #cvr-filter').on('change', function() {
+            $('#inventory-filter, #parent-filter, #missing-filter, #gpft-filter, #cvr-filter, #sold-filter').on('change', function() {
                 applyFilters();
             });
 
             $('#sku-search, #parent-search').on('keyup input', function() {
-                applyFilters();
-            });
-
-            // Growth filter handler (dropdown only)
-            $('#growth-sign-filter').on('change', function() {
-                applyFilters();
-            });
-
-            $('#clear-growth-filter').on('click', function() {
-                $('#growth-sign-filter').val('all');
                 applyFilters();
             });
 
@@ -2676,8 +2712,22 @@
                     .then(result => {
                         if (result.success && result.data) {
                             const data = result.data;
-                            $('#pft-percentage-badge').text('L30 GPFT %: ' + parseFloat(data.pft_percentage).toFixed(1) + '%');
-                            $('#roi-percentage-badge').text('L30 ROI %: ' + Math.round(parseFloat(data.roi_percentage)) + '%');
+                            $('#pft-percentage-badge').text('GPFT: ' + parseFloat(data.pft_percentage).toFixed(1) + '%');
+                            // Color the ROI badge by the same 4-bucket slab as the
+                            // ROI filter dropdown (red < 40, yellow 40–75, green
+                            // 75–125, pink ≥ 125). Mirrors /doba-tabulator-withoutship.
+                            const _roiVal = parseFloat(data.roi_percentage) || 0;
+                            let _roiBg;
+                            if      (_roiVal < 40)  _roiBg = '#a00211';
+                            else if (_roiVal < 75)  _roiBg = '#ffc107';
+                            else if (_roiVal < 125) _roiBg = '#28a745';
+                            else                    _roiBg = '#e83e8c';
+                            $('#roi-percentage-badge')
+                                .css('background-color', _roiBg)
+                                .text('ROI: ' + Math.round(_roiVal) + '%');
+                            // L30 GPFT $ + Total COGS are hidden badges, but the
+                            // assignments are preserved so the data lives on the
+                            // node in case it's ever turned back on.
                             $('#pft-total-badge').text('L30 GPFT: $' + Math.round(parseFloat(data.total_pft)).toLocaleString());
                             $('#total-cogs-badge').text('Total COGS: $' + Math.round(parseFloat(data.total_cogs)).toLocaleString());
                             $('#metrics-date-badge').text('Date: ' + data.date);
@@ -2753,39 +2803,101 @@
                 }
 
                 $('#doba-total-sales-badge').text('Sales: $' + Math.round(totalL30Sales).toLocaleString());
-                $('#total-skus').text('Total SKUs: ' + totalSkus);
-                $('#zero-sold-count').text('L30 0 Sold: ' + l30ZeroSold);
+                $('#total-skus').text('Rows: ' + Number(totalSkus).toLocaleString());
+                $('#zero-sold-count').text('0 Sold: ' + l30ZeroSold);
+                // sold-count is hidden; keep the assignment so the data lives on the node.
                 $('#sold-count').text('SOLD: ' + sold);
                 $('#missing-count').html('<i class="fas fa-exclamation-triangle"></i> Missing: ' + missing);
                 $('#nmap-count').text('N Map: ' + nmap);
                 $('#disc-vs-amz-count').html('<i class="fas fa-chart-line"></i> VS AMZ: ' + discVsAmzCount);
 
-                $('#pft-percentage-badge').text('L30 GPFT %: ' + l30GpftPercent.toFixed(1) + '%');
+                $('#pft-percentage-badge').text('GPFT: ' + l30GpftPercent.toFixed(1) + '%');
+                // pft-total-badge is hidden; preserved for parity with the
+                // controller-response handler above (and easy re-enable later).
                 $('#pft-total-badge').text('L30 GPFT: $' + Math.round(l30Profit).toLocaleString());
             }
 
-            // Build Column Visibility Dropdown
+            /**
+             * Column visibility persistence — matches /ebay3-tabulator-view.
+             *
+             * Flow on page load:
+             *   tableBuilt  → applyColumnVisibilityFromServer() (hides any
+             *                  columns the user previously turned off)
+             *               → buildColumnDropdown() (reflects current state
+             *                  in the dropdown checkboxes)
+             *
+             * Flow on user toggle / "Show All Columns":
+             *   show() / hide() the column, then saveColumnVisibilityToServer().
+             */
             function buildColumnDropdown() {
-                const columns = table.getColumns();
                 const menu = document.getElementById("column-dropdown-menu");
-                
-                // Clear existing column items
+                if (!menu) return;
+
                 const existingItems = menu.querySelectorAll('.column-toggle-item');
                 existingItems.forEach(item => item.remove());
-                
+
+                const columns = table.getColumns();
                 columns.forEach(column => {
                     if (column.getField() === 'sl_no') return; // Skip sl_no column
-                    
+
+                    const field = column.getField();
+                    if (!field) return;
+
                     const item = document.createElement('label');
                     item.className = 'dropdown-item column-toggle-item d-flex align-items-center';
                     item.innerHTML = `
-                        <input type="checkbox" class="form-check-input me-2" 
-                               data-column="${column.getField()}" 
+                        <input type="checkbox" class="form-check-input me-2"
+                               data-column="${field}"
                                ${column.isVisible() ? 'checked' : ''}>
                         ${column.getDefinition().title}
                     `;
                     menu.appendChild(item);
                 });
+            }
+
+            function saveColumnVisibilityToServer() {
+                if (!table) return;
+                const visibility = {};
+                table.getColumns().forEach(col => {
+                    const def = col.getDefinition();
+                    if (def.field) {
+                        visibility[def.field] = col.isVisible();
+                    }
+                });
+
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    body: JSON.stringify({
+                        channel: TABULATOR_COLUMN_CHANNEL,
+                        visibility: visibility
+                    })
+                }).catch(err => console.error('Column visibility save failed:', err));
+            }
+
+            function applyColumnVisibilityFromServer() {
+                if (!table) return Promise.resolve();
+                return fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(savedVisibility => {
+                        if (!savedVisibility || typeof savedVisibility !== 'object') return;
+                        table.getColumns().forEach(col => {
+                            const def = col.getDefinition();
+                            if (def.field && savedVisibility[def.field] === false) {
+                                col.hide();
+                            }
+                        });
+                    })
+                    .catch(err => console.error('Column visibility load failed:', err));
             }
 
             // Handle SPRICE cell edit
@@ -2854,7 +2966,11 @@
 
             // Wait for table to be built
             table.on('tableBuilt', function() {
-                buildColumnDropdown();
+                // Apply user's saved visibility from the server, then build
+                // the dropdown so its checkboxes reflect the current state.
+                Promise.resolve(applyColumnVisibilityFromServer()).then(function() {
+                    buildColumnDropdown();
+                });
                 updateSummary();
                 applyFilters(); // Apply default INV > 0 filter
             });
@@ -2909,36 +3025,34 @@
                 }
             }
 
-            // Toggle column from dropdown
+            // Toggle column from dropdown — persist choice to server (same as /ebay3-tabulator-view).
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
                 if (e.target.type === 'checkbox') {
                     const columnField = e.target.getAttribute('data-column');
                     const column = table.getColumn(columnField);
-                    
+                    if (!column) return;
+
                     if (e.target.checked) {
                         column.show();
                     } else {
                         column.hide();
                     }
+                    saveColumnVisibilityToServer();
                 }
             });
 
-            // Show All Columns button
+            // Show All Columns button — also persists.
             document.getElementById("show-all-columns-btn").addEventListener("click", function() {
                 table.getColumns().forEach(column => {
                     column.show();
                 });
                 buildColumnDropdown();
+                saveColumnVisibilityToServer();
             });
 
             // Export CSV
             $('#export-csv-btn').on('click', function() {
                 table.download("csv", "doba_pricing_cvr_export.csv");
-            });
-
-            // Reload Data
-            $('#reload-data-btn').on('click', function() {
-                table.replaceData("/doba-data-view");
             });
 
             // Toast notification

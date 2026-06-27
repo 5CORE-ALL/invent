@@ -8,6 +8,7 @@ use App\Jobs\UpdateDobaSPriceJob;
 use App\Models\ChannelMaster;
 use App\Models\DobaDailyData;
 use App\Models\DobaDataView;
+use App\Models\DobaWithoutShipDataView;
 use App\Models\DobaListingStatus;
 use App\Models\DobaMetric;
 use App\Models\MarketplacePercentage;
@@ -119,9 +120,19 @@ class DobaController extends Controller
         // 3. Related Models — keyed by NORMALIZED sku so overlay works despite case/whitespace differences
         $shopifyData = ShopifySku::mapByProductSkus($skus);
         $dobaMetrics = DobaMetric::all()->keyBy(fn ($m) => $normalizeSku($m->sku));
-        $nrValues = DobaDataView::all()
+        // NR lives in the shared doba_data_view table on both pages, but SPRICE
+        // (and related SPFT/SROI/S_SELF_PICK/PUSH_STATUS) is stored separately
+        // for the "without ship" page so prices set there don't overwrite the
+        // regular Doba (with ship) page's prices.
+        $dobaDataValues = DobaDataView::all()
             ->keyBy(fn ($r) => $normalizeSku($r->sku))
             ->map(fn ($r) => $r->value);
+        $nrValues = $dobaDataValues;
+        $spriceValues = $onlyPickupPrepaidLabelFromDaily
+            ? DobaWithoutShipDataView::all()
+                ->keyBy(fn ($r) => $normalizeSku($r->sku))
+                ->map(fn ($r) => $r->value)
+            : $dobaDataValues;
 
         // Buyer / Seller links stored per SKU in doba_listing_statuses.value JSON
         $linkValues = DobaListingStatus::all()
@@ -366,6 +377,8 @@ class DobaController extends Controller
             $row['Live'] = null;
             $row['APlus'] = null;
 
+            // NR / Listed / Live / APlus always come from the shared doba_data_view
+            // table (these are not "with ship" vs "without ship" specific).
             if (isset($nrValues[$normSku])) {
                 $raw = $nrValues[$normSku];
 
@@ -375,15 +388,29 @@ class DobaController extends Controller
 
                 if (is_array($raw)) {
                     $row['NR'] = $raw['NR'] ?? null;
-                    $row['SPRICE'] = $raw['SPRICE'] ?? null;
-                    $row['SPFT'] = $raw['SPFT'] ?? null;
-                    $row['SROI'] = $raw['SROI'] ?? null;
-                    $row['S_SELF_PICK'] = $raw['S_SELF_PICK'] ?? null;
-                    $row['PUSH_STATUS'] = $raw['PUSH_STATUS'] ?? null;
-                    $row['PUSH_STATUS_UPDATED_AT'] = $raw['PUSH_STATUS_UPDATED_AT'] ?? null;
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['APlus'] = isset($raw['APlus']) ? filter_var($raw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
+                }
+            }
+
+            // SPRICE / SPFT / SROI / S_SELF_PICK / PUSH_STATUS come from the
+            // page-specific table: doba_data_view (with ship) vs
+            // doba_withoutship_data_view (without ship).
+            if (isset($spriceValues[$normSku])) {
+                $rawSprice = $spriceValues[$normSku];
+
+                if (!is_array($rawSprice)) {
+                    $rawSprice = json_decode($rawSprice, true);
+                }
+
+                if (is_array($rawSprice)) {
+                    $row['SPRICE'] = $rawSprice['SPRICE'] ?? null;
+                    $row['SPFT'] = $rawSprice['SPFT'] ?? null;
+                    $row['SROI'] = $rawSprice['SROI'] ?? null;
+                    $row['S_SELF_PICK'] = $rawSprice['S_SELF_PICK'] ?? null;
+                    $row['PUSH_STATUS'] = $rawSprice['PUSH_STATUS'] ?? null;
+                    $row['PUSH_STATUS_UPDATED_AT'] = $rawSprice['PUSH_STATUS_UPDATED_AT'] ?? null;
                 }
             }
 
@@ -545,6 +572,27 @@ class DobaController extends Controller
 
     public function saveSpriceToDatabase(Request $request)
     {
+        return $this->persistSpriceRow($request, DobaDataView::class);
+    }
+
+    /**
+     * Save SPRICE row coming from the "Doba without ship" (pickup / prepaid
+     * label) page. Stored in its own table so it does not collide with the
+     * regular Doba (with ship) page.
+     */
+    public function saveSpriceWithoutShipToDatabase(Request $request)
+    {
+        return $this->persistSpriceRow($request, DobaWithoutShipDataView::class);
+    }
+
+    /**
+     * Shared persistence for both SPRICE save endpoints. The model class
+     * decides which table the row lives in.
+     *
+     * @param  class-string<\Illuminate\Database\Eloquent\Model>  $modelClass
+     */
+    private function persistSpriceRow(Request $request, string $modelClass)
+    {
         $sku = $request->input('sku');
         $spriceData = $request->only(['sprice', 'spft_percent', 'sroi_percent', 's_self_pick', 'push_status']);
 
@@ -552,13 +600,12 @@ class DobaController extends Controller
             return response()->json(['error' => 'SKU and sprice are required.'], 400);
         }
 
-
-        $dobaDataView = DobaDataView::firstOrNew(['sku' => $sku]);
+        $dataView = $modelClass::firstOrNew(['sku' => $sku]);
 
         // Decode value column safely
-        $existing = is_array($dobaDataView->value)
-            ? $dobaDataView->value
-            : (json_decode($dobaDataView->value, true) ?: []);
+        $existing = is_array($dataView->value)
+            ? $dataView->value
+            : (json_decode($dataView->value, true) ?: []);
 
         // Merge new sprice data
         $merged = array_merge($existing, [
@@ -570,8 +617,8 @@ class DobaController extends Controller
             'PUSH_STATUS_UPDATED_AT' => isset($spriceData['push_status']) ? now()->format('Y-m-d H:i:s') : ($existing['PUSH_STATUS_UPDATED_AT'] ?? null),
         ]);
 
-        $dobaDataView->value = $merged;
-        $dobaDataView->save();
+        $dataView->value = $merged;
+        $dataView->save();
 
         return response()->json(['message' => 'Data saved successfully.']);
     }
