@@ -5,7 +5,12 @@
 @endphp
 
 
-<tr>
+<tr data-supplier-id="{{ $supplier->id }}">
+    <td class="text-center align-middle supplier-select-col">
+        <input type="checkbox" class="form-check-input supplier-row-select" value="{{ $supplier->id }}"
+            data-supplier-id="{{ $supplier->id }}"
+            aria-label="Select supplier {{ $supplier->name }}">
+    </td>
     <td>
         <div class="dropdown d-inline-block">
             @if(!empty(array_filter($categoryIds)))
@@ -63,9 +68,15 @@
             </ul>
         </div>
     </td>
-    <td>
+    <td class="text-center align-middle">
         @if(!empty($supplier->company))
-            <span title="{{ $supplier->company }}">{{ \Illuminate\Support\Str::limit($supplier->company, 15, '...') }}</span>
+            <button type="button"
+                class="btn btn-link p-1 text-decoration-none supplier-company-toggle"
+                data-company="{{ $supplier->company }}"
+                data-supplier-name="{{ $supplier->name ?? '' }}"
+                title="Click to view full company name">
+                <span class="supplier-approval-dot supplier-approval-dot--green"></span>
+            </button>
         @else
             <span class="text-muted">-</span>
         @endif

@@ -183,6 +183,38 @@
             font-weight: 600;
             font-size: 0.72rem;
         }
+        /* Inline editable supplier dropdown inside the Supplier cell */
+        .tabulator-cell.forecast-current-supplier-cell .forecast-supplier-edit-select {
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            padding: 1px 14px 1px 3px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            line-height: 1.1;
+            text-align: center;
+            text-align-last: center;
+            background-color: #fff;
+            border: 1px solid #c9d3df;
+            border-radius: 4px;
+            cursor: pointer;
+            min-height: 22px;
+        }
+        .tabulator-cell.forecast-current-supplier-cell .forecast-supplier-edit-select:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.3);
+        }
+        .tabulator-cell.forecast-current-supplier-cell .forecast-supplier-edit-select.is-empty {
+            color: #6b7280;
+            font-style: italic;
+            font-weight: 500;
+        }
+        .tabulator-cell.forecast-current-supplier-cell .forecast-supplier-edit-select option {
+            font-style: normal;
+            font-weight: 500;
+            color: #111827;
+        }
 
         .forecast-dil-pct {
             font-weight: 700;
@@ -495,6 +527,39 @@
                         <input type="text" id="search-sku"      class="form-control form-control-sm border-primary" placeholder="SKU…"      autocomplete="off" style="width:140px;">
                         <input type="text" id="search-supplier" class="form-control form-control-sm border-primary" placeholder="Supplier…" autocomplete="off" style="width:130px;">
 
+                        {{-- Executive quick filter — matches the in-cell Exec column
+                             values; empty string means "show every executive". --}}
+                        <select id="executive-filter"
+                                class="form-select form-select-sm border-primary"
+                                style="width:140px;"
+                                title="Filter by assigned executive"
+                                aria-label="Executive filter">
+                            <option value="">👤 All Execs</option>
+                            <option value="__unassigned__">— Unassigned —</option>
+                            <option value="Atin">Atin</option>
+                            <option value="Jack">Jack</option>
+                            <option value="Nitish">Nitish</option>
+                            <option value="Ajay">Ajay</option>
+                            <option value="Candy">Candy</option>
+                            <option value="Sruti">Sruti</option>
+                        </select>
+
+                        {{-- NRP checkbox dropdown — promoted to the top filter row so
+                             REQ / 2BDC / LATER toggles sit next to the other quick
+                             filters. The button label is kept in sync by the existing
+                             updateNRPMultiselectLabel() helper. --}}
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-sm btn-light border border-primary dropdown-toggle" type="button" id="nrp-filter-dropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" style="min-width:130px;" title="Filter by NRP type (REQ / 2BDC / LATER)">
+                                🔍 NRP: <span id="nrp-filter-label">ALL Items</span>
+                            </button>
+                            <ul class="dropdown-menu shadow-sm p-2" style="min-width:170px;" aria-labelledby="nrp-filter-dropdown">
+                                <li class="small text-muted px-2 mb-1">Show item types</li>
+                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="REQ" checked><span>REQ</span></label></li>
+                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="NR" checked><span>2BDC</span></label></li>
+                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="LATER" checked><span>LATER</span></label></li>
+                            </ul>
+                        </div>
+
                         <span class="vr align-self-stretch opacity-25"></span>
 
                         <!-- Stage Filter + blue summary badge (filtered child rows + column sum) -->
@@ -522,19 +587,6 @@
                         <select id="row-data-type" class="form-select form-select-sm border border-primary" style="width:150px;" aria-label="Row type"></select>
 
                         <span class="vr align-self-stretch opacity-25"></span>
-
-                        <!-- NRP multiselect -->
-                        <div class="dropdown d-inline-block">
-                            <button class="btn btn-sm btn-light border border-primary dropdown-toggle" type="button" id="nrp-filter-dropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" style="min-width:120px;">
-                                <span id="nrp-filter-label">ALL Items</span>
-                                </button>
-                            <ul class="dropdown-menu shadow-sm p-2" style="min-width:170px;" aria-labelledby="nrp-filter-dropdown">
-                                <li class="small text-muted px-2 mb-1">Show item types</li>
-                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="REQ" checked><span>REQ</span></label></li>
-                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="NR" checked><span>2BDC</span></label></li>
-                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="LATER" checked><span>LATER</span></label></li>
-                            </ul>
-                            </div>
 
                         <!-- Column Management -->
                         <div class="dropdown">
@@ -2586,10 +2638,67 @@
                         return span;
                     },
                     formatter: function(cell) {
-                        const value = cell.getValue() || '';
-                        const esc = String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                        const display = esc || '-';
-                        return '<span class="forecast-supplier-name" title="' + esc.replace(/"/g, '&quot;') + '">' + display + '</span>';
+                        const rowData = cell.getRow().getData() || {};
+                        const rawValue = cell.getValue();
+                        const value = rawValue == null ? '' : String(rawValue);
+                        const escHtml = function(s) {
+                            return String(s == null ? '' : s)
+                                .replace(/&/g, '&amp;')
+                                .replace(/</g, '&lt;')
+                                .replace(/>/g, '&gt;')
+                                .replace(/"/g, '&quot;')
+                                .replace(/'/g, '&#39;');
+                        };
+
+                        // Parent rows: keep read-only label (no inline editor)
+                        if (rowData.is_parent || rowData.isParent) {
+                            const display = value ? escHtml(value) : '-';
+                            return '<span class="forecast-supplier-name" title="' + escHtml(value) + '">' + display + '</span>';
+                        }
+
+                        const sku    = String(rowData.SKU || '').trim();
+                        const parent = String(rowData.Parent || '').trim();
+                        const mipId  = rowData.mip_id || rowData.mipId || '';
+
+                        const suppliers = (window.forecastSuppliersList || []);
+                        // Fall back to a static label until the suppliers list finishes loading
+                        // (loadForecastSuppliers() calls table.redraw() once the fetch resolves,
+                        // which re-runs this formatter with a populated list).
+                        if (!suppliers.length) {
+                            const display = value ? escHtml(value) : '-';
+                            return '<span class="forecast-supplier-name" title="' + escHtml(value) + '">' + display + '</span>';
+                        }
+
+                        // Build option list: include the current value even if it is not in the
+                        // suppliers table (legacy / free-text values), so the cell can still
+                        // display the existing supplier name without losing it.
+                        const names = new Set();
+                        suppliers.forEach(function(s) {
+                            const n = (s && (s.name || s.id)) ? String(s.name || s.id).trim() : '';
+                            if (n) names.add(n);
+                        });
+                        if (value && value.trim() !== '') names.add(value.trim());
+                        const sorted = Array.from(names).sort(function(a, b) {
+                            return a.localeCompare(b);
+                        });
+
+                        const selectedVal = value.trim();
+                        let optionsHtml = '<option value=""' + (selectedVal === '' ? ' selected' : '') + '>-- Select --</option>';
+                        sorted.forEach(function(name) {
+                            const sel = (name === selectedVal) ? ' selected' : '';
+                            optionsHtml += '<option value="' + escHtml(name) + '"' + sel + '>' + escHtml(name) + '</option>';
+                        });
+
+                        const emptyCls = selectedVal === '' ? ' is-empty' : '';
+                        return '<select class="forecast-supplier-edit-select' + emptyCls + '"'
+                            + ' data-sku="' + escHtml(sku) + '"'
+                            + ' data-parent="' + escHtml(parent) + '"'
+                            + ' data-mip-id="' + escHtml(mipId) + '"'
+                            + ' data-original="' + escHtml(selectedVal) + '"'
+                            + ' title="' + escHtml(selectedVal || 'Select supplier') + '"'
+                            + ' aria-label="Supplier">'
+                            + optionsHtml
+                            + '</select>';
                     }
                 },
                 {
@@ -3747,7 +3856,18 @@
                 .then(r => r.json())
                 .then(function(data) {
                     window.forecastSuppliersList = data.suppliers || [];
-                    if (table) table.redraw();
+                    if (table) {
+                        table.redraw();
+                        // Reformat just the Supplier cells so the inline editable
+                        // dropdown picks up the freshly-loaded supplier list even
+                        // when /supplier.list.json resolves after the table data.
+                        try {
+                            table.getRows().forEach(function(row) {
+                                const cell = row.getCell && row.getCell('mfrg_supplier');
+                                if (cell && typeof cell.reformat === 'function') cell.reformat();
+                            });
+                        } catch (e) { /* no-op */ }
+                    }
                     if (typeof callback === 'function') callback();
                 })
                 .catch(function() { window.forecastSuppliersList = []; });
@@ -3857,6 +3977,87 @@
                 }
             }).catch(function() { btn.disabled = false; });
         });
+
+        // ── Inline editable Supplier cell ─────────────────────────────────
+        // Each row's Supplier dropdown is rendered by the column formatter using
+        // window.forecastSuppliersList (loaded from /supplier.list.json). Persist
+        // the change to mfrg_progress.supplier through the same endpoint that the
+        // bulk-apply button uses, then patch the local row data so the table
+        // reflects the new value without a full reload.
+        $(document).off('change.forecastSupplier', '.forecast-supplier-edit-select')
+            .on('change.forecastSupplier', '.forecast-supplier-edit-select', function(e) {
+                e.stopPropagation();
+                const $el = $(this);
+                const sku = String($el.data('sku') || '').trim();
+                const parent = String($el.data('parent') || '').trim();
+                const mipId = String($el.data('mip-id') || '').trim();
+                const originalVal = String($el.data('original') || '').trim();
+                const newVal = String($el.val() || '').trim();
+
+                if (!sku) {
+                    $el.val(originalVal);
+                    alert('SKU not available for this row.');
+                    return;
+                }
+                if (newVal === originalVal) return;
+
+                $el.prop('disabled', true).css('opacity', '0.6');
+
+                const token = document.querySelector('input[name="_token"]')?.value
+                    || document.querySelector('meta[name="csrf-token"]')?.content
+                    || '';
+                const fd = new FormData();
+                fd.append('sku', sku);
+                fd.append('column', 'supplier');
+                fd.append('value', newVal);
+                if (mipId) fd.append('mip_id', mipId);
+                fd.append('_token', token);
+
+                fetch('/mfrg-progresses/inline-update-by-sku', {
+                    method: 'POST',
+                    body: fd,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    }
+                })
+                .then(function(r) { return r.json().catch(function() { return { success: false }; }); })
+                .then(function(res) {
+                    if (!res || res.success !== true) {
+                        throw new Error((res && res.message) || 'Save failed');
+                    }
+                    // Update the local row so any other column reading
+                    // mfrg_supplier (search, filters, exports) sees the new value.
+                    const row = table.getRows().find(function(r) {
+                        const d = r.getData() || {};
+                        return String(d.SKU || '').trim() === sku
+                            && String(d.Parent || '').trim() === parent;
+                    });
+                    if (row) {
+                        row.update({ mfrg_supplier: newVal }, true);
+                    }
+                    $el.data('original', newVal);
+                    $el.attr('data-original', newVal);
+                    $el.attr('title', newVal || 'Select supplier');
+                    if (newVal === '') $el.addClass('is-empty');
+                    else $el.removeClass('is-empty');
+                })
+                .catch(function(err) {
+                    console.error('Supplier inline update failed:', err);
+                    $el.val(originalVal);
+                    alert('Failed to save supplier.');
+                })
+                .finally(function() {
+                    $el.prop('disabled', false).css('opacity', '1');
+                });
+            });
+
+        // Prevent row-level handlers (e.g. detail expand) from firing when the user
+        // interacts with the inline supplier dropdown.
+        $(document).off('mousedown.forecastSupplier click.forecastSupplier', '.forecast-supplier-edit-select')
+            .on('mousedown.forecastSupplier click.forecastSupplier', '.forecast-supplier-edit-select', function(e) {
+                e.stopPropagation();
+            });
 
         function bulkApplyForecastField(column, getValue, btnId, selectId, ddBtnId) {
             const val = getValue();
@@ -3974,6 +4175,7 @@
         let currentSearchSku = '';
         let currentSearchParent = '';
         let currentSearchSupplier = '';
+        let currentExecutiveFilter = '';
         let currentSupplierFilter = null;
         let currentZoneFilter = null;
         let currentContainerFilter = null;
@@ -4089,6 +4291,7 @@
             currentSearchSku         = '';
             currentSearchParent      = '';
             currentSearchSupplier    = '';
+            currentExecutiveFilter   = '';
             currentSupplierFilter    = null;
             currentZoneFilter        = null;
             currentContainerFilter   = null;
@@ -4107,6 +4310,8 @@
                 const el = document.getElementById(id);
                 if (el) el.value = '';
             });
+            const execEl = document.getElementById('executive-filter');
+            if (execEl) execEl.value = '';
             const sf = document.getElementById('stage-filter');
             if (sf) sf.value = '';
             const sbadge = document.getElementById('stage-filter-badge');
@@ -4831,6 +5036,18 @@
                 if (currentSearchSku      && !String(data.SKU            || '').toLowerCase().includes(currentSearchSku))      return false;
                 if (currentSearchParent   && !String(data.Parent         || '').toLowerCase().includes(currentSearchParent))   return false;
                 if (currentSearchSupplier && !String(data.mfrg_supplier  || '').toLowerCase().includes(currentSearchSupplier)) return false;
+
+                // Executive filter (exact match; "__unassigned__" sentinel = blank exec).
+                // Parent rows render Exec as "-" and don't carry their own exec, so the
+                // unassigned bucket only meaningfully includes child SKUs.
+                if (currentExecutiveFilter) {
+                    const rowExec = String(data.exec || '').trim();
+                    if (currentExecutiveFilter === '__unassigned__') {
+                        if (rowExec !== '') return false;
+                    } else if (rowExec.toLowerCase() !== currentExecutiveFilter.toLowerCase()) {
+                        return false;
+                    }
+                }
 
                 // Supplier play filter
                 if (currentSupplierFilter) {
@@ -6650,6 +6867,14 @@
                 makeSearchHandler('search-sku',      function(v) { currentSearchSku      = v; });
                 makeSearchHandler('search-parent',   function(v) { currentSearchParent   = v; });
                 makeSearchHandler('search-supplier', function(v) { currentSearchSupplier = v; });
+
+                const execEl = document.getElementById('executive-filter');
+                if (execEl) {
+                    execEl.addEventListener('change', function() {
+                        currentExecutiveFilter = String(execEl.value || '').trim();
+                        setCombinedFilters();
+                    });
+                }
             })();
 
             document.getElementById('stage-filter').addEventListener('change', function(e) {
