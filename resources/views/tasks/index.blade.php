@@ -3670,6 +3670,7 @@
                         field: "start_date", 
                         width: 88,
                         hozAlign: "center",
+                        headerTooltip: "TID (Task Initiation Date)",
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var value = cell.getValue();

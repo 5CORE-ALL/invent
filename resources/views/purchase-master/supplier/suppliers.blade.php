@@ -98,6 +98,42 @@
         .supplier-approval-dot--red { background-color: #dc3545; }
         .supplier-approval-dot--green { background-color: #198754; }
         .supplier-approval-dot--yellow { background-color: #ffc107; }
+
+        .supplier-company-toggle {
+            cursor: pointer;
+            line-height: 1;
+        }
+        .supplier-company-toggle:hover .supplier-approval-dot {
+            transform: scale(1.2);
+        }
+
+        #suppliers-table th.parents-col,
+        #suppliers-table td.parents-col {
+            display: none;
+        }
+
+        #suppliers-table .supplier-select-col {
+            width: 36px;
+        }
+        #suppliers-table tr.supplier-row-selected {
+            background-color: #fff8e1 !important;
+        }
+        .supplier-bulk-banner {
+            display: none;
+            background: #fff3cd;
+            border: 1px solid #ffe69c;
+            color: #664d03;
+            border-radius: 6px;
+            padding: 6px 12px;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+        }
+        .supplier-bulk-banner .supplier-bulk-clear {
+            color: #664d03;
+            text-decoration: underline;
+            cursor: pointer;
+            margin-left: 8px;
+        }
         .approval-form-dots input[type="radio"]:checked + span {
             box-shadow: 0 0 0 2px #495057;
             border-radius: 50%;
@@ -290,6 +326,11 @@
                     </div>
                 </form>
 
+                <div class="supplier-bulk-banner" id="supplier-bulk-banner" role="status" aria-live="polite">
+                    <i class="mdi mdi-information-outline"></i>
+                    <span id="supplier-bulk-banner-text"></span>
+                    <span class="supplier-bulk-clear" id="supplier-bulk-clear">Clear selection</span>
+                </div>
                 <div class="table-responsive" style="position: relative; overflow-x: auto;">
                     <!-- Loading indicator -->
                     <div id="loading-indicator" class="text-center py-5" style="display: none; position: absolute; top: 0; left: 0; right: 0; background: rgba(255,255,255,0.9); z-index: 10;">
@@ -301,9 +342,12 @@
                     <table class="table table-centered table-hover mb-0" id="suppliers-table">
                         <thead class="table-light">
                             <tr>
+                                <th class="text-center supplier-select-col" style="width: 36px;" title="Select rows to bulk-apply edits">
+                                    <input type="checkbox" class="form-check-input supplier-select-all" aria-label="Select all suppliers on this page">
+                                </th>
                                 <th class="sortable" data-sort-key="category">Category <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable" data-sort-key="name">Name <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
-                                <th class="sortable text-center" data-sort-key="approval">Approved <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="sortable text-center" data-sort-key="approval" title="Approved">Appr <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable" data-sort-key="company">Company <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable parents-col" data-sort-key="parent">Product <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable" data-sort-key="zone">Zone <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
@@ -607,6 +651,26 @@
     </div>
 </div>
 
+<div class="modal fade" id="supplierCompanyModal" tabindex="-1" aria-labelledby="supplierCompanyModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="supplierCompanyModalLabel">
+                    <span class="supplier-approval-dot supplier-approval-dot--green me-2" style="vertical-align: middle;"></span>
+                    Company
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2 text-muted small" id="supplierCompanyModalSupplier"></div>
+                <div class="fs-5 fw-semibold text-break" id="supplierCompanyModalBody"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 @endsection
 
@@ -777,6 +841,282 @@
                     }
                 });
             });
+
+            // Company green-dot -> show full company name in a modal.
+            // The Company cell renders a compact green dot; clicking it pops the
+            // full (untruncated) company name so long names stay readable.
+            $(document).on('click', '.supplier-company-toggle', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var $btn = $(this);
+                var company = $btn.data('company') || '';
+                var supplierName = $btn.data('supplier-name') || '';
+                $('#supplierCompanyModalBody').text(company);
+                $('#supplierCompanyModalSupplier').text(supplierName ? 'Supplier: ' + supplierName : '');
+                var modalEl = document.getElementById('supplierCompanyModal');
+                if (modalEl) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                }
+            });
+
+            // -----------------------------------------------------------------
+            // Bulk-select + bulk-edit
+            //
+            // The first column renders a checkbox per row; the header has a
+            // "select all" checkbox. When the user opens any row's Edit modal
+            // and submits it, the fields they actually changed are propagated
+            // to every other checked row as well (one PUT per supplier).
+            // Untouched fields are left alone on the other suppliers, so
+            // bulk-applying a single field (e.g. Zone) is non-destructive.
+            // -----------------------------------------------------------------
+            var $bulkBanner = $('#supplier-bulk-banner');
+            var $bulkBannerText = $('#supplier-bulk-banner-text');
+
+            function getSelectedSupplierIds() {
+                return $('#suppliers-table tbody .supplier-row-select:checked').map(function () {
+                    return String($(this).val());
+                }).get();
+            }
+
+            function refreshBulkBanner() {
+                var ids = getSelectedSupplierIds();
+                if (ids.length === 0) {
+                    $bulkBanner.hide();
+                } else {
+                    $bulkBannerText.text(ids.length + ' supplier' + (ids.length === 1 ? '' : 's') + ' selected. Edit any one to bulk-apply your changes.');
+                    $bulkBanner.show();
+                }
+                // Sync the "select all" indeterminate / checked state.
+                var $rowBoxes = $('#suppliers-table tbody .supplier-row-select');
+                var total = $rowBoxes.length;
+                var checked = ids.length;
+                var $all = $('.supplier-select-all');
+                if (total === 0) {
+                    $all.prop('checked', false).prop('indeterminate', false);
+                } else if (checked === 0) {
+                    $all.prop('checked', false).prop('indeterminate', false);
+                } else if (checked === total) {
+                    $all.prop('checked', true).prop('indeterminate', false);
+                } else {
+                    $all.prop('checked', false).prop('indeterminate', true);
+                }
+            }
+
+            $(document).on('change', '.supplier-row-select', function () {
+                var checked = $(this).prop('checked');
+                $(this).closest('tr').toggleClass('supplier-row-selected', checked);
+                refreshBulkBanner();
+            });
+
+            $(document).on('change', '.supplier-select-all', function () {
+                var check = $(this).prop('checked');
+                $('#suppliers-table tbody .supplier-row-select').each(function () {
+                    $(this).prop('checked', check);
+                    $(this).closest('tr').toggleClass('supplier-row-selected', check);
+                });
+                refreshBulkBanner();
+            });
+
+            $(document).on('click', '#supplier-bulk-clear', function () {
+                $('#suppliers-table tbody .supplier-row-select').prop('checked', false)
+                    .closest('tr').removeClass('supplier-row-selected');
+                refreshBulkBanner();
+            });
+
+            // Snapshot each Edit Supplier modal's form values when it opens, so
+            // we can compute exactly which fields the user touched.
+            function serializeFormToDict($form) {
+                var dict = {};
+                $form.serializeArray().forEach(function (item) {
+                    if (Object.prototype.hasOwnProperty.call(dict, item.name)) {
+                        if (!Array.isArray(dict[item.name])) {
+                            dict[item.name] = [dict[item.name]];
+                        }
+                        dict[item.name].push(item.value);
+                    } else {
+                        dict[item.name] = item.value;
+                    }
+                });
+                return dict;
+            }
+
+            $(document).on('show.bs.modal', '.modal[id^="editSupplierModal"]', function () {
+                var $form = $(this).find('form').first();
+                if (!$form.length) return;
+                $form.data('initialFormSnapshot', serializeFormToDict($form));
+            });
+
+            // Field names that should never be bulk-overwritten on other
+            // suppliers (these are per-row identity fields).
+            var BULK_EDIT_BLOCKED_FIELDS = ['_token', 'supplier_id', 'name'];
+
+            // Pretty labels for the confirmation dialog so users don't see
+            // raw form field names like "category_id[]" / "bank_details".
+            var BULK_EDIT_FIELD_LABELS = {
+                'type': 'Type',
+                'category_id[]': 'Category',
+                'company': 'Company',
+                'country_code': 'Country Code',
+                'phone': 'Phone',
+                'city': 'City',
+                'zone': 'Zone',
+                'approval_status': 'Approved',
+                'email': 'Email',
+                'whatsapp': 'WhatsApp',
+                'wechat': 'WeChat',
+                'alibaba': 'Alibaba',
+                'website': 'Website',
+                'others': 'Others',
+                'address': 'Address',
+                'bank_details': 'Bank Details',
+                'parent': 'Product / Parent'
+            };
+
+            function computeDiff(initial, current) {
+                var diff = {};
+                var keys = new Set();
+                Object.keys(initial || {}).forEach(function (k) { keys.add(k); });
+                Object.keys(current || {}).forEach(function (k) { keys.add(k); });
+                keys.forEach(function (k) {
+                    if (BULK_EDIT_BLOCKED_FIELDS.indexOf(k) !== -1) return;
+                    var a = (initial || {})[k];
+                    var b = (current || {})[k];
+                    if (JSON.stringify(a === undefined ? null : a) !== JSON.stringify(b === undefined ? null : b)) {
+                        diff[k] = b;
+                    }
+                });
+                return diff;
+            }
+
+            // Build a fresh FormData for `$targetForm` containing all of its
+            // existing values, with the bulk diff applied as overrides. We
+            // build the payload ourselves (instead of mutating the target
+            // modal's DOM) so Select2 / radio quirks can't drop fields.
+            function buildPayloadForTarget($targetForm, diff) {
+                var fd = new FormData();
+                var overrideKeys = new Set(Object.keys(diff));
+                $targetForm.serializeArray().forEach(function (item) {
+                    if (!overrideKeys.has(item.name)) {
+                        fd.append(item.name, item.value);
+                    }
+                });
+                Object.keys(diff).forEach(function (name) {
+                    var value = diff[name];
+                    if (Array.isArray(value)) {
+                        value.forEach(function (v) { fd.append(name, v == null ? '' : v); });
+                    } else {
+                        fd.append(name, value == null ? '' : value);
+                    }
+                });
+                return fd;
+            }
+
+            function postSupplierForm($form) {
+                return $.ajax({
+                    url: $form.attr('action'),
+                    method: 'POST',
+                    data: $form.serialize(),
+                    dataType: 'json',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+            }
+
+            function postSupplierBulkPayload($targetForm, diff) {
+                return $.ajax({
+                    url: $targetForm.attr('action'),
+                    method: 'POST',
+                    data: buildPayloadForTarget($targetForm, diff),
+                    processData: false,
+                    contentType: false,
+                    dataType: 'json',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+            }
+
+            $(document).on('submit', 'form[id^="editSupplierForm"]', function (e) {
+                var $form = $(this);
+                var sourceId = String($form.find('input[name="supplier_id"]').val() || '');
+                var selectedIds = getSelectedSupplierIds();
+
+                // No checkboxes ticked -> behave exactly like single edit.
+                if (selectedIds.length === 0) {
+                    return;
+                }
+
+                e.preventDefault();
+
+                var initial = $form.data('initialFormSnapshot') || {};
+                var current = serializeFormToDict($form);
+                var diff = computeDiff(initial, current);
+                var diffKeys = Object.keys(diff);
+
+                if (diffKeys.length === 0) {
+                    alert('No fields were changed — nothing to bulk-apply.');
+                    return;
+                }
+
+                // Targets = the checked rows. The supplier whose modal is open
+                // is NOT automatically a target unless it's also checked; this
+                // matches the row-selection metaphor users expect.
+                var targetIds = selectedIds.slice();
+
+                var prettyKeys = diffKeys.map(function (k) {
+                    return BULK_EDIT_FIELD_LABELS[k] || k;
+                });
+                var confirmMsg = 'Apply the following changed field(s) to ' + targetIds.length + ' selected supplier(s)?\n\n' +
+                    '• ' + prettyKeys.join('\n• ');
+                if (!window.confirm(confirmMsg)) {
+                    return;
+                }
+
+                var $submitBtn = $form.find('button[type="submit"]');
+                var origLabel = $submitBtn.html();
+                $submitBtn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin"></i> Saving ' + targetIds.length + '...');
+
+                var jobs = targetIds.map(function (id) {
+                    if (id === sourceId) {
+                        // Source modal already has the user's edits applied;
+                        // post it as-is so all fields they touched persist.
+                        return postSupplierForm($form);
+                    }
+                    var $targetForm = $('#editSupplierForm' + id);
+                    if (!$targetForm.length) {
+                        // Row was deselected client-side but form not present.
+                        return $.Deferred().resolve().promise();
+                    }
+                    return postSupplierBulkPayload($targetForm, diff);
+                });
+
+                // Use $.when with always() so we wait for ALL requests to settle
+                // (including failures) before deciding what to show.
+                var failures = [];
+                var wrapped = jobs.map(function (job, idx) {
+                    var d = $.Deferred();
+                    job.done(function () { d.resolve(); })
+                       .fail(function (xhr) {
+                           failures.push({ id: targetIds[idx], xhr: xhr });
+                           d.resolve();
+                       });
+                    return d.promise();
+                });
+
+                $.when.apply($, wrapped).then(function () {
+                    if (failures.length === 0) {
+                        window.location.reload();
+                        return;
+                    }
+                    $submitBtn.prop('disabled', false).html(origLabel);
+                    var failIds = failures.map(function (f) { return '#' + f.id; }).join(', ');
+                    var first = failures[0].xhr;
+                    var firstMsg = (first && first.responseJSON && first.responseJSON.message)
+                        ? first.responseJSON.message
+                        : 'Update failed.';
+                    alert('Failed to update ' + failures.length + ' supplier(s) (' + failIds + ').\n\n' + firstMsg);
+                });
+            });
+
+            // Reflect any pre-checked rows on page load.
+            refreshBulkBanner();
 
             // Initialize Select2 on page load
             initSelect2();

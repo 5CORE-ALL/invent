@@ -9,33 +9,6 @@
         /* Column show/hide menu */
         .toa-columns-wrap { position: relative; }
 
-        /* Executive Select2 — keep it the same height as other form-select-sm controls */
-        #bulk-actions-bar .select2-container .select2-selection--single {
-            height: calc(1.5em + 0.5rem + 2px);
-            padding: 1px 6px;
-            border: 1px solid #ced4da;
-            border-radius: 0.25rem;
-            font-size: 0.875rem;
-            display: flex;
-            align-items: center;
-        }
-        #bulk-actions-bar .select2-container .select2-selection--single .select2-selection__rendered {
-            line-height: 1.5;
-            padding-left: 0;
-            padding-right: 18px;
-            color: #495057;
-        }
-        #bulk-actions-bar .select2-container .select2-selection--single .select2-selection__placeholder {
-            color: #6c757d;
-        }
-        #bulk-actions-bar .select2-container .select2-selection--single .select2-selection__arrow {
-            height: 100%;
-            top: 0;
-        }
-        #bulk-actions-bar .select2-container .select2-selection--single .select2-selection__clear {
-            margin-right: 6px;
-        }
-
         /* Search input directly above the table header */
         .toa-table-search-wrap {
             padding: 10px 12px;
@@ -430,12 +403,38 @@
                             </div>
                         </div>
                         <div class="filter-item">
+                            <label class="form-label fw-semibold d-block">👤 Executive</label>
+                            <select id="executive-filter" class="form-select border border-primary" title="Filter by assigned executive">
+                                <option value="" selected>All Executives</option>
+                                <option value="__unassigned__">— Unassigned —</option>
+                                <option value="Atin">Atin</option>
+                                <option value="Jack">Jack</option>
+                                <option value="Nitish">Nitish</option>
+                                <option value="Ajay">Ajay</option>
+                                <option value="Candy">Candy</option>
+                                <option value="Sruti">Sruti</option>
+                            </select>
+                        </div>
+                        <div class="filter-item">
                             <label class="form-label fw-semibold d-block">Parent / Sku</label>
                             <select id="row-data-type" class="form-select border border-primary">
                                 <option value="all">🔁 Show All</option>
                                 <option value="sku">🔹 SKU</option>
                                 <option value="parent">🔸 Parent</option>
                             </select>
+                        </div>
+                        <div class="filter-item">
+                            <label class="form-label fw-semibold d-block">🔹 SKU</label>
+                            <div class="position-relative">
+                                <input type="search" id="sku-filter" class="form-select border border-primary"
+                                    placeholder="Search SKU…" autocomplete="off" style="padding-right: 26px;">
+                                <button type="button" id="sku-filter-clear"
+                                    class="btn btn-link p-0 position-absolute top-50 translate-middle-y text-muted"
+                                    style="right: 6px; display: none; line-height: 1;"
+                                    title="Clear" aria-label="Clear SKU filter">
+                                    <i class="mdi mdi-close-circle"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="filter-item">
                             <label class="form-label fw-semibold d-block">Pending Status</label>
@@ -499,60 +498,6 @@
                             </button>
                             <div id="toa-columns-menu" class="toa-columns-menu" style="display:none;"></div>
                         </div>
-                        <div class="filter-item" id="bulk-actions-bar">
-                            <label class="form-label fw-semibold d-block">🛠️ Bulk Actions</label>
-                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                <select id="bulk-supplier-select" class="form-select form-select-sm" style="width: 170px;">
-                                    <option value="">-- Supplier --</option>
-                                    @foreach($allSuppliers ?? [] as $s)
-                                        <option value="{{ $s }}">{{ $s }}</option>
-                                    @endforeach
-                                </select>
-                                <select id="bulk-executive-select" class="form-select form-select-sm toa-executive-select" style="width: 160px;">
-                                    <option></option>
-                                    <option value="__unassigned__">— Unassigned —</option>
-                                    <option value="Atin">Atin</option>
-                                    <option value="Jack">Jack</option>
-                                    <option value="Nitish">Nitish</option>
-                                    <option value="Ajay">Ajay</option>
-                                    <option value="Candy">Candy</option>
-                                    <option value="Sruti">Sruti</option>
-                                </select>
-                                <select id="bulk-stage-select" class="form-select form-select-sm" style="width: 160px;">
-                                    <option value="">— Stage —</option>
-                                    <option value="appr_req">Appr. Req</option>
-                                    <option value="mip">MIP</option>
-                                    <option value="r2s">R2S</option>
-                                    <option value="transit">Transit</option>
-                                    <option value="all_good">😊 All Good</option>
-                                    <option value="to_order_analysis">2 Order</option>
-                                </select>
-                                <button type="button" id="bulk-apply-all-btn" class="btn btn-sm btn-primary">
-                                    <i class="fas fa-check-double me-1"></i> Apply to selected
-                                </button>
-                                <div class="btn-group">
-                                    <button type="button" id="import-supplier-btn" class="btn btn-sm btn-success" title="Import SKU → Supplier from Excel/CSV">
-                                        <i class="fas fa-file-import me-1"></i> Import
-                                    </button>
-                                    <button type="button" class="btn btn-sm btn-success dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
-                                        <span class="visually-hidden">Toggle Dropdown</span>
-                                    </button>
-                                    <ul class="dropdown-menu dropdown-menu-end">
-                                        <li>
-                                            <a class="dropdown-item" href="{{ route('to.order.analysis.import.supplier.sample') }}" title="Download sample import file">
-                                                <i class="fas fa-download me-1"></i> Download sample
-                                            </a>
-                                        </li>
-                                    </ul>
-                                </div>
-                                <input type="file" id="import-supplier-file" accept=".xlsx,.xls,.csv" class="d-none">
-                                <button type="button" id="bulk-update-supplier-btn" class="d-none"></button>
-                                <button type="button" id="bulk-update-executive-btn" class="d-none"></button>
-                                <button type="button" id="bulk-update-stage-btn" class="d-none"></button>
-                                <span class="text-muted small ms-2" id="bulk-selected-count"></span>
-                            </div>
-                        </div>
-
                         </div>
 
                         <div class="ms-auto d-flex align-items-end">
@@ -981,26 +926,84 @@
         </div>
     </div>
 
+    {{-- Bulk Action modal: opened from the Action column.
+         Targets = the row whose Action button was clicked, plus any
+         checkbox-selected rows. Only fields with a non-empty value are
+         applied; leave any field blank to skip it. --}}
+    <div class="modal fade" id="toaActionModal" tabindex="-1" aria-labelledby="toaActionModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold d-flex align-items-center m-0" id="toaActionModalLabel">
+                        <i class="mdi mdi-pencil-box-multiple-outline me-2"></i>
+                        Bulk Edit
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-light border d-flex align-items-center mb-3 py-2 px-3" role="status">
+                        <i class="mdi mdi-information-outline text-primary me-2"></i>
+                        <div class="small">
+                            Editing <strong id="toa-action-target-count">0</strong> row(s):
+                            <span class="text-muted" id="toa-action-target-skus"></span>
+                        </div>
+                    </div>
+                    <p class="text-muted small mb-3">Only fields you fill in below will be applied. Leave a field blank to keep its current value.</p>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Supplier</label>
+                        <select id="toa-action-supplier" class="form-select form-select-sm">
+                            <option value="">— Keep current —</option>
+                            @foreach($allSuppliers ?? [] as $s)
+                                <option value="{{ $s }}">{{ $s }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Executive</label>
+                        <select id="toa-action-executive" class="form-select form-select-sm">
+                            <option value="">— Keep current —</option>
+                            <option value="__unassigned__">— Unassigned —</option>
+                            <option value="Atin">Atin</option>
+                            <option value="Jack">Jack</option>
+                            <option value="Nitish">Nitish</option>
+                            <option value="Ajay">Ajay</option>
+                            <option value="Candy">Candy</option>
+                            <option value="Sruti">Sruti</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-1">
+                        <label class="form-label fw-semibold">Stage</label>
+                        <select id="toa-action-stage" class="form-select form-select-sm">
+                            <option value="">— Keep current —</option>
+                            <option value="appr_req">Appr. Req</option>
+                            <option value="mip">MIP</option>
+                            <option value="r2s">R2S</option>
+                            <option value="transit">Transit</option>
+                            <option value="all_good">😊 All Good</option>
+                            <option value="to_order_analysis">2 Order</option>
+                        </select>
+                        <div class="form-text small">Stage rows must have MOQ &gt; 0; rows without MOQ will be skipped.</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="toa-action-apply-btn">
+                        <i class="mdi mdi-check-bold me-1"></i> Apply
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
-        // Searchable executive dropdown (placeholder only on initial load)
-        $(function () {
-            const $execSel = $('#bulk-executive-select');
-            if ($execSel.length && !$execSel.hasClass('select2-hidden-accessible')) {
-                $execSel.select2({
-                    theme: 'bootstrap-5',
-                    width: '160px',
-                    placeholder: '— Executive —',
-                    allowClear: true,
-                    minimumResultsForSearch: 0
-                });
-            }
-        });
-
         // Add Supplier modal (duplicated from supplier list page) — Select2 + AJAX save
         $(function () {
             const $modal = $('#addSupplierModal');
@@ -1060,14 +1063,12 @@
                 .done(function (res) {
                     if (res && res.success) {
                         const newName = res.supplier && res.supplier.name ? res.supplier.name : '';
-                        // Make the new supplier available in the supplier dropdowns immediately
+                        // Make the new supplier available in the supplier filter immediately
                         if (newName) {
-                            ['bulk-supplier-select', 'supplier-filter'].forEach(function (id) {
-                                const el = document.getElementById(id);
-                                if (el && !Array.from(el.options).some(o => o.value === newName)) {
-                                    el.add(new Option(newName, newName));
-                                }
-                            });
+                            const el = document.getElementById('supplier-filter');
+                            if (el && !Array.from(el.options).some(o => o.value === newName)) {
+                                el.add(new Option(newName, newName));
+                            }
                         }
                         const modalInst = bootstrap.Modal.getInstance($modal[0]) || new bootstrap.Modal($modal[0]);
                         modalInst.hide();
@@ -1666,26 +1667,6 @@
                         minWidth: 60,
                         headerSort: true,
                         headerTooltip: "Executive assigned",
-                        headerFilter: "list",
-                        headerFilterParams: {
-                            values: {
-                                "": "— All —",
-                                "__unassigned__": "Unassigned",
-                                "Atin": "Atin",
-                                "Jack": "Jack",
-                                "Nitish": "Nitish",
-                                "Ajay": "Ajay",
-                                "Candy": "Candy",
-                                "Sruti": "Sruti",
-                            },
-                            clearable: true,
-                        },
-                        headerFilterFunc: function(headerVal, rowVal) {
-                            if (!headerVal || headerVal === "") return true;
-                            const rv = (rowVal || "").trim();
-                            if (headerVal === "__unassigned__") return rv === "";
-                            return rv === headerVal;
-                        },
                         formatter: function(cell) {
                             const val = (cell.getValue() || "").trim();
                             const label = val || "— Unassigned —";
@@ -1714,12 +1695,9 @@
                     },
                     {
                         title: "SKU",
-                        field: "SKU", 
-                        headerFilter: "input",
+                        field: "SKU",
                         width: 180,
                         headerTooltip: "Short name of product",
-                        headerFilterPlaceholder: " Filter SKU...",
-                        headerFilterLiveFilter: true,
                     },
                     {
                         title: "MOQ",
@@ -2282,6 +2260,28 @@
                             return html;
                         }
                     },
+                    {
+                        // Action column — opens the shared bulk-edit modal.
+                        // Targets = {clicked row} ∪ {checkbox-selected rows},
+                        // so a single click works for one row OR for many.
+                        title: "Action",
+                        field: "_action",
+                        hozAlign: "center",
+                        headerSort: false,
+                        download: false,
+                        width: 72,
+                        minWidth: 64,
+                        frozen: false,
+                        headerTooltip: "Edit Supplier / Executive / Stage for this row (or all selected rows)",
+                        formatter: function (cell) {
+                            const row = cell.getRow().getData();
+                            const sku = (row.SKU || '').toString().replace(/"/g, '&quot;');
+                            return '<button type="button" class="btn btn-sm btn-outline-primary toa-row-action-btn" ' +
+                                'data-sku="' + sku + '" title="Bulk-edit this row (or all selected rows)">' +
+                                '<i class="mdi mdi-square-edit-outline"></i></button>';
+                        },
+                        cellClick: function (e) { e.stopPropagation(); }
+                    },
                 ],
                 ajaxResponse: (url, params, response) => {
                     let data = response.data;
@@ -2345,44 +2345,233 @@
                 } else {
                     $('#delete-selected-btn').addClass('d-none');
                 }
-                const countEl = document.getElementById('bulk-selected-count');
-                if (countEl) countEl.textContent = data.length ? data.length + ' selected' : '';
             });
 
             deleteWithSelect();
-            bulkUpdateSupplierWithSelect();
-            importSupplierFromFile();
-            bulkUpdateStageWithSelect();
-            bulkUpdateExecutiveWithSelect();
-            bulkApplyAllWithSelect();
+            initActionColumn();
 
-            function bulkApplyAllWithSelect() {
-                const applyBtn = document.getElementById('bulk-apply-all-btn');
-                if (!applyBtn) return;
+            // -----------------------------------------------------------------
+            // Action column — replaces the previous bulk-actions toolbar.
+            //
+            // Per-row Action button opens a single shared modal where the user
+            // can pick a Supplier, an Executive and/or a Stage. Targets =
+            // (clicked row) ∪ (checkbox-selected rows), deduped. Only fields
+            // the user actually fills are applied; blank fields are skipped.
+            //
+            // Backed by the same endpoints the previous bulk toolbar used:
+            //   • POST {{ route('to.order.analysis.bulk.supplier') }}
+            //   • POST /to-order-analysis/bulk-update-exec
+            //   • POST /update-forecast-data  (and /mfrg-progresses/insert for MIP)
+            // -----------------------------------------------------------------
+            function initActionColumn() {
+                const modalEl = document.getElementById('toaActionModal');
+                if (!modalEl) return;
+                const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                const $supplierSel = $('#toa-action-supplier');
+                const $execSel     = $('#toa-action-executive');
+                const $stageSel    = $('#toa-action-stage');
+                const $countEl     = $('#toa-action-target-count');
+                const $skusEl      = $('#toa-action-target-skus');
+                const applyBtn     = document.getElementById('toa-action-apply-btn');
 
-                applyBtn.addEventListener('click', function() {
-                    const supplierVal = (document.getElementById('bulk-supplier-select') || {}).value || '';
-                    const executiveSel = document.getElementById('bulk-executive-select');
-                    const executiveVal = executiveSel ? executiveSel.value : '';
-                    const executiveChosen = executiveSel ? executiveSel.selectedIndex > 0 : false;
-                    const stageVal = (document.getElementById('bulk-stage-select') || {}).value || '';
+                // Targets state for the currently-open modal session.
+                let currentRows = [];
 
-                    if (!supplierVal && !executiveChosen && !stageVal) {
-                        alert('Please choose a Supplier, Executive, or Stage to apply.');
+                // Opening the modal from the per-row Action button.
+                $(document).off('click.toaAction').on('click.toaAction', '.toa-row-action-btn', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const clickedRow = table.getRow($(this).closest('.tabulator-row')[0]);
+                    if (!clickedRow) return;
+
+                    const selected = table.getSelectedRows();
+                    const seen = new Set();
+                    currentRows = [];
+                    [clickedRow].concat(selected).forEach(function (r) {
+                        const data = r.getData();
+                        const sku = String(data.SKU || '').trim();
+                        if (!sku || seen.has(sku)) return;
+                        seen.add(sku);
+                        currentRows.push(r);
+                    });
+
+                    // Reset the form between opens so leftover values don't bleed
+                    // into the next session.
+                    $supplierSel.val('');
+                    $execSel.val('');
+                    $stageSel.val('');
+
+                    const skuList = currentRows.map(function (r) { return r.getData().SKU; })
+                                               .filter(Boolean);
+                    $countEl.text(currentRows.length);
+                    $skusEl.text(skuList.length <= 6
+                        ? skuList.join(', ')
+                        : skuList.slice(0, 6).join(', ') + ' (+' + (skuList.length - 6) + ' more)');
+
+                    bsModal.show();
+                });
+
+                // Stage update for a single row — mirrors the old bulk handler so
+                // the MIP-special-case (insert into mfrg-progresses) still works.
+                function postStageUpdate(sku, parent, value) {
+                    return new Promise(function (resolve, reject) {
+                        $.post('/update-forecast-data', {
+                            sku: sku,
+                            parent: parent || '',
+                            column: 'Stage',
+                            value: value,
+                            _token: $('meta[name="csrf-token"]').attr('content')
+                        }).done(function (res) {
+                            if (res && res.success) resolve(res);
+                            else reject(new Error((res && res.message) ? res.message : 'Save failed'));
+                        }).fail(function () { reject(new Error('Network error')); });
+                    });
+                }
+
+                async function applyStageToRows(rows, stageVal) {
+                    const skippedMoq = [];
+                    const toProcess = [];
+                    rows.forEach(function (row) {
+                        const d = row.getData();
+                        const moq = parseInt(d.approved_qty, 10) || 0;
+                        if (!moq) skippedMoq.push(d.SKU);
+                        else      toProcess.push(row);
+                    });
+                    if (toProcess.length === 0) {
+                        return { ok: 0, failed: [], skippedMoq: skippedMoq };
+                    }
+                    let ok = 0;
+                    const failed = [];
+                    for (let i = 0; i < toProcess.length; i++) {
+                        const row = toProcess[i];
+                        const d = row.getData();
+                        const sku = String(d.SKU || '').trim();
+                        const parent = String(d.Parent || '').trim();
+                        try {
+                            await postStageUpdate(sku, parent, stageVal);
+                            if (stageVal === 'mip') {
+                                const insertRes = await fetch('/mfrg-progresses/insert', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                                    },
+                                    body: JSON.stringify({
+                                        parent: d.Parent || '',
+                                        sku: d.SKU || '',
+                                        order_qty: d.approved_qty || '',
+                                        supplier: d.Supplier || '',
+                                        adv_date: d['Adv date'] || ''
+                                    })
+                                }).then(function (r) { return r.json(); });
+                                if (insertRes.success) {
+                                    row.delete();
+                                } else {
+                                    row.update({ stage: stageVal }, true);
+                                    failed.push(sku + ' (MIP: ' + (insertRes.message || 'insert failed') + ')');
+                                }
+                            } else {
+                                row.update({ stage: stageVal }, true);
+                            }
+                            ok++;
+                        } catch (e) {
+                            failed.push(sku + ': ' + (e.message || 'error'));
+                        }
+                    }
+                    return { ok: ok, failed: failed, skippedMoq: skippedMoq };
+                }
+
+                function applySupplierToRows(rows, supplierName) {
+                    const skus = rows.map(function (r) { return (r.getData().SKU || '').trim().toUpperCase(); })
+                                     .filter(function (s) { return s && !s.startsWith('PARENT'); });
+                    if (skus.length === 0) {
+                        return Promise.resolve({ ok: 0, skipped: rows.length });
+                    }
+                    return fetch('{{ route('to.order.analysis.bulk.supplier') }}', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                        },
+                        body: JSON.stringify({ skus: skus, supplier_name: supplierName })
+                    }).then(function (res) { return res.json(); }).then(function (res) {
+                        if (!res || !res.success) {
+                            throw new Error((res && res.message) ? res.message : 'Supplier update failed');
+                        }
+                        return { ok: skus.length, skipped: rows.length - skus.length, message: res.message };
+                    });
+                }
+
+                function applyExecutiveToRows(rows, execValue) {
+                    const skus = rows.map(function (r) { return (r.getData().SKU || '').trim().toUpperCase(); })
+                                     .filter(function (s) { return s && !s.startsWith('PARENT'); });
+                    if (skus.length === 0) {
+                        return Promise.resolve({ ok: 0, skipped: rows.length });
+                    }
+                    const execName = execValue === '__unassigned__' ? '' : execValue;
+                    return fetch('/to-order-analysis/bulk-update-exec', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                        },
+                        body: JSON.stringify({ skus: skus, exec_name: execName })
+                    }).then(function (res) { return res.json(); }).then(function (res) {
+                        if (!res || !res.success) {
+                            throw new Error((res && res.message) ? res.message : 'Executive update failed');
+                        }
+                        return { ok: skus.length, skipped: rows.length - skus.length, message: res.message };
+                    });
+                }
+
+                $(applyBtn).off('click.toaActionApply').on('click.toaActionApply', async function () {
+                    if (!currentRows.length) return;
+
+                    const supplierVal = ($supplierSel.val() || '').trim();
+                    const execVal     = ($execSel.val() || '').trim();
+                    const stageVal    = ($stageSel.val() || '').trim();
+
+                    if (!supplierVal && !execVal && !stageVal) {
+                        alert('Pick at least one field to apply (Supplier, Executive, or Stage).');
                         return;
                     }
 
-                    if (supplierVal) {
-                        const b = document.getElementById('bulk-update-supplier-btn');
-                        if (b) b.click();
-                    }
-                    if (executiveChosen) {
-                        const b = document.getElementById('bulk-update-executive-btn');
-                        if (b) b.click();
-                    }
-                    if (stageVal) {
-                        const b = document.getElementById('bulk-update-stage-btn');
-                        if (b) b.click();
+                    const summary = [];
+                    const origHtml = applyBtn.innerHTML;
+                    applyBtn.disabled = true;
+                    applyBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin me-1"></i> Applying...';
+
+                    try {
+                        if (supplierVal) {
+                            const res = await applySupplierToRows(currentRows, supplierVal);
+                            summary.push('Supplier → ' + supplierVal + ': ' + res.ok + ' row(s)' +
+                                (res.skipped ? ' (' + res.skipped + ' parent/empty skipped)' : ''));
+                        }
+                        if (execVal) {
+                            const res = await applyExecutiveToRows(currentRows, execVal);
+                            const label = execVal === '__unassigned__' ? 'Unassigned' : execVal;
+                            summary.push('Executive → ' + label + ': ' + res.ok + ' row(s)' +
+                                (res.skipped ? ' (' + res.skipped + ' parent/empty skipped)' : ''));
+                        }
+                        if (stageVal) {
+                            const res = await applyStageToRows(currentRows, stageVal);
+                            let line = 'Stage → ' + stageVal + ': ' + res.ok + ' row(s)';
+                            if (res.skippedMoq.length) line += ' • skipped (MOQ=0): ' + res.skippedMoq.join(', ');
+                            if (res.failed.length)     line += ' • errors: ' + res.failed.join('; ');
+                            summary.push(line);
+                        }
+
+                        bsModal.hide();
+                        // Refresh the table so updated Supplier / Exec values render.
+                        if (supplierVal || execVal) {
+                            table.replaceData();
+                        }
+                        alert('Done.\n\n' + summary.join('\n'));
+                    } catch (err) {
+                        alert('Error: ' + (err.message || 'Something went wrong'));
+                    } finally {
+                        applyBtn.disabled = false;
+                        applyBtn.innerHTML = origHtml;
                     }
                 });
             }
@@ -2425,307 +2614,6 @@
                             }
                         })
                         .catch(() => alert('Error deleting rows'));
-                });
-            }
-
-            function bulkUpdateSupplierWithSelect() {
-                const btn = document.getElementById('bulk-update-supplier-btn');
-                if (!btn) return;
-
-                btn.addEventListener('click', function() {
-                    const selectedRows = table.getSelectedRows();
-                    if (selectedRows.length === 0) {
-                        alert('Please select at least one row.');
-                        return;
-                    }
-
-                    const skus = selectedRows
-                        .map(row => (row.getData().SKU || '').trim().toUpperCase())
-                        .filter(sku => sku && !String(sku).startsWith('PARENT'));
-
-                    if (skus.length === 0) {
-                        alert('No valid SKU rows selected (parent rows are skipped).');
-                        return;
-                    }
-
-                    const supplierName = (document.getElementById('bulk-supplier-select') || {}).value;
-                    if (!supplierName || !supplierName.trim()) {
-                        alert('Please select a supplier.');
-                        return;
-                    }
-
-                    const origHtml = btn.innerHTML;
-                    btn.disabled = true;
-                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Updating...';
-
-                    fetch('{{ route('to.order.analysis.bulk.supplier') }}', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                        },
-                        body: JSON.stringify({ skus, supplier_name: supplierName.trim() })
-                    })
-                    .then(res => res.json())
-                    .then(res => {
-                        if (res.success) {
-                            table.getSelectedRows().forEach(row => table.deselectRow(row));
-                            const countEl = document.getElementById('bulk-selected-count');
-                            if (countEl) countEl.textContent = '';
-                            table.replaceData();
-                            alert(res.message || 'Bulk supplier update successful.');
-                        } else {
-                            throw new Error(res.message || 'Update failed');
-                        }
-                    })
-                    .catch(err => {
-                        alert('Error: ' + (err.message || 'Something went wrong'));
-                    })
-                    .finally(() => {
-                        btn.disabled = false;
-                        btn.innerHTML = origHtml;
-                    });
-                });
-            }
-
-            function importSupplierFromFile() {
-                const btn = document.getElementById('import-supplier-btn');
-                const fileInput = document.getElementById('import-supplier-file');
-                if (!btn || !fileInput) return;
-
-                btn.addEventListener('click', function() {
-                    fileInput.click();
-                });
-
-                fileInput.addEventListener('change', function() {
-                    const file = fileInput.files && fileInput.files[0];
-                    if (!file) return;
-
-                    const formData = new FormData();
-                    formData.append('file', file);
-
-                    const origHtml = btn.innerHTML;
-                    btn.disabled = true;
-                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Importing...';
-
-                    fetch('{{ route('to.order.analysis.import.supplier') }}', {
-                        method: 'POST',
-                        headers: {
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                        },
-                        body: formData
-                    })
-                    .then(res => res.json())
-                    .then(res => {
-                        if (res.success) {
-                            table.replaceData();
-                            alert(res.message || 'Supplier import successful.');
-                        } else {
-                            throw new Error(res.message || 'Import failed');
-                        }
-                    })
-                    .catch(err => {
-                        alert('Error: ' + (err.message || 'Something went wrong'));
-                    })
-                    .finally(() => {
-                        btn.disabled = false;
-                        btn.innerHTML = origHtml;
-                        fileInput.value = '';
-                    });
-                });
-            }
-
-            function bulkUpdateStageWithSelect() {
-                const btn = document.getElementById('bulk-update-stage-btn');
-                const stageSel = document.getElementById('bulk-stage-select');
-                if (!btn || !stageSel) {
-                    return;
-                }
-
-                function postStageUpdate(sku, parent, value) {
-                    return new Promise(function (resolve, reject) {
-                        $.post('/update-forecast-data', {
-                            sku: sku,
-                            parent: parent || '',
-                            column: 'Stage',
-                            value: value,
-                            _token: $('meta[name="csrf-token"]').attr('content')
-                        }).done(function (res) {
-                            if (res && res.success) {
-                                resolve(res);
-                            } else {
-                                reject(new Error((res && res.message) ? res.message : 'Save failed'));
-                            }
-                        }).fail(function () {
-                            reject(new Error('Network error'));
-                        });
-                    });
-                }
-
-                btn.addEventListener('click', async function () {
-                    const table = Tabulator.findTable("#toOrderAnalysis-table")[0];
-                    if (!table) {
-                        alert('Table not ready.');
-                        return;
-                    }
-                    const stageVal = String(stageSel.value || '').trim();
-                    if (!stageVal) {
-                        alert('Choose a stage to apply.');
-                        return;
-                    }
-                    const selectedRows = table.getSelectedRows();
-                    if (selectedRows.length === 0) {
-                        alert('Please select at least one row.');
-                        return;
-                    }
-                    const rows = selectedRows.filter(function (row) {
-                        const sku = String(row.getData().SKU || '').trim();
-                        return sku && !sku.toUpperCase().startsWith('PARENT');
-                    });
-                    if (rows.length === 0) {
-                        alert('No valid SKU rows selected (parent rows are skipped).');
-                        return;
-                    }
-                    const skippedMoq = [];
-                    const toProcess = [];
-                    rows.forEach(function (row) {
-                        const d = row.getData();
-                        const moq = parseInt(d.approved_qty, 10) || 0;
-                        if (!moq) {
-                            skippedMoq.push(d.SKU);
-                        } else {
-                            toProcess.push(row);
-                        }
-                    });
-                    if (toProcess.length === 0) {
-                        alert('MOQ must be greater than zero for each row. Skipped: ' + (skippedMoq.join(', ') || '(all)'));
-                        return;
-                    }
-                    if (!confirm('Apply stage to ' + toProcess.length + ' row(s)?')) {
-                        return;
-                    }
-                    const origHtml = btn.innerHTML;
-                    btn.disabled = true;
-                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Applying...';
-                    let ok = 0;
-                    const failed = [];
-                    try {
-                        for (let i = 0; i < toProcess.length; i++) {
-                            const row = toProcess[i];
-                            const d = row.getData();
-                            const sku = String(d.SKU || '').trim();
-                            const parent = String(d.Parent || '').trim();
-                            try {
-                                await postStageUpdate(sku, parent, stageVal);
-                                if (stageVal === 'mip') {
-                                    const payload = {
-                                        parent: d.Parent || '',
-                                        sku: d.SKU || '',
-                                        order_qty: d.approved_qty || '',
-                                        supplier: d.Supplier || '',
-                                        adv_date: d['Adv date'] || ''
-                                    };
-                                    const insertRes = await fetch('/mfrg-progresses/insert', {
-                                        method: 'POST',
-                                        headers: {
-                                            'Content-Type': 'application/json',
-                                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                                        },
-                                        body: JSON.stringify(payload)
-                                    }).then(function (r) { return r.json(); });
-                                    if (insertRes.success) {
-                                        row.delete();
-                                    } else {
-                                        row.update({ stage: stageVal }, true);
-                                        failed.push(sku + ' (MIP: ' + (insertRes.message || 'insert failed') + ')');
-                                    }
-                                } else {
-                                    row.update({ stage: stageVal }, true);
-                                }
-                                ok++;
-                            } catch (e) {
-                                failed.push(sku + ': ' + (e.message || 'error'));
-                            }
-                        }
-                    } finally {
-                        btn.disabled = false;
-                        btn.innerHTML = origHtml;
-                    }
-                    table.getSelectedRows().forEach(function (r) {
-                        table.deselectRow(r);
-                    });
-                    const countEl = document.getElementById('bulk-selected-count');
-                    if (countEl) {
-                        countEl.textContent = '';
-                    }
-                    let msg = 'Stage saved for ' + ok + ' row(s).';
-                    if (skippedMoq.length) {
-                        msg += ' Skipped (MOQ empty/zero): ' + skippedMoq.join(', ');
-                    }
-                    if (failed.length) {
-                        msg += ' Issues: ' + failed.join('; ');
-                    }
-                    alert(msg);
-                });
-            }
-
-            function bulkUpdateExecutiveWithSelect() {
-                const btn = document.getElementById('bulk-update-executive-btn');
-                if (!btn) return;
-
-                btn.addEventListener('click', function() {
-                    const selectedRows = table.getSelectedRows();
-                    if (selectedRows.length === 0) {
-                        alert('Please select at least one row.');
-                        return;
-                    }
-
-                    const skus = selectedRows
-                        .map(function(row) { return (row.getData().SKU || '').trim().toUpperCase(); })
-                        .filter(function(sku) { return sku && !String(sku).startsWith('PARENT'); });
-
-                    if (skus.length === 0) {
-                        alert('No valid SKU rows selected (parent rows are skipped).');
-                        return;
-                    }
-
-                    const execSel = document.getElementById('bulk-executive-select');
-                    if (!execSel || execSel.selectedIndex === 0) {
-                        alert('Please select an executive.');
-                        return;
-                    }
-                    let execName = execSel.value;
-                    if (execName === '__unassigned__') execName = '';
-
-                    const origHtml = btn.innerHTML;
-                    btn.disabled = true;
-                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Updating...';
-
-                    fetch('/to-order-analysis/bulk-update-exec', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                        },
-                        body: JSON.stringify({ skus: skus, exec_name: execName })
-                    })
-                    .then(function(res) { return res.json(); })
-                    .then(function(res) {
-                        if (res.success) {
-                            table.getSelectedRows().forEach(function(row) { table.deselectRow(row); });
-                            table.replaceData();
-                            alert(res.message || 'Bulk executive update successful.');
-                        } else {
-                            throw new Error(res.message || 'Update failed');
-                        }
-                    })
-                    .catch(function(err) {
-                        alert('Error: ' + (err.message || 'Something went wrong'));
-                    })
-                    .finally(function() {
-                        btn.disabled = false;
-                        btn.innerHTML = origHtml;
-                    });
                 });
             }
 
@@ -3139,6 +3027,10 @@
                 const supplierFilter = supplierOverride != null ? supplierOverride : (supplierFilterEl ? supplierFilterEl.value.trim() : '');
                 const categoryFilterEl = document.getElementById("category-filter");
                 const categoryFilter = categoryFilterEl ? categoryFilterEl.value.trim() : '';
+                const executiveFilterEl = document.getElementById("executive-filter");
+                const executiveFilter = executiveFilterEl ? executiveFilterEl.value.trim() : '';
+                const skuFilterEl = document.getElementById("sku-filter");
+                const skuFilter = skuFilterEl ? skuFilterEl.value.trim().toLowerCase() : '';
 
                 table.clearFilter(true);
 
@@ -3169,6 +3061,17 @@
                         } else {
                             keep = keep && (row.Category || '').trim().toLowerCase() === categoryFilter.toLowerCase();
                         }
+                    }
+                    if (executiveFilter) {
+                        const exec = (row.Exec || '').trim();
+                        if (executiveFilter === '__unassigned__') {
+                            keep = keep && exec === '';
+                        } else {
+                            keep = keep && exec.toLowerCase() === executiveFilter.toLowerCase();
+                        }
+                    }
+                    if (skuFilter) {
+                        keep = keep && (row.SKU || '').toString().toLowerCase().includes(skuFilter);
                     }
                     if (searchText) keep = keep && Object.values(row).some(val => val && val.toString().toLowerCase().includes(searchText));
 
@@ -3230,6 +3133,29 @@
             document.getElementById("moq-filter").addEventListener("change", () => applyFilters());
             document.getElementById("supplier-filter").addEventListener("change", () => applyFilters());
             document.getElementById("category-filter").addEventListener("change", () => applyFilters());
+            (function () {
+                const el = document.getElementById("executive-filter");
+                if (el) el.addEventListener("change", () => applyFilters());
+            })();
+            (function setupSkuFilter() {
+                const input = document.getElementById("sku-filter");
+                const clearBtn = document.getElementById("sku-filter-clear");
+                if (!input) return;
+                const syncClear = () => {
+                    if (!clearBtn) return;
+                    clearBtn.style.display = input.value.length > 0 ? 'inline-block' : 'none';
+                };
+                input.addEventListener("input", debounce(() => { syncClear(); applyFilters(); }, 200));
+                if (clearBtn) {
+                    clearBtn.addEventListener("click", () => {
+                        input.value = '';
+                        syncClear();
+                        applyFilters();
+                        input.focus();
+                    });
+                }
+                syncClear();
+            })();
             document.getElementById("search-input").addEventListener("input", debounce(() => applyFilters(), 300));
 
             (function setupSearchClear() {
