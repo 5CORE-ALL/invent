@@ -148,9 +148,8 @@ class GoogleShoppingCampaignsController extends Controller
 
     /**
      * Manually trigger `app:fetch-google-ads-campaigns` so missing rows can be back-filled
-     * without waiting for the daily 09:00 IST cron. Always runs in the background because
-     * the full fetch (campaign list + per-day metrics chunks + GA4 join) routinely takes
-     * several minutes and would time out on a synchronous web request.
+     * without waiting for the daily 09:00 IST cron. Runs synchronously — the request blocks
+     * until the fetch completes or fails so the UI can show real success/failure.
      *
      * Request JSON (all optional): `{ "days": 1 }` — capped to 1..30 to keep API usage sane.
      */
@@ -164,36 +163,11 @@ class GoogleShoppingCampaignsController extends Controller
             $days = 30;
         }
 
-        $command = 'app:fetch-google-ads-campaigns';
-        $label = $command;
-
-        try {
-            $cmdParts = [
-                PHP_BINARY ?: 'php',
-                base_path('artisan'),
-                $command,
-                '--days='.escapeshellarg((string) $days),
-            ];
-            $cmdString = implode(' ', $cmdParts).' > /dev/null 2>&1 &';
-            exec($cmdString);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'ok' => false,
-                'exit_code' => 1,
-                'command' => $label,
-                'message' => 'Could not start data pull: '.$e->getMessage(),
-                'output' => '',
-            ], 500);
-        }
-
-        return response()->json([
-            'ok' => true,
-            'exit_code' => 0,
-            'command' => $label,
-            'async' => true,
-            'message' => "Data pull started in background for the last {$days} day(s). The full fetch typically takes a few minutes — refresh the grid in 2-3 minutes to see new rows.",
-            'output' => "Running: {$command} --days={$days} (async mode)\n\nThe process is running in the background. Once finished, click Refresh to reload the grid.\nLogs: tail -f storage/logs/laravel.log",
-        ], 200);
+        return $this->runArtisanPush(
+            'app:fetch-google-ads-campaigns',
+            ['--days' => (string) $days],
+            'app:fetch-google-ads-campaigns'
+        );
     }
 
     /**
@@ -234,49 +208,17 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
+     * Run an Artisan command synchronously and return its exit code + console output.
+     * Web requests block until the command finishes so Push/Pull buttons show real success or failure.
+     *
      * @param  array<string, bool|string>  $options
      */
     private function runArtisanPush(string $command, array $options, string $labelForLog): JsonResponse
     {
         @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', '0');
         set_time_limit(0);
 
-        // Check if running via web request (likely to timeout for large batches)
-        $isWebRequest = php_sapi_name() !== 'cli';
-        $campaignIds = $options['--campaign-ids'] ?? '';
-        $campaignCount = $campaignIds ? count(explode(',', (string) $campaignIds)) : 0;
-
-        // If web request with many campaigns, run async to prevent timeout
-        if ($isWebRequest && $campaignCount > 10) {
-            try {
-                // Build command string for background execution
-                $cmdParts = ['php', base_path('artisan'), $command];
-                foreach ($options as $key => $value) {
-                    if (is_bool($value) && $value) {
-                        $cmdParts[] = $key;
-                    } elseif ($value !== null && $value !== false) {
-                        $cmdParts[] = $key.'='.escapeshellarg((string) $value);
-                    }
-                }
-                $cmdString = implode(' ', $cmdParts).' > /dev/null 2>&1 &';
-
-                // Execute in background
-                exec($cmdString);
-
-                return response()->json([
-                    'ok' => true,
-                    'exit_code' => 0,
-                    'command' => $labelForLog,
-                    'message' => "Command started in background for {$campaignCount} campaign(s). Processing may take several minutes. Check the campaign budgets/bids in a few minutes to verify completion.",
-                    'output' => "Running: {$command} (async mode)\nCampaigns: {$campaignCount}\n\nThe process is running in the background. This page won't show the detailed output, but you can:\n1. Wait 2-3 minutes\n2. Refresh the data\n3. Verify the budgets/bids were updated\n\nOr check logs: tail -f storage/logs/laravel.log",
-                    'async' => true,
-                ], 200);
-            } catch (\Throwable $e) {
-                // Fall back to synchronous execution
-            }
-        }
-
-        // Synchronous execution (for small batches or CLI)
         try {
             $exitCode = Artisan::call($command, $options);
         } catch (\Throwable $e) {
@@ -299,7 +241,7 @@ class GoogleShoppingCampaignsController extends Controller
             'ok' => $exitCode === 0,
             'exit_code' => $exitCode,
             'command' => $labelForLog,
-            'message' => $exitCode === 0 ? 'Command finished.' : 'Command exited with a non-zero code.',
+            'message' => $exitCode === 0 ? 'Command finished successfully.' : 'Command failed — see output below.',
             'output' => $output,
         ], $exitCode === 0 ? 200 : 422);
     }

@@ -325,7 +325,7 @@
                         <button type="button" id="gac-raw-refresh" class="btn btn-sm btn-outline-primary gac-raw-icon-btn" title="Refresh grid" aria-label="Refresh grid">
                             <i class="fa fa-refresh"></i>
                         </button>
-                        <button type="button" id="gac-raw-pull-data" class="btn btn-sm btn-primary" title="Runs Artisan app:fetch-google-ads-campaigns — pulls fresh campaign metrics from the Google Ads + GA4 APIs (use when the daily cron missed data). Runs in the background; refresh the grid in a few minutes.">
+                        <button type="button" id="gac-raw-pull-data" class="btn btn-sm btn-primary" title="Runs app:fetch-google-ads-campaigns — pulls fresh campaign metrics from Google Ads + GA4. Waits until complete; shows success or error.">
                             <i class="fa fa-cloud-download-alt"></i> Pull Data
                             <input type="number" id="gac-raw-pull-days" min="1" max="30" value="1" class="form-control form-control-sm d-inline-block ms-1" style="width: 56px; padding: 1px 4px; height: 22px; font-size: 11px;" title="Days to fetch (1-30)" onclick="event.stopPropagation();">
                         </button>
@@ -335,10 +335,10 @@
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbgt-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">SBGT RULE</button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbid-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbidRuleModal" title="Edit 7UB/1UB% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Runs Artisan budget:update-shopping — sets Google Shopping daily budgets from the saved SBGT rule (same as cron)">
+                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Runs budget:update-shopping — sets Google Shopping daily budgets from the saved SBGT rule. Waits until complete; shows success or error.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBGT
                         </button>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbid" title="Runs Artisan sbid:update — pushes SBIDs for PARENT Shopping campaigns from the saved SBID rule (same as cron)">
+                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbid" title="Runs sbid:update — pushes SBIDs for PARENT Shopping campaigns from the saved SBID rule. Waits until complete; shows success or error.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBID
                         </button>
                     </div>
@@ -1421,7 +1421,7 @@
                 wrap.classList.remove('d-none', 'alert-success', 'alert-danger', 'alert-secondary', 'alert-info');
                 wrap.classList.add('alert-info');
                 tEl.innerHTML = '<i class="fa fa-spinner fa-spin me-1" aria-hidden="true"></i>' + (title || 'Working…');
-                pre.textContent = detail || 'Running on the server. This can take several minutes — please keep this tab open.';
+                pre.textContent = detail || 'Running on the server — please keep this tab open until finished.';
                 wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
 
@@ -1483,13 +1483,14 @@
                     .then(function(out) {
                         var b = out.body || {};
                         var cmd = b.command || 'command';
-                        var title = cmd + ' — ' + (b.ok ? 'finished' : 'failed');
+                        var success = out.ok && b.ok !== false;
+                        var title = cmd + ' — ' + (success ? 'finished' : 'failed');
                         if (b.exit_code != null) {
                             title += ' (exit ' + b.exit_code + ')';
                         }
                         var text = (b.message ? b.message + '\n\n' : '') + (b.output || '');
-                        gacShowPushResult(title, text, b.ok ? 'success' : 'error');
-                        if (b.ok && table) {
+                        gacShowPushResult(title, text, success ? 'success' : 'error');
+                        if (success && table) {
                             Promise.resolve(table.setData(dataUrl)).finally(gacRawRefreshTableUiSoon);
                         }
                     })
@@ -1515,15 +1516,15 @@
                     if (days > 30) days = 30;
                     if (daysEl) daysEl.value = String(days);
 
-                    if (!window.confirm('Run app:fetch-google-ads-campaigns for the last ' + days + ' day(s)? This pulls campaigns + metrics from the Google Ads / GA4 APIs and runs in the background (a few minutes).')) {
+                    if (!window.confirm('Run app:fetch-google-ads-campaigns for the last ' + days + ' day(s)? This pulls campaigns + metrics from Google Ads / GA4 and waits until complete (may take several minutes).')) {
                         return;
                     }
 
                     var origHtml = pullDataBtn.innerHTML;
                     pullDataBtn.disabled = true;
-                    pullDataBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Starting…';
-                    gacShowPushLoading('Starting data pull (app:fetch-google-ads-campaigns)…',
-                        'Triggering background fetch for the last ' + days + ' day(s). The grid will keep working — come back and click Refresh in a few minutes.');
+                    pullDataBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Pulling…';
+                    gacShowPushLoading('Pulling data (app:fetch-google-ads-campaigns)…',
+                        'Fetching the last ' + days + ' day(s) from Google Ads + GA4. This runs synchronously — do not close this tab.');
 
                     var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
                     fetch(gacRawPullDataUrl, {
@@ -1545,12 +1546,16 @@
                         .then(function(out) {
                             var b = out.body || {};
                             var cmd = b.command || 'app:fetch-google-ads-campaigns';
-                            var title = cmd + ' — ' + (b.ok ? 'started' : 'failed');
-                            if (b.exit_code != null && !b.ok) {
+                            var success = out.ok && b.ok !== false;
+                            var title = cmd + ' — ' + (success ? 'finished' : 'failed');
+                            if (b.exit_code != null) {
                                 title += ' (exit ' + b.exit_code + ')';
                             }
                             var text = (b.message ? b.message + '\n\n' : '') + (b.output || '');
-                            gacShowPushResult(title, text, b.ok ? 'success' : 'error');
+                            gacShowPushResult(title, text, success ? 'success' : 'error');
+                            if (success && table) {
+                                Promise.resolve(table.setData(dataUrl)).finally(gacRawRefreshTableUiSoon);
+                            }
                         })
                         .catch(function(err) {
                             gacShowPushResult('Request failed', String(err && err.message ? err.message : err), 'error');
@@ -1576,7 +1581,7 @@
                         campaign_ids: ids,
                         confirmMsg: 'Run budget:update-shopping for ' + scope + '? Only matching SHOPPING PARENT campaigns in Google Ads are updated (daily budget from the saved SBGT rule).',
                         loadingTitle: 'Pushing SBGT (budget:update-shopping)…',
-                        loadingDetail: 'Updating budgets for ' + ids.length + ' campaign id(s). This can take several minutes — please keep this tab open.',
+                        loadingDetail: 'Updating budgets for ' + ids.length + ' campaign id(s). Waiting for Google Ads API — do not close this tab.',
                     });
                 });
             }
@@ -1594,7 +1599,7 @@
                         campaign_ids: ids,
                         confirmMsg: 'Run sbid:update for ' + scope + '? Only matching SHOPPING PARENT campaigns in Google Ads are updated (SBID from the saved rule).',
                         loadingTitle: 'Pushing SBID (sbid:update)…',
-                        loadingDetail: 'Updating SBIDs for ' + ids.length + ' campaign id(s). This can take several minutes — please keep this tab open.',
+                        loadingDetail: 'Updating SBIDs for ' + ids.length + ' campaign id(s). Waiting for Google Ads API — do not close this tab.',
                     });
                 });
             }
