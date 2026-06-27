@@ -210,25 +210,25 @@
         .title-master-ai-stack-btn i {
             font-size: 15px;
         }
-        #tmAiStackModal .tm-ai-ref-area {
+        #titleModal .tm-ai-ref-area {
             font-size: 0.9rem;
             background: #fff;
             min-height: 2.25rem;
         }
-        #tmAiStackModal .tm-ai-prompt-toolbar {
+        #titleModal .tm-ai-prompt-toolbar {
             display: flex;
             flex-wrap: wrap;
             align-items: center;
             gap: 0.5rem;
             width: 100%;
         }
-        #tmAiStackModal .tm-ai-prompt-toolbar .tm-ai-prompt-actions {
+        #titleModal .tm-ai-prompt-toolbar .tm-ai-prompt-actions {
             margin-left: auto;
             display: flex;
             align-items: center;
             gap: 0.35rem;
         }
-        #tmAiStackModal .tm-ai-prompt-icon-btn {
+        #titleModal .tm-ai-prompt-icon-btn {
             width: 2.5rem;
             height: 2.5rem;
             padding: 0;
@@ -239,45 +239,45 @@
             border-radius: 0.375rem;
             box-sizing: border-box;
         }
-        #tmAiStackModal .tm-ai-prompt-icon-btn i {
+        #titleModal .tm-ai-prompt-icon-btn i {
             font-size: 1.05rem;
             line-height: 1;
         }
-        #tmAiStackModal .tm-ai-prompt-icon-btn .tm-ai-stack-generate-spinner {
+        #titleModal .tm-ai-prompt-icon-btn .tm-ai-stack-generate-spinner {
             width: 1.05rem;
             height: 1.05rem;
             border-width: 0.14em;
         }
-        #tmAiStackModal .tm-ai-prompt-icon-btn-eye {
+        #titleModal .tm-ai-prompt-icon-btn-eye {
             color: #495057;
             background: #fff;
             border: 2px solid #6c757d;
         }
-        #tmAiStackModal .tm-ai-prompt-icon-btn-eye:hover {
+        #titleModal .tm-ai-prompt-icon-btn-eye:hover {
             background: #f8f9fa;
             color: #212529;
             border-color: #495057;
         }
-        #tmAiStackModal .tm-ai-prompt-icon-btn-wand {
+        #titleModal .tm-ai-prompt-icon-btn-wand {
             color: #fff;
             background: #0d6efd;
             border: 2px solid #0d6efd;
         }
-        #tmAiStackModal .tm-ai-prompt-icon-btn-wand:hover:not(:disabled) {
+        #titleModal .tm-ai-prompt-icon-btn-wand:hover:not(:disabled) {
             background: #0b5ed7;
             border-color: #0a58ca;
             color: #fff;
         }
-        #tmAiStackModal .tm-ai-prompt-icon-btn-wand:disabled {
+        #titleModal .tm-ai-prompt-icon-btn-wand:disabled {
             opacity: 0.65;
         }
         #tmAiStackPromptEditorModal {
             z-index: 1060;
         }
-        #tmAiStackModal .tm-ai-stack-draft-row textarea {
+        #titleModal .tm-ai-stack-draft-row textarea {
             min-height: 56px;
         }
-        #tmAiStackModal .tm-ai-stack-apply-btn {
+        #titleModal .tm-ai-stack-apply-btn {
             min-width: 44px;
         }
         /* Tall modals: stay within viewport; scroll inside body (no whole-page scroll) */
@@ -750,6 +750,15 @@
             color: #198754;
             font-weight: 600;
         }
+        /* In the edit modal the counter sits inline beside the title label (not floated). */
+        #titleModal .form-label .char-counter {
+            float: none;
+            margin-left: 0.35rem;
+        }
+        textarea.tm-title-field-over.form-control {
+            border-color: #dc3545;
+            box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.15);
+        }
 
         .platform-selector-modal .platform-item {
             padding: 15px;
@@ -978,9 +987,6 @@
                                         title="Listing Quality Score from Jungle Scout (junglescout_product_data JSON listing_quality_score). Latest row by SKU, else by Parent.">
                                         <span class="title-master-pmcvr-th-inner">LQS</span>
                                     </th>
-                                    <th class="title-master-ai-th" title="Open AI workspace: Title 170 + Title 100/80/60 references and 3 AI drafts (150–175 chars when generated).">
-                                        AI
-                                    </th>
                                     <th class="title-master-title-dot-th">
                                         <div style="display: flex; align-items: center; justify-content: center; gap: 3px; flex-wrap: wrap;">
                                             <span style="font-size: 9px;">170</span>
@@ -1067,63 +1073,81 @@
                     <form id="titleForm">
                         <input type="hidden" id="editSku" name="sku">
                         
-                        <div class="mb-3">
+                        <div class="mb-3" id="selectSkuGroup">
                             <label for="selectSku" class="form-label">Select SKU <span class="text-danger">*</span></label>
                             <select class="form-select" id="selectSku" name="sku" required>
                                 <option value="">Choose SKU...</option>
                             </select>
                         </div>
 
+                        <div class="mb-3" id="editSkuLabelWrap" style="display:none;">
+                            <label class="form-label mb-1">SKU</label>
+                            <div class="fw-bold" id="editSkuLabel">—</div>
+                        </div>
+
+                        <!-- AI panel (mirrors Bullet edit modal): prompt details + rules + generate-all -->
+                        <div class="ai-edit-panel mb-3 border rounded p-2">
+                            <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                                <div class="small text-muted text-uppercase fw-semibold">AI Titles</div>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="tmEditAiPromptRulesBtn" title="View / edit the AI prompt rules used when generating titles">
+                                    <i class="fas fa-sliders-h me-1"></i>AI Prompt Rules
+                                </button>
+                            </div>
+                            <div class="mb-2">
+                                <label for="tmEditAiDetails" class="form-label mb-1">AI Prompt Details / Keywords</label>
+                                <textarea class="form-control" id="tmEditAiDetails" rows="2" placeholder="Add product details, keywords, material, size, use cases, or benefits the AI should include."></textarea>
+                                <div class="form-text">Optional, but recommended — used by <strong>AI Generate</strong> and the per-title <strong>Change</strong> buttons.</div>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <button type="button" class="btn btn-primary btn-sm" id="tmEditAiGenerateAllBtn"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
+                                <span id="tmEditAiLoading" style="display:none;"><i class="fas fa-spinner fa-spin"></i> Generating...</span>
+                            </div>
+                        </div>
+
                         <div class="mb-3">
-                            <label for="title150" class="form-label">
-                                Title 170 <span class="char-counter" id="counter150">0/170</span>
-                            </label>
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label for="title150" class="form-label mb-0">Title 170 <span class="char-counter" id="counter150">0/170</span></label>
+                                <div class="btn-group btn-group-sm" role="group" aria-label="Title 170 AI actions">
+                                    <button type="button" class="btn btn-outline-secondary tm-title-revert d-none" data-field="title150" title="Revert to the previous Title 170"><i class="fas fa-rotate-left"></i> Revert</button>
+                                    <button type="button" class="btn btn-outline-primary" id="aiImproveBtn" title="Generate Title 170 (about 120–170 characters) with AI"><i class="fas fa-wand-magic-sparkles"></i> Change</button>
+                                </div>
+                            </div>
                             <textarea class="form-control" id="title150" name="title150" rows="3" maxlength="500" data-max-display="170"></textarea>
                         </div>
 
                         <div class="mb-3">
-                            <button type="button" class="btn btn-ai-improve" id="aiImproveBtn" title="Generate Title 170 (about 120–170 characters) with AI and review in popup">
-                                <i class="fas fa-magic"></i> Improve with AI
-                            </button>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="title100" class="form-label">
-                                Title 100 <span class="char-counter" id="counter100">0/105</span>
-                            </label>
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label for="title100" class="form-label mb-0">Title 100 <span class="char-counter" id="counter100">0/105</span></label>
+                                <div class="btn-group btn-group-sm" role="group" aria-label="Title 100 AI actions">
+                                    <button type="button" class="btn btn-outline-secondary tm-title-revert d-none" data-field="title100" title="Revert to the previous Title 100"><i class="fas fa-rotate-left"></i> Revert</button>
+                                    <button type="button" class="btn btn-outline-primary" id="aiImproveBtn100" title="Generate Title 100 (90-105 chars, target 95-100) with AI"><i class="fas fa-wand-magic-sparkles"></i> Change</button>
+                                </div>
+                            </div>
                             <textarea class="form-control" id="title100" name="title100" rows="2" maxlength="105"></textarea>
                         </div>
 
                         <div class="mb-3">
-                            <button type="button" class="btn btn-ai-improve" id="aiImproveBtn100" title="Generate Title 100 (90-105 chars, target 95-100) with AI and review in popup">
-                                <i class="fas fa-magic"></i> Improve with AI
-                            </button>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="title80" class="form-label">
-                                Title 80 <span class="char-counter" id="counter80">0/80</span>
-                            </label>
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label for="title80" class="form-label mb-0">Title 80 <span class="char-counter" id="counter80">0/80</span></label>
+                                <div class="btn-group btn-group-sm" role="group" aria-label="Title 80 AI actions">
+                                    <button type="button" class="btn btn-outline-secondary tm-title-revert d-none" data-field="title80" title="Revert to the previous Title 80"><i class="fas fa-rotate-left"></i> Revert</button>
+                                    <button type="button" class="btn btn-outline-primary" id="aiImproveBtn80" title="Generate Title 80 (75-85 chars) with AI for eBay"><i class="fas fa-wand-magic-sparkles"></i> Change</button>
+                                </div>
+                            </div>
                             <textarea class="form-control" id="title80" name="title80" rows="2" maxlength="80"></textarea>
                         </div>
 
                         <div class="mb-3">
-                            <button type="button" class="btn btn-ai-improve" id="aiImproveBtn80" title="Generate Title 80 (75-85 chars) with AI for eBay">
-                                <i class="fas fa-magic"></i> Improve with AI
-                            </button>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="title60" class="form-label">
-                                Title 60 <span class="char-counter" id="counter60">0/60</span>
-                            </label>
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label for="title60" class="form-label mb-0">Title 60 <span class="char-counter" id="counter60">0/60</span></label>
+                                <div class="btn-group btn-group-sm" role="group" aria-label="Title 60 AI actions">
+                                    <button type="button" class="btn btn-outline-secondary tm-title-revert d-none" data-field="title60" title="Revert to the previous Title 60"><i class="fas fa-rotate-left"></i> Revert</button>
+                                    <button type="button" class="btn btn-outline-primary" id="aiImproveBtn60" title="Generate Title 60 (55-60 chars) with AI for Macy's/Faire"><i class="fas fa-wand-magic-sparkles"></i> Change</button>
+                                </div>
+                            </div>
                             <textarea class="form-control" id="title60" name="title60" rows="2" maxlength="60"></textarea>
                         </div>
-                        <div class="mb-3">
-                            <button type="button" class="btn btn-ai-improve" id="aiImproveBtn60" title="Generate Title 60 (55-60 chars) with AI for Macy's/Faire">
-                                <i class="fas fa-magic"></i> Improve with AI
-                            </button>
-                        </div>
+
                     </form>
                 </div>
                 <div class="modal-footer">
@@ -1187,103 +1211,17 @@
         </div>
     </div>
 
-    <!-- Title Master: AI stack — Title 170 + Title 100/80/60 refs + 3 draft fields (150–175 chars for AI drafts) -->
-    <div class="modal fade" id="tmAiStackModal" tabindex="-1" aria-labelledby="tmAiStackModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg">
-            <div class="modal-content">
-                <div class="modal-header modal-header-gradient">
-                    <h5 class="modal-title" id="tmAiStackModalLabel">
-                        <i class="fas fa-wand-magic-sparkles me-2"></i>AI workspace
-                        <span class="fs-6 fw-normal ms-2 text-white-50" id="tmAiStackSkuWrap">SKU: <span id="tmAiStackSkuLabel"></span></span>
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="tmAiStackAiAlert" class="alert alert-danger py-2 small d-none mb-2" role="alert"></div>
-                    <div class="mb-2 tm-ai-prompt-toolbar">
-                        <label class="form-label fw-bold mb-0 text-nowrap flex-shrink-0">AI Prompt</label>
-                        <span class="text-muted small flex-shrink-0" id="tmAiStackPromptSummary" title="">No prompt</span>
-                        <div class="tm-ai-prompt-actions">
-                            <button type="button" class="btn tm-ai-prompt-icon-btn tm-ai-prompt-icon-btn-eye" id="tmAiStackPromptOpenBtn" title="View / edit full AI prompt">
-                                <i class="fas fa-eye" aria-hidden="true"></i>
-                                <span class="visually-hidden">View or edit AI prompt</span>
-                            </button>
-                            <button type="button" class="btn tm-ai-prompt-icon-btn tm-ai-prompt-icon-btn-wand" id="tmAiStackGenerateBtn" title="Generate 3 drafts with AI">
-                                <span class="tm-ai-stack-generate-spinner spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
-                                <i class="fas fa-wand-magic-sparkles tm-ai-stack-generate-icon" aria-hidden="true"></i>
-                                <span class="visually-hidden">Generate drafts</span>
-                            </button>
-                        </div>
-                        <textarea id="tmAiStackAiPrompt" class="d-none" maxlength="15000" tabindex="-1" aria-hidden="true"></textarea>
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label fw-bold mb-1" for="tmAiStackTitle150Ref">Title 170 (ref) <span class="text-muted fw-normal" id="tmAiStackTitle150RefCount">0 chars</span></label>
-                        <div class="d-flex gap-2 align-items-start">
-                            <textarea id="tmAiStackTitle150Ref" class="form-control tm-ai-ref-area flex-grow-1" rows="2" maxlength="500" placeholder="Edit Title 170 (max 170 applied to grid)"></textarea>
-                            <button type="button" class="btn btn-outline-primary tm-ai-stack-apply-btn align-self-stretch" data-tm-apply-ref-field="title150" title="Apply this Title 170 text to the grid (max 170 chars). Persist with Add Title → Save."><span class="visually-hidden">Apply Title 170 to grid</span><i class="fas fa-check" aria-hidden="true"></i></button>
-                        </div>
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label fw-bold mb-1" for="tmAiStackTitle100Ref">Title 100 (ref) <span class="text-muted fw-normal" id="tmAiStackTitle100RefCount">0 chars</span></label>
-                        <div class="d-flex gap-2 align-items-start">
-                            <textarea id="tmAiStackTitle100Ref" class="form-control tm-ai-ref-area flex-grow-1" rows="1" maxlength="105" placeholder="Max 105 chars — or leave empty and Apply prefills from Title 170"></textarea>
-                            <button type="button" class="btn btn-outline-primary tm-ai-stack-apply-btn align-self-stretch" data-tm-apply-ref-field="title100" title="Apply this Title 100 to the grid (max 105). If empty, prefill from Title 170 (truncated) then apply."><span class="visually-hidden">Apply Title 100 to grid</span><i class="fas fa-check" aria-hidden="true"></i></button>
-                        </div>
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label fw-bold mb-1" for="tmAiStackTitle80Ref">Title 80 (ref) <span class="text-muted fw-normal" id="tmAiStackTitle80RefCount">0 chars</span></label>
-                        <div class="d-flex gap-2 align-items-start">
-                            <textarea id="tmAiStackTitle80Ref" class="form-control tm-ai-ref-area flex-grow-1" rows="1" maxlength="80" placeholder="Max 80 chars — or leave empty and Apply prefills from Title 170"></textarea>
-                            <button type="button" class="btn btn-outline-primary tm-ai-stack-apply-btn align-self-stretch" data-tm-apply-ref-field="title80" title="Apply this Title 80 to the grid (max 80). If empty, prefill from Title 170 (truncated) then apply."><span class="visually-hidden">Apply Title 80 to grid</span><i class="fas fa-check" aria-hidden="true"></i></button>
-                        </div>
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label fw-bold mb-1" for="tmAiStackTitle60Ref">Title 60 (ref) <span class="text-muted fw-normal" id="tmAiStackTitle60RefCount">0 chars</span></label>
-                        <div class="d-flex gap-2 align-items-start">
-                            <textarea id="tmAiStackTitle60Ref" class="form-control tm-ai-ref-area flex-grow-1" rows="1" maxlength="60" placeholder="Max 60 chars — or leave empty and Apply prefills from Title 170"></textarea>
-                            <button type="button" class="btn btn-outline-primary tm-ai-stack-apply-btn align-self-stretch" data-tm-apply-ref-field="title60" title="Apply this Title 60 to the grid (max 60). If empty, prefill from Title 170 (truncated) then apply."><span class="visually-hidden">Apply Title 60 to grid</span><i class="fas fa-check" aria-hidden="true"></i></button>
-                        </div>
-                    </div>
-                    <div class="mb-2 tm-ai-stack-draft-row">
-                        <label class="form-label fw-bold mb-1" for="tmAiStackVariant1">Draft 1 <span class="text-muted fw-normal small" id="tmAiStackVariant1Count">0/175</span></label>
-                        <div class="d-flex gap-2 align-items-start">
-                            <textarea id="tmAiStackVariant1" class="form-control flex-grow-1" rows="2" maxlength="175" placeholder="150–175 characters (max 175)"></textarea>
-                            <button type="button" class="btn btn-outline-primary tm-ai-stack-apply-btn align-self-stretch" data-tm-apply-draft="1" title="Apply draft 1 to Title 170 (grid; use Add Title → Save to store in database)"><span class="visually-hidden">Apply draft 1 to Title 170</span><i class="fas fa-check" aria-hidden="true"></i></button>
-                        </div>
-                    </div>
-                    <div class="mb-2 tm-ai-stack-draft-row">
-                        <label class="form-label fw-bold mb-1" for="tmAiStackVariant2">Draft 2 <span class="text-muted fw-normal small" id="tmAiStackVariant2Count">0/175</span></label>
-                        <div class="d-flex gap-2 align-items-start">
-                            <textarea id="tmAiStackVariant2" class="form-control flex-grow-1" rows="2" maxlength="175" placeholder="150–175 characters (max 175)"></textarea>
-                            <button type="button" class="btn btn-outline-primary tm-ai-stack-apply-btn align-self-stretch" data-tm-apply-draft="2" title="Apply draft 2 to Title 170 (grid; use Add Title → Save to store in database)"><span class="visually-hidden">Apply draft 2 to Title 170</span><i class="fas fa-check" aria-hidden="true"></i></button>
-                        </div>
-                    </div>
-                    <div class="mb-0 tm-ai-stack-draft-row">
-                        <label class="form-label fw-bold mb-1" for="tmAiStackVariant3">Draft 3 <span class="text-muted fw-normal small" id="tmAiStackVariant3Count">0/175</span></label>
-                        <div class="d-flex gap-2 align-items-start">
-                            <textarea id="tmAiStackVariant3" class="form-control flex-grow-1" rows="2" maxlength="175" placeholder="150–175 characters (max 175)"></textarea>
-                            <button type="button" class="btn btn-outline-primary tm-ai-stack-apply-btn align-self-stretch" data-tm-apply-draft="3" title="Apply draft 3 to Title 170 (grid; use Add Title → Save to store in database)"><span class="visually-hidden">Apply draft 3 to Title 170</span><i class="fas fa-check" aria-hidden="true"></i></button>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Title Master AI workspace: full AI prompt view / edit (opened from eye icon) -->
     <div class="modal fade" id="tmAiStackPromptEditorModal" tabindex="-1" aria-labelledby="tmAiStackPromptEditorModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="tmAiStackPromptEditorModalLabel"><i class="fas fa-eye me-2"></i>AI prompt</h5>
+                    <h5 class="modal-title" id="tmAiStackPromptEditorModalLabel"><i class="fas fa-sliders-h me-2"></i>AI Prompt Rules</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small mb-2">Edit the instructions sent to the model. Changes apply when you click <strong>Done</strong> or type (kept in sync automatically).</p>
-                    <textarea id="tmAiStackAiPromptEditor" class="form-control font-monospace small" rows="18" maxlength="15000" placeholder="AI prompt…"></textarea>
+                    <p class="text-muted small mb-2">Global instructions added to every AI title generation (AI Generate and the per-title Change buttons). Saved automatically.</p>
+                    <textarea id="tmAiStackAiPromptEditor" class="form-control font-monospace small" rows="18" maxlength="15000" placeholder="e.g. Always start with the brand &quot;5 Core&quot;. Use US spelling. Avoid ALL CAPS. Prioritize size and compatibility keywords."></textarea>
                     <p class="small text-muted mb-0 mt-2" id="tmAiStackAiPromptEditorCount">0 characters</p>
                 </div>
                 <div class="modal-footer">
@@ -2380,6 +2318,89 @@
                 counter.textContent = len + '/' + maxLen;
                 if (len > maxLen) counter.classList.add('error');
             }
+            titleMasterMarkFieldOverLimit(fieldId);
+        }
+
+        /** Hard character limit per title field (used for the red flag + Save block). */
+        const TM_TITLE_LIMITS = { title150: 170, title100: 105, title80: 80, title60: 60 };
+        function titleMasterFieldLimit(fieldId) {
+            return TM_TITLE_LIMITS[fieldId] != null ? TM_TITLE_LIMITS[fieldId] : titleMasterTitleMaxLen(fieldId);
+        }
+
+        /** Flag a single field red when it exceeds its limit. Returns true if over limit. */
+        function titleMasterMarkFieldOverLimit(fieldId) {
+            const input = document.getElementById(fieldId);
+            if (!input) return false;
+            const counter = document.getElementById('counter' + titleMasterTitleCounterSuffix(fieldId));
+            const over = input.value.length > titleMasterFieldLimit(fieldId);
+            input.classList.toggle('tm-title-field-over', over);
+            if (over && counter) counter.classList.add('error');
+            return over;
+        }
+
+        /** Returns true if ANY title field is over its limit (also refreshes the red flags). */
+        function titleMasterAnyTitleOverLimit() {
+            return ['title150', 'title100', 'title80', 'title60']
+                .map(titleMasterMarkFieldOverLimit)
+                .some(Boolean);
+        }
+
+        /** Pre-fill the Add/Edit Title modal from a SKU's already-saved titles so editing one field never blanks the others. */
+        function titleMasterPopulateModalTitles(sku) {
+            const item = (typeof tableData !== 'undefined' ? tableData : []).find(d => d.SKU === sku);
+            const val = (x) => (x != null ? String(x) : '');
+            ['title150', 'title100', 'title80', 'title60'].forEach(field => {
+                const el = document.getElementById(field);
+                if (el) el.value = item ? val(item[field]) : '';
+                updateModalCounter(field);
+            });
+        }
+
+        /** Apply an AI-generated title into a field (bullet-style): remember the prior value and reveal Revert. */
+        function titleMasterApplyAiTitle(fieldId, newText) {
+            const el = document.getElementById(fieldId);
+            if (el == null) return;
+            el.dataset.tmPrevValue = el.value;
+            el.value = newText != null ? String(newText) : '';
+            updateModalCounter(fieldId);
+            const revertBtn = document.querySelector('.tm-title-revert[data-field="' + fieldId + '"]');
+            if (revertBtn) revertBtn.classList.remove('d-none');
+        }
+
+        /** Restore the value a field had before the last AI change, then hide Revert. */
+        function titleMasterRevertField(fieldId) {
+            const el = document.getElementById(fieldId);
+            if (!el || el.dataset.tmPrevValue == null) return;
+            el.value = el.dataset.tmPrevValue;
+            delete el.dataset.tmPrevValue;
+            updateModalCounter(fieldId);
+            const revertBtn = document.querySelector('.tm-title-revert[data-field="' + fieldId + '"]');
+            if (revertBtn) revertBtn.classList.add('d-none');
+            if (typeof showToast === 'function') showToast('info', 'Reverted to the previous title.');
+        }
+
+        /** Reset the per-edit AI state (keywords box + revert buttons/history) each time the modal opens. */
+        function titleMasterResetEditAiState() {
+            const details = document.getElementById('tmEditAiDetails');
+            if (details) details.value = '';
+            document.querySelectorAll('.tm-title-revert').forEach(b => b.classList.add('d-none'));
+            ['title150', 'title100', 'title80', 'title60'].forEach(f => {
+                const el = document.getElementById(f);
+                if (el) delete el.dataset.tmPrevValue;
+            });
+        }
+
+        /** Saved AI Prompt Rules (global, persisted in localStorage). */
+        function titleMasterAiPromptRules() {
+            try { return (localStorage.getItem('tm_ai_prompt_rules') || '').trim(); } catch (e) { return ''; }
+        }
+
+        /** Extra context sent to the AI = saved Prompt Rules + the per-edit Keywords box. */
+        function titleMasterAiDetails() {
+            const d = document.getElementById('tmEditAiDetails');
+            const keywords = d && d.value ? d.value.trim() : '';
+            const rules = titleMasterAiPromptRules();
+            return [rules, keywords].filter(Boolean).join('\n\n');
         }
 
         function showFieldLoading(fieldId) {
@@ -2420,6 +2441,7 @@
                         counter.textContent = length + '/' + maxLength;
                         if (length > maxLength) counter.classList.add('error');
                     }
+                    titleMasterMarkFieldOverLimit(field);
                 });
             });
 
@@ -2427,6 +2449,92 @@
             document.getElementById('saveTitleBtn').addEventListener('click', function() {
                 saveTitleFromModal();
             });
+
+            // Revert buttons (per title field) — delegated so they work for all four fields.
+            const titleModalEl = document.getElementById('titleModal');
+            if (titleModalEl && titleModalEl.getAttribute('data-tm-revert-bound') !== '1') {
+                titleModalEl.setAttribute('data-tm-revert-bound', '1');
+                titleModalEl.addEventListener('click', function(ev) {
+                    const rb = ev.target.closest('.tm-title-revert');
+                    if (!rb || !titleModalEl.contains(rb)) return;
+                    ev.preventDefault();
+                    titleMasterRevertField(rb.getAttribute('data-field'));
+                });
+            }
+
+            // AI Prompt Rules editor (top of modal) — persisted in localStorage, applied to all AI generations.
+            const promptRulesBtn = document.getElementById('tmEditAiPromptRulesBtn');
+            if (promptRulesBtn) {
+                promptRulesBtn.addEventListener('click', function() {
+                    const editor = document.getElementById('tmAiStackAiPromptEditor');
+                    const countEl = document.getElementById('tmAiStackAiPromptEditorCount');
+                    if (editor) {
+                        editor.value = titleMasterAiPromptRules();
+                        if (countEl) countEl.textContent = editor.value.length.toLocaleString() + ' characters';
+                        editor.oninput = function() {
+                            try { localStorage.setItem('tm_ai_prompt_rules', editor.value); } catch (e) {}
+                            if (countEl) countEl.textContent = editor.value.length.toLocaleString() + ' characters';
+                        };
+                    }
+                    const m = document.getElementById('tmAiStackPromptEditorModal');
+                    if (m) bootstrap.Modal.getOrCreateInstance(m).show();
+                });
+            }
+
+            // AI Generate (all four titles at once) — mirrors Bullet's "AI Generate".
+            const aiGenAllBtn = document.getElementById('tmEditAiGenerateAllBtn');
+            if (aiGenAllBtn) {
+                aiGenAllBtn.addEventListener('click', function() {
+                    const sku = (document.getElementById('editSku') && document.getElementById('editSku').value)
+                        || (document.getElementById('selectSku') && document.getElementById('selectSku').value) || '';
+                    const currentTitle = (document.getElementById('title150').value || '').trim();
+                    if (!currentTitle) {
+                        if (typeof showToast === 'function') showToast('error', 'Enter or load a Title 170 first, then AI Generate.');
+                        else alert('Enter or load a Title 170 first.');
+                        return;
+                    }
+                    const item = tableData && sku ? tableData.find(d => d.SKU === sku) : null;
+                    const parentCategory = (item && item.Parent) ? item.Parent : '';
+                    const loading = document.getElementById('tmEditAiLoading');
+                    aiGenAllBtn.disabled = true;
+                    if (loading) loading.style.display = 'inline';
+                    fetch('/title-master/ai/generate-titles', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                        body: JSON.stringify({
+                            sku: sku,
+                            current_title: currentTitle,
+                            parent_category: parentCategory,
+                            additional_details: titleMasterAiDetails(),
+                            existing_titles: {
+                                title100: document.getElementById('title100').value || '',
+                                title80: document.getElementById('title80').value || '',
+                                title60: document.getElementById('title60').value || ''
+                            }
+                        })
+                    })
+                    .then(r => r.json())
+                    .then(res => {
+                        const d = res && res.data ? res.data : null;
+                        if (!res || !res.success || !d) {
+                            throw new Error((res && res.message) || 'AI generation failed');
+                        }
+                        if (d.title150 != null) titleMasterApplyAiTitle('title150', d.title150);
+                        if (d.title100 != null) titleMasterApplyAiTitle('title100', d.title100);
+                        if (d.title80 != null) titleMasterApplyAiTitle('title80', d.title80);
+                        if (d.title60 != null) titleMasterApplyAiTitle('title60', d.title60);
+                        if (typeof showToast === 'function') showToast('success', 'AI generated all titles. Review and Save.');
+                    })
+                    .catch(err => {
+                        if (typeof showToast === 'function') showToast('error', 'AI Generate failed: ' + (err.message || 'error'));
+                        else alert('AI Generate failed: ' + (err.message || 'error'));
+                    })
+                    .finally(() => {
+                        aiGenAllBtn.disabled = false;
+                        if (loading) loading.style.display = 'none';
+                    });
+                });
+            }
 
             // Improve with AI button (generates Amazon title, shows in popup)
             const aiImproveBtn = document.getElementById('aiImproveBtn');
@@ -2457,6 +2565,7 @@
                             sku: sku,
                             current_title: currentTitle150,
                             parent_category: parentCategory,
+                            additional_details: titleMasterAiDetails(),
                             min_length: 120,
                             max_length: TITLE_MASTER_AMAZON_TITLE_MAX
                         })
@@ -2514,6 +2623,7 @@
                             sku: sku,
                             title_150: title150,
                             current_title_100: currentTitle100,
+                            additional_details: titleMasterAiDetails(),
                             category: category
                         })
                     })
@@ -2541,13 +2651,9 @@
                 btn.addEventListener('click', function() {
                     const idx = parseInt(this.getAttribute('data-option'), 10);
                     const title = currentAIGeneratedTitles100[idx];
-                    const el100 = document.getElementById('title100');
-                    if (el100 && title) {
-                        el100.value = title.length > 105 ? title.substring(0, 105) : title;
-                        updateModalCounter('title100');
-                    }
+                    if (title) titleMasterApplyAiTitle('title100', title.length > 105 ? title.substring(0, 105) : title);
                     if (aiTitle100ModalInstance) aiTitle100ModalInstance.hide();
-                    alert('Title applied to Title 100 field. Click Save to store.');
+                    if (typeof showToast === 'function') showToast('success', 'Applied to Title 100. Click Save to store.');
                 });
             });
             const aiRegenBtn100 = document.getElementById('aiRegenerateBtn100');
@@ -2590,6 +2696,7 @@
                             sku: sku,
                             title_150: title150,
                             current_title_80: currentTitle80,
+                            additional_details: titleMasterAiDetails(),
                             category: category
                         })
                     })
@@ -2617,17 +2724,9 @@
                 btn.addEventListener('click', function() {
                     const idx = parseInt(this.getAttribute('data-option'), 10);
                     const title = currentAIGeneratedTitles80[idx];
-                    const el80 = document.getElementById('title80');
-                    if (el80 && title) {
-                        el80.value = title.length > 80 ? title.substring(0, 80) : title;
-                        updateModalCounter('title80');
-                    }
+                    if (title) titleMasterApplyAiTitle('title80', title.length > 80 ? title.substring(0, 80) : title);
                     if (aiTitle80ModalInstance) aiTitle80ModalInstance.hide();
-                    if (typeof showToast === 'function') {
-                        showToast('success', 'Title applied to Title 80 field. Click Save to store.');
-                    } else {
-                        alert('Title applied to Title 80 field. Click Save to store.');
-                    }
+                    if (typeof showToast === 'function') showToast('success', 'Applied to Title 80. Click Save to store.');
                 });
             });
             const aiRegenBtn80 = document.getElementById('aiRegenerateBtn80');
@@ -2670,6 +2769,7 @@
                             sku: sku,
                             title_150: title150,
                             current_title_60: currentTitle60,
+                            additional_details: titleMasterAiDetails(),
                             category: category,
                             marketplace: 'macy'
                         })
@@ -2697,17 +2797,9 @@
                 btn.addEventListener('click', function() {
                     const idx = parseInt(this.getAttribute('data-option'), 10);
                     const title = currentAIGeneratedTitles60[idx];
-                    const el60 = document.getElementById('title60');
-                    if (el60 && title) {
-                        el60.value = title.length > 60 ? title.substring(0, 60) : title;
-                        updateModalCounter('title60');
-                    }
+                    if (title) titleMasterApplyAiTitle('title60', title.length > 60 ? title.substring(0, 60) : title);
                     if (aiTitle60ModalInstance) aiTitle60ModalInstance.hide();
-                    if (typeof showToast === 'function') {
-                        showToast('success', 'Title applied to Title 60 field. Click Save to store.');
-                    } else {
-                        alert('Title applied to Title 60 field. Click Save to store.');
-                    }
+                    if (typeof showToast === 'function') showToast('success', 'Applied to Title 60. Click Save to store.');
                 });
             });
             const aiRegenBtn60 = document.getElementById('aiRegenerateBtn60');
@@ -2725,13 +2817,9 @@
                 btn.addEventListener('click', function() {
                     const idx = parseInt(this.getAttribute('data-option'), 10);
                     const title = currentAIGeneratedTitles[idx];
-                    const el150 = document.getElementById('title150');
-                    if (el150 && title) {
-                        el150.value = title;
-                        updateModalCounter('title150');
-                    }
+                    if (title) titleMasterApplyAiTitle('title150', title);
                     if (aiTitleModalInstance) aiTitleModalInstance.hide();
-                    alert('Title applied to Title 170 in Add Title. Click Save to store.');
+                    if (typeof showToast === 'function') showToast('success', 'Applied to Title 170. Click Save to store.');
                 });
             });
             const aiRegenBtn = document.getElementById('aiRegenerateBtn');
@@ -3300,7 +3388,7 @@
             const frag = document.createDocumentFragment();
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="19" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="18" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -3310,7 +3398,7 @@
             });
 
             if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="19" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="18" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -3368,13 +3456,6 @@
                 lqsCell.innerHTML = formatTitleMasterLqsCell(item);
                 row.appendChild(lqsCell);
 
-                const aiCell = document.createElement('td');
-                aiCell.className = 'title-master-ai-td';
-                aiCell.innerHTML = '<button type="button" class="title-master-ai-stack-btn tm-ai-stack-open-btn" data-sku="' + escapeHtml(item.SKU) + '" title="AI workspace: Title 170 + Title 100/80/60 refs + 3 drafts (150–175 chars when AI-generated)" aria-label="Open AI workspace for this SKU">' +
-                    '<i class="fas fa-wand-magic-sparkles text-info" aria-hidden="true"></i>' +
-                    '</button>';
-                row.appendChild(aiCell);
-
                 const t170 = titleMasterGetTitle170Text(item);
                 const title150Cell = document.createElement('td');
                 titleMasterFillTitleDotCell(title150Cell, t170.trim() !== '', 'No Title 170', t170);
@@ -3400,6 +3481,7 @@
                 actionCell.className = 'action-buttons-cell';
                 actionCell.innerHTML = '<div class="action-buttons-group">' +
                     '<button type="button" class="action-btn view-btn" data-sku="' + escapeHtml(item.SKU) + '" title="View title details" aria-label="View title details"><i class="fas fa-eye" aria-hidden="true"></i></button>' +
+                    '<button type="button" class="action-btn edit-title-btn" data-sku="' + escapeHtml(item.SKU) + '" title="Edit titles (with AI)" aria-label="Edit titles"><i class="fas fa-edit" aria-hidden="true"></i></button>' +
                     '</div>';
                 row.appendChild(actionCell);
 
@@ -3596,6 +3678,11 @@
                     openViewModal(sku);
                 });
             });
+            document.querySelectorAll('.edit-title-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    openEditTitleModal(this.getAttribute('data-sku'));
+                });
+            });
         }
 
         function getTitleMasterTitle150ForAiStack(item) {
@@ -3721,8 +3808,14 @@
         }
 
         function getTmAiStackActiveSku() {
-            var skuEl = document.getElementById('tmAiStackSkuLabel');
-            var sku = skuEl ? String(skuEl.textContent || '').trim() : '';
+            // The AI draft generator now lives inside the Edit Title modal; active SKU = the one
+            // being edited (else the Add-mode dropdown selection).
+            var edit = document.getElementById('editSku');
+            var sku = edit && edit.value ? String(edit.value).trim() : '';
+            if (!sku) {
+                var sel = document.getElementById('selectSku');
+                sku = sel && sel.value ? String(sel.value).trim() : '';
+            }
             if (sku === '—' || sku === '\u2014') sku = '';
             return sku;
         }
@@ -3787,11 +3880,6 @@
         }
 
         function tmAiStackApplyDraftToTitle170(draftIndex) {
-            var sku = getTmAiStackActiveSku();
-            if (!sku) {
-                alert('No SKU for this workspace.');
-                return false;
-            }
             var ta = document.getElementById('tmAiStackVariant' + draftIndex);
             var text = ta && ta.value ? ta.value.trim() : '';
             if (!text) {
@@ -3801,18 +3889,13 @@
             if (text.length > TITLE_MASTER_AMAZON_TITLE_MAX) {
                 text = text.substring(0, TITLE_MASTER_AMAZON_TITLE_MAX);
             }
-            var refTa = document.getElementById('tmAiStackTitle150Ref');
-            var refCount = document.getElementById('tmAiStackTitle150RefCount');
-            if (refTa) refTa.value = text;
-            if (refCount) refCount.textContent = text.length + ' chars';
-            var idx = tableData.findIndex(function(x) { return x.SKU === sku; });
-            if (idx !== -1) {
-                tableData[idx].title150 = text;
-                tableData[idx].amazon_title = text;
+            // Apply straight into the editable Title 170 field; Save persists it.
+            var title150 = document.getElementById('title150');
+            if (title150) {
+                title150.value = text;
+                updateModalCounter('title150');
+                title150.focus();
             }
-            tmAiStackSyncEditModalField(sku, 'title150', text);
-            patchTitleMasterGridRowTitlesFromTableData(sku);
-            tmAiStackNotifyApplied('Title 170 updated in the grid. Use Add Title → Save to persist in the database.');
             return true;
         }
 
@@ -3891,7 +3974,7 @@
         }
 
         function setupTmAiStackApplyButtons() {
-            var modal = document.getElementById('tmAiStackModal');
+            var modal = document.getElementById('titleModal');
             if (!modal || modal.getAttribute('data-tm-apply-delegation') === '1') return;
             modal.setAttribute('data-tm-apply-delegation', '1');
             modal.addEventListener('click', function(ev) {
@@ -3899,14 +3982,9 @@
                 if (!btn || !modal.contains(btn)) return;
                 ev.preventDefault();
                 var draftAttr = btn.getAttribute('data-tm-apply-draft');
-                var refField = btn.getAttribute('data-tm-apply-ref-field');
                 if (draftAttr !== null && draftAttr !== '') {
                     var di = parseInt(draftAttr, 10);
                     if (di >= 1 && di <= 3 && tmAiStackApplyDraftToTitle170(di)) {
-                        tmAiStackFlashApplyButton(btn);
-                    }
-                } else if (refField === 'title150' || refField === 'title100' || refField === 'title80' || refField === 'title60') {
-                    if (tmAiStackApplyRefFieldToGrid(refField)) {
                         tmAiStackFlashApplyButton(btn);
                     }
                 }
@@ -3927,24 +4005,24 @@
                     }
                     return;
                 }
-                const refTa = document.getElementById('tmAiStackTitle150Ref');
+                // Reference title = whatever is currently in the editable Title 170 field.
+                const refTa = document.getElementById('title150');
                 const titleRef = refTa && refTa.value ? refTa.value.trim() : '';
                 if (!titleRef) {
                     const alertEl = document.getElementById('tmAiStackAiAlert');
                     if (alertEl) {
-                        alertEl.textContent = 'Title 170 reference is empty. Open the AI workspace from a row that already has Title 170.';
+                        alertEl.textContent = 'Title 170 is empty. Enter or load a Title 170 first, then generate drafts.';
                         alertEl.classList.remove('d-none');
                     } else {
-                        alert('Title 170 reference is empty.');
+                        alert('Title 170 is empty.');
                     }
                     return;
                 }
                 const aiPromptTa = document.getElementById('tmAiStackAiPrompt');
                 const userPrompt = aiPromptTa ? aiPromptTa.value : '';
-                const skuEl = document.getElementById('tmAiStackSkuLabel');
-                let sku = skuEl ? String(skuEl.textContent || '').trim() : '';
+                let sku = getTmAiStackActiveSku();
                 if (sku === '—' || sku === '\u2014') sku = '';
-                const modalEl = document.getElementById('tmAiStackModal');
+                const modalEl = document.getElementById('titleModal');
                 const buyerLink = modalEl && modalEl.dataset.tmBuyerLink ? String(modalEl.dataset.tmBuyerLink) : '';
                 const url = window.titleMasterAiStackDraftsUrl || '/title-master/ai/generate-ai-stack-drafts';
                 const alertEl = document.getElementById('tmAiStackAiAlert');
@@ -4192,6 +4270,46 @@
             viewModal.show();
         }
 
+        // Opens the existing title modal in EDIT mode: SKU shown as a label (not the dropdown),
+        // fields pre-filled from the row, and the per-title "Improve with AI" + Save all reused.
+        function openEditTitleModal(sku) {
+            const item = (tableData || []).find(d => d.SKU === sku);
+            if (!item) {
+                if (typeof showError === 'function') showError('Product not found'); else alert('Product not found');
+                return;
+            }
+
+            document.getElementById('titleForm').reset();
+            document.getElementById('modalTitle').textContent = 'Edit Title';
+
+            // Swap the SKU dropdown for a read-only SKU label.
+            const selectSku = document.getElementById('selectSku');
+            const selectGroup = document.getElementById('selectSkuGroup');
+            const labelWrap = document.getElementById('editSkuLabelWrap');
+            if ($(selectSku).hasClass('select2-hidden-accessible')) {
+                $(selectSku).select2('destroy');
+            }
+            selectSku.required = false;
+            if (selectGroup) selectGroup.style.display = 'none';
+            if (labelWrap) labelWrap.style.display = 'block';
+            document.getElementById('editSkuLabel').textContent = sku;
+            document.getElementById('editSku').value = sku;
+
+            // Pre-fill: Title 170 from the effective current title (Amazon title, else saved Title 170),
+            // the rest from their saved values — so editing one never blanks the others.
+            const v = (x) => (x != null ? String(x) : '');
+            document.getElementById('title150').value = titleMasterGetTitle170Text(item);
+            document.getElementById('title100').value = v(item.title100);
+            document.getElementById('title80').value = v(item.title80);
+            document.getElementById('title60').value = v(item.title60);
+            ['title150', 'title100', 'title80', 'title60'].forEach(updateModalCounter);
+
+            // Reset the per-edit AI helpers (keywords box + revert state) for this SKU.
+            titleMasterResetEditAiState();
+
+            titleModal.show();
+        }
+
         function openModal(mode) {
             if (mode !== 'add') return;
             const modalTitle = document.getElementById('modalTitle');
@@ -4216,9 +4334,16 @@
                     c.textContent = '0/' + maxLength;
                     c.classList.remove('error');
                 }
+                const el = document.getElementById(field);
+                if (el) el.classList.remove('tm-title-field-over');
             });
 
             modalTitle.textContent = 'Add Title';
+            // Restore the SKU dropdown (it may have been hidden by edit mode) and hide the edit label.
+            const selectGroup = document.getElementById('selectSkuGroup');
+            const labelWrap = document.getElementById('editSkuLabelWrap');
+            if (selectGroup) selectGroup.style.display = 'block';
+            if (labelWrap) labelWrap.style.display = 'none';
             selectSku.style.display = 'block';
             selectSku.required = true;
             editSku.value = '';
@@ -4260,6 +4385,13 @@
                         width: '100%',
                         dropdownParent: $('#titleModal')
                     });
+                    // Load the SKU's existing titles so editing one field never wipes the others.
+                    $(selectSku).off('change.tmPrefill').on('change.tmPrefill', function() {
+                        const picked = selectSku.value;
+                        if (picked) titleMasterPopulateModalTitles(picked);
+                    });
+                    // Reset the per-edit AI helpers until a SKU is chosen.
+                    titleMasterResetEditAiState();
                     attachSelect2DestroyOnHide();
                     titleModal.show();
                 });
@@ -4288,6 +4420,8 @@
                     counter.textContent = '0/' + maxLength;
                     counter.classList.remove('error');
                 }
+                const el = document.getElementById(field);
+                if (el) el.classList.remove('tm-title-field-over');
             });
         }
 
@@ -4299,6 +4433,16 @@
 
             if (!sku) {
                 alert('Please select a SKU');
+                return;
+            }
+
+            // Block saving while any title exceeds its character limit (fields are flagged red).
+            if (titleMasterAnyTitleOverLimit()) {
+                const overNames = ['title150', 'title100', 'title80', 'title60']
+                    .filter(f => document.getElementById(f).value.length > titleMasterFieldLimit(f))
+                    .map(f => 'Title ' + (f === 'title150' ? '170' : f.replace('title', '')) + ' (max ' + titleMasterFieldLimit(f) + ')');
+                const msg = 'Cannot save — over the character limit: ' + overNames.join(', ') + '. Please shorten.';
+                if (typeof showToast === 'function') showToast('error', msg); else alert(msg);
                 return;
             }
 

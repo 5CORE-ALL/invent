@@ -98,8 +98,9 @@ class TitleMasterDataService
             ->select('ss.*', DB::raw($this->sqlTitleMasterShopifySkuNormKey('ss.sku').' as ss_norm_key'));
 
         $base->leftJoinSub($ssOne, 'ss', function ($join) {
-            $skuNorm = $this->sqlTitleMasterShopifySkuNormKey('skus.sku');
-            $join->whereRaw('ss.ss_norm_key = '.$skuNorm);
+            // Plain equi-join on the precomputed key (skus.tm_norm_sku) so MySQL can auto-index
+            // the derived table instead of full-scanning it per row.
+            $join->on('ss.ss_norm_key', '=', 'skus.tm_norm_sku');
         });
     }
 
@@ -132,14 +133,20 @@ class TitleMasterDataService
     {
         $notParent = "UPPER(COALESCE(sku, '')) NOT LIKE '%PARENT%'";
 
+        // Precompute the normalized join keys once per row so downstream joins can use plain
+        // equi-joins (->on) — that lets MySQL build an auto-key on the derived tables instead of
+        // re-running the REPLACE/collapse expression in a non-sargable whereRaw for every row.
+        $shopifyKey = $this->isMysql() ? $this->sqlTitleMasterShopifySkuNormKey('sku') : 'sku';
+        $snapKey = $this->isMysql() ? $this->sqlSkuKeyForSnapshotJoin('sku') : 'sku';
+
         $fromMappings = DB::table('product_stock_mappings')
-            ->select('sku')
+            ->select('sku', DB::raw($shopifyKey.' as tm_norm_sku'), DB::raw($snapKey.' as tm_snap_key'))
             ->whereNotNull('sku')
             ->whereRaw($notParent);
         $this->applyExcludeOpenBoxSuffixSku($fromMappings, 'sku');
 
         $fromMaster = DB::table('product_master')
-            ->select('sku')
+            ->select('sku', DB::raw($shopifyKey.' as tm_norm_sku'), DB::raw($snapKey.' as tm_snap_key'))
             ->whereNotNull('sku')
             ->whereRaw($notParent);
         $this->applyExcludeOpenBoxSuffixSku($fromMaster, 'sku');
@@ -197,10 +204,66 @@ class TitleMasterDataService
             ->leftJoin('amazon_datsheets as ads', 'ads.sku', '=', 'skus.sku');
         $this->joinShopifySkusForTitleMaster($base);
 
-        if ($hasAmazonDataView) {
-            $base->leftJoin('amazon_data_view as adv', 'adv.sku', '=', 'skus.sku');
+        // NOTE: amazon_data_view (adv) and junglescout_product_data (js_sku/js_parent) are
+        // display-only — no filter, stat or sort references them. They are attached to the
+        // data-page query only (see below), so the stats pass doesn't pay for these joins.
+
+        if ($hasPricingCvrSnapshot) {
+            // Precompute the latest snapshot row per SKU ONCE. The previous version ran a
+            // correlated subquery (MAX snapshot_date) for every base row against the full
+            // 52k-row snapshot table — non-sargable, and repeated across the stats/count/data
+            // passes, which made the page take ~30s. One pick per SKU (latest date, lowest id
+            // for ties) cannot multiply base rows.
+            $pmdsLatestDate = DB::table('pricing_master_daily_snapshots_sku')
+                ->select('sku', DB::raw('MAX(snapshot_date) as max_date'))
+                ->whereNotNull('sku')
+                ->groupBy('sku');
+            $pmdsPickId = DB::table('pricing_master_daily_snapshots_sku as p1')
+                ->joinSub($pmdsLatestDate, 'pmx', function ($join) {
+                    $join->on('p1.sku', '=', 'pmx.sku')
+                        ->on('p1.snapshot_date', '=', 'pmx.max_date');
+                })
+                ->select(DB::raw('MIN(p1.id) as pick_id'))
+                ->groupBy('p1.sku');
+            $pmdsOne = DB::table('pricing_master_daily_snapshots_sku as pmds_src')
+                ->joinSub($pmdsPickId, 'pmpick', function ($join) {
+                    $join->on('pmds_src.id', '=', 'pmpick.pick_id');
+                })
+                ->select('pmds_src.*');
+
+            if ($this->isMysql()) {
+                // Equi-join on the precomputed snapshot key (skus.tm_snap_key) for the same
+                // auto-key benefit as the shopify join above.
+                $base->leftJoinSub($pmdsOne, 'pmds', function ($join) {
+                    $join->on('pmds.sku', '=', 'skus.tm_snap_key');
+                });
+            } else {
+                $base->leftJoinSub($pmdsOne, 'pmds', function ($join) {
+                    $join->on('pmds.sku', '=', 'skus.sku');
+                });
+            }
         }
 
+        $this->applyFilters($base, $request, $hasPricingCvrSnapshot);
+
+        $selectColumns = $this->selectColumns(
+            $pmImage7Column,
+            $pmImage8Column,
+            $pmImage9Column,
+            $pmImage10Column,
+            $pmImage11Column,
+            $pmImage12Column,
+            $hasPricingCvrSnapshot,
+            $hasJungleScoutProductData,
+            $hasAmazonDataView
+        );
+
+        $dataQuery = $base->clone()->select($selectColumns);
+
+        // Attach display-only joins to the page query only (kept off the stats pass above).
+        if ($hasAmazonDataView) {
+            $dataQuery->leftJoin('amazon_data_view as adv', 'adv.sku', '=', 'skus.sku');
+        }
         if ($hasJungleScoutProductData) {
             $jsMaxPerSku = DB::table('junglescout_product_data')
                 ->select('sku', DB::raw('MAX(id) as max_id'))
@@ -222,56 +285,30 @@ class TitleMasterDataService
                 })
                 ->select('j2.parent', 'j2.data');
 
-            $base->leftJoinSub($jsLatestBySku, 'js_sku', function ($join) {
+            $dataQuery->leftJoinSub($jsLatestBySku, 'js_sku', function ($join) {
                 $join->on('js_sku.sku', '=', 'skus.sku');
             });
-            $base->leftJoinSub($jsLatestByParent, 'js_parent', function ($join) {
+            $dataQuery->leftJoinSub($jsLatestByParent, 'js_parent', function ($join) {
                 $join->on('js_parent.parent', '=', 'pm.parent');
             });
         }
-
-        if ($hasPricingCvrSnapshot) {
-            if ($this->isMysql()) {
-                $skuKey = $this->sqlSkuKeyForSnapshotJoin('skus.sku');
-                $base->leftJoin('pricing_master_daily_snapshots_sku as pmds', function ($join) use ($skuKey) {
-                    $join->whereRaw("pmds.sku = {$skuKey}")
-                        ->whereRaw("pmds.snapshot_date = (SELECT MAX(p2.snapshot_date) FROM pricing_master_daily_snapshots_sku AS p2 WHERE p2.sku = {$skuKey})");
-                });
-            } else {
-                $base->leftJoin('pricing_master_daily_snapshots_sku as pmds', function ($join) {
-                    $join->on('pmds.sku', '=', 'skus.sku')
-                        ->whereRaw('pmds.snapshot_date = (SELECT MAX(p2.snapshot_date) FROM pricing_master_daily_snapshots_sku AS p2 WHERE p2.sku = skus.sku)');
-                });
-            }
-        }
-
-        $this->applyFilters($base, $request, $hasPricingCvrSnapshot);
-
-        $stats = $this->aggregateStats($base);
-
-        $selectColumns = $this->selectColumns(
-            $pmImage7Column,
-            $pmImage8Column,
-            $pmImage9Column,
-            $pmImage10Column,
-            $pmImage11Column,
-            $pmImage12Column,
-            $hasPricingCvrSnapshot,
-            $hasJungleScoutProductData,
-            $hasAmazonDataView
-        );
-
-        $dataQuery = $base->clone()->select($selectColumns);
 
         $sortMeta = $this->parseTitleMasterSortRequest($request);
         if ($sortMeta['column'] === 'cvr' && ! $hasPricingCvrSnapshot) {
             $sortMeta['column'] = 'sku';
         }
 
+        $this->applyTitleMasterSort($dataQuery, $request, $hasPricingCvrSnapshot);
+
+        // Single heavy pass: fetch the full filtered + sorted set once (max ~15k), derive the
+        // header stats from it in PHP, and map only the rows we actually return. Previously the
+        // same multi-join ran twice per request — once for an aggregate stats query and again for
+        // the page — which roughly doubled the page time.
+        $allRows = $dataQuery->limit(15000)->get();
+        $stats = $this->computeStatsFromRows($allRows);
+
         if ($export) {
-            $this->applyTitleMasterSort($dataQuery, $request, $hasPricingCvrSnapshot);
-            $listings = $dataQuery->limit(15000)->get();
-            $result = $this->mapListings($listings);
+            $result = $this->mapListings($allRows);
 
             return response()->json([
                 'message' => 'Title Master export',
@@ -281,21 +318,24 @@ class TitleMasterDataService
             ]);
         }
 
-        $this->applyTitleMasterSort($dataQuery, $request, $hasPricingCvrSnapshot);
-        $paginator = $dataQuery->paginate($perPage, ['*'], 'page', $page);
-        $result = $this->mapListings($paginator->items());
+        $total = (int) ($stats['total_rows'] ?? 0);
+        $lastPage = $perPage > 0 ? max(1, (int) ceil($total / $perPage)) : 1;
+        $pageRows = $allRows->slice(($page - 1) * $perPage, $perPage)->values();
+        $result = $this->mapListings($pageRows);
+        $from = $total > 0 ? (($page - 1) * $perPage) + 1 : null;
+        $to = ($from !== null) ? $from + count($result) - 1 : null;
 
         return response()->json([
             'message' => 'Title Master data',
             'data' => $result,
             'stats' => $stats,
             'meta' => [
-                'current_page' => $paginator->currentPage(),
-                'last_page' => $paginator->lastPage(),
-                'per_page' => $paginator->perPage(),
-                'total' => $paginator->total(),
-                'from' => $paginator->firstItem(),
-                'to' => $paginator->lastItem(),
+                'current_page' => $page,
+                'last_page' => $lastPage,
+                'per_page' => $perPage,
+                'total' => $total,
+                'from' => $from,
+                'to' => $to,
                 'tm_sort' => $sortMeta['column'],
                 'tm_dir' => $sortMeta['dir'],
             ],
@@ -487,6 +527,65 @@ class TitleMasterDataService
         $query->where(function ($q) use ($column) {
             $q->whereNull($column)->orWhereRaw('TRIM(IFNULL('.$column.', "")) = ""');
         });
+    }
+
+    /**
+     * Header stats computed in PHP from the already-fetched listing rows — mirrors aggregateStats()
+     * so we don't run a second full-join aggregate query. Columns used: parent, item_name,
+     * ads_amazon_title (effective Amazon title = item_name, else ads_amazon_title), title100/80/60.
+     *
+     * @param  iterable  $rows
+     */
+    private function computeStatsFromRows($rows): array
+    {
+        $total = 0;
+        $parents = [];
+        $m150 = 0;
+        $exceeds = 0;
+        $m100 = 0;
+        $m80 = 0;
+        $m60 = 0;
+
+        foreach ($rows as $r) {
+            $total++;
+
+            // COUNT(DISTINCT pm.parent) — SQL ignores only NULL.
+            $parent = $r->parent ?? null;
+            if ($parent !== null) {
+                $parents[(string) $parent] = true;
+            }
+
+            // Effective Amazon (Title 170) text: item_name, else ads_amazon_title.
+            $eff = trim((string) ($r->item_name ?? ''));
+            if ($eff === '') {
+                $eff = trim((string) ($r->ads_amazon_title ?? ''));
+            }
+            if ($eff === '') {
+                $m150++;
+            } elseif (mb_strlen($eff) > 170) {
+                $exceeds++;
+            }
+
+            if (trim((string) ($r->title100 ?? '')) === '') {
+                $m100++;
+            }
+            if (trim((string) ($r->title80 ?? '')) === '') {
+                $m80++;
+            }
+            if (trim((string) ($r->title60 ?? '')) === '') {
+                $m60++;
+            }
+        }
+
+        return [
+            'total_rows' => $total,
+            'distinct_parents' => count($parents),
+            'title150_missing' => $m150,
+            'title150_exceeds' => $exceeds,
+            'title100_missing' => $m100,
+            'title80_missing' => $m80,
+            'title60_missing' => $m60,
+        ];
     }
 
     private function aggregateStats($base): array

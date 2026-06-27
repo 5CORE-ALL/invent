@@ -2012,6 +2012,7 @@ class ProductMasterController extends Controller
             'current_title' => 'required|string',
             'existing_titles' => 'nullable|array',
             'parent_category' => 'nullable|string',
+            'additional_details' => 'nullable|string',
         ]);
 
         $apiKey = config('services.anthropic.key');
@@ -2028,6 +2029,8 @@ class ProductMasterController extends Controller
         $sku = $request->input('sku', '');
         $parentCategory = $request->input('parent_category', '');
         $existing = $request->input('existing_titles', []);
+        $additionalDetails = trim((string) $request->input('additional_details', ''));
+        $detailsLine = $additionalDetails !== '' ? "\nAdditional details / keywords the user wants included: {$additionalDetails}" : '';
 
         $model = 'claude-sonnet-4-20250514';
         Log::info('AI generate titles: start', ['sku' => $sku, 'model' => $model, 'title_len' => strlen($currentTitle)]);
@@ -2037,7 +2040,7 @@ You are a professional e-commerce copywriter. Create 4 optimized product titles 
 
 Original product title: "{$currentTitle}"
 SKU: {$sku}
-Product category: {$parentCategory}
+Product category: {$parentCategory}{$detailsLine}
 
 Requirements:
 
@@ -2138,6 +2141,7 @@ PROMPT;
             'sku' => 'nullable|string',
             'current_title' => 'required|string',
             'parent_category' => 'nullable|string',
+            'additional_details' => 'nullable|string',
             'min_length' => 'nullable|integer|min:80|max:170',
             'max_length' => 'nullable|integer|min:80|max:170',
         ]);
@@ -2155,6 +2159,8 @@ PROMPT;
         $currentTitle = trim($request->input('current_title', ''));
         $sku = $request->input('sku', '');
         $parentCategory = $request->input('parent_category', '');
+        $additionalDetails = trim((string) $request->input('additional_details', ''));
+        $detailsLine = $additionalDetails !== '' ? "\nAdditional details / keywords the user wants included: {$additionalDetails}" : '';
         $minLen = (int) $request->input('min_length', 140);
         $maxLen = (int) $request->input('max_length', 170);
         $minLen = max(80, min(170, $minLen));
@@ -2168,7 +2174,7 @@ You are an expert e-commerce copywriter specializing in high-converting product 
 
 Original product title: "{$currentTitle}"
 SKU: {$sku}
-Product category: {$parentCategory}
+Product category: {$parentCategory}{$detailsLine}
 
 Follow these guidelines:
 - Include high-search-volume keywords relevant to the product.
@@ -2530,6 +2536,7 @@ PROMPT;
             'title_150' => 'required|string',
             'current_title_100' => 'nullable|string',
             'category' => 'nullable|string',
+            'additional_details' => 'nullable|string',
         ]);
 
         $apiKey = config('services.anthropic.key');
@@ -2546,6 +2553,8 @@ PROMPT;
         $currentTitle100 = trim($request->input('current_title_100', ''));
         $sku = $request->input('sku', '');
         $category = $request->input('category', '');
+        $additionalDetails = trim((string) $request->input('additional_details', ''));
+        $detailsLine = $additionalDetails !== '' ? "\nAdditional details / keywords the user wants included: {$additionalDetails}" : '';
 
         $model = 'claude-sonnet-4-20250514';
         $minLen = 90;
@@ -2556,7 +2565,7 @@ You are an expert e-commerce copywriter. Generate 4 titles for the Title 100 fie
 
 Original title: "{$title150}"
 SKU: {$sku}
-Category: {$category}
+Category: {$category}{$detailsLine}
 Existing Title 100 (if any): "{$currentTitle100}"
 
 STRICT REQUIREMENTS:
@@ -2672,6 +2681,7 @@ PROMPT;
             'title_150' => 'required|string',
             'current_title_80' => 'nullable|string',
             'category' => 'nullable|string',
+            'additional_details' => 'nullable|string',
         ]);
 
         $apiKey = config('services.anthropic.key');
@@ -2688,6 +2698,8 @@ PROMPT;
         $currentTitle80 = trim($request->input('current_title_80', ''));
         $sku = $request->input('sku', '');
         $category = $request->input('category', '');
+        $additionalDetails = trim((string) $request->input('additional_details', ''));
+        $detailsLine = $additionalDetails !== '' ? "\nAdditional details / keywords the user wants included: {$additionalDetails}" : '';
 
         $model = 'claude-sonnet-4-20250514';
         $minLen = 75;
@@ -2698,7 +2710,7 @@ Generate 4 eBay product titles that are between 75-85 characters.
 
 Original title: "{$title150}"
 SKU: {$sku}
-Category: {$category}
+Category: {$category}{$detailsLine}
 Existing Title 80 (if any): "{$currentTitle80}"
 
 REQUIREMENTS:
@@ -2812,6 +2824,7 @@ PROMPT;
             'current_title_60' => 'nullable|string',
             'marketplace' => 'nullable|string|in:macy,faire',
             'category' => 'nullable|string',
+            'additional_details' => 'nullable|string',
         ]);
 
         $apiKey = config('services.anthropic.key');
@@ -2829,6 +2842,8 @@ PROMPT;
         $sku = $request->input('sku', '');
         $marketplace = $request->input('marketplace', 'macy');
         $category = $request->input('category', '');
+        $additionalDetails = trim((string) $request->input('additional_details', ''));
+        $detailsLine = $additionalDetails !== '' ? "\nAdditional details / keywords the user wants included: {$additionalDetails}" : '';
 
         $model = 'claude-sonnet-4-20250514';
         $minLen = 55;
@@ -2840,7 +2855,7 @@ Generate 4 marketplace product titles that are between 55-60 characters.
 Original title: "{$title150}"
 SKU: {$sku}
 Marketplace: {$marketplace} (Macy's or Faire)
-Category: {$category}
+Category: {$category}{$detailsLine}
 Existing Title 60 (if any): "{$currentTitle60}"
 
 REQUIREMENTS:
