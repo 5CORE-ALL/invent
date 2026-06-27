@@ -177,7 +177,6 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-warning" id="modalSavePushBtn"><i class="fas fa-cloud-upload-alt"></i> Save &amp; Push tab</button>
                     <button type="button" class="btn btn-success" id="modalSavePmBtn"><i class="fas fa-save"></i> Save all</button>
                 </div>
             </div>
@@ -583,7 +582,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!confirmed) return;
         const update = buildPushUpdate(sku, row, mp);
         if (!update.description) {
-            toast('No text for this tier. Edit in the modal, then Save & Push or push the marketplace tile.', false);
+            toast('No text for this tier. Edit in the modal, Save all, then push from the marketplace tile.', false);
             openEditModal(sku);
             return;
         }
@@ -1060,45 +1059,6 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .catch((e) => toast('Save failed: ' + e.message, false))
             .finally(() => setButtonLoading('modalSavePmBtn', false));
-    });
-
-    document.getElementById('modalSavePushBtn')?.addEventListener('click', async () => {
-        const sku = document.getElementById('modalSku')?.value || '';
-        const mp = activeMp;
-        if (!sku || !mp) return;
-        stashActiveEditorContent();
-        const pushUpdate = buildPushUpdate(sku, bySku.get(String(sku)) || { descriptions: mpContent }, mp);
-        if (!pushUpdate.description) {
-            toast('Nothing to push — add description text for ' + (LABELS[mp] || mp) + '.', false);
-            return;
-        }
-        const confirmed = await confirmMarketplacePush({ sku, marketplaces: [mp], mode: 'single' });
-        if (!confirmed) return;
-        setButtonLoading('modalSavePushBtn', true, 'Saving...');
-        try {
-            const saveRes = await fetch('/product-description/save-marketplace', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                body: JSON.stringify({ sku, marketplace: mp, description: pushUpdate.description_html }),
-            }).then((r) => r.json());
-            if (!saveRes.success) {
-                toast(saveRes.message || 'Save failed before push', false);
-                return;
-            }
-            const row = bySku.get(String(sku));
-            if (row) {
-                row.descriptions = row.descriptions || {};
-                row.descriptions[mp] = storedDescriptionFromSaveResponse(saveRes, pushUpdate.description_html);
-                mpContent[mp] = row.descriptions[mp];
-            }
-            await new Promise((resolve) => {
-                pushPayload(sku, [pushUpdate], resolve, false, 'modalSavePushBtn');
-            });
-        } catch (e) {
-            toast('Save & push failed: ' + e.message, false);
-        } finally {
-            setButtonLoading('modalSavePushBtn', false);
-        }
     });
 
     /** Appends per-marketplace attempt details when the server used automatic retries. */
