@@ -453,6 +453,68 @@
             position: relative;
             z-index: 11;
         }
+
+        /* Forecast Analysis change-history modal */
+        .forecast-history-table { font-size: 12px; }
+        .forecast-history-table th,
+        .forecast-history-table td {
+            padding: 4px 8px !important;
+            vertical-align: middle;
+        }
+        .forecast-history-table .fah-field-cell {
+            font-weight: 600;
+            color: #0a3d91;
+            white-space: nowrap;
+        }
+        .forecast-history-table .fah-field-cell .fah-field-icon {
+            color: #6c8fc4;
+            margin-right: 4px;
+        }
+        .forecast-history-table tr.fah-field-first td {
+            border-top: 1px solid #c7dbff;
+        }
+        .forecast-history-table tr.fah-field-cont .fah-field-cell {
+            color: #b9c4d6;
+            font-weight: 500;
+            font-size: 11px;
+        }
+        .forecast-history-table .fah-when {
+            white-space: nowrap;
+            color: #6c757d;
+        }
+        .forecast-history-table .fah-who .badge {
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .forecast-history-table .fah-old {
+            color: #842029;
+            background: #f8d7da;
+            padding: 1px 6px;
+            border-radius: 3px;
+        }
+        .forecast-history-table .fah-new {
+            color: #0f5132;
+            background: #d1e7dd;
+            padding: 1px 6px;
+            border-radius: 3px;
+        }
+        .forecast-history-table .fah-arrow {
+            color: #adb5bd;
+            margin: 0 4px;
+        }
+        .forecast-history-table .fah-empty {
+            color: #adb5bd;
+            font-style: italic;
+        }
+        .forecast-history-table .fah-latest-dot {
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #17a2b8;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
     </style>
 @endsection
 
@@ -1052,6 +1114,46 @@
         </div>
     </div>
 
+    {{-- Forecast Analysis row change history --}}
+    <div class="modal fade" id="forecastHistoryModal" tabindex="-1" aria-labelledby="forecastHistoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); color: white;">
+                    <h5 class="modal-title" id="forecastHistoryModalLabel">
+                        <i class="bi bi-clock-history me-2"></i>Change History — <span id="forecastHistorySku" class="fw-bold"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="forecastHistoryLoading" class="text-center py-4" style="display:none;">
+                        <div class="spinner-border text-info" role="status"></div>
+                        <p class="mt-2 text-muted small mb-0">Loading history…</p>
+                    </div>
+                    <div id="forecastHistoryEmpty" class="alert alert-info mb-0" style="display:none;">
+                        <i class="fas fa-info-circle me-2"></i> No edits recorded for this SKU yet. Changes made from now on will be tracked here.
+                    </div>
+                    <div id="forecastHistoryError" class="alert alert-danger mb-0" style="display:none;"></div>
+                    <div class="table-responsive" id="forecastHistoryTableWrap" style="display:none; max-height: 65vh;">
+                        <table class="table table-sm table-hover mb-0 align-middle forecast-history-table">
+                            <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+                                <tr>
+                                    <th style="white-space:nowrap; width: 24%;">Field</th>
+                                    <th style="white-space:nowrap; width: 16%;">When</th>
+                                    <th style="white-space:nowrap; width: 14%;">Who</th>
+                                    <th>Change (old → new)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="forecastHistoryTbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="scouthProductsModal" tabindex="-1">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
@@ -1281,6 +1383,119 @@
             const modalEl = document.getElementById('forecastRowEditModal');
             const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
             modal.show();
+        }
+
+        function forecastHistoryEscapeHtml(text) {
+            if (text == null) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function forecastHistoryFmtValue(v) {
+            if (v === null || v === undefined || v === '') {
+                return '<span class="fah-empty">empty</span>';
+            }
+            return forecastHistoryEscapeHtml(String(v));
+        }
+
+        async function openForecastHistoryModal(sku, parent) {
+            const modalEl = document.getElementById('forecastHistoryModal');
+            if (!modalEl) return;
+            const skuLabel = document.getElementById('forecastHistorySku');
+            const loadingEl = document.getElementById('forecastHistoryLoading');
+            const emptyEl = document.getElementById('forecastHistoryEmpty');
+            const errorEl = document.getElementById('forecastHistoryError');
+            const tableWrap = document.getElementById('forecastHistoryTableWrap');
+            const tbody = document.getElementById('forecastHistoryTbody');
+
+            const label = sku + (parent ? ' · ' + parent : '');
+            if (skuLabel) skuLabel.textContent = label;
+            if (loadingEl) loadingEl.style.display = 'block';
+            if (emptyEl) emptyEl.style.display = 'none';
+            if (errorEl) { errorEl.style.display = 'none'; errorEl.textContent = ''; }
+            if (tableWrap) tableWrap.style.display = 'none';
+            if (tbody) tbody.innerHTML = '';
+
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+
+            if (!sku) {
+                if (loadingEl) loadingEl.style.display = 'none';
+                if (errorEl) {
+                    errorEl.textContent = 'Missing SKU — history cannot be loaded.';
+                    errorEl.style.display = 'block';
+                }
+                return;
+            }
+
+            try {
+                const params = new URLSearchParams({ sku: sku });
+                if (parent) params.set('parent', parent);
+                const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                const response = await fetch('/forecast-analysis/history?' + params.toString(), {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || 'Failed to load history.');
+                }
+
+                const rows = Array.isArray(data.history) ? data.history : [];
+                if (rows.length === 0) {
+                    if (emptyEl) emptyEl.style.display = 'block';
+                    return;
+                }
+
+                const groups = new Map();
+                rows.forEach(function(r) {
+                    const key = r.field || '';
+                    if (!groups.has(key)) {
+                        groups.set(key, { label: r.field_label || r.field || '', items: [] });
+                    }
+                    groups.get(key).items.push(r);
+                });
+
+                const parts = [];
+                groups.forEach(function(group, fieldKey) {
+                    group.items.forEach(function(r, idx) {
+                        const isFirst = idx === 0;
+                        const isLatest = idx === 0;
+                        const rowClass = isFirst ? 'fah-field-first' : 'fah-field-cont';
+                        const fieldCell = isFirst
+                            ? '<i class="bi bi-tag-fill fah-field-icon"></i>' + forecastHistoryEscapeHtml(group.label)
+                            : '<span style="padding-left:14px;">↳</span>';
+                        parts.push(
+                            '<tr class="' + rowClass + '" data-field="' + forecastHistoryEscapeHtml(fieldKey) + '">' +
+                                '<td class="fah-field-cell">' + fieldCell + '</td>' +
+                                '<td class="fah-when">' + (isLatest ? '<span class="fah-latest-dot" title="latest"></span>' : '') + forecastHistoryEscapeHtml(r.updated_at || '') + '</td>' +
+                                '<td class="fah-who"><span class="badge bg-secondary">' + forecastHistoryEscapeHtml(r.updated_by || 'N/A') + '</span></td>' +
+                                '<td>' +
+                                    '<span class="fah-old">' + forecastHistoryFmtValue(r.old_value) + '</span>' +
+                                    '<i class="bi bi-arrow-right fah-arrow"></i>' +
+                                    '<span class="fah-new">' + forecastHistoryFmtValue(r.new_value) + '</span>' +
+                                '</td>' +
+                            '</tr>'
+                        );
+                    });
+                });
+
+                tbody.innerHTML = parts.join('');
+                if (tableWrap) tableWrap.style.display = 'block';
+            } catch (err) {
+                console.error('Forecast history load error:', err);
+                if (errorEl) {
+                    errorEl.textContent = err.message || 'Failed to load history.';
+                    errorEl.style.display = 'block';
+                }
+            } finally {
+                if (loadingEl) loadingEl.style.display = 'none';
+            }
         }
 
         // Treat empty/null/undefined as equal so re-saving a never-set field doesn't fire.
@@ -1589,7 +1804,6 @@
             resizableColumns: true,
             height: 600,
             index: "SKU",
-            editTriggerEvent: "dblclick",
             rowFormatter: function(row) {
                 const data = row.getData();
                 const sku = data["SKU"] || '';
@@ -1901,52 +2115,12 @@
                     field: "s_msl",
                     accessor: row => (row && row["s_msl"] !== undefined && row["s_msl"] !== null) ? row["s_msl"] : '',
                     hozAlign: "center",
-                    editable: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        return !(d.is_parent || d.isParent);
-                    },
-                    editor: "input",
-                    editorParams: {
-                        elementAttributes: {
-                            maxlength: "4"
-                        }
-                    },
                     formatter: function(cell) {
                         const v = cell.getValue();
                         const s = String(v == null ? '' : v).trim();
                         if (!s) return '<div style="text-align:center;" class="text-muted">—</div>';
                         return `<div style="text-align:center;font-weight:700;">${s}</div>`;
                     },
-                    cellEditing: function(cell) {
-                        cell.getRow().forecastMslManualEditStart = cell.getValue();
-                    },
-                    cellEdited: function(cell) {
-                        const row = cell.getRow();
-                        const d = row.getData() || {};
-                        if (d.is_parent || d.isParent) return;
-                        const oldVal = row.forecastMslManualEditStart;
-                        delete row.forecastMslManualEditStart;
-
-                        const next = String(cell.getValue() == null ? '' : cell.getValue()).trim().slice(0, 4);
-                        const prev = String(oldVal == null ? '' : oldVal).trim().slice(0, 4);
-                        if (next === prev) {
-                            cell.setValue(next, true);
-                            return;
-                        }
-                        cell.setValue(next, true);
-
-                        const sku = d.SKU || '';
-                        const parent = d.Parent || '';
-                        updateForecastField(
-                            { sku: sku, parent: parent, column: 'S-MSL', value: next },
-                            function() {
-                                row.update({ s_msl: next }, true);
-                            },
-                            function() {
-                                cell.setValue(prev, true);
-                            }
-                        );
-                    }
                 },
                 {
                     title: "2 Ord",
@@ -2014,20 +2188,9 @@
                         }
 
                         return (
-                            '<div class="stage-dot-cell position-relative d-flex justify-content-center align-items-center w-100" title="' + tipAttr + '">' +
+                            '<div class="stage-dot-cell d-flex justify-content-center align-items-center w-100" title="' + tipAttr + '">' +
                             markerHtml +
-                            '<select class="form-select form-select-sm editable-select stage-stage-select position-absolute top-0 start-0 w-100 h-100"' +
-                            ' data-type="Stage"' +
-                            ' data-sku=\'' + sku + '\'' +
-                            ' data-parent=\'' + parent + '\'' +
-                            ' aria-label="' + tipAttr + '">' +
-                            '<option value="">Not Req Now</option>' +
-                            '<option value="appr_req"' + (value === 'appr_req' ? ' selected' : '') + '>Appr Req</option>' +
-                            '<option value="mip"' + (value === 'mip' ? ' selected' : '') + '>MIP</option>' +
-                            '<option value="r2s"' + (value === 'r2s' ? ' selected' : '') + '>R2S</option>' +
-                            '<option value="transit"' + (value === 'transit' ? ' selected' : '') + '>Trn</option>' +
-                            '<option value="to_order_analysis"' + (value === 'to_order_analysis' ? ' selected' : '') + '>Order</option>' +
-                            '</select></div>'
+                            '</div>'
                         );
                     },
                     // select value is already controlled by formatter selected options
@@ -2075,29 +2238,6 @@
                     accessor: row => (row ? row.two_order_qty : null),
                     sorter: "number",
                     headerSort: true,
-                    editor: "number",
-                    editorParams: { min: 0, step: 1, verticalNavigation: "editor" },
-                    editable: function(cell) {
-                        const d = cell.getRow().getData();
-                        return !(d.is_parent || d.isParent);
-                    },
-                    cellClick: function(e, cell) {
-                        const d = cell.getRow().getData();
-                        if (d.is_parent || d.isParent) return;
-                        if (e.target && e.target.classList.contains('order-to-mip-move-dot')) return;
-                        cell.edit();
-                    },
-                    cellEditing: function(cell) {
-                        const row = cell.getRow();
-                        row.forecastOrderEditStart = cell.getValue();
-                        setTimeout(function() {
-                            const input = cell.getElement().querySelector('input, textarea');
-                            if (input) {
-                                input.focus();
-                                input.select();
-                            }
-                        }, 0);
-                    },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const skuAttr = String(rowData.SKU || '').replace(/'/g, "\\'");
@@ -2111,49 +2251,11 @@
                             return `<div style="text-align:center;font-weight:bold;">${disp}</div>`;
                         }
                         return `<div style="text-align:center;font-weight:bold;display:flex;align-items:center;justify-content:center;gap:6px;">
-                            <span style="cursor:text;" title="Click to edit Order">${disp}</span>
+                            <span>${disp}</span>
                             <button type="button" class="order-to-mip-move-dot" data-sku='${skuAttr}' data-parent='${parentAttr}' title="Move Order to MIP" aria-label="Move Order to MIP"
                                 style="width:10px;height:10px;border-radius:9999px;border:1px solid #1e40af;background:#2563eb;padding:0;cursor:pointer;display:inline-block;line-height:1;flex-shrink:0;"></button>
                         </div>`;
                     },
-                    cellEdited: function(cell) {
-                        const row = cell.getRow();
-                        const d = row.getData();
-                        if (d.is_parent || d.isParent) return;
-
-                        const rawNew = cell.getValue();
-                        const oldVal = row.forecastOrderEditStart;
-                        delete row.forecastOrderEditStart;
-
-                        if (rawNew === '' || rawNew === null || rawNew === undefined) {
-                            cell.setValue(oldVal, true);
-                            alert('Please enter a valid Order quantity.');
-                            return;
-                        }
-
-                        const newValue = Number(rawNew);
-                        if (Number.isNaN(newValue) || newValue < 0) {
-                            cell.setValue(oldVal, true);
-                            alert('Please enter a valid Order quantity.');
-                            return;
-                        }
-
-                        const origNum = Number(oldVal);
-                        if (!Number.isNaN(origNum) && origNum === newValue) return;
-
-                        updateForecastField(
-                            { sku: d.SKU, parent: d.Parent || '', column: 'Order', value: newValue },
-                            function() {
-                                row.update({ two_order_qty: newValue }, true);
-                                const stageCell = row.getCells().find(function(c) { return c.getField() === 'stage'; });
-                                if (stageCell) stageCell.reformat();
-                                syncParentStageQtyColumns(d.Parent || d.parentKey);
-                            },
-                            function() {
-                                cell.setValue(oldVal, true);
-                            }
-                        );
-                    }
                 },
                 //   {
                 //     title: "S-MSL",
@@ -2198,29 +2300,6 @@
                     accessor: row => (row ? row["order_given"] : null),
                     sorter: "number",
                     headerSort: true,
-                    editor: "number",
-                    editorParams: { min: 0, step: 1, verticalNavigation: "editor" },
-                    editable: function(cell) {
-                        const d = cell.getRow().getData();
-                        return !(d.is_parent || d.isParent);
-                    },
-                    cellClick: function(e, cell) {
-                        const d = cell.getRow().getData();
-                        if (d.is_parent || d.isParent) return;
-                        if (e.target && e.target.classList.contains('mip-to-r2s-move-dot')) return;
-                        cell.edit();
-                    },
-                    cellEditing: function(cell) {
-                        const row = cell.getRow();
-                        row.forecastMipEditStart = cell.getValue();
-                        setTimeout(function() {
-                            const input = cell.getElement().querySelector('input, textarea');
-                            if (input) {
-                                input.focus();
-                                input.select();
-                            }
-                        }, 0);
-                    },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const skuAttr = String(rowData.SKU || '').replace(/'/g, "\\'");
@@ -2228,50 +2307,14 @@
                         const value = cell.getValue();
                         const n = parseFloat(value);
                         const showDash = value === null || value === undefined || value === '' || isNaN(n) || n === 0;
-                        if (showDash) return `<div style="text-align:center;font-weight:bold;cursor:text;">-</div>`;
+                        if (showDash) return `<div style="text-align:center;font-weight:bold;">-</div>`;
                         if (rowData.is_parent || rowData.isParent) return `<div style="text-align:center;font-weight:bold;">${String(value)}</div>`;
                         return `<div style="text-align:center;font-weight:bold;display:flex;align-items:center;justify-content:center;gap:6px;">
-                            <span style="cursor:text;" title="Click to edit MIP">${String(value)}</span>
+                            <span>${String(value)}</span>
                             <button type="button" class="mip-to-r2s-move-dot" data-sku='${skuAttr}' data-parent='${parentAttr}' title="Move MIP to R2S" aria-label="Move MIP to R2S"
                                 style="width:10px;height:10px;border-radius:9999px;border:1px solid #15803d;background:#16a34a;padding:0;cursor:pointer;display:inline-block;line-height:1;flex-shrink:0;"></button>
                         </div>`;
                     },
-                    cellEdited: function(cell) {
-                        const row = cell.getRow();
-                        const d = row.getData();
-                        if (d.is_parent || d.isParent) return;
-
-                        const rawNew = cell.getValue();
-                        const oldVal = row.forecastMipEditStart;
-                        delete row.forecastMipEditStart;
-
-                        if (rawNew === '' || rawNew === null || rawNew === undefined) {
-                            cell.setValue(oldVal, true);
-                            alert('Please enter a valid MIP quantity.');
-                            return;
-                        }
-                        const newValue = Number(rawNew);
-                        if (Number.isNaN(newValue) || newValue < 0) {
-                            cell.setValue(oldVal, true);
-                            alert('Please enter a valid MIP quantity.');
-                            return;
-                        }
-                        const origNum = Number(oldVal);
-                        if (!Number.isNaN(origNum) && origNum === newValue) return;
-
-                        updateForecastField(
-                            { sku: d.SKU, parent: d.Parent || '', column: 'order_given', value: newValue },
-                            function() {
-                                row.update({ order_given: newValue }, true);
-                                const stageCell = row.getCells().find(function(c) { return c.getField() === 'stage'; });
-                                if (stageCell) stageCell.reformat();
-                                syncParentStageQtyColumns(d.Parent || d.parentKey);
-                            },
-                            function() {
-                                cell.setValue(oldVal, true);
-                            }
-                        );
-                    }
                 },
                 {
                     title: "R2S",
@@ -2279,80 +2322,15 @@
                     accessor: row => (row ? row["readyToShipQty"] : null),
                     sorter: "number",
                     headerSort: true,
-                    editor: "number",
-                    editorParams: { min: 0, step: 1, verticalNavigation: "editor" },
-                    editable: function(cell) {
-                        const d = cell.getRow().getData();
-                        return !(d.is_parent || d.isParent);
-                    },
-                    cellClick: function(e, cell) {
-                        const d = cell.getRow().getData();
-                        if (d.is_parent || d.isParent) return;
-                        if (e.target && e.target.classList.contains('r2s-to-trn-move-dot')) return;
-                        cell.edit();
-                    },
-                    cellEditing: function(cell) {
-                        const row = cell.getRow();
-                        row.forecastR2sEditStart = cell.getValue();
-                        setTimeout(function() {
-                            const input = cell.getElement().querySelector('input, textarea');
-                            if (input) {
-                                input.focus();
-                                input.select();
-                            }
-                        }, 0);
-                    },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const skuAttr = String(rowData.SKU || '').replace(/'/g, "\\'");
-                        const parentAttr = String(rowData.Parent || '').replace(/'/g, "\\'");
                         const value = cell.getValue();
                         const n = parseFloat(value);
                         const showDash = value === null || value === undefined || value === '' || isNaN(n) || n === 0;
-                        if (showDash) return `<div style="text-align:center;font-weight:bold;cursor:text;">-</div>`;
+                        if (showDash) return `<div style="text-align:center;font-weight:bold;">-</div>`;
                         if (rowData.is_parent || rowData.isParent) return `<div style="text-align:center;font-weight:bold;">${String(value)}</div>`;
-                        return `<div style="text-align:center;font-weight:bold;display:flex;align-items:center;justify-content:center;gap:6px;">
-                            <span style="cursor:text;" title="Click to edit R2S">${String(value)}</span>
-                            <button type="button" class="r2s-to-trn-move-dot" data-sku='${skuAttr}' data-parent='${parentAttr}' title="Move R2S to TRN" aria-label="Move R2S to TRN"
-                                style="width:10px;height:10px;border-radius:9999px;border:1px solid #9a3412;background:#ea580c;padding:0;cursor:pointer;display:inline-block;line-height:1;flex-shrink:0;"></button>
-                        </div>`;
+                        return `<div style="text-align:center;font-weight:bold;">${String(value)}</div>`;
                     },
-                    cellEdited: function(cell) {
-                        const row = cell.getRow();
-                        const d = row.getData();
-                        if (d.is_parent || d.isParent) return;
-
-                        const rawNew = cell.getValue();
-                        const oldVal = row.forecastR2sEditStart;
-                        delete row.forecastR2sEditStart;
-
-                        if (rawNew === '' || rawNew === null || rawNew === undefined) {
-                            cell.setValue(oldVal, true);
-                            alert('Please enter a valid R2S quantity.');
-                            return;
-                        }
-                        const newValue = Number(rawNew);
-                        if (Number.isNaN(newValue) || newValue < 0) {
-                            cell.setValue(oldVal, true);
-                            alert('Please enter a valid R2S quantity.');
-                            return;
-                        }
-                        const origNum = Number(oldVal);
-                        if (!Number.isNaN(origNum) && origNum === newValue) return;
-
-                        updateForecastField(
-                            { sku: d.SKU, parent: d.Parent || '', column: 'R2S', value: newValue },
-                            function() {
-                                row.update({ readyToShipQty: newValue }, true);
-                                const stageCell = row.getCells().find(function(c) { return c.getField() === 'stage'; });
-                                if (stageCell) stageCell.reformat();
-                                syncParentStageQtyColumns(d.Parent || d.parentKey);
-                            },
-                            function() {
-                                cell.setValue(oldVal, true);
-                            }
-                        );
-                    }
                 },
                 // {
                 //     title: "MIP Value",
@@ -2457,21 +2435,6 @@
                     accessor: row => (row ? row["MOQ"] : ''),
                     headerSort: true,
                     hozAlign: "center",
-                    editable: function(cell) {
-                        const d = cell.getRow().getData();
-                        return !d.is_parent && !d.isParent;
-                    },
-                    editor: "number",
-                    editorParams: {
-                        min: 0,
-                        verticalNavigation: "editor",
-                    },
-                    cellEditing: function(cell) {
-                        cell.getRow().forecastMoqEditStart = cell.getValue();
-                    },
-                    cellEditCancelled: function(cell) {
-                        delete cell.getRow().forecastMoqEditStart;
-                    },
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const rowData = cell.getRow().getData();
@@ -2499,56 +2462,8 @@
                             }
                         }
 
-                        return `<span class="forecast-moq-cell" style="display:block;outline:none;min-width:40px;text-align:center;font-weight:bold;color:${moqColor};cursor:text;"
-                            title="${Number.isFinite(parseFloat(rowData.msl)) && parseFloat(rowData.msl) > 0 ? 'Green: MOQ &lt; MSL · Red: MOQ &gt; MSL · Double-click to edit' : 'Double-click to edit MOQ'}">${disp}</span>`;
-                    },
-                    cellEdited: function(cell) {
-                        const row = cell.getRow();
-                        const d = row.getData();
-                        if (d.is_parent || d.isParent) return;
-
-                        const rawNew = cell.getValue();
-                        const oldVal = row.forecastMoqEditStart;
-                        delete row.forecastMoqEditStart;
-                        if (rawNew === '' || rawNew === null || rawNew === undefined) {
-                            cell.setValue(oldVal);
-                            alert('Please enter a valid number.');
-                            return;
-                        }
-                        const newValue = Number(rawNew);
-                        if (Number.isNaN(newValue)) {
-                            cell.setValue(oldVal);
-                            alert('Please enter a valid number.');
-                            return;
-                        }
-                        const origNum = Number(oldVal);
-                        if (!Number.isNaN(origNum) && origNum === newValue) return;
-
-                        const sku = d.SKU;
-                        const parent = d.Parent || '';
-                        updateForecastField(
-                            { sku: sku, parent: parent, column: 'MOQ', value: newValue },
-                            function() {
-                                const st = String(d.stage || '').trim().toLowerCase();
-                                const moqNum = parseFloat(newValue) || 0;
-                                const twoq = st === 'to_order_analysis' ? moqNum : 0;
-                                const apprq = st === 'appr_req' ? moqNum : 0;
-                                const rawNext = Object.assign({}, d.raw_data || {}, { MOQ: newValue });
-                                row.update({ two_order_qty: twoq, appr_req_qty: apprq, raw_data: rawNext }, true);
-                                syncParentStageQtyColumns(d.Parent || d.parentKey);
-                                refreshParentMoqFromChildren(d.Parent || d.parentKey);
-                                ['MOQ', 'two_order_qty', 'appr_req_qty', 'TAT', 'eff_roi_pct'].forEach(function(f) {
-                                    const c = row.getCells().find(function(x) { return x.getField() === f; });
-                                    if (c) c.reformat();
-                                });
-                                const today = new Date();
-                                const currentDate = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
-                                updateForecastField({ sku: sku, parent: parent, column: 'Date of Appr', value: currentDate });
-                            },
-                            function() {
-                                cell.setValue(oldVal);
-                            }
-                        );
+                        return `<span class="forecast-moq-cell" style="display:block;outline:none;min-width:40px;text-align:center;font-weight:bold;color:${moqColor};"
+                            title="${Number.isFinite(parseFloat(rowData.msl)) && parseFloat(rowData.msl) > 0 ? 'Green: MOQ &lt; MSL · Red: MOQ &gt; MSL' : 'MOQ'}">${disp}</span>`;
                     },
                 },
                 {
@@ -2593,17 +2508,9 @@
                             tip = 'LATER';
                         }
                         return `
-                            <div class="nrp-dot-cell position-relative d-flex justify-content-center align-items-center w-100" title="${tip} (click to change)">
+                            <div class="nrp-dot-cell d-flex justify-content-center align-items-center w-100" title="${tip}">
                                 <span class="nrp-status-dot" style="background-color:${dotColor};" aria-hidden="true"></span>
-                                <select class="form-select form-select-sm editable-select nrp-nr-select position-absolute top-0 start-0 w-100 h-100"
-                                    data-type="NR"
-                                    data-sku='${sku}'
-                                    data-parent='${parent}'
-                                    aria-label="NRP: ${tip}">
-                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
-                                    <option value="NR" ${value === 'NR' ? 'selected' : ''}>2BDC</option>
-                                    <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
-                                </select>
+                                <span class="purchase-hover-tip-badge">${tip}</span>
                             </div>
                         `;
                     }
@@ -2904,12 +2811,7 @@
                     field: "Clink",
                     hozAlign: "center",
                     headerSort: false,
-                    headerTooltip: "Comparison link (click cell to edit)",
-                    editor: "input",
-                    editable: function(cell) {
-                        const d = cell.getRow().getData();
-                        return !(d.is_parent || d.isParent);
-                    },
+                    headerTooltip: "Comparison link",
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) {
@@ -2917,7 +2819,7 @@
                         }
                         const url = String(cell.getValue() || '').trim();
                         if (!url) {
-                            return '<span style="display:block;text-align:center;color:#6c757d;cursor:text;">-</span>';
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
                         }
                         return `<div style="display:flex;align-items:center;justify-content:center;">
                             <a href="${url}" target="_blank" rel="noopener noreferrer"
@@ -2926,19 +2828,6 @@
                             </a>
                         </div>`;
                     },
-                    cellEdited: function(cell) {
-                        const row = cell.getRow();
-                        const d = row.getData();
-                        if (d.is_parent || d.isParent) return;
-                        const sku = String(d.SKU || '').trim();
-                        const parent = String(d.Parent || '').trim();
-                        const value = String(cell.getValue() || '').trim();
-                        if (!sku) return;
-                        updateForecastField(
-                            { sku: sku, parent: parent, column: 'Clink', value: value },
-                            function() { row.update({ Clink: value }, true); }
-                        );
-                    }
                 },
                 {
                     title: "RFQ",
@@ -3390,6 +3279,32 @@
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return;
                         openForecastEditModal(cell.getRow());
+                    }
+                },
+                {
+                    title: "History",
+                    field: "_history_row",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 56,
+                    minWidth: 50,
+                    maxWidth: 64,
+                    widthGrow: 0,
+                    download: false,
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        return '<button type="button" class="btn btn-sm btn-outline-info py-0 px-2 forecast-history-row-btn" title="History — see who changed what"><i class="bi bi-clock-history"></i></button>';
+                    },
+                    cellClick: function(e, cell) {
+                        if (!e.target.closest('.forecast-history-row-btn')) return;
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return;
+                        const sku = String(forecastRowGetField(d, 'SKU', 'sku') || '').trim();
+                        const parent = String(forecastRowGetField(d, 'Parent', 'parent') || '').trim();
+                        openForecastHistoryModal(sku, parent);
                     }
                 },
             ],
@@ -6304,61 +6219,6 @@
                     function() {
                         $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
                         alert('Failed to move MIP to R2S.');
-                    }
-                );
-            });
-
-            $(document).off('click', '.r2s-to-trn-move-dot').on('click', '.r2s-to-trn-move-dot', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const $btn = $(this);
-                if ($btn.data('busy')) return;
-
-                const sku = String($btn.data('sku') || '').trim();
-                const parent = String($btn.data('parent') || '').trim();
-                if (!sku) return;
-
-                const row = table.getRows().find(r => {
-                    const d = r.getData();
-                    return String(d.SKU || '').trim() === sku && String(d.Parent || '').trim() === parent;
-                });
-
-                if (!row) { alert('Row not found.'); return; }
-
-                const rowData = row.getData() || {};
-                const r2sQty = parseFloat(rowData.readyToShipQty ?? 0);
-                if (!Number.isFinite(r2sQty) || r2sQty <= 0) {
-                    alert('R2S quantity is empty or zero.');
-                    return;
-                }
-
-                $btn.data('busy', true).css('opacity', '0.5').css('cursor', 'wait');
-
-                updateForecastField(
-                    { sku: sku, parent: parent, column: 'TRANSIT_MOVE', value: r2sQty },
-                    function() {
-                        row.update({
-                            stage: 'transit',
-                            transit: r2sQty,
-                            readyToShipQty: 0,
-                            order_given: 0,
-                            two_order_qty: 0,
-                            appr_req_qty: 0
-                        }, true);
-                        syncParentStageQtyColumns(rowData.Parent || rowData.parentKey);
-                        row.getCells().forEach(function(cell) {
-                            const f = cell.getField();
-                            if (['stage', 'order_given', 'readyToShipQty', 'transit', 'to_order', 'two_order_qty', 'appr_req_qty'].includes(f)) {
-                                cell.reformat();
-                            }
-                        });
-                        setCombinedFilters();
-                        $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
-                    },
-                    function() {
-                        $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
-                        alert('Failed to move R2S to TRN.');
                     }
                 );
             });

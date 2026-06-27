@@ -4024,6 +4024,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/approval.required', action: [ForecastAnalysisController::class, 'approvalRequired'])->name('approval.required');
     Route::get('/transit', action: [ForecastAnalysisController::class, 'transit'])->name('transit');
     Route::get('/forecast-analysis/get-sku-quantity', action: [ForecastAnalysisController::class, 'getSkuQuantity'])->name('forecast.analysis.get.sku.quantity');
+    Route::get('/forecast-analysis/history', action: [ForecastAnalysisController::class, 'getForecastAnalysisHistory'])->name('forecast.analysis.history');
     Route::get('/forecast.analysis/get-r2s-data-for-export', action: [ForecastAnalysisController::class, 'getR2sDataForExport'])->name('forecast.analysis.get.r2s.export');
 
     // Forecast Analysis archive / restore (server-side enforces president@5core.com only).

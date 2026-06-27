@@ -6,10 +6,13 @@ use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Models\ForecastAnalysisHistory;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 use App\Models\AmazonDataView;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\JungleScoutProductData;
@@ -1164,6 +1167,16 @@ class ForecastAnalysisController extends Controller
             $parentNorm = strtoupper(trim($parent));
             $valueNum = is_numeric($value) ? (int) $value : null;
 
+            $oldMoq = null;
+            $moqQuery = DB::table('forecast_analysis')->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper]);
+            if ($parentNorm !== '') {
+                $moqQuery->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm]);
+            }
+            $moqRow = $moqQuery->orderByDesc('updated_at')->first();
+            if ($moqRow) {
+                $oldMoq = $moqRow->approved_qty;
+            }
+
             $faUpdated = 0;
             if ($parentNorm !== '') {
                 $faUpdated = (int) DB::table('forecast_analysis')
@@ -1208,6 +1221,8 @@ class ForecastAnalysisController extends Controller
                 $product->save();
             }
 
+            $this->logForecastAnalysisChange($sku, $parent, 'moq', $oldMoq, $valueNum);
+
             return response()->json(['success' => true, 'message' => 'MOQ updated successfully']);
         }
 
@@ -1217,9 +1232,11 @@ class ForecastAnalysisController extends Controller
             $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
             if ($product) {
                 $values = is_array($product->Values) ? $product->Values : (json_decode($product->Values ?? '{}', true) ?? []);
+                $oldCp = $values['cp'] ?? null;
                 $values['cp'] = $valueNum !== null ? $valueNum : '';
                 $product->Values = $values;
                 $product->save();
+                $this->logForecastAnalysisChange($sku, $parent, 'cp', $oldCp, $valueNum);
                 return response()->json(['success' => true, 'message' => 'CP updated successfully']);
             }
             return response()->json(['success' => false, 'message' => 'Product not found']);
@@ -1231,9 +1248,11 @@ class ForecastAnalysisController extends Controller
             $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
             if ($product) {
                 $values = is_array($product->Values) ? $product->Values : (json_decode($product->Values ?? '{}', true) ?? []);
+                $oldCbm = $values['cbm'] ?? null;
                 $values['cbm'] = $valueNum !== null ? $valueNum : '';
                 $product->Values = $values;
                 $product->save();
+                $this->logForecastAnalysisChange($sku, $parent, 'cbm', $oldCbm, $valueNum);
                 return response()->json(['success' => true, 'message' => 'CBM updated successfully']);
             }
             return response()->json(['success' => false, 'message' => 'Product not found']);
@@ -1252,6 +1271,16 @@ class ForecastAnalysisController extends Controller
 
             $skuUpper = strtoupper(trim($sku));
             $parentNorm = strtoupper(trim($parent));
+
+            $oldOrder = null;
+            $orderQuery = DB::table('to_order_analysis')->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper]);
+            if ($parentNorm !== '') {
+                $orderQuery->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm]);
+            }
+            $orderRow = $orderQuery->orderByDesc('updated_at')->first();
+            if ($orderRow) {
+                $oldOrder = $orderRow->approved_qty;
+            }
 
             $updated = 0;
             if ($parentNorm !== '') {
@@ -1293,6 +1322,8 @@ class ForecastAnalysisController extends Controller
                 ]);
             }
 
+            $this->logForecastAnalysisChange($sku, $parent, 'order', $oldOrder, $valueNum);
+
             return response()->json(['success' => true, 'message' => 'Order updated successfully']);
         }
 
@@ -1309,6 +1340,18 @@ class ForecastAnalysisController extends Controller
 
             $skuUpper = strtoupper(trim($sku));
             $parentNorm = strtoupper(trim($parent));
+
+            $oldMip = null;
+            $mipQuery = DB::table('mfrg_progress')
+                ->whereNull('deleted_at')
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper]);
+            if ($parentNorm !== '') {
+                $mipQuery->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm]);
+            }
+            $mipRow = $mipQuery->orderByDesc('updated_at')->first();
+            if ($mipRow) {
+                $oldMip = $mipRow->qty;
+            }
 
             $updated = 0;
             if ($parentNorm !== '') {
@@ -1345,6 +1388,8 @@ class ForecastAnalysisController extends Controller
                 ]);
             }
 
+            $this->logForecastAnalysisChange($sku, $parent, 'mip', $oldMip, $valueNum);
+
             return response()->json(['success' => true, 'message' => 'MIP updated successfully']);
         }
 
@@ -1361,6 +1406,18 @@ class ForecastAnalysisController extends Controller
 
             $skuUpper = strtoupper(trim($sku));
             $parentNorm = strtoupper(trim($parent));
+
+            $oldR2s = null;
+            $r2sQuery = DB::table('ready_to_ship')
+                ->whereNull('deleted_at')
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper]);
+            if ($parentNorm !== '') {
+                $r2sQuery->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm]);
+            }
+            $r2sRow = $r2sQuery->orderByDesc('updated_at')->first();
+            if ($r2sRow) {
+                $oldR2s = $r2sRow->qty;
+            }
 
             $updated = (int) DB::table('ready_to_ship')
                 ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
@@ -1393,6 +1450,8 @@ class ForecastAnalysisController extends Controller
                 ]);
             }
 
+            $this->logForecastAnalysisChange($sku, $parent, 'r2s', $oldR2s, $valueNum);
+
             return response()->json(['success' => true, 'message' => 'R2S updated successfully']);
         }
 
@@ -1411,6 +1470,7 @@ class ForecastAnalysisController extends Controller
                 ->where('tab_name', 'Forecast')
                 ->whereNull('deleted_at')
                 ->first();
+            $oldTransit = $existingTransit ? $existingTransit->no_of_units : null;
 
             if ($existingTransit) {
                 DB::table('transit_container_details')
@@ -1447,6 +1507,7 @@ class ForecastAnalysisController extends Controller
                 ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
                 ->orderByRaw("CASE WHEN stage IS NOT NULL AND stage != '' THEN 0 ELSE 1 END")
                 ->first();
+            $oldStage = $existingFa ? $existingFa->stage : null;
 
             if ($existingFa) {
                 DB::table('forecast_analysis')
@@ -1461,6 +1522,9 @@ class ForecastAnalysisController extends Controller
                     'updated_at' => now(),
                 ]);
             }
+
+            $this->logForecastAnalysisChange($sku, $parent, 'transit', $oldTransit, $valueNum);
+            $this->logForecastAnalysisChange($sku, $parent, 'stage', $oldStage, 'transit');
 
             return response()->json(['success' => true, 'message' => 'Moved to Transit successfully']);
         }
@@ -1524,6 +1588,7 @@ class ForecastAnalysisController extends Controller
                 DB::table('forecast_analysis')
                     ->where('id', $existing->id)
                     ->update([$columnKey => $value, 'updated_at' => now()]);
+                $this->logForecastAnalysisChange($sku, $parent, $columnKey, $currentValue, $value);
             }
 
             if (strtolower($column) === 'stage'){
@@ -1670,6 +1735,7 @@ class ForecastAnalysisController extends Controller
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+            $this->logForecastAnalysisChange($sku, $parent, $columnKey, null, $value);
 
             if (strtolower($column) === 'stage'){
                 // Get MOQ from ProductMaster table (not from approved_qty)
@@ -2310,6 +2376,133 @@ class ForecastAnalysisController extends Controller
             'success' => true,
             'data'    => $data,
             'count'   => $data->count(),
+        ]);
+    }
+
+    /** Human-readable labels for forecast history field keys. */
+    private static function forecastHistoryFieldLabels(): array
+    {
+        return [
+            'moq' => 'MOQ (Approved Qty)',
+            'cp' => 'CP',
+            'cbm' => 'CBM',
+            'order' => '2 Order',
+            'mip' => 'MIP',
+            'r2s' => 'R2S',
+            'transit' => 'Transit',
+            'stage' => 'Stage',
+            'nr' => 'NR',
+            'req' => 'REQ',
+            'hide' => 'Hide',
+            'notes' => 'Notes',
+            'clink' => 'Clink',
+            'olink' => 'Olink',
+            'rfq_form_link' => 'RFQ Form Link',
+            'rfq_report' => 'RFQ Report',
+            'order_given' => 'Order Given',
+            'date_apprvl' => 'Date of Appr',
+            'approved_qty' => 'Approved Qty',
+            's_msl' => 'MSL Manual',
+        ];
+    }
+
+    private function forecastHistoryValuesEqual($a, $b): bool
+    {
+        $isEmpty = function ($v): bool {
+            return $v === null || $v === '' || (is_array($v) && empty($v));
+        };
+        if ($isEmpty($a) && $isEmpty($b)) {
+            return true;
+        }
+        if (is_numeric($a) && is_numeric($b)) {
+            return abs((float) $a - (float) $b) < 0.000001;
+        }
+
+        return (string) $a === (string) $b;
+    }
+
+    private function forecastHistoryStringify($v): ?string
+    {
+        if ($v === null || $v === '') {
+            return null;
+        }
+        if (is_bool($v)) {
+            return $v ? '1' : '0';
+        }
+        if (is_array($v) || is_object($v)) {
+            return json_encode($v);
+        }
+
+        return (string) $v;
+    }
+
+    private function logForecastAnalysisChange(string $sku, ?string $parent, string $field, $oldValue, $newValue): void
+    {
+        if ($this->forecastHistoryValuesEqual($oldValue, $newValue)) {
+            return;
+        }
+
+        try {
+            ForecastAnalysisHistory::insert([
+                'sku' => $sku,
+                'parent' => $parent !== '' ? $parent : null,
+                'field' => $field,
+                'old_value' => $this->forecastHistoryStringify($oldValue),
+                'new_value' => $this->forecastHistoryStringify($newValue),
+                'updated_by' => Auth::user()?->name ?? 'N/A',
+                'updated_at' => Carbon::now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to record forecast analysis history: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * GET /forecast-analysis/history?sku=&parent=
+     * Returns the change-log for one forecast row, newest first.
+     */
+    public function getForecastAnalysisHistory(Request $request)
+    {
+        $sku = trim((string) $request->query('sku', ''));
+        $parent = trim((string) $request->query('parent', ''));
+
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 400);
+        }
+
+        $labels = self::forecastHistoryFieldLabels();
+        $query = ForecastAnalysisHistory::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)]);
+
+        if ($parent !== '') {
+            $query->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [strtoupper($parent)]);
+        }
+
+        $history = $query
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->limit(500)
+            ->get()
+            ->map(function ($h) use ($labels) {
+                return [
+                    'id' => $h->id,
+                    'field' => $h->field,
+                    'field_label' => $labels[$h->field] ?? $h->field,
+                    'old_value' => $h->old_value,
+                    'new_value' => $h->new_value,
+                    'updated_by' => $h->updated_by ?: 'N/A',
+                    'updated_at' => $h->updated_at
+                        ? Carbon::parse($h->updated_at)->timezone('America/New_York')->format('m-d-Y H:i')
+                        : null,
+                ];
+            })
+            ->values()
+            ->all();
+
+        return response()->json([
+            'success' => true,
+            'sku' => $sku,
+            'parent' => $parent !== '' ? $parent : null,
+            'history' => $history,
         ]);
     }
 
