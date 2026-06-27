@@ -982,10 +982,13 @@ class ForecastAnalysisController extends Controller
             $item->r2s_amount = round(((float) $r2sOrderQty) * $cp, 0);
 
             // Stage from pipeline qtys: Transit → R2S → MIP → 2 Order; none → Select (empty)
-            // Never auto-overwrite appr_req — this is set from the grid and must survive refresh.
+            // Never auto-overwrite manually-managed statuses (appr_req / all_good /
+            // transit) — they're set from the grid or the Edit modal and have no
+            // pipeline qty backing them, so the derived-stage pass would otherwise
+            // silently revert them to ''.
             if (! $item->is_parent) {
                 $currentStage = strtolower(trim((string) ($item->stage ?? '')));
-                $manualStages = ['appr_req'];
+                $manualStages = ['appr_req', 'all_good', 'transit'];
 
                 if (! in_array($currentStage, $manualStages, true)) {
                     $qtyTransit = (float) ($item->transit ?? 0);
@@ -1608,6 +1611,35 @@ class ForecastAnalysisController extends Controller
                         ]
                     );
                 }
+
+                // Switching stages must clear the OTHER pipeline tables for this
+                // SKU, otherwise the derived-stage pass on the next forecast load
+                // (which prefers transit > r2s > mip > to_order) silently
+                // reverts the user's saved stage. e.g. switching r2s → mip:
+                // mfrg_progress.qty gets set to MOQ above, but ready_to_ship.qty
+                // is still the old MOQ -> deriver picks r2s and overwrites the
+                // saved "mip" on refresh, so the Edit modal looked like it did
+                // nothing.
+                $stageLower = strtolower($value);
+                $skuLower   = strtolower($sku);
+                if ($stageLower !== 'mip') {
+                    DB::table('mfrg_progress')
+                        ->whereRaw('TRIM(LOWER(sku)) = ?', [$skuLower])
+                        ->whereNull('deleted_at')
+                        ->update(['qty' => 0, 'updated_at' => now()]);
+                }
+                if ($stageLower !== 'r2s') {
+                    DB::table('ready_to_ship')
+                        ->whereRaw('TRIM(LOWER(sku)) = ?', [$skuLower])
+                        ->whereNull('deleted_at')
+                        ->update(['qty' => 0, 'updated_at' => now()]);
+                }
+                if (!in_array($stageLower, ['to_order_analysis', 'appr_req'], true)) {
+                    DB::table('to_order_analysis')
+                        ->whereRaw('TRIM(LOWER(sku)) = ?', [$skuLower])
+                        ->whereNull('deleted_at')
+                        ->update(['approved_qty' => 0, 'updated_at' => now()]);
+                }
             }
 
             return response()->json(['success' => true, 'message' => 'Updated or already up-to-date']);
@@ -1716,6 +1748,32 @@ class ForecastAnalysisController extends Controller
                             'created_at' => now(),
                         ]
                     );
+                }
+
+                // Clear OTHER pipeline tables (see comment in the existing-record
+                // branch above for context). Without this, switching between
+                // stages leaves stale qty on the previous pipeline table and the
+                // forecast deriver reverts our newly-saved stage on the next
+                // load.
+                $stageLower = strtolower($value);
+                $skuLower   = strtolower($sku);
+                if ($stageLower !== 'mip') {
+                    DB::table('mfrg_progress')
+                        ->whereRaw('TRIM(LOWER(sku)) = ?', [$skuLower])
+                        ->whereNull('deleted_at')
+                        ->update(['qty' => 0, 'updated_at' => now()]);
+                }
+                if ($stageLower !== 'r2s') {
+                    DB::table('ready_to_ship')
+                        ->whereRaw('TRIM(LOWER(sku)) = ?', [$skuLower])
+                        ->whereNull('deleted_at')
+                        ->update(['qty' => 0, 'updated_at' => now()]);
+                }
+                if (!in_array($stageLower, ['to_order_analysis', 'appr_req'], true)) {
+                    DB::table('to_order_analysis')
+                        ->whereRaw('TRIM(LOWER(sku)) = ?', [$skuLower])
+                        ->whereNull('deleted_at')
+                        ->update(['approved_qty' => 0, 'updated_at' => now()]);
                 }
             }
 
