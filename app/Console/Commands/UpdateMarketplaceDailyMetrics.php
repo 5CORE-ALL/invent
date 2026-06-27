@@ -895,8 +895,8 @@ class UpdateMarketplaceDailyMetrics extends Command
             $basePrice = (float) ($row->base_price_total ?? 0);
             $totalQuantity += $quantity;
 
-            $total   = $basePrice * $quantity;
-            $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
+            // FB Prc: +$2.99 when per-unit base price ≤ $26.99 (matches /temu-decrease and /temu-tabulator).
+            $fbPrice = $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice;
             $totalRevenue  += $fbPrice * $quantity; // match tabulator: revenue uses fbPrice
             $totalL30Sales += $fbPrice * $quantity;
 

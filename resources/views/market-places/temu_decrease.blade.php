@@ -2888,12 +2888,11 @@
                 totalQuantity += temuL30;
 
                 // Only include rows with sales (Temu L30 > 0 and basePrice > 0) in PFT/revenue/COGS
-                // Match marketplace_daily_metrics calculation: fbPrice = (basePrice * quantity < 27) ? basePrice + 2.99 : basePrice
+                // FB Prc: +$2.99 when per-unit base price ≤ $26.99
+                // (matches the per-row Temu Price column and /temu-tabulator).
                 const hasSales = temuL30 > 0 && price > 0;
                 if (hasSales) {
-                    // Calculate fbPrice same as marketplace_daily_metrics: check if basePrice * quantity < 27
-                    const total = price * temuL30;
-                    const fbPrice = total < 27 ? price + 2.99 : price;
+                    const fbPrice = price <= 26.99 ? price + 2.99 : price;
                     // PFT % formula: (price * 0.96 - lp - temuship) / price — use fbPrice as price
                     const pftDecimal = fbPrice > 0 ? (fbPrice * 0.96 - lpPerUnit - temuShip) / fbPrice : 0;
                     const rowProfit = pftDecimal * fbPrice * temuL30;

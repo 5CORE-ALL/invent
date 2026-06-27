@@ -778,8 +778,8 @@ class ChannelMasterController extends Controller
                 if ($quantity <= 0 || $basePrice <= 0) {
                     continue;
                 }
-                $total = $basePrice * $quantity;
-                $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
+                // FB Prc: +$2.99 when per-unit base price ≤ $26.99 (matches /temu-decrease and /temu-tabulator).
+                $fbPrice = $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice;
                 $l60Sales += $fbPrice * $quantity;
             }
         }
@@ -4729,8 +4729,8 @@ class ChannelMasterController extends Controller
 
                 $quantity = (int) ($row->quantity_purchased ?? 0);
                 $basePrice = (float) ($row->base_price_total ?? 0);
-                $total = $basePrice * $quantity;
-                $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
+                // FB Prc: +$2.99 when per-unit base price ≤ $26.99 (matches /temu-decrease and /temu-tabulator).
+                $fbPrice = $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice;
 
                 if ($quantity > 0 && $basePrice > 0) {
                     $totalYSales += $fbPrice * $quantity;

@@ -479,14 +479,17 @@
             ]);
         });
 
-        // FB Prc: +$2.99 per unit when line total (base × qty) is under $27
+        // FB Prc: +$2.99 per unit when the per-unit base price is ≤ $26.99.
+        // Matches /temu-decrease so GPFT% / GROI% stay consistent between the
+        // order-wise tabulator and the per-SKU pricing view. (Old rule gated
+        // on base × qty < 27, which made multi-quantity orders disagree.)
         function temuFbPrice(basePrice, quantity) {
             const base = parseFloat(basePrice) || 0;
             const qty = parseInt(quantity) || 0;
             if (qty <= 0 || base <= 0) {
                 return 0;
             }
-            return (base * qty) < 27 ? base + 2.99 : base;
+            return base <= 26.99 ? base + 2.99 : base;
         }
 
         function temuLinePrice(row) {

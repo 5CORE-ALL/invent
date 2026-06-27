@@ -1889,8 +1889,8 @@ class TemuController extends Controller
                 }
                 $basePrice = $item->base_price_total !== null ? (float)$item->base_price_total : 0;
                 $quantity = $item->quantity_purchased !== null ? (int)$item->quantity_purchased : 0;
-                $total = $basePrice * $quantity;
-                $fbPrice = $total < 27 ? ($basePrice + 2.99) : $basePrice;
+                // FB Prc: +$2.99 when per-unit base price ≤ $26.99 (matches /temu-decrease).
+                $fbPrice = $basePrice <= 26.99 ? ($basePrice + 2.99) : $basePrice;
                 $pft = ($fbPrice * 0.96 - $lp - $temuShip) * $quantity;
                 $result[] = [
                     'Parent' => $parent,
@@ -1994,8 +1994,8 @@ class TemuController extends Controller
                 }
                 $basePrice = $item->base_price_total !== null ? (float)$item->base_price_total : 0;
                 $quantity = $item->quantity_purchased !== null ? (int)$item->quantity_purchased : 0;
-                $total = $basePrice * $quantity;
-                $fbPrice = $total < 27 ? ($basePrice + 2.99) : $basePrice;
+                // FB Prc: +$2.99 when per-unit base price ≤ $26.99 (matches /temu-decrease).
+                $fbPrice = $basePrice <= 26.99 ? ($basePrice + 2.99) : $basePrice;
                 $pft = ($fbPrice * 0.96 - $lp - $temuShip) * $quantity;
                 $result[] = [
                     'Parent' => $parent,
@@ -2848,9 +2848,9 @@ class TemuController extends Controller
             $qty = (int)($row->quantity_purchased ?? 0);
             $base = (float)($row->base_price_total ?? 0);
             $totalQuantity += $qty;
-            // Use fbPrice logic to match all-marketplace-master and buildTemuDecreaseDataResponse
-            $total = $base * $qty;
-            $fbPrice = $total < 27 ? $base + 2.99 : $base;
+            // FB Prc: +$2.99 when per-unit base price ≤ $26.99
+            // (matches /temu-decrease, all-marketplace-master, and buildTemuDecreaseDataResponse).
+            $fbPrice = $base <= 26.99 ? $base + 2.99 : $base;
             $totalRevenue += $fbPrice * $qty;
         }
         return [
@@ -3121,10 +3121,9 @@ class TemuController extends Controller
                 $base = (float)($row->base_price_total ?? 0);
                 $salesTotalQuantity += $qty;
                 
-                // Calculate fbPrice same as temu-tabulator and UpdateMarketplaceDailyMetrics
-                // fbPrice = (basePrice * quantity < 27) ? basePrice + 2.99 : basePrice
-                $total = $base * $qty;
-                $fbPrice = $total < 27 ? $base + 2.99 : $base;
+                // FB Prc: +$2.99 when per-unit base price ≤ $26.99
+                // (matches /temu-decrease, /temu-tabulator, and UpdateMarketplaceDailyMetrics).
+                $fbPrice = $base <= 26.99 ? $base + 2.99 : $base;
                 $salesTotalRevenue += $fbPrice * $qty;
             }
             $salesSummary = [

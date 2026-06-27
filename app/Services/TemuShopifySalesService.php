@@ -72,14 +72,22 @@ class TemuShopifySalesService
         return $mp && $mp->percentage ? ((float) $mp->percentage / 100) : 0.96;
     }
 
-    /** FB Prc: +$2.99 per unit when line total (base × qty) is under $27. */
+    /**
+     * FB Prc: +$2.99 per unit when the per-unit base price is ≤ $26.99.
+     *
+     * Gating intentionally matches the /temu-decrease page so GPFT% / GROI%
+     * stay consistent between the order-wise tabulator and the per-SKU
+     * pricing view. Previously this was gated on the line total (base × qty
+     * < 27), which produced different FB prices for the same SKU depending
+     * on order quantity and made the two pages disagree.
+     */
     public static function computeFbPrice(float $basePrice, int $quantity): float
     {
         if ($quantity <= 0 || $basePrice <= 0) {
             return 0.0;
         }
 
-        return ($basePrice * $quantity) < 27 ? $basePrice + 2.99 : $basePrice;
+        return $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice;
     }
 
     /** Line revenue using FB Prc. */

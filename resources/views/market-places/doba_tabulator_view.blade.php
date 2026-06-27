@@ -295,7 +295,12 @@
                         <option value="child">Child Only</option>
                     </select>
 
-                    <select id="missing-filter" class="form-select form-select-sm" style="width: 150px;">
+                    {{-- "Missing" filter — dropdown is hidden by request, but the
+                         <select> element stays in the DOM because the Missing badge's
+                         click-to-filter handler writes to #missing-filter directly
+                         (see "Missing filter toggle on badge click" further down).
+                         Click the red "Missing: N" badge to toggle. --}}
+                    <select id="missing-filter" class="form-select form-select-sm" style="display:none;">
                         <option value="">All Products</option>
                         <option value="missing">Missing Only</option>
                     </select>
@@ -313,7 +318,7 @@
                             <option value="50plus">Above 50%</option>
                         </select>
                         <select id="cvr-filter" class="form-select form-select-sm" style="width: 130px;">
-                            <option value="all">All CVR%</option>
+                            <option value="all">CVR</option>
                             <option value="0-0">0%</option>
                             <option value="0-3">0-3%</option>
                             <option value="3-7">3-7%</option>
@@ -351,22 +356,6 @@
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
                                     <span class="status-circle pink"></span> Pink (50%+)</a></li>
                         </ul>
-                    </div>
-
-                    <!-- Growth Filter -->
-                    <div class="d-flex align-items-center gap-1 flex-wrap">
-                        <label class="mb-0 fw-bold" style="font-size: 12px;">Growth:</label>
-                        <select id="growth-sign-filter" class="form-select form-select-sm" style="width: 130px;"
-                                title="Doba L30 vs L60: (L30 − L60) / L60 × 100; L60=0 and L30&gt;0 counts as +100%">
-                            <option value="all" selected>All</option>
-                            <option value="negative">Negative (&lt; 0)</option>
-                            <option value="zero">Zero (= 0)</option>
-                            <option value="positive">Positive (&gt; 0)</option>
-                        </select>
-                        <button id="clear-growth-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;" type="button"
-                                title="Clear growth sign">
-                            <i class="fas fa-times"></i>
-                        </button>
                     </div>
 
                     <!-- ROI Filter -->
@@ -444,16 +433,43 @@
                     </div>
                 </div>
 
-                {{-- Row 3: summary KPIs (/aliexpress-pricing style) --}}
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
-                    <div class="d-flex flex-wrap gap-2">
-                        <span id="doba-total-sales-badge" class="badge bg-primary fs-6 p-2" style="font-weight:700; color: white !important;">Sales: $0</span>
-                        <span id="total-skus" class="badge bg-info fs-6 p-2" style="font-weight:700; color: #111 !important;">Total SKUs: 0</span>
-                        <span id="zero-sold-count" class="badge bg-danger fs-6 p-2" style="font-weight:700; color: white !important;">L30 0 Sold: 0</span>
-                        <span id="sold-count" class="badge bg-success fs-6 p-2" style="font-weight:700; color: white !important;">SOLD: 0</span>
-                        <span id="missing-count" class="badge fs-6 p-2" style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
-                        <span id="nmap-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter inventory mismatch (Shop INV vs D INV)">N Map: 0</span>
-                        <span id="disc-vs-amz-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter non-competitive items"><i class="fas fa-chart-line"></i> VS AMZ: 0</span>
+                {{-- Compact summary strip — same density / layout as the
+                     /doba-tabulator-withoutship and /topdawg-pricing badges.
+                       • Each visible badge: flex:1 1 0 + text-center → spread
+                         edge-to-edge across the full card width.
+                       • flex-nowrap so the strip stays a single visual band.
+                       • min-width:90px so labels stay readable on narrow viewports.
+                       • SOLD, L30 GPFT $ (per-row pft-total) and Total COGS hidden
+                         via display:none — the % versions carry the same signal.
+                     IMPORTANT: badge IDs, the controller data source, and every
+                     updateSummary() / API-response handler are unchanged. Only
+                     labels and CSS were touched. --}}
+                <div id="summary-stats" class="p-1 bg-light rounded mb-1">
+                    <div class="d-flex flex-nowrap gap-1 w-100" style="overflow-x:auto;">
+                        <span id="doba-total-sales-badge"
+                              class="badge bg-primary text-center"
+                              style="font-weight:700; color: white !important; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;">Sales: $0</span>
+                        <span id="total-skus"
+                              class="badge bg-info text-center"
+                              style="font-weight:700; color: #111 !important; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
+                              title="Number of SKU rows passing the current filters">Rows: 0</span>
+                        <span id="zero-sold-count"
+                              class="badge bg-danger text-center"
+                              style="font-weight:700; color: white !important; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;">0 Sold: 0</span>
+                        {{-- SOLD badge hidden (redundant with 0 Sold + Sales). --}}
+                        <span id="sold-count" class="badge bg-success fs-6 p-2" style="font-weight:700; color: white !important; display:none;">SOLD: 0</span>
+                        <span id="missing-count"
+                              class="badge text-center"
+                              style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
+                              title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
+                        <span id="nmap-count"
+                              class="badge text-center"
+                              style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
+                              title="Click to filter inventory mismatch (Shop INV vs D INV)">N Map: 0</span>
+                        <span id="disc-vs-amz-count"
+                              class="badge text-center"
+                              style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
+                              title="Click to filter non-competitive items"><i class="fas fa-chart-line"></i> VS AMZ: 0</span>
                         {{--
                             GROWTH / GROWTH GPFT / GROWTH GPFT % badges intentionally removed.
                             They compared totalL30* vs totalL60*, but doba_metrics.quantity_l60 is
@@ -463,10 +479,19 @@
                             GROWTH look catastrophically red (e.g. -89%) even when sales were fine.
                             Re-add only after redefining L60 as "the prior 30 days (today-60 → today-31)".
                         --}}
-                        <span id="pft-percentage-badge" class="badge bg-danger fs-6 p-2" style="color: white; font-weight:700;">L30 GPFT %: 0%</span>
-                        <span id="roi-percentage-badge" class="badge fs-6 p-2" style="background-color: #6f42c1; color: white; font-weight:700;">L30 ROI %: 0%</span>
-                        <span id="pft-total-badge" class="badge bg-dark fs-6 p-2" style="color: white; font-weight:700;">L30 GPFT: $0</span>
-                        <span id="total-cogs-badge" class="badge bg-secondary fs-6 p-2" style="color: white; font-weight:700;">Total COGS: $0</span>
+                        <span id="pft-percentage-badge"
+                              class="badge bg-danger text-center"
+                              style="color: white; font-weight:700; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;">GPFT: 0%</span>
+                        <span id="roi-percentage-badge"
+                              class="badge text-center"
+                              style="background-color: #6f42c1; color: white; font-weight:700; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;">ROI: 0%</span>
+                        {{-- L30 GPFT $ and Total COGS hidden — the % versions
+                             carry the same signal in a more comparable form.
+                             The text(...) updaters in updateSummary() and the
+                             controller-response handler keep writing to these
+                             IDs harmlessly (no-op on hidden nodes). --}}
+                        <span id="pft-total-badge" class="badge bg-dark fs-6 p-2" style="color: white; font-weight:700; display:none;">L30 GPFT: $0</span>
+                        <span id="total-cogs-badge" class="badge bg-secondary fs-6 p-2" style="color: white; font-weight:700; display:none;">Total COGS: $0</span>
                     </div>
                 </div>
             </div>
@@ -2494,26 +2519,6 @@
                     });
                 }
 
-                // Growth: sign bucket (negative / zero / positive), same formula as Growth column
-                const growthSign = $('#growth-sign-filter').val();
-                if (growthSign && growthSign !== 'all') {
-                    table.addFilter(function(data) {
-                        const l30 = parseFloat(data['doba L30']) || 0;
-                        const l60 = parseFloat(data['doba L60']) || 0;
-                        let growth = 0;
-                        if (l60 > 0) {
-                            growth = ((l30 - l60) / l60) * 100;
-                        } else if (l30 > 0) {
-                            growth = 100;
-                        }
-                        const g = Math.round(growth);
-                        if (growthSign === 'negative') return g < 0;
-                        if (growthSign === 'zero') return g === 0;
-                        if (growthSign === 'positive') return g > 0;
-                        return true;
-                    });
-                }
-
                 // Growth Filter (optional min/max %, combined with sign filter when both set)
                 const growthMin = parseFloat($('#growth-min-filter').val());
                 const growthMax = parseFloat($('#growth-max-filter').val());
@@ -2673,16 +2678,6 @@
                 applyFilters();
             });
 
-            // Growth filter handler (dropdown only)
-            $('#growth-sign-filter').on('change', function() {
-                applyFilters();
-            });
-
-            $('#clear-growth-filter').on('click', function() {
-                $('#growth-sign-filter').val('all');
-                applyFilters();
-            });
-
             // ROI filter handler
             $('#roi-filter').on('change', function() {
                 applyFilters();
@@ -2709,8 +2704,22 @@
                     .then(result => {
                         if (result.success && result.data) {
                             const data = result.data;
-                            $('#pft-percentage-badge').text('L30 GPFT %: ' + parseFloat(data.pft_percentage).toFixed(1) + '%');
-                            $('#roi-percentage-badge').text('L30 ROI %: ' + Math.round(parseFloat(data.roi_percentage)) + '%');
+                            $('#pft-percentage-badge').text('GPFT: ' + parseFloat(data.pft_percentage).toFixed(1) + '%');
+                            // Color the ROI badge by the same 4-bucket slab as the
+                            // ROI filter dropdown (red < 40, yellow 40–75, green
+                            // 75–125, pink ≥ 125). Mirrors /doba-tabulator-withoutship.
+                            const _roiVal = parseFloat(data.roi_percentage) || 0;
+                            let _roiBg;
+                            if      (_roiVal < 40)  _roiBg = '#a00211';
+                            else if (_roiVal < 75)  _roiBg = '#ffc107';
+                            else if (_roiVal < 125) _roiBg = '#28a745';
+                            else                    _roiBg = '#e83e8c';
+                            $('#roi-percentage-badge')
+                                .css('background-color', _roiBg)
+                                .text('ROI: ' + Math.round(_roiVal) + '%');
+                            // L30 GPFT $ + Total COGS are hidden badges, but the
+                            // assignments are preserved so the data lives on the
+                            // node in case it's ever turned back on.
                             $('#pft-total-badge').text('L30 GPFT: $' + Math.round(parseFloat(data.total_pft)).toLocaleString());
                             $('#total-cogs-badge').text('Total COGS: $' + Math.round(parseFloat(data.total_cogs)).toLocaleString());
                             $('#metrics-date-badge').text('Date: ' + data.date);
@@ -2786,14 +2795,17 @@
                 }
 
                 $('#doba-total-sales-badge').text('Sales: $' + Math.round(totalL30Sales).toLocaleString());
-                $('#total-skus').text('Total SKUs: ' + totalSkus);
-                $('#zero-sold-count').text('L30 0 Sold: ' + l30ZeroSold);
+                $('#total-skus').text('Rows: ' + Number(totalSkus).toLocaleString());
+                $('#zero-sold-count').text('0 Sold: ' + l30ZeroSold);
+                // sold-count is hidden; keep the assignment so the data lives on the node.
                 $('#sold-count').text('SOLD: ' + sold);
                 $('#missing-count').html('<i class="fas fa-exclamation-triangle"></i> Missing: ' + missing);
                 $('#nmap-count').text('N Map: ' + nmap);
                 $('#disc-vs-amz-count').html('<i class="fas fa-chart-line"></i> VS AMZ: ' + discVsAmzCount);
 
-                $('#pft-percentage-badge').text('L30 GPFT %: ' + l30GpftPercent.toFixed(1) + '%');
+                $('#pft-percentage-badge').text('GPFT: ' + l30GpftPercent.toFixed(1) + '%');
+                // pft-total-badge is hidden; preserved for parity with the
+                // controller-response handler above (and easy re-enable later).
                 $('#pft-total-badge').text('L30 GPFT: $' + Math.round(l30Profit).toLocaleString());
             }
 
