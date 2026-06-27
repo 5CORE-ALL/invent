@@ -19,9 +19,8 @@ return new class extends Migration
         if ($this->indexExists('product_stock_mappings', 'product_stock_mappings_sku_index')) {
             return;
         }
-        Schema::table('product_stock_mappings', function ($table) {
-            $table->index('sku', 'product_stock_mappings_sku_index');
-        });
+        // sku is VARCHAR(255) with utf8mb4; a full-column index exceeds InnoDB's 1000-byte limit.
+        DB::statement('ALTER TABLE `product_stock_mappings` ADD INDEX `product_stock_mappings_sku_index` (`sku`(191))');
     }
 
     public function down(): void
