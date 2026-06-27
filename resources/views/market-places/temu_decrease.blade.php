@@ -238,9 +238,10 @@
                         <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
                             <option value="all">GROI%</option>
                             <option value="lt40">&lt; 40%</option>
-                            <option value="40-75">40–75%</option>
-                            <option value="75-125">75–125%</option>
-                            <option value="gt125">125%+</option>
+                            <option value="40-60">40–60%</option>
+                            <option value="60-80">60–80%</option>
+                            <option value="80-100">80–100%</option>
+                            <option value="gt100">100%+</option>
                         </select>
                     </div>
 
@@ -4642,14 +4643,15 @@
                 });
             }
 
-            // ROI filter (GROI%)
+            // ROI filter (GROI%) — buckets: <40, 40–60, 60–80, 80–100, 100+
             if (groiFilter !== 'all') {
                 table.addFilter(function(data) {
                     const groi = parseFloat(data.roi_percent) || 0;
                     if (groiFilter === 'lt40') return groi < 40;
-                    if (groiFilter === '40-75') return groi >= 40 && groi < 75;
-                    if (groiFilter === '75-125') return groi >= 75 && groi < 125;
-                    if (groiFilter === 'gt125') return groi >= 125;
+                    if (groiFilter === '40-60') return groi >= 40 && groi < 60;
+                    if (groiFilter === '60-80') return groi >= 60 && groi < 80;
+                    if (groiFilter === '80-100') return groi >= 80 && groi < 100;
+                    if (groiFilter === 'gt100') return groi >= 100;
                     return true;
                 });
             }

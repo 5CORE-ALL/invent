@@ -278,164 +278,13 @@
     
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
-                
-                {{-- Row 1: filters + Search SKU (/aliexpress-pricing style) --}}
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-2 w-100">
-                    <div class="d-flex flex-wrap align-items-center gap-2 flex-grow-1">
-                    <select id="inventory-filter" class="form-select form-select-sm" style="width: 120px;">
-                        <option value="">All INV</option>
-                        <option value="positive" selected>INV > 0</option>
-                        <option value="zero">INV = 0</option>
-                    </select>
+            <div class="card-body py-1">
 
-                    <select id="parent-filter" class="form-select form-select-sm" style="width: 150px;">
-                        <option value="">All Products</option>
-                        <option value="parent">Parent Only</option>
-                        <option value="child">Child Only</option>
-                    </select>
-
-                    {{-- "Missing" filter — dropdown is hidden by request, but the
-                         <select> element stays in the DOM because the Missing badge's
-                         click-to-filter handler writes to #missing-filter directly
-                         (see "Missing filter toggle on badge click" further down).
-                         Click the red "Missing: N" badge to toggle. --}}
-                    <select id="missing-filter" class="form-select form-select-sm" style="display:none;">
-                        <option value="">All Products</option>
-                        <option value="missing">Missing Only</option>
-                    </select>
-
-                    <!-- GPFT% + CVR% (inline; GPFT = NPFT%, CVR = Doba L30 ÷ OV L30) -->
-                    <div class="d-flex align-items-center gap-1" title="GPFT% uses NPFT%; CVR uses Doba L30 sold ÷ OV L30 (Shopify)">
-                        <select id="gpft-filter" class="form-select form-select-sm" style="width: 130px;">
-                            <option value="all">GPFT%</option>
-                            <option value="negative">Negative</option>
-                            <option value="0-10">0-10%</option>
-                            <option value="10-20">10-20%</option>
-                            <option value="20-30">20-30%</option>
-                            <option value="30-40">30-40%</option>
-                            <option value="40-50">40-50%</option>
-                            <option value="50plus">Above 50%</option>
-                        </select>
-                        <select id="cvr-filter" class="form-select form-select-sm" style="width: 130px;">
-                            <option value="all">CVR</option>
-                            <option value="0-0">0%</option>
-                            <option value="0-3">0-3%</option>
-                            <option value="3-7">3-7%</option>
-                            <option value="7-13">7-13%</option>
-                            <option value="13plus">13%+</option>
-                        </select>
-                    </div>
-
-                    {{-- Sold dropdown (mirrors Amazon tabulator). Filters on `doba L30`:
-                         all  → show every row (no filter)
-                         sold → only rows where Doba L30 > 0
-                         zero → only rows where Doba L30 = 0 --}}
-                    <select id="sold-filter" class="form-select form-select-sm" style="width: 130px;"
-                            title="Filter by Doba L30 sold quantity">
-                        <option value="all">Sold</option>
-                        <option value="sold">Sold &gt; 0</option>
-                        <option value="zero">0 Sold</option>
-                    </select>
-
-                    <!-- DIL Filter -->
-                    <div class="dropdown manual-dropdown-container">
-                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown" 
-                                data-bs-toggle="dropdown" aria-expanded="false">
-                            <span class="status-circle default"></span> DIL%
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
-                                    <span class="status-circle default"></span> All DIL</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
-                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
-                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
-                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
-                                    <span class="status-circle pink"></span> Pink (50%+)</a></li>
-                        </ul>
-                    </div>
-
-                    <!-- ROI Filter -->
-                    <div>
-                        <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
-                            <option value="all">ROI%</option>
-                            <option value="lt40">&lt; 40%</option>
-                            <option value="40-75">40–75%</option>
-                            <option value="75-125">75–125%</option>
-                            <option value="gt125">125%+</option>
-                        </select>
-                    </div>
-
-                    </div>
-                </div>
-
-                {{-- Row 2: actions --}}
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                    <button type="button" id="reload-data-btn" class="btn btn-sm btn-outline-primary">
-                        <i class="fa fa-refresh"></i> Reload
-                    </button>
-                    <button type="button" id="export-csv-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-file-csv"></i> Export CSV
-                    </button>
-                    <div class="dropdown">
-                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" 
-                                data-bs-toggle="dropdown" id="column-visibility-btn">
-                            <i class="fas fa-columns"></i> Columns
-                        </button>
-                        <div class="dropdown-menu" id="column-dropdown-menu" style="max-height: 300px; overflow-y: auto;">
-                            <button class="dropdown-item" id="show-all-columns-btn">Show All Columns</button>
-                            <div class="dropdown-divider"></div>
-                        </div>
-                    </div>
-                    <button id="doba-price-mode-btn" type="button" class="btn btn-sm btn-secondary"
-                            title="Cycle: Off → Decrease → Increase → Same Price → Off">
-                        <i class="fas fa-exchange-alt"></i> Price %
-                    </button>
-                    <button id="push-to-doba-btn" class="btn btn-sm btn-primary" style="display: none;">
-                        <i class="fas fa-upload"></i> Push to Doba
-                    </button>
-
-                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
-                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin  (margin = 0.95 for Doba) --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
-                        id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 on every selected row (back-solves so SROI column equals the target)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target ROI%:
-                        </label>
-                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
-                        </button>
-                    </div>
-
-                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
-                         Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
-                        id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) on every selected row">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target GPFT%:
-                        </label>
-                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Doba take-home margin (< 95%).">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
-                        </button>
-                    </div>
-                </div>
-
-                {{-- Compact summary strip — same density / layout as the
-                     /doba-tabulator-withoutship and /topdawg-pricing badges.
-                       • Each visible badge: flex:1 1 0 + text-center → spread
+                {{-- Compact summary strip — moved to the TOP of the toolbar so
+                     the headline numbers (Sales, Rows, 0 Sold, Missing, N Map,
+                     VS AMZ, GPFT, ROI) are the first thing users see, matching
+                     /doba-tabulator-withoutship and /topdawg-pricing.
+                       • Each visible badge: flex:1 1 0 + text-center → spreads
                          edge-to-edge across the full card width.
                        • flex-nowrap so the strip stays a single visual band.
                        • min-width:90px so labels stay readable on narrow viewports.
@@ -494,6 +343,156 @@
                         <span id="total-cogs-badge" class="badge bg-secondary fs-6 p-2" style="color: white; font-weight:700; display:none;">Total COGS: $0</span>
                     </div>
                 </div>
+
+                {{-- Combined filters + actions row.
+                     Single flex-wrap line saves vertical space; flex-wrap is
+                     preserved (rather than nowrap) so on narrow viewports the
+                     row wraps to additional lines instead of producing a
+                     horizontal scrollbar. Widths tightened to maximize the
+                     chance of staying on one row at typical desktop widths. --}}
+                <div class="d-flex flex-wrap align-items-center gap-1 mb-1 w-100">
+                    <select id="inventory-filter" class="form-select form-select-sm" style="width:100px;">
+                        <option value="">All INV</option>
+                        <option value="positive" selected>INV > 0</option>
+                        <option value="zero">INV = 0</option>
+                    </select>
+
+                    <select id="parent-filter" class="form-select form-select-sm" style="width:110px;">
+                        <option value="">Row</option>
+                        <option value="parent">Parent Only</option>
+                        <option value="child">Child Only</option>
+                    </select>
+
+                    {{-- "Missing" filter — dropdown is hidden by request, but the
+                         <select> element stays in the DOM because the Missing badge's
+                         click-to-filter handler writes to #missing-filter directly. --}}
+                    <select id="missing-filter" class="form-select form-select-sm" style="display:none;">
+                        <option value="">All Products</option>
+                        <option value="missing">Missing Only</option>
+                    </select>
+
+                    <select id="gpft-filter" class="form-select form-select-sm" style="width:100px;"
+                            title="GPFT% — uses NPFT%">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40-50">40-50%</option>
+                        <option value="50plus">Above 50%</option>
+                    </select>
+                    <select id="cvr-filter" class="form-select form-select-sm" style="width:100px;"
+                            title="CVR — Doba L30 sold ÷ OV L30 (Shopify)">
+                        <option value="all">CVR</option>
+                        <option value="0-0">0%</option>
+                        <option value="0-3">0-3%</option>
+                        <option value="3-7">3-7%</option>
+                        <option value="7-13">7-13%</option>
+                        <option value="13plus">13%+</option>
+                    </select>
+
+                    {{-- Sold dropdown (mirrors Amazon tabulator). Filters on `doba L30`:
+                         all → no filter; sold → Doba L30 > 0; zero → Doba L30 = 0. --}}
+                    <select id="sold-filter" class="form-select form-select-sm" style="width:100px;"
+                            title="Filter by Doba L30 sold quantity">
+                        <option value="all">Sold</option>
+                        <option value="sold">Sold &gt; 0</option>
+                        <option value="zero">0 Sold</option>
+                    </select>
+
+                    <!-- DIL Filter -->
+                    <div class="dropdown manual-dropdown-container">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown"
+                                data-bs-toggle="dropdown" aria-expanded="false">
+                            <span class="status-circle default"></span> DIL%
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
+                                    <span class="status-circle default"></span> All DIL</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
+                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
+                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
+                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
+                                    <span class="status-circle pink"></span> Pink (50%+)</a></li>
+                        </ul>
+                    </div>
+
+                    <select id="roi-filter" class="form-select form-select-sm" style="width:100px;">
+                        <option value="all">ROI%</option>
+                        <option value="lt40">&lt; 40%</option>
+                        <option value="40-75">40–75%</option>
+                        <option value="75-125">75–125%</option>
+                        <option value="gt125">125%+</option>
+                    </select>
+
+                    <button type="button" id="export-csv-btn" class="btn btn-sm btn-success"
+                            title="Export CSV" aria-label="Export CSV">
+                        <i class="fas fa-download"></i>
+                    </button>
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+                                data-bs-toggle="dropdown" id="column-visibility-btn"
+                                title="Show / hide columns" aria-label="Show / hide columns">
+                            <i class="fas fa-columns"></i>
+                        </button>
+                        <div class="dropdown-menu" id="column-dropdown-menu" style="max-height: 300px; overflow-y: auto;">
+                            <button class="dropdown-item" id="show-all-columns-btn">Show All Columns</button>
+                            <div class="dropdown-divider"></div>
+                        </div>
+                    </div>
+                    <button id="doba-price-mode-btn" type="button" class="btn btn-sm btn-secondary"
+                            title="Cycle: Off → Decrease → Increase → Same Price → Off">
+                        <i class="fas fa-exchange-alt"></i> Price %
+                    </button>
+                    <button id="push-to-doba-btn" class="btn btn-sm btn-primary" style="display: none;">
+                        <i class="fas fa-upload"></i> Push to Doba
+                    </button>
+
+                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
+                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin  (margin = 0.95 for Doba)
+                         Compact icon-only chip: 🎯 emoji replaces the word "Target",
+                         Apply button is icon-only (matches /doba-tabulator-withoutship). --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
+                        id="target-roi-controls"
+                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 on every selected row (back-solves so SROI column equals the target)">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap"
+                               aria-label="Target ROI percent">
+                            <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
+                        </label>
+                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="30" step="0.1" style="width: 60px;"
+                            title="Target ROI% applied to all selected rows when you click 'Apply'">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            title="Apply — Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 for every selected row"
+                            aria-label="Apply Target ROI">
+                            <i class="fas fa-calculator"></i>
+                        </button>
+                    </div>
+
+                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
+                         Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
+                        id="target-gpft-controls"
+                        title="Target GPFT% — sets S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) on every selected row">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap"
+                               aria-label="Target GPFT percent">
+                            <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
+                        </label>
+                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="30" step="0.1" style="width: 60px;"
+                            title="Target GPFT% applied to all selected rows when you click 'Apply'. Must be less than the Doba take-home margin (< 95%).">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            title="Apply — Compute & save S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) for every selected row"
+                            aria-label="Apply Target GPFT">
+                            <i class="fas fa-calculator"></i>
+                        </button>
+                    </div>
+                </div>
+
             </div>
             <div class="card-body" style="padding: 0;">
                 <!-- Discount Input Box (shown when SKUs are selected) -->
@@ -525,9 +524,18 @@
                         <span id="selected-skus-count" class="text-muted ms-2"></span>
                     </div>
                 </div>
-                <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
-                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." autocomplete="off" style="max-width: 220px;">
-                    <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." autocomplete="off" style="max-width: 220px;">
+                {{-- Dedicated search row — Search SKU + Search Parent each take
+                     half the row (col-6) so they span the full table width.
+                     Tight px-2 py-1 keeps this strip slim. --}}
+                <div class="px-2 py-1 bg-light border-bottom">
+                    <div class="row g-1">
+                        <div class="col-6">
+                            <input type="text" id="sku-search" class="form-control form-control-sm w-100" placeholder="Search SKU..." autocomplete="off">
+                        </div>
+                        <div class="col-6">
+                            <input type="text" id="parent-search" class="form-control form-control-sm w-100" placeholder="Search Parent..." autocomplete="off">
+                        </div>
+                    </div>
                 </div>
                 <div id="doba-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <div id="doba-table" style="flex: 1;"></div>
@@ -3045,11 +3053,6 @@
             // Export CSV
             $('#export-csv-btn').on('click', function() {
                 table.download("csv", "doba_pricing_cvr_export.csv");
-            });
-
-            // Reload Data
-            $('#reload-data-btn').on('click', function() {
-                table.replaceData("/doba-data-view");
             });
 
             // Toast notification
