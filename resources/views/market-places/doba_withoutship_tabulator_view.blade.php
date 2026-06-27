@@ -377,10 +377,12 @@
                         <ul class="dropdown-menu">
                             <li><a class="dws-dropdown-item dws-dil-item active" href="#" data-color="all">
                                 <span class="dws-sc def"></span>All DIL</a></li>
+                            {{-- DIL bucket dropdown — three buckets after merging
+                                 the old yellow band (16.7–25%) into red. Keeps the
+                                 filter dropdown in lockstep with the cell color
+                                 formatter and the /topdawg-pricing DIL filter. --}}
                             <li><a class="dws-dropdown-item dws-dil-item" href="#" data-color="red">
-                                <span class="dws-sc red"></span>Red (&lt;16.7%)</a></li>
-                            <li><a class="dws-dropdown-item dws-dil-item" href="#" data-color="yellow">
-                                <span class="dws-sc yellow"></span>Yellow (16.7–25%)</a></li>
+                                <span class="dws-sc red"></span>Red (&lt;25%)</a></li>
                             <li><a class="dws-dropdown-item dws-dil-item" href="#" data-color="green">
                                 <span class="dws-sc green"></span>Green (25–50%)</a></li>
                             <li><a class="dws-dropdown-item dws-dil-item" href="#" data-color="pink">
@@ -1101,12 +1103,19 @@
             /*
              * Target ROI% bulk apply (Doba "without ship", margin = 0.95, ship excluded)
              * ------------------------------------------------------------------------
-             * Back-solves SPRICE for every selected row so SROI = Target ROI%:
-             *     SROI = ((sprice * 0.95 − ship − lp) / lp) * 100      (ship = 0 here)
-             *   → sprice = (lp * (1 + ROI%/100) + ship) / 0.95
-             * Self Pick price = sprice − ship (ship = 0 ⇒ selfPick = sprice).
-             * Sequential AJAX matches the page's existing per-SKU save loop so
-             * apply_status icons (clock → tick / cross) work the same way.
+             * Mirrors the /topdawg-pricing Target ROI handler exactly:
+             *   1. Compute every selected row's new SPRICE / SGPFT / SROI client-side
+             *      using the same back-solve formula:
+             *        SROI = ((sprice * 0.95 − ship − lp) / lp) * 100
+             *      → sprice = (lp * (1 + ROI%/100) + ship) / 0.95
+             *   2. Optimistically `row.update(...)` for every row so the UI flips
+             *      instantly (no per-row spinner — feels identical to TopDawg).
+             *   3. Fire all /doba/save-sprice-withoutship saves in PARALLEL so the
+             *      backend persistence doesn't bottleneck behind a sequential
+             *      setTimeout loop. There's no batch endpoint here, but parallel
+             *      requests give the same perceived "instant" feel as TopDawg's
+             *      single batched POST.
+             *   4. Single summary toast at the end.
              */
             $('#apply-target-roi-btn').on('click', function () {
                 const rawInput = $('#target-roi-input').val();
@@ -1125,22 +1134,17 @@
                     return;
                 }
 
-                applyTargetBackSolve(function (rowData) {
-                    const lp = parseFloat(rowData.LP_productmaster) || 0;
-                    if (lp <= 0) return null;
-                    const ship = FORMULA_SHIP; // 0 on the without-ship page
-                    const candidate = (lp * (1 + targetRoiPct / 100) + ship) / 0.95;
-                    const newPrice = +candidate.toFixed(2);
-                    if (!isFinite(newPrice) || newPrice <= 0) return null;
-                    return { newPrice: newPrice, lp: lp, ship: ship };
+                const roiMultiplier = 1 + (targetRoiPct / 100);
+                applyTargetBackSolve(function (lp, ship) {
+                    return (lp * roiMultiplier + ship) / 0.95;
                 }, `Target ROI ${targetRoiPct}%`);
             });
 
             /*
-             * Target GPFT% bulk apply (Doba "without ship", margin = 0.95, ship excluded)
-             * --------------------------------------------------------------------------
-             * Back-solves so SGPFT = Target GPFT%:
-             *     SGPFT = ((sprice * 0.95 − ship − lp) / sprice) * 100   (ship = 0)
+             * Target GPFT% bulk apply (Doba "without ship", margin = 0.95)
+             * ------------------------------------------------------------
+             * Same optimistic-update + parallel-save pattern as Target ROI above:
+             *     SGPFT = ((sprice * 0.95 − ship − lp) / sprice) * 100
              *   → sprice = (lp + ship) / (0.95 − GPFT%/100)
              * Constraint: (0.95 − target/100) must be > 0, i.e. target < 95.
              */
@@ -1167,106 +1171,99 @@
                     return;
                 }
 
-                applyTargetBackSolve(function (rowData) {
-                    const lp = parseFloat(rowData.LP_productmaster) || 0;
-                    if (lp <= 0) return null;
-                    const ship = FORMULA_SHIP; // 0 on the without-ship page
-                    const candidate = (lp + ship) / denom;
-                    const newPrice = +candidate.toFixed(2);
-                    if (!isFinite(newPrice) || newPrice <= 0) return null;
-                    return { newPrice: newPrice, lp: lp, ship: ship };
+                applyTargetBackSolve(function (lp, ship) {
+                    return (lp + ship) / denom;
                 }, `Target GPFT ${targetGpftPct}%`);
             });
 
-            // Shared back-solve runner. Mirrors the existing applyDiscount per-SKU
-            // sequential AJAX flow (clock → tick / cross via apply_status) so the
-            // user sees the same per-row feedback as Decrease / Increase / Same Price.
-            // Saves to /doba/save-sprice-withoutship so the without-ship page keeps
-            // its own SPRICE storage (separate from the regular Doba page).
-            function applyTargetBackSolve(computeFn, labelPrefix) {
-                const skusToProcess = Array.from(selectedSkus);
-                let currentIndex  = 0;
-                let successCount  = 0;
-                let errorCount    = 0;
-                let skippedNoLp   = 0;
+            // Shared back-solve runner — mirrors /topdawg-pricing's flow:
+            //   - Walks table.getRows('active') and filters by `selectedSkus`
+            //     (more reliable than the old `Array.from(selectedSkus)` →
+            //     `table.getRows().forEach()` linear scan which was O(N²)
+            //     and missed rows on later pagination pages).
+            //   - Computes the new price + derived margins for every row first.
+            //   - Optimistically updates every row in one pass so the UI changes
+            //     instantly — no clock → tick spinner per row.
+            //   - Fires every /doba/save-sprice-withoutship save IN PARALLEL.
+            //   - Shows ONE summary toast at the end ("Target ROI 30% applied
+            //     to N SKU(s) (M skipped — no LP)").
+            //
+            // computePriceFn(lp, ship) returns the new SPRICE for the row.
+            function applyTargetBackSolve(computePriceFn, labelPrefix) {
+                const updates = [];
+                let skippedNoLp = 0;
 
-                function processNext() {
-                    if (currentIndex >= skusToProcess.length) {
-                        if (successCount > 0) {
-                            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
-                            showToast('success', `${labelPrefix} applied to ${successCount} SKU(s)${note}`);
-                        }
-                        if (errorCount > 0) {
-                            showToast('warning', `${errorCount} SKU(s) could not be updated`);
-                        }
-                        if (typeof updatePushButtonVisibility === 'function') updatePushButtonVisibility();
-                        return;
-                    }
+                table.getRows('active').forEach(function (row) {
+                    const d = row.getData();
+                    if (d.is_parent) return;
+                    const sku = d && d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
+                    if (!sku || !selectedSkus.has(sku)) return;
 
-                    const sku = skusToProcess[currentIndex];
-                    let row = null;
-                    table.getRows().forEach(r => {
-                        if (r.getData()['(Child) sku'] === sku) row = r;
+                    const lp = parseFloat(d.LP_productmaster) || 0;
+                    if (lp <= 0) { skippedNoLp++; return; }
+                    const ship = (typeof FORMULA_SHIP !== 'undefined') ? FORMULA_SHIP : 0;
+
+                    const candidate = computePriceFn(lp, ship);
+                    const newPrice  = +Number(candidate).toFixed(2);
+                    if (!isFinite(newPrice) || newPrice <= 0) return;
+
+                    const spft = newPrice > 0 ? ((newPrice * 0.95) - ship - lp) / newPrice * 100 : 0;
+                    const sroi = lp > 0       ? ((newPrice * 0.95) - ship - lp) / lp       * 100 : 0;
+                    const selfPick = parseFloat(Math.max(0, newPrice - ship).toFixed(2));
+
+                    // Optimistic row update (no apply_status spinner — TopDawg-style).
+                    row.update({
+                        sprice: newPrice,
+                        s_self_pick: selfPick,
+                        self_pick_price: selfPick,
+                        spft: spft,
+                        sroi: sroi,
                     });
 
-                    if (!row || row.getData().is_parent) {
-                        errorCount++;
-                        currentIndex++;
-                        setTimeout(processNext, 20);
-                        return;
-                    }
+                    updates.push({ sku: sku, row: row, newPrice: newPrice, spft: spft, sroi: sroi, selfPick: selfPick });
+                });
 
-                    const rowData = row.getData();
-                    const computed = computeFn(rowData);
-                    if (!computed) {
-                        skippedNoLp++;
-                        currentIndex++;
-                        setTimeout(processNext, 20);
-                        return;
-                    }
+                if (!updates.length) {
+                    showToast('warning', 'No selected rows have a usable LP > 0');
+                    return;
+                }
 
-                    const { newPrice, lp, ship } = computed;
-                    const selfPickValue = parseFloat(Math.max(0, newPrice - ship).toFixed(2));
-                    const spftValue = newPrice > 0 ? ((newPrice * 0.95) - ship - lp) / newPrice * 100 : 0;
-                    const sroiValue = lp > 0       ? ((newPrice * 0.95) - ship - lp) / lp * 100       : 0;
+                // Fire all saves in parallel — no batch endpoint exists on
+                // /doba/save-sprice-withoutship, but parallel calls give the
+                // same perceived "instant" feel as TopDawg's batched save.
+                const csrf = $('meta[name="csrf-token"]').attr('content');
+                let okCount = 0;
+                let errCount = 0;
 
-                    row.update({ apply_status: 'applying' });
-
+                const reqs = updates.map(u =>
                     $.ajax({
                         url: '/doba/save-sprice-withoutship',
                         method: 'POST',
                         data: {
-                            _token: $('meta[name="csrf-token"]').attr('content'),
-                            sku: sku,
-                            sprice: newPrice,
-                            spft_percent: spftValue.toFixed(2),
-                            sroi_percent: sroiValue.toFixed(2),
-                            s_self_pick: selfPickValue
+                            _token: csrf,
+                            sku: u.sku,
+                            sprice: u.newPrice,
+                            spft_percent: u.spft.toFixed(2),
+                            sroi_percent: u.sroi.toFixed(2),
+                            s_self_pick: u.selfPick,
                         },
-                        success: function () {
-                            row.update({
-                                sprice: newPrice,
-                                s_self_pick: selfPickValue,
-                                self_pick_price: selfPickValue,
-                                spft: spftValue,
-                                sroi: sroiValue,
-                                apply_status: 'applied'
-                            });
-                            successCount++;
-                            currentIndex++;
-                            setTimeout(processNext, 60);
-                        },
-                        error: function (xhr) {
-                            console.error('Target back-solve save error:', sku, xhr.responseText);
-                            row.update({ apply_status: 'error' });
-                            errorCount++;
-                            currentIndex++;
-                            setTimeout(processNext, 60);
-                        }
-                    });
-                }
+                    }).done(() => { okCount++; }).fail((xhr) => {
+                        errCount++;
+                        console.error('Target back-solve save error:', u.sku, xhr.responseText);
+                    })
+                );
 
-                processNext();
+                $.when.apply($, reqs).always(function () {
+                    const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
+                    if (errCount === 0) {
+                        showToast('success', `${labelPrefix} applied to ${okCount} SKU(s)${note}`);
+                    } else if (okCount > 0) {
+                        showToast('warning', `${labelPrefix}: ${okCount} saved, ${errCount} failed${note}`);
+                    } else {
+                        showToast('danger', `${labelPrefix}: all ${errCount} saves failed`);
+                    }
+                    if (typeof updatePushButtonVisibility === 'function') updatePushButtonVisibility();
+                });
             }
 
             $('#target-roi-input').on('keypress', function (e) {
@@ -1741,8 +1738,11 @@
                             const value = parseFloat(cell.getValue()) || 0;
                             const percent = value * 100;
                             let style = '';
-                            if (percent < 16.66) style = 'color: #dc3545; font-weight: 800;'; // red - bold
-                            else if (percent >= 16.66 && percent < 25) style = 'color: #ffc107; font-weight: bold;'; // yellow
+                            // DIL color buckets: red < 25, green 25–50, pink ≥ 50.
+                            // (The old yellow band 16.7–25% was merged into red so
+                            //  the cell color stays in lockstep with the DIL filter
+                            //  dropdown and matches /topdawg-pricing.)
+                            if (percent < 25) style = 'color: #dc3545; font-weight: 800;'; // red - bold
                             else if (percent >= 25 && percent < 50) style = 'color: #28a745; font-weight: bold;'; // green
                             else style = 'color: #e83e8c; font-weight: 800;'; // pink - bold
                             
@@ -2151,14 +2151,15 @@
                 }
 
                 if (dilColor !== 'all') {
+                    // Three buckets after merging yellow into red:
+                    //   red < 25, green 25–50, pink ≥ 50.
                     table.addFilter(function(data) {
                         const inv = parseFloat(data.INV) || 0;
                         const l30 = parseFloat(data.L30) || 0;
                         const dil = inv === 0 ? 0 : (l30 / inv) * 100;
-                        if (dilColor === 'red') return dil < 16.66;
-                        if (dilColor === 'yellow') return dil >= 16.66 && dil < 25;
+                        if (dilColor === 'red')   return dil < 25;
                         if (dilColor === 'green') return dil >= 25 && dil < 50;
-                        if (dilColor === 'pink') return dil >= 50;
+                        if (dilColor === 'pink')  return dil >= 50;
                         return true;
                     });
                 }
